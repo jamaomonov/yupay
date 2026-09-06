@@ -31,6 +31,15 @@ from yupay.modules.gifts.api import router as gifts_router
 from yupay.modules.integrations.api import admin_router as integrations_admin_router
 from yupay.modules.integrations.api import router as integrations_router
 from yupay.modules.inventory.api import admin_router as inventory_admin_router
+
+# Imported from ``admin_routes`` rather than the module facade on purpose —
+# the merchants facade is imported by service-layer callers (orders, and the
+# M2+ machine API), and a router re-exported from it would close a cycle back
+# through here. Same rule as ``affiliate.routes`` above.
+from yupay.modules.merchants.admin_routes import admin_router as merchants_admin_router
+from yupay.modules.merchants.admin_routes import (
+    catalog_b2b_router as merchants_catalog_b2b_router,
+)
 from yupay.modules.orders.api import admin_router as orders_admin_router
 from yupay.modules.orders.api import router as orders_router
 from yupay.modules.payme.api import router as payme_router
@@ -79,6 +88,8 @@ router.include_router(g2b_webhook_router)
 router.include_router(integrations_admin_router)
 router.include_router(integrations_router)
 router.include_router(inventory_admin_router)
+router.include_router(merchants_admin_router)
+router.include_router(merchants_catalog_b2b_router)
 router.include_router(sourcing_admin_router)
 router.include_router(stats_admin_router)
 router.include_router(storage_admin_router)

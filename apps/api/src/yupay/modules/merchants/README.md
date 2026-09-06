@@ -87,8 +87,41 @@ what a merchant is actually charged.
 Import these from `api`, not from `pricing` directly — the same rule as
 every other symbol in this module.
 
+## Admin surface
+
+Everything support needs to run a pilot merchant by hand (Task 6), all
+admin-gated (`require_admin`), business logic imported through the `api`
+facade only. Two routers in `admin_routes.py` (mounted by `api/v1` directly
+from that file — the facade never exports a router, or it would close a
+cycle back through the route stack, same rule as `affiliate.routes`):
+
+- `POST`/`GET /admin/merchants` — create a reseller; list every merchant
+  with its USD deposit balance joined in **one grouped query**
+  (`admin.list_merchants_with_balances`, the batch variant of
+  `deposit_balance` — no per-merchant balance read).
+- `POST /admin/merchants/{id}/freeze|unfreeze` — persists `status` only in
+  M1; ordering is what M2 will block.
+- `POST /admin/merchants/{id}/deposit-credits` — posts via
+  `service.credit_deposit`. **Requires** `Idempotency-Key`; the ledger key
+  is namespaced `merchant-credit:{merchant_id}:{client_key}` so one
+  client's key can never replay another merchant's transaction. The ledger
+  replays by key **without comparing parameters**, so the response's
+  `amount` is the transaction's actual (original) amount — a mismatched
+  replay is visible to the admin UI, and `balance` rides along. See
+  `docs/architecture/sequence-diagrams/merchant-deposit-credit.mmd`.
+- `PATCH /admin/catalog/skus/{id}/b2b` (`markup_pct?`, `visible_b2b?`),
+  `POST /admin/catalog/b2b/bulk-markup` (`brand_slug | category`,
+  `markup_pct` — one UPDATE, returns the affected count) and
+  `PATCH /admin/catalog/brands/{id}/b2b` (`visible_b2b`) — the catalog B2B
+  knobs. No pricing math in routes; the markup is stored verbatim and the
+  order-time margin floor is the guard (spec §8.3).
+
+The non-ledger writes accept an optional `Idempotency-Key` and replay
+through the generic `(scope, key)` store (`core.idempotency`), like the
+other admin write endpoints.
+
 ## Status
 
-Schema (Task 1), the deposit service (Task 3), and wholesale pricing
-(Task 5) are in place. Routes, auth, and API-key issuance land in later
-tasks.
+Schema (Task 1), the deposit service (Task 3), wholesale pricing (Task 5)
+and the admin endpoints (Task 6) are in place. Cabinet auth, the machine
+API, and API-key issuance land in later tasks.

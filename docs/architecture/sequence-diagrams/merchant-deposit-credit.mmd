@@ -1,0 +1,27 @@
+sequenceDiagram
+    autonumber
+    participant Admin as Admin SPA (support)
+    participant API as POST /api/v1/admin/merchants/{id}/deposit-credits
+    participant Merchants as merchants service (credit_deposit)
+    participant Ledger as wallet.service.post()
+    participant DB as Postgres
+
+    Admin->>API: amount, note + Idempotency-Key: {client_key}
+    API->>API: require header (422 without) -- it is the replay handle
+    API->>Merchants: credit_deposit(key="merchant-credit:{merchant_id}:{client_key}", actor="admin:{id}")
+    Merchants->>DB: SELECT merchants WHERE id (404 if missing; frozen is fine -- freeze never blocks money in)
+    Merchants->>Ledger: ensure_account(merchant_deposit) + ensure_account(house_payments_received)
+    Merchants->>Ledger: post(kind=merchant_deposit_credit, D merchant_deposit / C house_payments_received)
+    Ledger->>DB: SELECT wallet_transactions WHERE idempotency_key
+    alt key unseen -- first attempt
+        Ledger->>DB: INSERT wallet_transactions + 2 wallet_postings (all-or-nothing)
+        DB-->>Ledger: new transaction
+    else key already owned -- admin retry (or amended amount)
+        DB-->>Ledger: the ORIGINAL transaction, unchanged
+        Note over Ledger: post() replays by key WITHOUT comparing parameters:<br/>an amended amount books NOTHING new
+    end
+    Ledger-->>Merchants: transaction (original on replay)
+    API->>Merchants: deposit_balance(merchant_id) -- signed SUM over postings
+    Merchants-->>API: balance
+    API-->>Admin: 201 {transaction_id, amount = transaction's amount, balance}
+    Note over Admin: on a mismatched replay the response's amount is the ORIGINAL,<br/>so the UI can compare it with what was submitted and warn

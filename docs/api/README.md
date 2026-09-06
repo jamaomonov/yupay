@@ -218,3 +218,20 @@ codes to the **order's own address**. It is **non-enumerating** (always `204`,
 per-IP `guard_ip` throttled) and never mails the caller's input, so it cannot
 exfiltrate codes to an attacker-controlled address. See
 `docs/decisions/0042-guest-code-access-magic-link.md`.
+
+## Merchant B2B admin (M1)
+
+`/admin/merchants` (create, list-with-USD-balance, freeze/unfreeze,
+deposit-credits) and the catalog B2B knobs (`PATCH /admin/catalog/skus/{id}/b2b`,
+`POST /admin/catalog/b2b/bulk-markup`, `PATCH /admin/catalog/brands/{id}/b2b`)
+— all admin-gated.
+
+`POST /admin/merchants/{id}/deposit-credits` **requires** `Idempotency-Key`:
+the header is the client half of the namespaced ledger key
+(`merchant-credit:{merchant_id}:{client_key}`), so a retry replays the original
+transaction instead of crediting twice. The ledger replays by key **without
+comparing parameters** — the response's `amount` is the replayed transaction's
+(original) amount, so a client that resubmits a key with an amended amount can
+detect the mismatch. The other writes accept an optional `Idempotency-Key` and
+replay via the generic `(scope, key)` store. See
+`docs/architecture/sequence-diagrams/merchant-deposit-credit.mmd`.

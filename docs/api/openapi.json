@@ -1809,6 +1809,45 @@
         "title": "BanUserIn",
         "type": "object"
       },
+      "BrandB2bOut": {
+        "description": "The B2B slice of a brand after a patch.",
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "visible_b2b": {
+            "title": "Visible B2B",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "slug",
+          "visible_b2b"
+        ],
+        "title": "BrandB2bOut",
+        "type": "object"
+      },
+      "BrandB2bPatchIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /admin/catalog/brands/{id}/b2b``.",
+        "properties": {
+          "visible_b2b": {
+            "title": "Visible B2B",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "visible_b2b"
+        ],
+        "title": "BrandB2bPatchIn",
+        "type": "object"
+      },
       "BrandCreate": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/catalog/brands``.",
@@ -2639,6 +2678,71 @@
           "title"
         ],
         "title": "BroadcastUpdateIn",
+        "type": "object"
+      },
+      "BulkMarkupIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/catalog/b2b/bulk-markup``: exactly one target.",
+        "properties": {
+          "brand_slug": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Slug"
+          },
+          "category": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "markup_pct": {
+            "anyOf": [
+              {
+                "maximum": 999.99,
+                "minimum": -999.99,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              }
+            ],
+            "title": "Markup Pct"
+          }
+        },
+        "required": [
+          "markup_pct"
+        ],
+        "title": "BulkMarkupIn",
+        "type": "object"
+      },
+      "BulkMarkupOut": {
+        "description": "How many SKUs the bulk update touched.",
+        "properties": {
+          "affected": {
+            "title": "Affected",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "affected"
+        ],
+        "title": "BulkMarkupOut",
         "type": "object"
       },
       "BulkRetryIn": {
@@ -4415,6 +4519,73 @@
           "cost_usdt"
         ],
         "title": "DenomImportIn",
+        "type": "object"
+      },
+      "DepositCreditIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/merchants/{id}/deposit-credits``.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "required": [
+          "amount"
+        ],
+        "title": "DepositCreditIn",
+        "type": "object"
+      },
+      "DepositCreditOut": {
+        "description": "Result of a deposit credit.\n\n``amount`` is the amount the returned ledger transaction actually booked \u2014\non an idempotent replay that is the ORIGINAL amount, not the request's.\nThe ledger replays by key without comparing parameters, so this field is\nwhat makes a mismatched replay visible to the admin UI.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "merchant_id",
+          "amount",
+          "balance"
+        ],
+        "title": "DepositCreditOut",
         "type": "object"
       },
       "EvidencePackOut": {
@@ -6274,6 +6445,76 @@
           "created_at"
         ],
         "title": "MeOut",
+        "type": "object"
+      },
+      "MerchantCreateIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/merchants``.",
+        "properties": {
+          "title": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title"
+        ],
+        "title": "MerchantCreateIn",
+        "type": "object"
+      },
+      "MerchantListOut": {
+        "description": "Body of ``GET /admin/merchants``.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MerchantListOut",
+        "type": "object"
+      },
+      "MerchantOut": {
+        "description": "One merchant row plus its USD deposit balance.\n\nThe balance rides along on every merchant read \u2014 creation included, where\nit is trivially zero \u2014 so the admin SPA renders one shape everywhere.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "deposit_balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Deposit Balance",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "status",
+          "created_at",
+          "deposit_balance"
+        ],
+        "title": "MerchantOut",
         "type": "object"
       },
       "NewBrandIn": {
@@ -10306,6 +10547,72 @@
           }
         },
         "title": "SimulateWebhookIn",
+        "type": "object"
+      },
+      "SkuB2bOut": {
+        "description": "The B2B slice of a SKU after a patch.",
+        "properties": {
+          "b2b_markup_pct": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "B2B Markup Pct",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "visible_b2b": {
+            "title": "Visible B2B",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "sku_code",
+          "b2b_markup_pct",
+          "visible_b2b"
+        ],
+        "title": "SkuB2bOut",
+        "type": "object"
+      },
+      "SkuB2bPatchIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /admin/catalog/skus/{id}/b2b``; absent fields stay untouched.",
+        "properties": {
+          "markup_pct": {
+            "anyOf": [
+              {
+                "maximum": 999.99,
+                "minimum": -999.99,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markup Pct"
+          },
+          "visible_b2b": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visible B2B"
+          }
+        },
+        "title": "SkuB2bPatchIn",
         "type": "object"
       },
       "SkuCountsOut": {
@@ -14968,6 +15275,82 @@
         ]
       }
     },
+    "/api/v1/admin/catalog/b2b/bulk-markup": {
+      "post": {
+        "description": "One UPDATE over the brand's (or category's) SKUs; returns the affected count.",
+        "operationId": "bulk_markup_api_v1_admin_catalog_b2b_bulk_markup_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BulkMarkupIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BulkMarkupOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set the B2B markup for a whole brand or category in one action",
+        "tags": [
+          "admin:catalog-b2b"
+        ]
+      }
+    },
     "/api/v1/admin/catalog/brands": {
       "get": {
         "operationId": "list_brands_api_v1_admin_catalog_brands_get",
@@ -15192,6 +15575,91 @@
         "summary": "Update Brand",
         "tags": [
           "admin:catalog"
+        ]
+      }
+    },
+    "/api/v1/admin/catalog/brands/{brand_id}/b2b": {
+      "patch": {
+        "description": "Effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b``.",
+        "operationId": "patch_brand_b2b_api_v1_admin_catalog_brands__brand_id__b2b_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "title": "Brand Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrandB2bPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandB2bOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Show or hide a whole brand in the merchant catalog",
+        "tags": [
+          "admin:catalog-b2b"
         ]
       }
     },
@@ -16297,6 +16765,91 @@
         "summary": "Update Sku",
         "tags": [
           "admin:catalog"
+        ]
+      }
+    },
+    "/api/v1/admin/catalog/skus/{sku_id}/b2b": {
+      "patch": {
+        "description": "Absent fields stay untouched; no pricing math here (AGENTS.md \u00a76).",
+        "operationId": "patch_sku_b2b_api_v1_admin_catalog_skus__sku_id__b2b_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sku_id",
+            "required": true,
+            "schema": {
+              "title": "Sku Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkuB2bPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkuB2bOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a SKU's B2B markup and/or visibility",
+        "tags": [
+          "admin:catalog-b2b"
         ]
       }
     },
@@ -18784,6 +19337,365 @@
         "summary": "Mint a presigned PUT URL for a single direct-to-R2 image upload",
         "tags": [
           "admin:media"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants": {
+      "get": {
+        "description": "One grouped query, not a balance read per merchant (AGENTS.md \u00a710).",
+        "operationId": "list_merchants_api_v1_admin_merchants_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Every merchant, with its USD deposit balance",
+        "tags": [
+          "admin:merchants"
+        ]
+      },
+      "post": {
+        "description": "Create a merchant; a retried key replays the original row.",
+        "operationId": "create_merchant_api_v1_admin_merchants_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a reseller account",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/deposit-credits": {
+      "post": {
+        "description": "Book ``D merchant_deposit / C house_payments_received`` on the ledger.\n\nThe ``Idempotency-Key`` header is REQUIRED: it is the client half of the\nnamespaced ledger key, so an admin retry after a timeout replays the\noriginal transaction instead of crediting twice. The ledger replays by\nkey WITHOUT comparing parameters \u2014 a reused key with an amended amount\nreturns the old transaction and books nothing \u2014 so the response's\n``amount`` is the replayed transaction's amount, making the mismatch\nvisible to the admin UI.",
+        "operationId": "credit_deposit_api_v1_admin_merchants__merchant_id__deposit_credits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepositCreditIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositCreditOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Credit a merchant's USD deposit (idempotent via key)",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/freeze": {
+      "post": {
+        "description": "Persist ``status=frozen``. In M1 nothing is blocked yet \u2014 see the module README.",
+        "operationId": "freeze_merchant_api_v1_admin_merchants__merchant_id__freeze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Freeze a merchant (blocks orders in M2, never money in)",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/unfreeze": {
+      "post": {
+        "description": "Persist ``status=active``.",
+        "operationId": "unfreeze_merchant_api_v1_admin_merchants__merchant_id__unfreeze_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reactivate a frozen merchant",
+        "tags": [
+          "admin:merchants"
         ]
       }
     },

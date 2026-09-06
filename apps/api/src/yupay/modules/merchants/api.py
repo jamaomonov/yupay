@@ -7,6 +7,12 @@ and cabinet auth land in later tasks and get re-exported here as they arrive.
 
 from __future__ import annotations
 
+from yupay.modules.merchants.admin import (
+    bulk_set_markup,
+    list_merchants_with_balances,
+    set_brand_b2b,
+    set_sku_b2b,
+)
 from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
 from yupay.modules.merchants.pricing import (
     effective_cost,
@@ -27,12 +33,16 @@ __all__ = [
     "Merchant",
     "MerchantApiKey",
     "MerchantUser",
+    "bulk_set_markup",
     "create_merchant",
     "credit_deposit",
     "deposit_balance",
     "effective_cost",
+    "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",
+    "set_brand_b2b",
+    "set_sku_b2b",
     "set_status",
     "violates_margin_floor",
 ]
