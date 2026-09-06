@@ -25,6 +25,7 @@
     },
     "detail": {
       "notFound": "Мерчант не найден.",
+      "loading": "Загрузка…",
       "balanceLabel": "Депозит (USD)",
       "statusLabel": "Статус",
       "createdLabel": "Создан",

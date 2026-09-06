@@ -4,12 +4,14 @@ import { RefreshCw } from "lucide-react";
 
 import { FxProviderChain } from "./FxProviderChain";
 import { FxRateCard, formatRate } from "./FxRateCard";
+
 import type { AdminRateOut, AdminRatesOut, ProviderChainOut } from "./types";
 
 import { PageHeader } from "@/components/PageHeader";
-import { Spinner } from "@/components/States";
 import { StatCard } from "@/components/StatCard";
-import { ApiError, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
+import { Spinner } from "@/components/States";
+import { type ApiError, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 export function FxPage() {
@@ -102,7 +104,7 @@ export function FxPage() {
       )}
       {refresh.isError && (
         <p className="text-sm text-[var(--danger)]">
-          Refresh не удался: {formatError(refresh.error)}
+          Refresh не удался: {extractApiMessage(refresh.error)}
         </p>
       )}
 
@@ -114,7 +116,7 @@ export function FxPage() {
         <FxProviderChain
           data={providersQuery.data}
           saving={saveChain.isPending}
-          error={saveChain.isError ? formatError(saveChain.error) : null}
+          error={saveChain.isError ? extractApiMessage(saveChain.error) : null}
           onChange={(items) => {
             saveChain.mutate(items);
           }}
@@ -128,7 +130,9 @@ export function FxPage() {
             row={row}
             saving={save.isPending && save.variables?.quote === row.quote}
             error={
-              save.isError && save.variables?.quote === row.quote ? formatError(save.error) : null
+              save.isError && save.variables?.quote === row.quote
+                ? extractApiMessage(save.error)
+                : null
             }
             onSave={(next) => {
               save.mutate({ quote: row.quote, ...next });
@@ -150,13 +154,4 @@ export function FxPage() {
       </p>
     </div>
   );
-}
-
-function formatError(err: unknown): string {
-  if (err instanceof ApiError) {
-    const body = err.body as { detail?: string; title?: string } | null;
-    return body?.detail ?? body?.title ?? err.message;
-  }
-  if (err instanceof Error) return err.message;
-  return "неизвестная ошибка";
 }

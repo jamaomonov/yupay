@@ -591,6 +591,55 @@ async def test_merchant_transactions_empty_for_fresh_merchant_and_capped_by_limi
     assert len(items) == 1
     assert items[0]["transaction_id"] == newest["transaction_id"]
 
+    # The bounds are contract, not a silent clamp: out-of-range is a 422.
+    for bad in ("0", "201"):
+        r = await integration_client.get(
+            f"/api/v1/admin/merchants/{merchant_id}/transactions?limit={bad}",
+            headers=admin_headers,
+        )
+        assert r.status_code == 422, r.text
+
+
+async def test_merchant_transactions_are_isolated_per_merchant(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """One merchant's ledger never shows another merchant's movements.
+
+    The query filters on the deposit account's ``owner_id``; this pins that
+    filter against future refactors — a regression here would leak one
+    reseller's top-up history into another's screen.
+    """
+    merchant_a = await _create_merchant(integration_client, admin_headers, title="Merchant A")
+    merchant_b = await _create_merchant(integration_client, admin_headers, title="Merchant B")
+    b_txn = await _credit(
+        integration_client,
+        admin_headers,
+        merchant_b,
+        amount="40.00",
+        key="merchants-admin-isolate-b1",
+    )
+
+    # B has money; A's ledger must still be empty.
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_a}/transactions", headers=admin_headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == []
+
+    a_txn = await _credit(
+        integration_client,
+        admin_headers,
+        merchant_a,
+        amount="15.00",
+        key="merchants-admin-isolate-a1",
+    )
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_a}/transactions", headers=admin_headers
+    )
+    ids = [item["transaction_id"] for item in r.json()["items"]]
+    assert ids == [a_txn["transaction_id"]]
+    assert b_txn["transaction_id"] not in ids
+
 
 async def test_merchant_transactions_unknown_merchant_404(
     integration_client: AsyncClient, admin_headers: dict[str, str]

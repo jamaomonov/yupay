@@ -25,6 +25,7 @@
     },
     "detail": {
       "notFound": "Merchant not found.",
+      "loading": "Loading…",
       "balanceLabel": "Deposit (USD)",
       "statusLabel": "Status",
       "createdLabel": "Created",

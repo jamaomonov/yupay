@@ -26,7 +26,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Header, status
+from fastapi import APIRouter, Depends, Header, Query, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -269,15 +269,15 @@ async def credit_deposit(
 async def list_merchant_transactions(
     merchant_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
-    limit: int = 50,
+    limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> MerchantTxnListOut:
     """Every ledger movement of this merchant's deposit — the detail screen's audit trail.
 
     Read-only, one grouped query; ``amount`` is the signed deposit delta
-    (positive = balance up). ``limit`` is clamped to 1..200.
+    (positive = balance up). ``limit`` is bounded 1..200 in the contract —
+    out-of-range values are a 422, not a silent clamp.
     """
-    capped = max(1, min(limit, 200))
-    rows = await merchants.list_deposit_transactions(db, merchant_id=merchant_id, limit=capped)
+    rows = await merchants.list_deposit_transactions(db, merchant_id=merchant_id, limit=limit)
     items: list[MerchantTxnOut] = []
     for txn, amount in rows:
         note = txn.extra_metadata.get("note")

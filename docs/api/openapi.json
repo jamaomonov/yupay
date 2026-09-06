@@ -19698,7 +19698,7 @@
     },
     "/api/v1/admin/merchants/{merchant_id}/transactions": {
       "get": {
-        "description": "Every ledger movement of this merchant's deposit \u2014 the detail screen's audit trail.\n\nRead-only, one grouped query; ``amount`` is the signed deposit delta\n(positive = balance up). ``limit`` is clamped to 1..200.",
+        "description": "Every ledger movement of this merchant's deposit \u2014 the detail screen's audit trail.\n\nRead-only, one grouped query; ``amount`` is the signed deposit delta\n(positive = balance up). ``limit`` is bounded 1..200 in the contract \u2014\nout-of-range values are a 422, not a silent clamp.",
         "operationId": "list_merchant_transactions_api_v1_admin_merchants__merchant_id__transactions_get",
         "parameters": [
           {
@@ -19716,6 +19716,8 @@
             "required": false,
             "schema": {
               "default": 50,
+              "maximum": 200,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
             }

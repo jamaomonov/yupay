@@ -17,7 +17,6 @@ import {
   createMerchant,
   fetchMerchants,
   fill,
-  formatApiError,
   formatUsd,
   type MerchantListOut,
   type MerchantOut,
@@ -29,6 +28,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 import { useDialog } from "@/lib/useDialog";
 
@@ -52,13 +52,19 @@ export function MerchantsPage() {
     onSuccess: (merchant) => {
       setCreateOpen(false);
       toast.success(T.list.createDialog.created);
+      // Seed the cache with the fresh row BEFORE navigating: the detail
+      // screen reads this cache, and racing the invalidated refetch used to
+      // flash «Мерчант не найден» until the list came back.
+      qc.setQueryData<MerchantListOut>(qk.merchants(), (prev) =>
+        prev ? { ...prev, items: [merchant, ...prev.items] } : { items: [merchant] },
+      );
       void qc.invalidateQueries({ queryKey: qk.merchants() });
       // Straight to the detail screen — the next step is almost always the
       // first deposit credit.
       void navigate(`/merchants/${merchant.id}`);
     },
     onError: (err) => {
-      toast.error(fill(T.list.createDialog.error, { message: formatApiError(err) }));
+      toast.error(fill(T.list.createDialog.error, { message: extractApiMessage(err) }));
     },
   });
 

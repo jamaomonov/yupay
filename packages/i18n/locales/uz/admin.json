@@ -25,6 +25,7 @@
     },
     "detail": {
       "notFound": "Merchant topilmadi.",
+      "loading": "Yuklanmoqda…",
       "balanceLabel": "Depozit (USD)",
       "statusLabel": "Holat",
       "createdLabel": "Yaratilgan",

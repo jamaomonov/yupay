@@ -19,7 +19,7 @@
 
 import adminRu from "@yupay/i18n/locales/ru/admin.json";
 
-import { ApiError, apiGet, apiPost } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 /** The feature's Russian string catalog (see module docstring). */
 export const T = adminRu.merchants;
@@ -149,15 +149,4 @@ function canonicalAmount(raw: string): string {
   const intPart = intRaw.replace(/^0+(?=\d)/, "") || "0";
   const frac = fracRaw.replace(/0+$/, "");
   return frac ? `${intPart}.${frac}` : intPart;
-}
-
-/** Operator-facing message out of a rejected mutation. */
-export function formatApiError(err: unknown): string {
-  if (err instanceof ApiError) {
-    // Known-shape problem+json body from the API error middleware.
-    const body = err.body as { detail?: string; title?: string } | null;
-    return body?.detail ?? body?.title ?? err.message;
-  }
-  if (err instanceof Error) return err.message;
-  return "неизвестная ошибка";
 }

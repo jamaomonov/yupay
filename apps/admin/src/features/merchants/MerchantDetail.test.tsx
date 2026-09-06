@@ -10,6 +10,7 @@ import { MerchantDetail } from "./MerchantDetail";
 import type { DepositCreditOut, MerchantListOut, MerchantTxnListOut } from "./api";
 
 import { apiGet, apiPost } from "@/lib/api";
+import { qk } from "@/lib/queryKeys";
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
@@ -45,8 +46,8 @@ const TXNS: MerchantTxnListOut = {
   ],
 };
 
-function renderPage() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function renderPage(qc?: QueryClient) {
+  qc ??= new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={["/merchants/m1"]}>
@@ -213,4 +214,26 @@ it("mints a fresh idempotency key for a new attempt but keeps it across a retry"
   expect(keyOf(first ?? [])).toBeDefined();
   expect(keyOf(second ?? [])).toBe(keyOf(first ?? []));
   expect(keyOf(third ?? [])).not.toBe(keyOf(first ?? []));
+});
+
+it("keeps the spinner up instead of flashing «не найден» while the list refetches", async () => {
+  // The moment right after a create: navigation lands on a cache that does
+  // not carry the merchant yet while the invalidated list refetch is still
+  // in flight. A settled list may say "not found"; an in-flight one may not.
+  let resolveList: (v: MerchantListOut) => void = () => undefined;
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/transactions")) return Promise.resolve(TXNS);
+    return new Promise<MerchantListOut>((resolve) => {
+      resolveList = resolve;
+    });
+  });
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  qc.setQueryData(qk.merchants(), { items: [] });
+  renderPage(qc);
+
+  expect(screen.queryByText("Мерчант не найден.")).not.toBeInTheDocument();
+  expect(screen.getByText("Загрузка…")).toBeInTheDocument();
+
+  resolveList(LIST);
+  expect(await screen.findByRole("heading", { name: "Pilot Reseller" })).toBeInTheDocument();
 });

@@ -23,7 +23,6 @@ import {
   fetchMerchants,
   fetchMerchantTxns,
   fill,
-  formatApiError,
   formatUsd,
   parseUsdAmount,
   sameAmount,
@@ -45,6 +44,7 @@ import { StatCard } from "@/components/StatCard";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 export function MerchantDetail() {
@@ -86,7 +86,7 @@ export function MerchantDetail() {
       toast.success(frozen ? T.detail.frozenToast : T.detail.unfrozenToast);
     },
     onError: (err) => {
-      toast.error(fill(T.detail.statusError, { message: formatApiError(err) }));
+      toast.error(fill(T.detail.statusError, { message: extractApiMessage(err) }));
     },
   });
 
@@ -135,7 +135,7 @@ export function MerchantDetail() {
     },
     onError: (err) => {
       // The confirm dialog stays open — a retry reuses the same key.
-      toast.error(fill(T.credit.error, { message: formatApiError(err) }));
+      toast.error(fill(T.credit.error, { message: extractApiMessage(err) }));
     },
   });
 
@@ -210,9 +210,15 @@ export function MerchantDetail() {
     },
   ];
 
-  if (listQuery.isLoading) return <Spinner label="Загрузка…" />;
+  if (listQuery.isLoading) return <Spinner label={T.detail.loading} />;
   if (listQuery.isError) return <p className="text-sm text-[var(--danger)]">{T.list.loadError}</p>;
-  if (!merchant) return <p className="text-sm text-[var(--text-secondary)]">{T.detail.notFound}</p>;
+  if (!merchant) {
+    // A stale cache can land here mid-refetch — e.g. right after a create,
+    // when navigation beats the invalidated list. Keep the spinner up until
+    // the in-flight fetch settles; only a settled list may say "not found".
+    if (listQuery.isFetching) return <Spinner label={T.detail.loading} />;
+    return <p className="text-sm text-[var(--text-secondary)]">{T.detail.notFound}</p>;
+  }
 
   return (
     <div>
