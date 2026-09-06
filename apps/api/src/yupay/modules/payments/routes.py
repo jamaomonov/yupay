@@ -95,10 +95,22 @@ async def _ensure_actor_owns_order(db: AsyncSession, *, actor: Actor, order_id: 
     order = (await db.execute(stmt)).scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
+    # Positive match on a known arm, never "the comparison did not fail". An
+    # ``Actor`` has three arms (a merchant is the third); an arm this guard does
+    # not understand must be denied outright. Comparing ``(order.guest_email or
+    # "")`` against ``(actor.email or "")`` would hand a merchant actor ``"" ==
+    # ""`` and pass it through to *any* order, every signed-in user's included —
+    # their ``guest_email`` is NULL too.
     if actor.user_id is not None:
         if order.user_id != actor.user_id:
             raise HTTPException(status_code=404, detail="order not found")
-    elif (order.guest_email or "").lower() != (actor.email or "").lower():
+    elif actor.email is not None:
+        if (order.guest_email or "").lower() != actor.email.lower():
+            raise HTTPException(status_code=404, detail="order not found")
+    else:
+        # A merchant actor. Merchant order reads have their own route on
+        # ``/merchant/v1``; they do not come through the storefront payment
+        # endpoints.
         raise HTTPException(status_code=404, detail="order not found")
     return order
 

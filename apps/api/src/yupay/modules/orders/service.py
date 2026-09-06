@@ -946,6 +946,28 @@ async def get_order_for_actor(db: AsyncSession, order_id: str, *, actor: Actor) 
 
 
 async def list_orders_for_actor(db: AsyncSession, *, actor: Actor, limit: int = 50) -> list[Order]:
+    """List an actor's own sales, newest first.
+
+    Scoped by a positive match on the actor's arm, never by a comparison that
+    happens to fail: SQLAlchemy compiles ``Order.guest_email == None`` to
+    ``guest_email IS NULL``, which *matches* rather than excludes, so an arm
+    that fell through to the guest branch would be handed every user's and
+    every merchant's orders instead of none of them.
+
+    Wallet top-ups are filtered out (``IS_SALE``) — they are funding rows, not
+    purchases, and the customer's order history must not show them. Anything
+    still ``pending_payment`` past its ``expires_at`` is flipped to ``expired``
+    inline, so the caller never renders a stale status while waiting for the
+    scheduler tick.
+
+    Args:
+        db: Open async session.
+        actor: Whose orders to list — user, guest, or merchant.
+        limit: Maximum rows to return, newest first.
+
+    Returns:
+        The actor's orders, newest first, with items eager-loaded.
+    """
     stmt = (
         select(Order)
         .options(*_order_load_options())

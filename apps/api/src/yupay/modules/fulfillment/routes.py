@@ -83,17 +83,29 @@ async def _ensure_order_owner(db: AsyncSession, *, actor: Actor, order_id: str) 
     order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
     if order is None:
         raise HTTPException(status_code=404, detail="order not found")
-    if actor.user_id is not None and order.user_id != actor.user_id:
-        raise HTTPException(status_code=404, detail="order not found")
-    if actor.user_id is None:
+    # Positive match on a known arm, never "the comparison did not fail" — see
+    # the same shape in ``payments.routes._ensure_actor_owns_order``. Codes are
+    # bearer instruments, so an arm this guard does not understand is denied
+    # rather than compared: ``"" == ""`` would otherwise unlock every order in
+    # the table for a merchant actor.
+    if actor.user_id is not None:
+        if order.user_id != actor.user_id:
+            raise HTTPException(status_code=404, detail="order not found")
+    elif actor.email is not None:
         # A magic-link bearer. The token is order-scoped and bound to the hash
         # of the address we mailed (ADR-0042), so matching ``delivery_email``
         # here is exactly as tight as matching ``guest_email`` — and without it
         # the link we send a signed-in buyer 404s, because ``guest_email`` is
         # NULL on their order by construction.
         addressed_to = (order.guest_email or order.delivery_email or "").lower()
-        if addressed_to != (actor.email or "").lower():
+        if addressed_to != actor.email.lower():
             raise HTTPException(status_code=404, detail="order not found")
+    else:
+        # A merchant actor: denied even for its own order. This is the
+        # magic-link path, and a merchant has no mailed address to bear — it
+        # reads its orders over ``/merchant/v1`` through
+        # ``orders.service.get_order_for_actor``.
+        raise HTTPException(status_code=404, detail="order not found")
     return order
 
 

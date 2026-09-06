@@ -136,6 +136,39 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
   mismatch/unset value makes web card intents 422 (see the email-verification
   runbook).
 
+## Merchant actor arm on orders (B2B, 2026-09-07)
+
+- **Owner guards match a known arm, never a comparison that failed to fail.**
+  `orders.service.Actor` now has three arms (`user_id` / `email` /
+  `merchant_id`, mirroring `ck_orders_actor_exclusive`). Every guard that
+  decides "does this actor own this order" — `orders.service`'s
+  `get_order_for_actor` / `list_orders_for_actor` /
+  `_existing_idempotent_order`, `payments.routes._ensure_actor_owns_order`,
+  `fulfillment.routes._ensure_order_owner` — dispatches on the arm that is set
+  and **denies an arm it does not understand**, rather than falling through to
+  an email comparison. The pattern it replaces was
+  `(order.guest_email or "").lower() != (actor.email or "").lower()`: handed an
+  actor with no email, both sides are `""`, the inequality is false, and the
+  guard **passes for any order in the table** — every signed-in user's
+  included, since their `guest_email` is NULL too. The SQL form was worse:
+  SQLAlchemy compiles `Order.guest_email == None` to `guest_email IS NULL`,
+  which _matches_, so an unscoped list would have returned other people's
+  orders rather than none. Never reachable in production (no code path minted a
+  merchant actor), but the arm now exists, so the guards are written positively
+  and each has a test that a merchant actor gets 404.
+- **A merchant is denied the retail read paths even for its own orders.**
+  `/api/v1/payments/*` and the `/api/v1/orders/{id}/deliveries` magic link are
+  capabilities bound to a mailed address (ADR-0042); a merchant has no mailed
+  address. Merchant reads have their own authenticated route on `/merchant/v1`.
+- **Idempotency keys are scoped per actor arm**, not globally
+  (`uq_orders_idem_user` / `uq_orders_idem_guest` / `uq_orders_idem_merchant`),
+  so one merchant's `merchant_order_id` can never replay — or reveal — another
+  merchant's or a retail customer's order.
+- **Order-event actors:** a merchant is audited as `merchant:{id}` unhashed (an
+  internal account id, not the reseller's PII); the guest arm keeps its
+  truncated `email_hash` pseudonym, so no plaintext address enters the audit
+  feed.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

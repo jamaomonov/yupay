@@ -382,3 +382,75 @@ async def test_the_index_rejects_a_duplicate_merchant_key(db_session: AsyncSessi
     )
     with pytest.raises(IntegrityError, match="uq_orders_idem_merchant"):
         await db_session.commit()
+
+
+# ---- the sibling owner guards -------------------------------------------------
+#
+# Two route-level guards outside this module compare a *retail* actor against an
+# order and, before the fix that ships with these tests, denied a merchant actor
+# only by accident: both sides of their email comparison collapse to ``""``, the
+# inequality is False, and the guard passes — for any order in the table, a
+# signed-in user's included (their ``guest_email`` is NULL too). They are tested
+# here rather than beside their own modules because the hazard is a property of
+# the widened ``Actor``, not of payments or fulfilment.
+
+
+async def test_the_payments_owner_guard_refuses_a_merchant_actor(
+    db_session: AsyncSession,
+) -> None:
+    """A merchant actor gets 404 from a user's order, not a free pass."""
+    # ``payments.routes`` imports ``yupay.api.v1.deps``, which the v1 package
+    # __init__ imports back through ``payments.api`` — importing the route
+    # module first hits that cycle mid-initialisation. Load the router package
+    # first and the chain resolves the way the app loads it.
+    import yupay.api.v1  # noqa: F401
+    from fastapi import HTTPException
+    from yupay.modules.orders.service import Actor
+    from yupay.modules.payments.routes import _ensure_actor_owns_order
+
+    merchant_id = await _make_merchant(db_session)
+    user_id = await _make_user(db_session)
+    someone_elses = _order(user_id=user_id, guest_email=None, merchant_id=None)
+    db_session.add(someone_elses)
+    await db_session.flush()
+
+    with pytest.raises(HTTPException) as raised:
+        await _ensure_actor_owns_order(
+            db_session,
+            actor=Actor(user_id=None, email=None, merchant_id=merchant_id),
+            order_id=someone_elses.id,
+        )
+    assert raised.value.status_code == 404
+
+
+async def test_the_fulfilment_owner_guard_refuses_a_merchant_actor(
+    db_session: AsyncSession,
+) -> None:
+    """404 for a stranger's order **and** for the merchant's own.
+
+    This is the magic-link path: it unlocks delivered codes to whoever bears a
+    token bound to the address we mailed. A merchant has no mailed address — it
+    reads its own orders over ``/merchant/v1`` via ``get_order_for_actor`` — so
+    "its own order" is not an exception here, it is the second half of the rule.
+    """
+    # Same router-package cycle as the payments guard above.
+    import yupay.api.v1  # noqa: F401
+    from fastapi import HTTPException
+    from yupay.modules.fulfillment.routes import _ensure_order_owner
+    from yupay.modules.orders.service import Actor
+
+    merchant_id = await _make_merchant(db_session)
+    user_id = await _make_user(db_session)
+    someone_elses = _order(user_id=user_id, guest_email=None, merchant_id=None)
+    its_own = _order(user_id=None, guest_email=None, merchant_id=merchant_id)
+    db_session.add_all([someone_elses, its_own])
+    await db_session.flush()
+
+    for order_id in (someone_elses.id, its_own.id):
+        with pytest.raises(HTTPException) as raised:
+            await _ensure_order_owner(
+                db_session,
+                actor=Actor(user_id=None, email=None, merchant_id=merchant_id),
+                order_id=order_id,
+            )
+        assert raised.value.status_code == 404
