@@ -70,6 +70,14 @@ catalog_b2b_router = APIRouter(
 
 IdempotencyKeyHeader = Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)]
 
+#: Cap on the CLIENT half of the deposit-credit key. The ledger column is
+#: ``String(160)`` and the ``merchant-credit:{uuid}:`` prefix consumes 53
+#: chars, so anything over 107 overflows into a ``DataError`` — which
+#: ``post()``'s ``except IntegrityError`` does not catch — i.e. a
+#: deterministic 500 on every retry of the same long key. 100 leaves margin
+#: under that ceiling; reject at the parse boundary with a readable 422.
+MAX_DEPOSIT_CLIENT_KEY_LENGTH = 100
+
 
 async def _replayed[ModelT: BaseModel](
     db: AsyncSession, *, scope: str, key: str | None, model: type[ModelT]
@@ -113,6 +121,14 @@ async def create_merchant(
     idempotency_key: IdempotencyKeyHeader = None,
 ) -> MerchantOut:
     """Create a merchant; a retried key replays the original row."""
+    # Known limitation of piggybacking the generic replay store on a CREATE:
+    # ``save_replay`` swallows the losing side of a same-key race ("the
+    # caller's own response is equivalent"), which is true for the
+    # mutate-existing endpoints it was built for and NOT here — two
+    # concurrent same-key creates can both insert, one snapshot silently
+    # loses, and two merchant rows exist. Admin-only surface, sequential
+    # replays (the actual retry case) are correct, so this is accepted —
+    # not a bug to rediscover in production.
     key = normalize_idempotency_key(idempotency_key)
     scope = "merchants.create"
     cached = await _replayed(db, scope=scope, key=key, model=MerchantOut)
@@ -183,6 +199,9 @@ async def _set_status(
     merchant = await merchants.set_status(db, merchant_id=merchant_id, status=to)
     balance = await merchants.deposit_balance(db, merchant_id=merchant_id)
     out = _merchant_out(merchant, balance)
+    # The snapshot freezes ``deposit_balance`` as of the FIRST call — a
+    # replayed response can show a stale balance if credits landed in
+    # between. ``GET /admin/merchants`` is the authoritative balance read.
     await _remember(db, scope=scope, key=normalized, body=out.model_dump(mode="json"))
     return out
 
@@ -213,6 +232,12 @@ async def credit_deposit(
     if not idempotency_key or len(idempotency_key) < MIN_IDEMPOTENCY_KEY_LENGTH:
         raise ValidationError(
             f"Idempotency-Key header is required (>={MIN_IDEMPOTENCY_KEY_LENGTH} chars)",
+            extra={"header": IDEMPOTENCY_HEADER},
+        )
+    if len(idempotency_key) > MAX_DEPOSIT_CLIENT_KEY_LENGTH:
+        raise ValidationError(
+            f"Idempotency-Key header must be <={MAX_DEPOSIT_CLIENT_KEY_LENGTH} chars "
+            "on this endpoint — it is namespaced into a bounded ledger column",
             extra={"header": IDEMPOTENCY_HEADER},
         )
     txn = await merchants.credit_deposit(

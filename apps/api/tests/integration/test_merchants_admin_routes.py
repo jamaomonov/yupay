@@ -161,11 +161,27 @@ async def test_every_endpoint_requires_a_token(
     assert r.status_code == 401
 
 
-async def test_non_admin_token_is_forbidden(integration_client: AsyncClient) -> None:
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/api/v1/admin/merchants"),
+        ("POST", "/api/v1/admin/merchants"),
+        ("POST", "/api/v1/admin/merchants/x/freeze"),
+        ("POST", "/api/v1/admin/merchants/x/unfreeze"),
+        ("POST", "/api/v1/admin/merchants/x/deposit-credits"),
+        ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
+        ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
+        ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
+    ],
+)
+async def test_non_admin_token_is_forbidden_everywhere(
+    integration_client: AsyncClient, method: str, path: str
+) -> None:
+    """Today the guard is a router-level dependency (structurally shared);
+    parametrizing anyway means a refactor to per-route deps cannot quietly
+    drop the admin gate from one endpoint."""
     token = await _login(integration_client, tg_id=200)
-    r = await integration_client.get(
-        "/api/v1/admin/merchants", headers={"Authorization": f"Bearer {token}"}
-    )
+    r = await integration_client.request(method, path, headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 403
 
 
@@ -370,6 +386,40 @@ async def test_deposit_credit_requires_idempotency_key(
         json={"amount": "25.00", "note": None},
     )
     assert r.status_code == 422
+
+
+async def test_deposit_credit_oversized_key_is_422_not_500(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A 128-char client key must be a readable 422, never a 500.
+
+    The ledger column is ``String(160)`` and the ``merchant-credit:{uuid}:``
+    prefix consumes 53 chars — an unbounded client key would overflow into a
+    ``DataError`` that ``post()`` does not catch, i.e. a deterministic 500 on
+    every retry. The route caps the client half at 100 chars instead.
+    """
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    long_key = "k" * 128
+    r = await integration_client.post(
+        f"/api/v1/admin/merchants/{merchant_id}/deposit-credits",
+        headers={**admin_headers, "Idempotency-Key": long_key},
+        json={"amount": "25.00", "note": None},
+    )
+    assert r.status_code == 422, r.text
+    # Nothing booked: no ledger transaction exists and the balance is zero.
+    txns = (
+        (
+            await db_session.execute(
+                select(WalletTransaction).where(WalletTransaction.kind == "merchant_deposit_credit")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert txns == []
+    r = await integration_client.get("/api/v1/admin/merchants", headers=admin_headers)
+    by_id = {m["id"]: m for m in r.json()["items"]}
+    assert Decimal(str(by_id[merchant_id]["deposit_balance"])) == Decimal("0")
 
 
 async def test_deposit_credit_replay_does_not_credit_twice(
