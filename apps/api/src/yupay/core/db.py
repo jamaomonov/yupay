@@ -32,6 +32,15 @@ NAMING_CONVENTION = {
     # `affiliate` and `orders` already shipped double-prefixed names this way
     # (`ck_orders_ck_orders_actor_exclusive` is live in production) — don't
     # "fix" an old name to match the new pattern without a migration.
+    # The same re-templating fires inside alembic migrations: env.py hands
+    # this metadata to alembic as `target_metadata`, and both
+    # `op.create_check_constraint` and `op.drop_constraint` build their
+    # constraint objects on it. A migration that refers to an EXISTING
+    # constraint by its literal name must therefore wrap the name in
+    # `sqlalchemy.sql.elements.conv()`, or it gets prefixed once more on the
+    # way out (a drop of the double-prefixed name above would look for a
+    # triple-prefixed one). Migration 0066 does this for both its drop and
+    # its downgrade re-add — copy that pattern.
     "ck": "ck_%(table_name)s_%(constraint_name)s",
     "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
     "pk": "pk_%(table_name)s",

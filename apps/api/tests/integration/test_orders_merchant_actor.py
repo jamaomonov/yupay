@@ -73,11 +73,16 @@ async def test_a_merchant_order_needs_no_user_and_no_guest_email(
     await db_session.commit()
 
 
-async def test_two_actors_still_rejected(db_session: AsyncSession) -> None:
-    """``user_id`` and ``merchant_id`` together violate the actor CHECK."""
+@pytest.mark.parametrize("retail_arm", ["user_id", "guest_email"])
+async def test_two_actors_still_rejected(db_session: AsyncSession, retail_arm: str) -> None:
+    """``merchant_id`` combined with either retail arm violates the actor CHECK."""
     merchant_id = await _make_merchant(db_session)
-    user_id = await _make_user(db_session)
-    db_session.add(_order(merchant_id=merchant_id, user_id=user_id, guest_email=None))
+    retail: dict[str, str | None] = (
+        {"user_id": await _make_user(db_session), "guest_email": None}
+        if retail_arm == "user_id"
+        else {"user_id": None, "guest_email": "guest@example.com"}
+    )
+    db_session.add(_order(merchant_id=merchant_id, **retail))
     with pytest.raises(IntegrityError, match="ck_orders_actor_exclusive"):
         await db_session.commit()
 
@@ -132,4 +137,7 @@ async def test_merchant_order_partial_index_exists(db_session: AsyncSession) -> 
     )
     by_name = {name: definition for name, definition in rows}
     assert "ix_orders_merchant_created" in by_name
-    assert "WHERE (merchant_id IS NOT NULL)" in by_name["ix_orders_merchant_created"]
+    definition = by_name["ix_orders_merchant_created"]
+    assert "WHERE (merchant_id IS NOT NULL)" in definition
+    # The mirror must be exact: newest-first, like ``ix_orders_user_created``.
+    assert "created_at DESC" in definition

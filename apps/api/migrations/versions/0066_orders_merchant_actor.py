@@ -15,10 +15,12 @@ a third time) and the re-add passes the bare suffix so the new CHECK finally
 lands as the clean ``ck_orders_actor_exclusive``.
 
 Downgrade restores reality, not the ideal: the two-arm CHECK goes back under
-its ugly double-prefixed name. It will — deliberately — refuse to run once any
-merchant order exists: with ``merchant_id`` dropped such rows would have zero
-actors, and failing the CHECK re-add loudly beats silently corrupting the
-actor invariant.
+its ugly double-prefixed name. It refuses — explicitly, before touching
+anything — to run while any merchant order exists: with ``merchant_id``
+dropped such rows would have zero actors, and the restored two-arm CHECK
+could never be re-added over them anyway. There is no rollback past this
+revision without first dealing with those orders (refund/cancel/migrate them
+by hand — they are financial history, never deletable).
 
 Revision ID: 0066_orders_merchant_actor
 Revises: 0065_merchants_core
@@ -76,6 +78,23 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Guard FIRST, before anything destructive. Without it the operator only
+    # finds out at the two-arm CHECK re-add — after drop_column, via a
+    # constraint-violation error that names the old double-prefixed CHECK and
+    # never mentions merchants. Fail up front, in words, instead.
+    merchant_orders = (
+        op.get_bind()
+        .execute(sa.text("SELECT count(*) FROM orders WHERE merchant_id IS NOT NULL"))
+        .scalar_one()
+    )
+    if merchant_orders:
+        raise RuntimeError(
+            f"Refusing to downgrade 0066: {merchant_orders} order(s) have merchant_id set. "
+            "Dropping the column would leave them with no actor at all, and the restored "
+            "two-arm actor CHECK could not be re-added over them anyway. Resolve those "
+            "merchant orders first — they are financial history, not deletable; see the "
+            "0066 migration docstring."
+        )
     op.drop_constraint(conv("ck_orders_actor_exclusive"), "orders", type_="check")
     op.drop_index("ix_orders_merchant_created", table_name="orders")
     op.drop_constraint("fk_orders_merchant_id_merchants", "orders", type_="foreignkey")
