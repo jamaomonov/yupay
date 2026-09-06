@@ -84,7 +84,20 @@ function mockProvidersResponse(): void {
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
-      json: () => Promise.resolve({ providers: [{ slug: "click", status: "active" }] }),
+      // All three active, as production is — every one of them takes real
+      // payments. Pinning a single provider here made the panel's default
+      // selection an accident of the fixture: it passed only while METHODS
+      // happened to start with that same provider, and broke the moment the
+      // order changed for conversion reasons that have nothing to do with
+      // these tests.
+      json: () =>
+        Promise.resolve({
+          providers: [
+            { slug: "payme", status: "active" },
+            { slug: "click", status: "active" },
+            { slug: "uzum", status: "active" },
+          ],
+        }),
     }),
   );
 }
@@ -99,7 +112,11 @@ function mockProvidersResponse(): void {
 function mockWallet(
   balance: string | null,
   providers: { slug: string; status: "active" | "maintenance" }[] = [
+    // Same reasoning as `mockProvidersResponse`: production runs all three
+    // acquirers, and naming only one made the default an accident of order.
+    { slug: "payme", status: "active" },
     { slug: "click", status: "active" },
+    { slug: "uzum", status: "active" },
     { slug: "wallet", status: "active" },
   ],
 ): void {
@@ -1062,7 +1079,7 @@ it("POSTs the exact checkout body via lib/gift-checkout on submit", async () => 
       },
       email: "guest@example.com",
       isLoggedIn: false,
-      provider: "click",
+      provider: "payme",
       gameName: "Dead Cells",
     }),
   );
@@ -1158,7 +1175,7 @@ it("disables the wallet tile and offers a top-up link when the balance is short"
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(1);
   });
-  expect(buyGiftMock).toHaveBeenCalledWith(expect.objectContaining({ provider: "click" }));
+  expect(buyGiftMock).toHaveBeenCalledWith(expect.objectContaining({ provider: "payme" }));
 });
 
 it("asks a guest to sign in rather than offering an account they do not have", () => {
@@ -1275,7 +1292,9 @@ it("keeps the same Idempotency-Key when only the payment method changes between 
   });
   expect(orderKeyOf(0)).toBeTruthy();
 
-  fireEvent.click(screen.getByRole("button", { name: "Payme" }));
+  // Switches to Click, not Payme: Payme is the default now (METHODS leads
+  // with it), so tapping Payme would be the no-op this test exists to rule out.
+  fireEvent.click(screen.getByRole("button", { name: "Click" }));
   submitBuy();
   await waitFor(() => {
     expect(buyGiftMock).toHaveBeenCalledTimes(2);
@@ -1284,8 +1303,8 @@ it("keeps the same Idempotency-Key when only the payment method changes between 
   expect(orderKeyOf(1)).toBe(orderKeyOf(0));
   // Confirms the two calls really did request different providers — this is
   // not just an accidental no-op click.
-  expect(buyGiftMock.mock.calls[0]?.[0].provider).toBe("click");
-  expect(buyGiftMock.mock.calls[1]?.[0].provider).toBe("payme");
+  expect(buyGiftMock.mock.calls[0]?.[0].provider).toBe("payme");
+  expect(buyGiftMock.mock.calls[1]?.[0].provider).toBe("click");
 });
 
 /**

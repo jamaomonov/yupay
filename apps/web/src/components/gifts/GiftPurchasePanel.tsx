@@ -66,20 +66,35 @@ interface Method {
  *  reasons about it — mirrors `PurchasePanel`'s `WALLET_METHOD_ID`. */
 const WALLET_METHOD_ID = "wallet";
 
+// Payme first, deliberately — this order also picks the default, since
+// `selectActiveMethodId` takes the first active method. Measured on
+// production over the 14 days to 2026-09-06: of orders that reached an
+// acquirer, Payme converted 149 and lost 84 (36% abandoned), Click
+// converted 69 and lost 100 (59%), Uzum converted 19 and lost 33 (63%).
+// The pattern behind it is visible in the switches: 20 buyers abandoned
+// Click and re-ordered through Payme, and 11 of those then paid — they
+// could pay, just not there. The reverse move happened 4 times and never
+// converted. The structural difference is what each hands the buyer:
+// Payme opens `checkout.paycom.uz`, a web page that takes a card from
+// anyone; Click's `my.click.uz/services/pay` effectively wants their
+// account, and Uzum's is an app deeplink with no web form at all.
+// Deliberately NOT applied to the mini app: inside Telegram the Click
+// integration loses only 39%, close to Payme's, because the bank's app is
+// already on the phone. Revisit if those numbers move.
 const METHODS: Method[] = [
-  {
-    id: "click",
-    name: "Click",
-    provider: "click",
-    icon: "/payment/click-mark.png",
-    w: 160,
-    h: 160,
-  },
   {
     id: "payme",
     name: "Payme",
     provider: "payme",
     icon: "/payment/payme-mark.png",
+    w: 160,
+    h: 160,
+  },
+  {
+    id: "click",
+    name: "Click",
+    provider: "click",
+    icon: "/payment/click-mark.png",
     w: 160,
     h: 160,
   },

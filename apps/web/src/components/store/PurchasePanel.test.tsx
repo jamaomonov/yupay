@@ -41,6 +41,14 @@ afterEach(() => {
   pushMock.mockReset();
 });
 
+/** Production has all three acquirers live; a fixture naming only one made
+ *  the panel's default selection an accident of METHODS' order. */
+const ALL_PROVIDERS_ACTIVE: { slug: string; status: "active" | "maintenance" }[] = [
+  { slug: "payme", status: "active" },
+  { slug: "click", status: "active" },
+  { slug: "uzum", status: "active" },
+];
+
 function mockProvidersResponse(
   providers: { slug: string; status: "active" | "maintenance" }[],
 ): void {
@@ -139,7 +147,7 @@ function makeStarsUnitProduct(): ProductDetail {
 }
 
 it("renders Stars package tiles from the unit SKU's rate, not separate pack SKUs", async () => {
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
@@ -169,7 +177,7 @@ it("renders Stars package tiles from the unit SKU's rate, not separate pack SKUs
 });
 
 it("falls back to the product image when the unit SKU has none", async () => {
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   const product = makeStarsUnitProduct();
   product.image_url = "/product.webp";
   product.skus[0] = { ...product.skus[0]!, image_url: null };
@@ -199,7 +207,7 @@ it("submits a tapped pack as { sku_id, qty } with no amount_usd", async () => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes("/payments/providers")) {
         return Promise.resolve(
-          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+          new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
             status: 200,
           }),
         );
@@ -256,7 +264,7 @@ it("declares the web surface on the call that records where an order came from",
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes("/payments/providers")) {
         return Promise.resolve(
-          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+          new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
             status: 200,
           }),
         );
@@ -308,7 +316,7 @@ it("shows the geo-veto message instead of the generic pay error", async () => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes("/payments/providers")) {
         return Promise.resolve(
-          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+          new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
             status: 200,
           }),
         );
@@ -358,7 +366,7 @@ it("puts the free-amount field above the packages and says nothing about rate or
   // The old card asked for dollars while the customer was buying Stars, hid the
   // field under the grid, and wrapped it in a rate / "комиссия 0%" / limit
   // panel plus a slider and its own duplicate $100/$250/$500 presets.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
@@ -382,7 +390,7 @@ it("puts the free-amount field above the packages and says nothing about rate or
 });
 
 it("makes the typed amount and a package mutually exclusive", async () => {
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(<PurchasePanel products={[makeUnitProduct()]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
@@ -403,7 +411,7 @@ it("makes the typed amount and a package mutually exclusive", async () => {
 });
 
 it("keeps the dollar wording for a SKU with no unit (Steam)", async () => {
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   const base = makeProduct();
   const steam: ProductDetail = {
     ...base,
@@ -509,7 +517,7 @@ it("does not block checkout on an attestation checkbox for a gift card with no a
   // which used to read as "needs attestation" and rendered a checkbox
   // referencing an account field the buyer never saw — for a gift card
   // (kind: "voucher", no required_fields) there's nothing to attest to.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   const product: ProductDetail = { ...makeProduct(), kind: "voucher" };
 
   renderPanel(<PurchasePanel products={[product]} locale="ru" />);
@@ -534,7 +542,7 @@ it("hides a plain field's help text behind a button instead of always showing it
   // A field with no `check` (e.g. the miHoYo titles, or a plain "Сервер"
   // select) used to dump help_text as an always-visible paragraph under the
   // control. It should only appear once the "Где найти?" pill is clicked.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   const helpCopy = "Сервер виден на экране входа рядом с именем аккаунта.";
   const product: ProductDetail = {
     ...makeProduct(),
@@ -563,7 +571,7 @@ it("disables the check button and explains why until the paired server field is 
   // check.server_field names a sibling field (MLBB's "server") — G2B needs
   // both together, so an id-only lookup against an empty server used to
   // silently misfire instead of being blocked with an explanation.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   const product: ProductDetail = {
     ...makeProduct(),
     required_fields: [
@@ -624,7 +632,7 @@ const MLBB_FIELDS: ProductDetail["required_fields"] = [
 it("keeps the check blocked when only the server id is filled in", async () => {
   // Reported from prod as an asymmetry: id-without-server correctly refused,
   // server-without-id happily ran. Both halves are needed either way round.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
@@ -650,7 +658,7 @@ it("will not check a region-split brand until a package is picked", async () => 
   // products[0] so it is usable immediately, but running the lookup against
   // that arbitrary product verifies a Russian id against the global game and
   // calls it not-found — the FAQ then sends the buyer to the wrong region.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   // Two SKUs each: a lone SKU auto-selects (see `skuId`'s initialiser), and
   // the real products carry 13 and 10 denominations, so nothing is picked for
   // the customer.
@@ -692,7 +700,7 @@ it("will not check a region-split brand until a package is picked", async () => 
 it("checks straight away on a single-product brand", async () => {
   // Nothing to disambiguate, so requiring a package here would be a pointless
   // extra step.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
@@ -713,7 +721,7 @@ it("keeps Pay disabled until the checkable field passes verification", async () 
   // A filled-in id used to be enough to reach the acquirer — a typo then
   // landed the top-up on a stranger's account with no way back. Pay must
   // stay blocked until "Проверить" actually confirms the id.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(
     <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
   );
@@ -734,7 +742,7 @@ it("keeps Pay disabled until the checkable field passes verification", async () 
 });
 
 it("enables Pay once the checkable field's check comes back valid", async () => {
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url.includes("check-player")) {
@@ -743,7 +751,7 @@ it("enables Pay once the checkable field's check comes back valid", async () => 
       );
     }
     return Promise.resolve(
-      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
         status: 200,
       }),
     );
@@ -777,7 +785,7 @@ it("drops a confirmed nickname when the package switches to another product", as
   // Found on prod with Playwright: verify a Russian id, then pick a global
   // package, and the green pill stayed — a nickname confirmed against the
   // other region, shown as reassurance for the one about to be paid for.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
     // `RequestInfo` covers `Request`, which stringifies to "[object Object]".
     const url = input instanceof Request ? input.url : String(input);
@@ -787,7 +795,7 @@ it("drops a confirmed nickname when the package switches to another product", as
       );
     }
     return Promise.resolve(
-      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
         status: 200,
       }),
     );
@@ -865,7 +873,7 @@ it("stops Pay dead in the commit the package switches product, not a frame later
   // natively, with the act environment off (React warns otherwise), and read
   // back after `drainMicrotasks` (React renders the click in a microtask) but
   // before the scheduler's next *task*, which is where passive effects run.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url.includes("check-player")) {
@@ -874,7 +882,7 @@ it("stops Pay dead in the commit the package switches product, not a frame later
       );
     }
     return Promise.resolve(
-      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
         status: 200,
       }),
     );
@@ -956,7 +964,7 @@ it("files a late answer under the id it asked about, never the one now on screen
   // an answer can land after the customer has corrected the id. It used to be
   // written straight into the field's state — painting «blood moon» over an id
   // nobody had ever checked, with Pay live behind it.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   let land: (() => void) | undefined;
   const answer = new Promise<Response>((resolve) => {
     land = () => {
@@ -969,7 +977,7 @@ it("files a late answer under the id it asked about, never the one now on screen
     const url = input instanceof Request ? input.url : String(input);
     if (url.includes("check-player")) return answer;
     return Promise.resolve(
-      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
         status: 200,
       }),
     );
@@ -1025,7 +1033,7 @@ it("drops the verdict when the server changes, not only when the id does", async
   // `{player_id, server}` pair nobody ever verified. Nothing downstream
   // catches that: `orders/validation.py` checks each field alone — presence,
   // type, pattern, options — never the combination.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
     if (url.includes("check-player")) {
@@ -1034,7 +1042,7 @@ it("drops the verdict when the server changes, not only when the id does", async
       );
     }
     return Promise.resolve(
-      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
         status: 200,
       }),
     );
@@ -1072,7 +1080,7 @@ it("lets a newer verdict stand when an older answer lands after it", async () =>
   // the newer answer arrives first, the older one must not report: filing its
   // question over the fresh verdict makes the pill vanish and Pay re-block
   // with the id on screen unchanged and nothing on screen to explain it.
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   const land: ((name: string) => void)[] = [];
   vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
     const url = input instanceof Request ? input.url : String(input);
@@ -1084,7 +1092,7 @@ it("lets a newer verdict stand when an older answer lands after it", async () =>
       });
     }
     return Promise.resolve(
-      new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
         status: 200,
       }),
     );
@@ -1159,14 +1167,14 @@ function mockWallet(balance: string | null): void {
         });
       }
       return Promise.resolve({
-        json: () => Promise.resolve({ providers: [{ slug: "click", status: "active" }] }),
+        json: () => Promise.resolve({ providers: ALL_PROVIDERS_ACTIVE }),
       });
     }),
   );
 }
 
 it("asks a guest to sign in rather than offering an account they do not have", async () => {
-  mockProvidersResponse([{ slug: "click", status: "active" }]);
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   renderPanel(<PurchasePanel products={[makeProduct()]} locale="ru" />);
 
   const tile = await screen.findByRole("button", { name: /payFromBalance/ });
@@ -1190,7 +1198,7 @@ it("pushes the order page — flagged to open the acquirer — instead of the ac
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes("/payments/providers")) {
         return Promise.resolve(
-          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+          new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
             status: 200,
           }),
         );
@@ -1253,7 +1261,7 @@ it("keeps a settled payment off the acquirer path — no flag, no navigation", a
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes("/payments/providers")) {
         return Promise.resolve(
-          new Response(JSON.stringify({ providers: [{ slug: "click", status: "active" }] }), {
+          new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
             status: 200,
           }),
         );
