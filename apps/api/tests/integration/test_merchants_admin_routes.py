@@ -31,6 +31,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core import crypto
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
@@ -839,8 +840,17 @@ async def test_create_api_key_returns_the_secret_once_and_stores_only_its_hash(
         )
     ).scalar_one()
     assert row.merchant_id == merchant_id
-    assert row.secret_hash == hashlib.sha256(secret.encode()).hexdigest()
-    assert secret not in row.secret_hash
+    # Encrypted at rest, not hashed: an HMAC cannot be verified without the
+    # key material, and a stored digest that doubles as the signing key is
+    # key material in the clear under a reassuring name. `inventory_codes`
+    # already protects voucher codes this way, and a signing key is worth a
+    # merchant's whole deposit rather than one SKU.
+    assert secret.encode() not in row.secret_enc
+    assert len(row.secret_nonce) == crypto.NONCE_SIZE
+    assert (
+        crypto.decrypt(row.secret_enc, row.secret_nonce, purpose=crypto.PURPOSE_MERCHANT_API_KEY)
+        == secret
+    )
     assert row.revoked_at is None
     assert row.last_used_at is None
 

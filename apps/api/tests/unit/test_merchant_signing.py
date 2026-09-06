@@ -1,9 +1,10 @@
 """The machine-API wire format, exercised without a database (M2, Task 2).
 
-``signing`` is the one home for the canonical string and the digests third
-parties implement against, and ``auth.address_allowed`` is the pure half of
-the IP filter. Both are pure functions, so their edges are cheapest to pin
-here; ``tests/integration/test_merchant_api_auth.py`` covers them in place.
+``signing`` is the one home for the canonical string and the digest third
+parties implement against, and ``auth.address_allowed`` / ``auth.request_target``
+are the pure halves of the IP filter and the request-line read. All are pure
+functions, so their edges are cheapest to pin here;
+``tests/integration/test_merchant_api_auth.py`` covers them in place.
 """
 
 from __future__ import annotations
@@ -11,8 +12,21 @@ from __future__ import annotations
 import hashlib
 import hmac
 
+import pytest
 from yupay.modules.merchants import signing
 from yupay.modules.merchants.auth import address_allowed
+
+
+def _msg(**over: object) -> bytes:
+    fields: dict[str, object] = {
+        "timestamp": "1757000000",
+        "method": "GET",
+        "raw_path": "/merchant/v1/orders",
+        "raw_query": "",
+        "body": b"",
+    }
+    fields.update(over)
+    return signing.canonical_message(**fields)  # type: ignore[arg-type]
 
 
 def test_key_id_and_secret_are_prefixed_and_fit_their_columns() -> None:
@@ -25,67 +39,121 @@ def test_key_id_and_secret_are_prefixed_and_fit_their_columns() -> None:
     assert secret != signing.new_secret()
 
 
-def test_the_signing_key_is_the_sha256_of_the_secret_and_fits_secret_hash() -> None:
-    """Pins the derivation third parties must run — see signing's docstring."""
-    secret = "ypms_example-secret"
-    derived = signing.derive_signing_key(secret)
-    assert derived == hashlib.sha256(secret.encode()).hexdigest()
-    assert len(derived) == 64  # merchant_api_keys.secret_hash is String(64)
+# ---------- the canonical string ----------
 
 
-def test_the_canonical_message_is_the_documented_four_fields() -> None:
+def test_the_canonical_message_is_the_documented_five_fields() -> None:
     message = signing.canonical_message(
-        timestamp="1757000000", method="post", path="/merchant/v1/orders", body=b'{"a":1}'
+        timestamp="1757000000",
+        method="post",
+        raw_path="/merchant/v1/orders",
+        raw_query="dry_run=1",
+        body=b'{"a":1}',
     )
-    assert message == b'1757000000\nPOST\n/merchant/v1/orders\n{"a":1}'
+    digest = hashlib.sha256(b'{"a":1}').hexdigest()
+    assert message == f"1757000000\nPOST\n/merchant/v1/orders\ndry_run=1\n{digest}".encode()
 
 
-def test_an_empty_body_still_ends_with_the_separator() -> None:
-    message = signing.canonical_message(
-        timestamp="1757000000", method="GET", path="/merchant/v1/me", body=b""
-    )
-    assert message == b"1757000000\nGET\n/merchant/v1/me\n"
+def test_an_empty_body_and_query_are_still_present_as_fields() -> None:
+    empty = hashlib.sha256(b"").hexdigest()
+    assert _msg() == f"1757000000\nGET\n/merchant/v1/orders\n\n{empty}".encode()
 
 
 def test_the_timestamp_is_signed_exactly_as_sent() -> None:
     """Not re-formatted from an int — a client sending "01757" signs "01757"."""
-    assert signing.canonical_message(
-        timestamp="01757000000", method="GET", path="/x", body=b""
-    ).startswith(b"01757000000\n")
+    assert _msg(timestamp="01757000000").startswith(b"01757000000\n")
 
 
-def test_signature_matches_accepts_the_expected_digest() -> None:
-    key = signing.derive_signing_key("ypms_x")
-    message = signing.canonical_message(
-        timestamp="1", method="GET", path="/merchant/v1/me", body=b""
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"timestamp": "1757000001"},
+        {"method": "POST"},
+        {"raw_path": "/merchant/v1/other"},
+        {"raw_query": "limit=100000"},
+        {"body": b"{}"},
+    ],
+)
+def test_every_field_changes_the_signature(change: dict[str, object]) -> None:
+    base = signing.expected_signature("ypms_x", _msg())
+    assert signing.expected_signature("ypms_x", _msg(**change)) != base
+
+
+def test_a_percent_encoded_newline_cannot_forge_a_field_boundary() -> None:
+    """The delimiter hole the raw-form + body-hash design closes.
+
+    A path carrying ``%0A`` stays three characters wide in the signed string,
+    so it cannot be read as the end of the path field and the start of the
+    query field. Both readings must produce different bytes.
+    """
+    smuggled = _msg(raw_path="/merchant/v1/_probe%0Alimit=100000", raw_query="")
+    split = _msg(raw_path="/merchant/v1/_probe", raw_query="limit=100000")
+    assert smuggled != split
+    assert b"\n" not in smuggled.split(b"\n")[2]  # the path field carries no LF
+
+
+def test_the_body_is_signed_as_a_hash_so_every_field_is_lf_free() -> None:
+    """A body containing newlines cannot shift the field boundaries."""
+    message = _msg(body=b"a\nb\nc")
+    assert message.count(b"\n") == 4  # exactly the four separators
+    assert message.endswith(hashlib.sha256(b"a\nb\nc").hexdigest().encode())
+
+
+def test_body_digest_is_plain_sha256() -> None:
+    assert signing.body_digest(b"") == hashlib.sha256(b"").hexdigest()
+    assert signing.body_digest(b"x") == hashlib.sha256(b"x").hexdigest()
+
+
+# ---------- the HMAC ----------
+
+
+def test_the_secret_keys_the_hmac_directly_with_no_derivation_step() -> None:
+    """Recomputed independently: an ordinary Stripe/AWS-shaped signature."""
+    secret = "ypms_example-secret"
+    message = _msg()
+    assert (
+        signing.expected_signature(secret, message)
+        == hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
     )
-    expected = hmac.new(key.encode(), message, hashlib.sha256).hexdigest()
-    assert signing.expected_signature(key, message) == expected
-    assert signing.signature_matches(key, message, expected)
+    assert signing.signature_matches(secret, message, signing.expected_signature(secret, message))
 
 
-def test_signature_matches_tolerates_case_and_whitespace_but_nothing_else() -> None:
-    key = signing.derive_signing_key("ypms_x")
-    message = signing.canonical_message(timestamp="1", method="GET", path="/x", body=b"")
-    expected = signing.expected_signature(key, message)
-    assert signing.signature_matches(key, message, f"  {expected.upper()}  ")
-    assert not signing.signature_matches(key, message, expected[:-1] + "0")
-    assert not signing.signature_matches(key, message, "")
-    assert not signing.signature_matches(signing.derive_signing_key("other"), message, expected)
-
-
-def test_a_different_body_or_path_changes_the_signature() -> None:
-    key = signing.derive_signing_key("ypms_x")
-    base = signing.canonical_message(timestamp="1", method="POST", path="/a", body=b"{}")
-    assert signing.expected_signature(key, base) != signing.expected_signature(
-        key, signing.canonical_message(timestamp="1", method="POST", path="/a", body=b"{ }")
+def test_a_different_secret_does_not_verify() -> None:
+    message = _msg()
+    assert not signing.signature_matches(
+        "ypms_other", message, signing.expected_signature("ypms_x", message)
     )
-    assert signing.expected_signature(key, base) != signing.expected_signature(
-        key, signing.canonical_message(timestamp="1", method="POST", path="/b", body=b"{}")
-    )
-    assert signing.expected_signature(key, base) != signing.expected_signature(
-        key, signing.canonical_message(timestamp="2", method="POST", path="/a", body=b"{}")
-    )
+
+
+def test_signature_matches_tolerates_case_and_whitespace() -> None:
+    expected = signing.expected_signature("ypms_x", _msg())
+    assert signing.signature_matches("ypms_x", _msg(), f"  {expected.upper()}  ")
+
+
+@pytest.mark.parametrize(
+    "provided",
+    [
+        "é" * 64,  # non-ASCII: compare_digest would raise TypeError -> 500
+        "е" * 64,  # Cyrillic е, a plausible copy-paste homoglyph
+        "z" * 64,  # right length, not hex
+        "ab" * 31,  # 62 chars
+        "ab" * 33,  # 66 chars
+        "",
+        " ",
+        "0x" + "a" * 62,
+    ],
+)
+def test_a_malformed_signature_is_rejected_and_never_raises(provided: str) -> None:
+    """C1: ``hmac.compare_digest`` raises ``TypeError`` on a non-ASCII ``str``.
+
+    Without the shape check that is an unauthenticated 500 with a traceback
+    into Sentry, and it distinguishes malformed input from bad credentials —
+    which is exactly what the module promises it never does.
+    """
+    assert signing.signature_matches("ypms_x", _msg(), provided) is False
+
+
+# ---------- the IP allowlist ----------
 
 
 def test_an_absent_or_empty_allowlist_means_no_filter() -> None:

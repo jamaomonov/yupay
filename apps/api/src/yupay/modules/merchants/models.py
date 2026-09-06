@@ -22,6 +22,7 @@ from sqlalchemy import (
     Dialect,
     ForeignKey,
     Index,
+    LargeBinary,
     Numeric,
     String,
     text,
@@ -113,7 +114,8 @@ class MerchantApiKey(Base):
     """An API credential a merchant's server uses against ``/merchant/v1``.
 
     ``key_id`` is the public half (``ypm_``-prefixed, sent on every request);
-    ``secret_hash`` is the private half, never returned after creation.
+    ``secret_enc``/``secret_nonce`` hold the private half, encrypted at rest
+    and never returned after creation.
     """
 
     __tablename__ = "merchant_api_keys"
@@ -124,9 +126,13 @@ class MerchantApiKey(Base):
         UUID(as_uuid=False), ForeignKey("merchants.id", ondelete="CASCADE"), nullable=False
     )
     key_id: Mapped[str] = mapped_column(String(48), nullable=False, unique=True)
-    #: SHA-256 hex digest. The secret is high-entropy random, not a human
-    #: password — no slow hash needed.
-    secret_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: The signing secret, encrypted at rest under ``core.crypto``'s
+    #: ``PURPOSE_MERCHANT_API_KEY`` key (XSalsa20-Poly1305, per-row nonce) —
+    #: the same protection ``inventory_codes`` gives voucher codes, which are
+    #: worth strictly less. It is **encrypted, not hashed**, because an HMAC
+    #: cannot be verified without the key material; see ``signing.py``.
+    secret_enc: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    secret_nonce: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
     label: Mapped[str] = mapped_column(String(64), nullable=False, server_default=text("''"))
     #: NULL = filter off (no IP restriction).
     ip_allowlist: Mapped[list[str] | None] = mapped_column(ARRAY(InetAsText), nullable=True)

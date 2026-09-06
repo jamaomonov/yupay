@@ -149,10 +149,18 @@ per-resource replay scopes (`f"merchants.sku_b2b:{sku_id}"` etc.).
 > The rate-limit shape follows the controller's ruling, not the literal brief:
 > `guard_ip(bucket="merchant-api")` with **no** `subject` (its subject axis is
 > capped by one global setting), plus an explicit per-`key_id` counter on the
-> single promoted `ip_guard.hit_counter`. The stored SHA-256 is also the HMAC
-> signing key — an HMAC cannot be verified without key material, so that is the
-> only reading under which both "stored only as SHA-256" and `HMAC(secret, …)`
-> hold; the trade-off is spelled out in `signing.py` and the threat model.
+> single promoted `ip_guard.hit_counter`.
+>
+> **Revised after review (fix round 1), while zero keys existed and
+> `/merchant/v1` had zero integrators — so both changes were free:**
+> migration **0070** replaces `secret_hash` with `secret_enc`/`secret_nonce`
+> (encrypted at rest via the new `core/crypto.py`, HKDF purpose separation
+> from `INVENTORY_ENC_KEY`), which lets the HMAC be keyed by the secret
+> directly with no derivation step; and the canonical string became
+> `{timestamp}\n{METHOD}\n{raw_path}\n{raw_query}\n{sha256(body)}` — raw
+> request-line bytes so no field boundary can be forged, the query signed, the
+> body hashed. A verified signature is also single-use for the width of the
+> window.
 
 ---
 

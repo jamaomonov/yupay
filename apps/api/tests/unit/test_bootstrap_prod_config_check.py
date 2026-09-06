@@ -32,6 +32,7 @@ def _settings(**overrides: object) -> Settings:
         "r2_account_id": "acct",
         "r2_access_key_id": "key",
         "r2_secret_access_key": "secret",
+        "inventory_enc_key": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=",
     }
     base.update(overrides)
     return Settings(**base)  # type: ignore[arg-type]
@@ -65,6 +66,17 @@ def test_fully_configured_prod_reports_nothing() -> None:
 def test_empty_bot_token_is_reported() -> None:
     missing = missing_prod_settings(_settings(telegram_bot_token=""))
     assert "TELEGRAM_BOT_TOKEN" in missing
+
+
+def test_empty_at_rest_encryption_key_is_reported() -> None:
+    """Two subsystems now derive from it: voucher codes and merchant API keys.
+
+    Without it, ``core.crypto`` raises on first use in prod — which shows up as
+    a 500 on the first key issuance rather than at boot, unless it is named
+    here.
+    """
+    missing = missing_prod_settings(_settings(inventory_enc_key=""))
+    assert "INVENTORY_ENC_KEY" in missing
 
 
 def test_empty_r2_credentials_are_reported() -> None:

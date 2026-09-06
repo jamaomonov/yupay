@@ -171,41 +171,89 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
 
 ## Merchant machine credentials (B2B, 2026-09-07)
 
-- **The stored digest is signing key material.** `merchant_api_keys.secret_hash`
-  holds `sha256(secret)`, and that is what both sides key the request HMAC with
-  — a signature scheme cannot verify without the key. So a database dump lets an
-  attacker sign requests as any merchant, exactly as if the secret were stored
-  in the clear; what hashing buys is only that the secret string the merchant
-  pasted into their own configuration is not recoverable, so a dump cannot be
-  replayed against anything else they used it for. The controls that actually
-  bound a dump are revocation (`revoked_at`, effective immediately, no cache to
-  wait out) and the per-key IP allowlist. Storing the secret reversibly
-  encrypted (the `inventory.crypto` pattern) would move the trust to the app's
-  key rather than remove it; it is the upgrade path if merchant volume ever
-  justifies the extra column.
-- **No enumeration oracle on the credential.** Unknown `key_id`, revoked key and
-  a wrong signature return one identical RFC 7807 body, and the unknown/revoked
-  paths compute an HMAC against a constant dummy signing key before failing, so
-  they cost the same as a real comparison. An early `return` would have made
-  "this key id exists" measurable — the same reason `auth.service` verifies
-  against `_DUMMY_HASH` for absent accounts.
-- **Replay is bounded to ±300 s**, and inside that window order creation is
-  idempotent on `merchant_order_id`, so a captured request re-sent within the
-  window returns the original order rather than placing a second one. The
-  signature covers method, path, timestamp and the raw body — **not** the query
-  string, which is why identifiers must never travel in a URL (spec §9.2; the
-  edge access log records query strings verbatim).
-- **Secrets never reach a log or an error body.** The credential appears only in
-  the response that mints it. The structured logger already redacts `secret`,
-  `signature`, `key` and `authorization` by name (`core.logging.REDACTED_KEYS`),
-  and the auth path writes no log line of its own.
+- **The secret is encrypted at rest, not hashed.** `merchant_api_keys` holds
+  `secret_enc` / `secret_nonce` (XSalsa20-Poly1305 via `core/crypto.py`, key
+  HKDF-derived from `INVENTORY_ENC_KEY` under the purpose label
+  `yupay:merchants:apikey:v1`). Encryption rather than a digest is structural,
+  not a preference: an HMAC cannot be verified without the key material, so a
+  one-way digest either forbids request signing or forces the stored digest to
+  _be_ the signing key — key material in the clear under a reassuring name.
+  What this buys: a stolen dump, a leaked replica or a SQL-injection read
+  yields nothing usable. What it does not: an attacker holding both the dump
+  and the application key is exactly as well off as with plaintext. The
+  asymmetry that settled the design is that this repo already encrypts voucher
+  codes, which are worth one SKU, while a signing key is worth a merchant's
+  whole deposit.
+- **Key separation.** The merchant purpose and the inventory purpose derive
+  independent keys from the same input key material, so compromising one does
+  not hand over the other. (`modules/inventory/crypto.py` still owns its own
+  copy of the primitive — its rows are live and its `code_hash` is a lookup
+  index that must stay byte-identical; delegating it to the core primitive is
+  a filed follow-up.)
+- **The signature covers the whole request line.**
+  `{timestamp}\n{METHOD}\n{raw_path}\n{raw_query}\n{sha256(body)}`. The path and
+  query are the **raw, percent-encoded** bytes, so neither can contain a
+  literal LF and no request can smuggle a newline into one field to be read as
+  the start of the next; the body is hashed so every field is fixed-width or
+  LF-free. The earlier form signed the decoded path and was safe only by
+  accident — CPython's `urlsplit` strips control characters — which is not a
+  control. Signing the query is what stops a `?limit=10` lifted from the edge
+  access log (which records query strings verbatim) being replayed as
+  `?limit=100000`.
+- **Replay is bounded twice.** The ±300 s timestamp window bounds how long a
+  captured request is interesting, and inside it each signature is **single
+  use**: `SET NX merchants:sig:{sha256(signature)} EX 600`, the shape
+  `auth:tg-widget:{hash}` already uses. The signature is hashed into the key
+  rather than stored verbatim. The guard **fails open** on a Redis error, so a
+  cache outage degrades to window-bounded replay rather than refusing every
+  request. Per-endpoint idempotency (order creation on `merchant_order_id`,
+  spec §9.3) will narrow this further, but those endpoints do not exist yet and
+  the auth layer does not assume them.
+- **No enumeration oracle on the credential.** Unknown `key_id`, revoked key
+  and a wrong signature return one identical RFC 7807 body, and the
+  unknown/revoked paths compute an HMAC against a constant dummy secret rather
+  than returning early. The claim is deliberately narrow: **the payload is
+  identical and the HMAC cost is equalised.** It is not constant-time end to
+  end — an unknown `key_id` is an index miss where a known one is a hit plus a
+  join — but a Postgres round-trip dwarfs a 32-byte HMAC, so the residual
+  signal sits far below network noise.
+- **A malformed signature is a 401, not a 500.** `hmac.compare_digest` raises
+  `TypeError` on a non-ASCII `str`, and Starlette decodes header bytes as
+  latin-1, so one raw high byte in `X-Merchant-Signature` would otherwise be an
+  unauthenticated 500 with a Sentry traceback — and would distinguish
+  malformed input from bad credentials. The value is shape-checked against
+  exactly 64 lowercase hex characters before any comparison.
+- **Secrets never reach a log or an error body.** The credential appears only
+  in the response that mints it, and the create endpoint's idempotency replay
+  snapshot deliberately stores `secret: null` — `idempotent_responses` has no
+  reaper. The structured logger redacts `secret`, `signature`, `key` and
+  `authorization` by name (`core.logging.REDACTED_KEYS`).
 - **Throttling is two-axis, and the merchant axis is charged only after the
   signature verifies.** A `key_id` travels in a plaintext header; charging its
-  counter earlier would let anyone who observed one exhaust its owner's budget.
-  Forged traffic is bounded by the per-IP `merchant-api` bucket instead.
+  counter earlier would let anyone who observed one exhaust its owner's
+  budget. Forged traffic is bounded by the per-IP `merchant-api` bucket
+  instead.
 - **A frozen merchant is refused at the dependency** (403 `merchant_frozen`),
   before any endpoint body runs — the freeze button is an authentication-time
   control, not something each route has to remember.
+- **The IP allowlist inherits `core/client_ip`'s assumption.** That helper
+  takes the first `X-Forwarded-For` entry with no trusted-proxy check; its
+  safety rests entirely on the shared edge overwriting the header rather than
+  appending to it. Until now that assumption only decided which rate-limit
+  counter got charged; it now also decides whether an allowlist can be
+  bypassed with one header. **Filed for M3:** harden `client_ip` with a
+  trusted-proxy check (repo-wide, so not a merchants change). The mitigating
+  fact is that the allowlist is defence-in-depth **on top of** the HMAC and
+  never the primary control — an attacker who can spoof the header still has
+  no secret. Both the peer fallback and a multi-hop `a, b, c` value are pinned
+  by tests, so the suite would fail rather than pass silently if the resolution
+  changed.
+- **A stored empty (non-NULL) `ip_allowlist` is fail-open**, the same as NULL.
+  Two layers make it unreachable through the API (the schema rejects an empty
+  array; `create_api_key` normalises it to NULL), and reading a stray one as
+  "deny everything" would lock a merchant out over a data artefact — but an
+  operator who hand-edited a row to `{}` meaning "block this key" got the
+  opposite, so the auth path logs a warning naming the key when it sees one.
 
 ## Out of scope (we do not handle)
 

@@ -46,8 +46,8 @@ from yupay.modules.merchants.service import (
     set_status,
 )
 from yupay.modules.merchants.signing import (
+    body_digest,
     canonical_message,
-    derive_signing_key,
     expected_signature,
     signature_matches,
 )
@@ -58,13 +58,13 @@ __all__ = [
     "Merchant",
     "MerchantApiKey",
     "MerchantUser",
+    "body_digest",
     "bulk_set_markup",
     "canonical_message",
     "create_api_key",
     "create_merchant",
     "credit_deposit",
     "deposit_balance",
-    "derive_signing_key",
     "effective_cost",
     "expected_signature",
     "list_api_keys",

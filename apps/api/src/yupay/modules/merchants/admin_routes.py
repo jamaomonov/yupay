@@ -426,7 +426,15 @@ async def bulk_markup(
 ) -> BulkMarkupOut:
     """One UPDATE over the brand's (or category's) SKUs; returns the affected count."""
     key = normalize_idempotency_key(idempotency_key)
-    scope = f"merchants.bulk_markup:{body.brand_slug or body.category}"
+    # Discriminated by target KIND, not just its name: a brand slug and a
+    # category name can be the same string ("steam"), and a bare name would
+    # let one reused key replay the brand update for the category one and
+    # silently never apply it.
+    scope = (
+        f"merchants.bulk_markup:brand:{body.brand_slug}"
+        if body.brand_slug is not None
+        else f"merchants.bulk_markup:category:{body.category}"
+    )
     cached = await _replayed(db, scope=scope, key=key, model=BulkMarkupOut)
     if cached is not None:
         return cached

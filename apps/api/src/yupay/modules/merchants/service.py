@@ -35,6 +35,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yupay.core import crypto
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
@@ -131,9 +132,10 @@ async def set_status(db: AsyncSession, *, merchant_id: str, status: str) -> Merc
 class IssuedApiKey:
     """A freshly minted credential: the stored row plus the one-time secret.
 
-    ``secret`` exists only in this object and in the HTTP response that
-    carries it. It is never persisted, never logged, and cannot be recovered
-    afterwards — the row holds ``signing.derive_signing_key(secret)``.
+    ``secret`` exists in the clear only in this object and in the HTTP
+    response that carries it. It is never logged and never returned again —
+    the row holds it encrypted (``core.crypto``), which is what lets the
+    signature be verified at all without keeping key material in the clear.
     """
 
     key: MerchantApiKey
@@ -164,18 +166,21 @@ async def create_api_key(
 
     Returns:
         The new row plus the plaintext secret, which the caller must return
-        to the operator immediately and then forget.
+        to the operator immediately and then forget. The row stores it
+        encrypted under ``core.crypto``'s merchant-API purpose key.
 
     Raises:
         NotFoundError: If no merchant with that id exists.
     """
     await _get_merchant(db, merchant_id)
     secret = signing.new_secret()
+    secret_enc, secret_nonce = crypto.encrypt(secret, purpose=crypto.PURPOSE_MERCHANT_API_KEY)
     key = MerchantApiKey(
         id=new_id(),
         merchant_id=merchant_id,
         key_id=signing.new_key_id(),
-        secret_hash=signing.derive_signing_key(secret),
+        secret_enc=secret_enc,
+        secret_nonce=secret_nonce,
         label=label.strip(),
         ip_allowlist=ip_allowlist or None,
     )

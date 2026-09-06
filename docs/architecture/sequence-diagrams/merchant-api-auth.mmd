@@ -2,27 +2,32 @@ sequenceDiagram
     autonumber
     participant Reseller as Merchant's server
     participant Guard as merchants.auth.merchant_auth (FastAPI dependency)
-    participant Redis as Redis (ip_guard.hit_counter)
+    participant Redis as Redis (ip_guard.hit_counter / SET NX)
     participant DB as Postgres
     participant Route as /merchant/v1 endpoint
 
-    Note over Reseller: signing_key = sha256_hex(secret), derived once at startup<br/>signature = hex(HMAC_SHA256(signing_key, "{ts}\nMETHOD\n/path\n{body}"))
+    Note over Reseller: canonical = "{ts}\nMETHOD\n{raw_path}\n{raw_query}\n{sha256(body)}"<br/>signature = hex(HMAC_SHA256(secret, canonical)) -- the secret keys it directly
     Reseller->>Guard: X-Merchant-Key, X-Merchant-Timestamp, X-Merchant-Signature + body
     Guard->>Redis: INCR auth:ipguard:merchant-api:{ip} (600/60s)
     alt over the IP ceiling
-        Guard-->>Reseller: 429 -- charged BEFORE any parsing, so a flood costs one INCR
+        Guard-->>Reseller: 429 + Retry-After -- charged BEFORE any parsing, so a flood costs one INCR
     end
     Guard->>Guard: headers present? (401 missing_credentials)
-    Guard->>Guard: timestamp integer and within +/-300s? (401 stale_timestamp)
+    Guard->>Guard: timestamp digits-only and within +/-300s? (401 stale_timestamp)
+    Guard->>Guard: signature exactly 64 lowercase hex? (else 401 -- compare_digest raises on non-ASCII)
     Guard->>DB: SELECT merchant_api_keys JOIN merchants WHERE key_id = ?
-    Note over Guard: signing key = row.secret_hash when the key exists and is not revoked,<br/>otherwise a constant DUMMY -- the HMAC is computed and compared either way,<br/>so timing does not reveal whether the key id exists
+    Note over Guard: secret = decrypt(secret_enc, secret_nonce) when the key exists and is not revoked,<br/>otherwise a constant DUMMY -- the HMAC is computed and compared either way,<br/>so the payload is identical and the crypto cost is equalised
     Guard->>Guard: compare_digest(expected, provided)
     alt unknown key OR revoked OR mismatch
         Guard-->>Reseller: 401 invalid_credentials -- one identical body for all three
     end
+    Guard->>Redis: SET NX merchants:sig:{sha256(signature)} EX 600
+    alt this signature was already used
+        Guard-->>Reseller: 401 signature_replayed -- re-sign every retry
+    end
     Guard->>Redis: INCR merchants:apikey:{key_id} (600/60s) -- only now that it is authenticated
     alt over the per-key ceiling
-        Guard-->>Reseller: 429
+        Guard-->>Reseller: 429 + Retry-After
     end
     alt merchant.status = frozen
         Guard-->>Reseller: 403 merchant_frozen

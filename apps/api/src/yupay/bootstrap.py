@@ -159,6 +159,13 @@ _REQUIRED_IN_PROD: tuple[tuple[str, str, str], ...] = (
     ("R2_ACCOUNT_ID", "r2_account_id", "media upload raises on the first presign"),
     ("R2_ACCESS_KEY_ID", "r2_access_key_id", "media upload raises on the first presign"),
     ("R2_SECRET_ACCESS_KEY", "r2_secret_access_key", "media upload raises on the first presign"),
+    (
+        "INVENTORY_ENC_KEY",
+        "inventory_enc_key",
+        "at-rest encryption raises on first use in prod: no voucher code can be "
+        "stored or read, and no merchant API key can be issued or verified "
+        "(core.crypto derives a per-purpose key from this one input)",
+    ),
 )
 
 

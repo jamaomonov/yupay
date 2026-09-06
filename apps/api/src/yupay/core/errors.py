@@ -116,7 +116,16 @@ class UpstreamUnavailableError(AppError):
 
 
 async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
-    """Render an :class:`AppError` as an RFC 7807 problem+json response."""
+    """Render an :class:`AppError` as an RFC 7807 problem+json response.
+
+    Every key in ``exc.extra`` joins the body. One of them is also promoted to
+    a header: an integer ``retry_after`` becomes ``Retry-After`` (RFC 9110
+    §10.2.3), because a machine client throttled by a fixed-window counter has
+    no other way to learn how long to wait — and the alternative it picks
+    without one is "retry immediately", which is the traffic that tripped the
+    limit. The global slowapi tier already sets the header
+    (``headers_enabled=True``); this makes the application-level 429s agree.
+    """
     body: dict[str, Any] = {
         "type": exc.type_uri,
         "title": exc.title,
@@ -124,8 +133,11 @@ async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
         "detail": exc.detail,
     }
     body.update(exc.extra)
+    retry_after = exc.extra.get("retry_after")
+    headers = {"Retry-After": str(retry_after)} if isinstance(retry_after, int) else None
     return JSONResponse(
         status_code=exc.status_code,
         content=body,
         media_type="application/problem+json",
+        headers=headers,
     )

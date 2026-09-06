@@ -13,51 +13,94 @@ re-exporting it from the facade would close a cycle for any service-layer
 caller that imports ``merchants.api``. Exactly the rule ``admin_routes``
 follows for its routers, and the same rule ``affiliate.routes`` documents.
 
+**Byte-body endpoints only.** The dependency reads ``await request.body()``,
+which Starlette caches on the request so the endpoint behind it still parses
+its own JSON. That cache is only populated on the body branch: an endpoint
+declaring ``Form(...)`` or ``UploadFile`` makes FastAPI take
+``request.form()`` instead, which consumes the stream without setting
+``_body`` — and then this dependency raises ``RuntimeError("Stream
+consumed")`` on every call. ``/merchant/v1`` is a JSON API and must stay one;
+a form endpoint would need the body read hoisted into middleware.
+
 ## The order of checks, and why
 
 1. **IP axis of the rate guard**, before anything is parsed — an unauthenticated
    flood must cost us one Redis INCR, not a database round-trip.
-2. **Headers present**, **timestamp numeric and fresh**. These get their own
-   error codes: a clock 400 seconds out is the single most common integration
-   bug and telling the merchant so leaks nothing about any credential.
+2. **Headers present**, **timestamp strictly numeric and fresh**. These get
+   their own error codes: a clock 400 seconds out is the single most common
+   integration bug and telling the merchant so leaks nothing about any
+   credential.
 3. **The credential itself** — unknown key, revoked key and bad signature are
    one indistinguishable 401 (spec §9.2).
-4. **Merchant axis of the rate guard**, charged on the key only once the
+4. **Single-use signature.** A valid signature is burned in Redis for the
+   width of the timestamp window, so a captured request cannot be replayed
+   inside it. Fails open on a Redis error, which degrades to replay bounded by
+   the timestamp window alone. Two consequences the README states as contract:
+   a retry must be re-signed, and byte-identical requests cannot repeat inside
+   one second.
+5. **Merchant axis of the rate guard**, charged on the key only once the
    signature has verified. See ``settings.merchant_api_key_rate_max``.
-5. **Frozen merchant** → 403 ``merchant_frozen``; **IP allowlist** → 403
+6. **Frozen merchant** → 403 ``merchant_frozen``; **IP allowlist** → 403
    ``ip_not_allowed``. Both are authenticated failures, so they are counted.
-6. ``last_used_at``, best effort and throttled.
+7. ``last_used_at``, best effort and throttled.
 
 ## Timing shape
 
-Ruling: an early ``return`` on "no such key" is measurably faster than a real
-HMAC comparison, which turns a 401 into an oracle for "this key id exists".
-So the unknown- and revoked-key paths compute an HMAC against
-``_DUMMY_SIGNING_KEY`` and compare it anyway before failing — the same shape
-``auth.service.password_login`` uses for absent accounts. The three failures
-also share one response body, so neither the timing nor the payload
-discriminates.
+An early ``return`` on "no such key" would skip the HMAC entirely, so the
+unknown- and revoked-key paths sign against ``_DUMMY_SECRET`` and compare
+anyway — the same shape ``auth.service.password_login`` uses for absent
+accounts. The claim that buys is narrow and worth stating exactly: **the
+response payload is identical for all three failures and the HMAC cost is
+equalised.** It is not a constant-time path end to end: an unknown ``key_id``
+is an index miss while a known one is a hit plus a join, and only the known
+one runs a decrypt. One Postgres round-trip dwarfs both a 32-byte HMAC and a
+48-byte SecretBox open, so the residual signal sits far below the noise of a
+network round-trip. Equalising the crypto is what is cheap and available;
+equalising the database is not.
+
+## Inherited assumption: the caller's address
+
+``ip_allowlist`` is enforced against ``core.client_ip``, which takes the first
+``X-Forwarded-For`` entry with **no trusted-proxy check** — its safety rests
+entirely on the shared edge overwriting that header rather than appending to
+it (``infra/edge/Caddyfile``, and that helper's own docstring). That
+assumption previously only decided which rate-limit counter got charged; here
+it decides whether an allowlist can be bypassed with one header. It is
+deliberately still used rather than a bespoke read: one home for the answer
+beats three that can drift. Hardening ``client_ip`` itself with a
+trusted-proxy check is filed for M3 — repo-wide, and the mitigating fact is
+that the allowlist is defence-in-depth **on top of** the HMAC, never the
+primary control: an attacker who can spoof the header still has no secret.
 """
 
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import ipaddress
+import re
 from datetime import timedelta
 from typing import Annotated
+from urllib.parse import quote
 
 from fastapi import Depends, Request
+from nacl.exceptions import CryptoError
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core import crypto
 from yupay.core.client_ip import client_ip
 from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.errors import ForbiddenError, RateLimitedError, UnauthorizedError
+from yupay.core.logging import get_logger
+from yupay.core.redis import get_redis
 from yupay.modules.auth.ip_guard import guard_ip, hit_counter
 from yupay.modules.merchants import signing
 from yupay.modules.merchants.models import Merchant, MerchantApiKey
+
+log = get_logger("yupay.merchants.auth")
 
 #: The three request headers. Documented in the module README, which is what
 #: third parties implement against — renaming one is a breaking change to a
@@ -67,9 +110,6 @@ TIMESTAMP_HEADER = "X-Merchant-Timestamp"
 SIGNATURE_HEADER = "X-Merchant-Signature"
 
 #: How far a request timestamp may sit from ours, either way (spec §9.2).
-#: Bounds replay to a five-minute window; order creation is additionally
-#: idempotent on ``merchant_order_id``, which is what makes a replay inside
-#: the window harmless rather than merely unlikely.
 TIMESTAMP_TOLERANCE_SECONDS = 300
 
 #: The ``auth_ip_guard_bucket_max`` bucket charged for the IP axis.
@@ -79,21 +119,41 @@ RATE_BUCKET = "merchant-api"
 #: ``docs/architecture/cache-keys.md``.
 _RATE_KEY = "merchants:apikey:{key_id}"
 
+#: Redis key burning one signature. Catalogued in the same file.
+_SEEN_KEY = "merchants:sig:{digest}"
+
+#: How long a burned signature is remembered. A request may be up to
+#: ``TIMESTAMP_TOLERANCE_SECONDS`` old *and* up to that far in the future, so
+#: twice the tolerance is exactly the width of the replayable window: the
+#: marker expires when a replay would already be rejected on age.
+_SEEN_TTL_SECONDS = TIMESTAMP_TOLERANCE_SECONDS * 2
+
+#: Unix seconds, strictly. ``int()`` would also accept ``"1_725_000_000"``,
+#: ``" 1725 "``, ``"+1725"`` and Arabic-Indic digits — harmless (the raw
+#: header is what gets signed, so no two readings can disagree) but the
+#: README says "unix seconds" and clients would quietly diverge.
+_UNIX_SECONDS = re.compile(r"\A[0-9]{1,20}\Z")
+
+#: Characters a request-line field may carry through unencoded. Only reached
+#: on the non-ASCII fallback in :func:`_request_line_field`.
+_RAW_SAFE = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
+
 #: Machine-readable discriminators, echoed as ``code`` in the problem+json
 #: body alongside RFC 7807's own ``type``. Spec §9.4 names the order-path
 #: codes; these are the auth ones.
 CODE_MISSING_CREDENTIALS = "missing_credentials"
 CODE_STALE_TIMESTAMP = "stale_timestamp"
 CODE_INVALID_CREDENTIALS = "invalid_credentials"
+CODE_SIGNATURE_REPLAYED = "signature_replayed"
 CODE_MERCHANT_FROZEN = "merchant_frozen"
 CODE_IP_NOT_ALLOWED = "ip_not_allowed"
 
 #: One body for unknown key / revoked key / bad signature — see "Timing shape".
 _INVALID_DETAIL = "invalid merchant credentials"
 
-#: Signed against when there is no usable key, so the work done is the same
-#: whether or not the key id exists. Derived from a constant, not a secret.
-_DUMMY_SIGNING_KEY = signing.derive_signing_key("merchant-auth-timing-parity")
+#: Signed against when there is no usable key, so the HMAC is computed and
+#: compared whether or not the key id exists. A constant, not a credential.
+_DUMMY_SECRET = "ypms_merchant-auth-timing-parity"  # noqa: S105  # not a credential
 
 #: Do not rewrite ``last_used_at`` more often than this. Without the guard
 #: every request UPDATEs one row, and concurrent requests on the same key
@@ -104,14 +164,65 @@ _DUMMY_SIGNING_KEY = signing.derive_signing_key("merchant-auth-timing-parity")
 _LAST_USED_MIN_INTERVAL = timedelta(seconds=60)
 
 
+def _request_line_field(raw: bytes) -> str:
+    """Decode one request-line field (path or query) for signing.
+
+    The fast path — every real request — is a plain ASCII decode: an HTTP
+    request line is ASCII by construction, and percent-encoded, so the value
+    can contain no literal LF and cannot forge a field boundary in the
+    canonical string.
+
+    The fallback covers a server that hands through raw non-ASCII bytes:
+    those are percent-encoded rather than replaced, so distinct byte strings
+    stay distinct. Two forms that collide here (a raw ``0xC3 0xA9`` and a
+    literal ``%C3%A9``) percent-decode to the same routing path anyway, so
+    the collision selects the same endpoint with the same parameters.
+
+    Args:
+        raw: The field's bytes from the ASGI scope.
+
+    Returns:
+        The text to place in the canonical string.
+    """
+    try:
+        return raw.decode("ascii")
+    except UnicodeDecodeError:
+        return quote(raw, safe=_RAW_SAFE)
+
+
+def request_target(request: Request) -> tuple[str, str]:
+    """The signed ``(raw_path, raw_query)`` pair for a request.
+
+    Reads ``scope["raw_path"]`` — the bytes as they arrived, before
+    percent-decoding — and falls back to re-encoding ``scope["path"]`` when a
+    server does not provide it (the ASGI spec makes ``raw_path`` optional;
+    uvicorn and httpx's test transport both set it, query already stripped).
+
+    Args:
+        request: The incoming request.
+
+    Returns:
+        ``(raw_path, raw_query)``; the query is ``""`` when absent.
+    """
+    raw_path = request.scope.get("raw_path")
+    path = (
+        _request_line_field(raw_path)
+        if isinstance(raw_path, bytes)
+        else quote(request.scope.get("path", ""), safe="/")
+    )
+    return path, _request_line_field(request.scope.get("query_string", b""))
+
+
 def address_allowed(allowlist: list[str] | None, address: str) -> bool:
     """Whether ``address`` may use a key carrying ``allowlist``.
 
     A NULL allowlist means the filter is off (the column's documented
     meaning). An empty list means the same: ``service.create_api_key``
-    normalises ``[]`` to NULL so the shape should not exist, and reading a
-    stray one as "deny everything" would lock a merchant out of their own
-    account over a data artefact.
+    normalises ``[]`` to NULL and the schema rejects an empty array, so the
+    shape is unreachable through the API — and reading a stray one as "deny
+    everything" would lock a merchant out over a data artefact. The caller
+    logs a warning when it sees one, because an operator who hand-edited a
+    row to ``{}`` meaning "block this key" got the exact opposite.
 
     Entries may be single addresses (``198.51.100.7``) or CIDR blocks
     (``203.0.113.0/24``), IPv4 or IPv6; a host address with a prefix is read
@@ -141,6 +252,34 @@ def address_allowed(allowlist: list[str] | None, address: str) -> bool:
         if caller in network:
             return True
     return False
+
+
+async def _burn_signature(signature: str) -> bool:
+    """Mark a signature used. False when it had already been used.
+
+    ``SET NX`` on a digest of the signature, the shape
+    ``auth.telegram._burn_widget_hash`` uses for the login-widget replay
+    guard. The signature is hashed rather than stored: it is a MAC over the
+    request, and a Redis instance anything can ``SCAN`` should not hold one
+    verbatim.
+
+    Best-effort by design — a Redis error reads as "not seen", so an outage
+    degrades to replay bounded by the timestamp window alone rather than
+    refusing every request. That window is the only other bound this module
+    provides; per-endpoint idempotency (order creation on ``merchant_order_id``,
+    spec §9.3) is a property of endpoints that do not exist yet, so nothing
+    here may assume it.
+
+    Args:
+        signature: The verified ``X-Merchant-Signature`` value.
+
+    Returns:
+        Whether this signature had not been seen before.
+    """
+    key = _SEEN_KEY.format(digest=hashlib.sha256(signature.encode("utf-8")).hexdigest())
+    with contextlib.suppress(Exception):  # fail open on Redis trouble
+        return bool(await get_redis().set(key, "1", ex=_SEEN_TTL_SECONDS, nx=True))
+    return True
 
 
 async def _touch_last_used(db: AsyncSession, key: MerchantApiKey) -> None:
@@ -175,26 +314,51 @@ async def _touch_last_used(db: AsyncSession, key: MerchantApiKey) -> None:
 
 
 def _fresh_timestamp(raw: str) -> None:
-    """Raise unless ``raw`` is a unix-seconds value inside the tolerance window.
+    """Raise unless ``raw`` is unix seconds inside the tolerance window.
 
     Args:
         raw: The ``X-Merchant-Timestamp`` header, as sent.
 
     Raises:
-        UnauthorizedError: If it is not an integer, or is outside ±300 s.
+        UnauthorizedError: If it is not strictly digits, or outside ±300 s.
     """
-    try:
-        sent = int(raw)
-    except ValueError:
+    if _UNIX_SECONDS.match(raw) is None:
         raise UnauthorizedError(
-            f"{TIMESTAMP_HEADER} must be unix seconds", code=CODE_STALE_TIMESTAMP
-        ) from None
-    if abs(int(now().timestamp()) - sent) > TIMESTAMP_TOLERANCE_SECONDS:
+            f"{TIMESTAMP_HEADER} must be unix seconds (digits only)",
+            code=CODE_STALE_TIMESTAMP,
+        )
+    if abs(int(now().timestamp()) - int(raw)) > TIMESTAMP_TOLERANCE_SECONDS:
         raise UnauthorizedError(
             f"{TIMESTAMP_HEADER} is outside the ±{TIMESTAMP_TOLERANCE_SECONDS}s window; "
             "check the clock on the calling server",
             code=CODE_STALE_TIMESTAMP,
         )
+
+
+def _secret_of(key: MerchantApiKey | None) -> str:
+    """The HMAC key to verify against — the row's secret, or a constant dummy.
+
+    Args:
+        key: The looked-up row, or ``None`` when the key id is unknown.
+
+    Returns:
+        The decrypted secret for a usable key; ``_DUMMY_SECRET`` when the key
+        is unknown, revoked, or its ciphertext will not open — a wrong
+        application key or a tampered row, both of which must read as "bad
+        credentials", never as a 500.
+    """
+    if key is None or key.revoked_at is not None:
+        return _DUMMY_SECRET
+    try:
+        return crypto.decrypt(
+            key.secret_enc, key.secret_nonce, purpose=crypto.PURPOSE_MERCHANT_API_KEY
+        )
+    except CryptoError:
+        # A wrong application key or a tampered row. Reads as bad credentials,
+        # never as a 500 — and the warning is how an operator finds out that
+        # every key minted under an older ``INVENTORY_ENC_KEY`` is now dead.
+        log.warning("merchant_api_key_undecryptable", key_id=key.key_id)
+        return _DUMMY_SECRET
 
 
 async def merchant_auth(
@@ -203,13 +367,14 @@ async def merchant_auth(
     """Authenticate a signed ``/merchant/v1`` request and return the merchant.
 
     See the module docstring for the order of the checks and why. Nothing
-    here logs the secret, the signing key or the signature: the structured
-    logger redacts ``secret`` / ``signature`` / ``key`` by name anyway
+    here logs the secret or the signature: the structured logger redacts
+    ``secret`` / ``signature`` / ``key`` by name
     (``core.logging.REDACTED_KEYS``), and this path writes no log line of its
-    own to begin with.
+    own on the happy path.
 
     Args:
-        request: The incoming request — headers, raw body, and client address.
+        request: The incoming request — headers, raw body, request line, and
+            client address.
         db: The request session, shared with the endpoint behind this
             dependency (which is why it is ``api.v1.deps.db_session`` and not
             a session of our own).
@@ -225,7 +390,8 @@ async def merchant_auth(
     Raises:
         RateLimitedError: 429, either axis.
         UnauthorizedError: 401 — headers missing, timestamp outside the
-            window, or the credential did not verify.
+            window, the credential did not verify, or the signature was
+            already used.
         ForbiddenError: 403 — the merchant is frozen, or the caller's address
             is not on this key's allowlist.
     """
@@ -242,12 +408,15 @@ async def merchant_auth(
         )
     _fresh_timestamp(timestamp)
 
+    raw_path, raw_query = request_target(request)
     # Starlette caches the body on the request, so reading it here does not
-    # consume it — the endpoint behind this dependency still parses its own.
+    # consume it for a byte-body endpoint — see the module docstring for the
+    # form-endpoint exception.
     message = signing.canonical_message(
         timestamp=timestamp,
         method=request.method,
-        path=request.url.path,
+        raw_path=raw_path,
+        raw_query=raw_query,
         body=await request.body(),
     )
     row = (
@@ -261,12 +430,16 @@ async def merchant_auth(
     merchant: Merchant | None = None
     if row is not None:
         key, merchant = row
-    usable = key is not None and key.revoked_at is None
-    signing_key = key.secret_hash if (key is not None and usable) else _DUMMY_SIGNING_KEY
     # Always computed, always compared — see "Timing shape" in the module docstring.
-    signature_ok = signing.signature_matches(signing_key, message, provided)
-    if key is None or merchant is None or not usable or not signature_ok:
+    signature_ok = signing.signature_matches(_secret_of(key), message, provided)
+    if key is None or merchant is None or key.revoked_at is not None or not signature_ok:
         raise UnauthorizedError(_INVALID_DETAIL, code=CODE_INVALID_CREDENTIALS)
+
+    if not await _burn_signature(provided):
+        raise UnauthorizedError(
+            "this signature has already been used; sign each request once, with a fresh timestamp",
+            code=CODE_SIGNATURE_REPLAYED,
+        )
 
     over_key = await hit_counter(
         _RATE_KEY.format(key_id=key.key_id),
@@ -274,11 +447,26 @@ async def merchant_auth(
         window=settings.auth_ip_guard_window_seconds,
     )
     if over_key:
-        raise RateLimitedError("too many requests for this API key, slow down")
+        raise RateLimitedError(
+            "too many requests for this API key, slow down",
+            retry_after=settings.auth_ip_guard_window_seconds,
+        )
 
     if merchant.status == "frozen":
         raise ForbiddenError(
             "merchant account is frozen; contact support", code=CODE_MERCHANT_FROZEN
+        )
+    if key.ip_allowlist is not None and not key.ip_allowlist:
+        # An operator who hand-edited a row to ``{}`` to block a key got the
+        # opposite. ``key_id`` is the public half — it travels in a plaintext
+        # header on every request and is shown in the cabinet — so it is safe
+        # to name here, and naming it is the only way to find the row.
+        log.warning(
+            "merchant_api_key_empty_allowlist",
+            key_id=key.key_id,
+            merchant_id=key.merchant_id,
+            hint="an empty ip_allowlist means NO filter, same as NULL; "
+            "delete the key or set addresses to restrict it",
         )
     if not address_allowed(key.ip_allowlist, client_ip(request)):
         raise ForbiddenError(
@@ -295,6 +483,7 @@ __all__ = [
     "CODE_IP_NOT_ALLOWED",
     "CODE_MERCHANT_FROZEN",
     "CODE_MISSING_CREDENTIALS",
+    "CODE_SIGNATURE_REPLAYED",
     "CODE_STALE_TIMESTAMP",
     "KEY_HEADER",
     "RATE_BUCKET",
@@ -303,4 +492,5 @@ __all__ = [
     "TIMESTAMP_TOLERANCE_SECONDS",
     "address_allowed",
     "merchant_auth",
+    "request_target",
 ]

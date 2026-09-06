@@ -243,12 +243,15 @@ one SKU's response for another. See
 
 `POST /admin/merchants/{id}/api-keys` mints a key and returns
 `{key_id, secret, …}`. **The secret appears in that one response and nowhere
-else** — the row stores only `sha256(secret)`, and that digest is also the HMAC
-signing key (an HMAC cannot be verified without key material; the full
-reasoning and the rejected alternative are in `signing.py`). A retry carrying
-the same `Idempotency-Key` replays the original `key_id` with `secret: null`,
-because `idempotent_responses` has no reaper and a usable credential must not
-sit there in the clear; if the first response was lost, revoke and reissue.
+else** — the row holds it **encrypted at rest** (`core/crypto.py`,
+XSalsa20-Poly1305 under a purpose-derived key), not hashed: an HMAC cannot be
+verified without the key material, so a digest would either forbid request
+signing or become the signing key itself. Migration 0070 replaced 0065's
+`secret_hash` with `secret_enc`/`secret_nonce`; the table was empty everywhere,
+so there was no backfill and no integrator to break. A retry carrying the same
+`Idempotency-Key` replays the original `key_id` with `secret: null`, because
+`idempotent_responses` has no reaper and a usable credential must not sit there
+in the clear; if the first response was lost, revoke and reissue.
 
 `GET /admin/merchants/{id}/api-keys` lists every key ever issued (newest first,
 revoked ones included) and its response model has no `secret` field at all.
@@ -257,9 +260,22 @@ naturally idempotent, and matches on `(merchant_id, key_id)` so one merchant's
 id in the path cannot revoke another's key.
 
 Requests to the machine API `/merchant/v1` (endpoints land with the rest of M2)
-carry `X-Merchant-Key`, `X-Merchant-Timestamp` and `X-Merchant-Signature =
-hex(HMAC_SHA256(sha256_hex(secret), f"{timestamp}\n{method}\n{path}\n{body}"))`,
-timestamp within ±300 s. **The contract third parties implement against is
+carry `X-Merchant-Key`, `X-Merchant-Timestamp` and
+`X-Merchant-Signature = hex(HMAC_SHA256(secret, canonical))` where
+
+```
+canonical = {timestamp}\n{METHOD}\n{raw_path}\n{raw_query}\n{sha256_hex(body)}
+```
+
+— the path and query being the **raw, percent-encoded** bytes from the request
+line, the timestamp within ±300 s, and each signature usable exactly once.
+**The contract third parties implement against is
 `apps/api/src/yupay/modules/merchants/README.md`** — headers, canonical string,
-worked example, error codes — and it must not change without a new API version.
-Unknown key, revoked key and a wrong signature all return one identical 401.
+runnable Python and Node examples, the full `type`-URI table, rate limits with
+`Retry-After` — and it must not change without a new API version. Unknown key,
+revoked key and a wrong signature all return one identical 401.
+
+Application-level `429`s now carry a `Retry-After` header: any `AppError`
+whose extras include an integer `retry_after` gets one
+(`core.errors.app_error_handler`), which is what the auth IP guard and the
+merchant per-key counter set.

@@ -126,4 +126,8 @@ async def guard_ip(request: Request, *, bucket: str, subject: str | None = None)
         )
 
     if over_ip or over_subject:
-        raise RateLimitedError("too many attempts, slow down")
+        # ``retry_after`` becomes a ``Retry-After`` header (see
+        # ``core.errors.app_error_handler``). One window is the worst case for
+        # a fixed-window counter, and a machine caller with no header retries
+        # immediately — which is the traffic that tripped the limit.
+        raise RateLimitedError("too many attempts, slow down", retry_after=window)
