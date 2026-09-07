@@ -148,9 +148,11 @@ def signature_matches(secret: str, message: bytes, provided: str) -> bool:
     requirement, not tidiness: ``hmac.compare_digest`` raises ``TypeError``
     on a non-ASCII ``str``.
 
-    The expected signature is still computed by the caller before this runs
-    (see ``auth``'s timing note), so a malformed header costs the same as a
-    wrong one.
+    A malformed header returns here *before* the HMAC is computed, so it is
+    cheaper than a well-formed wrong one. That difference leaks nothing about
+    the credential: the header's shape is attacker-supplied input they already
+    know. The equalisation that does matter — unknown and revoked keys hashing
+    against a dummy secret — happens in :mod:`.auth`.
 
     Args:
         secret: The merchant's secret.

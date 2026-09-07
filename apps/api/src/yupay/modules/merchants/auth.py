@@ -375,8 +375,7 @@ async def merchant_auth(
     Raises:
         RateLimitedError: 429, either axis.
         UnauthorizedError: 401 — headers missing, timestamp outside the
-            window, the credential did not verify, or the signature was
-            already used.
+            window, or the credential did not verify.
         ForbiddenError: 403 — the merchant is frozen, or the caller's address
             is not on this key's allowlist.
     """

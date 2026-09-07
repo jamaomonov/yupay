@@ -268,7 +268,8 @@ canonical = {timestamp}\n{METHOD}\n{raw_path}\n{raw_query}\n{sha256_hex(body)}
 ```
 
 — the path and query being the **raw, percent-encoded** bytes from the request
-line, the timestamp within ±300 s, and each signature usable exactly once.
+line, and the timestamp within ±300 s. A signature is deliberately **not**
+single-use — see the module README's "Replay and retries".
 **The contract third parties implement against is
 `apps/api/src/yupay/modules/merchants/README.md`** — headers, canonical string,
 runnable Python and Node examples, the full `type`-URI table, rate limits with

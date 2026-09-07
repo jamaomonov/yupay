@@ -159,8 +159,11 @@ per-resource replay scopes (`f"merchants.sku_b2b:{sku_id}"` etc.).
 > directly with no derivation step; and the canonical string became
 > `{timestamp}\n{METHOD}\n{raw_path}\n{raw_query}\n{sha256(body)}` — raw
 > request-line bytes so no field boundary can be forged, the query signed, the
-> body hashed. A verified signature is also single-use for the width of the
-> window.
+> body hashed. A signature is deliberately **not** single-use: a replaying
+> attacker and a retrying client are byte-identical, so single-use would only
+> break at-least-once retries on the money path. Replay is bounded by the
+> window, by keeping credentials out of the edge access log, and — for
+> mutations — by `merchant_order_id` idempotency (Task 4).
 
 ---
 

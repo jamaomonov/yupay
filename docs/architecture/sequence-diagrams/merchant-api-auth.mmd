@@ -14,9 +14,9 @@ sequenceDiagram
     end
     Guard->>Guard: headers present? (401 missing_credentials)
     Guard->>Guard: timestamp digits-only and within +/-300s? (401 stale_timestamp)
-    Guard->>Guard: signature exactly 64 lowercase hex? (else 401 -- compare_digest raises on non-ASCII)
     Guard->>DB: SELECT merchant_api_keys JOIN merchants WHERE key_id = ?
     Note over Guard: secret = decrypt(secret_enc, secret_nonce) when the key exists and is not revoked,<br/>otherwise a constant DUMMY -- the HMAC is computed and compared either way,<br/>so the payload is identical and the crypto cost is equalised
+    Guard->>Guard: signature exactly 64 lowercase hex? (else 401 -- compare_digest raises on non-ASCII)
     Guard->>Guard: compare_digest(expected, provided)
     alt unknown key OR revoked OR mismatch
         Guard-->>Reseller: 401 invalid_credentials -- one identical body for all three

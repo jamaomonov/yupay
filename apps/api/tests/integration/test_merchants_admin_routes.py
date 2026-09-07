@@ -814,7 +814,7 @@ async def test_bulk_markup_needs_exactly_one_target(
 # ---------- API keys (M2, Task 2) ----------
 
 
-async def test_create_api_key_returns_the_secret_once_and_stores_only_its_hash(
+async def test_create_api_key_returns_the_secret_once_and_stores_it_encrypted(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
     merchant_id = await _create_merchant(integration_client, admin_headers)
