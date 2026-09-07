@@ -24,9 +24,12 @@ every such request; this is a transport-location fix, not encryption-in-transit
 (TLS already covers that) or an elimination of the value being sent at all.
 
 **Delivery artifact whitelist.** `GET /orders/{id}/deliveries` projects the
-`deliveries.artifact` JSONB through `_CUSTOMER_SAFE_ARTIFACT_KEYS` (an allow-list
-in `apps/api/src/yupay/modules/fulfillment/routes.py`) before it reaches any
-frontend. Only customer-safe keys (`code`/`codes`/`key`/`pin`/`serial`/
+`deliveries.artifact` JSONB through `BUYER_SAFE_ARTIFACT_KEYS` (an allow-list
+in `apps/api/src/yupay/modules/fulfillment/service.py`, applied by
+`buyer_safe_artifact`) before it reaches any frontend. It lives in the service
+rather than in the router because it now has two consumers — the storefront's
+delivery read and `/merchant/v1`'s order read — and a second copy would default
+a forgotten key to _visible_. Only customer-safe keys (`code`/`codes`/`key`/`pin`/`serial`/
 `steam_login`/`login`/`message`/`note`/`fulfillment_data`) survive; the upstream
 supplier (`source`) and internal/external ids (`external_id`,
 `external_order_id`, `inventory_code_id`, `sku_id`, `catalogue_name`, raw
@@ -53,7 +56,7 @@ to admins on the admin order view; it is not exposed on the
 customer-facing order response beyond what the buyer already entered, and
 never appears in the delivery artifact the customer reads (the artifact
 carries only `app_name`/`package_name`/a fixed instruction message — see
-`_CUSTOMER_SAFE_ARTIFACT_KEYS` above).
+`BUYER_SAFE_ARTIFACT_KEYS` above).
 
 The same link also reaches us _before_ any order exists, through the
 pre-purchase recipient check (`gifts/profile.py`), and that path is why

@@ -616,14 +616,13 @@ rather than retyping `detail`. Two cases reach it in practice:
 
 **It is registered app-wide and scoped in effect: every path outside
 `/merchant/v1` is delegated to FastAPI's own handler, byte for byte.** The
-scope is matched by path _segment_ (`path == prefix or path.startswith(prefix
+scope is matched by path _segment_ — the path must equal the prefix or begin
+with the prefix plus a slash — so a future `/merchant/v1beta` or
+`/merchant/v10` does not inherit a published contract by being spelled like
+this one. Two reasons the delegation is there, and the first is what would
+make an app-wide replacement a mistake rather than a simplification:
 
-- "/")`), so a future `/merchant/v1beta`or`/merchant/v10` does not inherit a
-  published contract by being spelled like this one. Two reasons the delegation
-  is there, and the first is what would make an app-wide replacement a mistake
-  rather than a simplification:
-
-* **The generated client would be silently falsified.** FastAPI documents every
+- **The generated client would be silently falsified.** FastAPI documents every
   route's 422 as `HTTPValidationError`, and
   `packages/api-client/src/generated/types.gen.ts` types every operation from
   it. Changing the runtime body without changing the schema makes the client
@@ -634,7 +633,7 @@ scope is matched by path _segment_ (`path == prefix or path.startswith(prefix
   both follow. The generated client now types the merchant operations' error as
   the problem shape and every other operation's as `HTTPValidationError` —
   which is exactly the split.)
-* **The storefront and admin SPA already read `detail[]`.** Retyping it is a
+- **The storefront and admin SPA already read `detail[]`.** Retyping it is a
   breaking change to them for no gain.
 
 The handler encodes `exc.errors()` with `jsonable_encoder` rather than handing

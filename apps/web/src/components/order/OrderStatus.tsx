@@ -33,7 +33,7 @@ import { useRealtimeStatus } from "@/store/useRealtimeStatus";
  * The gift delivery card's instruction block, rendered instead of
  * `ArtifactReceipt` for a delivery whose `artifact.kind === "gift"` (the
  * sub-kind `gengine_gifts.py::_map_gift_order` sets — allow-listed through
- * to the customer by `fulfillment/routes.py::_CUSTOMER_SAFE_ARTIFACT_KEYS`
+ * to the customer by `fulfillment/service.py::BUYER_SAFE_ARTIFACT_KEYS`
  * alongside `app_name`/`package_name`/`status`). A gift has no code/key to
  * copy — `ArtifactReceipt` would render nothing for it at all — so this
  * shows the accept-the-friend-request steps instead.

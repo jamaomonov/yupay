@@ -56,8 +56,8 @@ export function isGiftDelivery(delivery: DeliveryOut | null): boolean {
 
 /** Ordered preference for the artifact's primary copyable identifier — the
  *  first non-empty string value wins. Every key here is part of the API's
- *  customer-facing whitelist (`_CUSTOMER_SAFE_ARTIFACT_KEYS` in
- *  `fulfillment/routes.py`) — never read `external_id`: no supplier or
+ *  customer-facing whitelist (`BUYER_SAFE_ARTIFACT_KEYS` in
+ *  `fulfillment/service.py`) — never read `external_id`: no supplier or
  *  admin-manual-completion flow reaching this component ever sets it, and
  *  Phase 1 strips it server-side if one did. */
 export const COPYABLE_ARTIFACT_KEYS = [

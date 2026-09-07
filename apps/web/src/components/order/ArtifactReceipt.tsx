@@ -8,7 +8,7 @@ import { toast } from "@/store/useToast";
 
 /**
  * Top-level artifact keys the API's customer-facing whitelist ever emits
- * (mirrors `_CUSTOMER_SAFE_ARTIFACT_KEYS` in `fulfillment/routes.py`). This is
+ * (mirrors `BUYER_SAFE_ARTIFACT_KEYS` in `fulfillment/service.py`). This is
  * the security ceiling: we only ever render a strict subset of these, never a
  * raw `Object.entries(artifact)` dump — even if the server-side whitelist
  * regressed, this component still could not surface an internal field
