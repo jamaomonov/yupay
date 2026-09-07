@@ -280,9 +280,11 @@ price.** Drift ≤ 2% → the order proceeds at `current`; drift > 2% → unchan
 
 The band earns its keep on the accept/reject axis alone: it stops an order
 failing over a cent of genuine drift, and the merchant is still protected in
-the direction that matters to them — they never pay more than 2% above the
-price they last read, and a larger move is refused outright with our exact
-current price in the body, before their deposit is touched. What they lose is a
+the direction that matters to them — they never pay more than 2/98 ≈ 2.04%
+above the price they last read (the band is 2% of our price, not of theirs, so
+the bound relative to their number is slightly wider than the band itself), and
+a larger move is refused outright with our exact current price in the body,
+before their deposit is touched. What they lose is a
 guarantee nobody should have written down: that quoting low caps what they pay.
 
 The Steam-gifts flow (ADR-0066) keeps its own rule. The pattern was borrowed

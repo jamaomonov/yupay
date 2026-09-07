@@ -755,7 +755,9 @@ order proceeds; it never decides what it costs.
   `/catalog` and decide.
 
 So what you are protected from is a price that moved out from under you: you
-will never be charged more than 2% above the number you sent, and a bigger move
+will never be charged much more than the number you sent — the exact bound is
+just over 2%, because the band is 2% of **our** price rather than yours, so a
+quote 2% under ours is charged 2/98 ≈ 2.04% above what you sent. A bigger move
 is refused outright with our exact current price in the body, before anything is
 debited. What you are **not** promised is that a stale-low `expected_price` caps
 what you pay — quoting 2% under our price buys at our price, not at yours.
@@ -1179,6 +1181,10 @@ path segment is percent-encoded and **the encoded form is what you sign**
   that cannot be covered is a `409 insufficient_deposit`, which is recoverable
   but only after somebody tops you up.
 - Parse money with a decimal type. `"1.06"` through a float is `1.0599…`.
+- Bill off `price_usd` in the **response**, not off the `expected_price` you
+  sent. Inside the drift band we charge our price, so the two legitimately
+  differ — see "Price drift". Reconciling against your own request is the
+  quiet way to end up disagreeing with your invoice.
 - Branch on `code`, not on `detail`. Every error here is problem+json except a
   `5xx` and a wrong URL or method (see "Errors"), and a request we could not
   even parse is `422 invalid_request`.
@@ -1282,6 +1288,8 @@ appears on `/transactions`, while the order's own `refunded_usd` stays
 `"0.00"`, because no surface can book a transaction against an order. And there
 is **no push of any kind** — poll the order read.
 
-Both are written up with what each costs in
-`docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates".
-Read it before you put the first reseller on this.
+The refund gap is written up with what it costs in
+`docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates" —
+read it before you put the first reseller on this. The absence of push is a
+deliberate v1 scope decision rather than a gap, and is stated wherever polling
+is described.

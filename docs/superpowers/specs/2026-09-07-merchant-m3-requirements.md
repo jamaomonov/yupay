@@ -90,11 +90,17 @@ changed we cannot measure, retrospectively, how often a merchant quoted low, or
 what the old rule had been costing.
 
 It matters less now that we charge our own price either way, but it still
-leaves two gaps: the runbook's regression query has to _recompute_ list price
-from cost and markup, which will produce false positives once
-`markup_adjustment_pp` is used for real; and a pilot integrator arguing about a
-charge has no record of what they sent. A quoted-price column on
-`order_items` (or the order) closes both cheaply.
+leaves two gaps. The runbook's regression query has to _recompute_ the list
+price from cost and markup: the cost half now reads
+`order_items.cost_usdt`, the frozen snapshot taken at order time, but
+`b2b_markup_pct` is still read live — a markup edited after an order was placed
+moves the comparison, and `markup_adjustment_pp`, dormant in v1, will do the
+same once it is used. And a pilot integrator arguing about a charge has no
+record of what they sent.
+
+Storing the **computed list price** at order time, alongside the merchant's
+quote, makes the query exact instead of approximate and answers the dispute
+case in one read — a better shape than a quoted-price column alone.
 
 ## 4. Carried into M3 from M2's reviews (not owner decisions, but due)
 

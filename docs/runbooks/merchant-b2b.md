@@ -402,18 +402,29 @@ merchant. Nothing alerts on it, so this is a query, not a monitor:
 
 ```sql
 -- merchant orders charged under our own price. Expect zero rows.
-SELECT o.id, o.merchant_id, oi.unit_price_usd, s.sku_code, s.cost_usdt, s.b2b_markup_pct
+SELECT o.id, o.merchant_id, oi.unit_price_usd, s.sku_code, oi.cost_usdt, s.b2b_markup_pct
 FROM orders o
 JOIN order_items oi ON oi.order_id = o.id
 JOIN skus s ON s.id = oi.sku_id
 WHERE o.merchant_id IS NOT NULL
-  AND s.cost_usdt IS NOT NULL
-  AND oi.unit_price_usd < CEIL(s.cost_usdt * (1 + s.b2b_markup_pct / 100) * 100) / 100;
+  AND oi.cost_usdt IS NOT NULL
+  AND oi.unit_price_usd < CEIL(oi.cost_usdt * (1 + s.b2b_markup_pct / 100) * 100) / 100;
 ```
 
-A merchant with a negotiated `markup_adjustment_pp` prices below that figure
-legitimately — the query does not read it, so check the merchant row before
-treating a hit as a regression.
+**Read the cost from `order_items`, not from `skus`.** `skus.cost_usdt` is
+rewritten by `refresh_supplier_prices` every `price_refresh_interval_minutes`
+(default 60), so a supplier raising one SKU's cost overnight would make every
+past order of it look under-charged the next morning — and a cost that fell
+would hide a real regression. `order_items.cost_usdt` is the frozen snapshot
+taken at order time, and it exists for exactly this reason (see the column's
+comment in `orders/models.py`). Merchant orders always populate it.
+
+Two things the query still cannot see, so a hit is evidence and not a verdict:
+a merchant with a negotiated `markup_adjustment_pp` prices below the computed
+figure legitimately, and `b2b_markup_pct` is read live — a markup edited after
+the order was placed moves the comparison. Nothing records either at order
+time; a stored list price would make this exact rather than approximate, and
+that is filed as an M3 follow-up.
 
 ### Closed in M2: the non-conforming validation bodies
 

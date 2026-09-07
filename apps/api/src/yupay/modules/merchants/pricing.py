@@ -172,9 +172,12 @@ def price_to_charge(current: Decimal, expected: Decimal) -> Decimal | None:
 
     The band is still worth keeping, which is why it stayed: it stops an order
     failing over a cent of genuine drift, and the merchant remains protected —
-    they never pay more than :data:`PRICE_DRIFT_TOLERANCE_PCT` above the price
-    they last read, and a rejection hands them our exact current price to
-    re-quote against.
+    they never pay much more than the price they last read, and a rejection
+    hands them our exact current price to re-quote against. The exact bound is
+    slightly wider than the band: it is a percentage of *our* price, so a quote
+    :data:`PRICE_DRIFT_TOLERANCE_PCT` under ours is charged 2/98 ≈ 2.04% above
+    what they sent. Documented as "just over 2%" rather than "2%", because the
+    contract is written for a machine that will check it.
 
     Args:
         current: Our price for this merchant — :func:`merchant_price`'s
