@@ -135,33 +135,57 @@ PRICE_DRIFT_TOLERANCE_PCT = Decimal("2")
 def price_to_charge(current: Decimal, expected: Decimal) -> Decimal | None:
     """What an order executes at, given our price and the merchant's.
 
-    Spec §8.4, implemented as written: drift within ±:data:`PRICE_DRIFT_TOLERANCE_PCT`
-    executes at the **lower** of the two; anything beyond it is a
-    ``price_changed`` rejection carrying our current price. This function is
-    the rule's single home — the order path calls it and decides nothing about
-    drift on its own, so changing the policy is a change here and nowhere else.
+    Spec §8.4 as amended by the owner on 2026-09-07: ``expected_price`` is an
+    accept/reject tolerance and never a bid. Drift within
+    ±:data:`PRICE_DRIFT_TOLERANCE_PCT` executes at **our** current price;
+    anything beyond it is a ``price_changed`` rejection carrying that price.
+    This function is the rule's single home — the order path calls it and
+    decides nothing about drift on its own, so changing the policy is a change
+    here and nowhere else.
 
-    **Known and deliberate, recorded so nobody has to rediscover it.** A
-    merchant can fetch ``/catalog`` — live-computed, never cached — immediately
-    before ordering and then always send ``expected_price = current × 0.98``,
-    taking a guaranteed 2% off wholesale on every order. On the default 7%
-    markup that is roughly a quarter of the margin, and the margin floor does
-    not catch it: 7% − 2% still clears the 2% floor. The rule came from the
-    Steam-gifts flow, where the counterparty is a human who cannot compute
-    that; a merchant's counterparty is a machine that can. It has been raised
-    with the owner. Until they rule otherwise the spec governs, and this is
-    the one line that changes when they do — e.g. ``return current`` for
-    "quote-only", or an asymmetric band that accepts a higher expectation and
-    refuses a lower one.
+    **Why ours, and not the lower of the two.** The rule was first written as
+    ``min(current, expected)``, carried over from the Steam-gifts flow where
+    the counterparty is a human who cannot compute the exploit. Here the
+    counterparty is a machine that can, and the leak ran one way only:
+
+    - ``/catalog`` is live-computed and never cached, so a merchant could read
+      our price moments before ordering and then send
+      ``expected_price = current × 0.98``. Drift is exactly the tolerance, the
+      band accepts it, and ``min()`` took their number — a guaranteed 2% off
+      wholesale on every order, obtained by reading our own documentation. On
+      the default 7% markup that is about **31%** of the margin: 2.14 of the
+      7.00 we make on a 100.00 cost.
+    - :func:`violates_margin_floor` did not bound it. The floor is evaluated
+      against ``current`` before this function runs (``quote.price_for``), and
+      the price actually charged was never re-checked — so at a floor-level
+      markup the sale went *negative*. Cost 100.00 with ``b2b_markup_pct = 2``
+      prices at 102.00, clearing a 2% floor exactly, and a merchant sending
+      99.96 (drift exactly 2.0%) was charged **below our cost**.
+    - It needed no adversary. A well-meaning client that caches the catalog
+      does the same thing whenever our price ticks up, and the asymmetry means
+      a stale-*high* quote cost us nothing while a stale-*low* one cost us the
+      difference, every time.
+    - Nothing recorded it. ``expected_price`` reaches only the *rejection*
+      body and the request digest; a placed order stores the charged price and
+      neither our price at that moment nor theirs, so the loss was
+      unmeasurable after the fact.
+
+    The band is still worth keeping, which is why it stayed: it stops an order
+    failing over a cent of genuine drift, and the merchant remains protected —
+    they never pay more than :data:`PRICE_DRIFT_TOLERANCE_PCT` above the price
+    they last read, and a rejection hands them our exact current price to
+    re-quote against.
 
     Args:
         current: Our price for this merchant — :func:`merchant_price`'s
             result. A non-positive value is refused rather than divided by.
-        expected: The price the merchant sent, as they last read it.
+        expected: The price the merchant sent, as they last read it. It
+            decides whether the order proceeds; it never decides what it
+            costs.
 
     Returns:
-        The price to charge, or ``None`` when the drift is outside the band —
-        and for a non-positive ``current``, which is not a price.
+        ``current`` when the drift is inside the band, or ``None`` when it is
+        outside — and for a non-positive ``current``, which is not a price.
     """
     if current <= _ZERO:
         # The caller's margin floor already refuses a zero or negative price,
@@ -174,7 +198,7 @@ def price_to_charge(current: Decimal, expected: Decimal) -> Decimal | None:
     drift = abs(current - expected) / current * _HUNDRED
     if drift > PRICE_DRIFT_TOLERANCE_PCT:
         return None
-    return min(current, expected)
+    return current
 
 
 __all__ = [

@@ -232,7 +232,80 @@ Two details that are load-bearing rather than incidental:
   That route uses Starlette's `:path` convertor, which compiles to `.*` and
   swallows the whole subtree; Starlette takes the first full match in
   declaration order.
-- The ±2% price-drift rule is spec §8.4 implemented as written, and it lets a
-  merchant quote 2% low on every order. It is recorded at
-  `pricing.price_to_charge` and in the runbook's known-gaps section; changing
-  it is one line, and it is the owner's call, not a maintainer's.
+- The ±2% price-drift rule was spec §8.4 implemented as written — execute at
+  the lower of our price and the merchant's — and it let a merchant quote 2%
+  low on every order. The owner ruled on that the same day; see the amendment
+  below, which is now what the code does.
+
+## Amendment: the ±2% band is a tolerance, not a bid (2026-09-07)
+
+Owner decision, taken the day M2 landed and before any reseller had a key.
+
+### Context
+
+Decision-era §8.4, and `pricing.price_to_charge` implementing it, executed an
+in-band order at `min(current, expected)`. The Consequences section above
+recorded that this lets a merchant quote 2% low on every order and left the
+call to the owner. They have made it.
+
+What tipped it was that the leak is one-directional, unbounded by the one
+control that looks like it should bound it, and unmeasurable after the fact:
+
+- `GET /merchant/v1/catalog` is live-computed and never cached (decision 1's
+  surface, `price_list.py`), so a merchant can read our exact price moments
+  before ordering and send `expected_price = current × 0.98`. Drift is exactly
+  the tolerance, the band accepts it, and `min()` took their number — a
+  guaranteed 2% off wholesale on every order, obtained by reading our own
+  published contract. On the default 7% markup that is ~31% of the margin
+  (2.14 of the 7.00 we make on a 100.00 cost).
+- **The margin floor does not bound it.** `violates_margin_floor` is evaluated
+  against _our_ price in `quote.price_for`, before the drift rule runs, and the
+  price actually charged is never re-checked. At a floor-level markup the sale
+  goes negative: cost 100.00 with `b2b_markup_pct = 2` prices at 102.00 and
+  clears a 2% floor exactly, while a merchant sending 99.96 was charged below
+  our cost.
+- It needs no adversary. A client that caches the catalog does the same thing
+  whenever our price ticks up, and the asymmetry means a stale-_high_ quote
+  costs us nothing while a stale-_low_ one costs us the difference, every time.
+- Nothing records it. `expected_price` reaches only the rejection body and the
+  request digest; a placed order stores the charged price and neither our price
+  at that moment nor theirs. Spec §8.5's snapshots would show a lower price
+  charged, with nothing to attribute it to.
+
+### Decision
+
+**Keep the ±2% band as an accept/reject tolerance. Always charge our current
+price.** Drift ≤ 2% → the order proceeds at `current`; drift > 2% → unchanged,
+`422 price_changed` carrying `current_price`.
+
+The band earns its keep on the accept/reject axis alone: it stops an order
+failing over a cent of genuine drift, and the merchant is still protected in
+the direction that matters to them — they never pay more than 2% above the
+price they last read, and a larger move is refused outright with our exact
+current price in the body, before their deposit is touched. What they lose is a
+guarantee nobody should have written down: that quoting low caps what they pay.
+
+The Steam-gifts flow (ADR-0066) keeps its own rule. The pattern was borrowed
+from it, but its counterparty is a human at a checkout who cannot compute the
+exploit; a reseller's is a server that can, on every order, forever.
+
+### Consequences
+
+- **This is a deliberate change to a published contract**, and it lands now
+  precisely because `/merchant/v1` has zero integrators — the same reasoning as
+  decision 7's `detail` retyping. After a pilot integrates, the same change
+  would be a `/merchant/v2`.
+- No request or response field changes shape, and `docs/api/openapi.json` does
+  not move. The only observable difference is `price_usd` (and the deposit
+  debit) on an order whose `expected_price` was below ours: it is now our
+  price. An integrator who priced their own resale off the response reads the
+  right number either way.
+- The rule still has exactly one home, `pricing.price_to_charge`, with the
+  reasoning above in its docstring so the next maintainer meets it before
+  changing the line. `quote.price_for` decides nothing about drift on its own.
+- Spec §8.4 is superseded on this point and says so, in the spec, dated. The
+  module README's "Price drift" section states the new rule and, explicitly,
+  what a merchant is _not_ protected from.
+- The runbook's known-gaps entry for the giveaway is closed and kept as a
+  closed entry, so a regression is recognisable: an in-band order whose
+  `price_usd` is below the SKU's computed list price.

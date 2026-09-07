@@ -366,34 +366,13 @@ The steps:
 
 ## Known gaps before a pilot integrates
 
-Two things a reseller can meet on day one. Neither is a bug in the sense of
-"something broke"; each is a decision or an omission with a price, and the
-price is worth knowing before it is paid. A third gap — error bodies that did
-not match the published contract — was closed in M2 and is recorded at the end
-so a regression is recognisable.
+One thing a reseller can meet on day one. It is not a bug in the sense of
+"something broke"; it is an omission with a price, and the price is worth
+knowing before it is paid. Two other gaps — the ±2% drift giveaway, and error
+bodies that did not match the published contract — were closed in M2 and are
+recorded at the end so a regression is recognisable.
 
-### 1. The ±2% drift rule gives 2% away, per order, forever
-
-`expected_price` within ±2% of our price executes at the **lower** of the two
-(spec §8.4, `pricing.price_to_charge`). `/catalog` is live-computed and never
-cached, so a merchant can read the current price and always send
-`current × 0.98`, taking a guaranteed 2% off wholesale on **every** order. On
-the default 7% markup that is roughly a quarter of the margin, and the margin
-floor does not catch it — 7% − 2% still clears the 2% floor.
-
-The rule came from the Steam-gifts flow, where the counterparty is a human who
-cannot compute that. Here it is a machine that can.
-
-- **Cost of leaving it:** a quarter of the B2B margin, if any merchant notices.
-  Nothing alerts on it; you would find it by comparing charged prices to list.
-- **Fix:** one line in `pricing.price_to_charge` — `return current` for
-  quote-only, or an asymmetric band that accepts a higher expectation and
-  refuses a lower one. It is the owner's call; until they rule, the spec
-  governs.
-- **Watch for it** by comparing `order_items.unit_price_usd` against the SKU's
-  computed list price on merchant orders.
-
-### 2. No refund path
+### No refund path
 
 Covered above. `refunded_usd` is `"0.00"` on every order; a failed delivery is
 settled by a manual deposit credit that the order read does not show.
@@ -405,6 +384,36 @@ settled by a manual deposit credit that the order read does not show.
 - **Fix:** M3, which adds the refund posting (the module README's posting table
   already reserves the row) and the outbound webhook. `refunded_usd` starts
   telling the truth the moment that row is posted, with no contract change.
+
+### Closed in M2: the ±2% drift giveaway
+
+`expected_price` within ±2% of our price used to execute at the **lower** of
+the two, so a merchant could read the never-cached `/catalog` and always send
+`current × 0.98` — a standing 2% off wholesale on **every** order, ~31% of the
+margin at the default 7% markup, and not caught by the margin floor, which is
+evaluated on our price before the drift rule and never re-checks what was
+charged. The owner ruled on 2026-09-07: the band stays an accept/reject
+tolerance and an in-band order is always charged **our** price
+(`pricing.price_to_charge`, spec §8.4 as superseded, ADR-0069's amendment).
+
+**Spotting a regression from the outside:** a merchant order whose
+`order_items.unit_price_usd` is below the SKU's computed list price for that
+merchant. Nothing alerts on it, so this is a query, not a monitor:
+
+```sql
+-- merchant orders charged under our own price. Expect zero rows.
+SELECT o.id, o.merchant_id, oi.unit_price_usd, s.sku_code, s.cost_usdt, s.b2b_markup_pct
+FROM orders o
+JOIN order_items oi ON oi.order_id = o.id
+JOIN skus s ON s.id = oi.sku_id
+WHERE o.merchant_id IS NOT NULL
+  AND s.cost_usdt IS NOT NULL
+  AND oi.unit_price_usd < CEIL(s.cost_usdt * (1 + s.b2b_markup_pct / 100) * 100) / 100;
+```
+
+A merchant with a negotiated `markup_adjustment_pp` prices below that figure
+legitimately — the query does not read it, so check the merchant row before
+treating a hit as a regression.
 
 ### Closed in M2: the non-conforming validation bodies
 

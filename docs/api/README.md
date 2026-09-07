@@ -367,15 +367,21 @@ code would resolve like a guest's and take a retail discount off an
 already-wholesale price.
 
 `expected_price` is reconciled by `pricing.price_to_charge`, the single home
-of spec §8.4's rule: drift within ±2% executes at the **lower** of the two,
-beyond it is `422 price_changed` carrying `current_price`. That is the spec as
-written, and it is worth knowing what it permits: a merchant can read
-`/catalog` (live-computed, never cached) and always send `current × 0.98`,
-taking a guaranteed 2% off wholesale. On the default 7% markup that is about a
-quarter of the margin, and the margin floor does not catch it. The rule came
-from the Steam-gifts flow, where the counterparty is a human; here it is a
-machine. Raised with the owner; until they rule, the spec governs, and
-changing it is one line in `pricing.price_to_charge`.
+of spec §8.4's rule: drift within ±2% executes at **our** current price,
+beyond it is `422 price_changed` carrying `current_price`. The band is an
+accept/reject tolerance, never a bid — the merchant's number decides whether
+the order proceeds and never what it costs.
+
+The rule used to take the **lower** of the two, which is what spec §8.4 said
+as written; the owner amended it on 2026-09-07 (ADR-0069's amendment, and the
+reasoning in full at `pricing.price_to_charge`) because `/catalog` is
+live-computed and never cached, so a merchant could read our price and always
+send `current × 0.98` for a guaranteed 2% off wholesale — about 31% of the
+margin at the default 7% markup, unbounded by `violates_margin_floor` (which
+is evaluated on our price, before the drift rule, and never re-checks what was
+charged), and invisible afterwards because no order stores what the merchant
+quoted. It landed now, at zero integrators, for the same reason the `detail`
+retyping did: after a pilot integrates it would be a `/merchant/v2`.
 
 The margin floor is the same `pricing.violates_margin_floor` against the same
 `settings.merchant_margin_floor_pct` the catalog applies, so a SKU the price

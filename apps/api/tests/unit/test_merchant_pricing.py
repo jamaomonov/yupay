@@ -110,21 +110,27 @@ def test_price_exactly_at_the_floor_does_not_violate() -> None:
     assert violates_margin_floor(cost, price, floor_pct) is False
 
 
-# ---------- the ±2% drift rule (spec §8.4) ----------
+# ---------- the ±2% drift rule (spec §8.4, amended by the owner 2026-09-07) ----------
 
 
 @pytest.mark.parametrize(
-    ("expected", "charged"),
+    "expected",
     [
-        pytest.param("98.00", "98.00", id="exactly-2pct-below-is-inside"),
-        pytest.param("102.00", "100.00", id="exactly-2pct-above-is-inside"),
-        pytest.param("99.50", "99.50", id="slightly-below-charges-theirs"),
-        pytest.param("100.50", "100.00", id="slightly-above-charges-ours"),
-        pytest.param("100.00", "100.00", id="agreement"),
+        pytest.param("98.00", id="exactly-2pct-below-is-inside"),
+        pytest.param("102.00", id="exactly-2pct-above-is-inside"),
+        pytest.param("99.50", id="slightly-below"),
+        pytest.param("100.50", id="slightly-above"),
+        pytest.param("100.00", id="agreement"),
     ],
 )
-def test_drift_inside_the_band_charges_the_lower_of_the_two(expected: str, charged: str) -> None:
-    assert price_to_charge(Decimal("100.00"), Decimal(expected)) == Decimal(charged)
+def test_drift_inside_the_band_always_charges_our_price(expected: str) -> None:
+    """The band accepts or rejects; it never sets the price.
+
+    Whichever side of ours the merchant's number falls, an accepted order
+    costs ``current``. Charging the lower of the two — what the rule did
+    until 2026-09-07 — is the regression this parametrisation catches.
+    """
+    assert price_to_charge(Decimal("100.00"), Decimal(expected)) == Decimal("100.00")
 
 
 @pytest.mark.parametrize(
@@ -139,21 +145,52 @@ def test_drift_outside_the_band_is_refused(expected: str) -> None:
 
 def test_the_band_is_a_percentage_of_our_price_not_a_flat_amount() -> None:
     """A cheap SKU's band is cents; an expensive one's is dollars."""
-    assert price_to_charge(Decimal("1.00"), Decimal("0.98")) == Decimal("0.98")
+    assert price_to_charge(Decimal("1.00"), Decimal("0.98")) == Decimal("1.00")
     assert price_to_charge(Decimal("1.00"), Decimal("0.97")) is None
-    assert price_to_charge(Decimal("500.00"), Decimal("490.00")) == Decimal("490.00")
+    assert price_to_charge(Decimal("500.00"), Decimal("490.00")) == Decimal("500.00")
     assert price_to_charge(Decimal("500.00"), Decimal("489.99")) is None
 
 
-def test_the_documented_gaming_vector_is_real_and_bounded() -> None:
-    """The rule as specified lets a merchant take the full tolerance, always.
+def test_quoting_low_buys_at_our_price_and_takes_no_discount() -> None:
+    """The old rule's standing 2% giveaway, pinned closed.
 
-    Pinned rather than fixed: the spec is the owner's decision and this is
-    what it says. The point of the test is that the discount is exactly the
-    tolerance and nothing more — so if someone widens
-    ``PRICE_DRIFT_TOLERANCE_PCT`` believing it only affects error handling,
-    this says out loud what else moves with it.
+    ``/catalog`` is live-computed and never cached, so a merchant can read
+    our exact price and send ``current × (1 - tolerance)`` on every order.
+    Under ``min(current, expected)`` that was a guaranteed 2% off wholesale —
+    ~31% of the margin at the default 7% markup, and unbounded by
+    :func:`violates_margin_floor`, which runs on our price before this rule
+    and never re-checks what was charged. Owner decision 2026-09-07: the
+    quote is a tolerance, not a bid. If this test starts failing, an order
+    is being charged the merchant's number again.
     """
     ours = Decimal("107.00")
-    always_shaved = ours * (Decimal("1") - PRICE_DRIFT_TOLERANCE_PCT / Decimal("100"))
-    assert price_to_charge(ours, always_shaved) == always_shaved
+    shaved = ours * (Decimal("1") - PRICE_DRIFT_TOLERANCE_PCT / Decimal("100"))
+    charged = price_to_charge(ours, shaved)
+    assert charged is not None
+    assert charged == ours
+    assert charged > shaved
+
+
+def test_a_floor_level_markup_can_no_longer_be_quoted_below_cost() -> None:
+    """The concrete loss the old rule allowed: a sale under our own cost.
+
+    Cost 100.00 at a 2% markup prices at 102.00 and clears a 2% margin floor
+    exactly; a merchant sending 99.96 drifts by exactly the tolerance, so the
+    band accepts. The lower-of-the-two rule charged 99.96 — below cost, with
+    the floor already satisfied and never re-evaluated.
+    """
+    cost = Decimal("100.00")
+    ours = merchant_price(cost, Decimal("2"))
+    assert ours == Decimal("102.00")
+    assert violates_margin_floor(cost, ours, Decimal("2")) is False
+    below_cost = Decimal("99.96")
+    charged = price_to_charge(ours, below_cost)
+    assert charged is not None
+    assert charged == ours
+    assert charged > cost
+
+
+def test_a_non_positive_price_is_refused_rather_than_divided_by() -> None:
+    """``current`` is the drift denominator; a zero must not reach it."""
+    assert price_to_charge(Decimal("0"), Decimal("1.00")) is None
+    assert price_to_charge(Decimal("-1.00"), Decimal("1.00")) is None

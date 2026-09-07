@@ -14,9 +14,9 @@ place instead of being scattered through a placement flow.
 
 Nothing about the price is *decided* here either — the formula is
 ``pricing.merchant_price`` over ``pricing.effective_cost``, the floor is
-``pricing.violates_margin_floor``, the ±2 % rule is ``pricing.price_to_charge``,
-and buyability is ``orders.sku_is_buyable``, shared with retail checkout. This
-module sequences them and names the failure.
+``pricing.violates_margin_floor``, the ±2 % accept/reject band is
+``pricing.price_to_charge``, and buyability is ``orders.sku_is_buyable``,
+shared with retail checkout. This module sequences them and names the failure.
 """
 
 from __future__ import annotations
@@ -143,7 +143,11 @@ def price_for(sku: Sku, cost: Decimal, merchant: Merchant, body: MerchantOrderCr
         body: The request, for ``expected_price``.
 
     Returns:
-        The price to charge.
+        The price to charge, which is always **ours**. ``expected_price`` is
+        an accept/reject tolerance and not a bid (spec §8.4 as amended by the
+        owner on 2026-09-07): inside the ±2% band the order proceeds at our
+        number, never at the merchant's, and the reasoning is written out at
+        :func:`pricing.price_to_charge`.
 
     Raises:
         ValidationError: ``margin_floor`` when our own price fails the floor,

@@ -638,13 +638,18 @@ async def test_a_sku_id_that_is_not_a_uuid_is_refused_at_the_parse_boundary(
     assert r.status_code == 422, r.text
 
 
-# ---------- the ±2% drift rule (spec §8.4) ----------
+# ---------- the ±2% drift rule (spec §8.4, amended by the owner 2026-09-07) ----------
 
 
-async def test_a_price_below_ours_but_inside_the_band_charges_the_merchants_number(
+async def test_a_price_below_ours_but_inside_the_band_is_still_charged_at_ours(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """Spec §8.4: within ±2%, execute at the LOWER of the two."""
+    """Spec §8.4 as amended: within ±2% the order executes at OUR price.
+
+    Until 2026-09-07 this charged the lower of the two and the merchant kept
+    the difference. The band decides whether the order proceeds; it has never
+    decided anything else since.
+    """
     merchant_id = await _new_merchant(integration_client, admin_headers)
     key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
     await _credit(integration_client, admin_headers, merchant_id, "10.00")
@@ -660,14 +665,54 @@ async def test_a_price_below_ours_but_inside_the_band_charges_the_merchants_numb
     )
 
     assert r.status_code == 201, r.text
-    assert r.json()["price_usd"] == "105.90"
-    assert await _balance(db_session, merchant_id) == Decimal("104.10")
+    assert r.json()["price_usd"] == "107.00"
+    # 210.00 credited, 107.00 charged — not 105.90, which would leave 104.10.
+    assert await _balance(db_session, merchant_id) == Decimal("103.00")
+
+
+async def test_quoting_the_full_two_percent_low_buys_at_our_price_and_takes_no_discount(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The standing giveaway the old rule allowed, pinned closed end to end.
+
+    ``/catalog`` is live-computed and never cached, so a merchant can read our
+    exact price and send ``current × 0.98`` on every order — drift is exactly
+    the tolerance, so the band accepts. Under ``min(current, expected)`` that
+    was a guaranteed 2% off wholesale, ~31% of the margin at the default 7%
+    markup, bounded by nothing (the margin floor runs on our price, before the
+    drift rule) and recorded nowhere. If this fails, the discount is back.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "200.00")
+    # cost 100, markup 7 → our price is 107.00. 107.00 × 0.98 = 104.86.
+    sku_id = await _seeded(db_session, cost_usdt=Decimal("100"))
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "shaved-1", "sku_id": sku_id, "expected_price": "104.86"},
+    )
+
+    assert r.status_code == 201, r.text
+    assert r.json()["price_usd"] == "107.00"
+    assert r.json()["balance_usd"] == "93.00"
+    # The deposit falls by our price, to the cent — 200.00 - 104.86 = 95.14 is
+    # the number that must never come back.
+    assert await _balance(db_session, merchant_id) == Decimal("93.00")
+    item = (
+        await db_session.execute(
+            select(OrderItem).where(OrderItem.order_id == r.json()["order_id"])
+        )
+    ).scalar_one()
+    assert item.unit_price_usd == Decimal("107.00")
 
 
 async def test_a_price_above_ours_but_inside_the_band_still_charges_ours(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """The lower of the two, in the other direction — we never take the windfall."""
+    """The other direction, unchanged by the amendment: we take no windfall either."""
     merchant_id = await _new_merchant(integration_client, admin_headers)
     key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
     await _credit(integration_client, admin_headers, merchant_id, "210.00")

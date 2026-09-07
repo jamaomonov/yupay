@@ -253,6 +253,9 @@ Flow:
 3. Compute price via `merchants.pricing`. Compare to the request's
    `expected_price`: within ±2% ⇒ charge the **lower** of the two; outside ⇒
    `422 price_changed` carrying the current price.
+   _(Superseded 2026-09-07 by an owner decision taken after this task shipped:
+   an in-band order is charged **our** price. See ADR-0069's amendment and
+   `merchants.pricing.price_to_charge`.)_
 4. Margin floor (`merchant_margin_floor_pct`) violated ⇒ `422 margin_floor`.
 5. Insufficient deposit ⇒ `409 insufficient_deposit` **before** creating an
    order (no orphan rows).

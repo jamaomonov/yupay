@@ -228,9 +228,10 @@ class MerchantOrderCreateIn(BaseModel):
     #: ``uuid = 'whatever'``, which is a ``DataError`` and a 500 where a clean
     #: refusal belongs.
     sku_id: str
-    #: The price you last read from ``/catalog``. Within ±2% of ours the order
-    #: executes at the **lower** of the two; outside it, ``422 price_changed``
-    #: carries our current price (spec §8.4).
+    #: The price you last read from ``/catalog``. A tolerance, not a bid:
+    #: within ±2% of ours the order proceeds and is charged at **our** current
+    #: price; outside it, ``422 price_changed`` carries that price (spec §8.4,
+    #: amended 2026-09-07).
     expected_price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     #: Whatever the SKU's product requires (a player id, a login). Validated
     #: against the same schema the storefront uses
@@ -265,8 +266,9 @@ class MerchantOrderOut(BaseModel):
     order_id: str
     status: str
     sku_id: str
-    #: What this order actually charged — after the ±2% rule, so it may be
-    #: your ``expected_price`` rather than ours. Fixed from here on: whatever
+    #: What this order actually charged — always **our** price at the moment
+    #: you ordered, which is within ±2% of the ``expected_price`` you sent or
+    #: the order would have been refused. Fixed from here on: whatever
     #: fulfilment ends up costing us is our problem, not yours (spec §8.4).
     price_usd: UsdPrice
     #: Your deposit after this order.

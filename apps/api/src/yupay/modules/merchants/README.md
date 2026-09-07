@@ -75,7 +75,7 @@ price = ceil_to_cent(
 )
 ```
 
-Four pure functions, all `Decimal`, no DB access:
+Five pure functions, all `Decimal`, no DB access:
 
 - `effective_cost(sku) -> Decimal | None` reads `sku.cost_usdt`. `None`
   means the SKU is **not sellable B2B** — excluded from the merchant
@@ -93,6 +93,13 @@ Four pure functions, all `Decimal`, no DB access:
   `CHECK` on `b2b_markup_pct`) and cost spikes a stale markup no longer
   covers. Callers read `settings.merchant_margin_floor_pct` (default `2`)
   and pass it in; the pure functions never read settings themselves.
+- `price_to_charge(current, expected)` is the single home of the ±2% drift
+  rule (spec §8.4, amended by the owner 2026-09-07): inside the band it
+  returns `current` — **our** price, never the merchant's and never the lower
+  of the two — and outside it returns `None`, which the order path turns into
+  `422 price_changed`. Its docstring carries why, in full. The order path
+  decides nothing about drift on its own, so the policy changes here or
+  nowhere.
 
 **Nothing else in the codebase may reimplement this formula.** The one
 sanctioned exception is the admin SPA's client-side price _preview_ next to
@@ -739,12 +746,25 @@ defeats the whole mechanism and will place duplicate orders.
 
 #### Price drift
 
-`expected_price` is a safety interlock, not a bid.
+`expected_price` is a safety interlock, not a bid. It decides **whether** the
+order proceeds; it never decides what it costs.
 
-- Within **±2%** of our current price, the order executes at the **lower** of
-  the two.
+- Within **±2%** of our current price, the order proceeds and is charged at
+  **our** price — not yours, and not the lower of the two.
 - Outside it, `422 price_changed`, with our `current_price` in the body. Re-read
   `/catalog` and decide.
+
+So what you are protected from is a price that moved out from under you: you
+will never be charged more than 2% above the number you sent, and a bigger move
+is refused outright with our exact current price in the body, before anything is
+debited. What you are **not** promised is that a stale-low `expected_price` caps
+what you pay — quoting 2% under our price buys at our price, not at yours.
+
+_(Changed 2026-09-07, before any integrator existed: within the band the order
+used to execute at the lower of the two prices. `POST /orders` is the only
+endpoint affected, no request or response field changed shape, and the only
+observable difference is `price_usd` on an order whose `expected_price` was
+below ours.)_
 
 #### Errors
 
@@ -1262,6 +1282,6 @@ appears on `/transactions`, while the order's own `refunded_usd` stays
 `"0.00"`, because no surface can book a transaction against an order. And there
 is **no push of any kind** — poll the order read.
 
-Those two and the ±2% drift giveaway are written up with what each costs in
+Both are written up with what each costs in
 `docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates".
 Read it before you put the first reseller on this.

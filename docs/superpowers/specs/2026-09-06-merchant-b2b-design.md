@@ -173,8 +173,17 @@ sold at a garbage price. Admin report: "visible_b2b but no cost."
 ### 8.4 Drift and fixing
 
 - `POST /merchant/v1/orders` requires `expected_price`. Drift ≤ ±2% ⇒ execute
-  at the **lower** of the two. Beyond ⇒ `422 price_changed` carrying the
-  current price (the proven Steam-gifts pattern).
+  at ~~the **lower** of the two~~ **our current price**. Beyond ⇒
+  `422 price_changed` carrying the current price (the Steam-gifts pattern,
+  minus the part that only holds against a human).
+  **Superseded 2026-09-07 _(owner)_:** the band stays as an accept/reject
+  tolerance and the order is always charged at our price. Taking the lower of
+  the two let a merchant read the never-cached `/catalog` and send
+  `current × 0.98` on every order — a standing 2% off wholesale (~31% of the
+  margin at the default 7% markup), not bounded by the margin floor, which is
+  evaluated on our price before the drift rule and never re-checks what was
+  charged, and not recorded anywhere afterwards. See ADR-0069's amendment;
+  the rule's one home is `merchants.pricing.price_to_charge`.
 - From creation the price is **fixed**; whatever fulfilment costs us is our
   problem, not the merchant's.
 - The price-list endpoint carries `updated_at` per row; merchants poll. No

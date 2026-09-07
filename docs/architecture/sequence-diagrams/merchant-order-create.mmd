@@ -33,11 +33,11 @@ sequenceDiagram
     alt violates_margin_floor(settings.merchant_margin_floor_pct)
         M-->>R: 422 margin_floor
     end
-    M->>P: price_to_charge(ours, expected_price) -- spec 8.4
+    M->>P: price_to_charge(ours, expected_price) -- spec 8.4, amended 2026-09-07
     alt drift > +/-2%
         M-->>R: 422 price_changed {current_price}
     else drift <= +/-2%
-        P-->>M: the LOWER of the two
+        P-->>M: OUR price -- the band accepts or rejects, it never sets the price
     end
 
     M->>DB: deposit_balance -- the early read, before any row is written
