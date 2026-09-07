@@ -293,8 +293,10 @@ Every endpoint sits behind `merchants.auth.merchant_auth` — `401` unsigned,
 the five are reads, which is outside AGENTS.md §9's scope; `POST
 /merchant/v1/orders` is a mutation and is exempt on purpose, being idempotent
 on the caller's own `merchant_order_id` instead (spec §9.3, recorded as the
-exception in AGENTS.md §9). Spec §9.1's v1 endpoint list is complete as of
-M2 Task 5.
+exception in AGENTS.md §9). All five endpoints landed by M2 Task 5. Spec §9.1
+sketches a sixth row, `POST /merchant/v1/validate/…`, deliberately left out of
+v1 — it is honest only for the SKUs a real player-check provider covers, and
+the spec's own qualifier is "never a fake approver".
 
 `GET /merchant/v1/me` returns `{merchant_id, title, status, balance_usd}`.
 The balance is the deposit ledger's signed posting sum, read live; there is no
@@ -495,13 +497,19 @@ Anything the storefront shows as an error, this shows too — no more, no less.
 `refunded_usd` is summed from the ledger (the debit legs on the merchant's
 `merchant_deposit` for transactions referencing this order), not stored on a
 flag. It reads a **direction, not an intent**, which is deliberate — it does
-not have to know the name M3 gives a refund — and the consequence is that any
-future transaction referencing this order and moving the deposit up (a support
-correction, a goodwill credit) also lands here. The README therefore describes
-it as "money that came back on this order" rather than as a refund. It is `"0.00"` for every order today because **nothing refunds a merchant
-order yet** — the module README's posting table marks that row _not
-implemented_ — and it is computed anyway so the field starts telling the truth
-the moment M3 posts the row, with no contract change.
+not have to know the name M3 gives a refund — so whatever M3 posts against the
+order lands here without a contract change. The README therefore describes it
+as "money that came back on this order" rather than as a refund.
+
+It is `"0.00"` for every order today, and the reason is stronger than "refunds
+are unbuilt": **no surface can book a transaction against an order's deposit at
+all.** `POST /admin/merchants/{id}/deposit-credits` — the manual settlement
+support performs for a failed delivery — posts
+`reference=(merchant, merchant_id)`, not `(order, order_id)`, so it moves
+`balance_usd` and appears on `/transactions` while leaving `refunded_usd` at
+zero. `docs/runbooks/merchant-b2b.md` spells out the manual settlement with
+that consequence attached, so an operator does not tell a merchant to look for
+it on the order read.
 
 ### `GET /merchant/v1/transactions` — the deposit ledger
 
@@ -548,8 +556,8 @@ poller comes back.
 stated rule rather than clamping. A cursor we cannot read is
 `422 invalid_cursor` — its own code because it is the one parameter a client
 builds from our own output. Both parameters are in the query, so both are
-covered by the signature (Task 2's fifth canonical field, which this endpoint
-is the first to exercise).
+covered by the signature (the raw query is the **fourth** of the canonical
+string's five fields, and this endpoint is the first to exercise it).
 
 **`decode_cursor` validates both halves, it does not merely parse them**, and
 that is load-bearing rather than defensive: everything surviving it is bound
@@ -562,8 +570,9 @@ check a _truncated_ cursor — a reseller's `VARCHAR(88)` column, a line-wrapped
 URL in a retry — reached `uuid < $2`, asyncpg raised `DataError`, and it
 escaped as a **500** from an endpoint whose published contract promises a
 recoverable 422. That is the same class as the missing app-wide
-`RequestValidationError` handler below, one notch worse (a 500, not a
-non-conforming 422 body), and unlike the handler it was not pre-existing.
+`RequestValidationError` handler (see "Errors that are not problem+json"
+below), one notch worse (a 500, not a non-conforming 422 body), and unlike the
+handler it was not pre-existing.
 
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so
@@ -585,3 +594,33 @@ limit was never the control protecting it.
 
 The full third-party contract, sample bodies included, is
 `apps/api/src/yupay/modules/merchants/README.md`.
+
+## Errors that are not problem+json
+
+"Conventions" above says errors are RFC 7807. That holds for every `AppError`
+— `core.errors.app_error_handler` renders those, and it is the only error
+handler `bootstrap.create_app` registers besides slowapi's. Three answers get
+past it, and they are worth knowing about before a third party discovers them:
+
+- **`RequestValidationError` — no app-wide handler exists.** Anything a
+  Pydantic request model or a `Query`/`Path` constraint refuses answers with
+  FastAPI's own `{"detail": [ … ]}` at `422` and `Content-Type:
+application/json`: no `type`, no `code`, not problem+json. Every surface has
+  this, and it has always had it, but `/merchant/v1` is the first whose error
+  table is a **published contract**, so it is the first place it costs
+  something. Two concrete cases there: `GET /merchant/v1/transactions?limit=0`
+  (or `201`), and any body `machine_schemas.MerchantOrderCreateIn` rejects — a
+  missing field, an unknown one, `expected_price` with three decimals. One
+  `app.add_exception_handler(RequestValidationError, …)` that renders the
+  existing `validation` type URI closes both and every other surface at the
+  same time; until then the module README tells integrators to branch on the
+  status code and read a missing `code` as "my request was malformed".
+- **An unhandled exception.** Starlette's `ServerErrorMiddleware` answers a
+  bare `Internal Server Error` as `text/plain`. Nothing raises the `AppError`
+  base class directly, so `https://app.yupay.uz/errors/internal` is a type URI
+  no response actually carries today.
+- **slowapi's `429`.** `_rate_limit_exceeded_handler` writes its own body.
+  `/merchant/v1` is exempt from that tier
+  (`bootstrap._exempt_self_authenticating_routes`) precisely so its 429s stay
+  problem+json; `/api/v1` is not, so the storefront's throttle body differs in
+  shape from every other error it can return.

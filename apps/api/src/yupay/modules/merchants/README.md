@@ -6,6 +6,9 @@ other part of the merchant B2B feature (the machine API, the cabinet BFF, the
 deposit ledger, admin) builds on.
 
 **Spec:** `docs/superpowers/specs/2026-09-06-merchant-b2b-design.md`
+**Decisions:** ADR-0068 (the foundation), ADR-0069 (the machine API)
+**Runbook:** `docs/runbooks/merchant-b2b.md` — onboarding, key rotation, and
+the known gaps a pilot integrator will meet
 
 ## Terminology note
 
@@ -43,9 +46,9 @@ caller may re-derive a direction from it:
 | Order charge (M2)           | `C merchant_deposit / D house_payments_received` | `merchant_order_charge`   |
 | (M3) refund on failure      | `D merchant_deposit / C house_payments_received` | _not implemented_         |
 
-The first two rows are live. `service.credit_deposit` posts the credit with
+The first two rows are live. `deposit.credit_deposit` posts the credit with
 the caller's idempotency key, so a replay returns the original transaction;
-`service.charge_deposit` posts the debit keyed `merchant-order:{order_id}`,
+`deposit.charge_deposit` posts the debit keyed `merchant-order:{order_id}`,
 which makes a double debit impossible even if the order path were re-entered
 for one order. `charge_deposit` is also **where the overdraw guard binds**: it
 locks the `merchant_deposit` row with `SELECT … FOR UPDATE` before reading the
@@ -54,7 +57,7 @@ orders serialise instead of both spending the same dollars. The order path's
 earlier balance read exists only to answer a clean `409` before any row is
 written.
 
-`service.deposit_balance` reads the balance (`Decimal("0")` when no account
+`deposit.deposit_balance` reads the balance (`Decimal("0")` when no account
 exists yet — the read creates nothing). Freezing a merchant
 (`service.set_status`) blocks orders — `merchant_auth` refuses a frozen
 merchant with `403 merchant_frozen` — never money in: support can always
@@ -112,8 +115,9 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   with its USD deposit balance joined in **one grouped query**
   (`admin.list_merchants_with_balances`, the batch variant of
   `deposit_balance` — no per-merchant balance read).
-- `POST /admin/merchants/{id}/freeze|unfreeze` — persists `status` only in
-  M1; ordering is what M2 will block.
+- `POST /admin/merchants/{id}/freeze|unfreeze` — persists `status`. M1 only
+  recorded it; since M2 it is enforced, by `merchant_auth` refusing every
+  `/merchant/v1` request from a frozen merchant with `403 merchant_frozen`.
 - `POST /admin/merchants/{id}/deposit-credits` — posts via
   `service.credit_deposit`. **Requires** `Idempotency-Key`; the ledger key
   is namespaced `merchant-credit:{merchant_id}:{client_key}` so one
@@ -189,13 +193,17 @@ below without reading our source, so it must stay complete and it must not
 change without a new API version — `/merchant/v1` is consumed by code nobody
 but its owner can redeploy.
 
-> **Status:** the authentication layer, the two read endpoints
-> (`GET /merchant/v1/me`, `GET /merchant/v1/catalog`) and order placement
-> (`POST /merchant/v1/orders`) are live. The order read and the transaction
-> ledger land with the rest of M2. The scheme is final.
+> **Status:** every endpoint documented below is live — authentication, the
+> two reads, order placement, the order read and the deposit ledger. The
+> scheme is final. What does not exist yet is outbound webhooks, any refund
+> path, and the self-service cabinet; see "Status" at the end of this file.
 
 Base URL: **`https://api.yupay.uz`**. All requests are HTTPS. All strings are
 UTF-8. Every `\n` below is a single LF byte (`0x0A`) — never CRLF.
+
+**In a hurry?** ["Your first order in ten minutes"](#your-first-order-in-ten-minutes)
+is this same contract as a runnable script, with signatures you can check
+offline before you have an account.
 
 ### Credentials
 
@@ -390,18 +398,40 @@ is a short discriminator on the auth and business failures. A sample body:
 
 The complete set of `type` URIs this API can return:
 
-| `type`                                             | Status | When                                              |
-| -------------------------------------------------- | ------ | ------------------------------------------------- |
-| `https://app.yupay.uz/errors/unauthorized`         | 401    | Any authentication failure                        |
-| `https://app.yupay.uz/errors/forbidden`            | 403    | Frozen merchant, IP not allowed                   |
-| `https://app.yupay.uz/errors/not-found`            | 404    | No such order / SKU / resource                    |
-| `https://app.yupay.uz/errors/validation`           | 422    | Request body or parameters rejected               |
-| `https://app.yupay.uz/errors/conflict`             | 409    | Deposit too small, or an id reused for a new body |
-| `https://app.yupay.uz/errors/rate-limited`         | 429    | Either rate-limit axis                            |
-| `https://app.yupay.uz/errors/upstream-unavailable` | 502    | A supplier we depend on could not be reached      |
-| `https://app.yupay.uz/errors/internal`             | 500    | Our bug. Retry with a fresh signature; report it  |
+| `type`                                     | Status | When                                              |
+| ------------------------------------------ | ------ | ------------------------------------------------- |
+| `https://app.yupay.uz/errors/unauthorized` | 401    | Any authentication failure                        |
+| `https://app.yupay.uz/errors/forbidden`    | 403    | Frozen merchant, IP not allowed                   |
+| `https://app.yupay.uz/errors/not-found`    | 404    | No such order / SKU / resource                    |
+| `https://app.yupay.uz/errors/conflict`     | 409    | Deposit too small, or an id reused for a new body |
+| `https://app.yupay.uz/errors/validation`   | 422    | A value we rejected — see the caveat below        |
+| `https://app.yupay.uz/errors/rate-limited` | 429    | Either rate-limit axis                            |
 
 The `type` host is an identifier namespace, not a URL to fetch.
+
+#### Two answers that are **not** problem+json
+
+Write your error handling so it survives a response that does not parse as
+problem+json, because two exist and we would rather tell you than have you
+find out:
+
+- **A body or parameter rejected before our code runs.** Anything the schema
+  itself refuses — a missing `sku_id`, a misspelled `fulfilment_data`, an
+  `expected_price` with three decimals, `?limit=0` — answers `422` with the
+  framework's own body: `{"detail": [ … ]}`, sent as plain
+  `application/json`. Same status, no `type` and no `code`. Everything our own
+  code refuses (`price_changed`, `margin_floor`, `invalid_cursor`, a
+  `fulfillment_data` field the product's schema rejects) is proper
+  problem+json. **Branch on the status code first, and treat a missing `code`
+  as "my request was malformed".**
+- **A `5xx`.** No endpoint here raises one deliberately: nothing on this
+  surface calls a supplier while you wait (see "Fulfilment is asynchronous,
+  always"), so there is no upstream to be unavailable. A `500` means an
+  unhandled bug on our side and arrives as a bare `Internal Server Error`, not
+  problem+json; a `502` or `504` is our edge, not our application — most
+  likely a deploy, which holds and retries for 15 s before giving up. Both are
+  safe to retry: resend the identical signed request if it is still inside the
+  ±300 s window, re-sign if it is not, and keep the same `merchant_order_id`.
 
 ### Rate limits
 
@@ -423,7 +453,13 @@ briefly has two.
 A key with an allowlist only authenticates from those addresses; entries are
 single addresses (`198.51.100.7`) or CIDR blocks (`203.0.113.0/24`), IPv4 or
 IPv6, and host bits inside a block are ignored when matching. No allowlist
-means no filter. Set one from the cabinet or ask support.
+means no filter.
+
+**Ask support to set one when the key is issued.** The allowlist is fixed at
+issue time — there is no endpoint that edits it, and no self-service cabinet in
+v1 — so changing it means issuing a new key and revoking the old one. That is
+the same zero-downtime rotation described above, so it costs a deploy, not an
+outage.
 
 ## Endpoints (`/merchant/v1`)
 
@@ -490,9 +526,13 @@ cursor you have to reconcile.
 }
 ```
 
-- **`sku_id` is what you order with** (`POST /merchant/v1/orders`).
-  `sku_code` is our stable human-readable code — good for your own mapping
-  table, and it never changes for a given `sku_id`.
+- **`sku_id` is what you order with** (`POST /merchant/v1/orders`), and it is
+  the only identifier here we promise never changes: it is a database key, so
+  it is never re-pointed and never reused. `sku_code` is our human-readable
+  code — it is stable in practice and it is what support will ask you for, but
+  an operator editing a SKU **can** rewrite it (as they can a brand or product
+  `slug`). Key your mapping table on `sku_id` and carry `sku_code` beside it
+  for humans, not the other way round.
 - **`price_usd` is your price**, cost plus this SKU's wholesale markup plus
   any adjustment negotiated for your account, rounded up to the cent. It is
   not the retail price and not another merchant's.
@@ -510,10 +550,13 @@ cursor you have to reconcile.
   before it is switched on for you; if you cache prices, re-read the full list
   on that notice as well as on `updated_at`.
 - **A SKU appears only if it is currently sellable to you.** It must be
-  B2B-visible, have a wholesale cost on file, and price above our minimum
-  margin. A SKU failing any of those is **absent rather than cheap** — never
-  listed at zero, and never listed at a price an order would then be rejected
-  for. Likewise a brand or product with nothing purchasable under it is absent
+  B2B-visible, have a wholesale cost on file, price above our minimum margin,
+  and carry a fixed denomination rather than a customer-chosen amount (a Steam
+  wallet top-up prices off a live FX rate, so there is no wholesale number to
+  quote — `item_unavailable` / `variable_amount` if you order one anyway). A
+  SKU failing any of those is **absent rather than cheap** — never listed at
+  zero, and never listed at a price an order would then be rejected for.
+  Likewise a brand or product with nothing purchasable under it is absent
   entirely, so you never have to iterate past empty shells.
 - **Read an absence as "not currently sellable", not as "deleted".** A SKU can
   leave the list and come back — because it went out of B2B distribution, or
@@ -541,12 +584,12 @@ page: your deposit **is** the payment.
 }
 ```
 
-| Field               | Required | Notes                                                                                                                             |
-| ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account.     |
-| `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                  |
-| `expected_price`    | yes      | The `price_usd` you last read for that SKU. At most two decimals. See "Price drift" below.                                        |
-| `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login). Same fields the storefront collects; we validate them and drop keys we don't know. |
+| Field               | Required | Notes                                                                                                                                                                                                                         |
+| ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account.                                                                                                 |
+| `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                                                                                                              |
+| `expected_price`    | yes      | The `price_usd` you last read for that SKU. At most two decimals. See "Price drift" below.                                                                                                                                    |
+| `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login) — the same fields the storefront collects, validated the same way. **Send those keys and nothing else**: an unrecognised key is a `422`, not a silently ignored one. See below. |
 
 One SKU per order. There is no `qty` and no line array: a reseller's basket
 does not have to be ours, and one line per order means "the order failed"
@@ -558,10 +601,22 @@ number would be a worse failure mode than accepting it. More than two decimals
 is refused in either spelling — a price does not have them, and silently
 rounding your number would be us deciding what you meant.
 
-Unknown fields in the body are **rejected**, not ignored — a typo'd
-`fulfilment_data` would otherwise become an order with no player id, delivered
-to nobody. (Unknown fields in our _responses_ are still yours to ignore; that
-rule is one-way on purpose.)
+Unknown fields are **rejected**, not ignored — at both levels, and for the
+same reason: a typo'd `fulfilment_data` would otherwise become an order with no
+player id, delivered to nobody.
+
+- **At the top level of the body.** Anything beside the four fields above is a
+  `422`.
+- **Inside `fulfillment_data`.** Only the keys that SKU's product declares are
+  accepted; any other key refuses the whole order with
+  `detail: "unexpected fields: [...]"` and an `extra.keys` listing them. So do
+  not pass your own correlation ids or spare diagnostics through here — put
+  them in your `merchant_order_id`, which is yours to shape.
+- **For a SKU that asks for nothing** (most vouchers), the only accepted values
+  are `{}` and leaving the field out. `{"note": "…"}` is a `422`.
+
+Unknown fields in our _responses_ are still yours to ignore; that rule is
+one-way on purpose.
 
 Success is `201`:
 
@@ -595,9 +650,11 @@ Success is `201`:
 **`merchant_order_id` is the idempotency key.** There is no
 `Idempotency-Key` header on this API and sending one does nothing.
 
-- Same id, **same body** → the order you already placed, returned again. No
-  second order, no second debit, whatever the repeat was: your retry, a proxy's
-  retry, or somebody replaying your traffic inside the ±300 s window.
+- Same id, **same body** → the order you already placed, returned again, and
+  as `201` — the status code does not distinguish a first placement from a
+  replay, `created_at` does. No second order, no second debit, whatever the
+  repeat was: your retry, a proxy's retry, or somebody replaying your traffic
+  inside the ±300 s window.
 - Same id, **different body** → `409 order_id_reused`. Same id means same
   order; if you meant a new one, use a new id.
 - Two merchants may use the same id. Scope is per account.
@@ -621,15 +678,16 @@ defeats the whole mechanism and will place duplicate orders.
 
 #### Errors
 
-| Status | `code`                 | Meaning                                                                           |
-| ------ | ---------------------- | --------------------------------------------------------------------------------- |
-| 404    | `item_unavailable`     | This SKU cannot be ordered right now. The body carries a `reason` — see below.    |
-| 422    | `price_changed`        | Drift beyond ±2%. Body carries `current_price` and the `expected_price` you sent. |
-| 422    | `margin_floor`         | Our own pricing for this SKU is misconfigured. Not your fault; tell support.      |
-| 422    | —                      | The body, or its `fulfillment_data`, did not validate.                            |
-| 409    | `insufficient_deposit` | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.  |
-| 409    | `order_conflict`       | A rare write conflict on our side. Retry the **same** id; it is safe.             |
-| 409    | `order_id_reused`      | This `merchant_order_id` already belongs to a different order.                    |
+| Status | `code`                 | Meaning                                                                                                                                                                                      |
+| ------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `item_unavailable`     | This SKU cannot be ordered right now. The body carries a `reason` — see below.                                                                                                               |
+| 422    | `price_changed`        | Drift beyond ±2%. Body carries `current_price` and the `expected_price` you sent.                                                                                                            |
+| 422    | `margin_floor`         | Our own pricing for this SKU is misconfigured. Not your fault; tell support.                                                                                                                 |
+| 422    | —                      | A `fulfillment_data` field the product's schema rejects. problem+json; `extra` names the `field` and the `reason` (`missing`, `type`, `pattern`, …).                                         |
+| 422    | _(no body of ours)_    | The request body itself did not parse — a missing field, an unknown one, more than two decimals on `expected_price`. Framework body, no `code`; see "Two answers that are not problem+json". |
+| 409    | `insufficient_deposit` | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.                                                                                                             |
+| 409    | `order_conflict`       | A rare write conflict on our side. Retry the **same** id; it is safe.                                                                                                                        |
+| 409    | `order_id_reused`      | This `merchant_order_id` already belongs to a different order.                                                                                                                               |
 
 `item_unavailable` reasons, because a 404 you cannot act on is a support
 ticket:
@@ -708,19 +766,28 @@ line as sent. Signing the decoded path is a `401`, not a `404`.
 }
 ```
 
-| Field            | Notes                                                                                                                                                                                                                                                                            |
-| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `status`         | `paid`, `fulfilling`, `fulfilled`, `delivered`, `failed`, `cancelled`. New values may be added; treat an unknown one as "still in flight".                                                                                                                                       |
-| `price_usd`      | What the order charged. Final.                                                                                                                                                                                                                                                   |
-| `refunded_usd`   | **Money that came back to your deposit on this order** — read as a direction on the ledger, not as a transaction named "refund", so a support correction or a goodwill credit booked against this order also shows here. `"0.00"` until any of that exists (refunds ship in M3). |
-| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                                                                                                               |
-| `delivery`       | `null` until something has actually been delivered, and present as soon as it has — it is the delivery record that decides, not `status`. Normally the two move together. See below.                                                                                             |
-| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. Kinds are `order.created`, `order.paid`, `order.fulfilling`, `order.delivered`, `order.failed`, `order.cancelled`; more may be added.                                                                                 |
+| Field            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `status`         | `paid`, `fulfilling`, `delivered`, `failed`. Those four are what a merchant order reaches today, in that order (`failed` from any of the first three). New values may be added — treat an unknown one as "still in flight".                                                                                                                                                                                                                                                                                        |
+| `price_usd`      | What the order charged. Final.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| `refunded_usd`   | **Money that came back to your deposit on this order.** Read off the ledger as a direction rather than as a transaction named "refund", so whatever M3 calls a refund will land here without a contract change. It is `"0.00"` on every order today, and not only because refunds are unbuilt: nothing we can do by hand books against an order either — a manual settlement is credited to your deposit as an ordinary top-up, so it shows on `GET /merchant/v1/transactions` and in `balance_usd`, and not here. |
+| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| `delivery`       | `null` until something has actually been delivered, and present as soon as it has — it is the delivery record that decides, not `status`. Normally the two move together. See below.                                                                                                                                                                                                                                                                                                                               |
+| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. A merchant order produces `order.created`, `order.paid`, `order.fulfilling`, `order.delivered` and `order.failed`. `order.cancelled` is accepted by the same filter but cannot occur on this channel today — cancelling is legal only before payment, and a merchant order is born paid. More kinds may be added.                                                                                                                                       |
 
-**The goods are in `delivery.artifact`.** Its shape follows `artifact_kind`:
-`voucher_code` carries `code` (or `codes` for a multi-code line), a licence
-carries `key`, a top-up carries a `message` or the `fulfillment_data` we acted
-on. Read the keys you know and ignore the rest — a new supplier can add one.
+**The goods are in `delivery.artifact`.** Two `artifact_kind` values exist
+today: `voucher_code`, which carries `code` (or `codes` for a line delivered as
+several), and `topup_receipt`, which confirms a credit applied directly to the
+account in your `fulfillment_data` and carries a `message` and/or that
+`fulfillment_data` echoed back. More kinds may be added.
+
+`artifact` is filtered through an allow-list, so the keys you may ever see are
+exactly: `code`, `codes`, `key`, `pin`, `serial`, `login`, `steam_login`,
+`message`, `note`, `fulfillment_data`, `kind`, `app_name`, `package_name`,
+`status`. Anything else we recorded — which supplier filled the line, their
+order id, our warehouse row — is ours and never leaves. Read the keys you know
+and ignore the rest; the safe rule is "`code`/`codes`/`key`/`pin`/`serial` are
+the redeemable ones, the rest is context".
 
 **Failure reasons** are a closed set. You will never get a supplier's own words
 or an operator's note: neither is switchable, and both are internal.
@@ -758,8 +825,9 @@ GET /merchant/v1/transactions?limit=50&cursor=MjAyNi0wOS0wN…
 | `limit`   | 50      | 1–200. Out of range is a `422`, not a silent clamp.                          |
 | `cursor`  | —       | A `next_cursor` from a previous page. Opaque; do not construct or parse one. |
 
-Both are part of the signed canonical string (they are the query, the fifth
-field): a signature made for `limit=50` will not spend on `limit=200`.
+Both are part of the signed canonical string — they are the query, the
+**fourth** of the five fields: a signature made for `limit=50` will not spend
+on `limit=200`.
 
 ```json
 {
@@ -822,6 +890,207 @@ Errors:
 We never mail your customer. We do not hold their address, we do not accept
 one, and the delivery path skips merchant orders explicitly rather than by
 accident. Delivery to you is the order read and, from M3, the outbound webhook.
+
+## Your first order in ten minutes
+
+`bash`, `curl` and `openssl`, nothing else — deliberately not Python, because
+the point of this scheme is that it needs no SDK and no library. Ten minutes
+assumes support has already credited your deposit; without one you can do
+everything here except step 6.
+
+### 1. What support hands you
+
+A `key_id` and a `secret` (see "Credentials"). Ask for two more things in the
+same conversation, because both are cheaper to arrange now than later:
+
+- **an IP allowlist**, if your calls leave from fixed addresses. It is fixed
+  when the key is issued, so adding one later means a new key.
+- **a cheap SKU to test on.** A live order spends real money from your
+  deposit; there is no sandbox and no test mode, and an order that reaches
+  fulfilment cannot be undone by either side.
+
+### 2. The client, in twenty lines
+
+```bash
+#!/usr/bin/env bash
+# Minimal /merchant/v1 client: bash, curl, openssl. Nothing else.
+set -euo pipefail
+
+BASE="${YUPAY_BASE:-https://api.yupay.uz}"
+KEY_ID="${YUPAY_KEY_ID:?export YUPAY_KEY_ID first}"
+SECRET="${YUPAY_SECRET:?export YUPAY_SECRET first}"
+
+# canonical = ts \n METHOD \n raw_path \n raw_query \n sha256_hex(body)
+yupay_sign() { # ts method path query body -> hex signature
+  local ts=$1 method=$2 path=$3 query=$4 body=$5 body_hash
+  body_hash=$(printf '%s' "$body" | openssl dgst -sha256 | awk '{print $NF}')
+  printf '%s\n%s\n%s\n%s\n%s' "$ts" "$method" "$path" "$query" "$body_hash" |
+    openssl dgst -sha256 -hmac "$SECRET" | awk '{print $NF}'
+}
+
+yupay() { # method path [query] [body]
+  local method=$1 path=$2 query=${3:-} body=${4:-} ts sig url
+  ts=$(date +%s)
+  sig=$(yupay_sign "$ts" "$method" "$path" "$query" "$body")
+  url="$BASE$path"
+  if [ -n "$query" ]; then url="$url?$query"; fi
+  if [ -n "$body" ]; then
+    curl -sS -X "$method" "$url" \
+      -H "X-Merchant-Key: $KEY_ID" -H "X-Merchant-Timestamp: $ts" \
+      -H "X-Merchant-Signature: $sig" -H 'Content-Type: application/json' \
+      --data-raw "$body"
+  else
+    curl -sS -X "$method" "$url" \
+      -H "X-Merchant-Key: $KEY_ID" -H "X-Merchant-Timestamp: $ts" \
+      -H "X-Merchant-Signature: $sig"
+  fi
+}
+```
+
+Save it as `yupay.sh`. Two things about it that are fine in a terminal and do
+not belong in a service: the secret sits in `openssl`'s argv, where anyone
+running `ps` sees it for the length of the call, and `date +%s` trusts the
+machine's clock — which the ±300 s window does not.
+
+### 3. Prove the signer before you blame the network
+
+A signature that is wrong is wrong invisibly: you get the same `401
+invalid_credentials` as someone with no key at all, on purpose. So check the
+arithmetic offline first, against numbers generated with the server's own
+signing code:
+
+```bash
+export YUPAY_KEY_ID="ypm_EXAMPLEqQ0Zr7t3vXbN9mK2sJ8dF4hL6"
+export YUPAY_SECRET="ypms_EXAMPLEt5Rk8pW2vZ9xB4nM7jH3gD6sQ1cL0aY7uE2i"
+source ./yupay.sh
+
+yupay_sign 1757000000 GET  /merchant/v1/me           ""         ""
+yupay_sign 1757000000 GET  /merchant/v1/catalog      ""         ""
+yupay_sign 1757000000 GET  /merchant/v1/transactions "limit=50" ""
+yupay_sign 1757000000 GET  /merchant/v1/orders/acme%2F2026%2F000417 "" ""
+yupay_sign 1757000000 POST /merchant/v1/orders       ""         '{"merchant_order_id":"acme-2026-000417","sku_id":"0198c3cb-6a0f-7b31-9c22-2f7a1e5d4b08","expected_price":"1.06","fulfillment_data":{"player_id":"5123456789"}}'
+```
+
+prints exactly, in order:
+
+```
+249f19db4ffa0bac0ee3fd8971ed05faecbdd38a4672f711ff0ba4532797d36c
+73d503d7dcec7365addd66c8547cfad75a0227e37d8e34249b5e05d85efb4cb7
+b879b159e5aa3c5aa0984b7e198b8fff28446d2747a6f942e43ef429dccae6fb
+b351c764049f32804fd34a1063f97acdeee3ae82a7b0027ac41602cf590b5b01
+e5940d771c60bc074cbb00d0b93265a3990fef35aa769d94cb9588468d04e1f5
+```
+
+Those two credentials are examples. They authenticate against nothing — they
+exist so the arithmetic is checkable with no account. If your implementation
+disagrees on any line, the fault is in the canonical string, and in practice
+it is one of five things: a trailing newline (`echo` where `printf` belongs),
+CRLF instead of LF, the query carrying its leading `?`, the path
+percent-**de**coded before signing, or a body re-serialised between signing
+and sending.
+
+Then export your real `YUPAY_KEY_ID` and `YUPAY_SECRET` and carry on.
+
+### 4. `GET /me` — are the credentials live?
+
+```bash
+yupay GET /merchant/v1/me
+```
+
+```json
+{
+  "merchant_id": "0198c3c9-2a44-7c1a-9f3e-4b6f2e0d9a11",
+  "title": "Acme Resale",
+  "status": "active",
+  "balance_usd": "42.50"
+}
+```
+
+If this fails, the `code` in the body says where to look: `stale_timestamp` is
+your clock, `missing_credentials` is a header you did not send,
+`invalid_credentials` is the key or the signature (step 3), `ip_not_allowed` is
+the address you called from, `merchant_frozen` is a conversation with support.
+
+### 5. `GET /catalog` — pick something to buy
+
+```bash
+yupay GET /merchant/v1/catalog > catalog.json
+jq -r '.brands[] as $b | $b.products[] as $p | $p.skus[]
+       | [.sku_id, .sku_code, ($b.slug + "/" + $p.slug), .price_usd] | @tsv' catalog.json
+```
+
+```
+0198c3cb-6a0f-7b31-9c22-2f7a1e5d4b08	PUBGM_UC_60	pubg-mobile/pubg-mobile-uc	1.06
+```
+
+Take one `sku_id` and the `price_usd` beside it: that price is what goes into
+the order as `expected_price`, which is how you find out if it moved.
+
+### 6. `POST /orders` — spend a dollar
+
+```bash
+SKU="0198c3cb-6a0f-7b31-9c22-2f7a1e5d4b08"
+PRICE="1.06"
+ORDER="first-$(date +%Y%m%d-%H%M%S)"          # yours, and the idempotency key
+BODY=$(printf '{"merchant_order_id":"%s","sku_id":"%s","expected_price":"%s","fulfillment_data":{}}' \
+  "$ORDER" "$SKU" "$PRICE")
+
+echo "$ORDER"                                  # write it down BEFORE you send
+yupay POST /merchant/v1/orders "" "$BODY"
+```
+
+`fulfillment_data` is `{}` for a voucher SKU. For a top-up, put in exactly the
+keys that product asks for and nothing else — an unrecognised key refuses the
+whole order.
+
+```json
+{
+  "merchant_order_id": "first-20260907-081953",
+  "order_id": "0198c3d1-7f22-7a90-b118-9d3c5e604a7f",
+  "status": "fulfilling",
+  "sku_id": "0198c3cb-6a0f-7b31-9c22-2f7a1e5d4b08",
+  "price_usd": "1.06",
+  "balance_usd": "41.44",
+  "created_at": "2026-09-07T08:19:53.402913Z"
+}
+```
+
+`201` and `"fulfilling"` mean the order exists and your deposit is charged —
+not that anything is delivered. If the call times out, **resend the identical
+request**: same id, same body, no second order.
+
+### 7. Poll until the code lands
+
+```bash
+while :; do
+  yupay GET "/merchant/v1/orders/$ORDER" > order.json
+  jq -r '"\(.status)\t\(.failure_reason // "-")"' order.json
+  jq -e '.status == "delivered" or .failure_reason != null' order.json >/dev/null && break
+  sleep 3
+done
+jq -r '.delivery.artifact.code // .delivery.artifact.message // "no artifact"' order.json
+```
+
+Both stop conditions matter: a failed delivery leaves `status` at `fulfilling`
+for good and only `failure_reason` moves, so a loop watching the status alone
+never exits. Our ids here contain nothing that needs escaping; if yours do, the
+path segment is percent-encoded and **the encoded form is what you sign**
+(`encodeURIComponent`, `urllib.parse.quote(id, safe="")`).
+
+### 8. Before you point production at this
+
+- Reuse `merchant_order_id` across every retry of one intent. A fresh id per
+  HTTP attempt places duplicate orders — this is the single most expensive
+  mistake available on this API.
+- There is **no push**. Poll the order read; there is no webhook in v1 and no
+  price webhook ever.
+- Honour `Retry-After` on a `429` instead of retrying immediately.
+- Watch `balance_usd` yourself. Nothing warns you before it runs out; an order
+  that cannot be covered is a `409 insufficient_deposit`, which is recoverable
+  but only after somebody tops you up.
+- Parse money with a decimal type. `"1.06"` through a float is `1.0599…`.
+- Handle the two answers that are not problem+json (see "Errors"), and branch
+  on the HTTP status before you look for a `code`.
 
 ## Implementation map
 
@@ -907,11 +1176,21 @@ Schema (M1 Task 1), the deposit service (M1 Task 3), wholesale pricing
 and `GET /merchant/v1/catalog` (M2 Task 3), `POST /merchant/v1/orders`
 (M2 Task 4) and the two reads a reseller's back office lives on —
 `GET /merchant/v1/orders/{merchant_order_id}` and
-`GET /merchant/v1/transactions` (M2 Task 5) — are in place. **Every endpoint
-spec §9.1 lists for v1 now exists.** Outbound webhooks, refunds and the
-cabinet BFF are M3+.
+`GET /merchant/v1/transactions` (M2 Task 5) — are in place. **Those five are
+the whole machine API.** Spec §9.1 also sketches a sixth row,
+`POST /merchant/v1/validate/…`, which is deliberately not in v1: it would only
+be honest for the SKUs a real player-check provider covers, and a validator
+that approves whatever it is given is worse than no endpoint. Outbound
+webhooks, refunds and the cabinet BFF are M3+.
 
-Two things a reseller will ask about and we do not have yet: **nothing refunds
-a merchant order** (a failed delivery leaves the deposit debited and support
-settles it by hand — which is why `refunded_usd` exists and is always `"0.00"`),
-and there is **no push of any kind** — poll the order read.
+Two things a reseller will ask about and we do not have yet. **Nothing refunds
+a merchant order:** a failed delivery leaves the deposit debited, and support
+settles it by crediting the deposit by hand — which moves `balance_usd` and
+appears on `/transactions`, while the order's own `refunded_usd` stays
+`"0.00"`, because no surface can book a transaction against an order. And there
+is **no push of any kind** — poll the order read.
+
+Those two, the ±2% drift giveaway and the two error bodies that are not
+problem+json are written up with what each costs in
+`docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates".
+Read it before you put the first reseller on this.

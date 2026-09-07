@@ -36,8 +36,10 @@ def validate_fulfillment_data(
     - ``type`` is enforced (``text``/``email``/``number``/``select``).
     - ``pattern`` (regex) is enforced for text/email when supplied.
     - ``select`` values must be one of the declared options.
-    - Unknown keys are stripped (defensive — admin can't bypass the schema by
-      sneaking extra keys in).
+    - Unknown keys are **rejected**, not stripped: a key the product does not
+      declare fails the whole call with ``reason: "extra"``. A dropped key is
+      invisible, and on the machine API (whose README documents this) a typo'd
+      field name would otherwise become an order delivered to nobody.
     """
     schema = _required_fields_schema(product)
     allowed_keys = {field["key"] for field in schema}

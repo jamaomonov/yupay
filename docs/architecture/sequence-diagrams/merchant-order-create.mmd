@@ -2,10 +2,10 @@ sequenceDiagram
     autonumber
     participant R as Reseller server
     participant API as POST /merchant/v1/orders
-    participant M as merchants.orders.place
+    participant M as merchants.orders.place (+ merchants.quote)
     participant P as merchants.pricing
     participant O as orders.service
-    participant L as merchants.service.charge_deposit -> wallet.post
+    participant L as merchants.deposit.charge_deposit -> wallet.post
     participant F as fulfillment.start_for_order
     participant DB as Postgres
 

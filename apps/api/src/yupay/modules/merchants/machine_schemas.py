@@ -203,7 +203,10 @@ class MerchantOrderCreateIn(BaseModel):
     #: carries our current price (spec §8.4).
     expected_price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     #: Whatever the SKU's product requires (a player id, a login). Validated
-    #: against the same schema the storefront uses; unknown keys are dropped.
+    #: against the same schema the storefront uses
+    #: (``orders.validation.validate_fulfillment_data``), which **rejects** a
+    #: key the product does not declare rather than dropping it — so a SKU that
+    #: requires nothing accepts only ``{}``. The README says so at the field.
     fulfillment_data: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("sku_id")
@@ -260,8 +263,11 @@ class MerchantOrderEventOut(BaseModel):
 class MerchantDeliveryOut(BaseModel):
     """The artifact a delivered order handed over — the voucher code lives here.
 
-    Present only once the order reaches ``delivered``. ``artifact``'s shape
-    depends on ``artifact_kind``; for ``voucher_code`` it carries ``code`` (or
+    Present as soon as a ``deliveries`` row exists for the order — it is the
+    delivery record that decides, not the order's status, which is what
+    ``order_status._delivery`` reads. The two normally move together.
+    ``artifact``'s shape depends on ``artifact_kind`` (``voucher_code`` or
+    ``topup_receipt`` today); for ``voucher_code`` it carries ``code`` (or
     ``codes``). Internal fields recorded alongside it — our supplier's name,
     their order id, our warehouse row — are filtered out by
     ``fulfillment.buyer_safe_artifact``, the same allow-list the storefront

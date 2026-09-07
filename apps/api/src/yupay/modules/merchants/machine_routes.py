@@ -16,8 +16,9 @@ routers parse and dispatch).
 endpoint declaring ``Form(...)`` or ``UploadFile`` would send FastAPI down the
 ``request.form()`` branch, which consumes the stream without populating the
 cache the dependency relies on, and every call to it would raise
-``RuntimeError("Stream consumed")``. Both endpoints here are GETs, but the
-constraint binds this router as it grows.
+``RuntimeError("Stream consumed")``. Four of the five endpoints here are GETs
+and the fifth takes a JSON body, so the rule binds today and as this router
+grows.
 
 ## No ``Idempotency-Key`` anywhere on this router
 
@@ -223,8 +224,8 @@ async def read_transactions(
     no parameter here names one.
 
     Note that ``limit`` and ``cursor`` are part of the signed canonical string
-    (Task 2's fifth field), so a signature does not carry across a change of
-    page.
+    (Task 2's fourth field, the raw query), so a signature does not carry
+    across a change of page.
     """
     return await merchants.build_transactions_page(
         db, merchant_id=merchant.id, limit=limit, cursor=cursor
