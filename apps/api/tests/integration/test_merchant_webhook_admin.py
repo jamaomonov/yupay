@@ -27,21 +27,24 @@ to: the connect-time check is M3a Task 2's outbound client.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import hmac
 import json
 import time
 from decimal import Decimal
+from typing import Any
 from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import crypto
 from yupay.core.ids import new_id
 from yupay.modules.merchants.models import (
+    WEBHOOK_LAST_ERROR_MAX,
     WEBHOOK_RESPONSE_BODY_MAX,
     MerchantWebhook,
     MerchantWebhookDelivery,
@@ -492,6 +495,125 @@ async def test_reads_and_writes_are_isolated_per_merchant(
     assert r.status_code == 404
 
 
+# ---------- the concurrent first write ----------
+
+
+async def _wait_until_blocked_on_the_webhook_insert(db: AsyncSession) -> None:
+    """Block until another backend is waiting on a lock to INSERT a webhook.
+
+    Polling ``pg_stat_activity`` rather than sleeping a guessed interval,
+    the way ``test_merchant_api_orders`` does for the same class of race. A
+    sleep would make the test *look* deterministic and quietly stop
+    discriminating on a slow machine: if the request had not reached its
+    INSERT yet, the winner commits first, the loser then finds the row on
+    its pre-check, and the branch under test is never entered.
+
+    Args:
+        db: A session on the same database, used only to read the view.
+
+    Raises:
+        AssertionError: If no such wait appears within the deadline.
+    """
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        # End the transaction each round: ``pg_stat_activity`` is snapshotted
+        # once per transaction, so a session holding one open re-reads the
+        # same stale answer until the deadline.
+        await db.rollback()
+        waiting = (
+            await db.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock' "
+                    "AND query ILIKE 'INSERT INTO merchant_webhooks %'"
+                )
+            )
+        ).scalar_one()
+        if waiting:
+            return
+        await asyncio.sleep(0.05)
+    raise AssertionError(
+        "no backend ever waited on a lock to insert a merchant webhook — the "
+        "loser did not reach its INSERT, so this test is not exercising the branch"
+    )
+
+
+async def test_a_concurrent_first_write_gets_the_winner_not_a_500(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    db_engine: Any,
+) -> None:
+    """Two operators saving at once must not 500 — and must not both get a secret.
+
+    Ordinary traffic, not an exotic interleave: a double-clicked Save, or the
+    SPA retrying a slow ``PUT``. Both miss ``_find_webhook``, both INSERT, and
+    the loser takes ``uq_merchant_webhooks_merchant``. Unhandled that is a 500
+    on the one endpoint whose job is to return a secret that can never be seen
+    again — and, worse, a 500 raised while the plaintext key is a live local
+    in the frame Sentry would attach.
+
+    The interleave is the real one rather than a simulation. Two requests
+    through one ASGI transport serialise, so the second returns from its
+    *pre-check* and never reaches the branch. Instead session W inserts the
+    winning row and **does not commit**, holding the uncommitted unique key;
+    the loser goes through the live endpoint, misses the pre-check, reaches
+    its INSERT and blocks — which ``assert not loser.done()`` pins. Committing
+    W releases it into the violation.
+
+    The loser must answer ``secret: null``: the winner minted the key and
+    holds it, so a second secret here would sign nothing.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from yupay.core import crypto as core_crypto
+    from yupay.core.ids import new_id as mint
+
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+
+    factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    async with factory() as winner:
+        enc, nonce = core_crypto.encrypt(
+            "ypmw_winner", purpose=core_crypto.PURPOSE_MERCHANT_WEBHOOK
+        )
+        winner.add(
+            MerchantWebhook(
+                id=mint(),
+                merchant_id=merchant_id,
+                url=HOOK_URL,
+                secret_enc=enc,
+                secret_nonce=nonce,
+            )
+        )
+        await winner.flush()
+
+        loser = asyncio.create_task(
+            integration_client.put(
+                f"/api/v1/admin/merchants/{merchant_id}/webhook",
+                headers=admin_headers,
+                json={"url": OTHER_URL},
+            )
+        )
+        await _wait_until_blocked_on_the_webhook_insert(db_session)
+        assert not loser.done(), "the loser answered without waiting on the winner's key"
+
+        await winner.commit()
+        r = await loser
+
+    assert r.status_code == 200, r.text
+    # The winner's row, and none of its secret.
+    assert r.json()["secret"] is None
+    assert r.json()["url"] == HOOK_URL
+    db_session.expire_all()
+    rows = (await db_session.execute(select(MerchantWebhook))).scalars().all()
+    assert len(rows) == 1
+    assert (
+        crypto.decrypt(
+            rows[0].secret_enc, rows[0].secret_nonce, purpose=crypto.PURPOSE_MERCHANT_WEBHOOK
+        )
+        == "ypmw_winner"
+    )
+
+
 # ---------- idempotent replay, scoped per merchant ----------
 
 
@@ -626,6 +748,7 @@ async def test_the_delivery_outbox_round_trips_a_jsonb_payload(
         MerchantWebhookDelivery(
             id=delivery_id,
             merchant_id=merchant_id,
+            url=HOOK_URL,
             event_type="balance.credited",
             payload=payload,
         )
@@ -645,12 +768,79 @@ async def test_the_delivery_outbox_round_trips_a_jsonb_payload(
     # The claimable-status vocabulary Tasks 3 and 4 both spell.
     assert stored.status == "pending"
     assert stored.attempts_count == 0
-    assert stored.next_attempt_at is None
     assert stored.response_code is None
     assert stored.response_body is None
     assert stored.last_error is None
     assert stored.created_at is not None
     assert stored.updated_at is not None
+    # The endpoint is snapshotted, not joined — see the model docstring.
+    assert stored.url == HOOK_URL
+
+
+async def test_a_fresh_delivery_is_immediately_due_and_the_claim_query_finds_it(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """``next_attempt_at`` is NOT NULL and defaults to now — the queue's whole life.
+
+    Nullable-meaning-now looks harmless and is a silent no-op queue:
+    ``next_attempt_at <= now()`` is NULL-**false**, so a never-attempted row
+    is never claimed, and never being claimed it never gets a value. This
+    test runs Task 4's claim predicate verbatim against a row inserted the
+    way Task 3 will insert one, so the failure mode is caught here rather
+    than as "webhooks were configured for a week and nobody got any".
+    """
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    delivery_id = new_id()
+    db_session.add(
+        MerchantWebhookDelivery(
+            id=delivery_id,
+            merchant_id=merchant_id,
+            url=HOOK_URL,
+            event_type="order.status_changed",
+            payload={"order_id": "o-1", "status": "delivered"},
+        )
+    )
+    await db_session.commit()
+    db_session.expire_all()
+
+    claimable = (
+        (
+            await db_session.execute(
+                select(MerchantWebhookDelivery.id)
+                .where(
+                    MerchantWebhookDelivery.status == "pending",
+                    MerchantWebhookDelivery.next_attempt_at <= func.now(),
+                )
+                .order_by(MerchantWebhookDelivery.next_attempt_at)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert list(claimable) == [delivery_id]
+
+
+async def test_a_delivery_without_a_payload_is_refused_rather_than_logged_empty(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """No server default on ``payload``: a forgotten body fails, it does not log ``{}``.
+
+    An empty object in the log is a delivery whose content is unrecoverable,
+    which is worse than the insert failing where the bug is.
+    """
+    merchant_id = await _create_merchant(integration_client, admin_headers)
+    db_session.add(
+        MerchantWebhookDelivery(
+            id=new_id(),
+            merchant_id=merchant_id,
+            url=HOOK_URL,
+            event_type="order.status_changed",
+        )
+    )
+    with pytest.raises(IntegrityError):
+        await db_session.flush()
+    await db_session.rollback()
 
 
 async def test_the_delivery_status_vocabulary_is_enforced_by_a_check_constraint(
@@ -661,6 +851,7 @@ async def test_the_delivery_status_vocabulary_is_enforced_by_a_check_constraint(
         MerchantWebhookDelivery(
             id=new_id(),
             merchant_id=merchant_id,
+            url=HOOK_URL,
             event_type="order.status_changed",
             payload={},
             status="in_flight",  # not one of ours
@@ -671,40 +862,44 @@ async def test_the_delivery_status_vocabulary_is_enforced_by_a_check_constraint(
     await db_session.rollback()
 
 
-async def test_the_response_body_column_is_bounded(
-    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+@pytest.mark.parametrize(
+    ("column", "cap"),
+    [("response_body", WEBHOOK_RESPONSE_BODY_MAX), ("last_error", WEBHOOK_LAST_ERROR_MAX)],
+)
+async def test_the_diagnostic_text_columns_are_bounded(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    column: str,
+    cap: int,
 ) -> None:
-    """``response_body`` is attacker-influenced text rendered in M4's cabinet.
+    """Both are third-party-influenced text rendered in M4's cabinet.
 
-    The cap is a column bound, not a convention, so an unbounded body cannot
-    reach the database even if a future writer forgets to truncate.
+    ``response_body`` obviously so. ``last_error`` is nominally ours, but a
+    TLS or httpx failure summary interpolates whatever the far end supplied —
+    a peer certificate subject, a ``Location``, a ``Retry-After``. The caps
+    are column bounds, not conventions, so neither can reach the database
+    even if a future writer forgets to truncate.
     """
     merchant_id = await _create_merchant(integration_client, admin_headers)
-    db_session.add(
-        MerchantWebhookDelivery(
+
+    def _row(text: str) -> MerchantWebhookDelivery:
+        return MerchantWebhookDelivery(
             id=new_id(),
             merchant_id=merchant_id,
+            url=HOOK_URL,
             event_type="order.status_changed",
             payload={},
             status="failed",
             response_code=500,
-            response_body="x" * (WEBHOOK_RESPONSE_BODY_MAX + 1),
+            **{column: text},
         )
-    )
+
+    db_session.add(_row("x" * (cap + 1)))
     with pytest.raises(Exception):  # noqa: B017,PT011 -- asyncpg raises DataError via SQLAlchemy
         await db_session.flush()
     await db_session.rollback()
 
-    db_session.add(
-        MerchantWebhookDelivery(
-            id=new_id(),
-            merchant_id=merchant_id,
-            event_type="order.status_changed",
-            payload={},
-            status="failed",
-            response_code=500,
-            response_body="x" * WEBHOOK_RESPONSE_BODY_MAX,
-        )
-    )
+    db_session.add(_row("x" * cap))
     await db_session.flush()
     await db_session.rollback()

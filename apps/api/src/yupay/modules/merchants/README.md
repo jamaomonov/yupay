@@ -36,11 +36,33 @@ in this module the merchant is the reseller.
 - `merchant_webhook_deliveries` — the outbox, in ADR-0064's shape: `payload`
   JSONB, a claimable `status` (`pending` → `in_progress` → `delivered` |
   `failed`), `attempts_count` / `next_attempt_at` for backoff, and — because
-  this table is also the cabinet's delivery log from M4 — the merchant's
-  `response_code`, the first 2048 characters of their `response_body`, and
-  our own `last_error`. The body cap is a **column bound**: it is text a
-  third-party server chose and our own cabinet renders, so "the writer
-  truncates" is not a promise worth resting on.
+  this table is also the cabinet's delivery log from M4 — the `url` we
+  addressed, the merchant's `response_code`, the first 2048 characters of
+  their `response_body`, and our own `last_error` (capped at 512). Both text
+  caps are **column bounds**, because both interpolate material a third party
+  chose and our own cabinet renders it, so "the writer truncates" is not a
+  promise worth resting on.
+
+  Three shapes here are load-bearing rather than incidental. `url` is a
+  **snapshot taken at enqueue**, not a join onto `merchant_webhooks` — setting
+  a URL edits that row in place, so a join would re-attribute every historical
+  response to whatever address is configured now, and "we recorded a 200, but
+  was that their old staging host?" is exactly what this log exists to answer.
+  `next_attempt_at` is **NOT NULL, defaulting to now**: nullable-meaning-now
+  makes the claim predicate `next_attempt_at <= now()` NULL-_false_ for a
+  never-attempted row, so it is never claimed and, never being claimed, never
+  gets a value — a queue that silently delivers nothing; and the `IS NULL`
+  workaround trades that for starvation, since btree ASC sorts NULLs last and
+  every fresh event would queue behind one dead endpoint's retries. `payload`
+  has **no** server default, so an enqueue that forgets the body fails instead
+  of logging a delivery whose content is unrecoverable.
+
+  **Known limitation for M4:** there is no index that reaches a delivery by
+  order id — the order lives inside `payload` JSONB, and "did merchant X hear
+  about order Y" is the commonest support question. `(merchant_id,
+created_at DESC)` narrows it to one merchant's log, which is enough at our
+  volume; a real answer needs either an expression index on the payload key or
+  a promoted column, and that is a decision for whoever builds the screen.
 
 ## Deposit ledger
 
@@ -178,7 +200,11 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   deliveries go must not silently break a working verifier — rotation is its
   own endpoint. Setting a URL also clears `disabled_at` and resets
   `failure_streak`, which is the recovery path after the delivery worker
-  auto-disables a hook. The URL is refused at save time unless it is `https`
+  auto-disables a hook. Two operators saving at once both miss the pre-check
+  and both insert; the loser resolves the uniqueness violation by returning
+  the **winner's** row with `secret: null` rather than a 500 — the winner
+  minted the key, so a second secret would sign nothing, and the advice on a
+  lost response is the same as for a lost mint: rotate. The URL is refused at save time unless it is `https`
   with a public host, through the same
   `catalog.image_url_safety.validate_public_https_url` the catalog's image
   URLs go through — one blocked-range table in the repo, not two that drift.

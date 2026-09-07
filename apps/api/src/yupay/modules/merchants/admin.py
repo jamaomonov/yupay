@@ -24,6 +24,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import String, case, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core import crypto
@@ -306,17 +307,32 @@ async def set_webhook(db: AsyncSession, *, merchant_id: str, url: str) -> Config
     the same action whether the operator is fixing the URL or merely
     confirming the old one still stands.
 
+    Two callers racing the first write both miss the pre-check, both INSERT,
+    and the loser takes the uniqueness violation. It **resolves the race
+    rather than raising**: rolls back, re-reads and returns the winner with no
+    secret. That costs the loser its transaction, which on this endpoint is
+    nothing but the read it just did.
+
     Args:
-        db: Session. The caller owns the transaction.
+        db: Session. The caller owns the transaction — note that losing the
+            race above rolls it back, so nothing written before this call
+            survives. Today's only caller writes nothing before it.
         merchant_id: Whose endpoint to set. Must exist.
         url: The https endpoint. Validated by :func:`validate_webhook_url`.
 
     Returns:
-        The row, plus the plaintext secret when this call minted one.
+        The row, plus the plaintext secret **only** when this call minted
+        one. A URL change, a re-enable and the losing side of a concurrent
+        first write all return ``secret=None`` — the last of those because
+        the winner holds the key, and handing back a second one would give
+        the operator a value that signs nothing.
 
     Raises:
         NotFoundError: If no merchant with that id exists.
         ValidationError: If the URL is refused by the save-time check.
+        IntegrityError: If the insert failed on something other than the
+            per-merchant uniqueness — re-raised rather than reported as a
+            success.
     """
     await get_merchant(db, merchant_id)
     clean = validate_webhook_url(url.strip())
@@ -339,7 +355,27 @@ async def set_webhook(db: AsyncSession, *, merchant_id: str, url: str) -> Config
         secret_nonce=secret_nonce,
     )
     db.add(hook)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Both callers missed the pre-check and both inserted; the loser hit
+        # ``uq_merchant_webhooks_merchant``. Ordinary traffic, not an exotic
+        # interleave — a double-clicked Save, or the SPA retrying a slow PUT
+        # — and the same class M2 already paid for on the order path (commit
+        # 58fbcb8). Unhandled it is a 500 on the one endpoint whose job is to
+        # return a secret that can never be seen again.
+        #
+        # Return the winner **with no secret**: the winner minted the key and
+        # holds it, so claiming one here would hand the operator a value that
+        # signs nothing. The advice on a lost response is the same as for a
+        # lost mint — rotate.
+        await db.rollback()
+        winner = await _find_webhook(db, merchant_id=merchant_id)
+        if winner is None:
+            # Not the uniqueness race: some other constraint failed, and
+            # swallowing it would hide a real bug behind a plausible 200.
+            raise
+        return ConfiguredWebhook(webhook=winner, secret=None)
     # Pick up the server defaults (``failure_streak``, the timestamps) so the
     # caller can render the row without a round-trip of its own.
     await db.refresh(hook)
@@ -399,8 +435,12 @@ async def disable_webhook(db: AsyncSession, *, merchant_id: str) -> MerchantWebh
     """
     hook = await get_webhook(db, merchant_id=merchant_id)
     if hook.disabled_at is None:
-        hook.disabled_at = now()
-        hook.updated_at = now()
+        # One clock read, bound once: two calls would leave ``disabled_at``
+        # and ``updated_at`` microseconds apart for no reason, and the rest
+        # of this module binds it.
+        at = now()
+        hook.disabled_at = at
+        hook.updated_at = at
         await db.flush()
     return hook
 

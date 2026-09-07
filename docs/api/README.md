@@ -274,7 +274,11 @@ the same `secret: null` snapshot rule the key mint uses.
 One endpoint per merchant in v1 (unique on `merchant_id`), so `PUT` is an
 upsert: the first call mints the secret, a later one edits the URL of the same
 row and answers `secret: null` — changing where deliveries go must not silently
-break a working verifier. Setting a URL also clears `disabled_at` and resets
+break a working verifier. Two operators saving at once (or one double-clicked
+Save) both miss the pre-check and both insert; the loser resolves the
+uniqueness violation by returning the **winner's** row with `secret: null`
+rather than a 500 — the winner minted the key, so a second secret here would
+sign nothing. Setting a URL also clears `disabled_at` and resets
 `failure_streak`, which is how a hook the delivery worker auto-disabled is
 brought back. The URL must be `https` with a public host, checked at save time
 by the same validator the catalog's image URLs use; that check reads notation,

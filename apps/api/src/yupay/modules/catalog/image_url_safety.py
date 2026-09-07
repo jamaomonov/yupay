@@ -36,8 +36,11 @@ second caller is the merchant webhook URL (M3a Task 1,
 ``merchants.admin.set_webhook``): sharing this function is what keeps one
 blocked-range table in the repo instead of two that drift. It is the
 **save-time** half there too, and the DNS-rebinding caveat above applies
-unchanged — ``core/outbound.py`` re-checks the address it actually connects
-to, which is a control this module cannot be.
+unchanged. Closing it needs a fetcher that re-checks the address it actually
+connects to; for the webhook path that fetcher is M3a Task 2's planned
+``core/outbound.py``, **which does not exist yet** — until it does, nothing
+in this repo re-checks a resolved address, and this module must not be read
+as though something did.
 """
 
 from __future__ import annotations

@@ -14,8 +14,25 @@ compute the HMAC on every delivery, and a one-way digest cannot key an HMAC.
 ``merchant_webhook_deliveries`` is the outbox in ADR-0064's shape — a
 claimable ``status``, inserted in the transaction that causes it, drained by
 ``apps/worker`` with ``FOR UPDATE SKIP LOCKED``. It is also the cabinet's
-delivery log from M4, so it keeps the response code, the first 2 KiB of the
-merchant's response body and our own error text.
+delivery log from M4, so it keeps the endpoint it was addressed to, the
+response code, the first 2 KiB of the merchant's response body and our own
+error text.
+
+``url`` is a **snapshot**, not a join: setting a webhook edits
+``merchant_webhooks.url`` in place, so a joined read would re-attribute every
+historical response to whatever address is configured now — and "we recorded a
+200, but was that their old staging host?" is the question this log exists to
+answer.
+
+``next_attempt_at`` is ``NOT NULL DEFAULT CURRENT_TIMESTAMP``, which is load
+bearing rather than tidy. Nullable-meaning-now makes the claim predicate
+``status = 'pending' AND next_attempt_at <= now()`` NULL-**false** for every
+row that has never been attempted: it is never claimed, and never being
+claimed it never gets a value — a queue that silently delivers nothing.
+Rewriting the predicate with an ``IS NULL`` arm trades that for starvation,
+since btree ASC orders NULLs last and every fresh event would then sort behind
+every scheduled retry of one dead endpoint. With a real timestamp the
+predicate is exactly the partial index's range scan.
 
 Two indices, each with a query behind it (AGENTS.md §10):
 
@@ -30,7 +47,13 @@ Two indices, each with a query behind it (AGENTS.md §10):
 ``response_body`` is bounded in the **column** at 2048 characters rather than
 only by whatever writes it. It is text a third-party server chose, rendered
 later in our own cabinet, and "the writer truncates" is a promise a future
-writer can forget.
+writer can forget. ``last_error`` is bounded at 512 for a weaker version of
+the same reason: it is our own summary, but a TLS or httpx failure string
+interpolates whatever the far end supplied.
+
+``payload`` deliberately has **no** server default. An enqueue that forgets
+the body should fail on the NOT NULL, not log a delivery whose content is
+unrecoverable.
 
 The downgrade is an ordinary pair of drops and needs no guard of the kind
 0070's carries: nothing here is unreconstructible — deliveries are a log and
@@ -55,11 +78,13 @@ depends_on: str | None = None
 _TS = sa.DateTime(timezone=True)
 _NOW = sa.text("CURRENT_TIMESTAMP")
 
-#: Mirrors ``merchants.models.WEBHOOK_URL_MAX`` / ``WEBHOOK_RESPONSE_BODY_MAX``.
-#: Spelled out here rather than imported: a migration is a historical record
-#: and must keep describing the schema it created even after the model moves.
+#: Mirror ``merchants.models``'s ``WEBHOOK_URL_MAX`` / ``WEBHOOK_RESPONSE_BODY_MAX``
+#: / ``WEBHOOK_LAST_ERROR_MAX``. Spelled out here rather than imported: a
+#: migration is a historical record and must keep describing the schema it
+#: created even after the model moves.
 _URL_MAX = 512
 _RESPONSE_BODY_MAX = 2048
+_LAST_ERROR_MAX = 512
 
 
 def upgrade() -> None:
@@ -98,13 +123,12 @@ def upgrade() -> None:
             sa.ForeignKey("merchants.id", ondelete="CASCADE"),
             nullable=False,
         ),
+        sa.Column("url", sa.String(length=_URL_MAX), nullable=False),
         sa.Column("event_type", sa.String(length=48), nullable=False),
-        sa.Column(
-            "payload",
-            postgresql.JSONB(),
-            nullable=False,
-            server_default=sa.text("'{}'::jsonb"),
-        ),
+        # No server default on ``payload``: an enqueue that forgets the body
+        # must fail on the NOT NULL rather than log an empty, unrecoverable
+        # delivery.
+        sa.Column("payload", postgresql.JSONB(), nullable=False),
         sa.Column(
             "status",
             sa.String(length=16),
@@ -112,10 +136,10 @@ def upgrade() -> None:
             server_default=sa.text("'pending'"),
         ),
         sa.Column("attempts_count", sa.Integer(), nullable=False, server_default=sa.text("0")),
-        sa.Column("next_attempt_at", _TS, nullable=True),
+        sa.Column("next_attempt_at", _TS, nullable=False, server_default=_NOW),
         sa.Column("response_code", sa.Integer(), nullable=True),
         sa.Column("response_body", sa.String(length=_RESPONSE_BODY_MAX), nullable=True),
-        sa.Column("last_error", sa.Text(), nullable=True),
+        sa.Column("last_error", sa.String(length=_LAST_ERROR_MAX), nullable=True),
         sa.Column("created_at", _TS, nullable=False, server_default=_NOW),
         sa.Column("updated_at", _TS, nullable=False, server_default=_NOW),
         sa.CheckConstraint(

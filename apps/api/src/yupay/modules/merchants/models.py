@@ -28,7 +28,6 @@ from sqlalchemy import (
     LargeBinary,
     Numeric,
     String,
-    Text,
     UniqueConstraint,
     text,
 )
@@ -41,6 +40,14 @@ from yupay.core.db import Base
 #: Column bound on ``merchant_webhooks.url``. Generous for a path with a
 #: token in it, short enough that the value stays loggable and renderable.
 WEBHOOK_URL_MAX = 512
+
+#: Column bound on ``merchant_webhook_deliveries.last_error``. Our own text,
+#: but not purely ours: an httpx/TLS failure summary interpolates whatever the
+#: far end supplied — a peer certificate subject, a ``Location``, a
+#: ``Retry-After``. ``fulfillment.service._crash_detail`` already truncates to
+#: 500 for the same table shape; this is that rule, made a column bound so the
+#: writer cannot forget it.
+WEBHOOK_LAST_ERROR_MAX = 512
 
 #: Column bound on ``merchant_webhook_deliveries.response_body`` — 2 KiB of
 #: the merchant's own response, kept for diagnosis. It is attacker-influenced
@@ -212,8 +219,15 @@ class MerchantWebhook(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
+    #: ``onupdate`` so "when was this last changed" is true of every write,
+    #: not only of the ones that remembered to set it. SQLAlchemy applies it
+    #: to a Core ``update()`` as well as to an ORM flush, so it holds for the
+    #: bulk statements the delivery worker will use.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
     )
 
 
@@ -266,19 +280,35 @@ class MerchantWebhookDelivery(Base):
     merchant_id: Mapped[str] = mapped_column(
         UUID(as_uuid=False), ForeignKey("merchants.id", ondelete="CASCADE"), nullable=False
     )
+    #: The endpoint this delivery was addressed to, **snapshotted at enqueue**
+    #: rather than joined from ``merchant_webhooks``. Setting a URL edits that
+    #: row in place, so a join would re-attribute every historical response to
+    #: whatever address is current — and the question this log exists to
+    #: answer ("they say the 14:02 event never arrived, but we recorded a 200")
+    #: turns on which host answered, not on which host is configured now.
+    url: Mapped[str] = mapped_column(String(WEBHOOK_URL_MAX), nullable=False)
     event_type: Mapped[str] = mapped_column(String(48), nullable=False)
     #: Exactly the JSON body we sign and POST. Money is a **string** in it —
-    #: JSONB has no Decimal and a float would round a balance.
-    payload: Mapped[dict[str, Any]] = mapped_column(
-        JSONB, nullable=False, server_default=text("'{}'::jsonb")
-    )
+    #: JSONB has no Decimal and a float would round a balance. Deliberately
+    #: **no server default**: an enqueue that forgets the payload must fail
+    #: on the NOT NULL rather than log a delivery whose body is unrecoverable.
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'pending'")
     )
     attempts_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
-    #: When the next attempt becomes due. NULL means "now" — the first
-    #: attempt has no backoff to wait out.
-    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    #: When the next attempt becomes due — **NOT NULL**, defaulting to now, so
+    #: a fresh row is due immediately. It was briefly nullable-meaning-now, and
+    #: that is a silent no-op queue: the claim predicate
+    #: ``next_attempt_at <= now()`` is NULL-*false*, so a never-attempted row
+    #: is never claimed, and never being attempted it never gets a value.
+    #: Spelling the predicate ``(… IS NULL OR …)`` instead trades that for
+    #: starvation — btree ASC sorts NULLs last, so every fresh event would
+    #: queue behind every scheduled retry of one dead endpoint. With a real
+    #: timestamp the predicate is exactly the partial index's range scan.
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
     response_code: Mapped[int | None] = mapped_column(Integer, nullable=True)
     #: The first :data:`WEBHOOK_RESPONSE_BODY_MAX` characters of the
     #: merchant's response. Bounded in the **column**, not only by the
@@ -289,19 +319,27 @@ class MerchantWebhookDelivery(Base):
     response_body: Mapped[str | None] = mapped_column(
         String(WEBHOOK_RESPONSE_BODY_MAX), nullable=True
     )
-    #: Our own description of the failure — a typed refusal from the
-    #: outbound client, or an exception summary. Ours, not theirs, which is
-    #: why it is unbounded ``Text`` where ``response_body`` is not.
-    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    #: Our own description of the failure — a typed refusal from the outbound
+    #: client, or an exception summary. Nominally ours, but a TLS or httpx
+    #: summary interpolates third-party material, so it is bounded too, at
+    #: :data:`WEBHOOK_LAST_ERROR_MAX`. Truncate to that constant when writing;
+    #: ``fulfillment.service._crash_detail`` is the shape to copy.
+    last_error: Mapped[str | None] = mapped_column(String(WEBHOOK_LAST_ERROR_MAX), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
+    #: ``onupdate``, so "when did we last try" is true without every writer
+    #: remembering to set it. See :class:`MerchantWebhook.updated_at`.
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=text("CURRENT_TIMESTAMP"),
+        onupdate=text("CURRENT_TIMESTAMP"),
     )
 
 
 __all__ = [
+    "WEBHOOK_LAST_ERROR_MAX",
     "WEBHOOK_RESPONSE_BODY_MAX",
     "WEBHOOK_URL_MAX",
     "InetAsText",

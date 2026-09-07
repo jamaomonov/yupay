@@ -177,7 +177,16 @@ def _init_sentry(settings: Settings) -> None:
         environment=settings.environment,
         release=settings.service_name,
         traces_sample_rate=settings.sentry_traces_sample_rate,
-        send_default_pii=False,  # never ship PII to Sentry; AGENTS.md §9
+        # TWO switches, and each covers a different half. ``send_default_pii``
+        # governs request bodies, headers, cookies and user identity;
+        # ``include_local_variables`` governs the **stack-frame locals**
+        # attached to every exception event and defaults to ``True``. With
+        # only the first set, any 500 raised while a secret is a live local —
+        # a freshly minted merchant API key or webhook signing secret, both of
+        # which exist in the clear in exactly one frame — ships that secret to
+        # a third-party SaaS. AGENTS.md §9.
+        send_default_pii=False,
+        include_local_variables=False,
         integrations=[
             FastApiIntegration(transaction_style="endpoint"),
             StarletteIntegration(transaction_style="endpoint"),
