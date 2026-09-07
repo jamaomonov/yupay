@@ -41,6 +41,19 @@ disagree by construction. Support finds the misconfigured rows through the
 ``merchant_catalog_below_margin_floor`` warning, one line per request listing
 every SKU it dropped.
 
+**A variable-amount SKU is absent too**, and for a structural reason rather
+than a pricing one: the customer picks the amount, so ``price_usd`` on the row
+is not a price and the cost × markup formula has nothing to work on. The order
+path refuses them (``item_unavailable`` / ``variable_amount``), so listing one
+would advertise a SKU every order rejects.
+
+Note what is deliberately **not** filtered here, because the difference is the
+rule: retail ``active``, brand maintenance and supplier stock all move between
+a merchant's poll and their order, so the order path is where a merchant
+learns about them and a catalog absence would only be stale in the other
+direction. ``variable_amount`` is permanent — it cannot become orderable while
+it is set — which is why it belongs in the WHERE clause and they do not.
+
 Steam-gift SKUs are a v1 non-goal and need no rule of their own: the single
 ``steam-gift`` SKU is not ``visible_b2b``, so the filter above already
 excludes it. ``tests/integration/test_merchant_api_read.py`` pins that rather
@@ -162,6 +175,24 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 # Excluded in SQL as well as honoured below, so an unpriced SKU
                 # never reaches the pricing call at all.
                 Sku.cost_usdt.is_not(None),
+                # A customer-chooses-the-amount SKU (a Steam wallet top-up) has
+                # no wholesale price to quote: the B2B formula is cost ×
+                # markup, while these price off a guarded FX rate and a margin
+                # multiplier, and ``price_usd`` on the row is not a price at
+                # all. ``merchants.orders`` refuses them with
+                # ``item_unavailable`` / ``variable_amount``, so listing one
+                # here would advertise a SKU every order rejects.
+                #
+                # This is a different kind of filter from the ones deliberately
+                # NOT applied here — retail ``active``, brand maintenance,
+                # supplier stock. Those are transient states that move between
+                # a merchant's poll and their order, which is why the order
+                # path is where a merchant learns about them (Ruling 2, and the
+                # README says so). ``variable_amount`` is a permanent
+                # structural property of the SKU: it can never become
+                # orderable while it is set, so withholding it costs a merchant
+                # nothing and telling them about it costs them a round trip.
+                Sku.variable_amount.is_(False),
             )
             .order_by(
                 Brand.sort_order,

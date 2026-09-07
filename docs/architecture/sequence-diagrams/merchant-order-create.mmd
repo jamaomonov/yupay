@@ -65,8 +65,9 @@ sequenceDiagram
     O->>DB: status=paid, paid_at, INSERT order.paid event (carries the digest)
     Note over O: no realtime publish -- user_id is NULL on every merchant order
 
-    M->>F: start_for_order(order_id) -- no risk gate: no card, no chargeback
-    F->>DB: INSERT fulfillment_tasks, status=fulfilling
+    M->>F: start_for_order(order_id, settings=_enqueue_only())
+    Note over M,F: no risk gate (no card, no chargeback) and fulfilment_async FORCED on:<br/>a supplier purchase inside this transaction could roll back after the<br/>supplier was paid, leaving no order and no debit to retry against
+    F->>DB: INSERT fulfillment_tasks (status=pending) + pg_notify on COMMIT<br/>order -> fulfilling
 
     M->>DB: deposit_balance again -- what is left
     M-->>R: 201 {merchant_order_id, order_id, status, sku_id, price_usd, balance_usd, created_at}

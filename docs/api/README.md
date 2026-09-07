@@ -301,8 +301,8 @@ balance column to drift from it.
 `GET /merchant/v1/catalog` returns brands → products → SKUs where
 `brand.visible_b2b AND sku.visible_b2b` **and** the SKU is sellable. Retail
 `active` is deliberately not read — it is the storefront's switch, and the
-B2B flags (migration 0068) are the merchant catalog's. Two things make a SKU
-unsellable, and both make it **absent rather than cheap**:
+B2B flags (migration 0068) are the merchant catalog's. Three things make a SKU
+unsellable, and each makes it **absent rather than cheap**:
 
 - no `cost_usdt` — `pricing.effective_cost` returns `None`, meaning "not
   sellable B2B" (spec §8.2);
@@ -312,7 +312,17 @@ unsellable, and both make it **absent rather than cheap**:
   typed for `5` would publish a SKU every order then refuses, and `-100`
   would publish a **free** one. Applying the floor here as well as at order
   time makes the two agree by construction. The withheld codes are logged
-  once per request as `merchant_catalog_below_margin_floor`.
+  once per request as `merchant_catalog_below_margin_floor`;
+- `variable_amount` — the customer picks the amount, so `price_usd` on the row
+  is not a price and cost × markup has nothing to work on. The order path
+  refuses these with `item_unavailable` / `variable_amount`.
+
+What is deliberately **not** filtered here is the difference worth
+understanding: retail `active`, brand maintenance and supplier stock all move
+between a merchant's poll and their order, so the order path is where a
+merchant learns about them and a catalog absence would only be stale in the
+other direction. `variable_amount` is a permanent structural property of the
+SKU, which is why it belongs in the `WHERE` clause and they do not.
 
 Brands or products left with nothing purchasable are omitted rather than
 returned empty. Each SKU carries `{sku_id, sku_code, name, price_usd,
@@ -373,11 +383,32 @@ deposit row before the balance is read. **That lock is the overdraw guard**;
 the earlier balance read in the order path exists only to answer a clean
 `409 insufficient_deposit` before any row is written.
 
+**Fulfilment is always enqueued, never inline.** The call site passes
+`start_for_order` a settings copy with `fulfilment_async` forced on
+(`merchants/orders.py::_enqueue_only`), regardless of the deployment's flag —
+which defaults off, and is off on production. With it off `process_task` runs
+the supplier purchase inside this transaction, and it catches only
+`FulfillerError` / `FulfillerNotIntegratedError`: anything raising after the
+supplier is paid and before the commit rolls back the order, the debit and the
+delivery while the supplier keeps the money, and the merchant then retries the
+same `merchant_order_id` per our own contract, finds nothing, and buys it
+twice. AGENTS §10 forbids synchronous external HTTP in a request handler for
+this reason. Enqueue-only is contract-compatible today — the endpoint already
+answers `status: "fulfilling"` and already tells resellers to poll — and the
+two failure modes are not comparable: a stalled worker leaves an order visibly
+`fulfilling` with the money correctly debited and everything recoverable. The
+operational consequence (the merchant channel depends on the worker being up,
+always) is in `docs/runbooks/fulfillment-queue.md`. Retail still follows the
+flag.
+
 Errors, all RFC 7807 with a `code`: `404 item_unavailable` (with a `reason` —
 `unknown_sku`, `not_b2b_visible`, `out_of_stock`, `not_for_sale`, `no_cost`,
 `variable_amount` — because the catalog does not consult stock and this is
 where a reseller finds out), `422 price_changed`, `422 margin_floor`,
-`409 insufficient_deposit`, `409 order_id_reused`. The full table is in
+`409 insufficient_deposit`, `409 order_id_reused`, and `409 order_conflict` —
+`create_order`'s residual write conflict, which now carries a code because it
+surfaces on a machine surface whose published table discriminates every 409 by
+one. The full table is in
 `apps/api/src/yupay/modules/merchants/README.md`, which is the contract third
 parties implement against.
 

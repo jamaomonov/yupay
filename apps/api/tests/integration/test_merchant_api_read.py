@@ -447,6 +447,47 @@ async def test_catalog_hides_every_sku_of_a_retail_only_brand(
     assert [b["slug"] for b in r.json()["brands"]] == ["brand-1"]
 
 
+async def test_a_variable_amount_sku_is_absent_from_the_price_list(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """It has no wholesale price to quote, and the order path refuses it.
+
+    ``price_usd`` on a variable-amount row is not a price — the customer picks
+    the amount, and it is charged as a guarded FX rate times a margin
+    multiplier — so cost × markup has nothing to work on. Listing it would
+    advertise a SKU ``POST /merchant/v1/orders`` answers with
+    ``item_unavailable`` / ``variable_amount``.
+
+    Unlike retail ``active``, brand maintenance and supplier stock — all
+    deliberately unfiltered here, because they are transient and the order
+    path is where a merchant learns about them — this is a permanent property
+    of the SKU, so the catalog can settle it once.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(
+        db_session,
+        n=1,
+        skus=[
+            {"sku_code": "fixed"},
+            {
+                "sku_code": "any-amount",
+                # ``ck_skus_variable_amount_complete`` wants the whole set.
+                "variable_amount": True,
+                "min_amount_usd": Decimal("1"),
+                "max_amount_usd": Decimal("100"),
+                "rate_multiplier": Decimal("1.05"),
+            },
+        ],
+    )
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+
+    assert r.status_code == 200, r.text
+    assert set(_skus_of(r.json())) == {"fixed"}
+
+
 async def test_a_sku_with_no_cost_is_absent_rather_than_free(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:

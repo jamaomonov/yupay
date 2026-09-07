@@ -4,7 +4,7 @@ Game top-ups are minted on demand and never run out. Gift cards and vouchers are
 real codes in a supplier's warehouse: G2B reports a count per product, and a
 large share of its catalogue sits at zero at any moment. Selling one we cannot
 deliver costs a manual refund, so the count is pulled on a schedule and checkout
-refuses SKUs that have run dry (``orders.service._sku_is_buyable``).
+refuses SKUs that have run dry (``orders.service.sku_is_buyable``).
 
 Both voucher suppliers are swept, and they report stock at different levels:
 

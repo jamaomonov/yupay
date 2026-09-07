@@ -156,12 +156,21 @@ def price_to_charge(current: Decimal, expected: Decimal) -> Decimal | None:
 
     Args:
         current: Our price for this merchant — :func:`merchant_price`'s
-            result. Must be positive; it is the denominator of the drift.
+            result. A non-positive value is refused rather than divided by.
         expected: The price the merchant sent, as they last read it.
 
     Returns:
-        The price to charge, or ``None`` when the drift is outside the band.
+        The price to charge, or ``None`` when the drift is outside the band —
+        and for a non-positive ``current``, which is not a price.
     """
+    if current <= _ZERO:
+        # The caller's margin floor already refuses a zero or negative price,
+        # so this is unreachable through the order path — but ``current`` is
+        # the denominator below, and a documented precondition that nothing
+        # enforces is one refactor away from a ZeroDivisionError on the money
+        # path. Refusing reads as ``price_changed``, which is the right answer
+        # for a price we cannot quote.
+        return None
     drift = abs(current - expected) / current * _HUNDRED
     if drift > PRICE_DRIFT_TOLERANCE_PCT:
         return None

@@ -86,11 +86,24 @@ as the storefront, with three merchant-only differences, all guarded here:
   with `user_id=actor.user_id`, which is NULL for a merchant, so a code would
   resolve like a _guest's_ and take a retail discount off an already-wholesale
   price.
+- **Fulfilment is always enqueued, never run inline.** The merchant path calls
+  `start_for_order` with `fulfilment_async` forced on, whatever the deployment
+  is configured with, so a supplier purchase can never sit inside the
+  transaction that took the money — see `merchants/orders.py::_enqueue_only`.
+  Retail is unchanged and still follows the flag.
 - **`mark_merchant_order_paid`** moves the order `pending_payment → paid`
   without a `Payment` row: the deposit debit is the settlement (spec §9.5), so a
   merchant order never rests in `pending_payment` and is invisible to the expiry
   sweep. It records the machine API's replay fingerprint on the `order.paid`
   event, and publishes nothing to realtime — `user_id` is NULL by construction.
+
+`source` stays `"unknown"` on a merchant order, and now carries a fourth
+meaning: not "the client did not say" but "no storefront placed this". The
+column's CHECK admits only `web` / `miniapp` / `bot` / `unknown`, so a
+`merchant_api` value would need a migration and is out of M2's scope. **The
+discriminator is `merchant_id IS NOT NULL`, not `source`** — reporting that
+splits by surface should exclude merchant rows explicitly rather than let them
+land in the `unknown` bucket beside genuinely unattributed retail orders.
 
 `find_merchant_order` is the per-merchant replay lookup that path needs before
 it prices anything. The rest of the flow — pricing, the deposit, fulfilment —

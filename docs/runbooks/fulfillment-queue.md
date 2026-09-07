@@ -10,7 +10,8 @@ commit; `apps/worker`'s `yupay_worker.consumer` claims and runs them via
 the flag off (the default everywhere except prod), `start_for_order` still
 runs tasks inline in the same request, exactly as before this ADR — the
 worker container runs the same consumer loop regardless, it just finds an
-empty queue.
+empty queue. **One caller ignores the flag entirely:** the merchant machine
+API always enqueues — see "The merchant channel does not read the flag" below.
 
 ## The flag
 
@@ -27,6 +28,38 @@ empty queue.
 - Default `false` everywhere. Dev/staging exercise the async path through
   `apps/api/tests/integration/test_fulfillment_async.py` instead of running
   with the flag on.
+
+## The merchant channel does not read the flag
+
+**`POST /merchant/v1/orders` is always asynchronous**, whatever
+`FULFILMENT_ASYNC` is set to. `merchants/orders.py::_enqueue_only` passes
+`start_for_order` a settings copy with the flag on, and that is a call-site
+decision rather than an operator's, because with it off the supplier purchase
+would run **inside the transaction that debits the reseller's deposit**:
+`process_task` catches only `FulfillerError` / `FulfillerNotIntegratedError`,
+so anything raising after the supplier is paid and before the commit rolls back
+the order, the debit and the delivery while the supplier keeps the money — and
+the merchant, following our published contract, retries the same
+`merchant_order_id`, finds nothing, and buys it twice.
+
+Two operational consequences:
+
+- **The merchant channel depends on the worker being up**, always, not only
+  after the flag is flipped. A stalled worker shows as merchant orders sitting
+  in `fulfilling`; the deposit is correctly debited and every row is present,
+  so nothing is lost and nothing needs reconstructing — but nothing is
+  delivered either, and resellers are told to poll.
+- **A pending-queue backlog can be entirely merchant orders even with the flag
+  off.** When triaging depth, do not conclude the flag got flipped:
+
+  ```sql
+  SELECT o.merchant_id IS NOT NULL AS is_merchant, count(*)
+  FROM fulfillment_tasks t JOIN orders o ON o.id = t.order_id
+  WHERE t.status = 'pending' GROUP BY 1;
+  ```
+
+Rolling the flag back (see "Rollback") therefore does **not** return merchant
+orders to inline fulfilment, and must not be attempted as a way to do so.
 
 ## The worker's own settings
 

@@ -41,10 +41,18 @@ the order id, so no path spends the deposit twice.
 ## Transaction shape
 
 The route's session is one transaction, committed by the dependency. Order
-INSERT → deposit debit → ``paid`` → fulfilment start all ride it, so a failure
-anywhere leaves neither an order nor a debit. The one deliberate exception is
-the insufficient-deposit *pre*-check, which runs before any row is written so
-the common case answers ``409`` without an aborted INSERT behind it.
+INSERT → deposit debit → ``paid`` → fulfilment *enqueue* all ride it, so a
+failure anywhere leaves neither an order nor a debit. The one deliberate
+exception is the insufficient-deposit *pre*-check, which runs before any row is
+written so the common case answers ``409`` without an aborted INSERT behind it.
+
+**Fulfilment is enqueued, never executed inline** — this path forces
+``fulfilment_async`` on regardless of the deployment's setting, because a
+supplier purchase inside the money transaction can leave the supplier paid and
+no record of it. :func:`_enqueue_only` carries the argument. The practical
+consequence: **the merchant channel depends on the worker being up.** A stalled
+worker shows as orders sitting in ``fulfilling`` with the deposit correctly
+debited — visible, and recoverable.
 
 ## PII
 
@@ -57,7 +65,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import select
@@ -81,6 +89,7 @@ from yupay.modules.orders import service as orders
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from yupay.core.config import Settings
     from yupay.modules.merchants.models import Merchant
     from yupay.modules.orders.models import Order
 
@@ -307,6 +316,43 @@ async def _replayed(
     return _out(order, balance=await service.deposit_balance(db, merchant_id=merchant_id))
 
 
+def _enqueue_only() -> Settings:
+    """Settings for :func:`fulfillment.start_for_order` with the queue forced on.
+
+    ``fulfilment_async`` is off by default and off on production, and with it
+    off ``start_for_order`` runs the **supplier purchase inline, inside this
+    transaction**. That is a shape a money path cannot have: ``process_task``
+    catches ``FulfillerError`` and ``FulfillerNotIntegratedError`` and nothing
+    else, so anything raising after the supplier is paid but before the commit
+    — an unwrapped client error on a later call, a flush, ``_try_settle_order``
+    — rolls back the order, the debit, the task and the delivery while the
+    supplier keeps the money. The merchant then does exactly what our contract
+    tells them to do, retries the same ``merchant_order_id``, finds nothing,
+    and buys it a second time. AGENTS.md §10 forbids synchronous external HTTP
+    in a request handler for this reason.
+
+    So the queue is forced here rather than left to an env var. The two
+    failure modes are not comparable: a stalled worker leaves an order visibly
+    ``fulfilling`` with the money correctly debited and every row present and
+    recoverable, while an inline failure leaves a paid supplier and no record
+    at all. And enqueue-only is contract-compatible **today** — the machine API
+    already returns ``status: "fulfilling"`` and already tells resellers to
+    poll, so nothing about the wire changes.
+
+    ``fulfilment_async`` is read in exactly one place
+    (``fulfillment.service.start_for_order``, from ``settings or
+    get_settings()``), so this override cannot be undone further down: with it
+    on, every task is left ``pending`` and ``_try_settle_order`` returns early
+    because none is ``succeeded``.
+
+    Returns:
+        A copy of the live settings with ``fulfilment_async`` on. Everything
+        else is whatever the process is configured with — this overrides one
+        flag, it does not build a settings object of its own.
+    """
+    return get_settings().model_copy(update={"fulfilment_async": True})
+
+
 async def place(
     db: AsyncSession, *, merchant: Merchant, body: MerchantOrderCreateIn
 ) -> MerchantOrderOut:
@@ -356,7 +402,13 @@ async def place(
         raise ConflictError(
             "deposit balance does not cover this order",
             code=service.INSUFFICIENT_DEPOSIT_CODE,
-            balance_usd=str(balance.quantize(_CENT)),
+            # ROUND_DOWN, matching ``charge_deposit`` and
+            # ``machine_schemas.UsdBalance``: three roundings of one quantity
+            # must agree, and the direction is a policy, not formatting —
+            # never advertise more than the merchant holds. Today every
+            # balance is already a whole cent, so this is a no-op; M3's
+            # refunds are where it stops being one.
+            balance_usd=str(balance.quantize(_CENT, rounding=ROUND_DOWN)),
             required_usd=str(price),
         )
 
@@ -382,15 +434,20 @@ async def place(
     await service.charge_deposit(db, merchant_id=merchant.id, amount=price, order_id=order.id)
     await orders.mark_merchant_order_paid(db, order=order, actor=actor, request_digest=digest)
 
-    # The same call the payment path makes, minus the risk gate: ``orders.risk``
-    # exists so a card charge is not delivered before a human can look at it,
-    # and a merchant order has no card and no chargeback — the money is ours
-    # already, transferred and credited by support days earlier. Holding it
-    # would break the contract's promise (born paid, fulfilment started) for a
-    # risk this channel cannot carry.
+    # The same call the payment path makes, with two deliberate differences.
+    #
+    # No risk gate: ``orders.risk`` exists so a card charge is not delivered
+    # before a human can look at it, and a merchant order has no card and no
+    # chargeback — the money is ours already, transferred and credited by
+    # support days earlier. Holding it would break the contract's promise
+    # (born paid, fulfilment started) for a risk this channel cannot carry.
+    #
+    # And **always asynchronous**, whatever ``fulfilment_async`` says. See
+    # :func:`_enqueue_only` for why that is a call-site decision and not an
+    # operator's.
     from yupay.modules.fulfillment import service as fulfillment
 
-    await fulfillment.start_for_order(db, order_id=order.id)
+    await fulfillment.start_for_order(db, order_id=order.id, settings=_enqueue_only())
 
     log.info(
         "merchant_order_placed",

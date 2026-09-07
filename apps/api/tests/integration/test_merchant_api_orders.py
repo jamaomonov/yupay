@@ -262,9 +262,9 @@ async def test_placing_an_order_debits_the_deposit_by_exactly_the_charged_price(
     assert order.total_charged == Decimal("1.07")
     assert order.paid_at is not None
     assert order.idempotency_key == "acme-1"
-    # ``paid`` is a moment, not a resting place: fulfilment starts inside the
-    # same transaction, and a top-up SKU with no supplier mapping routes to
-    # the manual admin queue, which parks the task ``in_progress``.
+    # ``paid`` is a moment, not a resting place: fulfilment is enqueued inside
+    # the same transaction, which flips the order to ``fulfilling``. A top-up
+    # SKU with no supplier mapping routes to the manual admin queue.
     assert order.status == "fulfilling"
     assert body["status"] == "fulfilling"
 
@@ -274,6 +274,64 @@ async def test_placing_an_order_debits_the_deposit_by_exactly_the_charged_price(
         )
     ).scalar_one()
     assert task.supplier == "manual"
+    assert task.status == "pending"
+
+
+async def test_fulfilment_is_enqueued_and_never_run_inside_the_money_transaction(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The supplier is never called from inside the transaction that took the money.
+
+    With ``fulfilment_async`` off — its default, and its state on production —
+    ``start_for_order`` runs the supplier purchase inline. Anything raising
+    after that and before the commit rolls back the order, the debit and the
+    delivery while the supplier keeps the money, and the merchant then retries
+    the same ``merchant_order_id``, finds nothing, and buys it twice. This path
+    forces the queue on at the call site so that shape cannot occur.
+
+    The precondition below is what makes this a real test rather than a
+    tautology: it asserts the flag is genuinely off, so the ``pending`` task is
+    the override's doing. Deleting ``settings=_enqueue_only()`` makes the
+    fulfiller run and fails on both assertions.
+    """
+    from yupay.core.config import get_settings
+    from yupay.modules.fulfillment.suppliers.manual import ManualFulfiller
+
+    assert get_settings().fulfilment_async is False, (
+        "this test is only meaningful while the flag defaults to off"
+    )
+
+    async def _never(**_kwargs: object) -> None:
+        raise AssertionError("a supplier was called inside the money transaction")
+
+    monkeypatch.setattr(ManualFulfiller, "fulfill", _never)
+
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+    sku_id = await _seeded(db_session)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "queued-1", "sku_id": sku_id, "expected_price": "1.07"},
+    )
+
+    assert r.status_code == 201, r.text
+    assert r.json()["status"] == "fulfilling"
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == r.json()["order_id"])
+        )
+    ).scalar_one()
+    assert task.status == "pending", "the task was executed inline, not enqueued"
+    # The money landed regardless — the whole point is that the debit is
+    # durable and the delivery is the worker's problem.
+    assert await _balance(db_session, merchant_id) == Decimal("8.93")
 
 
 async def test_the_deposit_charge_posts_the_readme_legs(
@@ -415,6 +473,50 @@ async def test_money_leaves_this_endpoint_as_a_string_never_a_float(
     body = json.loads(r.text, parse_float=_no_floats, parse_int=_no_floats)
     assert body["price_usd"] == "1.07"
     assert body["balance_usd"] == "8.93"
+
+
+async def test_expected_price_is_accepted_as_a_string_or_as_a_number(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The README asks for a string; a well-formed number is accepted anyway.
+
+    Refusing ``1.07`` because it arrived unquoted would be a worse failure mode
+    than accepting it — the number is exact at two decimals and unambiguous,
+    and the merchant's intent is not in doubt. What we do *not* accept is more
+    precision than a price has: ``1.075`` is refused in either spelling by
+    ``decimal_places=2``, loudly, before anything is priced.
+
+    Pinned in both spellings because "we happen to be lenient" and "we promise
+    to be lenient" are different, and the README now says the second.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+    sku_id = await _seeded(db_session)
+
+    quoted = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "spell-1", "sku_id": sku_id, "expected_price": "1.07"},
+    )
+    bare = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "spell-2", "sku_id": sku_id, "expected_price": 1.07},
+    )
+    too_precise = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "spell-3", "sku_id": sku_id, "expected_price": "1.075"},
+    )
+
+    assert quoted.status_code == 201, quoted.text
+    assert bare.status_code == 201, bare.text
+    assert quoted.json()["price_usd"] == bare.json()["price_usd"] == "1.07"
+    assert too_precise.status_code == 422, too_precise.text
 
 
 # ---------- item_unavailable (404) ----------

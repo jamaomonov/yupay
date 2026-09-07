@@ -544,12 +544,18 @@ page: your deposit **is** the payment.
 | ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account.     |
 | `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                  |
-| `expected_price`    | yes      | The `price_usd` you last read for that SKU, as a string with at most two decimals. See "Price drift" below.                       |
+| `expected_price`    | yes      | The `price_usd` you last read for that SKU. At most two decimals. See "Price drift" below.                                        |
 | `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login). Same fields the storefront collects; we validate them and drop keys we don't know. |
 
 One SKU per order. There is no `qty` and no line array: a reseller's basket
 does not have to be ours, and one line per order means "the order failed"
 never means "half the order failed". Send several orders.
+
+`expected_price` may be sent as a JSON string (`"1.07"`, what we send you and
+what we recommend) **or** as a JSON number (`1.07`). Refusing a well-formed
+number would be a worse failure mode than accepting it. More than two decimals
+is refused in either spelling — a price does not have them, and silently
+rounding your number would be us deciding what you meant.
 
 Unknown fields in the body are **rejected**, not ignored — a typo'd
 `fulfilment_data` would otherwise become an order with no player id, delivered
@@ -572,8 +578,11 @@ Success is `201`:
 
 - **`price_usd` is what you were actually charged**, and it is final. Whatever
   the order ends up costing us is our problem, not yours.
-- **`balance_usd` is your deposit after this order.** Watch it; there is no
-  low-balance webhook.
+- **`balance_usd` is your deposit as of this response.** On the call that
+  placed the order that is the balance after it; on a _replayed_ call it is
+  your balance now, which will have moved if you have ordered since. Watch it
+  — there is no low-balance webhook — but reconcile against
+  `GET /merchant/v1/me`, not against a stored copy of an old order response.
 - **`status` is live, not always `"paid"`.** A merchant order is born paid and
   goes straight into fulfilment, so the usual value here is `"fulfilling"`.
   Poll `GET /merchant/v1/orders/{merchant_order_id}` for the rest.
@@ -618,6 +627,7 @@ defeats the whole mechanism and will place duplicate orders.
 | 422    | `margin_floor`         | Our own pricing for this SKU is misconfigured. Not your fault; tell support.      |
 | 422    | —                      | The body, or its `fulfillment_data`, did not validate.                            |
 | 409    | `insufficient_deposit` | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.  |
+| 409    | `order_conflict`       | A rare write conflict on our side. Retry the **same** id; it is safe.             |
 | 409    | `order_id_reused`      | This `merchant_order_id` already belongs to a different order.                    |
 
 `item_unavailable` reasons, because a 404 you cannot act on is a support
@@ -637,6 +647,19 @@ ticket:
 > stock moves as other resellers draw on the same pool. `item_unavailable` is
 > where you find out, so handle it as an ordinary outcome rather than an
 > exception.
+
+#### Fulfilment is asynchronous, always
+
+We never call a supplier while we are taking your money. The order and the
+deposit charge commit first; the actual purchase is queued and runs
+immediately afterwards. That is why the response says `"fulfilling"` and why
+`GET /merchant/v1/orders/{merchant_order_id}` is where delivery shows up.
+
+The practical consequence: a `201` means **the order exists and your deposit
+was charged**, not that the goods are delivered. If our fulfilment workers ever
+fall behind, orders sit in `fulfilling` a little longer — the money is
+correctly accounted for the whole time and nothing is lost. Poll, and treat a
+long `fulfilling` as "in progress", never as a reason to place a second order.
 
 #### No emails, ever
 

@@ -968,7 +968,14 @@ async def create_order(
         replay = await _existing_idempotent_order(db, actor=actor, idempotency_key=idempotency_key)
         if replay is not None:
             return replay
-        raise ConflictError("order conflict") from exc
+        # Some other constraint, then: the key raced but the winner is gone
+        # (rolled back), or the INSERT violated something that is not the
+        # idempotency index at all. Carries a ``code`` because this reaches
+        # ``/merchant/v1`` too, whose published error table discriminates every
+        # 409 by code — an uncoded one there would be the only status a
+        # machine client cannot branch on. Additive for retail, which reads
+        # ``type``.
+        raise ConflictError("order conflict", code="order_conflict") from exc
 
     # Re-load with eager relationships so callers can return the row directly.
     return await _load_order(db, order_id)
