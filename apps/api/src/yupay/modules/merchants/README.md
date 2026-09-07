@@ -525,6 +525,8 @@ cursor you have to reconcile.
 | Admin HTTP surface                                         | `admin_routes.py`                                             |
 | Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix      |
 | The priced catalog read model                              | `price_list.py`                                               |
+| Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                  |
+| Admin-surface DTOs                                         | `schemas.py`                                                  |
 
 `auth.merchant_auth` is the dependency every `/merchant/v1` endpoint sits
 behind. **Import it from `merchants.auth` directly, never from

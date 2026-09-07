@@ -87,7 +87,7 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.catalog.service import DEFAULT_LOCALE
 from yupay.modules.merchants import pricing
-from yupay.modules.merchants.schemas import (
+from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
     MerchantCatalogOut,
     MerchantProductOut,

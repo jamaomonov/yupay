@@ -62,8 +62,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.modules.merchants import api as merchants
 from yupay.modules.merchants.auth import merchant_auth
+from yupay.modules.merchants.machine_schemas import MerchantCatalogOut, MerchantProfileOut
 from yupay.modules.merchants.models import Merchant
-from yupay.modules.merchants.schemas import MerchantCatalogOut, MerchantProfileOut
 
 #: ``dependencies`` on the router rather than only on each handler: a route
 #: added later without an ``AuthedMerchant`` parameter is still authenticated,
