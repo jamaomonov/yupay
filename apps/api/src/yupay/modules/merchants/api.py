@@ -18,7 +18,11 @@ The same binding is why ``orders.service``'s status-change seam reaches for
 ``merchants.webhooks`` as a submodule rather than through here: this facade
 imports routers, and ``merchants.orders`` imports ``orders.service``, so a
 facade import from inside that cycle would not resolve. The webhook producer
-is exported below all the same, for every caller that is not in the cycle.
+is exported below all the same, for every caller that is not in the cycle —
+under ``enqueue_`` names, never under the seam's own
+``on_order_status_changed``. Two functions taking ``(db, order)`` under one
+name, one of which also nudges retail, is an autocomplete away from silently
+turning the storefront's live updates off.
 
 The credential *lifecycle* (``create_api_key`` / ``list_api_keys`` /
 ``revoke_api_key``) and the wire format (``signing``) have no such binding
@@ -88,8 +92,8 @@ from yupay.modules.merchants.webhooks import (
     EVENT_ORDER_STATUS_CHANGED,
     EVENT_TYPES,
     WEBHOOK_QUEUE_CHANNEL,
-    on_balance_credited,
-    on_order_status_changed,
+    enqueue_balance_credited,
+    enqueue_order_status_changed,
 )
 from yupay.modules.merchants.webhooks import (
     enqueue as enqueue_webhook_event,
@@ -120,6 +124,8 @@ __all__ = [
     "deposit_balance",
     "disable_webhook",
     "effective_cost",
+    "enqueue_balance_credited",
+    "enqueue_order_status_changed",
     "enqueue_webhook_event",
     "expected_signature",
     "get_webhook",
@@ -128,8 +134,6 @@ __all__ = [
     "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",
-    "on_balance_credited",
-    "on_order_status_changed",
     "place_order",
     "read_order_status",
     "revoke_api_key",

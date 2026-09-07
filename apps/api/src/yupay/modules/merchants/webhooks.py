@@ -131,15 +131,24 @@ async def enqueue(
     if event_type not in EVENT_TYPES:
         raise ValueError(f"unknown merchant webhook event type: {event_type!r}")
 
-    hook = (
+    # The column, not the entity. Reading the whole row would pull
+    # ``secret_enc``/``secret_nonce`` into the identity map of a session that
+    # unrelated code is about to flush and commit, on every merchant status
+    # transition, to use one string. Nothing here logs or serialises it, so
+    # this is hygiene rather than a leak fixed -- but the cheapest place to
+    # keep key material is out of the session entirely.
+    #
+    # ``None`` is unambiguous: ``url`` is NOT NULL, so a NULL scalar can only
+    # mean there was no enabled row.
+    url = (
         await db.execute(
-            select(MerchantWebhook).where(
+            select(MerchantWebhook.url).where(
                 MerchantWebhook.merchant_id == merchant_id,
                 MerchantWebhook.disabled_at.is_(None),
             )
         )
     ).scalar_one_or_none()
-    if hook is None:
+    if url is None:
         return None
 
     # Everything the caller has pending reaches the database BEFORE the
@@ -158,7 +167,7 @@ async def enqueue(
                     # Snapshot, never a join: setting a URL edits the hook row
                     # in place, so a join would re-attribute this delivery's
                     # eventual response to whatever address is current.
-                    url=hook.url,
+                    url=url,
                     event_type=event_type,
                     payload=payload,
                 )
@@ -230,11 +239,16 @@ def _log_enqueue_failure(
     )
 
 
-async def on_order_status_changed(db: AsyncSession, order: Order) -> str | None:
+async def enqueue_order_status_changed(db: AsyncSession, order: Order) -> str | None:
     """Queue ``order.status_changed`` for a merchant order; ignore any other.
 
     Called from ``orders.service.on_order_status_changed``, the one seam every
-    status transition in the system goes through.
+    status transition in the system goes through. Deliberately **not** named
+    ``on_order_status_changed`` too: that is the seam, it takes the same two
+    arguments, and it also nudges retail. One name for both would let an
+    autocomplete in any module that imports ``merchants`` -- most do -- swap
+    the seam for this half of it, silently dropping every retail nudge, with
+    no test to fail. The name says what this one does: it enqueues.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -267,10 +281,13 @@ async def on_order_status_changed(db: AsyncSession, order: Order) -> str | None:
     )
 
 
-async def on_balance_credited(
+async def enqueue_balance_credited(
     db: AsyncSession, *, merchant_id: str, amount: Decimal, balance: Decimal
 ) -> str | None:
     """Queue ``balance.credited`` after support tops a deposit up.
+
+    Named for what it does rather than for the event it reacts to, matching
+    :func:`enqueue_order_status_changed` -- see the reason there.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -298,6 +315,6 @@ __all__ = [
     "EVENT_TYPES",
     "WEBHOOK_QUEUE_CHANNEL",
     "enqueue",
-    "on_balance_credited",
-    "on_order_status_changed",
+    "enqueue_balance_credited",
+    "enqueue_order_status_changed",
 ]

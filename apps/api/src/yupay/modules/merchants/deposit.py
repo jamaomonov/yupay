@@ -154,7 +154,7 @@ async def credit_deposit(
     if not replayed:
         # In this transaction, with the credit, so a merchant is told about
         # money that is committed or about nothing at all.
-        await webhooks.on_balance_credited(
+        await webhooks.enqueue_balance_credited(
             db,
             merchant_id=merchant_id,
             amount=amount,

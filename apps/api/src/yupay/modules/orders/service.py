@@ -1131,7 +1131,7 @@ async def on_order_status_changed(
     # order through it), so a module-level import here would close the cycle.
     from yupay.modules.merchants import webhooks as merchant_webhooks
 
-    return await merchant_webhooks.on_order_status_changed(db, order)
+    return await merchant_webhooks.enqueue_order_status_changed(db, order)
 
 
 # ---------- realtime ----------

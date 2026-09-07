@@ -128,6 +128,15 @@ read endpoint cannot disagree about the shape of a balance.
   and so announces nothing: a `balance.credited` for money that did not move
   would have a reseller crediting their own customer twice.
 
+The two typed producers are `enqueue_order_status_changed` and
+`enqueue_balance_credited`, and the first is deliberately **not** called
+`on_order_status_changed`: that is the name of the seam in `orders.service`, it
+takes the same two arguments, and it also nudges retail. One name for both
+would let an autocomplete in any module that imports `merchants` — most do —
+swap the seam for this half of it, silently turning the storefront's live
+updates off with no test to fail. The facade exports the generic `enqueue` as
+`enqueue_webhook_event` for the same reason.
+
 Drawn in `docs/architecture/sequence-diagrams/merchant-webhook-emit.mmd`.
 
 Delivery — signing, backoff, the failure streak and the auto-disable — is Task

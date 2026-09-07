@@ -23,15 +23,38 @@ plausible regression on the **config** path — a well-meaning "keep the log
 tidy" UPDATE, which is exactly what joining the log onto ``merchant_webhooks``
 would amount to.
 
+**Run nothing else against this worktree while this is running.** It edits
+source files in place, so any concurrently running suite imports whatever
+mutation happens to be applied at that moment and fails for reasons that have
+nothing to do with it. That is not hypothetical: running this alongside an
+``-n auto`` integration pass produced a ``PendingRollbackError`` in
+``test_an_enqueue_that_raises_does_not_roll_back_the_order`` — the exact
+signature the ``no_savepoint`` mutation is designed to cause, in a worker that
+had imported ``webhooks.py`` mid-mutation. The banner below says so on every
+run.
+
 Sources are restored from a copy taken before the edit, in a ``finally``.
-Never ``git checkout`` — several agents share this worktree.
+Never ``git checkout`` — several agents share this worktree. pytest runs in
+its own process group, killed as a group in a ``finally`` (the shape
+``falsify_outbound.py`` took in d12927c).
+
+What that covers, measured rather than assumed: on **SIGINT** — Ctrl-C, an
+agent stopped — the group is killed and the worktree is restored
+byte-identical, verified by hashing the file before, during and after an
+interrupted run (mutated mid-run, hash equal after, zero surviving children,
+no leftover backup directory). On **SIGKILL** nothing in-process runs, so that
+case still leaves a mutated worktree; there is no in-process answer to it, and
+the mitigation is to not ``kill -9`` this script.
 """
 
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -227,20 +250,38 @@ def _restore(backups: dict[Path, Path]) -> None:
 
 def _run(mutation: Mutation) -> tuple[str, list[str]]:
     """Run the mutation's tests. Returns a verdict and the failing test names."""
-    completed = subprocess.run(
-        ["uv", "run", "pytest", *mutation.tests, "-q", "-p", "no:cacheprovider", "--no-cov"],
+    command = ["uv", "run", "pytest", *mutation.tests, "-q", "-p", "no:cacheprovider", "--no-cov"]
+    # Own process group, killed as a group in ``finally`` — the same shape
+    # ``falsify_outbound.py`` took in d12927c after three of its pytest children
+    # were found alive two hours later, competing for the Postgres and Redis the
+    # rest of the suite uses.
+    #
+    # None of *these* mutations hangs on purpose, so the timeout path is
+    # unlikely. The interrupt path is what matters here and it is worse: under
+    # SIGKILL neither this ``finally`` nor ``_restore``'s runs, so an
+    # interrupted run leaves both an orphaned pytest **and a mutated worktree**.
+    # Killing the group closes the half that is closable.
+    process = subprocess.Popen(
+        command,
         cwd=REPO,
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
-        timeout=900,
-        check=False,
+        start_new_session=True,
     )
+    try:
+        stdout, _ = process.communicate(timeout=900)
+    except subprocess.TimeoutExpired:
+        return "TIMED OUT", []
+    finally:
+        if process.poll() is None:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
     failures = [
-        match.group("name")
-        for line in completed.stdout.splitlines()
-        if (match := _FAILED_LINE.match(line))
+        match.group("name") for line in stdout.splitlines() if (match := _FAILED_LINE.match(line))
     ]
-    if completed.returncode == 0:
+    if process.returncode == 0:
         return "UNFALSIFIED — the suite stayed green", []
     missing = [name for name in mutation.expect if not any(name in f for f in failures)]
     if missing:
@@ -261,6 +302,11 @@ def main() -> int:
             print(f"{mutation.name:30} {mutation.breaks}")
         return 0
 
+    print(
+        "falsify: editing source files in place — do not run any other suite "
+        "against this worktree until it finishes.\n",
+        flush=True,
+    )
     rows: list[tuple[str, str]] = []
     for mutation in chosen:
         backups: dict[Path, Path] = {}
