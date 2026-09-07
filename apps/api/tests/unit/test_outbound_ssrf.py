@@ -28,8 +28,10 @@ the module has no "allow private addresses" switch to find and flip:
 from __future__ import annotations
 
 import asyncio
+import gzip
 import inspect
 import socket
+import tracemalloc
 from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from typing import Any
 
@@ -37,7 +39,11 @@ import httpx
 import pytest
 from yupay.core import outbound, outbound_addresses
 from yupay.core.outbound import (
+    DEFAULT_MAX_BYTES,
     AddressNotAllowedError,
+    ContentEncodingNotAllowedError,
+    OutboundBrokenError,
+    OutboundError,
     OutboundRefusedError,
     OutboundTimeoutError,
     ResolutionFailedError,
@@ -104,8 +110,27 @@ def _transport(handler: _Handler, seen: list[httpx.Request]) -> Callable[..., ht
     return _factory
 
 
+async def _one_chunk(body: bytes) -> AsyncIterator[bytes]:
+    yield body
+
+
+def _response(
+    status: int = 200, body: bytes = b"", headers: dict[str, str] | None = None
+) -> httpx.Response:
+    """A **streamed** response, which is the only kind the client can read.
+
+    ``httpx.Response(200, content=b"...")`` is pre-read at construction, so
+    ``aiter_raw`` refuses it as already consumed — an artefact of
+    ``MockTransport``, not of the client: a real transport under
+    ``send(stream=True)`` never pre-reads. Building every fixture as a stream
+    keeps these tests on the same code path the wire uses, which is the path
+    that must never invoke httpx's decoder.
+    """
+    return httpx.Response(status, headers=headers or {}, content=_one_chunk(body))
+
+
 def _ok(_request: httpx.Request) -> httpx.Response:
-    return httpx.Response(200, text="ok")
+    return _response(200, b"ok")
 
 
 def _wire(
@@ -162,6 +187,94 @@ async def test_a_url_without_a_host_is_refused(monkeypatch: pytest.MonkeyPatch) 
 
     with pytest.raises(UrlNotAllowedError, match="host"):
         await post_json("https:///hooks", body=b"{}")
+
+
+async def test_port_zero_is_refused_rather_than_read_as_443(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``parsed.port or 443`` used to deliver a ``:0`` URL to 443."""
+    seen = _wire(monkeypatch)
+
+    with pytest.raises(UrlNotAllowedError, match="port"):
+        await post_json("https://webhook.example.test:0/hooks", body=b"{}")
+
+    assert seen == []
+
+
+async def test_an_idn_hostname_is_encoded_rather_than_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``https://пример.рф/hook`` is a hostname a merchant may really configure.
+
+    The save-time validator accepts it, so refusing it here would be a
+    contradiction — and before this it did neither: the Cyrillic authority
+    reached ``httpx.Headers`` and came back out of the module as an untyped
+    ``UnicodeEncodeError``. Everything downstream wants the A-label form.
+    """
+    calls: list[tuple[str, int]] = []
+    seen = _wire(monkeypatch, calls=calls)
+
+    result = await post_json("https://пример.рф/hook", body=b"{}")
+
+    assert result.status_code == 200
+    assert calls == [("xn--e1afmkfd.xn--p1ai", 443)]
+    assert seen[0].headers["host"] == "xn--e1afmkfd.xn--p1ai"
+    assert seen[0].extensions["sni_hostname"] == "xn--e1afmkfd.xn--p1ai"
+
+
+async def test_a_host_that_will_not_encode_is_a_typed_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _wire(monkeypatch)
+
+    with pytest.raises(UrlNotAllowedError, match="domain name"):
+        await post_json(f"https://{'п' * 64}.рф/hook", body=b"{}")
+
+
+async def test_an_over_long_dns_label_is_a_typed_resolution_failure() -> None:
+    """64+ characters in one label, ASCII included.
+
+    ``getaddrinfo`` raises ``UnicodeError`` for it — a ``ValueError``, not an
+    ``OSError``, so it walked straight past the resolution handler and out of
+    the module. No lookup leaves the machine: the length check is local. The
+    real resolver runs here on purpose.
+    """
+    with pytest.raises(ResolutionFailedError):
+        await post_json(f"https://{'a' * 64}.example.test/hook", body=b"{}")
+
+
+async def test_a_header_value_that_cannot_be_sent_is_a_typed_refusal(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Building the request is where this fails, which used to be outside the net."""
+    _wire(monkeypatch)
+
+    with pytest.raises(UrlNotAllowedError, match="no request could be built"):
+        await post_json(URL, body=b"{}", headers={"X-Note": "привет"})
+
+
+async def test_an_unexpected_failure_still_comes_out_typed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The catch-all. A drain that catches ``OutboundError`` must catch everything.
+
+    Without it one such row is a poison pill: the handler raises out of the
+    claim, the row never reaches a terminal state, and it is re-claimed
+    forever.
+    """
+    _wire(monkeypatch)
+
+    async def _explode(*_args: object, **_kwargs: object) -> tuple[int, bytes]:
+        raise RuntimeError("a bug in this module")
+
+    monkeypatch.setattr(outbound, "_send", _explode)
+
+    with pytest.raises(OutboundBrokenError) as caught:
+        await post_json(URL, body=b"{}")
+
+    assert isinstance(caught.value, OutboundError)
+    assert isinstance(caught.value.__cause__, RuntimeError)
+    assert caught.value.attempt_delivered is False
 
 
 async def test_the_refusal_message_never_carries_the_url_query(
@@ -229,6 +342,20 @@ async def test_a_unique_local_address_is_refused(
     monkeypatch: pytest.MonkeyPatch, address: str
 ) -> None:
     assert "unique-local" in str(await _refused(monkeypatch, address))
+
+
+@pytest.mark.parametrize("address", ["fec0::1", "feff:ffff:ffff:ffff::1"])
+async def test_a_site_local_address_is_refused(
+    monkeypatch: pytest.MonkeyPatch, address: str
+) -> None:
+    """``fec0::/10``, RFC 3879 — deprecated in 2004, still routed in estates.
+
+    It needs naming because Python puts it in neither ``is_private`` nor
+    ``is_global``, so it fell through the family table **and** the catch-all
+    under it. Found by review; the save-time validator had the same hole and
+    now reads the same table.
+    """
+    assert "site-local" in str(await _refused(monkeypatch, address))
 
 
 @pytest.mark.parametrize("address", ["224.0.0.1", "239.255.255.250", "ff02::1", "::ffff:224.0.0.1"])
@@ -454,11 +581,7 @@ async def test_a_redirect_is_returned_as_a_result_and_never_followed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def _redirect(_request: httpx.Request) -> httpx.Response:
-        return httpx.Response(
-            302,
-            headers={"location": "http://169.254.169.254/latest/meta-data/"},
-            text="moved",
-        )
+        return _response(302, b"moved", {"location": "http://169.254.169.254/latest/meta-data/"})
 
     seen = _wire(monkeypatch, handler=_redirect)
 
@@ -475,7 +598,7 @@ async def test_every_redirect_status_is_an_outcome(
 ) -> None:
     seen = _wire(
         monkeypatch,
-        handler=lambda _r: httpx.Response(status, headers={"location": "https://elsewhere.test/"}),
+        handler=lambda _r: _response(status, headers={"location": "https://elsewhere.test/"}),
     )
 
     result = await post_json(URL, body=b"{}")
@@ -490,7 +613,7 @@ async def test_every_redirect_status_is_an_outcome(
 async def test_a_response_over_the_byte_cap_is_a_typed_refusal(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    seen = _wire(monkeypatch, handler=lambda _r: httpx.Response(200, content=b"x" * 5000))
+    seen = _wire(monkeypatch, handler=lambda _r: _response(200, b"x" * 5000))
 
     with pytest.raises(ResponseTooLargeError, match="1024"):
         await post_json(URL, body=b"{}", max_bytes=1024)
@@ -521,7 +644,7 @@ async def test_a_streaming_body_is_cut_off_rather_than_read_to_the_end(
 async def test_a_response_at_the_cap_exactly_is_still_a_delivery(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _wire(monkeypatch, handler=lambda _r: httpx.Response(200, content=b"x" * 1024))
+    _wire(monkeypatch, handler=lambda _r: _response(200, b"x" * 1024))
 
     result = await post_json(URL, body=b"{}", max_bytes=1024)
 
@@ -532,7 +655,7 @@ async def test_a_response_at_the_cap_exactly_is_still_a_delivery(
 async def test_a_slow_server_is_a_typed_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _slow(_request: httpx.Request) -> httpx.Response:
         await asyncio.sleep(5)
-        return httpx.Response(200)
+        return _response(200)
 
     _wire(monkeypatch, handler=_slow)
 
@@ -622,7 +745,7 @@ async def test_nothing_the_client_sends_is_ever_logged(
 ) -> None:
     recorder = _Recorder()
     monkeypatch.setattr(outbound, "log", recorder)
-    _wire(monkeypatch, handler=lambda _r: httpx.Response(200, text="thanks"))
+    _wire(monkeypatch, handler=lambda _r: _response(200, b"thanks"))
 
     await post_json(
         "https://webhook.example.test/hooks?token=query-s3cr3t",
@@ -657,7 +780,7 @@ async def test_our_headers_go_to_the_pinned_host_and_nowhere_else(
     """Property 6's other half: with no redirect followed, there is no second hop."""
     seen = _wire(
         monkeypatch,
-        handler=lambda _r: httpx.Response(302, headers={"location": "https://attacker.test/"}),
+        handler=lambda _r: _response(302, headers={"location": "https://attacker.test/"}),
     )
 
     await post_json(URL, body=b"{}", headers={"X-Yupay-Signature": "sig"})
@@ -676,13 +799,104 @@ async def test_the_caller_cannot_override_the_pinned_host_header(
     assert seen[0].headers["host"] == "webhook.example.test"
 
 
+# ---------- the compressed-response defence ----------
+
+
+async def test_the_client_asks_for_an_undecoded_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The polite half of the defence. Nothing else asserted this header existed."""
+    seen = _wire(monkeypatch)
+
+    await post_json(URL, body=b"{}")
+
+    assert seen[0].headers["accept-encoding"] == "identity"
+
+
+async def test_a_compressed_response_is_refused_and_never_expanded(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The load-bearing half: a server can ignore what we asked for.
+
+    httpx decodes on the **response's** ``Content-Encoding`` regardless, and a
+    cap counted after decoding is no cap at all — the measured cost of a
+    300 KB gzip answer was ~50 MB of heap, independent of ``max_bytes``. The
+    peak assertion is the test: 20 MB of zeros compresses to a few KB, so a
+    client that decoded would blow straight through it.
+    """
+    bomb = gzip.compress(b"\0" * 20_000_000)
+    assert len(bomb) < 100_000, "the point of the fixture is that the wire cost is small"
+    _wire(monkeypatch, handler=lambda _r: _response(200, bomb, {"content-encoding": "gzip"}))
+
+    tracemalloc.start()
+    try:
+        with pytest.raises(ContentEncodingNotAllowedError) as caught:
+            await post_json(URL, body=b"{}", max_bytes=DEFAULT_MAX_BYTES)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert peak < 5_000_000, f"decoded somewhere: peak {peak} bytes"
+    assert caught.value.attempt_delivered is True, "they received it — a retry re-delivers"
+
+
+async def test_an_identity_content_encoding_is_read_normally(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _wire(monkeypatch, handler=lambda _r: _response(200, b"ok", {"content-encoding": "identity"}))
+
+    assert (await post_json(URL, body=b"{}")).body == "ok"
+
+
+# ---------- the taxonomy the caller branches on ----------
+
+
+@pytest.mark.parametrize(
+    ("error", "delivered"),
+    [
+        (outbound.UrlNotAllowedError, False),
+        (AddressNotAllowedError, False),
+        (outbound.ResponseTooLargeError, True),
+        (ContentEncodingNotAllowedError, True),
+        (OutboundBrokenError, False),
+        (ResolutionFailedError, False),
+        (outbound.ConnectFailedError, False),
+        (OutboundTimeoutError, False),
+    ],
+)
+async def test_attempt_delivered_answers_whether_a_retry_re_delivers(
+    error: type[OutboundError], delivered: bool
+) -> None:
+    """The flag, not the class, is what a retry table reads.
+
+    Two refusals mean the merchant's server already has the webhook. A caller
+    branching on the family alone would retry both.
+    """
+    assert error.attempt_delivered is delivered
+
+
+async def test_every_error_is_one_of_the_two_families() -> None:
+    """A third family would be a branch a caller could forget."""
+    families = (OutboundRefusedError, outbound.OutboundUnreachableError)
+    leaves = [
+        outbound.UrlNotAllowedError,
+        AddressNotAllowedError,
+        outbound.ResponseTooLargeError,
+        ContentEncodingNotAllowedError,
+        OutboundBrokenError,
+        ResolutionFailedError,
+        outbound.ConnectFailedError,
+        OutboundTimeoutError,
+    ]
+    for leaf in leaves:
+        assert sum(issubclass(leaf, family) for family in families) == 1, leaf
+
+
 # ---------- the result the caller records ----------
 
 
 async def test_the_result_carries_what_the_delivery_log_needs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _wire(monkeypatch, handler=lambda _r: httpx.Response(503, text="try later"))
+    _wire(monkeypatch, handler=lambda _r: _response(503, b"try later"))
 
     result = await post_json(URL, body=b"{}")
 
@@ -696,7 +910,7 @@ async def test_a_body_that_is_not_utf8_still_comes_back_as_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """The log is for a human to read; undecodable bytes must not raise."""
-    _wire(monkeypatch, handler=lambda _r: httpx.Response(200, content=b"\xff\xfe not utf8"))
+    _wire(monkeypatch, handler=lambda _r: _response(200, b"\xff\xfe not utf8"))
 
     result = await post_json(URL, body=b"{}")
 

@@ -19,22 +19,26 @@ How the address is pinned:
 
 1. Resolve the host once, ourselves.
 2. Refuse unless **every** answer is public — a host with one public and one
-   private record is refused, not raced. The first answer is then the one
-   used, with **no fallback to the others** if it does not connect: a second
-   attempt would have to know whether the first one had already put the
-   request on the wire, and a wrong answer there delivers a webhook twice.
-   (``resolve_addresses`` asks for ``AI_ADDRCONFIG`` so "the first answer" is
-   one this host can actually route to.)
-3. Build the request against the chosen address as a **literal**, carrying the
+   private record is refused, not raced. "Every answer" means every answer the
+   resolver gave us: ``resolve_addresses`` asks for ``AI_ADDRCONFIG``, so a
+   family this host cannot route (AAAA on an IPv4-only container) is not
+   returned and therefore not judged. A dual-stack merchant with a public A
+   and a private AAAA is delivered to there rather than refused — the address
+   we would have refused is one nothing here could have reached.
+3. The first answer is the one used, with **no fallback to the others** if it
+   does not connect: a second attempt would have to know whether the first had
+   already put the request on the wire, and being wrong about that delivers a
+   webhook twice.
+4. Build the request against the chosen address as a **literal**, carrying the
    original hostname in the ``Host`` header and in TLS SNI (so certificate
    verification still happens against the name, not the address).
-4. Watch httpcore's ``connect_tcp`` trace and refuse if the host handed to the
-   socket layer is ever not that address. Step 3 is the mechanism; step 4 is
+5. Watch httpcore's ``connect_tcp`` trace and refuse if the host handed to the
+   socket layer is ever not that address. Step 4 is the mechanism; step 5 is
    what makes it an invariant rather than a convention, so a later edit that
    reintroduces connect-by-name fails closed.
 
 Connections are never pooled across calls: each call builds its own client and
-closes it. A reused connection would skip steps 1-4 for every request after
+closes it. A reused connection would skip steps 1-5 for every request after
 the first, which is the same hole by a slower route.
 
 Refusals are typed and split into two families, because the caller records
@@ -58,12 +62,25 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any, Final
-from urllib.parse import urlsplit
 
 import httpx
 
 from yupay.core.logging import get_logger
 from yupay.core.outbound_addresses import blocked_reason, resolve_addresses
+from yupay.core.outbound_errors import (
+    AddressNotAllowedError,
+    ConnectFailedError,
+    ContentEncodingNotAllowedError,
+    OutboundBrokenError,
+    OutboundError,
+    OutboundRefusedError,
+    OutboundTimeoutError,
+    OutboundUnreachableError,
+    ResolutionFailedError,
+    ResponseTooLargeError,
+    UrlNotAllowedError,
+)
+from yupay.core.outbound_target import HTTPS_PORT, Target, parse_target
 
 log = get_logger("yupay.core.outbound")
 
@@ -77,68 +94,11 @@ DEFAULT_TIMEOUT_SECONDS: Final = 10.0
 #: endpoint has to say about a webhook fits many times over.
 DEFAULT_MAX_BYTES: Final = 64 * 1024
 
-_HTTPS_PORT: Final = 443
-
 #: httpcore's trace event for "about to open a TCP connection to this host".
 #: Pinned by :func:`_connect_guard` and asserted by the live test suite, so an
 #: httpcore upgrade that renames it fails a test rather than silently
 #: disarming the guard.
 _CONNECT_TRACE_EVENT: Final = "connection.connect_tcp.started"
-
-
-class OutboundError(Exception):
-    """Base class for everything :func:`post_json` raises."""
-
-
-class OutboundRefusedError(OutboundError):
-    """**We** refused. The merchant's server is not at fault and not at risk.
-
-    A caller recording delivery outcomes should treat this as "blocked by
-    policy" rather than "the endpoint failed": retrying changes nothing until
-    the merchant changes the URL or their DNS.
-    """
-
-
-class UrlNotAllowedError(OutboundRefusedError):
-    """The URL was refused before anything was resolved or connected to."""
-
-
-class AddressNotAllowedError(OutboundRefusedError):
-    """A resolved address is not one we will connect to.
-
-    Attributes:
-        host: The hostname that resolved to it.
-        reasons: One ``"<address>: <family>"`` string per offending answer.
-    """
-
-    def __init__(self, message: str, *, host: str = "", reasons: tuple[str, ...] = ()) -> None:
-        super().__init__(message)
-        self.host = host
-        self.reasons = reasons
-
-
-class ResponseTooLargeError(OutboundRefusedError):
-    """The response passed ``max_bytes`` and the read was cut off.
-
-    Note for the caller: the request **was** delivered — their server received
-    it and answered. Retrying it re-delivers. Treat this as terminal.
-    """
-
-
-class OutboundUnreachableError(OutboundError):
-    """**They** did not answer. Nothing was refused by us; a retry may work."""
-
-
-class ResolutionFailedError(OutboundUnreachableError):
-    """The hostname did not resolve at all."""
-
-
-class ConnectFailedError(OutboundUnreachableError):
-    """The connection, the TLS handshake, or the exchange itself failed."""
-
-
-class OutboundTimeoutError(OutboundUnreachableError):
-    """The attempt passed its total wall-clock budget."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -163,56 +123,28 @@ class OutboundResponse:
     elapsed_ms: int
 
 
-@dataclass(frozen=True, slots=True)
-class _Target:
-    """A destination parsed out of the caller's URL, before any resolution."""
-
-    host: str
-    port: int
-    authority: str
-    path: str
-
-
-def _parse_target(url: str) -> _Target:
-    """Split ``url`` into a destination, refusing anything we will not send to.
-
-    No part of ``url`` appears in the errors raised here: a merchant's webhook
-    URL can carry a token in its query, and an exception message ends up in a
-    log line and in the delivery row.
+async def _resolve_or_fail(target: Target) -> tuple[str, ...]:
+    """Resolve ``target``, turning every way a lookup can fail into one type.
 
     Args:
-        url: The caller's destination URL.
+        target: The parsed destination.
 
     Returns:
-        The parsed target.
+        Every address the resolver returned, in its order.
 
     Raises:
-        UrlNotAllowedError: Not https, carrying URL credentials, or hostless.
+        ResolutionFailedError: The lookup failed or answered with nothing.
     """
-    parsed = urlsplit(url)
-    if parsed.scheme != "https":
-        raise UrlNotAllowedError("the destination must use https")
-    if parsed.username or parsed.password:
-        raise UrlNotAllowedError("the destination must not carry credentials in its URL")
-    host = (parsed.hostname or "").rstrip(".")
-    if not host:
-        raise UrlNotAllowedError("the destination must have a host")
     try:
-        port = parsed.port or _HTTPS_PORT
-    except ValueError as exc:
-        raise UrlNotAllowedError("the destination's port is not a number") from exc
-    path = parsed.path or "/"
-    if parsed.query:
-        path = f"{path}?{parsed.query}"
-    # ``hostname`` strips the brackets an IPv6 literal is written with; the
-    # Host header has to put them back or the authority is unparseable.
-    written = f"[{host}]" if ":" in host else host
-    return _Target(
-        host=host,
-        port=port,
-        authority=written if port == _HTTPS_PORT else f"{written}:{port}",
-        path=path,
-    )
+        addresses = await resolve_addresses(target.host, target.port)
+    except (OSError, UnicodeError) as exc:
+        # ``UnicodeError`` is a ``ValueError``, not an ``OSError``: getaddrinfo
+        # raises it for any DNS label over 63 characters, ASCII included, and
+        # it used to escape this module untyped.
+        raise ResolutionFailedError(f"{target.host} did not resolve") from exc
+    if not addresses:
+        raise ResolutionFailedError(f"{target.host} resolved to no addresses")
+    return addresses
 
 
 def _reject_unless_every_address_is_public(host: str, addresses: tuple[str, ...]) -> None:
@@ -234,8 +166,11 @@ def _reject_unless_every_address_is_public(host: str, addresses: tuple[str, ...]
         try:
             ip = ipaddress.ip_address(address)
         except ValueError:
-            # Fail closed. A scoped literal (``fe80::1%eth0``) lands here, and
-            # so would anything else the policy cannot read.
+            # Fail closed on anything ``ipaddress`` will not read, rather than
+            # skipping it and checking the rest. (A scoped literal such as
+            # ``fe80::1%eth0`` is NOT one of those — ``ipaddress`` has parsed
+            # those since 3.9 and it lands as link-local like any other
+            # ``fe80::/10`` address.)
             findings.append(f"{address}: unreadable")
             continue
         reason = blocked_reason(ip)
@@ -249,13 +184,17 @@ def _reject_unless_every_address_is_public(host: str, addresses: tuple[str, ...]
         )
 
 
-def _pinned_url(target: _Target, address: str) -> str:
+def _pinned_url(target: Target, address: str) -> str:
     """The request URL, aimed at ``address`` rather than at the hostname."""
     literal = f"[{address}]" if ":" in address else address
-    netloc = literal if target.port == _HTTPS_PORT else f"{literal}:{target.port}"
+    netloc = literal if target.port == HTTPS_PORT else f"{literal}:{target.port}"
     return f"https://{netloc}{target.path}"
 
 
+# ``Mapping[str, Any]`` because httpcore's trace payload is a plain dict whose
+# values differ per event (a host string here, a stream object there) and it
+# publishes no type for it. The only key read is ``host``, and it is
+# ``str()``-ed before it is compared.
 def _connect_guard(
     *, pinned: str, host: str
 ) -> Callable[[str, Mapping[str, Any]], Awaitable[None]]:
@@ -314,12 +253,13 @@ def _build_client(*, timeout: float) -> httpx.AsyncClient:
     )
 
 
-def _outgoing_headers(target: _Target, headers: Mapping[str, str] | None) -> httpx.Headers:
+def _outgoing_headers(target: Target, headers: Mapping[str, str] | None) -> httpx.Headers:
     """The caller's headers, plus the three this module owns."""
     out = httpx.Headers(dict(headers) if headers else {})
     out.setdefault("content-type", "application/json")
-    # Identity, so ``max_bytes`` bounds what we decompress as well as what we
-    # read — a compressed bomb cannot expand past the cap.
+    # Ask for an undecoded body. This is the polite half of the compression
+    # defence and not the load-bearing one — a server can ignore it, which is
+    # why ``_read_capped`` reads raw bytes and refuses an encoded response.
     out["accept-encoding"] = "identity"
     # Last, so the caller cannot detach the Host header from the pinned name.
     out["host"] = target.authority
@@ -327,14 +267,36 @@ def _outgoing_headers(target: _Target, headers: Mapping[str, str] | None) -> htt
 
 
 async def _read_capped(response: httpx.Response, *, max_bytes: int, host: str) -> bytes:
-    """Read a streamed response, stopping the moment it passes the cap.
+    """Read a streamed response off the wire, stopping the moment it passes the cap.
+
+    ``aiter_raw`` and not ``aiter_bytes``, which is the whole point:
+    ``aiter_bytes`` runs httpx's decoder, which decompresses on the
+    **response's** ``Content-Encoding`` no matter what we asked for, and the
+    cap would then be counting already-expanded bytes. A 300 KB gzip answer
+    reached ~50 MB of heap that way, independent of ``max_bytes``. Reading raw
+    makes the cap a bound on what actually crosses the socket, so a
+    compression bomb cannot expand inside this process at all — and an encoded
+    body is refused below rather than handed back undecoded.
+
+    Note that ``brotli``/``zstandard`` are not installed, so httpx cannot
+    decode those today. That is not what makes this safe, and installing
+    either must not be read as re-opening the question: the guarantee here is
+    that nothing is decoded, not that we lack a decoder.
 
     Raises:
-        ResponseTooLargeError: The body passed ``max_bytes``.
+        ResponseTooLargeError: The body passed ``max_bytes`` on the wire.
+        ContentEncodingNotAllowedError: They compressed it anyway.
     """
+    encoding = response.headers.get("content-encoding", "").strip().lower()
+    if encoding not in {"", "identity"}:
+        # Before reading a byte of it. We asked for identity; a server that
+        # compresses anyway is either misbehaving or aiming a bomb.
+        raise ContentEncodingNotAllowedError(
+            f"{host} answered with a {encoding!r}-encoded body, which is not decoded here"
+        )
     chunks: list[bytes] = []
     total = 0
-    async for chunk in response.aiter_bytes():
+    async for chunk in response.aiter_raw():
         total += len(chunk)
         if total > max_bytes:
             raise ResponseTooLargeError(
@@ -345,7 +307,7 @@ async def _read_capped(response: httpx.Response, *, max_bytes: int, host: str) -
 
 
 async def _send(
-    target: _Target,
+    target: Target,
     pinned: str,
     *,
     body: bytes,
@@ -353,19 +315,38 @@ async def _send(
     timeout: float,
     max_bytes: int,
 ) -> tuple[int, bytes]:
-    """Send one request to the pinned address and read a bounded response."""
+    """Send one request to the pinned address and read a bounded response.
+
+    Note for a caller that logs this module's exceptions: the ``__cause__``
+    chained onto :class:`ConnectFailedError` is an ``httpx.RequestError``
+    whose ``.request`` holds the **pinned URL, query included**. Nothing here
+    puts that in a message, but ``exc_info=True`` with request context can
+    surface a token a merchant put in their webhook query. Log the type and
+    the host, not the chained request.
+    """
     client = _build_client(timeout=timeout)
     try:
-        request = client.build_request(
-            "POST",
-            _pinned_url(target, pinned),
-            content=body,
-            headers=_outgoing_headers(target, headers),
-            extensions={
-                "sni_hostname": target.host,
-                "trace": _connect_guard(pinned=pinned, host=target.host),
-            },
-        )
+        try:
+            request = client.build_request(
+                "POST",
+                _pinned_url(target, pinned),
+                content=body,
+                headers=_outgoing_headers(target, headers),
+                extensions={
+                    "sni_hostname": target.host,
+                    "trace": _connect_guard(pinned=pinned, host=target.host),
+                },
+            )
+        except OutboundError:
+            raise
+        except Exception as exc:
+            # Building a request is not I/O, so everything that can fail here
+            # is about what we were handed: an un-encodable header value, a
+            # URL httpx will not take. Untyped, it would escape the whole
+            # module and poison a queue drain that catches ``OutboundError``.
+            raise UrlNotAllowedError(
+                f"no request could be built for {target.host}: {type(exc).__name__}"
+            ) from exc
         try:
             response = await client.send(request, stream=True)
             try:
@@ -383,7 +364,10 @@ async def _send(
             ) from exc
         return response.status_code, raw
     finally:
-        await client.aclose()
+        # Suppressed for the same reason as the response close above: a
+        # failure to hang up must not replace the failure being reported.
+        with contextlib.suppress(httpx.HTTPError):
+            await client.aclose()
 
 
 async def post_json(
@@ -415,24 +399,25 @@ async def post_json(
         The status, the response text, the address used and the elapsed time.
 
     Raises:
-        UrlNotAllowedError: The URL itself is refused (nothing is contacted).
+        UrlNotAllowedError: The URL itself is refused, or no request could be
+            built from it (nothing is contacted either way).
         AddressNotAllowedError: The host resolves to a non-public address, or
             the socket layer was handed something other than the checked one.
-        ResponseTooLargeError: They answered with more than ``max_bytes``.
+        ResponseTooLargeError: They answered with more than ``max_bytes`` on
+            the wire.
+        ContentEncodingNotAllowedError: They answered with a compressed body.
         ResolutionFailedError: The host did not resolve.
         ConnectFailedError: The connection or the exchange failed.
         OutboundTimeoutError: The attempt passed ``timeout``.
+        OutboundBrokenError: Anything else at all — every path out of here is
+            one of these, so a queue drain catching :class:`OutboundError`
+            cannot be handed an untyped exception.
     """
-    target = _parse_target(url)
+    target = parse_target(url)
     started = time.monotonic()
     try:
         async with asyncio.timeout(timeout):
-            try:
-                addresses = await resolve_addresses(target.host, target.port)
-            except OSError as exc:
-                raise ResolutionFailedError(f"{target.host} did not resolve") from exc
-            if not addresses:
-                raise ResolutionFailedError(f"{target.host} resolved to no addresses")
+            addresses = await _resolve_or_fail(target)
             _reject_unless_every_address_is_public(target.host, addresses)
             pinned = addresses[0]
             status_code, raw = await _send(
@@ -448,10 +433,25 @@ async def post_json(
     except OutboundRefusedError as exc:
         log.warning("outbound.refused", host=target.host, refusal=type(exc).__name__)
         raise
+    except OutboundUnreachableError:
+        raise
+    except Exception as exc:
+        # The net that makes ``OutboundError`` total (see its docstring). Only
+        # ``Exception``, so a cancellation still cancels. Logged with a stack
+        # because reaching here is a bug in this module, not a merchant's
+        # doing, and nothing above will report it.
+        log.exception("outbound.broken", host=target.host, failure=type(exc).__name__)
+        raise OutboundBrokenError(
+            f"the attempt to {target.host} broke: {type(exc).__name__}"
+        ) from exc
     elapsed_ms = int((time.monotonic() - started) * 1000)
     log.info(
         "outbound.delivered",
         host=target.host,
+        # The merchant's server address, not a person's — AGENTS §9's
+        # never-log list means an end user's IP. The delivery log's whole
+        # question is "which of their hosts answered", and the pin is what
+        # makes that answerable.
         address=pinned,
         status_code=status_code,
         elapsed_ms=elapsed_ms,
@@ -470,6 +470,8 @@ __all__ = [
     "DEFAULT_TIMEOUT_SECONDS",
     "AddressNotAllowedError",
     "ConnectFailedError",
+    "ContentEncodingNotAllowedError",
+    "OutboundBrokenError",
     "OutboundError",
     "OutboundRefusedError",
     "OutboundResponse",

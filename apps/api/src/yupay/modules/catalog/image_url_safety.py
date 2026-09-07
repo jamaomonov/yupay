@@ -53,6 +53,8 @@ from __future__ import annotations
 import ipaddress
 from urllib.parse import urlsplit
 
+from yupay.core.outbound_addresses import blocked_reason
+
 # mDNS / common internal-only TLDs. None of these should ever resolve on the
 # public internet, so there is no legitimate catalog-image use for them.
 _BLOCKED_HOST_SUFFIXES = (".local", ".localhost", ".internal")
@@ -89,12 +91,15 @@ def validate_public_https_url(url: str, *, subject: str = "URL") -> str:
         * Any non-``https`` scheme (``http``, ``file``, ``gopher``, ``ftp``, ...).
         * ``localhost`` / ``internal`` and anything under ``*.local`` /
           ``*.localhost`` / ``*.internal``.
-        * A host that is an IP literal in a private, loopback, link-local
-          (this covers the ``169.254.169.254`` cloud metadata address),
-          reserved, multicast, or unspecified range — i.e.
-          ``ipaddress.ip_address(...).is_private`` and friends, which
-          together cover RFC1918 (10/8, 172.16/12, 192.168/16), 127/8,
-          ``::1``, ``fc00::/7`` and ``fe80::/10``.
+        * A host that is an IP literal in any family
+          :data:`yupay.core.outbound_addresses.BLOCKED_FAMILIES` names —
+          loopback, RFC 1918 private, link-local (which covers the
+          ``169.254.169.254`` cloud metadata address), unique-local,
+          site-local, multicast, ``0.0.0.0/8``, unspecified and reserved —
+          plus anything that is not globally routable, such as carrier-grade
+          NAT. That table is shared with the connect-time client rather than
+          restated here: two lists drift, and the review that added
+          ``fec0::/10`` had to fix it in both.
 
     Args:
         url: A non-empty candidate URL.
@@ -119,14 +124,7 @@ def validate_public_https_url(url: str, *, subject: str = "URL") -> str:
     if host in _BLOCKED_HOSTS or host.endswith(_BLOCKED_HOST_SUFFIXES):
         raise ValueError(f"{subject} host {host!r} is not allowed")
     ip = _parse_ip(host)
-    if ip is not None and (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    ):
+    if ip is not None and blocked_reason(ip) is not None:
         raise ValueError(f"{subject} host {host!r} resolves to a blocked network")
     return url
 

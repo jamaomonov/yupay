@@ -55,9 +55,16 @@ def _embedded_ipv4(ip: IpAddress) -> ipaddress.IPv4Address | None:
     return None
 
 
-#: The blocked families, in the order their names are tried. Order decides
-#: which name a multi-family address reports, so the specific ones come
-#: first: ``240.0.0.1`` is both reserved and (to Python) private, and
+#: The blocked families, in the order their names are tried. This is the one
+#: range table in the repo: :mod:`yupay.modules.catalog.image_url_safety`
+#: classifies its save-time IP literals through :func:`blocked_reason` rather
+#: than keeping a second list. Sharing the *table* is what M3a Task 2's ruling
+#: 4 asks for; sharing the entry point is what it forbids, and the two callers
+#: still differ in what they are handed (notation there, resolved addresses
+#: here).
+#:
+#: Order decides which name a multi-family address reports, so the specific
+#: ones come first: ``240.0.0.1`` is both reserved and (to Python) private, and
 #: "reserved" is the half worth reading in a delivery log. Every entry is a
 #: family the spec names; the ``is_global`` catch-all after this table is
 #: what stops the ones with no name here, such as carrier-grade NAT
@@ -66,6 +73,11 @@ BLOCKED_FAMILIES: Final[tuple[tuple[str, Callable[[IpAddress], bool]], ...]] = (
     ("loopback", lambda ip: ip.is_loopback),
     ("link-local", lambda ip: ip.is_link_local),
     ("unique-local", lambda ip: isinstance(ip, ipaddress.IPv6Address) and ip in _UNIQUE_LOCAL_V6),
+    # RFC 3879 site-local. It needs its own entry because Python excludes
+    # ``fec0::/10`` from BOTH ``is_private`` and ``is_global`` — deprecated in
+    # 2004, still routed inside plenty of estates, and it would otherwise fall
+    # through this table AND the ``is_global`` catch-all under it.
+    ("site-local", lambda ip: isinstance(ip, ipaddress.IPv6Address) and ip.is_site_local),
     ("multicast", lambda ip: ip.is_multicast),
     ("this-network", lambda ip: isinstance(ip, ipaddress.IPv4Address) and ip in _THIS_NETWORK_V4),
     ("unspecified", lambda ip: ip.is_unspecified),

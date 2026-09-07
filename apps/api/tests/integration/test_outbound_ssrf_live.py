@@ -31,6 +31,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import datetime as dt
+import gzip
 import ipaddress
 import socket
 import ssl
@@ -46,6 +47,7 @@ from yupay.core import outbound, outbound_addresses
 from yupay.core.outbound import (
     AddressNotAllowedError,
     ConnectFailedError,
+    ContentEncodingNotAllowedError,
     OutboundTimeoutError,
     ResponseTooLargeError,
     UrlNotAllowedError,
@@ -121,6 +123,46 @@ def loopback_allowed(monkeypatch: pytest.MonkeyPatch) -> None:
         return None if reason == "loopback" else reason
 
     monkeypatch.setattr(outbound, "blocked_reason", _patched)
+
+
+def _addrinfo(address: str, port: int) -> tuple[object, ...]:
+    """One ``getaddrinfo`` 5-tuple for ``address``."""
+    if ":" in address:
+        return (socket.AF_INET6, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, port, 0, 0))
+    return (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, port))
+
+
+def _system_resolver_answers(monkeypatch: pytest.MonkeyPatch, *answers: Sequence[str]) -> list[str]:
+    """Stub the **system** resolver — the one both halves of the client reach.
+
+    ``socket.getaddrinfo`` is what ``loop.getaddrinfo`` runs, which is what
+    our own resolution *and* anyio's ``connect_tcp`` both end up calling. That
+    is what makes a rebinding test real: patching our own function instead
+    leaves the socket layer answering from the real resolver, so the "second
+    answer" could never have been reached however the client was written, and
+    the assertion about it could never fail.
+
+    Only ``HOSTNAME`` is answered from the queue; everything else — the
+    pinned literal included — is delegated, because a literal must resolve to
+    itself for the connection to happen at all.
+    """
+    real = socket.getaddrinfo
+    queue = list(answers)
+    asked: list[str] = []
+
+    def _stub(host: object, port: object, *args: object, **kwargs: object) -> list[object]:
+        # anyio hands the socket layer's lookup an **ASCII-encoded** host, so
+        # comparing against the str form alone silently delegates the very
+        # lookup this stub exists to answer.
+        name = host.decode() if isinstance(host, bytes) else str(host)
+        if name != HOSTNAME:
+            return list(real(host, port, *args, **kwargs))  # type: ignore[arg-type]
+        asked.append(name)
+        answer = queue.pop(0) if len(queue) > 1 else queue[0]
+        return [_addrinfo(address, int(str(port))) for address in answer]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _stub)
+    return asked
 
 
 def _resolves_to(monkeypatch: pytest.MonkeyPatch, *answers: Sequence[str]) -> list[str]:
@@ -336,30 +378,42 @@ async def test_the_connection_lands_on_the_address_the_policy_checked(
     trusting_client: None,
     loopback_allowed: None,
 ) -> None:
-    """DNS rebinding, with sockets.
+    """DNS rebinding, with sockets, against the resolver the socket layer uses.
 
-    The first lookup answers ``127.0.0.1`` and every later one answers the
-    other loopback address, where a second listener waits on the same port.
-    A client that resolved once and then connected by name would hand the
-    hostname to the socket layer, whose own lookup is the second one — and
-    the request would arrive at the wrong listener. It must arrive at the
-    first, and the second must never see an accept.
+    The host answers ``127.0.0.1`` once and the other loopback address ever
+    after, with a second listener waiting there on the same port. A client
+    that resolved and then connected **by name** would hand the hostname to
+    the socket layer, whose own lookup is the second one, and the request
+    would arrive at the wrong listener — which is the whole bug. It must
+    arrive at the first, and the second must never see an accept.
+
+    The stub is on ``socket.getaddrinfo`` rather than on our own resolver
+    precisely so that assertion can fail: with our function stubbed, the
+    second answer is unreachable from the socket layer no matter what the
+    client does.
     """
     other = _second_loopback()
     async with _serving(_certificate, _respond("200 OK", b"delivered")) as (server, port):
-        rebound = _Probe()
+        # A second **TLS** server, not a bare probe, and holding the same
+        # certificate: a client that connected by name would complete the
+        # exchange here and come back with a 200 the assertions can catch. A
+        # probe would only break the handshake, and the test would pass on the
+        # exception rather than on the address.
+        rebound = _TlsServer(_certificate, _respond("200 OK", b"wrong-listener"))
         await rebound.start(other, port)
         try:
-            calls = _resolves_to(monkeypatch, ("127.0.0.1",), (other,))
+            asked = _system_resolver_answers(monkeypatch, ("127.0.0.1",), (other,))
 
             result = await post_json(f"https://{HOSTNAME}:{port}/hooks", body=b'{"id":1}')
 
+            assert result.body == "delivered", "answered by the address the policy checked"
             assert result.status_code == 200
             assert result.address == "127.0.0.1"
             assert len(server.requests) == 1
             await asyncio.sleep(0.05)
-            assert rebound.accepts == 0, "the second answer was never connected to"
-            assert calls == [HOSTNAME], "resolved once, not once per layer"
+            assert rebound.handshakes == 0, "the second answer was never connected to"
+            assert rebound.requests == []
+            assert asked == [HOSTNAME], "the name was resolved once, not once per layer"
         finally:
             await rebound.stop()
 
@@ -453,6 +507,31 @@ async def test_a_response_bigger_than_the_cap_is_refused(
 
         with pytest.raises(ResponseTooLargeError):
             await post_json(f"https://{HOSTNAME}:{port}/hooks", body=b"{}", max_bytes=8192)
+
+
+async def test_a_compressed_answer_is_refused_off_a_real_socket(
+    monkeypatch: pytest.MonkeyPatch,
+    _certificate: tuple[Path, Path],
+    trusting_client: None,
+    loopback_allowed: None,
+) -> None:
+    """We asked for identity; this server compresses anyway, as they can.
+
+    20 MB of zeros leaves the socket as a few KB. Reading it through httpx's
+    decoder would expand it in this process before any cap could see it, so
+    the response is refused on its ``Content-Encoding`` before a byte of the
+    body is read — and it counts as delivered, because it plainly was.
+    """
+    bomb = gzip.compress(b"\0" * 20_000_000)
+    responder = _respond("200 OK", bomb, extra="Content-Encoding: gzip\r\n")
+    async with _serving(_certificate, responder) as (server, port):
+        _resolves_to(monkeypatch, ("127.0.0.1",))
+
+        with pytest.raises(ContentEncodingNotAllowedError) as caught:
+            await post_json(f"https://{HOSTNAME}:{port}/hooks", body=b"{}")
+
+        assert caught.value.attempt_delivered is True
+        assert len(server.requests) == 1, "they received the webhook; only the answer is refused"
 
 
 async def test_a_server_that_never_answers_hits_the_deadline(

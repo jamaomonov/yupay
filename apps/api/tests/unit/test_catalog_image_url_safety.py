@@ -40,6 +40,17 @@ def test_rejects_https_private_ipv4() -> None:
         validate_public_image_url("https://10.0.0.1/x")
 
 
+def test_rejects_ipv6_site_local() -> None:
+    """``fec0::/10`` — the one family both this and the connect-time table missed.
+
+    Python excludes it from ``is_private`` *and* ``is_global``, so the old
+    hand-written condition here let it through. This file and
+    ``test_outbound_ssrf`` now assert the same family off the same table.
+    """
+    with pytest.raises(ValueError, match="blocked network"):
+        validate_public_image_url("https://[fec0::1]/x")
+
+
 def test_rejects_file_scheme() -> None:
     with pytest.raises(ValueError, match="https"):
         validate_public_image_url("file:///etc/passwd")
@@ -55,6 +66,10 @@ def test_rejects_file_scheme() -> None:
         "https://[::1]/x",  # IPv6 loopback
         "https://[fc00::1]/x",  # IPv6 ULA fc00::/7
         "https://[fe80::1]/x",  # IPv6 link-local fe80::/10
+        "https://[fec0::1]/x",  # IPv6 site-local fec0::/10 — RFC 3879, and
+        # neither ``is_private`` nor ``is_global`` in Python, so it needs its
+        # own entry in the shared table (M3a Task 2 review)
+        "https://100.64.0.1/x",  # carrier-grade NAT, caught by the catch-all
         "https://sub.internal/x",  # internal-only TLD
         "https://box.local/x",  # mDNS TLD
         "https://2130706433/x",  # bare-integer IPv4 == 127.0.0.1
