@@ -48,6 +48,7 @@ match the value.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Final
 
 from yupay.core.errors import NotFoundError
@@ -75,6 +76,22 @@ if TYPE_CHECKING:  # pragma: no cover -- type hints only
 #: RFC 7807 ``code`` for an id that is not this merchant's. Also the answer for
 #: an id that belongs to somebody else — see the module docstring.
 CODE_ORDER_NOT_FOUND: Final = "order_not_found"
+
+#: Exactly ``MerchantOrderCreateIn.merchant_order_id``'s pattern and length.
+#: Every stored id was written through that schema, so an id outside this
+#: **cannot** exist — which is what lets a violation answer ``order_not_found``
+#: rather than adding a 422 to the contract.
+#:
+#: It is a guard, not tidiness. The path segment arrives percent-decoded and
+#: goes into a SQL comparison, so ``GET /merchant/v1/orders/%00null`` used to
+#: reach Postgres as a string containing 0x00 and come back a **500**
+#: (``invalid byte sequence for encoding "UTF8"``) — no leak, but a burnt
+#: connection and a rollback per request, trivially scriptable by any
+#: authenticated merchant. Everything else the reviewer threw at the route
+#: (``..%2F..%2Fme``, ``a/b/c/d``, a 4000-character segment) already answered
+#: 404; only NUL escaped, which is exactly the shape of a check that was
+#: never written.
+_STORABLE_ID: Final = re.compile(r"\A[\x21-\x7e]{1,128}\Z")
 
 #: Timeline allow-list: the order-lifecycle events, mapped nowhere and emitted
 #: verbatim. ``order_events`` is a general audit log and also holds internal
@@ -170,8 +187,10 @@ async def read(
         merchant: The authenticated, non-frozen merchant. The **only** source
             of scope — nothing in the request names a merchant.
         merchant_order_id: The reseller's id for the order, already
-            percent-decoded by the router. An id that does not exist and one
-            that belongs to another merchant are the same answer.
+            percent-decoded by the router. An id that does not exist, one that
+            belongs to another merchant, and one that could never have been
+            stored (:data:`_STORABLE_ID`) are all the same answer — the last of
+            those never reaches the database at all.
 
     Returns:
         The order's status, timeline, delivered artifact and refund mark.
@@ -179,8 +198,12 @@ async def read(
     Raises:
         NotFoundError: ``order_not_found``.
     """
-    order = await orders.find_merchant_order(
-        db, merchant_id=merchant.id, merchant_order_id=merchant_order_id
+    order = (
+        await orders.find_merchant_order(
+            db, merchant_id=merchant.id, merchant_order_id=merchant_order_id
+        )
+        if _STORABLE_ID.match(merchant_order_id) is not None
+        else None
     )
     if order is None:
         raise NotFoundError("no order with that merchant_order_id", code=CODE_ORDER_NOT_FOUND)

@@ -23,13 +23,14 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import AsyncIterator
 from decimal import Decimal
 from typing import Any
 from urllib.parse import quote, urlencode
 
 import pytest
 from httpx import AsyncClient, Response
-from sqlalchemy import select, update
+from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
@@ -83,6 +84,22 @@ async def admin_headers(
     await db_session.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
     await db_session.commit()
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture
+async def sql_counter(db_engine) -> AsyncIterator[dict[str, int]]:  # type: ignore[no-untyped-def]  # conftest fixture is untyped
+    """Counts every cursor execution on the engine the app is wired to."""
+    holder = {"n": 0}
+
+    def _before(conn, cursor, statement, parameters, context, executemany) -> None:  # type: ignore[no-untyped-def]  # SQLAlchemy event signature
+        holder["n"] += 1
+
+    sync_engine = db_engine.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", _before)
+    try:
+        yield holder
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before)
 
 
 async def _new_merchant(
@@ -781,3 +798,105 @@ async def test_a_refund_on_another_order_does_not_mark_this_one(
 
     assert (await _read(integration_client, key_id, secret, "one")).json()["refunded_usd"] == "0.00"
     assert (await _read(integration_client, key_id, secret, "two")).json()["refunded_usd"] == "1.07"
+
+
+# ---------- inputs no stored id could ever be ----------
+
+
+@pytest.mark.parametrize(
+    ("segment", "why"),
+    [
+        ("%00null", "a NUL byte — reaches Postgres as 0x00 and used to be a 500"),
+        ("%01%02", "other C0 control bytes"),
+        ("a%20b", "a space, which the id pattern excludes"),
+        ("%7f", "DEL"),
+        ("caf%C3%A9", "non-ASCII"),
+        ("", "an empty segment"),
+        ("..%2F..%2Fme", "a traversal attempt at a sibling endpoint"),
+        ("a/b/c/d", "extra unencoded segments, swallowed by the greedy :path"),
+        ("x" * 4000, "far longer than the column"),
+    ],
+)
+async def test_an_id_that_could_never_have_been_stored_is_the_same_404(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    segment: str,
+    why: str,
+) -> None:
+    """One answer for every unstorable id, and none of them reaches the database.
+
+    ``merchant_order_id`` is written through a schema whose pattern is
+    ``^[\x21-\x7e]+$``, so an id outside it cannot exist — which is what lets
+    this be ``order_not_found`` instead of a new 422 on a third-party contract.
+
+    The NUL case is the one that was broken: the segment arrives percent-decoded
+    and went into a SQL comparison, so ``%00`` reached Postgres as an invalid
+    UTF-8 byte sequence and came back a **500** — no leak, but a burnt
+    connection and a rollback per request, and trivially scriptable. Every other
+    row here already answered 404 and is pinned so the guard cannot be narrowed
+    to NUL alone.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+
+    path = f"{ORDERS_PATH}/{segment}"
+    r = await integration_client.get(path, headers=_signed(key_id, secret, method="GET", path=path))
+
+    assert r.status_code == 404, (why, r.text)
+    assert r.json()["code"] == "order_not_found", why
+
+
+# ---------- cost ----------
+
+
+async def test_the_order_read_costs_a_fixed_number_of_queries(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sql_counter: dict[str, int],
+) -> None:
+    """This is the endpoint we tell resellers to poll, so its cost must be flat.
+
+    Two sizes rather than a magic number, the shape Task 3's catalog test uses:
+    a per-row load is what would break, and a constant extra query is not a
+    regression worth failing a build over. The timeline is the thing that grows
+    — ``Order.events`` is eagerly loaded, and a lazy one would fan out per
+    event — so one order is given ten times the history of the other.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+    sku_id = await _seeded(db_session)
+    for oid in ("cost-small", "cost-big"):
+        r = await _post_order(
+            integration_client,
+            key_id,
+            secret,
+            {"merchant_order_id": oid, "sku_id": sku_id, "expected_price": "1.07"},
+        )
+        assert r.status_code == 201, r.text
+    big_order_id = r.json()["order_id"]
+    for _ in range(30):
+        db_session.add(
+            OrderEvent(
+                id=new_id(),
+                order_id=big_order_id,
+                kind="order.fulfilling",
+                payload={},
+                actor="fulfillment",
+            )
+        )
+    await db_session.commit()
+
+    sql_counter["n"] = 0
+    small = await _read(integration_client, key_id, secret, "cost-small")
+    assert small.status_code == 200, small.text
+    cost_small = sql_counter["n"]
+
+    sql_counter["n"] = 0
+    big = await _read(integration_client, key_id, secret, "cost-big")
+    assert big.status_code == 200, big.text
+    cost_big = sql_counter["n"]
+
+    assert len(big.json()["timeline"]) > len(small.json()["timeline"])
+    assert cost_big == cost_small, (cost_small, cost_big)

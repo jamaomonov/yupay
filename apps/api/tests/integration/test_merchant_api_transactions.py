@@ -328,24 +328,35 @@ async def test_a_cursor_lifted_from_another_merchant_reveals_nothing(
     integration_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
     """The cursor is a position, not a capability: the merchant scope is applied
-    from the signed identity regardless of what the cursor says."""
+    from the signed identity regardless of what the cursor says.
+
+    **B's rows are seeded first, deliberately.** A cursor points at a moment,
+    and every row older than it is filtered out — so seeding B *after* A would
+    make the stolen cursor exclude B's own rows, hand back an empty page, and
+    leave the assertion loop with nothing to iterate. The test would pass
+    without the scoping it claims to test. Seeded this way, B has real rows on
+    the far side of A's cursor, the loop actually runs, and the assertion is
+    about scope rather than about emptiness.
+    """
+    b_id = await _new_merchant(integration_client, admin_headers, title="B")
+    b_key, b_secret = await _new_key(integration_client, admin_headers, b_id)
+    b_txns = {await _credit(integration_client, admin_headers, b_id, "1.00") for _ in range(2)}
+
     a_id = await _new_merchant(integration_client, admin_headers, title="A")
     a_key, a_secret = await _new_key(integration_client, admin_headers, a_id)
-    for _ in range(3):
-        await _credit(integration_client, admin_headers, a_id, "5.00")
+    a_txns = {await _credit(integration_client, admin_headers, a_id, "5.00") for _ in range(3)}
     a_page = await _page(integration_client, a_key, a_secret, query="limit=1")
     stolen = a_page.json()["next_cursor"]
     assert stolen
 
-    b_id = await _new_merchant(integration_client, admin_headers, title="B")
-    b_key, b_secret = await _new_key(integration_client, admin_headers, b_id)
-    await _credit(integration_client, admin_headers, b_id, "1.00")
-
     r = await _page(integration_client, b_key, b_secret, query=f"cursor={stolen}")
 
     assert r.status_code == 200, r.text
-    for item in r.json()["items"]:
-        assert item["transaction_id"] not in a_page.text
+    seen = {i["transaction_id"] for i in r.json()["items"]}
+    # The loop has teeth only if it iterates: B's rows are older than A's
+    # cursor, so all of them are on this page.
+    assert seen == b_txns
+    assert not seen & a_txns
 
 
 # ---------- paging ----------
@@ -437,6 +448,92 @@ async def test_a_malformed_cursor_is_a_documented_422(
     assert r.status_code == 422, r.text
     assert r.json()["code"] == "invalid_cursor"
     assert r.json()["type"] == "https://app.yupay.uz/errors/validation"
+
+
+async def test_a_truncated_cursor_is_a_422_and_not_a_500(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """The failure a reseller actually hits: a cursor stored in a column that
+    was two characters too short, or a URL line-wrapped by a retry.
+
+    Truncation leaves the base64, the separator and the timestamp intact and
+    only damages the id half — which used to be handed straight to
+    ``uuid < $2``, where asyncpg raised ``DataError`` and it escaped as a bare
+    500 from an endpoint whose published contract promises a recoverable 422.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    for _ in range(2):
+        await _credit(integration_client, admin_headers, merchant_id, "1.00")
+    real = (await _page(integration_client, key_id, secret, query="limit=1")).json()["next_cursor"]
+    assert real
+
+    r = await _page(integration_client, key_id, secret, query=f"cursor={real[:-2]}")
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "invalid_cursor"
+
+
+@pytest.mark.parametrize(
+    ("payload", "why"),
+    [
+        (b"2026-09-07T08:20:11.402913+00:00|not-a-uuid", "the id half is not a UUID"),
+        (b"2026-09-07T08:20:11.402913+00:00|", "the id half is empty"),
+        (b"2026-09-07T08:20:11.402913+00:00", "no separator at all"),
+        (b"|0198c3c0-0000-7000-8000-000000000000", "no timestamp"),
+        (b"not-a-timestamp|0198c3c0-0000-7000-8000-000000000000", "the timestamp is prose"),
+        (b"2026-09-07T08:20:11.402913|0198c3c0-0000-7000-8000-000000000000", "no timezone"),
+        (b"\xff\xfe\x00garbage", "the right shape, garbage bytes"),
+    ],
+)
+async def test_every_unreadable_cursor_is_one_422_with_one_code(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    payload: bytes,
+    why: str,
+) -> None:
+    """Both halves are validated, not merely parsed — everything that survives
+    ``decode_cursor`` is bound into a SQL comparison against a typed column.
+
+    The naive-timestamp case is here for the same reason as the id: ``created_at``
+    is ``timestamptz`` and every cursor we issue carries an offset, so a naive
+    one is not one we issued and must not reach the driver to find that out.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "1.00")
+    cursor = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+    r = await _page(integration_client, key_id, secret, query=f"cursor={cursor}")
+
+    assert r.status_code == 422, (why, r.text)
+    assert r.json()["code"] == "invalid_cursor", why
+
+
+async def test_a_cursor_whose_uuid_is_spelled_oddly_is_still_read(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """``UUID()`` accepts braced, undashed and ``urn:uuid:`` spellings.
+
+    Accepting them and passing the raw string through would parse here and
+    still fail in Postgres — the same 500 one layer down — so the canonical
+    form is what gets returned. Nothing we issue looks like this; the point is
+    that the normalisation is real and not an accident of our own output.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    minted = [
+        await _credit(integration_client, admin_headers, merchant_id, "1.00") for _ in range(2)
+    ]
+    newest = (await _page(integration_client, key_id, secret, query="limit=1")).json()["items"][0]
+    braced = f"{{{newest['transaction_id']}}}"
+    payload = f"{newest['created_at']}|{braced}".encode()
+    cursor = base64.urlsafe_b64encode(payload).decode().rstrip("=")
+
+    r = await _page(integration_client, key_id, secret, query=f"cursor={cursor}")
+
+    assert r.status_code == 200, r.text
+    assert [i["transaction_id"] for i in r.json()["items"]] == [minted[0]]
 
 
 async def test_limit_is_bounded_by_the_contract(

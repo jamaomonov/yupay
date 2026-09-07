@@ -272,7 +272,7 @@ def _machine_calls() -> list[tuple[str, str]]:
     return calls
 
 
-def test_the_sweep_enumerates_every_endpoint_the_machine_api_ships() -> None:
+async def test_the_sweep_enumerates_every_endpoint_the_machine_api_ships() -> None:
     """The sweep above is only a gate if it actually sees the new routes.
 
     ``_machine_calls`` fills path parameters with a placeholder by regex, so a
@@ -282,6 +282,10 @@ def test_the_sweep_enumerates_every_endpoint_the_machine_api_ships() -> None:
     substitution. This pins the whole enumeration rather than trusting it: add
     an endpoint and this fails until the list says so, which is the moment to
     check the 401/403 sweeps still cover it.
+
+    ``async`` despite awaiting nothing: the module carries
+    ``pytestmark = pytest.mark.asyncio``, and a sync function under it is a
+    ``PytestWarning``, not a passing test with a quirk.
     """
     assert set(_machine_calls()) == {
         ("GET", "/merchant/v1/me"),

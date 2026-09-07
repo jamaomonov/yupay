@@ -36,6 +36,20 @@ that land *after* your walk begins are simply newer than where you started,
 which is the correct answer for a newest-first statement: you saw the ledger as
 of the first page, and the next poll picks them up.
 
+**Say exactly what that buys, because it is not "exactly once under every
+interleaving".** ``WalletTransaction.created_at`` is
+``server_default CURRENT_TIMESTAMP``, which in Postgres is *transaction start*,
+not commit. So a transaction that began before your page was served and commits
+after it can insert a row whose key sorts *inside* a range you have already
+walked past, and you will not see it on this pass. The guarantee here is
+**exactly-once against insertions at the head**, which is every ordinary write
+to this ledger — an order charge commits in milliseconds — and it is strictly
+better than OFFSET, which has the same commit-time blind spot *plus* shifts
+under head insertions. Anything stronger needs a commit-order sequence
+(``pg_current_snapshot``, or a monotonic counter assigned at commit), which
+nothing in this ledger has and which a statement API does not need: a poller
+comes back.
+
 The cursor is opaque and carries no capability: it is a position, and the
 merchant scope is applied separately from the signed identity, so a cursor
 lifted from another merchant's page selects a timestamp and reveals nothing.
@@ -47,6 +61,7 @@ import base64
 import binascii
 from datetime import datetime
 from typing import TYPE_CHECKING, Final
+from uuid import UUID
 
 from sqlalchemy import select
 
@@ -108,16 +123,32 @@ def _bad_cursor() -> ValidationError:
 def decode_cursor(cursor: str) -> tuple[datetime, str]:
     """Read a cursor back, or refuse it.
 
-    Every failure mode — bad base64, non-UTF-8 bytes, a missing separator, an
-    unparseable timestamp — is one 422 with one code. There is nothing to
+    Every failure mode is one 422 with one code. There is nothing to
     distinguish for a caller: the only correct source of a cursor is a
     ``next_cursor`` we sent, and anything else is the same mistake.
+
+    **Both halves are validated, not just parsed**, because everything that
+    survives this function is bound straight into a SQL comparison against a
+    typed column. Decoding without checking is how a truncated cursor — a
+    reseller's ``VARCHAR(88)`` column, a line-wrapped URL in a retry — reached
+    ``uuid < $2`` as a non-UUID string and came back as a bare **500** from an
+    endpoint whose published contract promises a recoverable ``422``. Three
+    checks earn their place:
+
+    - the id half must be a UUID, and the **canonical** form of it is what is
+      returned: ``UUID()`` also accepts ``{braced}``, ``urn:uuid:`` and
+      undashed spellings, and passing those through unchanged would parse here
+      and still fail in Postgres, which is the same bug one layer down;
+    - the timestamp must be timezone-aware, because ``created_at`` is
+      ``timestamptz`` and every cursor we issue carries an offset — a naive one
+      is not one we issued;
+    - the separator must be present, so the two halves are really two.
 
     Args:
         cursor: The ``?cursor=`` value as sent.
 
     Returns:
-        The ``(created_at, transaction_id)`` anchor.
+        The ``(created_at, transaction_id)`` anchor, the id in canonical form.
 
     Raises:
         ValidationError: ``invalid_cursor``.
@@ -129,7 +160,10 @@ def decode_cursor(cursor: str) -> tuple[datetime, str]:
         )
         if not separator or not transaction_id:
             raise _bad_cursor()
-        return datetime.fromisoformat(stamp), transaction_id
+        anchor_at = datetime.fromisoformat(stamp)
+        if anchor_at.tzinfo is None:
+            raise _bad_cursor()
+        return anchor_at, str(UUID(transaction_id))
     except (ValueError, binascii.Error, UnicodeDecodeError) as exc:
         raise _bad_cursor() from exc
 

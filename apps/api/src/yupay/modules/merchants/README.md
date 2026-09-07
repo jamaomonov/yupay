@@ -708,14 +708,14 @@ line as sent. Signing the decoded path is a `401`, not a `404`.
 }
 ```
 
-| Field            | Notes                                                                                                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `status`         | `paid`, `fulfilling`, `fulfilled`, `delivered`, `failed`, `cancelled`. New values may be added; treat an unknown one as "still in flight".                                                       |
-| `price_usd`      | What the order charged. Final.                                                                                                                                                                   |
-| `refunded_usd`   | How much of it has come back to your deposit. `"0.00"` until refunds ship (M3).                                                                                                                  |
-| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                               |
-| `delivery`       | `null` until `delivered`. See below.                                                                                                                                                             |
-| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. Kinds are `order.created`, `order.paid`, `order.fulfilling`, `order.delivered`, `order.failed`, `order.cancelled`; more may be added. |
+| Field            | Notes                                                                                                                                                                                                                                                                            |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`         | `paid`, `fulfilling`, `fulfilled`, `delivered`, `failed`, `cancelled`. New values may be added; treat an unknown one as "still in flight".                                                                                                                                       |
+| `price_usd`      | What the order charged. Final.                                                                                                                                                                                                                                                   |
+| `refunded_usd`   | **Money that came back to your deposit on this order** — read as a direction on the ledger, not as a transaction named "refund", so a support correction or a goodwill credit booked against this order also shows here. `"0.00"` until any of that exists (refunds ship in M3). |
+| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                                                                                                               |
+| `delivery`       | `null` until something has actually been delivered, and present as soon as it has — it is the delivery record that decides, not `status`. Normally the two move together. See below.                                                                                             |
+| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. Kinds are `order.created`, `order.paid`, `order.fulfilling`, `order.delivered`, `order.failed`, `order.cancelled`; more may be added.                                                                                 |
 
 **The goods are in `delivery.artifact`.** Its shape follows `artifact_kind`:
 `voucher_code` carries `code` (or `codes` for a multi-code line), a licence
@@ -801,6 +801,15 @@ response to notice. A cursor says "older than this exact row", which no
 insertion can move: rows created after you started are simply newer than your
 first page, and your next poll picks them up.
 
+What that guarantees, precisely: **a walk sees every row exactly once, and no
+row twice, against writes that land at the head** — which is every ordinary
+movement on your deposit. It is not a guarantee against every possible
+interleaving: a row's timestamp is taken when its transaction _starts_, so a
+long-running one can commit a row that sorts inside a range you have already
+walked past, and you would see it on your next poll rather than this one.
+Reconcile by `transaction_id` and treat a poll as a poll, not as a one-shot
+export.
+
 Errors:
 
 | Status | `code`           | Meaning                                                         |
@@ -816,24 +825,24 @@ accident. Delivery to you is the order read and, from M3, the outbound webhook.
 
 ## Implementation map
 
-| Concern                                                    | Where                                                         |
-| ---------------------------------------------------------- | ------------------------------------------------------------- |
-| The merchant account (create / load / freeze)              | `service.py`                                                  |
-| Wire format: key/secret minting, canonical string, digests | `signing.py` — the one home; nothing else may re-derive these |
-| Secret encryption at rest                                  | `core/crypto.py` (purpose `yupay:merchants:apikey:v1`)        |
-| Credential lifecycle (create / list / revoke)              | `credentials.py`, via the `api` facade                        |
-| Request verification + the FastAPI dependency              | `auth.py`                                                     |
-| The deposit: credit, charge, balance, ledger listing       | `deposit.py` — every movement of a merchant's money           |
-| Admin HTTP surface                                         | `admin_routes.py`                                             |
-| Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix      |
-| The priced catalog read model                              | `price_list.py`                                               |
-| What may be ordered and at what price                      | `quote.py` — orderability, margin floor, ±2 % drift           |
-| Reading one order back (status, code, refund mark)         | `order_status.py`                                             |
-| The deposit ledger page (`/transactions`)                  | `transactions.py` — cursor codec; the query is `deposit.py`'s |
-| Order placement + the deposit charge                       | `orders.py`; the debit itself is `deposit.charge_deposit`     |
-| The wholesale price formula and the ±2% drift rule         | `pricing.py` — the one home for both                          |
-| Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                  |
-| Admin-surface DTOs                                         | `schemas.py`                                                  |
+| Concern                                                    | Where                                                                                                                                                                                                                                     |
+| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The merchant account (create / load / freeze)              | `service.py`                                                                                                                                                                                                                              |
+| Wire format: key/secret minting, canonical string, digests | `signing.py` — the one home; nothing else may re-derive these                                                                                                                                                                             |
+| Secret encryption at rest                                  | `core/crypto.py` (purpose `yupay:merchants:apikey:v1`)                                                                                                                                                                                    |
+| Credential lifecycle (create / list / revoke)              | `credentials.py`, via the `api` facade                                                                                                                                                                                                    |
+| Request verification + the FastAPI dependency              | `auth.py`                                                                                                                                                                                                                                 |
+| The deposit: credit, charge, balance, ledger listing       | `deposit.py` — every movement of a merchant's money                                                                                                                                                                                       |
+| Admin HTTP surface                                         | `admin_routes.py`                                                                                                                                                                                                                         |
+| Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it. |
+| The priced catalog read model                              | `price_list.py`                                                                                                                                                                                                                           |
+| What may be ordered and at what price                      | `quote.py` — orderability, margin floor, ±2 % drift                                                                                                                                                                                       |
+| Reading one order back (status, code, refund mark)         | `order_status.py`                                                                                                                                                                                                                         |
+| The deposit ledger page (`/transactions`)                  | `transactions.py` — cursor codec; the query is `deposit.py`'s                                                                                                                                                                             |
+| Order placement + the deposit charge                       | `orders.py`; the debit itself is `deposit.charge_deposit`                                                                                                                                                                                 |
+| The wholesale price formula and the ±2% drift rule         | `pricing.py` — the one home for both                                                                                                                                                                                                      |
+| Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                                                                                                                                                                                              |
+| Admin-surface DTOs                                         | `schemas.py`                                                                                                                                                                                                                              |
 
 Three of those files were carved out of two in M2 Task 5, when `service.py`
 (487 lines) and `orders.py` (468) had both drifted past the 400-line soft

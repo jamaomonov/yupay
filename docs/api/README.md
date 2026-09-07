@@ -432,6 +432,25 @@ bearer instrument. A pull, over a signed request, scoped exactly like the
 order. Drawn in
 `docs/architecture/sequence-diagrams/merchant-order-read.mmd`.
 
+The route's `:path` convertor is **greedy** — it compiles to `.*`, so
+`/merchant/v1/orders/a/b/c/d` matches this handler and answers
+`order_not_found`. Nothing else lives under `/orders/` today, but M3's
+`/orders/{id}/refund` must be registered **above** it or Starlette will swallow
+it silently (first full match in declaration order). Noted at the route and in
+the module README's file map.
+
+An id that could never have been stored — anything outside
+`^[\x21-\x7e]{1,128}$`, the schema `POST /orders` writes through — is refused
+before the database, with the same `404 order_not_found`. That keeps the "one
+fewer 422 shape" argument intact and closes a real hole: the segment arrives
+percent-decoded, so `GET /merchant/v1/orders/%00null` used to reach Postgres as
+an invalid UTF-8 byte sequence and come back a bare **500**. No leak, but a
+burnt connection and a rollback per request, trivially scriptable by an
+authenticated merchant. Everything else thrown at the route (`..%2F..%2Fme`,
+`a/b/c/d`, a 4000-character segment) already answered 404; only NUL escaped,
+which is the shape of a check that was never written rather than one that was
+wrong.
+
 **The path segment is percent-decoded; the signature is not.**
 `merchant_order_id` is `^[\x21-\x7e]+$`, which **includes `/`** (0x2F) — the
 auth section's own worked example is `/merchant/v1/orders/my%2Forder`. So the
@@ -475,7 +494,11 @@ Anything the storefront shows as an error, this shows too — no more, no less.
 
 `refunded_usd` is summed from the ledger (the debit legs on the merchant's
 `merchant_deposit` for transactions referencing this order), not stored on a
-flag. It is `"0.00"` for every order today because **nothing refunds a merchant
+flag. It reads a **direction, not an intent**, which is deliberate — it does
+not have to know the name M3 gives a refund — and the consequence is that any
+future transaction referencing this order and moving the deposit up (a support
+correction, a goodwill credit) also lands here. The README therefore describes
+it as "money that came back on this order" rather than as a refund. It is `"0.00"` for every order today because **nothing refunds a merchant
 order yet** — the module README's posting table marks that row _not
 implemented_ — and it is computed anyway so the field starts telling the truth
 the moment M3 posts the row, with no contract change.
@@ -510,12 +533,37 @@ for a statement: the next poll picks them up. Falsified in the suite by
 swapping the keyset for an OFFSET, which leaves the plain walk passing and
 fails only `test_a_row_written_mid_walk_neither_skips_nor_repeats_an_older_one`.
 
+State the guarantee precisely, because it is not "exactly once under every
+interleaving". `WalletTransaction.created_at` is
+`server_default CURRENT_TIMESTAMP`, which in Postgres is transaction _start_,
+not commit, so a long-running transaction can commit a row that sorts inside a
+range a walk has already passed. What holds is **exactly-once against
+insertions at the head** — every ordinary write to this ledger, since an order
+charge commits in milliseconds — which is strictly better than OFFSET, whose
+blind spot is the same _plus_ the shift. Anything stronger needs a commit-order
+sequence this ledger does not have, and a statement API does not need one: a
+poller comes back.
+
 `limit` is 1–200 and out of range is a `422`, matching the admin ledger route's
 stated rule rather than clamping. A cursor we cannot read is
 `422 invalid_cursor` — its own code because it is the one parameter a client
 builds from our own output. Both parameters are in the query, so both are
 covered by the signature (Task 2's fifth canonical field, which this endpoint
 is the first to exercise).
+
+**`decode_cursor` validates both halves, it does not merely parse them**, and
+that is load-bearing rather than defensive: everything surviving it is bound
+straight into a SQL comparison against a typed column. The id half must be a
+UUID and is returned in **canonical** form (`UUID()` also accepts braced,
+undashed and `urn:uuid:` spellings, which would parse and then fail one layer
+down); the timestamp must be timezone-aware, because `created_at` is
+`timestamptz` and every cursor we issue carries an offset. Without the UUID
+check a _truncated_ cursor — a reseller's `VARCHAR(88)` column, a line-wrapped
+URL in a retry — reached `uuid < $2`, asyncpg raised `DataError`, and it
+escaped as a **500** from an endpoint whose published contract promises a
+recoverable 422. That is the same class as the missing app-wide
+`RequestValidationError` handler below, one notch worse (a 500, not a
+non-conforming 422 body), and unlike the handler it was not pre-existing.
 
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so

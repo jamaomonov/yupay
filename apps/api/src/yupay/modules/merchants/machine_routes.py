@@ -168,6 +168,16 @@ async def place_order(
     # 404. The convertor changes nothing else: FastAPI's ``path_format`` still
     # renders ``{merchant_order_id}`` in the OpenAPI schema, and what the
     # signature covers is the raw request line either way (``auth.request_target``).
+    #
+    # **It is greedy, and it shadows the whole subtree.** ``:path`` compiles to
+    # ``.*``, so ``/merchant/v1/orders/a/b/c/d`` matches here and answers
+    # ``order_not_found``. Harmless today because nothing else lives under
+    # ``/orders/``, but a future ``/orders/{id}/deliveries`` or
+    # ``/orders/{id}/refund`` (M3) registered **after** this route would be
+    # silently swallowed rather than routed — Starlette takes the first full
+    # match in declaration order. Register any such route **above** this one,
+    # and note that its own ``{id}`` would then need the same convertor for the
+    # same reason. The module README's file map says so too.
     "/orders/{merchant_order_id:path}",
     response_model=MerchantOrderStatusOut,
     summary="Read one of your orders back, with its delivered code",
