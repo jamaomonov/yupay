@@ -615,11 +615,15 @@ rather than retyping `detail`. Two cases reach it in practice:
 `machine_schemas.MerchantOrderCreateIn` rejects.
 
 **It is registered app-wide and scoped in effect: every path outside
-`/merchant/v1` is delegated to FastAPI's own handler, byte for byte.** Two
-reasons, and the first is the one that would make an app-wide replacement a
-mistake rather than a simplification:
+`/merchant/v1` is delegated to FastAPI's own handler, byte for byte.** The
+scope is matched by path _segment_ (`path == prefix or path.startswith(prefix
 
-- **The generated client would be silently falsified.** FastAPI documents every
+- "/")`), so a future `/merchant/v1beta`or`/merchant/v10` does not inherit a
+  published contract by being spelled like this one. Two reasons the delegation
+  is there, and the first is what would make an app-wide replacement a mistake
+  rather than a simplification:
+
+* **The generated client would be silently falsified.** FastAPI documents every
   route's 422 as `HTTPValidationError`, and
   `packages/api-client/src/generated/types.gen.ts` types every operation from
   it. Changing the runtime body without changing the schema makes the client
@@ -630,7 +634,7 @@ mistake rather than a simplification:
   both follow. The generated client now types the merchant operations' error as
   the problem shape and every other operation's as `HTTPValidationError` —
   which is exactly the split.)
-- **The storefront and admin SPA already read `detail[]`.** Retyping it is a
+* **The storefront and admin SPA already read `detail[]`.** Retyping it is a
   breaking change to them for no gain.
 
 The handler encodes `exc.errors()` with `jsonable_encoder` rather than handing
@@ -638,7 +642,8 @@ it to `json.dumps`: a `value_error` entry carries the original exception object
 under `ctx["error"]`, so a naive version raises `TypeError` and turns a clean
 422 into a 500 — on a non-UUID `sku_id`, which is one of the likeliest
 integrator mistakes. `tests/integration/test_validation_problem_json.py` pins
-the delegation byte for byte, the problem+json body, and the `ctx` encoding;
+the delegation byte for byte, the neighbouring prefixes that must not be in
+scope, the problem+json body, and the `ctx` encoding;
 `test_a_malformed_body_answers_problem_json_and_not_a_500` and
 `test_an_out_of_range_limit_answers_the_published_error_shape` pin the two HTTP
 cases.
@@ -654,3 +659,9 @@ Two answers still get past `app_error_handler`, both deliberately:
   (`bootstrap._exempt_self_authenticating_routes`) precisely so its 429s stay
   problem+json; `/api/v1` is not, so the storefront's throttle body differs in
   shape from every other error it can return.
+- **Routing's own `404` and `405`.** A path no route serves, or a method no
+  route serves on a path some route does, is answered by FastAPI as
+  `{"detail": "Not Found"}` / `{"detail": "Method Not Allowed"}` before any
+  dependency runs — so on `/merchant/v1` they arrive without authentication
+  having been attempted, and outside the published error table by
+  construction. The merchant README says so in its error section.
