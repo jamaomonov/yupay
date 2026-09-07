@@ -349,9 +349,9 @@ class MerchantOrderStatusOut(BaseModel):
 
     The reseller's whole view of one order: where it is, what it cost, what it
     delivered, and whether anything came back. **This is the only place the
-    delivered voucher code is handed over** — M3's ``order.status_changed``
-    webhook will not carry it, because a webhook body lands in the merchant's
-    logs and in ours, and a voucher code is a bearer instrument.
+    delivered voucher code is handed over** — the ``order.status_changed``
+    webhook (M3a, ADR-0070) does not carry it, because a webhook body lands in
+    the merchant's logs and in ours, and a voucher code is a bearer instrument.
     """
 
     merchant_order_id: str

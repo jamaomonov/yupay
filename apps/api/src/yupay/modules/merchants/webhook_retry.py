@@ -49,8 +49,9 @@ else — a ``4xx`` that is not those two, and a redirect we deliberately do not
 follow — is terminal: their endpoint rejected the delivery, and repeating it
 changes nothing except how much of their error log we fill.
 
-``Retry-After`` is honoured on the two statuses RFC 9110 defines it for
-(``429`` and ``503``), clamped into ``[RETRY_AFTER_FLOOR_SECONDS,
+``Retry-After`` is honoured on the two statuses that define it for a retry —
+``503`` (RFC 9110 §10.2.3) and ``429`` (RFC 6585 §4) — clamped into
+``[RETRY_AFTER_FLOOR_SECONDS,
 BACKOFF_CAP_SECONDS]``. The clamp is not politeness: the header is written by
 a third party, and ``Retry-After: 0`` on every answer would turn the drain
 into a hot loop against their server.

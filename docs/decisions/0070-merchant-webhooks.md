@@ -151,7 +151,8 @@ Moving the loops into tasks removed the thing that used to make a dead queue
 visible, which was the crash taking the process down. So `shutdown.supervise`
 puts it back deliberately: a loop that dies **or merely returns** logs
 `worker.consumer.queue_loop_died`, sets the shared stop event so its siblings
-wind down, and makes `run()` return `1` — which `__main__` exits on, so
+wind down, and makes `run()` return `1` — which `consumer.py`'s
+`if __name__ == "__main__"` guard passes to `sys.exit`, so
 `restart: unless-stopped` restarts the container. The alternative is a
 healthy-looking process with the money path stopped, and nothing to see it.
 

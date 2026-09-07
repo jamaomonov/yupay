@@ -6872,7 +6872,7 @@
         "type": "object"
       },
       "MerchantOrderStatusOut": {
-        "description": "Body of ``GET /merchant/v1/orders/{merchant_order_id}``.\n\nThe reseller's whole view of one order: where it is, what it cost, what it\ndelivered, and whether anything came back. **This is the only place the\ndelivered voucher code is handed over** \u2014 M3's ``order.status_changed``\nwebhook will not carry it, because a webhook body lands in the merchant's\nlogs and in ours, and a voucher code is a bearer instrument.",
+        "description": "Body of ``GET /merchant/v1/orders/{merchant_order_id}``.\n\nThe reseller's whole view of one order: where it is, what it cost, what it\ndelivered, and whether anything came back. **This is the only place the\ndelivered voucher code is handed over** \u2014 the ``order.status_changed``\nwebhook (M3a, ADR-0070) does not carry it, because a webhook body lands in\nthe merchant's logs and in ours, and a voucher code is a bearer instrument.",
         "properties": {
           "created_at": {
             "format": "date-time",
