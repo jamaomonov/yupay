@@ -74,6 +74,7 @@ WORKER = "apps/worker/tests/test_consumer.py"
 DELIVERY = SRC / "modules/merchants/webhook_delivery.py"
 OUTCOME = SRC / "modules/merchants/webhook_outcome.py"
 CONSUMER = REPO / "apps/worker/src/yupay_worker/consumer.py"
+SHUTDOWN = REPO / "apps/worker/src/yupay_worker/shutdown.py"
 RETRY = SRC / "modules/merchants/webhook_retry.py"
 SIGNING = SRC / "modules/merchants/signing.py"
 ERRORS = SRC / "core/outbound_errors.py"
@@ -150,7 +151,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 CONSUMER,
-                "    crashed = await _supervise(loops, stop=stop)",
+                "    crashed = await shutdown.supervise(loops, stop=stop)",
                 "    crashed = False\n    await stop.wait()",
             ),
         ),
@@ -163,8 +164,9 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 CONSUMER,
-                "    await _await_stray_tasks(timeout=_remaining(deadline), exclude=loops)",
-                "    await _await_stray_tasks(timeout=_remaining(deadline))",
+                "    await shutdown.await_stray_tasks("
+                "timeout=shutdown.remaining(deadline), exclude=loops)",
+                "    await shutdown.await_stray_tasks(timeout=shutdown.remaining(deadline))",
             ),
         ),
         tests=(f"{WORKER}::test_shutdown_spends_one_budget_and_not_two",),

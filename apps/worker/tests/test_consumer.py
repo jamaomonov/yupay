@@ -18,15 +18,13 @@ from typing import Any
 
 import pytest
 from yupay.core.config import get_settings
-from yupay_worker import consumer
+from yupay_worker import consumer, shutdown
 from yupay_worker.consumer import (
     ListenerManager,
     Queue,
-    _await_stray_tasks,
     _drain_all,
     _queue_loop,
     _queues,
-    _supervise,
     _wait_for_wake_or_tick,
     raw_dsn,
     run,
@@ -485,7 +483,7 @@ async def test_shutdown_spends_one_budget_and_not_two(
 ) -> None:
     """A stuck drain must not be waited on twice.
 
-    ``_await_stray_tasks`` collects ``asyncio.all_tasks()``, which now includes
+    ``shutdown.await_stray_tasks`` collects ``asyncio.all_tasks()``, which now includes
     the queue loops, so before ``exclude=`` a loop that ignored its own bounded
     wait went on to spend the **stray** window too. That made the two
     five-second budgets one ten-second total — exactly Docker's default
@@ -496,8 +494,8 @@ async def test_shutdown_spends_one_budget_and_not_two(
     shutdown is the drain slice (0.1) and the strays return at once; without
     it, the strays wait out the rest of the budget as well (0.5).
     """
-    monkeypatch.setattr(consumer, "SHUTDOWN_BUDGET_SECONDS", 0.5)
-    monkeypatch.setattr(consumer, "SHUTDOWN_DRAIN_SECONDS", 0.1)
+    monkeypatch.setattr(shutdown, "SHUTDOWN_BUDGET_SECONDS", 0.5)
+    monkeypatch.setattr(shutdown, "SHUTDOWN_DRAIN_SECONDS", 0.1)
 
     async def _body(nth: int, stop: asyncio.Event) -> None:
         if nth == len(_queues(get_settings())):
@@ -516,44 +514,6 @@ async def test_shutdown_spends_one_budget_and_not_two(
         for task in stuck:
             task.cancel()
         await asyncio.gather(*stuck, return_exceptions=True)
-
-
-def test_the_shutdown_budget_stays_under_dockers_grace_period() -> None:
-    """The number this is measured against lives outside the repo.
-
-    Docker's default ``stop_grace_period`` is 10 s and neither compose file
-    overrides it for ``worker``, so a shutdown budget at or past it is a
-    shutdown that gets SIGKILLed part-way through. Raising this means setting
-    ``stop_grace_period`` in both compose files first, which is why the
-    constant is asserted here rather than trusted to a comment.
-    """
-    assert consumer.SHUTDOWN_BUDGET_SECONDS < 10
-    assert consumer.SHUTDOWN_DRAIN_SECONDS < consumer.SHUTDOWN_BUDGET_SECONDS
-
-
-async def test_supervise_returns_quietly_on_an_ordinary_stop() -> None:
-    stop = asyncio.Event()
-
-    async def _loop() -> None:
-        await stop.wait()
-
-    loops = [asyncio.create_task(_loop(), name="drain:x")]
-    stop.set()
-    assert await asyncio.wait_for(_supervise(loops, stop=stop), timeout=5) is False
-    await asyncio.gather(*loops)
-
-
-async def test_supervise_treats_a_loop_that_just_returns_as_a_dead_queue() -> None:
-    """``_queue_loop`` has one exit and it is the stop signal, so a return
-    without one is the same dead queue by a quieter route."""
-    stop = asyncio.Event()
-
-    async def _returns_early() -> None:
-        return None
-
-    loops = [asyncio.create_task(_returns_early(), name="drain:x")]
-    assert await asyncio.wait_for(_supervise(loops, stop=stop), timeout=5) is True
-    assert stop.is_set()
 
 
 async def test_a_queue_that_crashes_does_not_stop_the_other_queue(
@@ -610,38 +570,3 @@ async def test_a_queue_that_crashes_does_not_stop_the_other_queue(
         dead.cancel()
         alive.cancel()
         await asyncio.gather(dead, alive, return_exceptions=True)
-
-
-# ---------- shutdown window for fire-and-forget sends ----------
-
-
-async def test_shutdown_waits_for_stray_tasks_without_cancelling_them() -> None:
-    """``notifications.schedule`` sends run as bare ``create_task``s. The last
-    batch's "your order is delivered" ping is still in flight when the loop
-    exits, and ``asyncio.run`` would cancel it on the way out."""
-    delivered = False
-
-    async def stray_notification() -> None:
-        nonlocal delivered
-        await asyncio.sleep(0.05)
-        delivered = True
-
-    task = asyncio.create_task(stray_notification())
-
-    await _await_stray_tasks(timeout=2.0)
-
-    assert delivered
-    assert not task.cancelled()
-
-
-async def test_shutdown_wait_is_bounded_and_never_waits_on_itself() -> None:
-    """A send that hangs must cost the shutdown its timeout, not forever --
-    and the waiter must exclude its own task or it would wait on itself."""
-    hanging = asyncio.create_task(asyncio.sleep(30))
-    started = time.monotonic()
-    try:
-        await _await_stray_tasks(timeout=0.2)
-        assert time.monotonic() - started < 2
-        assert not hanging.done()  # bounded wait, not a cancel
-    finally:
-        hanging.cancel()

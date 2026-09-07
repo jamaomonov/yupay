@@ -57,6 +57,18 @@ parameterised rather than duplicated; a third queue is a fourth entry in
 `_queues()`, and its channel constant must be imported from the module that
 NOTIFYs it, never respelled here.
 
+## Layout
+
+- `consumer.py` — the queues: what they are, how they are woken, how they are
+  drained, and `run()` wiring them together.
+- `shutdown.py` — when this process stops and how long it may take doing it:
+  the supervision that turns a dead queue loop into a non-zero exit, and the
+  one budget the whole shutdown path spends. Split out at AGENTS §6's 500-line
+  limit; the seam is real, since nothing in it knows about queues, listeners or
+  Postgres. It keeps the `yupay.worker.consumer` logger name deliberately — the
+  event names are what a Loki or Grafana panel outside this repo reads, and
+  moving code between files is no reason to move a `logger` field under them.
+
 ## Run locally
 
 ```bash
