@@ -180,7 +180,9 @@ async def _replayed(
 def _enqueue_only() -> Settings:
     """Settings for :func:`fulfillment.start_for_order` with the queue forced on.
 
-    ``fulfilment_async`` is off by default and off on production, and with it
+    ``fulfilment_async`` is off **in code**. Production sets
+    ``FULFILMENT_ASYNC=true`` (since 2026-08-31, ADR-0064), but staging, a
+    fresh deployment and a rollback of that one env line do not — and with it
     off ``start_for_order`` runs the **supplier purchase inline, inside this
     transaction**. That is a shape a money path cannot have: ``process_task``
     catches ``FulfillerError`` and ``FulfillerNotIntegratedError`` and nothing

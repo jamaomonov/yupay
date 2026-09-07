@@ -475,7 +475,7 @@ it is the one part of this contract that may be reshaped inside v1. `detail`
 summarises the first few in one sentence; `code` is what your code should
 branch on.
 
-#### The one answer that is **not** problem+json
+#### The answers that are **not** problem+json
 
 **A `5xx`.** No endpoint here raises one deliberately: nothing on this surface
 calls a supplier while you wait (see "Fulfilment is asynchronous, always"), so
@@ -485,6 +485,23 @@ edge rather than our application — most likely a deploy, which holds and
 retries for 15 s before giving up. Both are safe to retry: resend the identical
 signed request if it is still inside the ±300 s window, re-sign if it is not,
 and keep the same `merchant_order_id`.
+
+**A wrong URL or a wrong method**, which our web framework answers before any
+of this API's own code runs:
+
+| You sent                                                     | You get                                  |
+| ------------------------------------------------------------ | ---------------------------------------- |
+| A path this API does not serve (`GET /merchant/v1/nope`)     | `404` `{"detail": "Not Found"}`          |
+| A method it does not serve on a path it does (`GET /orders`) | `405` `{"detail": "Method Not Allowed"}` |
+
+Both are `application/json` with no `type` and no `code`. Routing happens
+before authentication, so these are also the only two answers you can get
+**without** valid credentials — a `405` is not a hint that your signature was
+accepted. Note the second row in particular: `POST /merchant/v1/orders` places
+an order and `GET /merchant/v1/orders/{merchant_order_id}` reads one, but a
+bare `GET /merchant/v1/orders` is not an endpoint. If you meet either of
+these, check the URL and the method against the endpoint list below before you
+touch your signing code.
 
 ### Rate limits
 
@@ -637,12 +654,12 @@ page: your deposit **is** the payment.
 }
 ```
 
-| Field               | Required | Notes                                                                                                                                                                                                                         |
-| ------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account.                                                                                                 |
-| `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                                                                                                              |
-| `expected_price`    | yes      | The `price_usd` you last read for that SKU. At most two decimals. See "Price drift" below.                                                                                                                                    |
-| `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login) — the same fields the storefront collects, validated the same way. **Send those keys and nothing else**: an unrecognised key is a `422`, not a silently ignored one. See below. |
+| Field               | Required | Notes                                                                                                                                                                                                                             |
+| ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account, and compared **byte for byte** — `MY-ORDER` and `my-order` are two different orders and two debits. |
+| `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                                                                                                                  |
+| `expected_price`    | yes      | The `price_usd` you last read for that SKU. At most two decimals. See "Price drift" below.                                                                                                                                        |
+| `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login) — the same fields the storefront collects, validated the same way. **Send those keys and nothing else**: an unrecognised key is a `422`, not a silently ignored one. See below.     |
 
 One SKU per order. There is no `qty` and no line array: a reseller's basket
 does not have to be ours, and one line per order means "the order failed"
@@ -1143,8 +1160,8 @@ path segment is percent-encoded and **the encoded form is what you sign**
   but only after somebody tops you up.
 - Parse money with a decimal type. `"1.06"` through a float is `1.0599…`.
 - Branch on `code`, not on `detail`. Every error here is problem+json except a
-  `5xx` (see "Errors"), and a request we could not even parse is
-  `422 invalid_request`.
+  `5xx` and a wrong URL or method (see "Errors"), and a request we could not
+  even parse is `422 invalid_request`.
 
 ## Implementation map
 

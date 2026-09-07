@@ -228,9 +228,20 @@ def problem_json_validation_handler(
     """
     scoped = tuple(prefixes)
 
+    def in_scope(path: str) -> bool:
+        """True if ``path`` is a scoped prefix or a path segment under one.
+
+        Segment-wise, not string-wise. A bare ``startswith`` also matches
+        ``/merchant/v10/…`` and ``/merchant/v1beta/…`` — nothing is mounted
+        there today, and ``/merchant/v2`` correctly falls out of scope either
+        way, but a future ``/merchant/v1beta`` would silently inherit this
+        prefix's published error contract without anyone choosing it.
+        """
+        return any(path == prefix or path.startswith(f"{prefix}/") for prefix in scoped)
+
     async def handler(request: Request, exc: RequestValidationError) -> Response:
         """Render a validation failure for whoever asked."""
-        if not request.url.path.startswith(scoped):
+        if not in_scope(request.url.path):
             return await request_validation_exception_handler(request, exc)
         errors = jsonable_encoder(exc.errors())
         return JSONResponse(

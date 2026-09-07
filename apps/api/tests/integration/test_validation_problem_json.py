@@ -71,6 +71,34 @@ async def test_outside_the_merchant_prefix_the_body_is_fastapis_own_byte_for_byt
     assert ours.media_type == theirs.media_type
 
 
+@pytest.mark.parametrize(
+    "path",
+    ["/merchant/v1beta/orders", "/merchant/v10/orders", "/merchant/v2/orders", "/merchant/v1x"],
+)
+async def test_a_neighbouring_prefix_does_not_inherit_the_merchant_contract(path: str) -> None:
+    """The scope is a path segment, not a string prefix.
+
+    ``startswith("/merchant/v1")`` is true of ``/merchant/v1beta`` and
+    ``/merchant/v10`` as well. Nothing is mounted at either today, so this
+    pins the rule before something is: a surface joins this contract by being
+    put under the prefix, never by being spelled like it.
+    """
+    exc = RequestValidationError(_ERRORS)
+
+    ours = await _HANDLER(_request(path), exc)
+    theirs = await request_validation_exception_handler(_request(path), exc)
+
+    assert ours.body == theirs.body
+    assert ours.media_type == theirs.media_type
+
+
+async def test_the_prefix_itself_is_in_scope() -> None:
+    """The other edge of the same rule: the prefix is not only its children."""
+    response = await _HANDLER(_request("/merchant/v1"), RequestValidationError(_ERRORS))
+
+    assert response.media_type == "application/problem+json"
+
+
 async def test_inside_the_merchant_prefix_the_body_is_problem_json() -> None:
     """And it renders the ``ctx`` a naive ``json.dumps`` handler would die on."""
     response = await _HANDLER(_request("/merchant/v1/orders"), RequestValidationError(_ERRORS))

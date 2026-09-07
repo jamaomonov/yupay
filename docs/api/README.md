@@ -391,7 +391,8 @@ the earlier balance read in the order path exists only to answer a clean
 **Fulfilment is always enqueued, never inline.** The call site passes
 `start_for_order` a settings copy with `fulfilment_async` forced on
 (`merchants/orders.py::_enqueue_only`), regardless of the deployment's flag —
-which defaults off, and is off on production. With it off `process_task` runs
+which defaults off in code, whatever a given environment sets (production
+sets it on; staging and a fresh deploy do not). With it off `process_task` runs
 the supplier purchase inside this transaction, and it catches only
 `FulfillerError` / `FulfillerNotIntegratedError`: anything raising after the
 supplier is paid and before the commit rolls back the order, the debit and the

@@ -285,8 +285,9 @@ async def test_fulfilment_is_enqueued_and_never_run_inside_the_money_transaction
 ) -> None:
     """The supplier is never called from inside the transaction that took the money.
 
-    With ``fulfilment_async`` off — its default, and its state on production —
-    ``start_for_order`` runs the supplier purchase inline. Anything raising
+    With ``fulfilment_async`` off — its default in code, and the state of any
+    environment that does not set ``FULFILMENT_ASYNC``, production's own value
+    notwithstanding — ``start_for_order`` runs the supplier purchase inline. Anything raising
     after that and before the commit rolls back the order, the debit and the
     delivery while the supplier keeps the money, and the merchant then retries
     the same ``merchant_order_id``, finds nothing, and buys it twice. This path

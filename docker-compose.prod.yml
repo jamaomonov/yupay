@@ -100,16 +100,25 @@ services:
       # supplier. This is a safety net for a leaked connection, NOT a policy
       # for slow work — and the distinction is what sets the number.
       #
-      # Fulfilment still runs inline in the request transaction (ADR-0013's
-      # open follow-through), and one G2B call is worst-case 115s: a 20s
-      # timeout, five attempts, 1+2+4+8s of backoff. An order makes two or
-      # three of them inside a single transaction. The first value here was
-      # 120s, which would have aborted legitimate fulfilment mid-flight the
-      # moment the supplier got slow — trading a pinned connection for a paid
-      # order left waiting on the reconcile sweep. Ten minutes sits above any
-      # real fulfilment and still bounds a genuine leak.
+      # Sized for the inline-fulfilment shape, which this host no longer runs
+      # but can return to. FULFILMENT_ASYNC=true has been set in secrets/api.env
+      # since 2026-08-31 (ADR-0064), so a storefront order now enqueues and the
+      # supplier call happens in the worker; the flag's CODE default is still
+      # off, so any environment without it — staging, a fresh deploy, a rollback
+      # of that one line — puts the supplier call back inside the request
+      # transaction. Merchant orders are the exception: /merchant/v1 forces the
+      # queue at the call site and is not affected either way (ADR-0069 §6).
       #
-      # Revisit down to something tight once the saga moves to the worker.
+      # In that shape one G2B call is worst-case 115s: a 20s timeout, five
+      # attempts, 1+2+4+8s of backoff. An order makes two or three of them
+      # inside a single transaction. The first value here was 120s, which would
+      # have aborted legitimate fulfilment mid-flight the moment the supplier
+      # got slow — trading a pinned connection for a paid order left waiting on
+      # the reconcile sweep. Ten minutes sits above any real fulfilment and
+      # still bounds a genuine leak.
+      #
+      # Revisit down to something tight once inline fulfilment is gone from the
+      # code rather than from one env file.
       #
       # statement_timeout is deliberately NOT set. It would also apply to
       # migrations, which run as this same role, and killing a CREATE INDEX

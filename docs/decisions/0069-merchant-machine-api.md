@@ -154,7 +154,9 @@ and the README says so in those words rather than implying otherwise.
 
 `merchants/orders.py::_enqueue_only` hands `fulfillment.start_for_order` a
 settings copy with `fulfilment_async` on, regardless of the deployment's flag
-— which defaults off and is off on production.
+— which defaults off in code. Production has set `FULFILMENT_ASYNC=true` since
+2026-08-31 (ADR-0064); staging, a fresh deployment and a rollback of that env
+line have not.
 
 It is a call-site decision and not an operator's because with the flag off,
 `start_for_order` runs the **supplier purchase inside the transaction that
