@@ -17,16 +17,33 @@ would close a cycle for any service-layer caller.
 The credential *lifecycle* (``create_api_key`` / ``list_api_keys`` /
 ``revoke_api_key``) and the wire format (``signing``) have no such binding
 and are exported normally.
+
+Where each name comes from is an implementation detail this facade exists to
+hide — ``service`` (the account), ``credentials`` (its API keys), ``deposit``
+(its money), ``admin``, ``orders``, ``price_list``, ``pricing``, ``signing``.
+Importers see one surface and are unaffected when a file is split.
 """
 
 from __future__ import annotations
 
 from yupay.modules.merchants.admin import (
     bulk_set_markup,
-    list_deposit_transactions,
     list_merchants_with_balances,
     set_brand_b2b,
     set_sku_b2b,
+)
+from yupay.modules.merchants.credentials import (
+    IssuedApiKey,
+    create_api_key,
+    list_api_keys,
+    revoke_api_key,
+)
+from yupay.modules.merchants.deposit import (
+    DEPOSIT_CURRENCY,
+    charge_deposit,
+    credit_deposit,
+    deposit_balance,
+    list_deposit_transactions,
 )
 from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
 from yupay.modules.merchants.orders import place as place_order
@@ -37,18 +54,7 @@ from yupay.modules.merchants.pricing import (
     merchant_price,
     violates_margin_floor,
 )
-from yupay.modules.merchants.service import (
-    DEPOSIT_CURRENCY,
-    IssuedApiKey,
-    charge_deposit,
-    create_api_key,
-    create_merchant,
-    credit_deposit,
-    deposit_balance,
-    list_api_keys,
-    revoke_api_key,
-    set_status,
-)
+from yupay.modules.merchants.service import create_merchant, set_status
 from yupay.modules.merchants.signing import (
     body_digest,
     canonical_message,

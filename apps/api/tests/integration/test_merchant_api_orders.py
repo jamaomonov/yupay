@@ -870,7 +870,7 @@ async def test_a_concurrent_charge_waits_for_the_lock_instead_of_overdrawing(
     from sqlalchemy.ext.asyncio import async_sessionmaker
     from yupay.core.errors import ConflictError
     from yupay.modules.merchants import api as merchants
-    from yupay.modules.merchants.service import DEPOSIT_CURRENCY
+    from yupay.modules.merchants.deposit import DEPOSIT_CURRENCY
 
     merchant_id = await _new_merchant(integration_client, admin_headers)
     # The credit through the admin route creates both wallet accounts, so the

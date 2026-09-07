@@ -1,12 +1,15 @@
 """Admin-side operations for the merchant B2B programme (M1, spec §8.3/§10).
 
 Everything support needs to run a pilot merchant by hand that is not already
-in ``service``: the balance-joined merchant list, and the catalog B2B knobs
-(per-SKU markup/visibility, per-brand visibility, and the one-action bulk
-markup). Reaches into ``catalog.models`` directly — the established pattern
-for cross-module row access (``integrations.merchant_feed``,
+in ``service`` or ``deposit``: the balance-joined merchant list, and the
+catalog B2B knobs (per-SKU markup/visibility, per-brand visibility, and the
+one-action bulk markup). Reaches into ``catalog.models`` directly — the
+established pattern for cross-module row access (``integrations.merchant_feed``,
 ``admin.service`` do the same) — and into ``wallet.models`` for the grouped
-balance read, mirroring ``service.deposit_balance``.
+balance read, mirroring ``deposit.deposit_balance``.
+
+The per-merchant ledger listing used to live here too; it moved to
+``deposit.py`` with the rest of the deposit's reads and writes.
 """
 
 from __future__ import annotations
@@ -19,9 +22,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
+from yupay.modules.merchants.deposit import DEPOSIT_CURRENCY
 from yupay.modules.merchants.models import Merchant
-from yupay.modules.merchants.service import DEPOSIT_CURRENCY
-from yupay.modules.wallet.models import WalletAccount, WalletPosting, WalletTransaction
+from yupay.modules.wallet.models import WalletAccount, WalletPosting
 from yupay.modules.wallet.service import NORMAL_SIDE
 
 
@@ -73,62 +76,6 @@ async def list_merchants_with_balances(db: AsyncSession) -> list[tuple[Merchant,
     )
     rows = (await db.execute(stmt)).all()
     return [(merchant, Decimal(balance)) for merchant, balance in rows]
-
-
-async def list_deposit_transactions(
-    db: AsyncSession, *, merchant_id: str, limit: int = 50
-) -> list[tuple[WalletTransaction, Decimal]]:
-    """A merchant's deposit ledger, newest first, with the signed delta.
-
-    One grouped query: every transaction that touched the merchant's
-    ``merchant_deposit`` account, with the normal-side-signed SUM of its
-    merchant-side postings — i.e. how much this transaction moved the
-    deposit balance (positive = up). The M2 order-charge rows will surface
-    here with a negative delta without any change.
-
-    Args:
-        db: Session. The caller owns the transaction.
-        merchant_id: Whose ledger to read. Must exist.
-        limit: Newest-first cap; the route bounds it.
-
-    Returns:
-        ``(transaction, signed_amount)`` pairs, newest first.
-
-    Raises:
-        NotFoundError: If no merchant with that id exists — an empty ledger
-            for a typo'd id must be a 404, never a plausible-looking ``[]``.
-    """
-    exists = (
-        await db.execute(select(Merchant.id).where(Merchant.id == merchant_id))
-    ).scalar_one_or_none()
-    if exists is None:
-        raise NotFoundError("merchant not found")
-    normal = NORMAL_SIDE["merchant_deposit"]
-    signed_sum = func.sum(
-        case(
-            (WalletPosting.direction == normal, WalletPosting.amount),
-            else_=-WalletPosting.amount,
-        )
-    )
-    stmt = (
-        select(WalletTransaction, signed_sum)
-        .join(WalletPosting, WalletPosting.transaction_id == WalletTransaction.id)
-        .join(WalletAccount, WalletAccount.id == WalletPosting.account_id)
-        .where(
-            WalletAccount.owner_type == "merchant",
-            WalletAccount.owner_id == merchant_id,
-            WalletAccount.kind == "merchant_deposit",
-            WalletAccount.currency == DEPOSIT_CURRENCY,
-        )
-        # PK grouping — Postgres derives the other transaction columns from it.
-        .group_by(WalletTransaction.id)
-        # ``created_at`` is transaction-start time, so same-instant rows are
-        # possible; the UUIDv7 id is the monotonic tiebreak.
-        .order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc())
-        .limit(limit)
-    )
-    rows = (await db.execute(stmt)).all()
-    return [(txn, Decimal(amount)) for txn, amount in rows]
 
 
 async def set_sku_b2b(
@@ -259,7 +206,6 @@ async def bulk_set_markup(
 
 __all__ = [
     "bulk_set_markup",
-    "list_deposit_transactions",
     "list_merchants_with_balances",
     "set_brand_b2b",
     "set_sku_b2b",

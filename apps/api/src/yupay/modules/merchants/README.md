@@ -34,7 +34,8 @@ owned by `owner_type="merchant", owner_id=<merchant_id>, currency="USD"`
 `wallet.service.post`, so idempotency-by-key and all-or-nothing legs are
 inherited from the ledger, not rebuilt here.
 
-The posting table is authoritative — M2 must not re-derive directions:
+It lives in `deposit.py`; the posting table below is authoritative and no
+caller may re-derive a direction from it:
 
 | Event                       | Legs                                             | Kind                      |
 | --------------------------- | ------------------------------------------------ | ------------------------- |
@@ -671,17 +672,27 @@ accident. Delivery to you is the order read and, from M3, the outbound webhook.
 
 | Concern                                                    | Where                                                         |
 | ---------------------------------------------------------- | ------------------------------------------------------------- |
+| The merchant account (create / load / freeze)              | `service.py`                                                  |
 | Wire format: key/secret minting, canonical string, digests | `signing.py` — the one home; nothing else may re-derive these |
 | Secret encryption at rest                                  | `core/crypto.py` (purpose `yupay:merchants:apikey:v1`)        |
-| Credential lifecycle (create / list / revoke)              | `service.py`, via the `api` facade                            |
+| Credential lifecycle (create / list / revoke)              | `credentials.py`, via the `api` facade                        |
 | Request verification + the FastAPI dependency              | `auth.py`                                                     |
+| The deposit: credit, charge, balance, ledger listing       | `deposit.py` — every movement of a merchant's money           |
 | Admin HTTP surface                                         | `admin_routes.py`                                             |
 | Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix      |
 | The priced catalog read model                              | `price_list.py`                                               |
-| Order placement + the deposit charge                       | `orders.py`; the debit itself is `service.charge_deposit`     |
+| What may be ordered and at what price                      | `quote.py` — orderability, margin floor, ±2 % drift           |
+| Order placement + the deposit charge                       | `orders.py`; the debit itself is `deposit.charge_deposit`     |
 | The wholesale price formula and the ±2% drift rule         | `pricing.py` — the one home for both                          |
 | Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                  |
 | Admin-surface DTOs                                         | `schemas.py`                                                  |
+
+Three of those files were carved out of two in M2 Task 5, when `service.py`
+(487 lines) and `orders.py` (468) had both drifted past the 400-line soft
+limit in AGENTS.md §6. `service.py` was one name over three responsibilities —
+the account, its credentials, its money — and `orders.py` was answering "may
+this be bought, and for how much" in the same breath as "place it and charge
+for it". Nothing moved but the code.
 
 `auth.merchant_auth` is the dependency every `/merchant/v1` endpoint sits
 behind. **Import it from `merchants.auth` directly, never from

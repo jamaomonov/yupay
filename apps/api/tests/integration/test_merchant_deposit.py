@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from yupay.core.errors import NotFoundError, ValidationError
+from yupay.modules.merchants import deposit as merchants_deposit
 from yupay.modules.merchants import service as merchants_service
 from yupay.modules.wallet.models import WalletAccount, WalletTransaction
 
@@ -37,7 +38,7 @@ async def _account(
 
 async def test_credit_shows_up_in_balance(db_session: AsyncSession) -> None:
     merchant = await merchants_service.create_merchant(db_session, title="Reseller One")
-    txn = await merchants_service.credit_deposit(
+    txn = await merchants_deposit.credit_deposit(
         db_session,
         merchant_id=merchant.id,
         amount=Decimal("100.00"),
@@ -45,7 +46,7 @@ async def test_credit_shows_up_in_balance(db_session: AsyncSession) -> None:
         idempotency_key="merchant-credit-1",
         note="first top-up",
     )
-    balance = await merchants_service.deposit_balance(db_session, merchant_id=merchant.id)
+    balance = await merchants_deposit.deposit_balance(db_session, merchant_id=merchant.id)
     assert balance == Decimal("100.00")
 
     # Pin the posting directions: D merchant_deposit / C house_payments_received.
@@ -67,7 +68,7 @@ async def test_credit_shows_up_in_balance(db_session: AsyncSession) -> None:
 
 async def test_credit_is_idempotent_by_key(db_session: AsyncSession) -> None:
     merchant = await merchants_service.create_merchant(db_session, title="Reseller Two")
-    first = await merchants_service.credit_deposit(
+    first = await merchants_deposit.credit_deposit(
         db_session,
         merchant_id=merchant.id,
         amount=Decimal("50.00"),
@@ -75,7 +76,7 @@ async def test_credit_is_idempotent_by_key(db_session: AsyncSession) -> None:
         idempotency_key="merchant-credit-replay",
         note=None,
     )
-    second = await merchants_service.credit_deposit(
+    second = await merchants_deposit.credit_deposit(
         db_session,
         merchant_id=merchant.id,
         amount=Decimal("50.00"),
@@ -85,7 +86,7 @@ async def test_credit_is_idempotent_by_key(db_session: AsyncSession) -> None:
     )
     assert second.id == first.id
 
-    balance = await merchants_service.deposit_balance(db_session, merchant_id=merchant.id)
+    balance = await merchants_deposit.deposit_balance(db_session, merchant_id=merchant.id)
     assert balance == Decimal("50.00")
 
     txn_count = len(
@@ -115,7 +116,7 @@ async def test_two_concurrent_credits_both_land(db_engine: AsyncEngine) -> None:
 
     async def _credit(key: str, amount: str) -> None:
         async with factory() as session:
-            await merchants_service.credit_deposit(
+            await merchants_deposit.credit_deposit(
                 session,
                 merchant_id=merchant_id,
                 amount=Decimal(amount),
@@ -131,7 +132,7 @@ async def test_two_concurrent_credits_both_land(db_engine: AsyncEngine) -> None:
     )
 
     async with factory() as check:
-        balance = await merchants_service.deposit_balance(check, merchant_id=merchant_id)
+        balance = await merchants_deposit.deposit_balance(check, merchant_id=merchant_id)
         assert balance == Decimal("100.00")
 
 
@@ -143,7 +144,7 @@ async def test_frozen_merchant_can_still_be_credited(db_session: AsyncSession) -
     )
     assert frozen.status == "frozen"
 
-    await merchants_service.credit_deposit(
+    await merchants_deposit.credit_deposit(
         db_session,
         merchant_id=merchant.id,
         amount=Decimal("25.00"),
@@ -151,12 +152,12 @@ async def test_frozen_merchant_can_still_be_credited(db_session: AsyncSession) -
         idempotency_key="merchant-credit-frozen",
         note=None,
     )
-    balance = await merchants_service.deposit_balance(db_session, merchant_id=merchant.id)
+    balance = await merchants_deposit.deposit_balance(db_session, merchant_id=merchant.id)
     assert balance == Decimal("25.00")
 
 
 async def test_balance_of_unknown_merchant_is_zero(db_session: AsyncSession) -> None:
-    balance = await merchants_service.deposit_balance(
+    balance = await merchants_deposit.deposit_balance(
         db_session, merchant_id="00000000-0000-0000-0000-000000000000"
     )
     assert balance == Decimal("0")
@@ -169,7 +170,7 @@ async def test_credit_rejects_non_positive_amount(db_session: AsyncSession) -> N
     merchant = await merchants_service.create_merchant(db_session, title="Zero Inc")
     for bad in (Decimal("0"), Decimal("-10.00")):
         with pytest.raises(ValidationError):
-            await merchants_service.credit_deposit(
+            await merchants_deposit.credit_deposit(
                 db_session,
                 merchant_id=merchant.id,
                 amount=bad,
@@ -181,7 +182,7 @@ async def test_credit_rejects_non_positive_amount(db_session: AsyncSession) -> N
 
 async def test_credit_unknown_merchant_is_refused(db_session: AsyncSession) -> None:
     with pytest.raises(NotFoundError):
-        await merchants_service.credit_deposit(
+        await merchants_deposit.credit_deposit(
             db_session,
             merchant_id="00000000-0000-0000-0000-000000000000",
             amount=Decimal("10.00"),
@@ -215,8 +216,8 @@ def test_module_facade_reexports_the_service() -> None:
     """Other modules import ``merchants.api`` — pin that it exposes the service."""
     from yupay.modules.merchants import api as merchants_api
 
-    assert merchants_api.credit_deposit is merchants_service.credit_deposit
-    assert merchants_api.deposit_balance is merchants_service.deposit_balance
+    assert merchants_api.credit_deposit is merchants_deposit.credit_deposit
+    assert merchants_api.deposit_balance is merchants_deposit.deposit_balance
     assert merchants_api.create_merchant is merchants_service.create_merchant
     assert merchants_api.set_status is merchants_service.set_status
     assert merchants_api.DEPOSIT_CURRENCY == "USD"
