@@ -251,7 +251,7 @@ recovery path and there is deliberately no second one.
 
 ### Falsification
 
-`uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py` — 17
+`uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py` — 20
 mutations, each asserting it changed the file before the suite runs. Read its
 docstring before running it beside anything else.
 

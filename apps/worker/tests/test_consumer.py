@@ -16,7 +16,9 @@ import asyncio
 import time
 from typing import Any
 
+import pytest
 from yupay.core.config import get_settings
+from yupay_worker import consumer
 from yupay_worker.consumer import (
     ListenerManager,
     Queue,
@@ -24,8 +26,10 @@ from yupay_worker.consumer import (
     _drain_all,
     _queue_loop,
     _queues,
+    _supervise,
     _wait_for_wake_or_tick,
     raw_dsn,
+    run,
 )
 
 
@@ -379,6 +383,233 @@ def test_each_queue_gets_its_own_concurrency_dial() -> None:
     tasks, hooks = _queues(cfg)
     assert tasks.concurrency == cfg.fulfilment_concurrency
     assert hooks.concurrency == cfg.merchant_webhook_concurrency
+
+
+# ---------- what run() actually builds, and what happens when a loop dies ----------
+
+
+@pytest.fixture
+def wired(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, Any]]:
+    """Run ``run()`` for real, with only its I/O replaced.
+
+    The listeners are the **real** ``ListenerManager``: nothing connects until
+    ``ensure()``, which the fake loop never calls, and ``close()`` on an
+    unopened one is a no-op. What is faked is the engine, the session factory,
+    the G2B pool and ``_queue_loop`` itself — so what is under test is the
+    wiring ``run()`` does, which is where the two properties below live.
+    """
+    started: list[dict[str, Any]] = []
+    monkeypatch.setattr(consumer, "get_engine", lambda: None)
+    monkeypatch.setattr(consumer, "async_sessionmaker", lambda *a, **k: _FakeSessionFactory())
+
+    async def _noop_pool() -> None:
+        return None
+
+    monkeypatch.setattr(consumer, "close_g2b_pool", _noop_pool)
+    return started
+
+
+def _install_loop(
+    monkeypatch: pytest.MonkeyPatch, started: list[dict[str, Any]], body: Any
+) -> None:
+    async def _fake_loop(
+        session_factory: Any,
+        queue: Queue,
+        *,
+        listener: Any,
+        wake: asyncio.Event,
+        stop: asyncio.Event,
+        poll_seconds: float,
+    ) -> None:
+        started.append({"queue": queue, "listener": listener, "wake": wake, "stop": stop})
+        await body(len(started), stop)
+
+    monkeypatch.setattr(consumer, "_queue_loop", _fake_loop)
+
+
+async def test_run_gives_every_queue_its_own_task_and_its_own_wake_event(
+    monkeypatch: pytest.MonkeyPatch, wired: list[dict[str, Any]]
+) -> None:
+    """The properties the fix is made of, asserted where the fix lives.
+
+    Both are invisible to a test that drives ``_queue_loop`` directly with its
+    own events: a ``run()`` that re-shared one event
+    (``wakes = (shared,) * len(queues)``) or re-coupled the loops would leave
+    those green. This one reads what ``run()`` itself handed each queue.
+    """
+
+    async def _body(nth: int, stop: asyncio.Event) -> None:
+        if nth == len(_queues(get_settings())):
+            stop.set()  # both are up; shut down
+        await stop.wait()
+
+    _install_loop(monkeypatch, wired, _body)
+
+    assert await asyncio.wait_for(run(), timeout=5) == 0
+
+    assert [call["queue"].name for call in wired] == [q.name for q in _queues(get_settings())]
+    # One task each is implied by two calls; the events and listeners must be
+    # distinct objects, which is the half a shared-event regression would break.
+    assert len({id(call["wake"]) for call in wired}) == len(wired)
+    assert len({id(call["listener"]) for call in wired}) == len(wired)
+    # ...and one stop, shared, or a signal would only stop one queue.
+    assert len({id(call["stop"]) for call in wired}) == 1
+
+
+async def test_run_exits_non_zero_when_a_queue_loop_dies(
+    monkeypatch: pytest.MonkeyPatch, wired: list[dict[str, Any]]
+) -> None:
+    """A dead queue must take the container down.
+
+    Unsupervised, the process stayed **up, healthy-looking and one queue
+    short**: no log line, no non-zero exit, nothing for
+    ``restart: unless-stopped`` to restart — only a GC-time "Task exception was
+    never retrieved" on stderr. Decoupling the queues removed the crash that
+    used to make a dead queue visible, and the consequence is the outage the
+    decoupling was for.
+    """
+
+    async def _body(nth: int, stop: asyncio.Event) -> None:
+        if nth == 1:
+            raise RuntimeError("the listener blew up")
+        await stop.wait()
+
+    _install_loop(monkeypatch, wired, _body)
+
+    assert await asyncio.wait_for(run(), timeout=5) == 1
+    assert wired[-1]["stop"].is_set(), "the surviving loops must be wound down too"
+
+
+async def test_shutdown_spends_one_budget_and_not_two(
+    monkeypatch: pytest.MonkeyPatch, wired: list[dict[str, Any]]
+) -> None:
+    """A stuck drain must not be waited on twice.
+
+    ``_await_stray_tasks`` collects ``asyncio.all_tasks()``, which now includes
+    the queue loops, so before ``exclude=`` a loop that ignored its own bounded
+    wait went on to spend the **stray** window too. That made the two
+    five-second budgets one ten-second total — exactly Docker's default
+    ``stop_grace_period``, which neither compose file overrides for ``worker``,
+    so ``close_g2b_pool()`` and the ``stopped`` line were SIGKILLed away.
+
+    Scaled down so the test costs a tenth of a second: with the fix the whole
+    shutdown is the drain slice (0.1) and the strays return at once; without
+    it, the strays wait out the rest of the budget as well (0.5).
+    """
+    monkeypatch.setattr(consumer, "SHUTDOWN_BUDGET_SECONDS", 0.5)
+    monkeypatch.setattr(consumer, "SHUTDOWN_DRAIN_SECONDS", 0.1)
+
+    async def _body(nth: int, stop: asyncio.Event) -> None:
+        if nth == len(_queues(get_settings())):
+            stop.set()
+        await asyncio.sleep(30)  # ignores the stop signal: the stuck-drain shape
+
+    _install_loop(monkeypatch, wired, _body)
+
+    started = time.monotonic()
+    try:
+        assert await asyncio.wait_for(run(), timeout=5) == 0
+        elapsed = time.monotonic() - started
+        assert elapsed < 0.3, elapsed
+    finally:
+        stuck = [t for t in asyncio.all_tasks() if t.get_name().startswith("drain:")]
+        for task in stuck:
+            task.cancel()
+        await asyncio.gather(*stuck, return_exceptions=True)
+
+
+def test_the_shutdown_budget_stays_under_dockers_grace_period() -> None:
+    """The number this is measured against lives outside the repo.
+
+    Docker's default ``stop_grace_period`` is 10 s and neither compose file
+    overrides it for ``worker``, so a shutdown budget at or past it is a
+    shutdown that gets SIGKILLed part-way through. Raising this means setting
+    ``stop_grace_period`` in both compose files first, which is why the
+    constant is asserted here rather than trusted to a comment.
+    """
+    assert consumer.SHUTDOWN_BUDGET_SECONDS < 10
+    assert consumer.SHUTDOWN_DRAIN_SECONDS < consumer.SHUTDOWN_BUDGET_SECONDS
+
+
+async def test_supervise_returns_quietly_on_an_ordinary_stop() -> None:
+    stop = asyncio.Event()
+
+    async def _loop() -> None:
+        await stop.wait()
+
+    loops = [asyncio.create_task(_loop(), name="drain:x")]
+    stop.set()
+    assert await asyncio.wait_for(_supervise(loops, stop=stop), timeout=5) is False
+    await asyncio.gather(*loops)
+
+
+async def test_supervise_treats_a_loop_that_just_returns_as_a_dead_queue() -> None:
+    """``_queue_loop`` has one exit and it is the stop signal, so a return
+    without one is the same dead queue by a quieter route."""
+    stop = asyncio.Event()
+
+    async def _returns_early() -> None:
+        return None
+
+    loops = [asyncio.create_task(_returns_early(), name="drain:x")]
+    assert await asyncio.wait_for(_supervise(loops, stop=stop), timeout=5) is True
+    assert stop.is_set()
+
+
+async def test_a_queue_that_crashes_does_not_stop_the_other_queue(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The cross-queue direction, at the loop level.
+
+    A drain that raises is already contained (``_drain_until_dry`` catches and
+    ``_drain_all`` gathers with ``return_exceptions=True``), so the way to kill
+    a whole loop is its listener. The other queue must keep draining; ``run()``
+    then turns the dead one into a non-zero exit, which is the test above.
+    """
+    stop = asyncio.Event()
+    drains = 0
+
+    async def healthy_drain(db: Any) -> int:
+        nonlocal drains
+        drains += 1
+        return 0
+
+    async def exploding_ensure() -> None:
+        raise RuntimeError("listen connection is unusable")
+
+    broken, _ = _listener(asyncio.Event())
+    monkeypatch.setattr(broken, "ensure", exploding_ensure)
+
+    dead = asyncio.create_task(
+        _queue_loop(
+            _FakeSessionFactory(),
+            _queue(healthy_drain, name="dead"),
+            listener=broken,
+            wake=asyncio.Event(),
+            stop=stop,
+            poll_seconds=0.01,
+        )
+    )
+    alive = asyncio.create_task(
+        _queue_loop(
+            _FakeSessionFactory(),
+            _queue(healthy_drain, name="alive"),
+            listener=_listener(asyncio.Event())[0],
+            wake=asyncio.Event(),
+            stop=stop,
+            poll_seconds=0.01,
+        )
+    )
+    try:
+        await asyncio.sleep(0.15)
+        assert dead.done()
+        assert not alive.done()
+        assert drains > 0, "the surviving queue kept draining"
+    finally:
+        stop.set()
+        dead.cancel()
+        alive.cancel()
+        await asyncio.gather(dead, alive, return_exceptions=True)
 
 
 # ---------- shutdown window for fire-and-forget sends ----------

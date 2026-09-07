@@ -89,11 +89,26 @@ the two queues share this process's DB connection pool and event loop. Sizing
 is `fulfilment_concurrency + merchant_webhook_concurrency` sessions at peak,
 not `fulfilment_concurrency`.
 
+**A dead queue now takes the container down.** `run()` supervises its loop
+tasks: one that raises, or returns without a stop signal, is logged as
+`worker.consumer.queue_loop_died` and the process exits **1** so
+`restart: unless-stopped` restarts it. Alert on that line — it is the one
+shape where fulfilment stops while the container still reads healthy.
+
+**Shutdown is bounded at 8 s** (`SHUTDOWN_BUDGET_SECONDS`), of which the first
+3 go to a queue loop caught mid-drain and the rest to in-flight notification
+sends. It is 8 rather than 10 because Docker's default `stop_grace_period` is
+10 s and neither compose file overrides it for `worker`: a shutdown that spends
+the whole grace period is SIGKILLed with `close_g2b_pool()` and
+`worker.consumer.stopped` still to come. A cancelled drain is safe — the batch
+rolls back and its rows return to `pending`.
+
 **At deploy:** the `worker.consumer.started` log line's `concurrency=<int>`
 field became `queues={"fulfillment": 4, "merchant_webhook": 2}`. Nothing in
-this repo reads it, but a Grafana or Loki panel outside the repo might; there
-is also a new `worker.consumer.shutdown_left_draining` line when SIGTERM
-arrives mid-drain.
+this repo reads it, but a Grafana or Loki panel outside the repo might. Three
+other lines are new: `worker.consumer.queue_loop_died` (above — worth an
+alert), `worker.consumer.shutdown_left_draining` when SIGTERM arrives
+mid-drain, and a `crashed=` field on `worker.consumer.stopped`.
 
 ## The worker's own settings
 

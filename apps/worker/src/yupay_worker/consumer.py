@@ -36,8 +36,11 @@ Run as: ``python -m yupay_worker.consumer``.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import signal
-from collections.abc import Awaitable, Callable, Sequence
+import sys
+import time
+from collections.abc import Awaitable, Callable, Collection, Sequence
 from dataclasses import dataclass
 from typing import Final
 
@@ -67,10 +70,21 @@ log = get_logger("yupay.worker.consumer")
 
 CHANNEL = "fulfillment_queue"
 
-#: How long shutdown waits for a queue loop that is mid-drain before letting
-#: the runtime cancel it. A cancelled drain rolls back its uncommitted batch,
-#: so the cost is re-doing that batch, never losing it.
-SHUTDOWN_DRAIN_SECONDS: Final = 5.0
+#: Total wall clock the whole shutdown path may spend, from the stop signal to
+#: the last log line. It is a **budget**, shared by the two waits below, and it
+#: is 8 and not 10 because Docker's default ``stop_grace_period`` is 10 s and
+#: neither compose file overrides it for ``worker``: a shutdown that spends the
+#: whole grace period is SIGKILLed with ``close_g2b_pool()`` and
+#: ``worker.consumer.stopped`` still to come. Raising this past the grace
+#: period means setting ``stop_grace_period`` in both compose files first.
+SHUTDOWN_BUDGET_SECONDS: Final = 8.0
+
+#: The budget's first slice: how long a queue loop caught mid-drain gets before
+#: the runtime cancels it. A cancelled drain rolls back its uncommitted batch,
+#: so the cost is re-doing that batch, never losing it — while a fire-and-forget
+#: Telegram send that gets cancelled is a customer who is never told their order
+#: is ready, which is why the remainder goes to the strays and not the reverse.
+SHUTDOWN_DRAIN_SECONDS: Final = 3.0
 
 #: One drain of one queue. Both drains take ``(db, *, limit=...)`` and return
 #: how many rows the batch claimed; the loop only needs "did that do
@@ -342,7 +356,9 @@ async def _queue_loop(
         await _drain_all(session_factory, queue)
 
 
-async def _await_stray_tasks(*, timeout: float) -> None:
+async def _await_stray_tasks(
+    *, timeout: float, exclude: Collection[asyncio.Task[None]] = ()
+) -> None:
     """Give fire-and-forget work started by the last batch a window to finish.
 
     ``notifications.schedule`` runs its sends via a bare
@@ -352,8 +368,18 @@ async def _await_stray_tasks(*, timeout: float) -> None:
     customer's "your order is delivered" Telegram message dies with the
     process. Wait for them, bounded; never cancel them (that is exactly the
     bug), and never wait on ourselves.
+
+    ``exclude`` is the queue loops, and it is not an optimisation: they are
+    ``all_tasks()`` too now, so without it a loop still draining after its own
+    bounded wait spends the stray window **again** — the two budgets became one
+    10-second total, which is exactly Docker's grace period.
+
+    Args:
+        timeout: What is left of :data:`SHUTDOWN_BUDGET_SECONDS`.
+        exclude: Tasks the caller has already waited on by name.
     """
-    pending = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+    current = asyncio.current_task()
+    pending = [t for t in asyncio.all_tasks() if t is not current and t not in exclude]
     if pending:
         # Logged so a shutdown that sits here for the full window is
         # diagnosable rather than looking like a hang.
@@ -361,12 +387,76 @@ async def _await_stray_tasks(*, timeout: float) -> None:
         await asyncio.wait(pending, timeout=timeout)
 
 
-async def run() -> None:
-    """Start one loop per queue and wait for a stop signal.
+async def _supervise(loops: Sequence[asyncio.Task[None]], *, stop: asyncio.Event) -> bool:
+    """Wait until a queue loop dies or we are told to stop. Report which.
+
+    Without this, ``run()`` awaited only ``stop`` and nothing ever looked at
+    the loop tasks: a loop that raised left the process **up, healthy-looking
+    and one queue short**, with no log line, no non-zero exit and nothing for
+    ``restart: unless-stopped`` to restart — only a GC-time "Task exception was
+    never retrieved" on stderr. Before the queues were decoupled the same
+    escape propagated out of ``run()`` and killed the process, so giving each
+    queue its own task also removed the crash that made a dead queue visible.
+    The probability is low (``ensure()`` swallows every ``Exception`` and
+    ``_drain_all`` gathers with ``return_exceptions=True``) and the consequence
+    is the whole outage: all fulfilment stopped, ``worker.consumer.started``
+    still standing.
+
+    A loop that *returns* without ``stop`` being set is treated exactly the
+    same. :func:`_queue_loop` has one exit and it is the stop signal, so a
+    return is the same dead queue by a quieter route.
+
+    Args:
+        loops: One task per queue.
+        stop: The shared shutdown signal, set here when a loop dies so the
+            surviving loops wind down with it.
+
+    Returns:
+        Whether a loop died. The caller turns that into a non-zero exit.
+    """
+    stopper = asyncio.create_task(stop.wait(), name="worker.stop")
+    try:
+        await asyncio.wait([*loops, stopper], return_when=asyncio.FIRST_COMPLETED)
+    finally:
+        stopper.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await stopper
+    if stop.is_set():
+        return False  # an ordinary shutdown; the loops wind themselves down
+    for task in loops:
+        if not task.done() or task.cancelled():
+            continue
+        error = task.exception()  # also marks it retrieved, so no GC-time noise
+        log.error(
+            "worker.consumer.queue_loop_died",
+            queue=task.get_name(),
+            # Type + first line only, never repr(): a SQLAlchemy error
+            # stringifies with its statement and bound parameters (AGENTS §9).
+            error=_error_detail(error) if error is not None else "returned without a stop signal",
+        )
+    stop.set()
+    return True
+
+
+def _error_detail(exc: BaseException) -> str:
+    """``Type: first line``, the shape ``fulfillment.service._crash_detail`` uses."""
+    message = str(exc).strip().splitlines()
+    return f"{type(exc).__name__}: {message[0] if message else ''}"[:200]
+
+
+async def run() -> int:
+    """Start one loop per queue, supervise them, and shut down inside a budget.
 
     Nothing here is stateful across iterations except the connections
     themselves -- kill the process at any point and the next start (or another
     replica) picks up exactly where the row locks left off.
+
+    Returns:
+        A process exit code: ``0`` for an ordinary stop, ``1`` when a queue
+        loop died. Non-zero on purpose — a queue that stopped draining must
+        take the container down so ``restart: unless-stopped`` restarts it,
+        because the alternative is a healthy-looking process with the money
+        path stopped.
     """
     cfg = get_settings()
     stop = asyncio.Event()
@@ -404,24 +494,43 @@ async def run() -> None:
         for queue, wake, listener in zip(queues, wakes, listeners, strict=True)
     ]
 
-    await stop.wait()
-    # Bounded: a loop caught mid-drain finishes its batch if it can, and is
-    # otherwise cancelled by ``asyncio.run`` on the way out. Cancelling a drain
-    # is safe by construction -- it rolls back an uncommitted batch and its rows
-    # go back to ``pending`` (ADR-0064's "loses nothing but row locks").
-    _done, still_draining = await asyncio.wait(loops, timeout=SHUTDOWN_DRAIN_SECONDS)
+    crashed = await _supervise(loops, stop=stop)
+
+    # One budget for the whole shutdown, spent in order and never exceeded:
+    # past Docker's grace period the rest of this function does not happen.
+    deadline = time.monotonic() + SHUTDOWN_BUDGET_SECONDS
+    _done, still_draining = await asyncio.wait(
+        loops, timeout=min(SHUTDOWN_DRAIN_SECONDS, _remaining(deadline))
+    )
     if still_draining:
+        # Bounded: a loop caught mid-drain finishes its batch if it can, and is
+        # otherwise cancelled by ``asyncio.run`` on the way out. Cancelling a
+        # drain is safe by construction -- it rolls back an uncommitted batch
+        # and its rows go back to ``pending`` (ADR-0064's "loses nothing but
+        # row locks").
         log.info(
             "worker.consumer.shutdown_left_draining",
             queues=[task.get_name() for task in still_draining],
+            waited_seconds=SHUTDOWN_DRAIN_SECONDS,
         )
 
-    await _await_stray_tasks(timeout=5.0)
+    # ``exclude=loops`` or the still-draining loop is waited on twice, once
+    # here under a name and once as a stray -- which is how the two five-second
+    # budgets became one ten-second total.
+    await _await_stray_tasks(timeout=_remaining(deadline), exclude=loops)
     for listener in listeners:
         await listener.close()
     await close_g2b_pool()
-    log.info("worker.consumer.stopped")
+    log.info("worker.consumer.stopped", crashed=crashed)
+    return 1 if crashed else 0
+
+
+def _remaining(deadline: float) -> float:
+    """Seconds left on a monotonic deadline, never negative."""
+    return max(0.0, deadline - time.monotonic())
 
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    # ``sys.exit`` on the return value, so a dead queue loop is a container
+    # restart rather than a process that stays up one queue short.
+    sys.exit(asyncio.run(run()))

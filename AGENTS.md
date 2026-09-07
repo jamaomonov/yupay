@@ -215,15 +215,25 @@ yupay/
 - Webhook endpoints (Stripe, PayPal, suppliers, Telegram) **must** verify signatures **before**
   parsing the body. Raw-body middleware required.
 - **Never log PII**: email, phone, full card data, Telegram user ID, IP. Use the structured
-  logger's redactor. Order IDs and amounts are OK to log. "IP" means **a person's**
-  address — a customer's, a cabinet operator's, an admin's. The one carve-out, and it
-  is a list of one: the **merchant webhook** delivery log records the address it
-  connected to (`merchants/webhook_outcome.py`'s `merchant_webhook.delivered`). That
-  is a business's server, chosen by that business, and "we recorded a 200 — from
-  which of their hosts?" is the question the log exists to answer; the SSRF client
-  pins one address per attempt precisely so it is answerable. Anything wanting a
-  second exemption needs the same shape — a machine endpoint, no natural person
-  behind it — and a line here.
+  logger's redactor. Order IDs and amounts are OK to log. "IP" means **an address we
+  observed a person arriving from** — a customer's, a cabinet operator's, an admin's.
+  The carve-out is the mirror image: **an address a third party published to us as a
+  destination we should send to**. The test is _who chose the endpoint_, not who is
+  behind it — a sole trader self-hosting a webhook on a residential line still chose
+  to hand us that address as a delivery target, and nothing in the request path could
+  check the difference anyway. Three sites carry one today, all on the outbound
+  merchant-webhook path and all recording where a delivery went:
+  - `core/outbound.py`'s `outbound.delivered` (`address=pinned`);
+  - `merchants/webhook_outcome.py`'s `merchant_webhook.delivered` (`address=`);
+  - `AddressNotAllowedError`'s message, which names the refused addresses and reaches
+    `merchant_webhook_deliveries.last_error` and the `error=` field of
+    `merchant_webhook.attempt_failed` — a refusal is unactionable without them.
+
+  "We recorded a 200 — to which of their hosts?" is the question that log exists to
+  answer, and the SSRF client pins one address per attempt so it is answerable. A
+  fourth site needs the same shape — an address the counterparty supplied as a
+  destination — and a line here.
+
 - All **state-changing** endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) **must** accept an
   `Idempotency-Key` header and persist results keyed by it. The rule protects writes from
   replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`

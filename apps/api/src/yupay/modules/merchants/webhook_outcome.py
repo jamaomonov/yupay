@@ -122,11 +122,13 @@ async def record(
             event_type=delivery.event_type,
             status_code=delivery.response_code,
             attempts=delivery.attempts_count,
-            # The merchant server's resolved address. AGENTS §9's never-log
-            # list says "IP" flatly, so this is a named carve-out written into
-            # that section rather than an exception argued only here: it is a
-            # business's server, never an end user's, and "we recorded a 200 —
-            # from which of their hosts?" is the delivery log's whole question.
+            # Where the delivery went. AGENTS §9's never-log list says "IP"
+            # flatly, so this is one of three named carve-outs written into
+            # that section rather than an exception argued only here. The test
+            # there is *who chose the endpoint*: this is an address the
+            # merchant published to us as a destination, not one we observed a
+            # person arriving from — and "we recorded a 200 — to which of their
+            # hosts?" is the delivery log's whole question.
             address=response.address if response is not None else None,
         )
         await db.flush()

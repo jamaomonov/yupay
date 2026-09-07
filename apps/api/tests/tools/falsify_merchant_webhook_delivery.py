@@ -2,7 +2,10 @@
 """Mutation harness for the merchant webhook **delivery drain** (M3a, Task 4).
 
 Same contract as its two siblings: break one property at a time and check the
-named test actually goes red. A test that stays green under a mutation is a
+named test actually goes red. It covers ``apps/worker``'s consumer loop as well
+as the three ``merchants`` modules, because the webhook queue shares a process
+with every retail order's fulfilment and three of its properties are about that
+sharing. A test that stays green under a mutation is a
 test that would not have noticed the regression, and this file exists because
 one of them already did that here — the first version of the enqueue-order
 test inserted its two rows in id order, so Postgres returned them in physical
@@ -66,9 +69,11 @@ SRC = REPO / "apps/api/src/yupay"
 LIVE = "apps/api/tests/integration/test_merchant_webhook_delivery.py"
 UNIT = "apps/api/tests/unit/test_merchant_webhook_retry.py"
 SIGN = "apps/api/tests/unit/test_merchant_signing.py"
+WORKER = "apps/worker/tests/test_consumer.py"
 
 DELIVERY = SRC / "modules/merchants/webhook_delivery.py"
 OUTCOME = SRC / "modules/merchants/webhook_outcome.py"
+CONSUMER = REPO / "apps/worker/src/yupay_worker/consumer.py"
 RETRY = SRC / "modules/merchants/webhook_retry.py"
 SIGNING = SRC / "modules/merchants/signing.py"
 ERRORS = SRC / "core/outbound_errors.py"
@@ -123,6 +128,47 @@ MUTATIONS: tuple[Mutation, ...] = (
         ),
         tests=(f"{LIVE}::test_a_second_drainer_skips_locked_rows_and_takes_the_rest",),
         expect=("test_a_second_drainer_skips_locked_rows_and_takes_the_rest",),
+    ),
+    # ---- the worker loop. This queue shares a process with every retail
+    # order's fulfilment, so its three properties are falsified here too.
+    Mutation(
+        name="shared_wake_event",
+        breaks="one queue eats the other's wake-up and it waits out a full tick",
+        edits=(
+            (
+                CONSUMER,
+                "    wakes = tuple(asyncio.Event() for _ in queues)",
+                "    wakes = (asyncio.Event(),) * len(queues)",
+            ),
+        ),
+        tests=(f"{WORKER}::test_run_gives_every_queue_its_own_task_and_its_own_wake_event",),
+        expect=("test_run_gives_every_queue_its_own_task_and_its_own_wake_event",),
+    ),
+    Mutation(
+        name="no_supervision",
+        breaks="a dead queue leaves the process up, healthy-looking and one queue short",
+        edits=(
+            (
+                CONSUMER,
+                "    crashed = await _supervise(loops, stop=stop)",
+                "    crashed = False\n    await stop.wait()",
+            ),
+        ),
+        tests=(f"{WORKER}::test_run_exits_non_zero_when_a_queue_loop_dies",),
+        expect=("test_run_exits_non_zero_when_a_queue_loop_dies",),
+    ),
+    Mutation(
+        name="strays_not_excluded",
+        breaks="a stuck drain is waited on twice and shutdown reaches Docker's grace period",
+        edits=(
+            (
+                CONSUMER,
+                "    await _await_stray_tasks(timeout=_remaining(deadline), exclude=loops)",
+                "    await _await_stray_tasks(timeout=_remaining(deadline))",
+            ),
+        ),
+        tests=(f"{WORKER}::test_shutdown_spends_one_budget_and_not_two",),
+        expect=("test_shutdown_spends_one_budget_and_not_two",),
     ),
     Mutation(
         name="no_truncation",

@@ -32,10 +32,25 @@ hanging call stalls one drainer instead of the queue —
 `FOR UPDATE SKIP LOCKED` keeps their claims disjoint without any coordination.
 
 The rows in those tables are the queues themselves — this process holds no
-state worth preserving and can be killed at any moment. On SIGTERM a loop
-caught mid-drain gets `SHUTDOWN_DRAIN_SECONDS` to finish its batch and is
-otherwise cancelled, which rolls that batch back and returns its rows to
-`pending`.
+state worth preserving and can be killed at any moment.
+
+**A queue loop that dies takes the process with it.** `run()` supervises the
+loop tasks: one that raises (or returns without a stop signal) is logged as
+`worker.consumer.queue_loop_died` and `run()` exits **1**, so
+`restart: unless-stopped` restarts the container. Without that, decoupling the
+queues would have removed the crash that used to make a dead queue visible —
+the process would stay up, healthy-looking and one queue short, with all
+fulfilment stopped and `worker.consumer.started` still standing.
+
+**Shutdown is one budget, not two.** `SHUTDOWN_BUDGET_SECONDS` (8) covers the
+whole path from the stop signal to the last log line; a loop caught mid-drain
+gets the first `SHUTDOWN_DRAIN_SECONDS` (3) of it and the fire-and-forget
+notification sends get whatever is left. Cancelling a drain is safe — it rolls
+the batch back and its rows return to `pending` — while a cancelled Telegram
+send is a customer who is never told their order is ready, which is why the
+remainder goes to the sends. 8 and not 10 because Docker's default
+`stop_grace_period` is 10 s and neither compose file overrides it for `worker`;
+raising the budget past that means setting `stop_grace_period` first.
 
 `Queue` (name, channel, drain, concurrency) is what makes all of that
 parameterised rather than duplicated; a third queue is a fourth entry in

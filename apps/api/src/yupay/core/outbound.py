@@ -534,10 +534,12 @@ async def post_json(
     log.info(
         "outbound.delivered",
         host=target.host,
-        # The merchant's server address, not a person's — AGENTS §9's
-        # never-log list means an end user's IP. The delivery log's whole
-        # question is "which of their hosts answered", and the pin is what
-        # makes that answerable.
+        # Where the request went. One of AGENTS §9's three named carve-outs
+        # from the never-log rule (M3a): the test there is *who chose the
+        # endpoint*, and this is an address the counterparty published to us as
+        # a destination rather than one we observed a person arriving from. The
+        # delivery log's whole question is "which of their hosts answered", and
+        # the pin is what makes that answerable.
         address=pinned,
         status_code=status_code,
         elapsed_ms=elapsed_ms,
