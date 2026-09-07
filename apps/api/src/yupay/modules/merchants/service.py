@@ -1,8 +1,10 @@
 """Merchant accounts, their machine credentials, and the USD deposit ledger.
 
 M1 scope (spec §7): support credits a merchant's prepaid deposit through the
-admin surface, and the cabinet reads the balance. The deposit is a ledger
-balance, never a column — ``merchant_deposit`` is debit-normal exactly like
+admin surface, and the cabinet reads the balance. M2 adds the other direction
+— ``charge_deposit``, which the machine API's order path calls, and which is
+where the overdraw guard actually binds. The deposit is a ledger balance,
+never a column — ``merchant_deposit`` is debit-normal exactly like
 ``user_wallet``, and every movement goes through ``wallet.service.post`` so
 idempotency-by-key and all-or-nothing legs are inherited, not rebuilt. The
 full posting table (including the M2 rows) lives in this module's README.
@@ -30,14 +32,14 @@ they mint into is ``signing``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_DOWN, Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core import crypto
 from yupay.core.clock import now
-from yupay.core.errors import NotFoundError, ValidationError
+from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.merchants import signing
 from yupay.modules.merchants.models import Merchant, MerchantApiKey
@@ -51,6 +53,12 @@ DEPOSIT_CURRENCY = "USD"
 
 _STATUSES = ("active", "frozen")
 _HOUSE_OWNER = "house"
+_CENT = Decimal("0.01")
+
+#: RFC 7807 ``code`` for an order the deposit cannot cover (spec §9.4). Lives
+#: here, beside the guard that raises it, so the machine API and the ledger
+#: cannot spell it differently.
+INSUFFICIENT_DEPOSIT_CODE = "insufficient_deposit"
 
 
 async def _get_merchant(db: AsyncSession, merchant_id: str) -> Merchant:
@@ -337,6 +345,107 @@ async def credit_deposit(
     )
 
 
+async def charge_deposit(
+    db: AsyncSession,
+    *,
+    merchant_id: str,
+    amount: Decimal,
+    order_id: str,
+) -> WalletTransaction:
+    """Debit a merchant's deposit for an order: ``C merchant_deposit / D house_payments_received``.
+
+    The exact mirror of :func:`credit_deposit`'s legs — the module README's
+    posting table is authoritative and the directions are not re-derived here.
+    ``merchant_deposit`` is debit-normal, so a credit posting lowers the
+    balance; the house counter takes the matching debit, which is the same
+    ``house_payments_received`` bucket the prepayment landed in, now being
+    drawn down against goods.
+
+    **This is the authoritative overdraw guard**, not the caller's early
+    check. The deposit account row is locked with ``SELECT … FOR UPDATE``
+    before the balance is read, so two concurrent orders serialise here rather
+    than both reading the same pre-spend balance and both passing — the same
+    shape ``wallet.service.reverse_topup`` uses for a user wallet. The caller's
+    earlier read exists only to answer with a clean ``409`` before any row is
+    written; it is a courtesy, and this is the invariant.
+
+    Idempotent on ``order_id``: the ledger key is derived from it, and an
+    order id is unique per ``(merchant, merchant_order_id)`` by
+    ``uq_orders_idem_merchant``. So even a caller that reached this twice for
+    one order would replay the first transaction rather than debit twice —
+    there is no non-idempotent side path on the merchant order flow.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Whose deposit to draw on. Must exist.
+        amount: Positive USD amount — the price the order charges.
+        order_id: The order being paid for; the ledger reference and the
+            replay handle.
+
+    Returns:
+        The ledger transaction (the existing one on replay).
+
+    Raises:
+        ValidationError: If ``amount`` is not positive.
+        NotFoundError: If no merchant with that id exists.
+        ConflictError: If the deposit cannot cover ``amount``.
+    """
+    if amount <= 0:
+        raise ValidationError("deposit charge must be positive", extra={"amount": str(amount)})
+    await _get_merchant(db, merchant_id)
+
+    deposit = await wallet_service.ensure_account(
+        db,
+        owner_type="merchant",
+        owner_id=merchant_id,
+        kind="merchant_deposit",
+        currency=DEPOSIT_CURRENCY,
+    )
+    locked = (
+        await db.execute(
+            select(WalletAccount).where(WalletAccount.id == deposit.id).with_for_update()
+        )
+    ).scalar_one()
+    have = await wallet_service.balance(db, locked.id)
+    if have < amount:
+        raise ConflictError(
+            "deposit balance does not cover this order",
+            code=INSUFFICIENT_DEPOSIT_CODE,
+            balance_usd=str(have.quantize(_CENT, rounding=ROUND_DOWN)),
+            required_usd=str(amount),
+        )
+    received = await wallet_service.ensure_account(
+        db,
+        owner_type=_HOUSE_OWNER,
+        owner_id=_HOUSE_OWNER,
+        kind="house_payments_received",
+        currency=DEPOSIT_CURRENCY,
+    )
+    return await wallet_service.post(
+        db,
+        kind="merchant_order_charge",
+        legs=[
+            # C on merchant_deposit (NORMAL=D) → balance ↓ by ``amount``.
+            wallet_service.Leg(
+                account_id=deposit.id,
+                direction="C",
+                amount=amount,
+                currency=DEPOSIT_CURRENCY,
+            ),
+            # D on the house counter (NORMAL=D) → SUM(D) == SUM(C) holds.
+            wallet_service.Leg(
+                account_id=received.id,
+                direction="D",
+                amount=amount,
+                currency=DEPOSIT_CURRENCY,
+            ),
+        ],
+        idempotency_key=f"merchant-order:{order_id}",
+        reference=wallet_service.Reference(type="order", id=order_id),
+        actor=f"merchant:{merchant_id}",
+    )
+
+
 async def deposit_balance(db: AsyncSession, *, merchant_id: str) -> Decimal:
     """Return a merchant's USD deposit balance.
 
@@ -365,7 +474,9 @@ async def deposit_balance(db: AsyncSession, *, merchant_id: str) -> Decimal:
 
 __all__ = [
     "DEPOSIT_CURRENCY",
+    "INSUFFICIENT_DEPOSIT_CODE",
     "IssuedApiKey",
+    "charge_deposit",
     "create_api_key",
     "create_merchant",
     "credit_deposit",

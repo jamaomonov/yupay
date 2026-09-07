@@ -126,9 +126,53 @@ def violates_margin_floor(cost: Decimal, price: Decimal, floor_pct: Decimal) -> 
     return price < cost * (Decimal("1") + floor_pct / _HUNDRED)
 
 
+#: How far a merchant's quoted price may sit from ours and still execute
+#: (spec §8.4). The band is symmetric and expressed as a percentage of OUR
+#: price, which is the only figure both sides can recompute.
+PRICE_DRIFT_TOLERANCE_PCT = Decimal("2")
+
+
+def price_to_charge(current: Decimal, expected: Decimal) -> Decimal | None:
+    """What an order executes at, given our price and the merchant's.
+
+    Spec §8.4, implemented as written: drift within ±:data:`PRICE_DRIFT_TOLERANCE_PCT`
+    executes at the **lower** of the two; anything beyond it is a
+    ``price_changed`` rejection carrying our current price. This function is
+    the rule's single home — the order path calls it and decides nothing about
+    drift on its own, so changing the policy is a change here and nowhere else.
+
+    **Known and deliberate, recorded so nobody has to rediscover it.** A
+    merchant can fetch ``/catalog`` — live-computed, never cached — immediately
+    before ordering and then always send ``expected_price = current × 0.98``,
+    taking a guaranteed 2% off wholesale on every order. On the default 7%
+    markup that is roughly a quarter of the margin, and the margin floor does
+    not catch it: 7% − 2% still clears the 2% floor. The rule came from the
+    Steam-gifts flow, where the counterparty is a human who cannot compute
+    that; a merchant's counterparty is a machine that can. It has been raised
+    with the owner. Until they rule otherwise the spec governs, and this is
+    the one line that changes when they do — e.g. ``return current`` for
+    "quote-only", or an asymmetric band that accepts a higher expectation and
+    refuses a lower one.
+
+    Args:
+        current: Our price for this merchant — :func:`merchant_price`'s
+            result. Must be positive; it is the denominator of the drift.
+        expected: The price the merchant sent, as they last read it.
+
+    Returns:
+        The price to charge, or ``None`` when the drift is outside the band.
+    """
+    drift = abs(current - expected) / current * _HUNDRED
+    if drift > PRICE_DRIFT_TOLERANCE_PCT:
+        return None
+    return min(current, expected)
+
+
 __all__ = [
+    "PRICE_DRIFT_TOLERANCE_PCT",
     "effective_cost",
     "merchant_markup_pct",
     "merchant_price",
+    "price_to_charge",
     "violates_margin_floor",
 ]

@@ -1,0 +1,73 @@
+sequenceDiagram
+    autonumber
+    participant R as Reseller server
+    participant API as POST /merchant/v1/orders
+    participant M as merchants.orders.place
+    participant P as merchants.pricing
+    participant O as orders.service
+    participant L as merchants.service.charge_deposit -> wallet.post
+    participant F as fulfillment.start_for_order
+    participant DB as Postgres
+
+    R->>API: signed body {merchant_order_id, sku_id, expected_price, fulfillment_data}
+    API->>API: merchant_auth (401 unsigned / 403 merchant_frozen) -- Task 2
+    API->>M: place(merchant, body)
+
+    M->>O: find_merchant_order(merchant_id, merchant_order_id)
+    alt already placed
+        O-->>M: the existing order + its events
+        M->>M: compare request digest on the order.paid event
+        alt same body -- a retry or a replayed request
+            M-->>R: 201 the existing order, nothing debited again
+        else different body
+            M-->>R: 409 order_id_reused
+        end
+    end
+
+    M->>DB: SELECT sku + product + brand
+    alt unknown / not visible_b2b / not buyable / out of stock / variable amount / no cost
+        M-->>R: 404 item_unavailable {reason}
+    end
+
+    M->>P: merchant_price(effective_cost, merchant_markup_pct)
+    alt violates_margin_floor(settings.merchant_margin_floor_pct)
+        M-->>R: 422 margin_floor
+    end
+    M->>P: price_to_charge(ours, expected_price) -- spec 8.4
+    alt drift > +/-2%
+        M-->>R: 422 price_changed {current_price}
+    else drift <= +/-2%
+        P-->>M: the LOWER of the two
+    end
+
+    M->>DB: deposit_balance -- the early read, before any row is written
+    alt balance < price
+        M-->>R: 409 insufficient_deposit {balance_usd, required_usd}
+    end
+
+    Note over M,DB: everything below rides ONE transaction, committed by the<br/>request session -- a failure anywhere leaves no order and no debit
+    M->>O: create_order(actor=merchant, key=merchant_order_id, unit_price_usd_override=(price,))
+    O->>DB: INSERT orders + order_items (uq_orders_idem_merchant)
+    alt a concurrent request with the same key won the index
+        DB-->>O: IntegrityError -> rollback -> re-read the winner's row
+        O-->>M: the winner's order, already paid and already debited
+        M-->>R: 201 that order (digest checked, as on any replay)
+    end
+
+    M->>L: charge_deposit(amount=price, order_id)
+    L->>DB: SELECT merchant_deposit FOR UPDATE -- the authoritative overdraw guard
+    alt balance < price behind the lock
+        L-->>R: 409 insufficient_deposit
+    end
+    L->>DB: post(kind=merchant_order_charge, C merchant_deposit / D house_payments_received)<br/>idempotency_key = "merchant-order:{order_id}"
+
+    M->>O: mark_merchant_order_paid(order, request_digest)
+    O->>DB: status=paid, paid_at, INSERT order.paid event (carries the digest)
+    Note over O: no realtime publish -- user_id is NULL on every merchant order
+
+    M->>F: start_for_order(order_id) -- no risk gate: no card, no chargeback
+    F->>DB: INSERT fulfillment_tasks, status=fulfilling
+
+    M->>DB: deposit_balance again -- what is left
+    M-->>R: 201 {merchant_order_id, order_id, status, sku_id, price_usd, balance_usd, created_at}
+    Note over R: no email is sent, ever -- notifications._delivery_recipient<br/>returns None for a merchant order by an explicit guard (spec 9.5)

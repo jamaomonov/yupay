@@ -21,10 +21,13 @@ from yupay.modules.orders.service import (
     claim_orders_for_user,
     create_order,
     expire_stale_orders,
+    find_merchant_order,
     get_order_admin,
     get_order_for_actor,
     list_orders_admin,
     list_orders_for_actor,
+    mark_merchant_order_paid,
+    sku_is_buyable,
 )
 
 __all__ = [
@@ -48,9 +51,12 @@ __all__ = [
     "claim_orders_for_user",
     "create_order",
     "expire_stale_orders",
+    "find_merchant_order",
     "get_order_admin",
     "get_order_for_actor",
     "list_orders_admin",
     "list_orders_for_actor",
+    "mark_merchant_order_paid",
     "router",
+    "sku_is_buyable",
 ]

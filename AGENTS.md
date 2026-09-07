@@ -223,6 +223,14 @@ yupay/
   which records the full query string — not because they mutate anything. Two such
   endpoints exist today: `POST /catalog/products/{id}/check-player` and
   `POST /gifts/steam-profile`. If you add a third, say in its docstring why it is keyless.
+  The one **mutation** exempt from the header is `POST /merchant/v1/orders`, which is
+  idempotent on the caller's own `merchant_order_id` instead (spec §9.3): that id is
+  minted per _intent_ by the reseller's system rather than per attempt by ours, is what
+  a replayed request necessarily carries, and resolves races in
+  `uq_orders_idem_merchant`. Accepting a second, weaker key beside it would give
+  integrators two ways to be idempotent and one of them wrong. Any future exemption
+  needs the same shape — a caller-owned key with a DB uniqueness constraint behind it —
+  and a line here.
 - All money values stored as `Decimal` (Python) / `string` (TS) in **minor units** (tiyin /
   cents), never floats.
 - Auth tokens: short-lived access (15 min EdDSA JWT), rotating refresh (30 days), revocable

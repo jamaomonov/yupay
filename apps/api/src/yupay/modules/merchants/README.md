@@ -36,18 +36,28 @@ inherited from the ledger, not rebuilt here.
 
 The posting table is authoritative — M2 must not re-derive directions:
 
-| Event                       | Legs                                             |
-| --------------------------- | ------------------------------------------------ |
-| Support credits top-up (M1) | `D merchant_deposit / C house_payments_received` |
-| (M2) order charge           | `C merchant_deposit / D house_payments_received` |
-| (M2) refund on failure      | `D merchant_deposit / C house_payments_received` |
+| Event                       | Legs                                             | Kind                      |
+| --------------------------- | ------------------------------------------------ | ------------------------- |
+| Support credits top-up (M1) | `D merchant_deposit / C house_payments_received` | `merchant_deposit_credit` |
+| Order charge (M2)           | `C merchant_deposit / D house_payments_received` | `merchant_order_charge`   |
+| (M3) refund on failure      | `D merchant_deposit / C house_payments_received` | _not implemented_         |
 
-Only the first row is implemented in M1: `service.credit_deposit` posts it
-with `kind="merchant_deposit_credit"` and the caller's idempotency key, so a
-replay returns the original transaction. `service.deposit_balance` reads the
-balance (`Decimal("0")` when no account exists yet — the read creates
-nothing). Freezing a merchant (`service.set_status`) blocks orders (M2),
-never money in: support can always credit a frozen merchant.
+The first two rows are live. `service.credit_deposit` posts the credit with
+the caller's idempotency key, so a replay returns the original transaction;
+`service.charge_deposit` posts the debit keyed `merchant-order:{order_id}`,
+which makes a double debit impossible even if the order path were re-entered
+for one order. `charge_deposit` is also **where the overdraw guard binds**: it
+locks the `merchant_deposit` row with `SELECT … FOR UPDATE` before reading the
+balance, the same shape `wallet.service.reverse_topup` uses, so two concurrent
+orders serialise instead of both spending the same dollars. The order path's
+earlier balance read exists only to answer a clean `409` before any row is
+written.
+
+`service.deposit_balance` reads the balance (`Decimal("0")` when no account
+exists yet — the read creates nothing). Freezing a merchant
+(`service.set_status`) blocks orders — `merchant_auth` refuses a frozen
+merchant with `403 merchant_frozen` — never money in: support can always
+credit a frozen merchant.
 
 ## Pricing
 
@@ -178,9 +188,10 @@ below without reading our source, so it must stay complete and it must not
 change without a new API version — `/merchant/v1` is consumed by code nobody
 but its owner can redeploy.
 
-> **Status:** the authentication layer and the two read endpoints
-> (`GET /merchant/v1/me`, `GET /merchant/v1/catalog`) are live. Ordering and
-> the transaction ledger land with the rest of M2. The scheme is final.
+> **Status:** the authentication layer, the two read endpoints
+> (`GET /merchant/v1/me`, `GET /merchant/v1/catalog`) and order placement
+> (`POST /merchant/v1/orders`) are live. The order read and the transaction
+> ledger land with the rest of M2. The scheme is final.
 
 Base URL: **`https://api.yupay.uz`**. All requests are HTTPS. All strings are
 UTF-8. Every `\n` below is a single LF byte (`0x0A`) — never CRLF.
@@ -378,16 +389,16 @@ is a short discriminator on the auth and business failures. A sample body:
 
 The complete set of `type` URIs this API can return:
 
-| `type`                                             | Status | When                                             |
-| -------------------------------------------------- | ------ | ------------------------------------------------ |
-| `https://app.yupay.uz/errors/unauthorized`         | 401    | Any authentication failure                       |
-| `https://app.yupay.uz/errors/forbidden`            | 403    | Frozen merchant, IP not allowed                  |
-| `https://app.yupay.uz/errors/not-found`            | 404    | No such order / SKU / resource                   |
-| `https://app.yupay.uz/errors/validation`           | 422    | Request body or parameters rejected              |
-| `https://app.yupay.uz/errors/conflict`             | 409    | Same `merchant_order_id`, different body         |
-| `https://app.yupay.uz/errors/rate-limited`         | 429    | Either rate-limit axis                           |
-| `https://app.yupay.uz/errors/upstream-unavailable` | 502    | A supplier we depend on could not be reached     |
-| `https://app.yupay.uz/errors/internal`             | 500    | Our bug. Retry with a fresh signature; report it |
+| `type`                                             | Status | When                                              |
+| -------------------------------------------------- | ------ | ------------------------------------------------- |
+| `https://app.yupay.uz/errors/unauthorized`         | 401    | Any authentication failure                        |
+| `https://app.yupay.uz/errors/forbidden`            | 403    | Frozen merchant, IP not allowed                   |
+| `https://app.yupay.uz/errors/not-found`            | 404    | No such order / SKU / resource                    |
+| `https://app.yupay.uz/errors/validation`           | 422    | Request body or parameters rejected               |
+| `https://app.yupay.uz/errors/conflict`             | 409    | Deposit too small, or an id reused for a new body |
+| `https://app.yupay.uz/errors/rate-limited`         | 429    | Either rate-limit axis                            |
+| `https://app.yupay.uz/errors/upstream-unavailable` | 502    | A supplier we depend on could not be reached      |
+| `https://app.yupay.uz/errors/internal`             | 500    | Our bug. Retry with a fresh signature; report it  |
 
 The `type` host is an identifier namespace, not a URL to fetch.
 
@@ -514,6 +525,125 @@ cursor you have to reconcile.
 > **Steam gifts are not in v1.** They are excluded here and cannot be
 > ordered through the machine API. Ask support if you need them.
 
+### `POST /merchant/v1/orders`
+
+Buy one SKU. The order is created, charged to your deposit and handed to
+fulfilment in a single step — there is no separate "pay" call, and no payment
+page: your deposit **is** the payment.
+
+```json
+{
+  "merchant_order_id": "acme-2026-000417",
+  "sku_id": "0198c3cb-…",
+  "expected_price": "1.06",
+  "fulfillment_data": { "player_id": "5123456789" }
+}
+```
+
+| Field               | Required | Notes                                                                                                                             |
+| ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account.     |
+| `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                  |
+| `expected_price`    | yes      | The `price_usd` you last read for that SKU, as a string with at most two decimals. See "Price drift" below.                       |
+| `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login). Same fields the storefront collects; we validate them and drop keys we don't know. |
+
+One SKU per order. There is no `qty` and no line array: a reseller's basket
+does not have to be ours, and one line per order means "the order failed"
+never means "half the order failed". Send several orders.
+
+Unknown fields in the body are **rejected**, not ignored — a typo'd
+`fulfilment_data` would otherwise become an order with no player id, delivered
+to nobody. (Unknown fields in our _responses_ are still yours to ignore; that
+rule is one-way on purpose.)
+
+Success is `201`:
+
+```json
+{
+  "merchant_order_id": "acme-2026-000417",
+  "order_id": "0198c3d1-…",
+  "status": "fulfilling",
+  "sku_id": "0198c3cb-…",
+  "price_usd": "1.06",
+  "balance_usd": "41.44",
+  "created_at": "2026-09-07T08:20:11.402913Z"
+}
+```
+
+- **`price_usd` is what you were actually charged**, and it is final. Whatever
+  the order ends up costing us is our problem, not yours.
+- **`balance_usd` is your deposit after this order.** Watch it; there is no
+  low-balance webhook.
+- **`status` is live, not always `"paid"`.** A merchant order is born paid and
+  goes straight into fulfilment, so the usual value here is `"fulfilling"`.
+  Poll `GET /merchant/v1/orders/{merchant_order_id}` for the rest.
+- Key your own records on `merchant_order_id`. `order_id` is ours; quote it to
+  support.
+
+#### Idempotency — read this before you write the retry loop
+
+**`merchant_order_id` is the idempotency key.** There is no
+`Idempotency-Key` header on this API and sending one does nothing.
+
+- Same id, **same body** → the order you already placed, returned again. No
+  second order, no second debit, whatever the repeat was: your retry, a proxy's
+  retry, or somebody replaying your traffic inside the ±300 s window.
+- Same id, **different body** → `409 order_id_reused`. Same id means same
+  order; if you meant a new one, use a new id.
+- Two merchants may use the same id. Scope is per account.
+
+"Same body" is decided on `sku_id`, `expected_price` and `fulfillment_data`.
+The safest retry is the one the auth section already asks for: **resend the
+identical bytes.**
+
+Pick the id from something your own system already has — your order number —
+and reuse it across every retry of that intent. A fresh UUID per HTTP attempt
+defeats the whole mechanism and will place duplicate orders.
+
+#### Price drift
+
+`expected_price` is a safety interlock, not a bid.
+
+- Within **±2%** of our current price, the order executes at the **lower** of
+  the two.
+- Outside it, `422 price_changed`, with our `current_price` in the body. Re-read
+  `/catalog` and decide.
+
+#### Errors
+
+| Status | `code`                 | Meaning                                                                           |
+| ------ | ---------------------- | --------------------------------------------------------------------------------- |
+| 404    | `item_unavailable`     | This SKU cannot be ordered right now. The body carries a `reason` — see below.    |
+| 422    | `price_changed`        | Drift beyond ±2%. Body carries `current_price` and the `expected_price` you sent. |
+| 422    | `margin_floor`         | Our own pricing for this SKU is misconfigured. Not your fault; tell support.      |
+| 422    | —                      | The body, or its `fulfillment_data`, did not validate.                            |
+| 409    | `insufficient_deposit` | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.  |
+| 409    | `order_id_reused`      | This `merchant_order_id` already belongs to a different order.                    |
+
+`item_unavailable` reasons, because a 404 you cannot act on is a support
+ticket:
+
+| `reason`          | What it means                                                   | What to do                               |
+| ----------------- | --------------------------------------------------------------- | ---------------------------------------- |
+| `unknown_sku`     | No such `sku_id`.                                               | Re-read `/catalog`; check your mapping.  |
+| `not_b2b_visible` | Withdrawn from B2B distribution (the SKU or its whole brand).   | Treat as unavailable; it may come back.  |
+| `out_of_stock`    | The supplier has no codes left.                                 | Retry later. Stock moves without notice. |
+| `not_for_sale`    | Switched off, or the brand is in maintenance.                   | Retry later.                             |
+| `no_cost`         | No wholesale cost on file — we cannot price it.                 | Tell support; this one is ours to fix.   |
+| `variable_amount` | A customer-chooses-the-amount SKU (e.g. a Steam wallet top-up). | Not orderable in v1. Ask support.        |
+
+> **A SKU in `/catalog` is not a promise that we can fill it.** The price list
+> says "sellable to you at this price"; it does not consult supplier stock, and
+> stock moves as other resellers draw on the same pool. `item_unavailable` is
+> where you find out, so handle it as an ordinary outcome rather than an
+> exception.
+
+#### No emails, ever
+
+We never mail your customer. We do not hold their address, we do not accept
+one, and the delivery path skips merchant orders explicitly rather than by
+accident. Delivery to you is the order read and, from M3, the outbound webhook.
+
 ## Implementation map
 
 | Concern                                                    | Where                                                         |
@@ -525,6 +655,8 @@ cursor you have to reconcile.
 | Admin HTTP surface                                         | `admin_routes.py`                                             |
 | Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix      |
 | The priced catalog read model                              | `price_list.py`                                               |
+| Order placement + the deposit charge                       | `orders.py`; the debit itself is `service.charge_deposit`     |
+| The wholesale price formula and the ±2% drift rule         | `pricing.py` — the one home for both                          |
 | Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                  |
 | Admin-surface DTOs                                         | `schemas.py`                                                  |
 

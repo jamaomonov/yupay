@@ -73,6 +73,30 @@ The scope is **per actor**, not global: each arm has its own partial UNIQUE
 `merchant_order_id` — they cannot see each other's keys — and a merchant's key never
 replays a retail order.
 
+## Merchant (B2B) orders
+
+An order placed through `POST /merchant/v1/orders` uses the same `create_order`
+as the storefront, with three merchant-only differences, all guarded here:
+
+- **`unit_price_usd_override`** — one USD price per line, carrying the wholesale
+  price `merchants.pricing` computed. Passing it with a non-merchant actor is a
+  `ValidationError`, not a silently-ignored argument: a client-supplied price
+  reaching a retail order is the one thing this seam must never become.
+- **`affiliate_code` is refused** on the merchant arm. `resolve_code` is called
+  with `user_id=actor.user_id`, which is NULL for a merchant, so a code would
+  resolve like a _guest's_ and take a retail discount off an already-wholesale
+  price.
+- **`mark_merchant_order_paid`** moves the order `pending_payment → paid`
+  without a `Payment` row: the deposit debit is the settlement (spec §9.5), so a
+  merchant order never rests in `pending_payment` and is invisible to the expiry
+  sweep. It records the machine API's replay fingerprint on the `order.paid`
+  event, and publishes nothing to realtime — `user_id` is NULL by construction.
+
+`find_merchant_order` is the per-merchant replay lookup that path needs before
+it prices anything. The rest of the flow — pricing, the deposit, fulfilment —
+lives in `merchants/orders.py`; see
+`docs/architecture/sequence-diagrams/merchant-order-create.mmd`.
+
 ## Guest auth
 
 Guests pass `Authorization: Guest <jwt>` (JWT minted by `POST /auth/guest`). The body

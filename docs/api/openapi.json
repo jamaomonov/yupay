@@ -6736,6 +6736,95 @@
         "title": "MerchantListOut",
         "type": "object"
       },
+      "MerchantOrderCreateIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /merchant/v1/orders`` (spec \u00a79.1).\n\nOne SKU per order, deliberately: the spec's body shape has no ``qty`` and\nno line array, a reseller's own basket does not have to be ours, and a\nsingle line keeps \"the order failed\" from meaning \"part of the order\nfailed\". A ``qty`` or an ``items`` array can be *added* later without a\n``/merchant/v2`` \u2014 a new optional request field is additive; removing one\nis not.\n\n``extra=\"forbid\"`` on purpose. On a response, ignoring an unknown field is\nright; on a *request* it is how a typo'd ``fulfilment_data`` silently\nbecomes an order with no player id, delivered to nobody.",
+        "properties": {
+          "expected_price": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Expected Price"
+          },
+          "fulfillment_data": {
+            "additionalProperties": true,
+            "title": "Fulfillment Data",
+            "type": "object"
+          },
+          "merchant_order_id": {
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "sku_id",
+          "expected_price"
+        ],
+        "title": "MerchantOrderCreateIn",
+        "type": "object"
+      },
+      "MerchantOrderOut": {
+        "description": "Body of ``POST /merchant/v1/orders``.\n\n``status`` is the order's live status, not a fixed ``\"paid\"``: a merchant\norder is born paid and fulfilment starts in the same transaction, so what\ncomes back is where that left it. Poll\n``GET /merchant/v1/orders/{merchant_order_id}`` for the rest.",
+        "properties": {
+          "balance_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Usd",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_id",
+          "price_usd",
+          "balance_usd",
+          "created_at"
+        ],
+        "title": "MerchantOrderOut",
+        "type": "object"
+      },
       "MerchantOut": {
         "description": "One merchant row plus its USD deposit balance.\n\nThe balance rides along on every merchant read \u2014 creation included, where\nit is trivially zero \u2014 so the admin SPA renders one shape everywhere.",
         "properties": {
@@ -27330,6 +27419,48 @@
           }
         },
         "summary": "The calling merchant's profile and live deposit balance",
+        "tags": [
+          "merchant-api"
+        ]
+      }
+    },
+    "/merchant/v1/orders": {
+      "post": {
+        "description": "Buy one SKU against the prepaid deposit.\n\nThe whole flow \u2014 pricing, the \u00b12% drift rule, the margin floor, the\ndeposit debit, ``paid`` and the start of fulfilment \u2014 is\n``merchants.orders.place``'s; this parses and dispatches. Idempotent on\n``merchant_order_id``: the same id with the same body returns the order\nalready placed, a different body is a ``409``.",
+        "operationId": "place_order_merchant_v1_orders_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantOrderCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Place an order and settle it from the deposit",
         "tags": [
           "merchant-api"
         ]

@@ -16,9 +16,11 @@ import pytest
 from yupay.modules.catalog.models import Sku
 from yupay.modules.merchants.models import Merchant
 from yupay.modules.merchants.pricing import (
+    PRICE_DRIFT_TOLERANCE_PCT,
     effective_cost,
     merchant_markup_pct,
     merchant_price,
+    price_to_charge,
     violates_margin_floor,
 )
 
@@ -106,3 +108,52 @@ def test_price_exactly_at_the_floor_does_not_violate() -> None:
     floor_pct = Decimal("2")
     price = cost * (Decimal("1") + floor_pct / Decimal("100"))  # exactly at the floor
     assert violates_margin_floor(cost, price, floor_pct) is False
+
+
+# ---------- the ±2% drift rule (spec §8.4) ----------
+
+
+@pytest.mark.parametrize(
+    ("expected", "charged"),
+    [
+        pytest.param("98.00", "98.00", id="exactly-2pct-below-is-inside"),
+        pytest.param("102.00", "100.00", id="exactly-2pct-above-is-inside"),
+        pytest.param("99.50", "99.50", id="slightly-below-charges-theirs"),
+        pytest.param("100.50", "100.00", id="slightly-above-charges-ours"),
+        pytest.param("100.00", "100.00", id="agreement"),
+    ],
+)
+def test_drift_inside_the_band_charges_the_lower_of_the_two(expected: str, charged: str) -> None:
+    assert price_to_charge(Decimal("100.00"), Decimal(expected)) == Decimal(charged)
+
+
+@pytest.mark.parametrize(
+    "expected",
+    ["97.99", "102.01", "0.01", "1000.00"],
+    ids=["just-below", "just-above", "far-below", "far-above"],
+)
+def test_drift_outside_the_band_is_refused(expected: str) -> None:
+    """``None`` is the caller's cue to raise ``422 price_changed``."""
+    assert price_to_charge(Decimal("100.00"), Decimal(expected)) is None
+
+
+def test_the_band_is_a_percentage_of_our_price_not_a_flat_amount() -> None:
+    """A cheap SKU's band is cents; an expensive one's is dollars."""
+    assert price_to_charge(Decimal("1.00"), Decimal("0.98")) == Decimal("0.98")
+    assert price_to_charge(Decimal("1.00"), Decimal("0.97")) is None
+    assert price_to_charge(Decimal("500.00"), Decimal("490.00")) == Decimal("490.00")
+    assert price_to_charge(Decimal("500.00"), Decimal("489.99")) is None
+
+
+def test_the_documented_gaming_vector_is_real_and_bounded() -> None:
+    """The rule as specified lets a merchant take the full tolerance, always.
+
+    Pinned rather than fixed: the spec is the owner's decision and this is
+    what it says. The point of the test is that the discount is exactly the
+    tolerance and nothing more — so if someone widens
+    ``PRICE_DRIFT_TOLERANCE_PCT`` believing it only affects error handling,
+    this says out loud what else moves with it.
+    """
+    ours = Decimal("107.00")
+    always_shaved = ours * (Decimal("1") - PRICE_DRIFT_TOLERANCE_PCT / Decimal("100"))
+    assert price_to_charge(ours, always_shaved) == always_shaved

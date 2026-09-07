@@ -194,7 +194,18 @@ async def _delivery_recipient(db: AsyncSession, order: Order) -> str | None:
     Most specific first: what this order was told, then what the account asks
     for by default, then the login address. Login is last because it is a
     credential that happens to be deliverable, not a stated preference.
+
+    **A merchant order never has one.** Spec §9.5: we do not hold the
+    reseller's customer's address and must not accept one, so delivery is
+    exclusively API and webhook. The guard is written out rather than left to
+    the fall-through — every column below is NULL on a merchant order today,
+    so "no mail is sent" is currently true by accident, and an accident is not
+    a rule. This is the one place an address is chosen, so it is the one place
+    the rule has to hold; ``test_a_merchant_order_has_no_delivery_recipient_even_with_an_address_on_the_row``
+    puts an address on the row so only the guard can pass it.
     """
+    if order.merchant_id is not None:
+        return None
     if order.guest_email:
         return order.guest_email
     if order.delivery_email:

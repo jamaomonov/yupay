@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -258,7 +258,7 @@ async def _fetch_skus_with_product(db: AsyncSession, sku_ids: list[str]) -> dict
     return {s.id: s for s in rows}
 
 
-def _sku_is_buyable(sku: Sku) -> bool:
+def sku_is_buyable(sku: Sku) -> bool:
     """A SKU is buyable only when it and its whole product → brand chain are
     active AND the brand is not in maintenance. ``maintenance`` is the softer
     "temporarily unavailable" state (the brand still lists, unlike
@@ -678,7 +678,7 @@ async def quote_cart(db: AsyncSession, body: OrderCreate) -> CartQuote:
     """
     sku_ids = [item.sku_id for item in body.items]
     skus = await _fetch_skus_with_product(db, sku_ids)
-    missing = [sid for sid in sku_ids if sid not in skus or not _sku_is_buyable(skus[sid])]
+    missing = [sid for sid in sku_ids if sid not in skus or not sku_is_buyable(skus[sid])]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
 
@@ -715,6 +715,49 @@ async def quote_cart(db: AsyncSession, body: OrderCreate) -> CartQuote:
     return CartQuote(total_usd=total_usd, total_charged=total_charged, currency=currency)
 
 
+def _check_merchant_only_arguments(
+    body: OrderCreate,
+    *,
+    actor: Actor,
+    unit_price_usd_override: Sequence[Decimal] | None,
+) -> None:
+    """Refuse the two combinations that only make sense on the B2B channel.
+
+    Both are guards on the same seam, which is why they live together: the
+    price override exists so a wholesale price can reach an order, and the
+    affiliate refusal exists so a *retail* discount cannot reach that same
+    order from the other side.
+
+    Args:
+        body: The parsed request.
+        actor: Who is buying.
+        unit_price_usd_override: The per-line override, if the caller passed
+            one.
+
+    Raises:
+        ValidationError: The override came from a non-merchant actor or does
+            not line up with ``body.items``, or a merchant order names an
+            affiliate code.
+    """
+    if unit_price_usd_override is not None:
+        if actor.merchant_id is None:
+            raise ValidationError("a unit-price override is only accepted from a merchant actor")
+        if len(unit_price_usd_override) != len(body.items):
+            raise ValidationError(
+                "a unit-price override must carry one unit price per line",
+                lines=len(body.items),
+                prices=len(unit_price_usd_override),
+            )
+    if body.affiliate_code and actor.merchant_id is not None:
+        # ``resolve_code`` is called with ``user_id=actor.user_id``, which is
+        # NULL on the merchant arm — so the code would resolve like a *guest's*
+        # and take a retail discount off an already-wholesale price. Refused
+        # rather than stripped: a merchant body cannot carry the field at all
+        # (``machine_schemas.MerchantOrderCreateIn`` forbids extras), so
+        # anything reaching here is our own bug and should be loud.
+        raise ValidationError("affiliate codes do not apply to merchant orders")
+
+
 async def create_order(
     db: AsyncSession,
     body: OrderCreate,
@@ -725,11 +768,45 @@ async def create_order(
     ip_hash: str | None = None,
     ua_hash: str | None = None,
     source: str = "unknown",
+    unit_price_usd_override: Sequence[Decimal] | None = None,
 ) -> Order:
     """Validate, snapshot price + FX, persist the order. Idempotent per actor.
 
-    Returns the persisted order (with items + events loaded).
+    Args:
+        db: Session. The caller owns the transaction.
+        body: The parsed request.
+        actor: Who is buying — a user, a guest, or a merchant.
+        idempotency_key: The replay handle, scoped per actor arm by a partial
+            UNIQUE (``uq_orders_idem_user`` / ``_guest`` / ``_merchant``). For
+            a merchant this is their own ``merchant_order_id`` (spec §9.3).
+        settings: Reserved.
+        ip_hash: Hashed client address, for the risk trail.
+        ua_hash: Hashed user agent, for the risk trail.
+        source: The declared surface.
+        unit_price_usd_override: **Merchant-only.** One USD unit price per
+            line of ``body.items``, in order, replacing the catalog price this
+            function would otherwise resolve. It exists because a B2B order is
+            priced by ``merchants.pricing`` — cost plus a wholesale markup —
+            and forking this function to say so would give the storefront and
+            the machine API two different definitions of "an order". Passing
+            it with a non-merchant actor is a ``ValidationError``, not a
+            silently-ignored argument: a retail price arriving from the client
+            is the one thing this seam must never become.
+
+    Returns:
+        The persisted order (with items + events loaded).
+
+    Raises:
+        ValidationError: An unknown or unbuyable SKU, invalid
+            ``fulfillment_data``, a price override from a non-merchant actor
+            or of the wrong length, or an affiliate code on a merchant order.
+        ConflictError: The idempotency key belongs to a different kind of
+            request, or a concurrent create won the race and left nothing to
+            replay.
     """
+    _check_merchant_only_arguments(
+        body, actor=actor, unit_price_usd_override=unit_price_usd_override
+    )
     existing = await _existing_idempotent_order(db, actor=actor, idempotency_key=idempotency_key)
     if existing is not None:
         return existing
@@ -740,7 +817,7 @@ async def create_order(
     # still be paid for.
     sku_ids = [item.sku_id for item in body.items]
     skus = await _fetch_skus_with_product(db, sku_ids)
-    missing = [sid for sid in sku_ids if sid not in skus or not _sku_is_buyable(skus[sid])]
+    missing = [sid for sid in sku_ids if sid not in skus or not sku_is_buyable(skus[sid])]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
 
@@ -751,10 +828,14 @@ async def create_order(
     order_id = new_id()
     items: list[OrderItem] = []
     total_usd = Decimal("0")
-    for line in body.items:
+    for index, line in enumerate(body.items):
         sku = skus[line.sku_id]
         product: Product = sku.product
         cleaned = validate_fulfillment_data(product=product, data=line.fulfillment_data)
+        # Still resolved for a merchant line, and deliberately: this is where
+        # the qty bounds and the fixed-vs-variable rules are enforced, and a
+        # B2B order has to obey them too. Only the resulting number is
+        # replaced, at the end of the branch, so nothing can price around it.
         unit_price_usd = _resolve_line_unit_price(sku, line, currency)
         if gifts_checkout.is_gift_sku(sku):
             # Outbound HTTP call on the request path — the spec §4.3-mandated
@@ -771,6 +852,11 @@ async def create_order(
         # time, the fulfiller returns a soft low-balance failure — the customer
         # keeps seeing "processing", ops gets alerted, and an admin tops up and
         # retries (mirrors the G2B low-balance path).
+
+        # Last, so it wins over every branch above it — including the gift
+        # re-price. Guarded to a merchant actor at the top of this function.
+        if unit_price_usd_override is not None:
+            unit_price_usd = unit_price_usd_override[index]
 
         items.append(
             OrderItem(
@@ -886,6 +972,101 @@ async def create_order(
 
     # Re-load with eager relationships so callers can return the row directly.
     return await _load_order(db, order_id)
+
+
+async def find_merchant_order(
+    db: AsyncSession, *, merchant_id: str, merchant_order_id: str
+) -> Order | None:
+    """The order this merchant already placed under ``merchant_order_id``, if any.
+
+    The machine API keys order creation on the merchant's own id rather than
+    on an ``Idempotency-Key`` header (spec §9.3), and needs to answer "have I
+    seen this one?" *before* pricing — otherwise a legitimate retry of an
+    order placed yesterday would be refused today because the SKU has since
+    gone out of stock. This is that lookup, living here because ``orders``
+    owns the table, the eager-load chain and the per-actor scoping rule.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The owning merchant — the scope. Two resellers picking
+            the same id is ordinary traffic, not a replay.
+        merchant_order_id: Their id for this order.
+
+    Returns:
+        The order with items and events loaded, or ``None``.
+    """
+    return await _existing_idempotent_order(
+        db,
+        actor=Actor(user_id=None, email=None, merchant_id=merchant_id),
+        idempotency_key=merchant_order_id,
+    )
+
+
+async def mark_merchant_order_paid(
+    db: AsyncSession, *, order: Order, actor: Actor, request_digest: str
+) -> None:
+    """Move a merchant order ``pending_payment → paid``. No ``Payment`` row exists.
+
+    A B2B order is **born paid** (spec §9.5): the money arrived by bank
+    transfer days ago and is already sitting in the reseller's deposit ledger,
+    so the deposit debit *is* the settlement and there is no acquirer, no
+    webhook and no ``payments`` row to hang the transition off. It never
+    passes through ``pending_payment`` as a resting state — the status exists
+    for the microseconds between this row's INSERT and this call, both inside
+    one transaction — which is also what keeps it invisible to the ten-minute
+    expiry sweep.
+
+    Lives here rather than in ``merchants`` because ``orders`` owns this table
+    and its FSM; the merchant module calls it through the ``orders.api``
+    facade, like every other cross-module write.
+
+    Deliberately does **not** publish a realtime event. ``publish_order_event``
+    is a no-op for a NULL ``user_id``, which every merchant order has, and
+    calling it anyway would suggest a channel exists. Resellers learn about
+    status through the order read (Task 5) and, from M3, the outbound webhook.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        order: The freshly created merchant order.
+        actor: The merchant actor that created it — recorded on the event.
+        request_digest: The machine API's fingerprint of the request that
+            placed this order. Recorded on the event, where the replay check
+            reads it back: same ``merchant_order_id`` and same digest is a
+            retry and returns this order, a different digest is a ``409``
+            (spec §9.3). It rides the paid event rather than a column of its
+            own because for this channel placement and payment are the same
+            instant, and the timeline is already where "what was asked for"
+            belongs.
+
+    Raises:
+        ConflictError: The order is not a merchant order, is not a catalog
+            sale, or has already left ``pending_payment``.
+    """
+    if order.merchant_id is None:
+        raise ConflictError("not a merchant order", extra={"order_id": order.id})
+    if order.purpose != "catalog":
+        raise ConflictError("not a catalog sale", extra={"purpose": order.purpose})
+    if order.status != "pending_payment":
+        raise ConflictError("order is not awaiting payment", extra={"status": order.status})
+
+    moment = now()
+    order.status = "paid"
+    order.paid_at = moment
+    order.updated_at = moment
+    _record_event(
+        db,
+        order_id=order.id,
+        kind="order.paid",
+        actor=actor,
+        payload={
+            "settlement": "merchant_deposit",
+            "merchant_order_id": order.idempotency_key,
+            "request_digest": request_digest,
+            "total_charged": str(order.total_charged),
+            "currency": order.currency,
+        },
+    )
+    await db.flush()
 
 
 # ---------- realtime ----------

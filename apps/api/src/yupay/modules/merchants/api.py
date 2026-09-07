@@ -29,6 +29,7 @@ from yupay.modules.merchants.admin import (
     set_sku_b2b,
 )
 from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
+from yupay.modules.merchants.orders import place as place_order
 from yupay.modules.merchants.price_list import build as build_price_list
 from yupay.modules.merchants.pricing import (
     effective_cost,
@@ -39,6 +40,7 @@ from yupay.modules.merchants.pricing import (
 from yupay.modules.merchants.service import (
     DEPOSIT_CURRENCY,
     IssuedApiKey,
+    charge_deposit,
     create_api_key,
     create_merchant,
     credit_deposit,
@@ -64,6 +66,7 @@ __all__ = [
     "build_price_list",
     "bulk_set_markup",
     "canonical_message",
+    "charge_deposit",
     "create_api_key",
     "create_merchant",
     "credit_deposit",
@@ -75,6 +78,7 @@ __all__ = [
     "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",
+    "place_order",
     "revoke_api_key",
     "set_brand_b2b",
     "set_sku_b2b",

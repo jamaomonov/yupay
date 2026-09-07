@@ -281,16 +281,18 @@ whose extras include an integer `retry_after` gets one
 (`core.errors.app_error_handler`), which is what the auth IP guard and the
 merchant per-key counter set.
 
-## Merchant machine API (M2) — `GET /merchant/v1/me`, `GET /merchant/v1/catalog`
+## Merchant machine API (M2) — `/merchant/v1`
 
 Mounted at **its own prefix**, not under `/api/v1`: it is a third-party
 contract with its own version number, so a breaking change means
 `/merchant/v2` rather than an edit, and tying it to the storefront's version
 would force somebody else's integration to move for our reasons. Both
-endpoints sit behind `merchants.auth.merchant_auth` — `401` unsigned, `403`
-`merchant_frozen` — and neither takes `Idempotency-Key`: AGENTS.md §9 scopes
-that header to state-changing endpoints, and these are reads. (Order creation
-is idempotent on the merchant's own `merchant_order_id` instead — spec §9.3.)
+Every endpoint sits behind `merchants.auth.merchant_auth` — `401` unsigned,
+`403` `merchant_frozen` — and **none of them takes `Idempotency-Key`**. The
+two reads are reads, which is outside AGENTS.md §9's scope; `POST
+/merchant/v1/orders` is a mutation and is exempt on purpose, being idempotent
+on the caller's own `merchant_order_id` instead (spec §9.3, recorded as the
+exception in AGENTS.md §9).
 
 `GET /merchant/v1/me` returns `{merchant_id, title, status, balance_usd}`.
 The balance is the deposit ledger's signed posting sum, read live; there is no
@@ -322,7 +324,8 @@ catalog sizes and asserts the counts are equal — which catches a per-row
 load, not a constant extra query.
 
 **Money is a JSON string with exactly two decimals** on this surface
-(`"1.06"`) — `schemas.UsdBalance` and `schemas.UsdPrice`, separate because a
+(`"1.06"`) — `machine_schemas.UsdBalance` and `machine_schemas.UsdPrice`,
+separate because a
 balance must round **down** (never advertise more than the merchant can
 spend) and a price **up** (the direction `pricing.merchant_price` already
 uses, so the advertised price can never sit below what the order charges).
@@ -330,6 +333,60 @@ The formatting itself is needed regardless: the ledger's `Numeric(20, 6)` sum
 would otherwise serialise as `"42.500000"` while an untouched account
 serialises as `"0"`, and a machine contract cannot hand a client two shapes
 for the same quantity.
+
+### `POST /merchant/v1/orders` — the money path
+
+One SKU per order (spec §9.1's body shape: `merchant_order_id`, `sku_id`,
+`expected_price`, `fulfillment_data`); no `qty`, no line array. The whole
+flow rides **one transaction** — order INSERT, deposit debit, `paid`,
+fulfilment start — so a failure anywhere leaves neither an order nor a debit.
+Drawn in `docs/architecture/sequence-diagrams/merchant-order-create.mmd`.
+
+The order is created by `orders.create_order`, **not** a B2B fork of it. The
+only difference is a merchant-only `unit_price_usd_override` keyword carrying
+the wholesale price: passing it with a non-merchant actor raises, which is
+what stops a client-supplied price from ever reaching a retail order through
+the same door. `create_order` also refuses an `affiliate_code` on the merchant
+arm — `resolve_code` takes `user_id=actor.user_id`, NULL for a merchant, so a
+code would resolve like a guest's and take a retail discount off an
+already-wholesale price.
+
+`expected_price` is reconciled by `pricing.price_to_charge`, the single home
+of spec §8.4's rule: drift within ±2% executes at the **lower** of the two,
+beyond it is `422 price_changed` carrying `current_price`. That is the spec as
+written, and it is worth knowing what it permits: a merchant can read
+`/catalog` (live-computed, never cached) and always send `current × 0.98`,
+taking a guaranteed 2% off wholesale. On the default 7% markup that is about a
+quarter of the margin, and the margin floor does not catch it. The rule came
+from the Steam-gifts flow, where the counterparty is a human; here it is a
+machine. Raised with the owner; until they rule, the spec governs, and
+changing it is one line in `pricing.price_to_charge`.
+
+The margin floor is the same `pricing.violates_margin_floor` against the same
+`settings.merchant_margin_floor_pct` the catalog applies, so a SKU the price
+list withholds is a SKU this refuses.
+
+The deposit debit is `merchants.service.charge_deposit`: `C merchant_deposit /
+D house_payments_received` (the module README's posting table, not re-derived),
+ledger key `merchant-order:{order_id}`, and `SELECT … FOR UPDATE` on the
+deposit row before the balance is read. **That lock is the overdraw guard**;
+the earlier balance read in the order path exists only to answer a clean
+`409 insufficient_deposit` before any row is written.
+
+Errors, all RFC 7807 with a `code`: `404 item_unavailable` (with a `reason` —
+`unknown_sku`, `not_b2b_visible`, `out_of_stock`, `not_for_sale`, `no_cost`,
+`variable_amount` — because the catalog does not consult stock and this is
+where a reseller finds out), `422 price_changed`, `422 margin_floor`,
+`409 insufficient_deposit`, `409 order_id_reused`. The full table is in
+`apps/api/src/yupay/modules/merchants/README.md`, which is the contract third
+parties implement against.
+
+**A merchant order never sends mail** (spec §9.5).
+`notifications._delivery_recipient` returns `None` for one by an explicit
+guard, not by falling off the end of a chain of NULL columns — every address
+column happens to be NULL on a merchant order today, and "true by accident" is
+not a rule. Nor does it publish to realtime: `user_id` is NULL by
+construction.
 
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so

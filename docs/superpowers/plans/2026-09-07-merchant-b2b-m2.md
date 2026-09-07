@@ -265,13 +265,50 @@ Flow:
    with no email and make it explicitly skip rather than accidentally work;
    a merchant order must never send mail.
 
-- [ ] **Step 1: failing tests** — the happy path end to end (deposit down by
+- [x] **Step 1: failing tests** — the happy path end to end (deposit down by
       exactly the charged price, order `paid`, fulfilment task created);
       every error code above; the replay pair; the retail-cannot-inject-price
       test; the no-email assertion; a concurrency test (two same-key creates
       via `asyncio.gather` ⇒ one order, one debit).
-- [ ] **Step 2-4: FAIL → implement → pass; FULL orders/payments/fulfilment suites**
-- [ ] **Step 5: commit** `feat(api/merchants): place an order against the deposit`
+- [x] **Step 2-4: FAIL → implement → pass; FULL orders/payments/fulfilment suites**
+- [x] **Step 5: commit** `feat(api/merchants): place an order against the deposit`
+
+**Deviations, recorded:**
+
+1. **The seam is a keyword argument, not a wire field.**
+   `create_order(..., unit_price_usd_override: Sequence[Decimal] | None)`, one
+   price per line of `body.items`, applied last in the item loop so it wins
+   over every branch above it. It is not on `OrderCreate`, so it cannot appear
+   in the storefront's OpenAPI and a retail client has nothing to send;
+   passing it with a non-merchant actor raises. The affiliate refusal (carried
+   constraint 2) lives beside it in the same guard, because both defend the
+   same seam from opposite directions.
+2. **A fourth file, `merchants/orders.py`.** The order flow is business logic
+   and AGENTS §6 keeps that out of routers, so `machine_routes.py` stays a
+   router. It sits beside `price_list.py`, and is re-exported from the facade
+   as `place_order`.
+3. **Two new public functions in `orders.service`**, rather than reaching into
+   privates from another module: `find_merchant_order` (the per-merchant
+   replay lookup, needed _before_ pricing so a retry of yesterday's order is
+   not refused by today's stock) and `mark_merchant_order_paid` (the
+   `pending_payment → paid` transition with no `Payment` row). `_sku_is_buyable`
+   was renamed `sku_is_buyable` and exported, so the merchant path shares the
+   retail buyability rule instead of restating it.
+4. **The replay fingerprint rides the `order.paid` event.** Spec §9.3 needs
+   "same id + different body ⇒ 409", and nothing on `orders` stores a request
+   body. A digest of `{sku_id, expected_price, fulfillment_data}` goes on the
+   event `mark_merchant_order_paid` already writes — a digest and not the body,
+   because the values inside are the reseller's end-customer identifiers.
+5. **`variable_amount` SKUs are `item_unavailable`.** A customer-chooses-the-
+   amount SKU has no wholesale price to quote, so `expected_price` is
+   meaningless for it. Refused with its own `reason` rather than reaching
+   `_resolve_line_unit_price`'s retail-worded 422.
+6. **The retail risk gate is skipped.** `payments` consults `orders.risk`
+   before starting fulfilment because a card charge can be reversed; a merchant
+   order is settled from money we already hold, so a hold would break the
+   contract's promise for a risk this channel cannot carry.
+7. **`item_unavailable` carries a `reason`** (Ruling 2), and the README says
+   plainly that catalog presence is not a stock guarantee.
 
 ---
 

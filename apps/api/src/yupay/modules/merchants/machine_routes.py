@@ -19,13 +19,19 @@ cache the dependency relies on, and every call to it would raise
 ``RuntimeError("Stream consumed")``. Both endpoints here are GETs, but the
 constraint binds this router as it grows.
 
-## No ``Idempotency-Key`` on these two
+## No ``Idempotency-Key`` anywhere on this router
 
-AGENTS.md §9 requires the header on state-changing endpoints. These are reads,
-so it does not apply. Order creation (Task 4) is idempotent on the merchant's
-own ``merchant_order_id`` rather than on the header — spec §9.3, and the
-reason is in ``auth.py``: a signature is not single-use, so endpoint
-idempotency is the only thing that makes a replayed mutation harmless.
+AGENTS.md §9 requires the header on state-changing endpoints. ``/me`` and
+``/catalog`` are reads, so it does not reach them. ``POST /orders`` *is* a
+mutation and still does not take it: it is idempotent on the merchant's own
+``merchant_order_id`` instead (spec §9.3), which is stronger here rather than
+weaker. A header key is minted per attempt by our client; ``merchant_order_id``
+is minted per *intent* by theirs, is the id their own system already keys on,
+and is what a replayed request necessarily carries — and a signature on this
+API is deliberately not single-use (see ``auth.py``), so endpoint idempotency
+is the only thing that makes a replayed mutation harmless. Accepting a second,
+weaker key beside it would only give an integrator two ways to be idempotent
+and one of them wrong. AGENTS.md §9 records the exception.
 
 ## Rate limiting: this prefix is exempt from the coarse tier
 
@@ -56,13 +62,18 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.modules.merchants import api as merchants
 from yupay.modules.merchants.auth import merchant_auth
-from yupay.modules.merchants.machine_schemas import MerchantCatalogOut, MerchantProfileOut
+from yupay.modules.merchants.machine_schemas import (
+    MerchantCatalogOut,
+    MerchantOrderCreateIn,
+    MerchantOrderOut,
+    MerchantProfileOut,
+)
 from yupay.modules.merchants.models import Merchant
 
 #: ``dependencies`` on the router rather than only on each handler: a route
@@ -117,6 +128,26 @@ async def read_catalog(merchant: AuthedMerchant, db: Db) -> MerchantCatalogOut:
     each SKU's ``updated_at`` (spec §8.4).
     """
     return await merchants.build_price_list(db, merchant=merchant)
+
+
+@router.post(
+    "/orders",
+    response_model=MerchantOrderOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Place an order and settle it from the deposit",
+)
+async def place_order(
+    body: MerchantOrderCreateIn, merchant: AuthedMerchant, db: Db
+) -> MerchantOrderOut:
+    """Buy one SKU against the prepaid deposit.
+
+    The whole flow — pricing, the ±2% drift rule, the margin floor, the
+    deposit debit, ``paid`` and the start of fulfilment — is
+    ``merchants.orders.place``'s; this parses and dispatches. Idempotent on
+    ``merchant_order_id``: the same id with the same body returns the order
+    already placed, a different body is a ``409``.
+    """
+    return await merchants.place_order(db, merchant=merchant, body=body)
 
 
 __all__ = ["router"]

@@ -15,9 +15,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
-from typing import Annotated
+from typing import Annotated, Any
+from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
 
 _CENT = Decimal("0.01")
 
@@ -143,9 +144,81 @@ class MerchantCatalogOut(BaseModel):
     brands: list[MerchantBrandOut]
 
 
+class MerchantOrderCreateIn(BaseModel):
+    """Body of ``POST /merchant/v1/orders`` (spec §9.1).
+
+    One SKU per order, deliberately: the spec's body shape has no ``qty`` and
+    no line array, a reseller's own basket does not have to be ours, and a
+    single line keeps "the order failed" from meaning "part of the order
+    failed". A ``qty`` or an ``items`` array can be *added* later without a
+    ``/merchant/v2`` — a new optional request field is additive; removing one
+    is not.
+
+    ``extra="forbid"`` on purpose. On a response, ignoring an unknown field is
+    right; on a *request* it is how a typo'd ``fulfilment_data`` silently
+    becomes an order with no player id, delivered to nobody.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The reseller's own id for this order, and the idempotency key (spec
+    #: §9.3). Printable ASCII with no spaces, so it survives being a path
+    #: segment in ``GET /merchant/v1/orders/{merchant_order_id}`` and the
+    #: canonical signing string without an encoding argument.
+    merchant_order_id: str = Field(min_length=1, max_length=128, pattern=r"^[\x21-\x7e]+$")
+    #: From ``GET /merchant/v1/catalog``. Parsed as a UUID here rather than
+    #: taken as free text: an unparseable id reaches Postgres as
+    #: ``uuid = 'whatever'``, which is a ``DataError`` and a 500 where a clean
+    #: refusal belongs.
+    sku_id: str
+    #: The price you last read from ``/catalog``. Within ±2% of ours the order
+    #: executes at the **lower** of the two; outside it, ``422 price_changed``
+    #: carries our current price (spec §8.4).
+    expected_price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    #: Whatever the SKU's product requires (a player id, a login). Validated
+    #: against the same schema the storefront uses; unknown keys are dropped.
+    fulfillment_data: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("sku_id")
+    @classmethod
+    def _is_a_uuid(cls, value: str) -> str:
+        """Reject anything that is not a UUID, at the parse boundary."""
+        try:
+            UUID(value)
+        except ValueError:
+            raise ValueError("sku_id must be a UUID") from None
+        return value
+
+
+class MerchantOrderOut(BaseModel):
+    """Body of ``POST /merchant/v1/orders``.
+
+    ``status`` is the order's live status, not a fixed ``"paid"``: a merchant
+    order is born paid and fulfilment starts in the same transaction, so what
+    comes back is where that left it. Poll
+    ``GET /merchant/v1/orders/{merchant_order_id}`` for the rest.
+    """
+
+    merchant_order_id: str
+    #: Our id for the order. Quote it to support; key your own records on
+    #: ``merchant_order_id``, which is yours and which we cannot change.
+    order_id: str
+    status: str
+    sku_id: str
+    #: What this order actually charged — after the ±2% rule, so it may be
+    #: your ``expected_price`` rather than ours. Fixed from here on: whatever
+    #: fulfilment ends up costing us is our problem, not yours (spec §8.4).
+    price_usd: UsdPrice
+    #: Your deposit after this order.
+    balance_usd: UsdBalance
+    created_at: datetime
+
+
 __all__ = [
     "MerchantBrandOut",
     "MerchantCatalogOut",
+    "MerchantOrderCreateIn",
+    "MerchantOrderOut",
     "MerchantProductOut",
     "MerchantProfileOut",
     "MerchantSkuOut",
