@@ -556,7 +556,7 @@ async def test_limit_is_bounded_by_the_contract(
 async def test_the_query_string_is_part_of_the_signature(
     integration_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
-    """This is the first endpoint with a query, so the fifth canonical field
+    """This is the first endpoint with a query, so the fourth canonical field
     finally has a consumer: a signature over ``limit=1`` must not spend on
     ``limit=200``."""
     merchant_id = await _new_merchant(integration_client, admin_headers)

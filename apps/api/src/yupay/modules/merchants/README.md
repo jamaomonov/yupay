@@ -119,7 +119,7 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   recorded it; since M2 it is enforced, by `merchant_auth` refusing every
   `/merchant/v1` request from a frozen merchant with `403 merchant_frozen`.
 - `POST /admin/merchants/{id}/deposit-credits` — posts via
-  `service.credit_deposit`. **Requires** `Idempotency-Key`; the ledger key
+  `deposit.credit_deposit`. **Requires** `Idempotency-Key`; the ledger key
   is namespaced `merchant-credit:{merchant_id}:{client_key}` so one
   client's key can never replay another merchant's transaction. The ledger
   replays by key **without comparing parameters**, so the response's
@@ -127,9 +127,10 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   replay is visible to the admin UI, and `balance` rides along. See
   `docs/architecture/sequence-diagrams/merchant-deposit-credit.mmd`.
 - `GET /admin/merchants/{id}/transactions` — the merchant's deposit ledger,
-  newest first (`admin.list_deposit_transactions`, one grouped query). Each
-  row carries the **signed** deposit delta (positive = balance up; M2 order
-  charges will surface as negative rows unchanged), the credit's `note`, and
+  newest first (`deposit.list_deposit_transactions`, one grouped query —
+  shared with `/merchant/v1/transactions` rather than copied). Each row
+  carries the **signed** deposit delta (positive = balance up; order charges
+  surface as negative rows, unchanged), the credit's `note`, and
   the `admin:<id>` actor. Read-only; a typo'd merchant id is a 404, never a
   plausible-looking `[]`.
 - `PATCH /admin/catalog/skus/{id}/b2b` (`markup_pct?`, `visible_b2b?`),
@@ -336,14 +337,21 @@ export async function call(method, path, query = "", body = "") {
 The whole path is drawn in
 `docs/architecture/sequence-diagrams/merchant-api-auth.mmd`.
 
-| Failure                                                      | Status | `code`                |
-| ------------------------------------------------------------ | ------ | --------------------- |
-| Too many requests (per IP, or per key once authenticated)    | 429    | —                     |
-| A credential header missing                                  | 401    | `missing_credentials` |
-| Timestamp not digits-only, or more than **±300 s** from ours | 401    | `stale_timestamp`     |
-| Unknown `key_id`, revoked key, or wrong signature            | 401    | `invalid_credentials` |
-| Merchant frozen                                              | 403    | `merchant_frozen`     |
-| Caller's address not in the key's IP allowlist               | 403    | `ip_not_allowed`      |
+| #   | Failure                                                      | Status | `code`                |
+| --- | ------------------------------------------------------------ | ------ | --------------------- |
+| 1   | Too many requests **from this address**                      | 429    | —                     |
+| 2   | A credential header missing                                  | 401    | `missing_credentials` |
+| 3   | Timestamp not digits-only, or more than **±300 s** from ours | 401    | `stale_timestamp`     |
+| 4   | Unknown `key_id`, revoked key, or wrong signature            | 401    | `invalid_credentials` |
+| 5   | Too many requests **for this key**                           | 429    | —                     |
+| 6   | Merchant frozen                                              | 403    | `merchant_frozen`     |
+| 7   | Caller's address not in the key's IP allowlist               | 403    | `ip_not_allowed`      |
+
+The two rate-limit axes really do sit at 1 and 5, not together: the per-address
+counter is charged before anything is parsed, so an unauthenticated flood costs
+us one Redis increment, and the per-key counter is charged only once your
+signature has verified, so nobody who reads your `key_id` off a header can
+spend your budget.
 
 The three credential failures return **one identical body** on purpose: the
 payload does not reveal whether a `key_id` exists, and the HMAC is computed
@@ -408,6 +416,30 @@ The complete set of `type` URIs this API can return:
 | `https://app.yupay.uz/errors/rate-limited` | 429    | Either rate-limit axis                            |
 
 The `type` host is an identifier namespace, not a URL to fetch.
+
+#### Extra fields on the body
+
+`type`, `title`, `status` and `detail` are always present, and `detail` is
+always a **string**. Beyond those, an error carries whatever names the failure:
+
+- `code` on every auth and business failure — the short discriminator the
+  per-endpoint tables below list. Switch on this, not on `detail`.
+- the failure's own facts, at the top level: `current_price` and
+  `expected_price` on `price_changed`, `balance_usd` and `required_usd` on
+  `insufficient_deposit`, `reason` on `item_unavailable`.
+- an `extra` **object** on a `fulfillment_data` refusal, naming the field and
+  why. That one is nested; the others are not. Verbatim, so there is nothing
+  to guess at:
+
+```json
+{
+  "type": "https://app.yupay.uz/errors/validation",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "unexpected fields: ['note']",
+  "extra": { "reason": "extra", "keys": ["note"] }
+}
+```
 
 #### Two answers that are **not** problem+json
 

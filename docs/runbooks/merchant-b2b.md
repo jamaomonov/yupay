@@ -225,7 +225,10 @@ See also `docs/runbooks/rotate-secrets.md`.
 ## The Caddy access-log redaction must be deployed
 
 `infra/caddy/Caddyfile.prod` deletes `X-Merchant-Signature` and
-`X-Merchant-Key` from the access log on the `api.yupay.uz` site block. Caddy
+`X-Merchant-Key` from the access log in **both** site blocks that keep one —
+`yupay.uz` and `api.yupay.uz`. Only the second can ever see a merchant
+request; the first carries the same filter so a copied log block cannot
+reintroduce the leak. Caddy
 redacts `Authorization` and nothing else, so without that filter every signed
 request writes its credentials verbatim to stdout, promtail ships them to Loki,
 and anyone with Loki read access can replay a captured request for the
@@ -337,7 +340,11 @@ The steps:
 
 2. **Credit the deposit** for exactly what the order charged — the
    `unit_price_usd` from the query above, which is also `price_usd` on the
-   merchant's own order read. Use the SPA form, or:
+   merchant's own order read. `order_items.unit_price_usd` is `NUMERIC(20, 6)`
+   so psql prints it as `1.060000`; send `1.06`. (Both are accepted — the
+   amount is validated on significant decimals, and a merchant price is always
+   a whole cent — but the two-decimal form is what the merchant sees and what
+   your `note` should quote.) Use the SPA form, or:
 
    ```bash
    curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-credits" \
