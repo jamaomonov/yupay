@@ -1,11 +1,12 @@
 """Admin HTTP routes for the merchant B2B programme (M1, Task 6).
 
-Two routers, both admin-gated like ``affiliate.routes.admin_router``:
-
-- ``admin_router`` under ``/admin/merchants`` — create/list/freeze/unfreeze
-  and the deposit credit;
-- ``catalog_b2b_router`` under ``/admin/catalog`` — the B2B knobs that live
-  on catalog rows (per-SKU markup/visibility, bulk markup, brand visibility).
+``admin_router`` under ``/admin/merchants``, admin-gated like
+``affiliate.routes.admin_router`` — create/list/freeze/unfreeze, the deposit
+credit, the machine credentials and the webhook configuration. The B2B knobs
+that live on catalog rows are the sibling ``catalog_b2b_router`` in
+:mod:`yupay.modules.merchants.catalog_b2b_routes`, split out of this file
+when it passed AGENTS.md §6's split-before-500 line; the two share the replay
+helpers in :mod:`yupay.modules.merchants.route_replay`.
 
 Business logic is imported through the ``merchants.api`` facade only —
 routers parse and dispatch (AGENTS.md §6). Every write accepts
@@ -15,7 +16,7 @@ client half of the namespaced ledger key, ``merchant-credit:{merchant_id}:
 another merchant's transaction), while the rest replay through the generic
 ``(scope, key)`` store the other admin write endpoints use.
 
-``api/v1`` imports the routers from here, not from the facade — the facade
+``api/v1`` imports this router from here, not from the facade — the facade
 is imported by service-layer callers, and a router re-exported from it would
 close a cycle back through the v1 route stack (the ``affiliate.routes``
 precedent, same comment there).
@@ -24,10 +25,9 @@ precedent, same comment there).
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Query, status
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -35,21 +35,16 @@ from yupay.core.errors import ValidationError
 from yupay.core.idempotency import (
     IDEMPOTENCY_HEADER,
     MIN_IDEMPOTENCY_KEY_LENGTH,
-    load_replay,
     normalize_idempotency_key,
-    save_replay,
 )
 from yupay.modules.admin.api import require_admin
 from yupay.modules.merchants import api as merchants
+from yupay.modules.merchants.route_replay import IdempotencyKeyHeader, remember, replayed
 from yupay.modules.merchants.schemas import (
     ApiKeyCreatedOut,
     ApiKeyCreateIn,
     ApiKeyListOut,
     ApiKeyOut,
-    BrandB2bOut,
-    BrandB2bPatchIn,
-    BulkMarkupIn,
-    BulkMarkupOut,
     DepositCreditIn,
     DepositCreditOut,
     MerchantCreateIn,
@@ -57,8 +52,6 @@ from yupay.modules.merchants.schemas import (
     MerchantOut,
     MerchantTxnListOut,
     MerchantTxnOut,
-    SkuB2bOut,
-    SkuB2bPatchIn,
     WebhookOut,
     WebhookSecretOut,
     WebhookSetIn,
@@ -71,14 +64,6 @@ admin_router = APIRouter(
     dependencies=[Depends(require_admin)],
 )
 
-catalog_b2b_router = APIRouter(
-    prefix="/admin/catalog",
-    tags=["admin:catalog-b2b"],
-    dependencies=[Depends(require_admin)],
-)
-
-IdempotencyKeyHeader = Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)]
-
 #: Cap on the CLIENT half of the deposit-credit key. The ledger column is
 #: ``String(160)`` and the ``merchant-credit:{uuid}:`` prefix consumes 53
 #: chars, so anything over 107 overflows into a ``DataError`` — which
@@ -86,26 +71,6 @@ IdempotencyKeyHeader = Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)]
 #: deterministic 500 on every retry of the same long key. 100 leaves margin
 #: under that ceiling; reject at the parse boundary with a readable 422.
 MAX_DEPOSIT_CLIENT_KEY_LENGTH = 100
-
-
-async def _replayed[ModelT: BaseModel](
-    db: AsyncSession, *, scope: str, key: str | None, model: type[ModelT]
-) -> ModelT | None:
-    """Return the stored response for ``(scope, key)``, or ``None`` to proceed."""
-    if key is None:
-        return None
-    cached = await load_replay(db, scope=scope, idempotency_key=key)
-    if cached is None:
-        return None
-    return model.model_validate(cached.body)
-
-
-async def _remember(
-    db: AsyncSession, *, scope: str, key: str | None, body: dict[str, Any], status_code: int = 200
-) -> None:
-    """Store a response for replay when a key was supplied."""
-    if key is not None:
-        await save_replay(db, scope=scope, idempotency_key=key, body=body, status_code=status_code)
 
 
 def _webhook_secret_out(configured: merchants.ConfiguredWebhook) -> WebhookSecretOut:
@@ -147,12 +112,12 @@ async def create_merchant(
     # not a bug to rediscover in production.
     key = normalize_idempotency_key(idempotency_key)
     scope = "merchants.create"
-    cached = await _replayed(db, scope=scope, key=key, model=MerchantOut)
+    cached = await replayed(db, scope=scope, key=key, model=MerchantOut)
     if cached is not None:
         return cached
     merchant = await merchants.create_merchant(db, title=body.title)
     out = _merchant_out(merchant, Decimal("0"))
-    await _remember(
+    await remember(
         db,
         scope=scope,
         key=key,
@@ -209,7 +174,7 @@ async def _set_status(
     """Shared freeze/unfreeze body: replay, mutate, remember."""
     normalized = normalize_idempotency_key(key)
     scope = f"merchants.set_status.{to}:{merchant_id}"
-    cached = await _replayed(db, scope=scope, key=normalized, model=MerchantOut)
+    cached = await replayed(db, scope=scope, key=normalized, model=MerchantOut)
     if cached is not None:
         return cached
     merchant = await merchants.set_status(db, merchant_id=merchant_id, status=to)
@@ -218,7 +183,7 @@ async def _set_status(
     # The snapshot freezes ``deposit_balance`` as of the FIRST call — a
     # replayed response can show a stale balance if credits landed in
     # between. ``GET /admin/merchants`` is the authoritative balance read.
-    await _remember(db, scope=scope, key=normalized, body=out.model_dump(mode="json"))
+    await remember(db, scope=scope, key=normalized, body=out.model_dump(mode="json"))
     return out
 
 
@@ -333,7 +298,7 @@ async def create_api_key(
     """
     key = normalize_idempotency_key(idempotency_key)
     scope = f"merchants.api_key_create:{merchant_id}"
-    cached = await _replayed(db, scope=scope, key=key, model=ApiKeyCreatedOut)
+    cached = await replayed(db, scope=scope, key=key, model=ApiKeyCreatedOut)
     if cached is not None:
         return cached
     issued = await merchants.create_api_key(
@@ -342,7 +307,7 @@ async def create_api_key(
     out = ApiKeyCreatedOut(
         **ApiKeyOut.model_validate(issued.key).model_dump(), secret=issued.secret
     )
-    await _remember(
+    await remember(
         db,
         scope=scope,
         key=key,
@@ -390,12 +355,12 @@ async def revoke_api_key(
     """
     replay_key = normalize_idempotency_key(idempotency_key)
     scope = f"merchants.api_key_revoke:{merchant_id}:{key_id}"
-    cached = await _replayed(db, scope=scope, key=replay_key, model=ApiKeyOut)
+    cached = await replayed(db, scope=scope, key=replay_key, model=ApiKeyOut)
     if cached is not None:
         return cached
     row = await merchants.revoke_api_key(db, merchant_id=merchant_id, key_id=key_id)
     out = ApiKeyOut.model_validate(row)
-    await _remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
+    await remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
     return out
 
 
@@ -430,12 +395,12 @@ async def set_webhook(
     """
     key = normalize_idempotency_key(idempotency_key)
     scope = f"merchants.webhook_set:{merchant_id}"
-    cached = await _replayed(db, scope=scope, key=key, model=WebhookSecretOut)
+    cached = await replayed(db, scope=scope, key=key, model=WebhookSecretOut)
     if cached is not None:
         return cached
     configured = await merchants.set_webhook(db, merchant_id=merchant_id, url=body.url)
     out = _webhook_secret_out(configured)
-    await _remember(
+    await remember(
         db,
         scope=scope,
         key=key,
@@ -481,12 +446,12 @@ async def rotate_webhook_secret(
     """
     key = normalize_idempotency_key(idempotency_key)
     scope = f"merchants.webhook_rotate:{merchant_id}"
-    cached = await _replayed(db, scope=scope, key=key, model=WebhookSecretOut)
+    cached = await replayed(db, scope=scope, key=key, model=WebhookSecretOut)
     if cached is not None:
         return cached
     configured = await merchants.rotate_webhook_secret(db, merchant_id=merchant_id)
     out = _webhook_secret_out(configured)
-    await _remember(
+    await remember(
         db,
         scope=scope,
         key=key,
@@ -513,95 +478,12 @@ async def disable_webhook(
     """
     replay_key = normalize_idempotency_key(idempotency_key)
     scope = f"merchants.webhook_disable:{merchant_id}"
-    cached = await _replayed(db, scope=scope, key=replay_key, model=WebhookOut)
+    cached = await replayed(db, scope=scope, key=replay_key, model=WebhookOut)
     if cached is not None:
         return cached
     out = WebhookOut.model_validate(await merchants.disable_webhook(db, merchant_id=merchant_id))
-    await _remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
+    await remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
     return out
 
 
-@catalog_b2b_router.patch(
-    "/skus/{sku_id}/b2b",
-    response_model=SkuB2bOut,
-    summary="Set a SKU's B2B markup and/or visibility",
-)
-async def patch_sku_b2b(
-    sku_id: str,
-    body: SkuB2bPatchIn,
-    db: Annotated[AsyncSession, Depends(db_session)],
-    idempotency_key: IdempotencyKeyHeader = None,
-) -> SkuB2bOut:
-    """Absent fields stay untouched; no pricing math here (AGENTS.md §6)."""
-    key = normalize_idempotency_key(idempotency_key)
-    scope = f"merchants.sku_b2b:{sku_id}"
-    cached = await _replayed(db, scope=scope, key=key, model=SkuB2bOut)
-    if cached is not None:
-        return cached
-    sku = await merchants.set_sku_b2b(
-        db, sku_id=sku_id, markup_pct=body.markup_pct, visible_b2b=body.visible_b2b
-    )
-    out = SkuB2bOut.model_validate(sku)
-    await _remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
-    return out
-
-
-@catalog_b2b_router.post(
-    "/b2b/bulk-markup",
-    response_model=BulkMarkupOut,
-    summary="Set the B2B markup for a whole brand or category in one action",
-)
-async def bulk_markup(
-    body: BulkMarkupIn,
-    db: Annotated[AsyncSession, Depends(db_session)],
-    idempotency_key: IdempotencyKeyHeader = None,
-) -> BulkMarkupOut:
-    """One UPDATE over the brand's (or category's) SKUs; returns the affected count."""
-    key = normalize_idempotency_key(idempotency_key)
-    # Discriminated by target KIND, not just its name: a brand slug and a
-    # category name can be the same string ("steam"), and a bare name would
-    # let one reused key replay the brand update for the category one and
-    # silently never apply it.
-    scope = (
-        f"merchants.bulk_markup:brand:{body.brand_slug}"
-        if body.brand_slug is not None
-        else f"merchants.bulk_markup:category:{body.category}"
-    )
-    cached = await _replayed(db, scope=scope, key=key, model=BulkMarkupOut)
-    if cached is not None:
-        return cached
-    affected = await merchants.bulk_set_markup(
-        db,
-        markup_pct=body.markup_pct,
-        brand_slug=body.brand_slug,
-        category_slug=body.category,
-    )
-    out = BulkMarkupOut(affected=affected)
-    await _remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
-    return out
-
-
-@catalog_b2b_router.patch(
-    "/brands/{brand_id}/b2b",
-    response_model=BrandB2bOut,
-    summary="Show or hide a whole brand in the merchant catalog",
-)
-async def patch_brand_b2b(
-    brand_id: str,
-    body: BrandB2bPatchIn,
-    db: Annotated[AsyncSession, Depends(db_session)],
-    idempotency_key: IdempotencyKeyHeader = None,
-) -> BrandB2bOut:
-    """Effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b``."""
-    key = normalize_idempotency_key(idempotency_key)
-    scope = f"merchants.brand_b2b:{brand_id}"
-    cached = await _replayed(db, scope=scope, key=key, model=BrandB2bOut)
-    if cached is not None:
-        return cached
-    brand = await merchants.set_brand_b2b(db, brand_id=brand_id, visible_b2b=body.visible_b2b)
-    out = BrandB2bOut.model_validate(brand)
-    await _remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
-    return out
-
-
-__all__ = ["admin_router", "catalog_b2b_router"]
+__all__ = ["admin_router"]

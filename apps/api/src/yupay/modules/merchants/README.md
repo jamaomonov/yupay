@@ -150,9 +150,12 @@ every other symbol in this module.
 
 Everything support needs to run a pilot merchant by hand (Task 6), all
 admin-gated (`require_admin`), business logic imported through the `api`
-facade only. Two routers in `admin_routes.py` (mounted by `api/v1` directly
-from that file — the facade never exports a router, or it would close a
-cycle back through the route stack, same rule as `affiliate.routes`):
+facade only. Two routers — `admin_router` in `admin_routes.py` and
+`catalog_b2b_router` in `catalog_b2b_routes.py`, split apart in M3a Task 2
+when the one file passed §6's split-before-500 line, sharing the replay
+helpers in `route_replay.py` (both mounted by `api/v1` directly from their
+own module — the facade never exports a router, or it would close a cycle
+back through the route stack, same rule as `affiliate.routes`):
 
 - `POST`/`GET /admin/merchants` — create a reseller; list every merchant
   with its USD deposit balance joined in **one grouped query**
@@ -1271,7 +1274,7 @@ path segment is percent-encoded and **the encoded form is what you sign**
 | Credential lifecycle (create / list / revoke)               | `credentials.py`, via the `api` facade                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Request verification + the FastAPI dependency               | `auth.py`                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | The deposit: credit, charge, balance, ledger listing        | `deposit.py` — every movement of a merchant's money                                                                                                                                                                                                                                                                                                                                                                                     |
-| Admin HTTP surface                                          | `admin_routes.py`                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Admin HTTP surface                                          | `admin_routes.py` (`/admin/merchants`) and `catalog_b2b_routes.py` (`/admin/catalog`), over the shared replay helpers in `route_replay.py`                                                                                                                                                                                                                                                                                              |
 | Machine API routes (`/merchant/v1`)                         | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it.                                                                                                                                                                                               |
 | The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift                                                                                                                                                                                                                                                                                                                                                                                     |
@@ -1295,7 +1298,7 @@ behind. **Import it from `merchants.auth` directly, never from
 `merchants.api`**: it takes its session from `api.v1.deps.db_session` so the
 endpoint behind it shares one transaction, which means the facade cannot
 re-export it without closing an import cycle back through the v1 route stack —
-the same rule the routers in `admin_routes` follow. It supports **byte-body
+the same rule the two admin routers follow. It supports **byte-body
 endpoints only**: it reads `await request.body()`, and an endpoint declaring
 `Form(...)`/`UploadFile` would send FastAPI down the `request.form()` branch,
 consuming the stream without populating the cache the dependency relies on.
