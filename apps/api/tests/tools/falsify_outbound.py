@@ -22,6 +22,13 @@ was masked by a second mitigation in front of it. Both were silent. So:
 Sources are restored from a copy taken before the edit, in a ``finally``.
 Never ``git checkout`` — several agents share this worktree.
 
+This edits source files in place, so **it is not safe to run beside a test
+suite on the same worktree**: a suite worker that imports a module mid-mutation
+sees the broken code and fails for a reason that looks exactly like a real
+regression. That happened once on this branch — a ``PendingRollbackError``
+matching the signature one of these mutations is built to cause, in a worker
+that imported the module while it was mutated. Run this alone.
+
 Two mutations are expected to **hang** rather than fail (removing a timeout
 means the client waits forever, which is the failure it prevents); those carry
 their own short timeout and a hang counts as the expected failure.
@@ -460,6 +467,11 @@ def main() -> int:
             print(f"{mutation.name:26} {mutation.breaks}")
         return 0
 
+    print(
+        "falsify: editing source files in place — do not run any other suite "
+        "against this worktree until it finishes.\n",
+        flush=True,
+    )
     rows: list[tuple[str, str, str]] = []
     for mutation in chosen:
         backups: dict[Path, Path] = {}
