@@ -4,11 +4,12 @@ Other modules import from here, never from ``models`` or ``service``
 directly — the same rule the rest of the codebase follows. Cabinet auth
 lands in a later task and gets re-exported here when it arrives.
 
-Two things in this module are deliberately NOT re-exported, both for the same
-reason: they bind to the ``/api/v1`` route stack, so a facade import would
-close a cycle for any service-layer caller.
+Two kinds of thing in this module are deliberately NOT re-exported, both for
+the same reason: they bind to the ``/api/v1`` route stack, so a facade import
+would close a cycle for any service-layer caller.
 
-- the routers in ``admin_routes`` (``api/v1`` imports them from that file);
+- the routers in ``admin_routes`` and in ``machine_routes`` (``api/v1`` and
+  ``bootstrap`` respectively import them from those files);
 - ``auth.merchant_auth``, the machine-API dependency, which takes its session
   from ``api.v1.deps.db_session`` so the endpoint behind it shares one
   transaction. Import it from ``merchants.auth`` directly.
@@ -28,6 +29,7 @@ from yupay.modules.merchants.admin import (
     set_sku_b2b,
 )
 from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
+from yupay.modules.merchants.price_list import build as build_price_list
 from yupay.modules.merchants.pricing import (
     effective_cost,
     merchant_markup_pct,
@@ -59,6 +61,7 @@ __all__ = [
     "MerchantApiKey",
     "MerchantUser",
     "body_digest",
+    "build_price_list",
     "bulk_set_markup",
     "canonical_message",
     "create_api_key",

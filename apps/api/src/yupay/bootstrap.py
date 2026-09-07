@@ -2,6 +2,13 @@
 
 Each module that exposes HTTP routes provides a router; we mount them all here, under
 ``/api/v1``. Webhook routes are mounted under ``/webhooks/...`` separately.
+
+One surface sits outside ``/api/v1`` on purpose: the merchant machine API at
+``/merchant/v1`` (spec §9). It is a third-party contract with its own version
+number — a breaking change there means ``/merchant/v2``, never an edit — its
+own HMAC auth scheme and its own error vocabulary, so tying its version to the
+storefront's buys nothing and costs a forced re-issue of somebody else's
+integration.
 """
 
 from __future__ import annotations
@@ -24,6 +31,12 @@ from yupay.core.errors import AppError, app_error_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
+
+# Imported from ``machine_routes`` rather than the ``merchants`` facade, the
+# same rule ``api/v1`` follows for that module's admin routers: the facade is
+# imported by service-layer callers and a router re-exported from it would
+# close a cycle back through the route stack.
+from yupay.modules.merchants.machine_routes import router as merchant_machine_router
 
 #: Latency histogram bounds, in seconds. Dense below 250ms because most
 #: traffic is fast (a catalog read is tens of milliseconds), and reaching 10s
@@ -311,6 +324,9 @@ def create_app() -> FastAPI:
         return {"status": "ready"}
 
     app.include_router(v1_router, prefix="/api/v1")
+    # Its own prefix, not under /api/v1 — see the module docstring. The router
+    # carries the prefix itself so there is one place to read it from.
+    app.include_router(merchant_machine_router)
 
     # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),
     # which makes `histogram_quantile` unable to return anything above 1.0 —

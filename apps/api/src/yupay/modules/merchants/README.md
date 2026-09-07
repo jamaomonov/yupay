@@ -178,9 +178,9 @@ below without reading our source, so it must stay complete and it must not
 change without a new API version — `/merchant/v1` is consumed by code nobody
 but its owner can redeploy.
 
-> **Status:** the authentication layer is live; the endpoints it guards land
-> with the rest of M2. The examples below use `GET /merchant/v1/me`, the first
-> of them, and are forward-looking until it ships. The scheme itself is final.
+> **Status:** the authentication layer and the two read endpoints
+> (`GET /merchant/v1/me`, `GET /merchant/v1/catalog`) are live. Ordering and
+> the transaction ledger land with the rest of M2. The scheme is final.
 
 Base URL: **`https://api.yupay.uz`**. All requests are HTTPS. All strings are
 UTF-8. Every `\n` below is a single LF byte (`0x0A`) — never CRLF.
@@ -413,6 +413,95 @@ single addresses (`198.51.100.7`) or CIDR blocks (`203.0.113.0/24`), IPv4 or
 IPv6, and host bits inside a block are ignored when matching. No allowlist
 means no filter. Set one from the cabinet or ask support.
 
+## Endpoints (`/merchant/v1`)
+
+Also part of the contract. Every response is JSON; every request is
+signed as above. **Money is always a JSON string with exactly two decimal
+places** (`"1.06"`), never a JSON number — a float round-trips through
+IEEE-754 and turns `1.06` into `1.0599999999999999`. Parse it with your
+language's decimal type, not its float.
+
+Fields may be **added** to any response without notice; nothing is ever
+renamed, retyped or removed inside `v1`. Ignore fields you do not know.
+
+### `GET /merchant/v1/me`
+
+Who you are and what you can spend. Cheap — call it as a health check.
+
+```json
+{
+  "merchant_id": "0198c3c9-2a44-7c1a-9f3e-4b6f2e0d9a11",
+  "title": "Acme Resale",
+  "status": "active",
+  "balance_usd": "42.50"
+}
+```
+
+`balance_usd` is your prepaid USD deposit, computed live from the ledger on
+every call — there is no cached figure that can disagree with what an order
+is charged against. `status` is `active` or `frozen`. A frozen account gets
+`403 merchant_frozen` on **every** endpoint, this one included, so in practice
+a successful read here always says `active`; the field is there so the value
+is explicit rather than inferred, and for the day a third state exists.
+
+### `GET /merchant/v1/catalog`
+
+The whole wholesale price list, priced **for you**. No parameters, no paging:
+the B2B catalog is a few hundred lines, and one consistent snapshot beats a
+cursor you have to reconcile.
+
+```json
+{
+  "brands": [
+    {
+      "brand_id": "0198c3c9-…",
+      "slug": "pubg-mobile",
+      "name": "PUBG Mobile",
+      "products": [
+        {
+          "product_id": "0198c3ca-…",
+          "slug": "pubg-mobile-uc",
+          "name": "UC",
+          "skus": [
+            {
+              "sku_id": "0198c3cb-…",
+              "sku_code": "PUBGM_UC_60",
+              "name": "60 UC",
+              "price_usd": "1.06",
+              "updated_at": "2026-09-07T08:14:22.918431Z"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+```
+
+- **`sku_id` is what you order with** (`POST /merchant/v1/orders`).
+  `sku_code` is our stable human-readable code — good for your own mapping
+  table, and it never changes for a given `sku_id`.
+- **`price_usd` is your price**, cost plus this SKU's wholesale markup plus
+  any adjustment negotiated for your account, rounded up to the cent. It is
+  not the retail price and not another merchant's.
+- **`name`** is a display label: the SKU's denomination where it has one
+  (`"60 UC"`), else its `sku_code`. Brand and product `name`s are Russian —
+  the catalog's default language. Use `slug` and `sku_code` as identifiers;
+  the names are for showing to people and may be edited.
+- **`updated_at`** is that SKU's own last-modified stamp. **There are no price
+  webhooks:** poll this endpoint (once a minute is plenty — see the rate
+  limits) and act on the SKUs whose `updated_at` moved.
+- A SKU appears only if it is B2B-visible **and** has a wholesale cost on
+  file. A SKU with no cost is **not sellable**, so it is absent rather than
+  priced at zero — and an order for it would be rejected. Likewise a brand or
+  product with nothing purchasable under it is absent entirely, so you never
+  have to iterate past empty shells.
+- Ordering is ours (curated), stable, and safe to present as-is.
+- An empty catalog is `{"brands": []}`, never a `404`.
+
+> **Steam gifts are not in v1.** They are excluded here and cannot be
+> ordered through the machine API. Ask support if you need them.
+
 ## Implementation map
 
 | Concern                                                    | Where                                                         |
@@ -422,6 +511,8 @@ means no filter. Set one from the cabinet or ask support.
 | Credential lifecycle (create / list / revoke)              | `service.py`, via the `api` facade                            |
 | Request verification + the FastAPI dependency              | `auth.py`                                                     |
 | Admin HTTP surface                                         | `admin_routes.py`                                             |
+| Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix      |
+| The priced catalog read model                              | `price_list.py`                                               |
 
 `auth.merchant_auth` is the dependency every `/merchant/v1` endpoint sits
 behind. **Import it from `merchants.auth` directly, never from
@@ -474,6 +565,8 @@ has no secret.
 
 Schema (M1 Task 1), the deposit service (M1 Task 3), wholesale pricing
 (M1 Task 5), the admin endpoints (M1 Task 6), the admin SPA screens
-(M1 Tasks 7–8), and API-key issuance plus the signed-request dependency
-(M2 Task 2, wire format and storage revised after review) are in place. The
-machine API's own endpoints and the cabinet BFF land in the rest of M2+.
+(M1 Tasks 7–8), API-key issuance plus the signed-request dependency
+(M2 Task 2, wire format and storage revised after review), and the machine
+API's two read endpoints — `GET /merchant/v1/me` and
+`GET /merchant/v1/catalog` (M2 Task 3) — are in place. Ordering, the
+transaction ledger and the cabinet BFF land in the rest of M2+.

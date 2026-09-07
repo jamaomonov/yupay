@@ -6653,6 +6653,55 @@
         "title": "MeOut",
         "type": "object"
       },
+      "MerchantBrandOut": {
+        "description": "One brand of the wholesale catalog, with its products.\n\n``name`` is the catalog's default locale, like the product's; a brand\nwhose products all price out is absent entirely rather than empty.",
+        "properties": {
+          "brand_id": {
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "products": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantProductOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand_id",
+          "slug",
+          "name",
+          "products"
+        ],
+        "title": "MerchantBrandOut",
+        "type": "object"
+      },
+      "MerchantCatalogOut": {
+        "description": "Body of ``GET /merchant/v1/catalog``: the whole B2B price list.\n\nAn object rather than a bare array so v1 clients keep parsing when a\nfuture field (a cursor, a generated-at stamp) is added beside ``brands``.",
+        "properties": {
+          "brands": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantBrandOut"
+            },
+            "title": "Brands",
+            "type": "array"
+          }
+        },
+        "required": [
+          "brands"
+        ],
+        "title": "MerchantCatalogOut",
+        "type": "object"
+      },
       "MerchantCreateIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/merchants``.",
@@ -6721,6 +6770,104 @@
           "deposit_balance"
         ],
         "title": "MerchantOut",
+        "type": "object"
+      },
+      "MerchantProductOut": {
+        "description": "One product of a brand, with its purchasable SKUs.\n\nOnly products with at least one purchasable SKU appear \u2014 there are no\nempty shells to iterate past. ``name`` is the catalog's default locale\n(``catalog.service.DEFAULT_LOCALE``, ``ru``); ``slug`` is the stable\nmachine-readable half and never changes with a translation edit.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "skus": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantSkuOut"
+            },
+            "title": "Skus",
+            "type": "array"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "slug",
+          "name",
+          "skus"
+        ],
+        "title": "MerchantProductOut",
+        "type": "object"
+      },
+      "MerchantProfileOut": {
+        "description": "Body of ``GET /merchant/v1/me`` \u2014 who is calling, and what they can spend.\n\n``balance_usd`` is the deposit ledger's signed posting sum\n(``service.deposit_balance``), read live on every call \u2014 there is no\nbalance column to drift from it.",
+        "properties": {
+          "balance_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Usd",
+            "type": "string"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_id",
+          "title",
+          "status",
+          "balance_usd"
+        ],
+        "title": "MerchantProfileOut",
+        "type": "object"
+      },
+      "MerchantSkuOut": {
+        "description": "One purchasable line of the wholesale price list.\n\n``sku_id`` is what ``POST /merchant/v1/orders`` takes; ``price_usd`` is\nTHIS merchant's price (``pricing.merchant_price``), not the retail one.\n``updated_at`` is the SKU row's own stamp, so a merchant polling the\nprice list can tell what moved (spec \u00a78.4 \u2014 there are no price webhooks).",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "sku_code",
+          "name",
+          "price_usd",
+          "updated_at"
+        ],
+        "title": "MerchantSkuOut",
         "type": "object"
       },
       "MerchantTxnListOut": {
@@ -27141,6 +27288,50 @@
         "summary": "Liveness probe",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/merchant/v1/catalog": {
+      "get": {
+        "description": "Return every B2B-visible, priced SKU with this merchant's price.\n\nVisibility, pricing and the query shape are all\n``price_list.build``'s \u2014 see that module. Every ``price_usd`` here is the\nprice this merchant would be charged; SKUs without a cost are absent\nrather than free, and there are no price webhooks, so poll this and watch\neach SKU's ``updated_at`` (spec \u00a78.4).",
+        "operationId": "read_catalog_merchant_v1_catalog_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantCatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The wholesale price list, priced for the calling merchant",
+        "tags": [
+          "merchant-api"
+        ]
+      }
+    },
+    "/merchant/v1/me": {
+      "get": {
+        "description": "Return who is calling and what they can spend.\n\n``balance_usd`` is the deposit ledger's signed posting sum, read live \u2014\nthere is no balance column, so nothing can drift from it. A merchant who\nhas never been credited reads ``\"0.00\"``.",
+        "operationId": "read_me_merchant_v1_me_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "The calling merchant's profile and live deposit balance",
+        "tags": [
+          "merchant-api"
         ]
       }
     },

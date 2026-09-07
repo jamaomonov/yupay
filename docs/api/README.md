@@ -259,8 +259,8 @@ revoked ones included) and its response model has no `secret` field at all.
 naturally idempotent, and matches on `(merchant_id, key_id)` so one merchant's
 id in the path cannot revoke another's key.
 
-Requests to the machine API `/merchant/v1` (endpoints land with the rest of M2)
-carry `X-Merchant-Key`, `X-Merchant-Timestamp` and
+Requests to the machine API `/merchant/v1` carry `X-Merchant-Key`,
+`X-Merchant-Timestamp` and
 `X-Merchant-Signature = hex(HMAC_SHA256(secret, canonical))` where
 
 ```
@@ -280,3 +280,47 @@ Application-level `429`s now carry a `Retry-After` header: any `AppError`
 whose extras include an integer `retry_after` gets one
 (`core.errors.app_error_handler`), which is what the auth IP guard and the
 merchant per-key counter set.
+
+## Merchant machine API (M2) — `GET /merchant/v1/me`, `GET /merchant/v1/catalog`
+
+Mounted at **its own prefix**, not under `/api/v1`: it is a third-party
+contract with its own version number, so a breaking change means
+`/merchant/v2` rather than an edit, and tying it to the storefront's version
+would force somebody else's integration to move for our reasons. Both
+endpoints sit behind `merchants.auth.merchant_auth` — `401` unsigned, `403`
+`merchant_frozen` — and neither takes `Idempotency-Key`: AGENTS.md §9 scopes
+that header to state-changing endpoints, and these are reads. (Order creation
+is idempotent on the merchant's own `merchant_order_id` instead — spec §9.3.)
+
+`GET /merchant/v1/me` returns `{merchant_id, title, status, balance_usd}`.
+The balance is the deposit ledger's signed posting sum, read live; there is no
+balance column to drift from it.
+
+`GET /merchant/v1/catalog` returns brands → products → SKUs where
+`brand.visible_b2b AND sku.visible_b2b` **and** the SKU has a wholesale cost.
+Retail `active` is deliberately not read — it is the storefront's switch, and
+the B2B flags (migration 0068) are the merchant catalog's. A SKU with no
+`cost_usdt` is **absent, not free** (`pricing.effective_cost` returns `None`,
+meaning "not sellable B2B", spec §8.2), and brands or products left with
+nothing purchasable are omitted rather than returned empty. Each SKU carries
+`{sku_id, sku_code, name, price_usd, updated_at}`, `price_usd` being _that
+merchant's_ price from `merchants.pricing` — the one home for the formula.
+There are no price webhooks: merchants poll and watch `updated_at` (spec
+§8.4). Three SQL queries whatever the catalog's size, pinned by a test that
+measures two catalog sizes and asserts the counts are equal.
+
+**Money is a JSON string with exactly two decimals** on this surface
+(`"1.06"`) — `schemas.UsdAmount`. The ledger's `Numeric(20, 6)` sum would
+otherwise serialise as `"42.500000"` while an untouched account serialises as
+`"0"`, and a machine contract cannot hand a client two shapes for the same
+quantity.
+
+The coarse slowapi limiter (`rate_limit_default`, 600/minute) does apply to
+this prefix — `SlowAPIMiddleware` matches every route on the app — but it is
+keyed per IP **per endpoint**, while the `merchant-api` IP bucket is one
+counter for the whole prefix. Equal ceilings, so the single counter always
+fills first and the limit a merchant meets is the documented one, with its
+documented `Retry-After`.
+
+The full third-party contract, sample bodies included, is
+`apps/api/src/yupay/modules/merchants/README.md`.

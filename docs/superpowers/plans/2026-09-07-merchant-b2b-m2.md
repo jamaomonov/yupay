@@ -186,10 +186,30 @@ per-resource replay scopes (`f"merchants.sku_b2b:{sku_id}"` etc.).
 - Steam-gift SKUs must not appear (v1 non-goal) — they are excluded by
   `visible_b2b` already; assert it.
 
-- [ ] Steps: failing tests (auth required; balance matches a credit; catalog
+- [x] Steps: failing tests (auth required; balance matches a credit; catalog
       shows only b2b-visible priced SKUs; price equals `merchant_price` for
       that merchant's markup; N+1 guard) → implement → pass → `make gen-api`
       → commit `feat(api/merchants): profile and priced catalog over the machine API`
+
+**Deviations, recorded:**
+
+1. **A third file, `price_list.py`.** The catalog read model is business
+   logic, and AGENTS.md §6 keeps that out of routers; `machine_routes.py` is
+   the router alone. It sits beside `admin.py`, which plays the same role for
+   the admin surface, and is re-exported from the facade as
+   `build_price_list`.
+2. **Mounted in `bootstrap.py`, not `api/v1/__init__.py`** — the prefix is the
+   router's own, and `bootstrap` is where the composition root already mounts
+   `/api/v1` itself.
+3. **Brand and product `name` were added to the response.** The brief fixed
+   the SKU fields but left the two levels above them unspecified, and a
+   reseller needs a human label to build anything. Names come from the
+   catalog's default locale (`ru`) with the storefront's own fallback;
+   identifiers stay `slug` / `sku_code`. Two of the three SQL queries exist
+   for these.
+4. **The auth tests enumerate `/merchant/v1` from the mounted app** rather
+   than listing the two paths, so a Task 4/5 endpoint added without
+   `merchant_auth` fails here instead of shipping open.
 
 ---
 
