@@ -14,6 +14,12 @@ would close a cycle for any service-layer caller.
   from ``api.v1.deps.db_session`` so the endpoint behind it shares one
   transaction. Import it from ``merchants.auth`` directly.
 
+The same binding is why ``orders.service``'s status-change seam reaches for
+``merchants.webhooks`` as a submodule rather than through here: this facade
+imports routers, and ``merchants.orders`` imports ``orders.service``, so a
+facade import from inside that cycle would not resolve. The webhook producer
+is exported below all the same, for every caller that is not in the cycle.
+
 The credential *lifecycle* (``create_api_key`` / ``list_api_keys`` /
 ``revoke_api_key``) and the wire format (``signing``) have no such binding
 and are exported normally.
@@ -21,7 +27,8 @@ and are exported normally.
 Where each name comes from is an implementation detail this facade exists to
 hide — ``service`` (the account), ``credentials`` (its API keys), ``deposit``
 (its money), ``admin`` (the catalog B2B knobs and the outgoing-webhook
-configuration), ``orders``, ``price_list``, ``pricing``, ``signing``.
+configuration), ``webhooks`` (the outbox producer), ``orders``,
+``price_list``, ``pricing``, ``signing``.
 Importers see one surface and are unaffected when a file is split.
 """
 
@@ -76,9 +83,24 @@ from yupay.modules.merchants.signing import (
     signature_matches,
 )
 from yupay.modules.merchants.transactions import build as build_transactions_page
+from yupay.modules.merchants.webhooks import (
+    EVENT_BALANCE_CREDITED,
+    EVENT_ORDER_STATUS_CHANGED,
+    EVENT_TYPES,
+    WEBHOOK_QUEUE_CHANNEL,
+    on_balance_credited,
+    on_order_status_changed,
+)
+from yupay.modules.merchants.webhooks import (
+    enqueue as enqueue_webhook_event,
+)
 
 __all__ = [
     "DEPOSIT_CURRENCY",
+    "EVENT_BALANCE_CREDITED",
+    "EVENT_ORDER_STATUS_CHANGED",
+    "EVENT_TYPES",
+    "WEBHOOK_QUEUE_CHANNEL",
     "ConfiguredWebhook",
     "IssuedApiKey",
     "Merchant",
@@ -98,6 +120,7 @@ __all__ = [
     "deposit_balance",
     "disable_webhook",
     "effective_cost",
+    "enqueue_webhook_event",
     "expected_signature",
     "get_webhook",
     "list_api_keys",
@@ -105,6 +128,8 @@ __all__ = [
     "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",
+    "on_balance_credited",
+    "on_order_status_changed",
     "place_order",
     "read_order_status",
     "revoke_api_key",

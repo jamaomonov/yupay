@@ -64,6 +64,75 @@ created_at DESC)` narrows it to one merchant's log, which is enough at our
   volume; a real answer needs either an expression index on the payload key or
   a promoted column, and that is a decision for whoever builds the screen.
 
+## Outgoing webhooks — the producer (`webhooks.py`)
+
+M3a Task 3. `enqueue(db, *, merchant_id, event_type, payload)` writes one
+`pending` row **into the caller's transaction** and issues
+`pg_notify('merchant_webhook_queue', <delivery_id>)` inside it. Postgres
+delivers a NOTIFY on COMMIT and drops it on ROLLBACK, so an order that rolls
+back tells nobody and no nudge can outrun the fact behind it. The channel name
+is one constant, `WEBHOOK_QUEUE_CHANNEL` — Task 4's listener imports it rather
+than respelling the string, because a channel spelled twice is a queue nobody
+drains and no test fails.
+
+**A merchant with no webhook row and one whose row is disabled are the same
+outcome: nothing is written.** The outbox holds only deliverable work; a row
+the worker must skip makes the backlog meaningless and the cabinet's delivery
+log a lie.
+
+**A courtesy may never fail money.** The insert runs inside a SAVEPOINT, and
+an `IntegrityError`/`DataError` from it is swallowed — the order commits, the
+merchant misses one event, ops gets an `error` line. Three details make that
+safe rather than sloppy:
+
+- the swallow is _narrow_ (those two types only), so a broken session or a
+  programming error still propagates instead of hiding behind a plausible
+  commit;
+- it is a SAVEPOINT, not a bare `try` — a failed flush poisons a session until
+  something rolls back, and rolling back the _caller's_ transaction is the
+  exact harm the rule exists to prevent. The caller's own pending writes are
+  flushed **before** the savepoint opens so they can never sit inside it;
+- the log line carries the exception type and the SQLSTATE and **not** the
+  driver's message. A `NotNullViolation` renders `DETAIL: Failing row contains
+(…)` — the whole row, including the `url` snapshot, which is sized to hold a
+  path with a token in it. Reaching here is our bug (every column is NOT NULL
+  or length-bounded on purpose), so the type is enough to find it.
+
+### The payloads are a contract
+
+| Event                  | Body                                                           |
+| ---------------------- | -------------------------------------------------------------- |
+| `order.status_changed` | `merchant_order_id`, `order_id`, `status`, `at` (ISO 8601 UTC) |
+| `balance.credited`     | `amount_usd`, `balance_usd` — two-decimal **strings**          |
+
+Those key sets are exact, and the tests assert them as key sets rather than as
+"no key named `code`". A voucher code is a bearer instrument and a webhook body
+is written to the receiver's logs wholesale (spec §10), so the code is fetched
+over `GET /merchant/v1/orders/{merchant_order_id}` and never pushed — and an
+exact-shape assertion is what stops a future field addition from smuggling a
+value into a body somebody else logs. Money goes through the same
+`machine_schemas` annotations `/merchant/v1` uses, so a webhook body and the
+read endpoint cannot disagree about the shape of a balance.
+
+### Where events come from
+
+- **`order.status_changed`** — `orders.service.on_order_status_changed`, the
+  one seam every status transition in the system passes through (`orders`,
+  `payments` and `fulfillment` all call it; the three used to keep a verbatim
+  copy of the realtime nudge each). The webhook could not ride that existing
+  nudge: `publish_order_event` is a no-op for a NULL `user_id`, which every
+  merchant order has. A merchant order therefore emits `paid` and `fulfilling`
+  from the placement transaction and `delivered` from the worker's settle.
+- **`balance.credited`** — `deposit.credit_deposit`, in the same transaction as
+  the ledger posting. A **replay** of the admin's idempotency key books nothing
+  and so announces nothing: a `balance.credited` for money that did not move
+  would have a reseller crediting their own customer twice.
+
+Drawn in `docs/architecture/sequence-diagrams/merchant-webhook-emit.mmd`.
+
+Delivery — signing, backoff, the failure streak and the auto-disable — is Task
+4's `apps/worker`. Nothing in this module talks to a merchant.
+
 ## Deposit ledger
 
 The merchant's prepaid balance is a **ledger balance**, never a column.
@@ -1359,10 +1428,10 @@ and `GET /merchant/v1/catalog` (M2 Task 3), `POST /merchant/v1/orders`
 the whole machine API.** M3a Task 1 adds the webhook _storage_ and its
 admin-only configuration surface (`merchant_webhooks`,
 `merchant_webhook_deliveries`, migration 0071, and the four
-`/admin/merchants/{id}/webhook` endpoints above). Nothing is enqueued and
-nothing is delivered yet — emitting events is Task 3 and the worker that
-drains the outbox is Task 4, and the wire contract a merchant verifies
-against is written up in Task 6. Spec §9.1 also sketches a sixth row,
+`/admin/merchants/{id}/webhook` endpoints above), and Task 3 the producer
+that fills the outbox (`webhooks.py`, below). Nothing is **delivered** yet —
+the worker that drains the outbox is Task 4, and the wire contract a merchant
+verifies against is written up in Task 6. Spec §9.1 also sketches a sixth row,
 `POST /merchant/v1/validate/…`, which is deliberately not in v1: it would only
 be honest for the SKUs a real player-check provider covers, and a validator
 that approves whatever it is given is worse than no endpoint. Outbound
@@ -1374,8 +1443,8 @@ settles it by crediting the deposit by hand — which moves `balance_usd` and
 appears on `/transactions`, while the order's own `refunded_usd` stays
 `"0.00"`, because no surface can book a transaction against an order. And there
 is **no push of any kind** — poll the order read. (A configured webhook does
-not change that until M3a Tasks 3–4 land; setting a URL today stores an
-endpoint nobody delivers to.)
+not change that until M3a Task 4 lands; setting a URL today fills an outbox
+nobody drains yet.)
 
 The refund gap is written up with what it costs in
 `docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates" —

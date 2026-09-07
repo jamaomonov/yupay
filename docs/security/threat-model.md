@@ -270,6 +270,34 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
   operator who hand-edited a row to `{}` meaning "block this key" got the
   opposite, so the auth path logs a warning naming the key when it sees one.
 
+## Merchant outgoing webhooks — the payload (B2B, M3a Task 3, 2026-09-07)
+
+The SSRF row above covers the connection. This is what may travel over it.
+
+- **A voucher code never rides in a webhook body** (spec §10). The body says
+  `delivered`; the reseller then fetches the artifact over the authenticated
+  `GET /merchant/v1/orders/{merchant_order_id}`. The reason is not fastidious:
+  a webhook receiver logs the bodies it is sent, wholesale, and a voucher code
+  is a **bearer instrument** — whoever reads it can redeem it. A code in the
+  reseller's nginx log is our leak.
+  `order.status_changed` therefore carries exactly
+  `{merchant_order_id, order_id, status, at}` and `balance.credited` exactly
+  `{amount_usd, balance_usd}`. The tests assert the payload's **key set**, not
+  the absence of a key named `code`: an exact-shape assertion is what stops a
+  later field addition from smuggling a value into a body somebody else logs.
+- **The failure log omits the driver's message.** An enqueue whose INSERT
+  raises is swallowed so a courtesy cannot roll back a paid order, and it is
+  logged — but with the exception type and the SQLSTATE only. A Postgres
+  `NotNullViolation` renders `DETAIL: Failing row contains (…)`, i.e. the whole
+  row, including the `url` snapshot, and that column is sized (512) precisely
+  because a webhook path can carry a token. Reaching that branch is our own
+  bug — every column on the row is NOT NULL or length-bounded — so the type is
+  enough to find it and the row is never needed.
+- **What is still accepted.** The body is unencrypted at the receiver; it is
+  signed (Task 4) so a merchant can prove it came from us, which is
+  authenticity, not confidentiality. That is why the rule above is "nothing
+  worth stealing in the body" rather than "encrypt the body".
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

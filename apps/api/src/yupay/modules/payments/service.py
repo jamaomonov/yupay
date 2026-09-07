@@ -380,7 +380,7 @@ async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Pay
         )
     )
     await db.flush()
-    await _publish_status_changed(order)
+    await _publish_status_changed(db, order)
 
 
 #: Statuses an order reaches when we gave up waiting for the money. The
@@ -441,7 +441,7 @@ async def _settle_late_payment(
         )
     )
     await db.flush()
-    await _publish_status_changed(order)
+    await _publish_status_changed(db, order)
 
     log.warning(
         "payments.paid_after_expiry",
@@ -507,7 +507,7 @@ async def _mark_payment_succeeded(
             )
         )
         await db.flush()
-        await _publish_status_changed(order)
+        await _publish_status_changed(db, order)
         if order.purpose == "wallet_topup":
             await _complete_wallet_topup(db, order=order, payment=payment)
             return
@@ -535,24 +535,24 @@ async def _mark_payment_succeeded(
         # here if a "received, working on it" message is wanted later.
 
 
-async def _publish_status_changed(order: Order) -> None:
-    """Nudge the order's owner (if any) over the realtime channel.
+async def _publish_status_changed(db: AsyncSession, order: Order) -> None:
+    """Route a status change through the orders module's one seam.
 
-    No-op for guest orders (``order.user_id is None``) — that check lives in
-    ``publish_order_event`` itself. Imported lazily to avoid pulling the WS
-    route stack into every payment-webhook import.
+    This used to be a verbatim copy of the realtime nudge — one of three, and
+    three copies of "what happens when an order's status changes" is how the
+    next consequence gets added to two of them. The nudge itself, and the
+    merchant webhook beside it, now live in
+    ``orders.service.on_order_status_changed``; the local name is kept so the
+    call sites below read as they always did.
+
+    Imported lazily, as this module already imports ``orders.risk`` and
+    ``fulfillment.service``: the whole settlement neighbourhood reaches into
+    itself, and a module-level edge added here is one more way for an import
+    order to start mattering.
     """
-    from yupay.modules.realtime import api as realtime
+    from yupay.modules.orders import service as orders_svc
 
-    await realtime.publish_order_event(
-        order.user_id,
-        {
-            "type": "order.status_changed",
-            "orderId": order.id,
-            "status": order.status,
-            "at": order.updated_at.isoformat(),
-        },
-    )
+    await orders_svc.on_order_status_changed(db, order)
 
 
 async def _mark_payment_terminal(
@@ -956,7 +956,7 @@ async def _apply_refund_reversal(
     # Realtime parity: nudge a connected viewer when a full refund walks the
     # order to ``refunded`` (polling is off while the socket is up).
     if refunded_now:
-        await _publish_status_changed(order)
+        await _publish_status_changed(db, order)
 
 
 async def settle_admin(

@@ -1030,7 +1030,10 @@ async def mark_merchant_order_paid(
     Deliberately does **not** publish a realtime event. ``publish_order_event``
     is a no-op for a NULL ``user_id``, which every merchant order has, and
     calling it anyway would suggest a channel exists. Resellers learn about
-    status through the order read (Task 5) and, from M3, the outbound webhook.
+    status through the order read (M2 Task 5) and, since M3a Task 3, through
+    the outbound webhook — which is why the status-change seam is called here
+    with ``publish_realtime=False``: the webhook half is the whole point, and
+    the nudge half is the thing this paragraph declines.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -1074,6 +1077,61 @@ async def mark_merchant_order_paid(
         },
     )
     await db.flush()
+    await on_order_status_changed(db, order, publish_realtime=False)
+
+
+# ---------- the status-change seam ----------
+
+
+async def on_order_status_changed(
+    db: AsyncSession, order: Order, *, publish_realtime: bool = True
+) -> str | None:
+    """Everything that follows from an order's status having just changed.
+
+    **The one seam.** Every site that writes ``order.status`` calls this —
+    here, in ``payments.service`` and in ``fulfillment.service`` — so a fourth
+    consequence is added in one place rather than to three of the four sites
+    that happened to be remembered. Both of those modules used to keep their
+    own copy of the realtime nudge below; they now delegate here.
+
+    Two consequences today, and they are disjoint by construction: the
+    realtime nudge reaches a *retail owner*, and the webhook reaches a
+    *merchant*. A merchant order has ``user_id IS NULL`` (the actor CHECK on
+    ``orders`` makes the arms exclusive), so the nudge is already a no-op for
+    it — which is exactly why the webhook needed a seam of its own instead of
+    riding the existing publish.
+
+    Call it **after** the status and ``updated_at`` are set and, for the
+    webhook half, from inside the transaction that set them: the delivery row
+    and its ``pg_notify`` ride the caller's transaction, so an order that
+    rolls back tells nobody.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        order: The order, already carrying its new ``status`` and
+            ``updated_at``.
+        publish_realtime: Whether to emit the ``order.status_changed`` nudge.
+            ``False`` at the two sites that deliberately do not have one — the
+            fulfilment settle, which publishes ``order.delivered`` instead and
+            would otherwise start sending a connected storefront a second
+            event it never used to get, and the merchant paid transition,
+            which has no owner to nudge (see
+            :func:`mark_merchant_order_paid`). Retail behaviour is unchanged
+            at every site either way.
+
+    Returns:
+        The queued delivery's id when a merchant webhook was enqueued, else
+        ``None``. Callers ignore it; the tests do not.
+    """
+    if publish_realtime:
+        await _publish_status_changed(order)
+    if order.merchant_id is None:
+        return None
+    # Lazy: ``merchants`` imports this module (``merchants.orders`` places an
+    # order through it), so a module-level import here would close the cycle.
+    from yupay.modules.merchants import webhooks as merchant_webhooks
+
+    return await merchant_webhooks.on_order_status_changed(db, order)
 
 
 # ---------- realtime ----------
@@ -1386,7 +1444,7 @@ async def mark_order_failed_admin(
         db, order_id=order_id, reason="order_failed", actor=f"admin:{admin_id}"
     )
     await db.flush()
-    await _publish_status_changed(order)
+    await on_order_status_changed(db, order)
     return order
 
 
@@ -1429,7 +1487,7 @@ async def cancel_order_admin(db: AsyncSession, order_id: str, *, admin_id: str) 
         db, order_id=order_id, reason="order_cancelled", actor=f"admin:{admin_id}"
     )
     await db.flush()
-    await _publish_status_changed(order)
+    await on_order_status_changed(db, order)
     return order
 
 
@@ -1506,7 +1564,7 @@ async def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
     # Immediate realtime push (in-transaction, not after-commit) — same
     # rationale as the fulfilment saga: the client re-fetches on the nudge, so
     # a rare rollback after this point self-corrects on that refetch.
-    await _publish_status_changed(order)
+    await on_order_status_changed(db, order)
     return True
 
 
