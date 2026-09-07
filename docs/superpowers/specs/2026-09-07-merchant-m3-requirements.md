@@ -82,6 +82,20 @@ This is the first merchant refund path of any kind. M2 has none, which is why
 - **Retail parity.** Check whether the same supplier-refunded-us case exists on
   the retail path and what it does today, so the two do not diverge silently.
 
+## 3b. Record what the merchant quoted _(follow-up to item 1)_
+
+Nothing stores a merchant's `expected_price` on a successful order — it reaches
+only the _rejection_ body and the request digest. So after the drift rule
+changed we cannot measure, retrospectively, how often a merchant quoted low, or
+what the old rule had been costing.
+
+It matters less now that we charge our own price either way, but it still
+leaves two gaps: the runbook's regression query has to _recompute_ list price
+from cost and markup, which will produce false positives once
+`markup_adjustment_pp` is used for real; and a pilot integrator arguing about a
+charge has no record of what they sent. A quoted-price column on
+`order_items` (or the order) closes both cheaply.
+
 ## 4. Carried into M3 from M2's reviews (not owner decisions, but due)
 
 - `client_ip` trusts the first `X-Forwarded-For` entry with no peer check. That
