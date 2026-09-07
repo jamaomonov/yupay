@@ -54,6 +54,24 @@ def _test_env() -> Iterator[None]:
     # Reset the cached Settings so subsequent imports pick the test values up.
     from yupay.core import config as cfg
 
+    # And stop the suite reading a developer's ``.env`` at all.
+    #
+    # ``Settings.model_config`` sets ``env_file=".env"``, a *relative* path
+    # resolved against the process CWD. So `pytest` from `apps/api` finds no
+    # file and passes, while `pytest` from the repo root -- which is what both
+    # `make test-py` and ci.yml run -- loads the real file and fails seven
+    # tests that assert defaults: three Payme/Uzum config ones, three gifts
+    # feature-flag ones, and dev-login's default-credentials guard. CI is green
+    # only because a CI checkout has no ``.env``, so the disagreement is
+    # between a developer's machine and CI rather than between two developers.
+    #
+    # Pinning the file off makes every invocation match CI exactly: tests see
+    # the values set above plus whatever is genuinely exported, and nothing
+    # else. Anything a test needs from the environment it must set itself,
+    # which is the property the assertions were written assuming.
+    previous_env_file = cfg.Settings.model_config.get("env_file")
+    cfg.Settings.model_config["env_file"] = None
+
     cfg.get_settings.cache_clear()
 
     try:
@@ -64,6 +82,7 @@ def _test_env() -> Iterator[None]:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+        cfg.Settings.model_config["env_file"] = previous_env_file
         cfg.get_settings.cache_clear()
 
 
