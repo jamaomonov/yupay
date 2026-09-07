@@ -221,11 +221,15 @@ Handler logic (`yupay.modules.integrations.player_check.check_player_for_product
    which made it indistinguishable from an unconfigured supplier.
 3. Call `games_check_player(game_code, player_id, server_id, charname=None)`.
 4. Map the raw response to the public `PlayerCheckOut` shape
-   (`{status, name}`, dropping the internal `openid`). A 200 body whose
-   `valid != "valid"` maps to `status="invalid"` (the id genuinely does not
-   resolve). **Any** exception — timeout, non-2xx, malformed response — is
-   folded into `status="error"`, mirroring the existing admin route. The
-   endpoint never returns a 5xx for an upstream failure.
+   (`{status, name}`, dropping the internal `openid`). A 200 body carrying a
+   **recognised** verdict maps to it: `valid` to `status="valid"`, `invalid`
+   to `status="invalid"` (the id genuinely does not resolve). A body carrying
+   anything else — a renamed key, a shape we do not know — maps to
+   `status="error"`, not `invalid`; see the 2026-09-08 amendment above for why
+   that distinction is the point. **Any** exception — timeout, non-2xx,
+   malformed response — is likewise folded into `status="error"`, mirroring the
+   existing admin route. The endpoint never returns a 5xx for an upstream
+   failure.
 
 ### A second provider: waxpeer (Steam login)
 

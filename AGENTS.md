@@ -278,13 +278,18 @@ yupay/
   with a pending status; the client subscribes via WebSocket or polls. The rule protects
   the **money path**: a supplier call inside a request handler can leave the supplier paid
   with no record of it, and one slow upstream holds a pool connection somebody's checkout
-  needed. Three **advisory player-check** endpoints deviate from it deliberately, and they
-  are the whole list: `GET /admin/integrations/g2b/games/{game_code}/check-player`
-  (ADR-0019, the precedent), `POST /catalog/products/{id}/check-player` and
+  needed. Four **advisory pre-purchase lookups** deviate from it, and they are the whole
+  list: `GET /admin/integrations/g2b/games/{game_code}/check-player` (ADR-0019, the
+  precedent), `POST /catalog/products/{id}/check-player` and
   `POST /merchant/v1/validate/player` (both ADR-0031, which carries the justification and
   the conditions — advisory, off the order path, short timeout, breaker, Redis-cached, its
-  own rate-limit bucket). If you add a fourth, it needs an ADR entry saying why it clears
-  those conditions and a line here. A rule that does not name its exceptions stops being
+  own rate-limit bucket), and `POST /gifts/steam-profile`, which calls the Steam Web API
+  from its handler with a short-timeout client of its own. **The fourth has no ADR**: it
+  predates this list and clears some of ADR-0031's conditions (advisory, off the order
+  path, short timeout, Redis-cached, own bucket) but not the breaker. That gap is real and
+  is recorded here rather than left to be rediscovered; closing it means either an ADR
+  saying why a breaker is unnecessary there, or a breaker. If you add a fifth, it needs an
+  ADR entry saying why it clears those conditions and a line here. A rule that does not name its exceptions stops being
   read as a rule: this one was silently deviated from three times before the list existed.
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
