@@ -698,6 +698,31 @@ async def test_a_transport_failure_is_unreachable_not_a_policy_refusal(
     assert caught.value.delivery is Delivery.NOT_SENT, "nothing was written; retry is safe"
 
 
+async def test_a_handshake_timeout_is_a_connection_that_never_came_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``ConnectTimeout`` is NOT_SENT, not UNKNOWN.
+
+    ``httpx.ConnectTimeout`` is a subclass of ``httpx.TimeoutException``, so
+    the ``except`` order in ``_send`` decides which type it becomes. With the
+    generic timeout clause first, a TCP-handshake timeout — the commonest way
+    a socket never comes up — was reported as ``OutboundTimeoutError``
+    (``UNKNOWN``), and Task 4 would then refuse to retry blindly a request that
+    was never written. This pins the order.
+    """
+
+    def _hang_on_connect(_request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("handshake timed out")
+
+    _wire(monkeypatch, handler=_hang_on_connect)
+
+    with pytest.raises(outbound.ConnectFailedError) as caught:
+        await post_json(URL, body=b"{}")
+
+    assert not isinstance(caught.value, outbound.OutboundTimeoutError)
+    assert caught.value.delivery is Delivery.NOT_SENT, "the handshake never completed"
+
+
 async def test_a_broken_exchange_is_told_apart_from_a_connection_that_never_came_up(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

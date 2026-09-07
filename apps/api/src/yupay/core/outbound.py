@@ -367,15 +367,20 @@ async def _send(
                 # that must not replace the refusal that abandoned it.
                 with contextlib.suppress(httpx.HTTPError):
                     await response.aclose()
-        except httpx.TimeoutException as exc:
-            raise OutboundTimeoutError(f"{target.host} did not answer in time") from exc
         except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
             # Nothing was written: the socket or the handshake never came up.
             # This is the only transport failure a caller may retry blindly,
-            # which is why it is a different type from the one below.
+            # which is why it is a different type from the ones below.
+            #
+            # Ordered BEFORE ``TimeoutException`` on purpose: ``ConnectTimeout``
+            # is a subclass of it, so the other order makes this clause dead
+            # for the commonest way a socket never comes up, and a handshake
+            # timeout is then reported as UNKNOWN instead of NOT_SENT.
             raise ConnectFailedError(
                 f"{target.host} could not be reached: {type(exc).__name__}"
             ) from exc
+        except httpx.TimeoutException as exc:
+            raise OutboundTimeoutError(f"{target.host} did not answer in time") from exc
         except httpx.HTTPError as exc:
             raise ExchangeFailedError(
                 f"the exchange with {target.host} failed: {type(exc).__name__}"

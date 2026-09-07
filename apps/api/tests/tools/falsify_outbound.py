@@ -263,6 +263,31 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=("test_an_unexpected_failure_still_comes_out_typed",),
     ),
     Mutation(
+        name="connect_timeout_after_generic_timeout",
+        breaks="a handshake timeout is reported as UNKNOWN instead of NOT_SENT",
+        edits=(
+            (
+                OUTBOUND,
+                "        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:\n"
+                "            # Nothing was written: the socket or the handshake never came up.",
+                "        except httpx.TimeoutException as exc:\n"
+                '            raise OutboundTimeoutError(f"{target.host} did not answer in time") from exc\n'
+                "        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:\n"
+                "            # Nothing was written: the socket or the handshake never came up.",
+            ),
+            (
+                OUTBOUND,
+                "            ) from exc\n"
+                "        except httpx.TimeoutException as exc:\n"
+                '            raise OutboundTimeoutError(f"{target.host} did not answer in time") from exc\n'
+                "        except httpx.HTTPError as exc:",
+                "            ) from exc\n        except httpx.HTTPError as exc:",
+            ),
+        ),
+        tests=(UNIT,),
+        expect=("test_a_handshake_timeout_is_a_connection_that_never_came_up",),
+    ),
+    Mutation(
         name="one_transport_failure",
         breaks="a broken exchange is reported as a connection that never came up",
         edits=(
