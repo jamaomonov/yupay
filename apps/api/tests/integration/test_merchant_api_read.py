@@ -264,8 +264,10 @@ def _machine_calls() -> list[tuple[str, str]]:
     for route in create_app().routes:
         if not isinstance(route, APIRoute) or not route.path.startswith("/merchant/v1"):
             continue
-        method = next(m for m in ("GET", "POST", "PATCH", "PUT", "DELETE") if m in route.methods)
-        calls.append((method, re.sub(r"\{[^}]+\}", "placeholder", route.path)))
+        # Every method, not just the first: one path registered for both GET
+        # and POST would otherwise be half-swept.
+        for method in sorted(route.methods - {"HEAD", "OPTIONS"}):
+            calls.append((method, re.sub(r"\{[^}]+\}", "placeholder", route.path)))
     assert calls, "no /merchant/v1 routes found — the enumeration is wrong"
     return calls
 
@@ -393,6 +395,13 @@ async def test_catalog_returns_the_b2b_visible_tree(
     assert product["name"] == "Продукт 1"
     assert len(product["skus"]) == 1
     sku = product["skus"][0]
+    # Exact shape, not a subset: this is a frozen third-party contract, and a
+    # field added to ``MerchantSkuOut`` would otherwise be caught only by the
+    # OpenAPI drift check. Same reason ``/me`` asserts its whole body.
+    assert set(sku) == {"sku_id", "sku_code", "name", "price_usd", "updated_at"}
+    assert set(product) == {"product_id", "slug", "name", "skus"}
+    assert set(brand) == {"brand_id", "slug", "name", "products"}
+    assert set(body) == {"brands"}
     assert sku["sku_id"] == ids["vis-1"]
     assert sku["sku_code"] == "vis-1"
     assert sku["name"] == "60 UC"
@@ -475,6 +484,83 @@ async def test_a_brand_whose_only_sku_is_unpriced_does_not_appear_at_all(
     r = await _get(integration_client, key_id, secret, CATALOG_PATH)
 
     assert r.status_code == 200, r.text
+    assert r.json() == {"brands": []}
+
+
+async def test_a_sku_below_the_margin_floor_is_absent_rather_than_advertised(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A price the order path would refuse must never reach the price list.
+
+    Nothing floors ``b2b_markup_pct`` — the schemas accept ``ge=-999.99`` and
+    0068 adds no ``CHECK``, deliberately (spec §8.3 makes
+    ``violates_margin_floor`` the guard) — so both mistakes below are one admin
+    keystroke away. Publishing either would break a promise *after* the
+    reseller quoted their own customer off our number.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(
+        db_session,
+        n=1,
+        skus=[
+            # `0.5` typed for `5`: priced at 0.5% over cost, under the 2% floor.
+            {"sku_code": "fat-fingered", "b2b_markup_pct": Decimal("0.5")},
+            # Exactly at the floor is still sellable — the guard is `<`, not `<=`.
+            {"sku_code": "at-the-floor", "b2b_markup_pct": Decimal("2")},
+            {"sku_code": "healthy", "b2b_markup_pct": Decimal("7")},
+        ],
+    )
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+
+    assert r.status_code == 200, r.text
+    assert set(_skus_of(r.json())) == {"at-the-floor", "healthy"}
+
+
+async def test_a_minus_100_markup_withholds_the_sku_instead_of_publishing_it_free(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Ruling 3's outcome, reached through the markup rather than the cost.
+
+    ``merchant_price(cost, -100)`` is exactly ``0.00``. A costless SKU is
+    already absent; a SKU priced at zero by a typo'd markup must be too, or the
+    catalog advertises a free product.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(
+        db_session,
+        n=1,
+        skus=[
+            {"sku_code": "would-be-free", "b2b_markup_pct": Decimal("-100")},
+            {"sku_code": "priced", "b2b_markup_pct": Decimal("7")},
+        ],
+    )
+    await db_session.commit()
+    # The arithmetic the guard is protecting against, stated outright.
+    assert merchant_price(Decimal("1.000000"), Decimal("-100")) == Decimal("0.00")
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+
+    assert r.status_code == 200, r.text
+    skus = _skus_of(r.json())
+    assert set(skus) == {"priced"}
+    assert all(Decimal(sku["price_usd"]) > 0 for sku in skus.values())
+
+
+async def test_a_brand_whose_only_sku_fails_the_floor_does_not_appear_at_all(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """No empty shell is left behind when the floor is what removed the SKU."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(db_session, n=1, skus=[{"sku_code": "only", "b2b_markup_pct": Decimal("-50")}])
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+
     assert r.json() == {"brands": []}
 
 
@@ -639,9 +725,14 @@ async def test_the_catalog_query_count_does_not_scale_with_catalog_size(
 ) -> None:
     """Self-calibrating: the SAME count for one brand and for six.
 
-    Deliberately not an absolute number — a later ``selectinload`` would
-    silently move a magic constant, while an equality between two catalog
-    sizes only holds if nothing loads per row.
+    Be precise about what this does and does not catch. It catches a **per-row**
+    load — an N+1 — because that is the only thing that makes the second
+    measurement larger. It is deliberately blind to a *constant* extra query
+    (someone adding a fourth statement, or a ``selectinload`` that fires once
+    per request): those appear at both catalog sizes and cancel out. That is
+    the right trade — a constant query is not an N+1, and an absolute number
+    would be a magic constant that every legitimate change has to relitigate —
+    but it means this test is not a query *budget*.
     """
     merchant_id = await _new_merchant(integration_client, admin_headers)
     key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
@@ -698,22 +789,23 @@ async def test_the_machine_api_is_mounted_at_its_own_prefix_and_not_under_api_v1
     assert r.status_code == 404, r.text
 
 
-async def test_the_coarse_limiter_never_binds_before_the_machine_apis_own_guard() -> None:
-    """Ruling 1: slowapi still applies to this prefix — confirm it cannot bite first.
+async def test_the_two_documented_rate_limits_are_the_ones_configured() -> None:
+    """The merchant README publishes these numbers; they cannot drift quietly.
 
-    ``SlowAPIMiddleware`` matches every route on the app, not only
-    ``/api/v1``'s, so ``rate_limit_default`` covers ``/merchant/v1`` too. It is
-    keyed per IP **per endpoint** (``key_style="endpoint"``), while the
-    ``merchant-api`` IP bucket is a single counter for the whole prefix. With
-    equal ceilings and equal windows the single counter always fills first, so
-    the limit a merchant actually meets is the documented one — with its
-    documented ``Retry-After``. If anyone lowers ``rate_limit_default`` below
-    the bucket, that stops being true and this test says so.
+    Both axes appear in the module README's rate-limit table, which is a
+    third-party contract, so a change here is a change to something resellers
+    have already sized their pollers against.
+
+    This pins configuration only. The *behaviour* that matters — that the
+    coarse slowapi tier does not apply to this prefix at all, so a merchant
+    never receives its non-problem+json 429 — is pinned in
+    ``test_rate_limit.py::test_the_merchant_machine_api_is_exempt``, because
+    the global limiter is disabled under ``ENVIRONMENT=test`` and no assertion
+    here could see it.
     """
     from yupay.core.config import get_settings
 
     settings = get_settings()
-    assert settings.rate_limit_default == "600/minute"
     assert settings.auth_ip_guard_window_seconds == 60
     assert settings.auth_ip_guard_bucket_max["merchant-api"] == 600
     assert settings.merchant_api_key_rate_max == 600

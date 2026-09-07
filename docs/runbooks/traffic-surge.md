@@ -52,10 +52,14 @@ is the first thing to do.
 
 **The global limiter** (`bootstrap._build_limiter`) is in-process memory,
 `RATE_LIMIT_DEFAULT` per IP, bucketed **per route** (`key_style="endpoint"`).
-Every acquirer and supplier callback is exempt — see
-`bootstrap._exempt_provider_callbacks`, and do not remove an entry without
-reading ADR-0028's amendment: a 429 to G2B loses a delivery notification for
-good.
+Every acquirer and supplier callback is exempt, and so is every
+`/merchant/v1` route — see `bootstrap._exempt_self_authenticating_routes`, and
+do not remove an entry without reading ADR-0028's amendment: a 429 to G2B
+loses a delivery notification for good, and a coarse-tier 429 to a merchant is
+a non-RFC-7807 body on a published third-party contract. **A merchant
+complaining of 429s is therefore never this limiter** — it is the Redis
+`ip_guard` below (bucket `merchant-api`) or the per-key counter
+(`merchants:apikey:{key_id}`); both answer problem+json with `Retry-After`.
 
 **The ip guard** (`modules/auth/ip_guard.py`) is Redis-backed and throttles on
 two axes:

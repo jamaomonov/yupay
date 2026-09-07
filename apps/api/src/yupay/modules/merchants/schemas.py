@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import ipaddress
 from datetime import datetime
-from decimal import ROUND_DOWN, Decimal
+from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
 from typing import Annotated
 
 from pydantic import (
@@ -34,36 +34,53 @@ _MARKUP_BOUND = Decimal("999.99")
 _CENT = Decimal("0.01")
 
 
-def _whole_cents(value: Decimal) -> Decimal:
-    """Pin a USD amount to exactly two decimal places for the wire.
+def _cents_down(value: Decimal) -> Decimal:
+    """Quantize a USD **balance** to two decimals, rounding down.
 
-    Every value that reaches this is already a whole number of cents: prices
-    come from ``pricing.merchant_price``, which rounds up to the cent, and
-    ledger amounts are two-decimal by construction. So this is a *formatting*
-    step, not a rounding policy — it exists because the ledger's
-    ``Numeric(20, 6)`` sum serialises as ``"42.500000"`` while an
-    account with no postings at all serialises as ``"0"``, and a machine
-    contract cannot hand a client two shapes for the same quantity.
-
-    ``ROUND_DOWN`` for the impossible case: if a sub-cent residue ever did
-    appear, the balance we advertise must not exceed what the merchant can
-    actually spend, or an order they were told they could afford fails with
-    ``insufficient_deposit``.
+    Advertising more than a merchant holds means an order they were told they
+    could afford fails with ``insufficient_deposit``.
 
     Args:
         value: The amount, at any scale.
 
     Returns:
-        The same amount quantized to two decimal places.
+        The amount at two decimal places, never rounded up.
     """
     return value.quantize(_CENT, rounding=ROUND_DOWN)
 
 
-#: A USD amount on the wire: ``Decimal`` in Python, a two-decimal JSON string
-#: out (Pydantic serialises ``Decimal`` as a string in JSON mode). Never a
-#: float — IEEE-754 is how a price becomes ``1.0599999999999999`` on the
-#: merchant's side.
-UsdAmount = Annotated[Decimal, AfterValidator(_whole_cents)]
+def _cents_up(value: Decimal) -> Decimal:
+    """Quantize a USD **price** to two decimals, rounding up.
+
+    The direction ``pricing.merchant_price`` already uses, and for its reason:
+    rounding a price down erases margin a cent at a time, and would advertise
+    below what the order path charges.
+
+    Args:
+        value: The amount, at any scale.
+
+    Returns:
+        The amount at two decimal places, never rounded down.
+    """
+    return value.quantize(_CENT, rounding=ROUND_CEILING)
+
+
+# Money on ``/merchant/v1`` is a two-decimal JSON string: ``Decimal`` in
+# Python, which Pydantic serialises as a string in JSON mode, never a float
+# (IEEE-754 is how a price becomes ``1.0599999999999999`` on the merchant's
+# side). The two-decimal step is needed regardless of rounding — the ledger's
+# ``Numeric(20, 6)`` sum serialises as ``"42.500000"`` while an account with
+# no postings at all serialises as ``"0"``, and a machine contract cannot hand
+# a client two shapes for one quantity. Two annotations rather than one
+# because the *direction* is a policy, and these two quantities need opposite
+# ones; both are no-ops on today's values, and exist so that a widened quantum
+# cannot make them silently agree on the wrong one.
+
+#: A USD deposit balance on the wire.
+UsdBalance = Annotated[Decimal, AfterValidator(_cents_down)]
+
+#: A USD price on the wire.
+UsdPrice = Annotated[Decimal, AfterValidator(_cents_up)]
 
 
 class MerchantCreateIn(BaseModel):
@@ -306,7 +323,7 @@ class MerchantProfileOut(BaseModel):
     merchant_id: str
     title: str
     status: str
-    balance_usd: UsdAmount
+    balance_usd: UsdBalance
 
 
 class MerchantSkuOut(BaseModel):
@@ -325,7 +342,7 @@ class MerchantSkuOut(BaseModel):
     #: untranslated, so unlike the brand and product names above it this is
     #: the same string in every locale.
     name: str
-    price_usd: UsdAmount
+    price_usd: UsdPrice
     updated_at: datetime
 
 
@@ -390,5 +407,6 @@ __all__ = [
     "MerchantTxnOut",
     "SkuB2bOut",
     "SkuB2bPatchIn",
-    "UsdAmount",
+    "UsdBalance",
+    "UsdPrice",
 ]

@@ -65,3 +65,47 @@ async def test_rate_limit_off_by_default_in_tests(integration_client: AsyncClien
     for _ in range(10):
         r = await integration_client.get("/api/v1/payments/providers")
         assert r.status_code == 200
+
+
+async def test_the_merchant_machine_api_is_exempt(limited_client: AsyncClient) -> None:
+    """``/merchant/v1`` must never answer the coarse limiter's 429.
+
+    Behavioural, not configurational: the limiter is off under
+    ``ENVIRONMENT=test``, so a test that only asserts the settings would pass
+    with the exemption deleted. Here the limit is 3/minute and live — proved by
+    ``test_request_over_limit_gets_429`` against the same fixture — and these
+    calls still all reach the auth dependency.
+
+    Why it matters: both tiers are 600/60 s in production, ``limits`` allows
+    ``count <= limit`` where ``ip_guard.hit_counter`` returns ``count > limit``,
+    and ``SlowAPIMiddleware`` runs before any dependency — so a caller
+    concentrated on one endpoint (which is what the module README tells
+    resellers to do with ``/catalog``: poll it, there are no price webhooks)
+    would have got slowapi's handler body instead of ours. That body has no
+    ``type`` and no ``code``, on a contract we published to third parties.
+
+    Enumerated from the app so a Task 4/5 endpoint is covered the day it is
+    written — ``_exempt_self_authenticating_routes`` walks the same router.
+    """
+    import re
+
+    from fastapi.routing import APIRoute
+    from yupay.bootstrap import create_app
+
+    routes = [
+        (
+            next(m for m in ("GET", "POST", "PATCH", "PUT", "DELETE") if m in route.methods),
+            route.path,
+        )
+        for route in create_app().routes
+        if isinstance(route, APIRoute) and route.path.startswith("/merchant/v1")
+    ]
+    assert routes, "no /merchant/v1 routes found — the enumeration is wrong"
+
+    for method, path in routes:
+        for _ in range(10):
+            r = await limited_client.request(method, re.sub(r"\{[^}]+\}", "placeholder", path))
+            # The dependency's own 401, in problem+json with a `code` —
+            # never slowapi's `{"error": "Rate limit exceeded: ..."}`.
+            assert r.status_code == 401, f"{method} {path}: {r.status_code} {r.text}"
+            assert r.json()["code"] == "missing_credentials", f"{method} {path}: {r.text}"

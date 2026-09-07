@@ -232,8 +232,12 @@ yupay/
   `ip_guard` on credential endpoints. Caddy's `rate_limit` needs a community module
   and a custom build, so it was declined — the Caddyfile says so at the site block.
   The edge tier is Cloudflare's WAF, configured in its dashboard, not in this repo.
-  **Provider and supplier callbacks are exempt on purpose**: a 429 to an acquirer
-  costs money and buys nothing (`bootstrap._exempt_provider_callbacks`).
+  **The self-authenticating machine surfaces are exempt on purpose**
+  (`bootstrap._exempt_self_authenticating_routes` — one audited list): a 429 to an
+  acquirer costs money and buys nothing, and `/merchant/v1` already carries its own
+  two-axis guard whose 429 is RFC 7807 with `Retry-After`, which the coarse tier's
+  is not. Everything on that list authenticates its own caller, so the per-IP limit
+  was never the control protecting it.
 - `gitleaks` runs pre-commit; CodeQL is wired up but manual-only while the repo is private without GHAS (the scan API rejects it) — switch `codeql.yml` to a weekly cron when the repo goes public or GHAS is purchased.
 
 ---

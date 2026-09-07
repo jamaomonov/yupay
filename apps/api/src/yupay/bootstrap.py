@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.routing import APIRoute
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -79,26 +80,49 @@ def _build_limiter(settings: Settings) -> Limiter:
     )
 
 
-def _exempt_provider_callbacks(limiter: Limiter) -> None:
-    """Take every acquirer and supplier callback out of the per-IP limiter.
+def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
+    """Take the machine-to-machine surfaces out of the coarse per-IP limiter.
 
-    A 429 here costs money rather than buying safety. G2B fires each callback
-    once with a single retry, so a throttled one is a delivery notification
-    lost for good and the order sits at ``fulfilling`` until a reconcile sweep
-    finds it. Payme reads a 429 as a transport failure and retries, which
-    produces more 429s — and its whole documented source range is sixteen
-    addresses sharing one bucket, four calls per order.
+    Two groups, one argument: **every route here authenticates its own caller,
+    so the per-IP limit was never the control protecting it** — and each has a
+    concrete reason why the coarse tier's 429 is worse than no 429 at all.
 
-    Nothing is weakened by this: each of these routes authenticates the caller
-    itself (JSON-RPC Basic auth, an MD5 signature, a path secret), and Payme is
-    additionally IP-restricted at Caddy. The per-IP limit was never the control
-    protecting them.
+    **Acquirer and supplier callbacks.** A 429 here costs money rather than
+    buying safety. G2B fires each callback once with a single retry, so a
+    throttled one is a delivery notification lost for good and the order sits
+    at ``fulfilling`` until a reconcile sweep finds it. Payme reads a 429 as a
+    transport failure and retries, which produces more 429s — and its whole
+    documented source range is sixteen addresses sharing one bucket, four
+    calls per order. They authenticate with JSON-RPC Basic auth, an MD5
+    signature or a path secret; Payme is additionally IP-restricted at Caddy.
 
-    Registered here, as a list, rather than as ``@limiter.exempt`` decorators
-    spread over four modules: the limiter is built per app instance, the routes
-    are declared at import time, and a security-relevant exemption is easier to
-    audit when every entry sits in one place. ``exempt()`` keys off
-    ``module.name``, which is what the middleware resolves per request.
+    **The merchant machine API** (``/merchant/v1``, spec §9). It authenticates
+    with an HMAC signature and carries its own Redis-backed two-axis guard
+    (per source IP on the ``merchant-api`` bucket, per ``key_id`` once the
+    signature verifies), which answers RFC 7807 with a ``Retry-After`` — the
+    shape the module README promises third parties. Leaving the coarse tier on
+    top of that does not add a limit so much as *replace* one: both tiers are
+    600/60 s, ``SlowAPIMiddleware`` runs before any dependency, and ``limits``
+    allows ``count <= limit`` while ``ip_guard.hit_counter`` returns
+    ``count > limit`` — so on a caller concentrated against one endpoint they
+    trip on the same request and the middleware gets there first. That caller
+    is not hypothetical: the README tells resellers to **poll** ``/catalog``
+    because there are no price webhooks. What they would get is slowapi's own
+    handler body — ``{"error": "Rate limit exceeded: …"}``, no ``type``, no
+    ``code``, not problem+json — from an endpoint whose error contract we
+    published and cannot revise without a ``/merchant/v2``.
+
+    Registered here, as one list, rather than as ``@limiter.exempt``
+    decorators spread over five modules: the limiter is built per app
+    instance, the routes are declared at import time, and a security-relevant
+    exemption is easier to audit when every entry sits in one place.
+    ``exempt()`` keys off ``module.name``, which is what the middleware
+    resolves per request.
+
+    The machine API is exempted by **walking its router** rather than by
+    naming its handlers, so an endpoint added in a later task is covered the
+    day it is written. The callbacks stay an explicit list: they live in five
+    different modules and each is its own deliberate decision.
     """
     from yupay.api.webhooks.g2b import receive_g2b_webhook
     from yupay.modules.click.routes import click_complete, click_prepare
@@ -121,6 +145,12 @@ def _exempt_provider_callbacks(limiter: Limiter) -> None:
         uzum_status,
         click_prepare,
         click_complete,
+        # Every ``/merchant/v1`` handler, present and future.
+        *(
+            route.endpoint
+            for route in merchant_machine_router.routes
+            if isinstance(route, APIRoute)
+        ),
     ):
         # slowapi ships no types for this decorator; the return value is a
         # wrapper we discard — the side effect on the exempt set is the point.
@@ -254,7 +284,7 @@ def create_app() -> FastAPI:
     )
 
     limiter = _build_limiter(settings)
-    _exempt_provider_callbacks(limiter)
+    _exempt_self_authenticating_routes(limiter)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)  # type: ignore[arg-type]
     app.add_middleware(SlowAPIMiddleware)

@@ -490,12 +490,24 @@ cursor you have to reconcile.
   the names are for showing to people and may be edited.
 - **`updated_at`** is that SKU's own last-modified stamp. **There are no price
   webhooks:** poll this endpoint (once a minute is plenty — see the rate
-  limits) and act on the SKUs whose `updated_at` moved.
-- A SKU appears only if it is B2B-visible **and** has a wholesale cost on
-  file. A SKU with no cost is **not sellable**, so it is absent rather than
-  priced at zero — and an order for it would be rejected. Likewise a brand or
-  product with nothing purchasable under it is absent entirely, so you never
-  have to iterate past empty shells.
+  limits) and act on the SKUs whose `updated_at` moved. One caveat, so you can
+  design around it: `updated_at` tracks the **SKU row**, so it does not move
+  when a discount negotiated for your account changes — that adjustment
+  reprices your whole catalog without touching any SKU. It is unused today
+  (every account prices off the flat per-SKU markup) and support tells you
+  before it is switched on for you; if you cache prices, re-read the full list
+  on that notice as well as on `updated_at`.
+- **A SKU appears only if it is currently sellable to you.** It must be
+  B2B-visible, have a wholesale cost on file, and price above our minimum
+  margin. A SKU failing any of those is **absent rather than cheap** — never
+  listed at zero, and never listed at a price an order would then be rejected
+  for. Likewise a brand or product with nothing purchasable under it is absent
+  entirely, so you never have to iterate past empty shells.
+- **Read an absence as "not currently sellable", not as "deleted".** A SKU can
+  leave the list and come back — because it went out of B2B distribution, or
+  because its pricing was misconfigured on our side and then fixed. Key your
+  own catalog on `sku_id`, and treat a missing id as unavailable rather than
+  removing your mapping for it.
 - Ordering is ours (curated), stable, and safe to present as-is.
 - An empty catalog is `{"brands": []}`, never a `404`.
 

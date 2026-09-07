@@ -211,6 +211,24 @@ per-resource replay scopes (`f"merchants.sku_b2b:{sku_id}"` etc.).
    than listing the two paths, so a Task 4/5 endpoint added without
    `merchant_auth` fails here instead of shipping open.
 
+**Fix round 1 (review), and one change it forced outside this task's files:**
+
+- `/merchant/v1` is **exempt from the coarse slowapi limiter**. The original
+  reading — that the coarse tier applied but could never bind first — holds
+  only when a caller's traffic spreads across endpoints, and fails for the
+  polling caller the README asks for. See ADR-0028's 2026-09-07 amendment.
+- `bootstrap._exempt_provider_callbacks` is now
+  `_exempt_self_authenticating_routes`: the list is no longer acquirer-only,
+  and its shared argument (every route on it authenticates its own caller)
+  generalises cleanly. The rename touched `AGENTS.md` §9, ADR-0028 and
+  `runbooks/traffic-surge.md`, which all named the old symbol.
+- `price_list.build` now applies `pricing.violates_margin_floor`, so the price
+  list cannot advertise a price the order path will refuse — or a free SKU via
+  a `-100` markup.
+- `module-map.md`'s absolute "No cross-module SQL joins" was softened to match
+  what the codebase actually does (read-only joins for a read model, with the
+  four precedents named); the write invariant is unchanged and absolute.
+
 ---
 
 ### Task 4: `POST /merchant/v1/orders` — the money path

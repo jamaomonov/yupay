@@ -27,18 +27,29 @@ own ``merchant_order_id`` rather than on the header — spec §9.3, and the
 reason is in ``auth.py``: a signature is not single-use, so endpoint
 idempotency is the only thing that makes a replayed mutation harmless.
 
-## Rate limiting, for the record
+## Rate limiting: this prefix is exempt from the coarse tier
 
-Two Redis counters live in the dependency (per source IP on the
-``merchant-api`` bucket, per ``key_id`` once the signature verifies), both
-600/60 s. On top of them the app-wide slowapi limiter applies
-``rate_limit_default`` — also 600/minute, but keyed **per IP per endpoint**
-(``key_style="endpoint"``), and in-process rather than in Redis. Sized the
-same on purpose: because the IP bucket is one counter for the whole prefix
-while slowapi's is one per endpoint, slowapi's ceiling is never the tighter
-of the two, and the guard a merchant actually meets is always the documented
-one. Checked against ``SlowAPIMiddleware``, which matches every route on the
-app and not only ``/api/v1``'s, so the coarse tier does cover this prefix.
+Throttling here is the dependency's two Redis counters and nothing else: per
+source IP on the ``merchant-api`` bucket, and per ``key_id`` once the
+signature verifies, both 600/60 s, both answering RFC 7807 with a
+``Retry-After``.
+
+The app-wide slowapi limiter does **not** apply — ``bootstrap.
+_exempt_self_authenticating_routes`` walks this router and exempts every
+handler on it. That is a correction of an earlier reading, and the reasoning
+is worth keeping because it is easy to get wrong twice. ``SlowAPIMiddleware``
+matches every route on the app, not only ``/api/v1``'s, so the coarse tier
+did cover this prefix. It was thought harmless because it buckets **per IP
+per endpoint** while our IP guard is one counter for the whole prefix — true
+whenever a caller's traffic spreads across endpoints, and false in exactly
+the case that matters: with both tiers at 600/60 s, a caller concentrated on
+one endpoint advances both counters at the same rate, ``limits`` allows
+``count <= limit`` where ``ip_guard.hit_counter`` returns ``count > limit``,
+and the middleware runs before any dependency — so they trip on the same
+request and slowapi wins it. The README tells resellers to poll ``/catalog``
+because there are no price webhooks, which is that case by design, and what
+they would get is slowapi's handler body: no ``type``, no ``code``, not
+problem+json, from an endpoint whose error contract we published.
 """
 
 from __future__ import annotations
@@ -54,7 +65,18 @@ from yupay.modules.merchants.auth import merchant_auth
 from yupay.modules.merchants.models import Merchant
 from yupay.modules.merchants.schemas import MerchantCatalogOut, MerchantProfileOut
 
-router = APIRouter(prefix="/merchant/v1", tags=["merchant-api"])
+#: ``dependencies`` on the router rather than only on each handler: a route
+#: added later without an ``AuthedMerchant`` parameter is still authenticated,
+#: so forgetting the parameter costs a broken handler and not an open
+#: endpoint. The handlers keep the parameter because they need the row;
+#: FastAPI caches a sub-dependency within a request, so ``merchant_auth``
+#: still runs exactly once. ``test_no_machine_endpoint_answers_an_unsigned_request``
+#: sweeps the mounted app either way.
+router = APIRouter(
+    prefix="/merchant/v1",
+    tags=["merchant-api"],
+    dependencies=[Depends(merchant_auth)],
+)
 
 AuthedMerchant = Annotated[Merchant, Depends(merchant_auth)]
 Db = Annotated[AsyncSession, Depends(db_session)]

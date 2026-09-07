@@ -62,13 +62,32 @@ a network error — indistinguishable from an outage, so the clients' default
 retry fired three more times. The limiter was multiplying the traffic it
 existed to shed.
 
-**Provider callbacks are exempt.** Only `/healthz` and `/readyz` were. A 429 to
-an acquirer or a supplier costs money and buys nothing: G2B fires each callback
-once with a single retry, so a throttled one loses the delivery notification
-for good, and Payme reads a 429 as a transport failure and retries into it.
-Every one of these routes authenticates its caller itself. The exempt list
-lives in `bootstrap._exempt_provider_callbacks` so it can be audited in one
+**Self-authenticating machine surfaces are exempt.** Only `/healthz` and
+`/readyz` were. A 429 to an acquirer or a supplier costs money and buys
+nothing: G2B fires each callback once with a single retry, so a throttled one
+loses the delivery notification for good, and Payme reads a 429 as a transport
+failure and retries into it. Every one of these routes authenticates its
+caller itself. The exempt list lives in
+`bootstrap._exempt_self_authenticating_routes` so it can be audited in one
 place.
+
+**Amended 2026-09-07 (M2 Task 3): `/merchant/v1` joined that list**, and the
+reason generalises the rule rather than adding a special case. The merchant
+machine API authenticates with an HMAC signature and carries its own
+Redis-backed two-axis guard, whose 429 is RFC 7807 with `Retry-After` — the
+shape its module README promises third parties. Keeping the coarse tier on top
+did not add a ceiling so much as replace one: both are 600/60 s, `limits`
+allows `count <= limit` where `ip_guard.hit_counter` returns `count > limit`,
+and this middleware runs before any dependency, so a caller concentrated on a
+single endpoint trips both on the same request and the middleware answers
+first. That caller is the documented one — resellers are told to poll
+`/catalog`, because there are no price webhooks — and what they would have got
+is this library's handler body: `{"error": "Rate limit exceeded: …"}`, with no
+`type` and no `code`, on a contract that cannot be revised inside `v1`. The
+generalisation worth carrying forward: **where a surface already has a
+tighter, better-shaped limiter of its own, the coarse tier can only degrade
+the error contract.** The machine API is exempted by walking its router rather
+than by naming handlers, so endpoints added later are covered when written.
 
 ### Positive consequences
 
@@ -85,7 +104,9 @@ place.
 ## Validation
 
 `tests/integration/test_rate_limit.py`: a 3/minute app returns 429 on the 4th
-request, health probes stay exempt, and the default test app is unthrottled.
+request, health probes stay exempt, every `/merchant/v1` route answers its own
+401 rather than a 429 after ten calls against a 3/minute limit (behavioural —
+deleting the exemption fails it), and the default test app is unthrottled.
 `tests/integration/test_rate_limiter_shape.py` covers the three amendments: two
 URLs of one route share a budget, a 429 carries the CORS header, and no
 provider callback is ever throttled.

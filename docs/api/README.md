@@ -297,30 +297,57 @@ The balance is the deposit ledger's signed posting sum, read live; there is no
 balance column to drift from it.
 
 `GET /merchant/v1/catalog` returns brands → products → SKUs where
-`brand.visible_b2b AND sku.visible_b2b` **and** the SKU has a wholesale cost.
-Retail `active` is deliberately not read — it is the storefront's switch, and
-the B2B flags (migration 0068) are the merchant catalog's. A SKU with no
-`cost_usdt` is **absent, not free** (`pricing.effective_cost` returns `None`,
-meaning "not sellable B2B", spec §8.2), and brands or products left with
-nothing purchasable are omitted rather than returned empty. Each SKU carries
-`{sku_id, sku_code, name, price_usd, updated_at}`, `price_usd` being _that
-merchant's_ price from `merchants.pricing` — the one home for the formula.
-There are no price webhooks: merchants poll and watch `updated_at` (spec
-§8.4). Three SQL queries whatever the catalog's size, pinned by a test that
-measures two catalog sizes and asserts the counts are equal.
+`brand.visible_b2b AND sku.visible_b2b` **and** the SKU is sellable. Retail
+`active` is deliberately not read — it is the storefront's switch, and the
+B2B flags (migration 0068) are the merchant catalog's. Two things make a SKU
+unsellable, and both make it **absent rather than cheap**:
+
+- no `cost_usdt` — `pricing.effective_cost` returns `None`, meaning "not
+  sellable B2B" (spec §8.2);
+- a price that fails `pricing.violates_margin_floor`. Nothing floors
+  `b2b_markup_pct` (the schemas accept `ge=-999.99` and 0068 adds no `CHECK`,
+  deliberately — spec §8.3 makes the floor an application guard), so `0.5`
+  typed for `5` would publish a SKU every order then refuses, and `-100`
+  would publish a **free** one. Applying the floor here as well as at order
+  time makes the two agree by construction. The withheld codes are logged
+  once per request as `merchant_catalog_below_margin_floor`.
+
+Brands or products left with nothing purchasable are omitted rather than
+returned empty. Each SKU carries `{sku_id, sku_code, name, price_usd,
+updated_at}`, `price_usd` being _that merchant's_ price from
+`merchants.pricing` — the one home for the formula. There are no price
+webhooks: merchants poll and watch `updated_at` (spec §8.4). Three SQL
+queries whatever the catalog's size, pinned by a test that measures two
+catalog sizes and asserts the counts are equal — which catches a per-row
+load, not a constant extra query.
 
 **Money is a JSON string with exactly two decimals** on this surface
-(`"1.06"`) — `schemas.UsdAmount`. The ledger's `Numeric(20, 6)` sum would
-otherwise serialise as `"42.500000"` while an untouched account serialises as
-`"0"`, and a machine contract cannot hand a client two shapes for the same
-quantity.
+(`"1.06"`) — `schemas.UsdBalance` and `schemas.UsdPrice`, separate because a
+balance must round **down** (never advertise more than the merchant can
+spend) and a price **up** (the direction `pricing.merchant_price` already
+uses, so the advertised price can never sit below what the order charges).
+The formatting itself is needed regardless: the ledger's `Numeric(20, 6)` sum
+would otherwise serialise as `"42.500000"` while an untouched account
+serialises as `"0"`, and a machine contract cannot hand a client two shapes
+for the same quantity.
 
-The coarse slowapi limiter (`rate_limit_default`, 600/minute) does apply to
-this prefix — `SlowAPIMiddleware` matches every route on the app — but it is
-keyed per IP **per endpoint**, while the `merchant-api` IP bucket is one
-counter for the whole prefix. Equal ceilings, so the single counter always
-fills first and the limit a merchant meets is the documented one, with its
-documented `Retry-After`.
+**`/merchant/v1` is exempt from the coarse slowapi limiter**
+(`bootstrap._exempt_self_authenticating_routes`, which walks the router so
+later endpoints are covered on the day they are written). Throttling here is
+the dependency's two Redis counters and nothing else. The earlier reading —
+that the coarse tier applied but could never bind first, because it buckets
+per IP **per endpoint** while the `merchant-api` bucket is one counter for
+the whole prefix — is true only when a caller's traffic spreads across
+endpoints. With both tiers at 600/60 s, a caller concentrated on one endpoint
+advances both counters at the same rate; `limits` allows `count <= limit`
+where `ip_guard.hit_counter` returns `count > limit`; and `SlowAPIMiddleware`
+runs before any dependency, so they trip on the same request and the
+middleware wins it. That caller is the documented one — the module README
+tells resellers to poll `/catalog` because there are no price webhooks — and
+slowapi's handler body carries no `type` and no `code`, which is a contract
+we published and cannot revise inside `v1`. The exemption's argument is the
+list's own: every route on it authenticates its own caller, so the per-IP
+limit was never the control protecting it.
 
 The full third-party contract, sample bodies included, is
 `apps/api/src/yupay/modules/merchants/README.md`.

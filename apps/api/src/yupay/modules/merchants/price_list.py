@@ -26,6 +26,21 @@ order path rejects it for the same reason. Pricing it from a fallback figure
 would either give away margin or look like price-gouging, depending on which
 way the fallback happened to be wrong.
 
+**A SKU whose price fails the margin floor is absent for the same reason.**
+Nothing floors ``b2b_markup_pct``: the schemas accept ``ge=-999.99`` and 0068
+adds no ``CHECK``, deliberately — spec §8.3 makes
+``pricing.violates_margin_floor`` the guard instead, and Task 4 will reject an
+order below it. A price list that advertised those SKUs anyway would be a
+promise the order path breaks *after* the reseller has quoted their own
+customer off our number. Two reachable mistakes produce it: ``0.5`` typed for
+``5`` (published at 0.5% over cost, then every order refused), and ``-100``,
+which makes ``merchant_price`` return ``0.00`` and would publish a **free**
+SKU — Ruling 3's outcome reached through the markup instead of the cost. So
+the floor is applied here as well, and the catalog and the order path cannot
+disagree by construction. Support finds the misconfigured rows through the
+``merchant_catalog_below_margin_floor`` warning, one line per request listing
+every SKU it dropped.
+
 Steam-gift SKUs are a v1 non-goal and need no rule of their own: the single
 ``steam-gift`` SKU is not ``visible_b2b``, so the filter above already
 excludes it. ``tests/integration/test_merchant_api_read.py`` pins that rather
@@ -61,6 +76,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import select
 from sqlalchemy.orm import raiseload
 
+from yupay.core.config import get_settings
+from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import (
     Brand,
     BrandTranslation,
@@ -76,6 +93,8 @@ from yupay.modules.merchants.schemas import (
     MerchantProductOut,
     MerchantSkuOut,
 )
+
+log = get_logger("yupay.merchants.price_list")
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -117,14 +136,19 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     code), so a merchant mirroring our catalog gets a meaningful and repeatable
     sequence rather than Postgres' physical order.
 
+    Reads ``settings.merchant_margin_floor_pct`` and passes it to
+    ``pricing.violates_margin_floor`` — the pricing functions stay pure and
+    never read settings themselves.
+
     Args:
         db: Session. The caller owns the transaction.
         merchant: The authenticated merchant — its ``markup_adjustment_pp`` is
             what makes these prices *this* merchant's rather than anyone's.
 
     Returns:
-        The catalog tree. Empty ``brands`` when nothing is B2B-visible, and no
-        brand or product ever comes back without a purchasable SKU under it.
+        The catalog tree, holding only SKUs this merchant can actually buy at
+        the price shown. Empty ``brands`` when nothing qualifies, and no brand
+        or product ever comes back without a purchasable SKU under it.
     """
     rows = (
         await db.execute(
@@ -180,6 +204,8 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
         ).all()
     )
 
+    floor_pct = get_settings().merchant_margin_floor_pct
+    below_floor: list[str] = []
     # ``dict`` preserves insertion order, so the SQL ORDER BY above is the
     # order the tree comes out in — one sort, with no chance of a second one
     # disagreeing with it.
@@ -188,6 +214,11 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     for brand_id, brand_slug, product_id, product_slug, sku in rows:
         cost = pricing.effective_cost(sku)
         if cost is None:  # pragma: no cover - the WHERE clause already excludes these
+            continue
+        price = pricing.merchant_price(cost, pricing.merchant_markup_pct(sku, merchant))
+        if pricing.violates_margin_floor(cost, price, floor_pct):
+            # Not sellable, so not listed — see the module docstring.
+            below_floor.append(sku.sku_code)
             continue
         if brand_id not in brands:
             brands[brand_id] = MerchantBrandOut(
@@ -209,9 +240,22 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 sku_id=sku.id,
                 sku_code=sku.sku_code,
                 name=sku.denomination or sku.sku_code,
-                price_usd=pricing.merchant_price(cost, pricing.merchant_markup_pct(sku, merchant)),
+                price_usd=price,
                 updated_at=sku.updated_at,
             )
+        )
+    if below_floor:
+        # One line per request, not one per SKU: a merchant polls this
+        # endpoint, so a per-row warning would be thousands of lines a day for
+        # a condition that needs one admin edit. ``sku_code`` is our own
+        # identifier, never PII, and naming it is the only way to find the row.
+        log.warning(
+            "merchant_catalog_below_margin_floor",
+            sku_codes=below_floor,
+            floor_pct=str(floor_pct),
+            hint="b2b_markup_pct is below settings.merchant_margin_floor_pct for these "
+            "SKUs, so they are withheld from the price list and orders for them would "
+            "be rejected; fix the markup in the admin catalog",
         )
     return MerchantCatalogOut(brands=list(brands.values()))
 
