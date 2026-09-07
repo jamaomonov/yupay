@@ -43,7 +43,7 @@ from yupay.core.outbound_errors import (
     ResponseTooLargeError,
 )
 from yupay.modules.merchants import admin as merchants_admin
-from yupay.modules.merchants import webhook_delivery, webhook_retry
+from yupay.modules.merchants import webhook_delivery, webhook_outcome, webhook_retry
 from yupay.modules.merchants import webhooks as hooks
 from yupay.modules.merchants.models import (
     WEBHOOK_LAST_ERROR_MAX,
@@ -185,7 +185,7 @@ def _spy_email(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
         sent.append({"to": to, "subject": subject, "text": text})
         return "msg_test"
 
-    monkeypatch.setattr(webhook_delivery, "send_email", _send)
+    monkeypatch.setattr(webhook_outcome, "send_email", _send)
     return sent
 
 
@@ -472,7 +472,7 @@ async def test_a_poisoned_row_is_failed_and_the_rest_of_the_batch_still_lands(
     third = _enqueue(db_session, merchant_id)
     await db_session.commit()
 
-    monkeypatch.setattr(webhook_delivery, "_clip", lambda text, limit: text)
+    monkeypatch.setattr(webhook_outcome, "_clip", lambda text, limit: text)
 
     class _Poison(_Sender):
         async def __call__(self, url: str, **kwargs: Any) -> OutboundResponse:
@@ -836,6 +836,7 @@ async def test_the_secret_and_the_signature_never_reach_the_log(
             return _record
 
     monkeypatch.setattr(webhook_delivery, "log", _Recorder())
+    monkeypatch.setattr(webhook_outcome, "log", _Recorder())
     sender = _install(monkeypatch, _Sender(_ok(500, "boom")))
 
     await webhook_delivery.drain_pending_deliveries(db_session)

@@ -139,7 +139,13 @@ updates off with no test to fail. The facade exports the generic `enqueue` as
 
 Drawn in `docs/architecture/sequence-diagrams/merchant-webhook-emit.mmd`.
 
-## Outgoing webhooks — the delivery drain (`webhook_delivery.py`, `webhook_retry.py`)
+## Outgoing webhooks — the delivery drain (`webhook_delivery.py`, `webhook_outcome.py`, `webhook_retry.py`)
+
+Three files, split at their concerns once they passed AGENTS §6's 500-line
+limit together: `webhook_delivery.py` claims a row, signs it and sends it;
+`webhook_outcome.py` is everything that happens after the answer comes back —
+the row's log, the hook's health, the auto-disable and its one email;
+`webhook_retry.py` is the pure decision table both consult.
 
 M3a Task 4, run from `apps/worker` (`yupay_worker.consumer` LISTENs on
 `merchant_webhook_queue` beside `fulfillment_queue`, sharing one wake event, and

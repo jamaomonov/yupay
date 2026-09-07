@@ -68,6 +68,7 @@ UNIT = "apps/api/tests/unit/test_merchant_webhook_retry.py"
 SIGN = "apps/api/tests/unit/test_merchant_signing.py"
 
 DELIVERY = SRC / "modules/merchants/webhook_delivery.py"
+OUTCOME = SRC / "modules/merchants/webhook_outcome.py"
 RETRY = SRC / "modules/merchants/webhook_retry.py"
 SIGNING = SRC / "modules/merchants/signing.py"
 ERRORS = SRC / "core/outbound_errors.py"
@@ -126,7 +127,7 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         name="no_truncation",
         breaks="an over-long response body reaches a length-bounded column",
-        edits=((DELIVERY, "    return text[:limit]", "    return text"),),
+        edits=((OUTCOME, "    return text[:limit]", "    return text"),),
         tests=(
             f"{LIVE}::test_an_oversized_response_and_error_are_truncated_before_they_are_written",
             f"{LIVE}::test_a_long_outbound_error_message_is_clipped_too",
@@ -163,7 +164,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (DELIVERY, "    if credentials is None:", "    if credentials is None and False:"),
             (
-                DELIVERY,
+                OUTCOME,
                 "    if hook.failure_streak < threshold or hook.disabled_at is not None:",
                 "    if hook.failure_streak < threshold:",
             ),
