@@ -662,6 +662,152 @@ fall behind, orders sit in `fulfilling` a little longer — the money is
 correctly accounted for the whole time and nothing is lost. Poll, and treat a
 long `fulfilling` as "in progress", never as a reason to place a second order.
 
+### `GET /merchant/v1/orders/{merchant_order_id}`
+
+Where an order ends up, and **where you collect the code**. Poll it after a
+`201`; there is no push in v1, and when the M3 webhook arrives it will tell you
+that something changed without carrying the goods — a voucher code in a webhook
+body is a bearer instrument written to your logs and ours.
+
+The path segment is **your** id, percent-encoded:
+
+```
+GET /merchant/v1/orders/acme-2026-000417
+GET /merchant/v1/orders/acme%2F2026%2F000417     <- the id "acme/2026/000417"
+```
+
+`merchant_order_id` may contain `/`, `%`, `?`, `#` — anything printable and
+non-blank. Encode the segment (`urllib.parse.quote(id, safe="")`,
+`encodeURIComponent(id)`) and **sign the encoded form**, which is what the
+signature section already tells you: the canonical string carries the request
+line as sent. Signing the decoded path is a `401`, not a `404`.
+
+```json
+{
+  "merchant_order_id": "acme-2026-000417",
+  "order_id": "0198c3d1-…",
+  "status": "delivered",
+  "sku_id": "0198c3cb-…",
+  "price_usd": "1.06",
+  "refunded_usd": "0.00",
+  "created_at": "2026-09-07T08:20:11.402913Z",
+  "paid_at": "2026-09-07T08:20:11.402913Z",
+  "delivered_at": "2026-09-07T08:20:19.881204Z",
+  "failure_reason": null,
+  "delivery": {
+    "artifact_kind": "voucher_code",
+    "artifact": { "code": "WXYZ-1234-ABCD" },
+    "delivered_at": "2026-09-07T08:20:19.881204Z"
+  },
+  "timeline": [
+    { "event": "order.created", "at": "2026-09-07T08:20:11.402913Z" },
+    { "event": "order.paid", "at": "2026-09-07T08:20:11.402913Z" },
+    { "event": "order.fulfilling", "at": "2026-09-07T08:20:11.402913Z" },
+    { "event": "order.delivered", "at": "2026-09-07T08:20:19.881204Z" }
+  ]
+}
+```
+
+| Field            | Notes                                                                                                                                                                                            |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `status`         | `paid`, `fulfilling`, `fulfilled`, `delivered`, `failed`, `cancelled`. New values may be added; treat an unknown one as "still in flight".                                                       |
+| `price_usd`      | What the order charged. Final.                                                                                                                                                                   |
+| `refunded_usd`   | How much of it has come back to your deposit. `"0.00"` until refunds ship (M3).                                                                                                                  |
+| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                               |
+| `delivery`       | `null` until `delivered`. See below.                                                                                                                                                             |
+| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. Kinds are `order.created`, `order.paid`, `order.fulfilling`, `order.delivered`, `order.failed`, `order.cancelled`; more may be added. |
+
+**The goods are in `delivery.artifact`.** Its shape follows `artifact_kind`:
+`voucher_code` carries `code` (or `codes` for a multi-code line), a licence
+carries `key`, a top-up carries a `message` or the `fulfillment_data` we acted
+on. Read the keys you know and ignore the rest — a new supplier can add one.
+
+**Failure reasons** are a closed set. You will never get a supplier's own words
+or an operator's note: neither is switchable, and both are internal.
+
+| `failure_reason`     | What happened                                  | What to do                                           |
+| -------------------- | ---------------------------------------------- | ---------------------------------------------------- |
+| `fulfillment_failed` | The delivery failed and will not retry itself. | Contact support quoting `order_id`. Do not re-order. |
+| `order_failed`       | Support closed the order as undeliverable.     | Contact support. Refunds are manual until M3.        |
+
+Note that `failure_reason` can be set while `status` is still `fulfilling` —
+nothing advances the order row when a delivery fails, so the status alone would
+say "in progress" indefinitely. Treat a non-null `failure_reason` as terminal
+for your own purposes even if the status has not moved.
+
+Errors:
+
+| Status | `code`            | Meaning                                                                                                                                             |
+| ------ | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `order_not_found` | No order of **yours** under that id. An order belonging to another merchant answers identically — we do not confirm that somebody else's id exists. |
+
+### `GET /merchant/v1/transactions`
+
+Your deposit ledger: what we credited, what each order spent, and what came
+back. Newest first. `amount_usd` is **signed** — positive credited the deposit,
+negative spent it — and the column adds up to the `balance_usd` on
+`GET /merchant/v1/me`.
+
+```
+GET /merchant/v1/transactions?limit=50
+GET /merchant/v1/transactions?limit=50&cursor=MjAyNi0wOS0wN…
+```
+
+| Parameter | Default | Notes                                                                        |
+| --------- | ------- | ---------------------------------------------------------------------------- |
+| `limit`   | 50      | 1–200. Out of range is a `422`, not a silent clamp.                          |
+| `cursor`  | —       | A `next_cursor` from a previous page. Opaque; do not construct or parse one. |
+
+Both are part of the signed canonical string (they are the query, the fifth
+field): a signature made for `limit=50` will not spend on `limit=200`.
+
+```json
+{
+  "items": [
+    {
+      "transaction_id": "0198c3e0-…",
+      "kind": "merchant_order_charge",
+      "amount_usd": "-1.06",
+      "order_id": "0198c3d1-…",
+      "merchant_order_id": "acme-2026-000417",
+      "created_at": "2026-09-07T08:20:11.402913Z"
+    },
+    {
+      "transaction_id": "0198c3c0-…",
+      "kind": "merchant_deposit_credit",
+      "amount_usd": "500.00",
+      "order_id": null,
+      "merchant_order_id": null,
+      "created_at": "2026-09-05T11:02:44.101002Z"
+    }
+  ],
+  "next_cursor": "MjAyNi0wOS0wNVQxMTowMjo0NC4xMDEwMDIrMDA6MDB8MDE5OGMzYzA"
+}
+```
+
+`merchant_order_id` is on every row an order caused, so a statement line
+reconciles against your books without a second call.
+
+**Paging.** Follow `next_cursor` until it is `null`; a `null` means this page
+was the last one, so never call again on one. Do not page with an offset of
+your own devising and do not hold a cursor for long — it is a position in a
+list you are also writing to.
+
+The cursor is deliberately not a page number, and the difference matters if you
+pull statements while you trade. New rows land at the **top** of a newest-first
+list, so with `?page=2` one order placed mid-walk shifts every row down and
+page 2 re-serves a charge you already recorded — silently, with nothing in the
+response to notice. A cursor says "older than this exact row", which no
+insertion can move: rows created after you started are simply newer than your
+first page, and your next poll picks them up.
+
+Errors:
+
+| Status | `code`           | Meaning                                                         |
+| ------ | ---------------- | --------------------------------------------------------------- |
+| 422    | `invalid_cursor` | Not a cursor we issued. Drop it and start from the newest page. |
+| 422    | —                | `limit` outside 1–200.                                          |
+
 #### No emails, ever
 
 We never mail your customer. We do not hold their address, we do not accept
@@ -682,6 +828,8 @@ accident. Delivery to you is the order read and, from M3, the outbound webhook.
 | Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix      |
 | The priced catalog read model                              | `price_list.py`                                               |
 | What may be ordered and at what price                      | `quote.py` — orderability, margin floor, ±2 % drift           |
+| Reading one order back (status, code, refund mark)         | `order_status.py`                                             |
+| The deposit ledger page (`/transactions`)                  | `transactions.py` — cursor codec; the query is `deposit.py`'s |
 | Order placement + the deposit charge                       | `orders.py`; the debit itself is `deposit.charge_deposit`     |
 | The wholesale price formula and the ±2% drift rule         | `pricing.py` — the one home for both                          |
 | Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                  |
@@ -746,7 +894,15 @@ has no secret.
 Schema (M1 Task 1), the deposit service (M1 Task 3), wholesale pricing
 (M1 Task 5), the admin endpoints (M1 Task 6), the admin SPA screens
 (M1 Tasks 7–8), API-key issuance plus the signed-request dependency
-(M2 Task 2, wire format and storage revised after review), and the machine
-API's two read endpoints — `GET /merchant/v1/me` and
-`GET /merchant/v1/catalog` (M2 Task 3) — are in place. Ordering, the
-transaction ledger and the cabinet BFF land in the rest of M2+.
+(M2 Task 2, wire format and storage revised after review), `GET /merchant/v1/me`
+and `GET /merchant/v1/catalog` (M2 Task 3), `POST /merchant/v1/orders`
+(M2 Task 4) and the two reads a reseller's back office lives on —
+`GET /merchant/v1/orders/{merchant_order_id}` and
+`GET /merchant/v1/transactions` (M2 Task 5) — are in place. **Every endpoint
+spec §9.1 lists for v1 now exists.** Outbound webhooks, refunds and the
+cabinet BFF are M3+.
+
+Two things a reseller will ask about and we do not have yet: **nothing refunds
+a merchant order** (a failed delivery leaves the deposit debited and support
+settles it by hand — which is why `refunded_usd` exists and is always `"0.00"`),
+and there is **no push of any kind** — poll the order read.

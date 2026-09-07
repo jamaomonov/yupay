@@ -22,6 +22,7 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.security import email_hash
 from yupay.modules.fulfillment import service as svc
+from yupay.modules.fulfillment.models import Delivery
 from yupay.modules.fulfillment.schemas import (
     AttemptAdminListOut,
     AttemptAdminOut,
@@ -112,48 +113,20 @@ async def _ensure_order_owner(db: AsyncSession, *, actor: Actor, order_id: str) 
 # ---------- customer ----------
 
 
-# Artifact keys that ARE safe to show the customer. This is an allow-list
-# (not a blocklist) on purpose: a delivery ``artifact`` also carries
-# internal audit/chargeback fields — ``source`` (the upstream supplier),
-# ``external_order_id``, ``inventory_code_id``, ``sku_id``,
-# ``catalogue_name``, raw ``amount_units`` — that MUST NOT leave the API.
-# The DB row keeps everything; admins see it via ``/admin/fulfillment``.
-# A new supplier adding a field defaults to hidden until listed here.
-_CUSTOMER_SAFE_ARTIFACT_KEYS: frozenset[str] = frozenset(
-    {
-        "code",  # single voucher/gift code
-        "codes",  # multi-code delivery
-        "key",  # license/activation key
-        "pin",  # scratch PIN
-        "serial",  # serial number
-        "steam_login",  # the account the customer themselves entered
-        "login",  # generic account login the customer entered
-        "message",  # human-readable delivery note
-        "note",  # human-readable delivery note (alt key)
-        "fulfillment_data",  # the customer's own checkout input, echoed back
-        "kind",  # sub-kind of a supplier artifact, e.g. gengine gift vs top-up
-        "app_name",  # the Steam app a gift was bought for
-        "package_name",  # the Steam gift edition/package name
-        "status",  # supplier-reported delivery status, e.g. "shipped"
-    }
-)
+def _to_customer_delivery_out(row: Delivery) -> DeliveryOut:
+    """Project a ``Delivery`` ORM row into the customer-facing DTO.
 
-
-def _to_customer_delivery_out(row: object) -> DeliveryOut:
-    """Project a ``Delivery`` ORM row into the customer-facing DTO, keeping
-    ONLY whitelisted ``artifact`` keys (everything else is internal)."""
-    artifact = {
-        k: v
-        for k, v in (row.artifact or {}).items()  # type: ignore[attr-defined]
-        if k in _CUSTOMER_SAFE_ARTIFACT_KEYS
-    }
+    The artifact allow-list is ``service.BUYER_SAFE_ARTIFACT_KEYS`` — shared
+    with the machine API's order read, which hands the same artifact to a
+    reseller, so there is one list and not two that can drift apart.
+    """
     return DeliveryOut(
-        id=row.id,  # type: ignore[attr-defined]
-        order_item_id=row.order_item_id,  # type: ignore[attr-defined]
-        channel=row.channel,  # type: ignore[attr-defined]
-        artifact_kind=row.artifact_kind,  # type: ignore[attr-defined]
-        artifact=artifact,
-        delivered_at=row.delivered_at,  # type: ignore[attr-defined]
+        id=row.id,
+        order_item_id=row.order_item_id,
+        channel=row.channel,
+        artifact_kind=row.artifact_kind,
+        artifact=svc.buyer_safe_artifact(row),
+        delivered_at=row.delivered_at,
     )
 
 

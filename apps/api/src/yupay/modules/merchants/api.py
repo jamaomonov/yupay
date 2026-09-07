@@ -46,6 +46,7 @@ from yupay.modules.merchants.deposit import (
     list_deposit_transactions,
 )
 from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
+from yupay.modules.merchants.order_status import read as read_order_status
 from yupay.modules.merchants.orders import place as place_order
 from yupay.modules.merchants.price_list import build as build_price_list
 from yupay.modules.merchants.pricing import (
@@ -61,6 +62,7 @@ from yupay.modules.merchants.signing import (
     expected_signature,
     signature_matches,
 )
+from yupay.modules.merchants.transactions import build as build_transactions_page
 
 __all__ = [
     "DEPOSIT_CURRENCY",
@@ -70,6 +72,7 @@ __all__ = [
     "MerchantUser",
     "body_digest",
     "build_price_list",
+    "build_transactions_page",
     "bulk_set_markup",
     "canonical_message",
     "charge_deposit",
@@ -85,6 +88,7 @@ __all__ = [
     "merchant_markup_pct",
     "merchant_price",
     "place_order",
+    "read_order_status",
     "revoke_api_key",
     "set_brand_b2b",
     "set_sku_b2b",

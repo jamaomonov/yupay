@@ -18,6 +18,8 @@ from yupay.modules.fulfillment.schemas import (
     ManualFailIn,
 )
 from yupay.modules.fulfillment.service import (
+    BUYER_SAFE_ARTIFACT_KEYS,
+    buyer_safe_artifact,
     cancel_open_tasks_for_order,
     cancel_task,
     complete_manual_task,
@@ -43,6 +45,7 @@ from yupay.modules.fulfillment.suppliers import (
 )
 
 __all__ = [
+    "BUYER_SAFE_ARTIFACT_KEYS",
     "AttemptAdminListOut",
     "AttemptAdminOut",
     "Delivery",
@@ -62,6 +65,7 @@ __all__ = [
     "ManualFailIn",
     "admin_router",
     "available_suppliers",
+    "buyer_safe_artifact",
     "cancel_open_tasks_for_order",
     "cancel_task",
     "complete_manual_task",

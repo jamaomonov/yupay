@@ -62,7 +62,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -72,9 +72,18 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantCatalogOut,
     MerchantOrderCreateIn,
     MerchantOrderOut,
+    MerchantOrderStatusOut,
     MerchantProfileOut,
+    MerchantTransactionsOut,
 )
 from yupay.modules.merchants.models import Merchant
+
+#: Ledger page bounds. The ceiling matches the admin ledger route's, so there
+#: is one number in the repo for "how many deposit rows in one page", and
+#: out-of-range is a 422 rather than a silent clamp — a client that asked for
+#: 500 and got 200 has no way to tell.
+TRANSACTIONS_PAGE_MAX = 200
+TRANSACTIONS_PAGE_DEFAULT = 50
 
 #: ``dependencies`` on the router rather than only on each handler: a route
 #: added later without an ``AuthedMerchant`` parameter is still authenticated,
@@ -148,6 +157,68 @@ async def place_order(
     already placed, a different body is a ``409``.
     """
     return await merchants.place_order(db, merchant=merchant, body=body)
+
+
+@router.get(
+    # ``:path``, not a plain ``{merchant_order_id}``. ``merchant_order_id`` is
+    # ``^[\x21-\x7e]+$``, which includes ``/`` (0x2F) — the auth README's own
+    # worked example is ``/merchant/v1/orders/my%2Forder`` — and Starlette's
+    # default ``str`` convertor compiles to ``[^/]+``, so the decoded segment
+    # ``my/order`` would not match the route at all and every such order would
+    # 404. The convertor changes nothing else: FastAPI's ``path_format`` still
+    # renders ``{merchant_order_id}`` in the OpenAPI schema, and what the
+    # signature covers is the raw request line either way (``auth.request_target``).
+    "/orders/{merchant_order_id:path}",
+    response_model=MerchantOrderStatusOut,
+    summary="Read one of your orders back, with its delivered code",
+)
+async def read_order(
+    merchant: AuthedMerchant,
+    db: Db,
+    merchant_order_id: Annotated[
+        str,
+        Path(description="Your own id for the order, percent-encoded in the path."),
+    ],
+) -> MerchantOrderStatusOut:
+    """Return one order's status, timeline, delivered artifact and refund mark.
+
+    Scoped to the authenticated merchant and to their own id — see
+    ``merchants.order_status``, which also explains why an order belonging to
+    another merchant answers with the same 404 as one that never existed.
+
+    The path segment arrives percent-decoded, so an id containing ``/``
+    (legal, and in the README's worked example) is matched against the stored
+    value rather than split into route segments.
+    """
+    return await merchants.read_order_status(
+        db, merchant=merchant, merchant_order_id=merchant_order_id
+    )
+
+
+@router.get(
+    "/transactions",
+    response_model=MerchantTransactionsOut,
+    summary="Your deposit ledger, newest first",
+)
+async def read_transactions(
+    merchant: AuthedMerchant,
+    db: Db,
+    limit: Annotated[int, Query(ge=1, le=TRANSACTIONS_PAGE_MAX)] = TRANSACTIONS_PAGE_DEFAULT,
+    cursor: Annotated[str | None, Query()] = None,
+) -> MerchantTransactionsOut:
+    """Return one page of the calling merchant's deposit movements.
+
+    Paging, the shared grouped query and why it is keyset rather than OFFSET
+    are all ``merchants.transactions``'. The merchant comes from the signature;
+    no parameter here names one.
+
+    Note that ``limit`` and ``cursor`` are part of the signed canonical string
+    (Task 2's fifth field), so a signature does not carry across a change of
+    page.
+    """
+    return await merchants.build_transactions_page(
+        db, merchant_id=merchant.id, limit=limit, cursor=cursor
+    )
 
 
 __all__ = ["router"]

@@ -272,6 +272,26 @@ def _machine_calls() -> list[tuple[str, str]]:
     return calls
 
 
+def test_the_sweep_enumerates_every_endpoint_the_machine_api_ships() -> None:
+    """The sweep above is only a gate if it actually sees the new routes.
+
+    ``_machine_calls`` fills path parameters with a placeholder by regex, so a
+    route declared with a Starlette convertor
+    (``{merchant_order_id:path}`` — see Task 5's order read, which needs it
+    because ``merchant_order_id`` may contain a ``/``) has to survive that
+    substitution. This pins the whole enumeration rather than trusting it: add
+    an endpoint and this fails until the list says so, which is the moment to
+    check the 401/403 sweeps still cover it.
+    """
+    assert set(_machine_calls()) == {
+        ("GET", "/merchant/v1/me"),
+        ("GET", "/merchant/v1/catalog"),
+        ("POST", "/merchant/v1/orders"),
+        ("GET", "/merchant/v1/orders/placeholder"),
+        ("GET", "/merchant/v1/transactions"),
+    }
+
+
 async def test_no_machine_endpoint_answers_an_unsigned_request(
     integration_client: AsyncClient,
 ) -> None:

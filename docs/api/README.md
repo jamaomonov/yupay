@@ -286,13 +286,15 @@ merchant per-key counter set.
 Mounted at **its own prefix**, not under `/api/v1`: it is a third-party
 contract with its own version number, so a breaking change means
 `/merchant/v2` rather than an edit, and tying it to the storefront's version
-would force somebody else's integration to move for our reasons. Both
+would force somebody else's integration to move for our reasons.
+
 Every endpoint sits behind `merchants.auth.merchant_auth` — `401` unsigned,
-`403` `merchant_frozen` — and **none of them takes `Idempotency-Key`**. The
-two reads are reads, which is outside AGENTS.md §9's scope; `POST
+`403` `merchant_frozen` — and **none of them takes `Idempotency-Key`**. Four of
+the five are reads, which is outside AGENTS.md §9's scope; `POST
 /merchant/v1/orders` is a mutation and is exempt on purpose, being idempotent
 on the caller's own `merchant_order_id` instead (spec §9.3, recorded as the
-exception in AGENTS.md §9).
+exception in AGENTS.md §9). Spec §9.1's v1 endpoint list is complete as of
+M2 Task 5.
 
 `GET /merchant/v1/me` returns `{merchant_id, title, status, balance_usd}`.
 The balance is the deposit ledger's signed posting sum, read live; there is no
@@ -376,7 +378,7 @@ The margin floor is the same `pricing.violates_margin_floor` against the same
 `settings.merchant_margin_floor_pct` the catalog applies, so a SKU the price
 list withholds is a SKU this refuses.
 
-The deposit debit is `merchants.service.charge_deposit`: `C merchant_deposit /
+The deposit debit is `merchants.deposit.charge_deposit`: `C merchant_deposit /
 D house_payments_received` (the module README's posting table, not re-derived),
 ledger key `merchant-order:{order_id}`, and `SELECT … FOR UPDATE` on the
 deposit row before the balance is read. **That lock is the overdraw guard**;
@@ -418,6 +420,102 @@ guard, not by falling off the end of a chain of NULL columns — every address
 column happens to be NULL on a merchant order today, and "true by accident" is
 not a rule. Nor does it publish to realtime: `user_id` is NULL by
 construction.
+
+### `GET /merchant/v1/orders/{merchant_order_id}` — the order read
+
+Status, timeline, failure reason, refund mark and **the delivered voucher
+code**. That last one is deliberate and is the reason this endpoint is the
+reseller's delivery channel rather than a convenience: M3's
+`order.status_changed` webhook (spec §10) will not carry the code, because a
+webhook body lands in the receiver's logs and in ours and a voucher code is a
+bearer instrument. A pull, over a signed request, scoped exactly like the
+order. Drawn in
+`docs/architecture/sequence-diagrams/merchant-order-read.mmd`.
+
+**The path segment is percent-decoded; the signature is not.**
+`merchant_order_id` is `^[\x21-\x7e]+$`, which **includes `/`** (0x2F) — the
+auth section's own worked example is `/merchant/v1/orders/my%2Forder`. So the
+route is declared with Starlette's `:path` convertor
+(`/orders/{merchant_order_id:path}`) and the decoded segment is matched against
+the stored value. A plain `{param}` compiles to `[^/]+`, which would `404`
+every order whose id contains a slash — and only those, which is why it is the
+kind of bug that passes every test written with an id somebody made up. The
+convertor changes nothing else: FastAPI's `path_format` still renders
+`{merchant_order_id}` in the OpenAPI schema, and `auth.request_target` signs
+the raw request line either way. Sign the bytes, match the value.
+
+**Cross-merchant isolation is the security property here.** The lookup is
+`orders.find_merchant_order(merchant_id=…, merchant_order_id=…)` — the same
+scoped read the order path uses for its replay check — and the merchant half
+comes from the signature, never from a parameter. An order belonging to another
+merchant answers with the byte-identical `404 order_not_found` a nonexistent id
+gets: a distinguishable "not yours" is an oracle, and a reseller could walk a
+competitor's order numbering and read their volume off the status codes.
+
+Three things are deliberately withheld. Event payloads: `order.paid`'s carries
+the replay fingerprint of the reseller's own request and `order.failed`'s an
+operator's free-text note, so the timeline is `{event, at}` and the kinds are an
+allow-list (`order_events` is a general audit log and also holds
+`admin.deliveries_viewed`, which records which operator read a customer's
+codes). Supplier identity: the delivery artifact goes through
+`fulfillment.buyer_safe_artifact` — the storefront's own allow-list, **moved
+from `fulfillment/routes.py` into `fulfillment/service.py`** in this task so the
+two surfaces share one list rather than two that drift in the dangerous
+direction (a field added to one and not the other defaults to _visible_ on the
+one that forgot it). And supplier errors: `failure_reason` is a closed
+vocabulary, `fulfillment_failed` or `order_failed`.
+
+`failure_reason` reads the **order item's** `fulfillment_state`, not the
+fulfilment task's, and that inherits a rule rather than inventing one: when a
+supplier refuses for lack of _our_ balance the task goes `failed` but the item
+stays `in_progress` on purpose, so the storefront keeps saying "обработка"
+while an operator tops up and retries. Telling a reseller "failed" there would
+have them refund their end customer for an order we are about to deliver.
+Anything the storefront shows as an error, this shows too — no more, no less.
+
+`refunded_usd` is summed from the ledger (the debit legs on the merchant's
+`merchant_deposit` for transactions referencing this order), not stored on a
+flag. It is `"0.00"` for every order today because **nothing refunds a merchant
+order yet** — the module README's posting table marks that row _not
+implemented_ — and it is computed anyway so the field starts telling the truth
+the moment M3 posts the row, with no contract change.
+
+### `GET /merchant/v1/transactions` — the deposit ledger
+
+One page of the calling merchant's deposit movements, newest first, with a
+signed `amount_usd` that sums to `/me`'s balance. Scoped by the authenticated
+identity; no parameter names a merchant, and a cursor lifted from another
+merchant's page is a timestamp, not a capability.
+
+The grouped ledger sum is `merchants.deposit.list_deposit_transactions` —
+M1's, written for the admin panel and **shared, not copied**: a second
+normal-side-signed sum over the same postings is a second chance to get a
+direction backwards, and two surfaces disagreeing about a merchant's ledger is
+a bug discovered by an invoice. A bounded second statement maps the page's
+`order` references back to each reseller's own `merchant_order_id`, one `IN`
+over at most `limit` ids — pinned by a query-count test that pages 2 rows and
+200 and asserts the counts are equal.
+
+**Paging is keyset, not OFFSET, and this is a correctness property rather than
+a performance one.** This ledger is written while it is read — the merchant
+pulling a statement is the merchant placing orders — and every order appends a
+row at the _head_ of a newest-first list. With `OFFSET`, one insertion between
+page 1 and page 2 shifts every row down one and page 2 re-serves the last
+charge of page 1, silently. The cursor is the last row's
+`(created_at, transaction_id)` — the exact tuple the listing orders by, unique
+because `id` is the primary key — compared as a SQL row value, so "older than
+that row" is a fact about the data that no insertion can move. Rows created
+after a walk begins are newer than its first page, which is the right answer
+for a statement: the next poll picks them up. Falsified in the suite by
+swapping the keyset for an OFFSET, which leaves the plain walk passing and
+fails only `test_a_row_written_mid_walk_neither_skips_nor_repeats_an_older_one`.
+
+`limit` is 1–200 and out of range is a `422`, matching the admin ledger route's
+stated rule rather than clamping. A cursor we cannot read is
+`422 invalid_cursor` — its own code because it is the one parameter a client
+builds from our own output. Both parameters are in the query, so both are
+covered by the signature (Task 2's fifth canonical field, which this endpoint
+is the first to exercise).
 
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so

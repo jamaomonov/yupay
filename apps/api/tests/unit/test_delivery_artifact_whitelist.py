@@ -1,30 +1,27 @@
-"""The customer delivery DTO must expose ONLY whitelisted artifact keys.
+"""A delivery artifact must expose ONLY whitelisted keys to a buyer.
 
 Internal/supplier fields (source, external ids, sku/inventory ids, raw units)
-stored on the row for audit must never reach the customer-facing API.
+stored on the row for audit must never reach an API a buyer can read.
+
+Since M2 Task 5 that is two surfaces, not one: the storefront's
+``GET /orders/{id}/deliveries`` and the machine API's
+``GET /merchant/v1/orders/{merchant_order_id}``, which hands a reseller the
+voucher code on purpose. Both call ``fulfillment.service.buyer_safe_artifact``,
+so this pins the one filter rather than one of its callers.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
-from yupay.modules.fulfillment.routes import _to_customer_delivery_out
+from yupay.modules.fulfillment.models import Delivery
+from yupay.modules.fulfillment.service import buyer_safe_artifact
 
 
-@dataclass
-class _Row:
-    id: str
-    order_item_id: str
-    channel: str
-    artifact_kind: str
-    artifact: dict[str, Any]
-    delivered_at: datetime
-
-
-def _row(artifact: dict[str, Any]) -> _Row:
-    return _Row(
+def _row(artifact: dict[str, Any]) -> Delivery:
+    """A real ``Delivery`` row, unattached to any session."""
+    return Delivery(
         id="d1",
         order_item_id="oi1",
         channel="in_app",
@@ -35,7 +32,7 @@ def _row(artifact: dict[str, Any]) -> _Row:
 
 
 def test_supplier_internal_keys_are_stripped() -> None:
-    out = _to_customer_delivery_out(
+    kept = buyer_safe_artifact(
         _row(
             {
                 "code": "GIFT-123",
@@ -52,11 +49,11 @@ def test_supplier_internal_keys_are_stripped() -> None:
             }
         )
     )
-    assert out.artifact == {"code": "GIFT-123"}
+    assert kept == {"code": "GIFT-123"}
 
 
 def test_customer_supplied_and_deliverable_keys_survive() -> None:
-    out = _to_customer_delivery_out(
+    kept = buyer_safe_artifact(
         _row(
             {
                 "steam_login": "player42",
@@ -67,9 +64,14 @@ def test_customer_supplied_and_deliverable_keys_survive() -> None:
             }
         )
     )
-    assert out.artifact == {
+    assert kept == {
         "steam_login": "player42",
         "fulfillment_data": {"steam_login": "player42"},
         "key": "AAAA-BBBB",
         "message": "Enjoy!",
     }
+
+
+def test_an_empty_artifact_survives_without_a_crash() -> None:
+    """``Delivery.artifact`` is NOT NULL, but an empty dict is legal."""
+    assert buyer_safe_artifact(_row({})) == {}

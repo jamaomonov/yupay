@@ -6719,6 +6719,32 @@
         "title": "MerchantCreateIn",
         "type": "object"
       },
+      "MerchantDeliveryOut": {
+        "description": "The artifact a delivered order handed over \u2014 the voucher code lives here.\n\nPresent only once the order reaches ``delivered``. ``artifact``'s shape\ndepends on ``artifact_kind``; for ``voucher_code`` it carries ``code`` (or\n``codes``). Internal fields recorded alongside it \u2014 our supplier's name,\ntheir order id, our warehouse row \u2014 are filtered out by\n``fulfillment.buyer_safe_artifact``, the same allow-list the storefront\nuses.",
+        "properties": {
+          "artifact": {
+            "additionalProperties": true,
+            "title": "Artifact",
+            "type": "object"
+          },
+          "artifact_kind": {
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "title": "Delivered At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_kind",
+          "artifact",
+          "delivered_at"
+        ],
+        "title": "MerchantDeliveryOut",
+        "type": "object"
+      },
       "MerchantListOut": {
         "description": "Body of ``GET /admin/merchants``.",
         "properties": {
@@ -6778,6 +6804,26 @@
         "title": "MerchantOrderCreateIn",
         "type": "object"
       },
+      "MerchantOrderEventOut": {
+        "description": "One entry of an order's timeline.\n\n``event`` only \u2014 no payload. An ``order_events`` payload carries internal\nvalues (``order.paid``'s is a fingerprint of the reseller's own request,\n``order.failed``'s is an operator's free-text note), and none of them is\nworth a field on a third-party contract.",
+        "properties": {
+          "at": {
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "event": {
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "at"
+        ],
+        "title": "MerchantOrderEventOut",
+        "type": "object"
+      },
       "MerchantOrderOut": {
         "description": "Body of ``POST /merchant/v1/orders``.\n\n``status`` is the order's live status, not a fixed ``\"paid\"``: a merchant\norder is born paid and fulfilment starts in the same transaction, so what\ncomes back is where that left it. Poll\n``GET /merchant/v1/orders/{merchant_order_id}`` for the rest.",
         "properties": {
@@ -6823,6 +6869,110 @@
           "created_at"
         ],
         "title": "MerchantOrderOut",
+        "type": "object"
+      },
+      "MerchantOrderStatusOut": {
+        "description": "Body of ``GET /merchant/v1/orders/{merchant_order_id}``.\n\nThe reseller's whole view of one order: where it is, what it cost, what it\ndelivered, and whether anything came back. **This is the only place the\ndelivered voucher code is handed over** \u2014 M3's ``order.status_changed``\nwebhook will not carry it, because a webhook body lands in the merchant's\nlogs and in ours, and a voucher code is a bearer instrument.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MerchantDeliveryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "refunded_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantOrderEventOut"
+            },
+            "title": "Timeline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_id",
+          "price_usd",
+          "refunded_usd",
+          "created_at",
+          "paid_at",
+          "delivered_at",
+          "failure_reason",
+          "delivery",
+          "timeline"
+        ],
+        "title": "MerchantOrderStatusOut",
         "type": "object"
       },
       "MerchantOut": {
@@ -6957,6 +7107,90 @@
           "updated_at"
         ],
         "title": "MerchantSkuOut",
+        "type": "object"
+      },
+      "MerchantTransactionOut": {
+        "description": "One movement of the merchant's deposit.\n\n``amount_usd`` is **signed**: positive credited the deposit, negative spent\nit. The column adds up to the balance ``GET /merchant/v1/me`` reports.",
+        "properties": {
+          "amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Order Id"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "kind",
+          "amount_usd",
+          "order_id",
+          "merchant_order_id",
+          "created_at"
+        ],
+        "title": "MerchantTransactionOut",
+        "type": "object"
+      },
+      "MerchantTransactionsOut": {
+        "description": "Body of ``GET /merchant/v1/transactions`` \u2014 one page, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantTransactionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "MerchantTransactionsOut",
         "type": "object"
       },
       "MerchantTxnListOut": {
@@ -27461,6 +27695,113 @@
           }
         },
         "summary": "Place an order and settle it from the deposit",
+        "tags": [
+          "merchant-api"
+        ]
+      }
+    },
+    "/merchant/v1/orders/{merchant_order_id}": {
+      "get": {
+        "description": "Return one order's status, timeline, delivered artifact and refund mark.\n\nScoped to the authenticated merchant and to their own id \u2014 see\n``merchants.order_status``, which also explains why an order belonging to\nanother merchant answers with the same 404 as one that never existed.\n\nThe path segment arrives percent-decoded, so an id containing ``/``\n(legal, and in the README's worked example) is matched against the stored\nvalue rather than split into route segments.",
+        "operationId": "read_order_merchant_v1_orders__merchant_order_id__get",
+        "parameters": [
+          {
+            "description": "Your own id for the order, percent-encoded in the path.",
+            "in": "path",
+            "name": "merchant_order_id",
+            "required": true,
+            "schema": {
+              "description": "Your own id for the order, percent-encoded in the path.",
+              "title": "Merchant Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read one of your orders back, with its delivered code",
+        "tags": [
+          "merchant-api"
+        ]
+      }
+    },
+    "/merchant/v1/transactions": {
+      "get": {
+        "description": "Return one page of the calling merchant's deposit movements.\n\nPaging, the shared grouped query and why it is keyset rather than OFFSET\nare all ``merchants.transactions``'. The merchant comes from the signature;\nno parameter here names one.\n\nNote that ``limit`` and ``cursor`` are part of the signed canonical string\n(Task 2's fifth field), so a signature does not carry across a change of\npage.",
+        "operationId": "read_transactions_merchant_v1_transactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantTransactionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Your deposit ledger, newest first",
         "tags": [
           "merchant-api"
         ]

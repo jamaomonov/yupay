@@ -1336,6 +1336,54 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
 # ---------- read helpers ----------
 
 
+#: Artifact keys that ARE safe to show the buyer — the retail customer and,
+#: since M2 Task 5, a reseller reading ``GET /merchant/v1/orders/{id}``. An
+#: allow-list (not a blocklist) on purpose: a delivery ``artifact`` also
+#: carries internal audit/chargeback fields — ``source`` (the upstream
+#: supplier), ``external_order_id``, ``inventory_code_id``, ``sku_id``,
+#: ``catalogue_name``, raw ``amount_units`` — that MUST NOT leave the API. The
+#: DB row keeps everything; admins see it via ``/admin/fulfillment``. A new
+#: supplier adding a field defaults to hidden until listed here.
+#:
+#: It lives beside the rows rather than in ``routes.py`` because it now has
+#: two consumers and a second copy would drift in exactly the dangerous
+#: direction: a field added to one list and not the other defaults to
+#: *visible* on the surface that forgot it.
+BUYER_SAFE_ARTIFACT_KEYS: frozenset[str] = frozenset(
+    {
+        "code",  # single voucher/gift code
+        "codes",  # multi-code delivery
+        "key",  # license/activation key
+        "pin",  # scratch PIN
+        "serial",  # serial number
+        "steam_login",  # the account the customer themselves entered
+        "login",  # generic account login the customer entered
+        "message",  # human-readable delivery note
+        "note",  # human-readable delivery note (alt key)
+        "fulfillment_data",  # the customer's own checkout input, echoed back
+        "kind",  # sub-kind of a supplier artifact, e.g. gengine gift vs top-up
+        "app_name",  # the Steam app a gift was bought for
+        "package_name",  # the Steam gift edition/package name
+        "status",  # supplier-reported delivery status, e.g. "shipped"
+    }
+)
+
+
+def buyer_safe_artifact(delivery: Delivery) -> dict[str, Any]:
+    """The part of a delivery artifact that may leave the API.
+
+    Args:
+        delivery: The row, whose ``artifact`` holds everything we recorded.
+
+    Returns:
+        Only the keys in :data:`BUYER_SAFE_ARTIFACT_KEYS`. A voucher code is a
+        bearer instrument, so this is *not* redaction for its own sake — the
+        code is meant to go out; what must not go with it is our supplier's
+        name and order id.
+    """
+    return {k: v for k, v in (delivery.artifact or {}).items() if k in BUYER_SAFE_ARTIFACT_KEYS}
+
+
 async def list_deliveries_for_order(db: AsyncSession, *, order_id: str) -> list[Delivery]:
     stmt = (
         select(Delivery)

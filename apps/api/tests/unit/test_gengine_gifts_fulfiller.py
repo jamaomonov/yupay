@@ -595,11 +595,10 @@ async def test_the_fulfiller_routes_an_id_less_gift_task_before_the_early_return
 
 
 async def test_customer_safe_artifact_keys_include_the_new_gift_fields() -> None:
-    # `yupay.api.v1` first: it is what closes the fulfillment.api <->
-    # fulfillment.routes import cycle, and importing `routes` before
-    # anything has resolved that cycle raises `ImportError` when this
-    # module is collected on its own rather than alongside the wider suite.
-    import yupay.api.v1  # noqa: F401
-    from yupay.modules.fulfillment.routes import _CUSTOMER_SAFE_ARTIFACT_KEYS
+    # The list moved from ``fulfillment.routes`` to ``fulfillment.service`` in
+    # M2 Task 5, when the machine API's order read became its second consumer.
+    # ``service`` is a leaf, so this no longer has to import the v1 route stack
+    # first to break the ``fulfillment.api`` <-> ``fulfillment.routes`` cycle.
+    from yupay.modules.fulfillment.service import BUYER_SAFE_ARTIFACT_KEYS
 
-    assert {"kind", "app_name", "package_name", "status"} <= _CUSTOMER_SAFE_ARTIFACT_KEYS
+    assert {"kind", "app_name", "package_name", "status"} <= BUYER_SAFE_ARTIFACT_KEYS

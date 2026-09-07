@@ -72,6 +72,33 @@ UsdBalance = Annotated[Decimal, AfterValidator(_cents_down)]
 UsdPrice = Annotated[Decimal, AfterValidator(_cents_up)]
 
 
+def _cents(value: Decimal) -> Decimal:
+    """Quantize a USD **ledger amount** to two decimals, without a direction.
+
+    A balance is rounded so we never advertise more than a merchant holds, and
+    a price so we never advertise less than we charge. A ledger line is
+    neither: it is a statement of something that already happened, and the
+    property that matters is that the column adds up to the balance — which a
+    directional rounding would break as soon as it moved a value. Every amount
+    on this ledger is a whole cent by construction (credits are two-decimal by
+    schema, charges are ``pricing.merchant_price``'s ceil-to-cent), so this is
+    a no-op today; it exists because ``Numeric(20, 6)`` serialises as
+    ``"1.070000"`` and a machine contract cannot hand a client two shapes for
+    one quantity.
+
+    Args:
+        value: The amount, at any scale. May be negative.
+
+    Returns:
+        The amount at two decimal places.
+    """
+    return value.quantize(_CENT)
+
+
+#: A signed USD ledger amount, or a total of them, on the wire.
+UsdAmount = Annotated[Decimal, AfterValidator(_cents)]
+
+
 class MerchantProfileOut(BaseModel):
     """Body of ``GET /merchant/v1/me`` — who is calling, and what they can spend.
 
@@ -214,14 +241,114 @@ class MerchantOrderOut(BaseModel):
     created_at: datetime
 
 
+class MerchantOrderEventOut(BaseModel):
+    """One entry of an order's timeline.
+
+    ``event`` only — no payload. An ``order_events`` payload carries internal
+    values (``order.paid``'s is a fingerprint of the reseller's own request,
+    ``order.failed``'s is an operator's free-text note), and none of them is
+    worth a field on a third-party contract.
+    """
+
+    #: One of the ``order.*`` kinds listed in the module README. Kinds outside
+    #: that list — internal audit rows such as ``admin.deliveries_viewed`` —
+    #: are omitted, and a new kind stays omitted until it is added there.
+    event: str
+    at: datetime
+
+
+class MerchantDeliveryOut(BaseModel):
+    """The artifact a delivered order handed over — the voucher code lives here.
+
+    Present only once the order reaches ``delivered``. ``artifact``'s shape
+    depends on ``artifact_kind``; for ``voucher_code`` it carries ``code`` (or
+    ``codes``). Internal fields recorded alongside it — our supplier's name,
+    their order id, our warehouse row — are filtered out by
+    ``fulfillment.buyer_safe_artifact``, the same allow-list the storefront
+    uses.
+    """
+
+    artifact_kind: str
+    artifact: dict[str, Any]
+    delivered_at: datetime
+
+
+class MerchantOrderStatusOut(BaseModel):
+    """Body of ``GET /merchant/v1/orders/{merchant_order_id}``.
+
+    The reseller's whole view of one order: where it is, what it cost, what it
+    delivered, and whether anything came back. **This is the only place the
+    delivered voucher code is handed over** — M3's ``order.status_changed``
+    webhook will not carry it, because a webhook body lands in the merchant's
+    logs and in ours, and a voucher code is a bearer instrument.
+    """
+
+    merchant_order_id: str
+    #: Our id for the order. Quote it to support; key your own records on
+    #: ``merchant_order_id``, which is yours and which we cannot change.
+    order_id: str
+    status: str
+    sku_id: str
+    #: What this order charged. Final — see ``POST /merchant/v1/orders``.
+    price_usd: UsdPrice
+    #: How much of ``price_usd`` has been credited back to your deposit.
+    #: ``"0.00"`` until a refund exists; read from the ledger, not a flag.
+    refunded_usd: UsdAmount
+    created_at: datetime
+    paid_at: datetime | None
+    delivered_at: datetime | None
+    #: ``null``, ``"fulfillment_failed"`` or ``"order_failed"`` — a closed
+    #: vocabulary, additive only. Never an operator's or a supplier's own
+    #: words: those are internal, and a client cannot switch on prose.
+    failure_reason: str | None
+    delivery: MerchantDeliveryOut | None
+    timeline: list[MerchantOrderEventOut]
+
+
+class MerchantTransactionOut(BaseModel):
+    """One movement of the merchant's deposit.
+
+    ``amount_usd`` is **signed**: positive credited the deposit, negative spent
+    it. The column adds up to the balance ``GET /merchant/v1/me`` reports.
+    """
+
+    transaction_id: str
+    #: ``merchant_deposit_credit`` (we credited your deposit),
+    #: ``merchant_order_charge`` (an order spent it), and more later. Treat an
+    #: unknown kind as "some movement" and trust ``amount_usd``.
+    kind: str
+    amount_usd: UsdAmount
+    #: Set on rows an order caused; ``null`` on a deposit credit.
+    order_id: str | None
+    #: The same order's ``merchant_order_id`` — your own reference, so a
+    #: statement line reconciles against your books without a second lookup.
+    merchant_order_id: str | None
+    created_at: datetime
+
+
+class MerchantTransactionsOut(BaseModel):
+    """Body of ``GET /merchant/v1/transactions`` — one page, newest first."""
+
+    items: list[MerchantTransactionOut]
+    #: Pass back as ``?cursor=`` for the next (older) page. ``null`` means
+    #: this page is the last one — never call again on a null.
+    next_cursor: str | None
+
+
 __all__ = [
     "MerchantBrandOut",
     "MerchantCatalogOut",
+    "MerchantDeliveryOut",
     "MerchantOrderCreateIn",
+    "MerchantOrderEventOut",
     "MerchantOrderOut",
+    "MerchantOrderStatusOut",
     "MerchantProductOut",
     "MerchantProfileOut",
     "MerchantSkuOut",
+    "MerchantTransactionOut",
+    "MerchantTransactionsOut",
+    "UsdAmount",
     "UsdBalance",
     "UsdPrice",
 ]

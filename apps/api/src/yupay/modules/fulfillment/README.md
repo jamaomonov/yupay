@@ -88,10 +88,16 @@ class Fulfiller(Protocol):
 | `fulfillment_attempts` | аудит обращений к поставщику (`kind` ∈ fulfill/status_check/cancel, `status` ∈ ok/error, `payload jsonb`, `error text`). **Не строка на тик:** повтор, идентичный предыдущей записи задачи, сворачивается в неё через `repeat_count` + `last_seen_at` (миграция 0045). Поллер спрашивает статус раз в минуту, пока заказ у поставщика открыт, — одна прод-задача накопила так 1641 строку, из них 1640 одинаковых. `attempts_count` считает строки, а не наблюдения. |
 | `deliveries`           | финальный артефакт. UNIQUE `(order_item_id)`. `channel` (today всегда `in_app`), `artifact_kind`, `artifact jsonb`.                                                                                                                                                                                                                                                                                                                                                  |
 
-> **Whitelist на клиентском API.** `GET /orders/{id}/deliveries` отдаёт `artifact`
-> строго через allow-list `_CUSTOMER_SAFE_ARTIFACT_KEYS` (`routes.py`): наружу
-> идут только `code`/`codes`/`key`/`pin`/`serial`/`steam_login`/`login`/
-> `message`/`note`/`fulfillment_data`. `source` (апстрим-поставщик) и любые
+> **Whitelist на покупательском API.** `artifact` отдаётся строго через
+> allow-list `BUYER_SAFE_ARTIFACT_KEYS` + `buyer_safe_artifact()` —
+> **`service.py`**, не `routes.py`: с M2 Task 5 у фильтра два потребителя, и
+> `GET /merchant/v1/orders/{merchant_order_id}` (machine API, отдаёт
+> реселлеру ваучер-код) вызывает ту же функцию. Две копии разошлись бы в
+> опасную сторону: поле, добавленное в один список и забытое в другом, по
+> умолчанию становится **видимым** на той поверхности, где о нём забыли.
+> Наружу идут только `code`/`codes`/`key`/`pin`/`serial`/`steam_login`/
+> `login`/`message`/`note`/`fulfillment_data`/`kind`/`app_name`/
+> `package_name`/`status`. `source` (апстрим-поставщик) и любые
 > внешние/внутренние id (`external_id`, `external_order_id`,
 > `inventory_code_id`, `sku_id`, `catalogue_name`, raw `amount_units`) —
 > admin-only, видны через `/admin/fulfillment`. Новое поле от поставщика по

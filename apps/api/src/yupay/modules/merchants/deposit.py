@@ -26,9 +26,10 @@ dispute while the account is under review.
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import ConflictError, ValidationError
@@ -259,7 +260,11 @@ async def deposit_balance(db: AsyncSession, *, merchant_id: str) -> Decimal:
 
 
 async def list_deposit_transactions(
-    db: AsyncSession, *, merchant_id: str, limit: int = 50
+    db: AsyncSession,
+    *,
+    merchant_id: str,
+    limit: int = 50,
+    before: tuple[datetime, str] | None = None,
 ) -> list[tuple[WalletTransaction, Decimal]]:
     """A merchant's deposit ledger, newest first, with the signed delta.
 
@@ -269,14 +274,22 @@ async def list_deposit_transactions(
     balance (positive = up). Order-charge rows surface here with a negative
     delta and M3's refunds with a positive one, without any change.
 
-    Written for M1's admin ledger panel; it lives here rather than in
-    ``admin.py`` because it reads the deposit, and the deposit's reads belong
-    with its writes.
+    Written for M1's admin ledger panel and **shared** with
+    ``/merchant/v1/transactions`` (``transactions.py``) rather than copied: a
+    second grouped sum over the same postings is a second chance to get a
+    direction backwards, and the two surfaces must never disagree about what a
+    merchant's ledger says.
 
     Args:
         db: Session. The caller owns the transaction.
         merchant_id: Whose ledger to read. Must exist.
         limit: Newest-first cap; the caller bounds it.
+        before: Keyset anchor — return only rows strictly older than this
+            ``(created_at, transaction_id)`` pair, in the same
+            ``created_at DESC, id DESC`` order the listing already used.
+            ``None`` starts at the newest row. The admin panel does not use
+            it; see ``transactions.py`` for why the machine API pages this way
+            and not by OFFSET.
 
     Returns:
         ``(transaction, signed_amount)`` pairs, newest first.
@@ -303,15 +316,71 @@ async def list_deposit_transactions(
             WalletAccount.kind == "merchant_deposit",
             WalletAccount.currency == DEPOSIT_CURRENCY,
         )
+    )
+    if before is not None:
+        # A row-value comparison, not ``created_at < x OR (created_at = x AND
+        # id < y)``: one expression that matches the ORDER BY below exactly, so
+        # no row can fall on both sides of a page boundary.
+        # Compared against the plain Python tuple, not a second ``tuple_()``:
+        # SQLAlchemy takes each bind parameter's type from the matching column
+        # on the left, so the ``id`` half binds as a UUID rather than as text —
+        # which Postgres has no ``<`` for.
+        stmt = stmt.where(tuple_(WalletTransaction.created_at, WalletTransaction.id) < before)
+    stmt = (
         # PK grouping — Postgres derives the other transaction columns from it.
-        .group_by(WalletTransaction.id)
+        stmt.group_by(WalletTransaction.id)
         # ``created_at`` is transaction-start time, so same-instant rows are
-        # possible; the UUIDv7 id is the monotonic tiebreak.
+        # possible; the UUIDv7 id is the monotonic tiebreak. The pair is unique
+        # (``id`` is the primary key), which is what makes it usable as a
+        # keyset cursor.
         .order_by(WalletTransaction.created_at.desc(), WalletTransaction.id.desc())
         .limit(limit)
     )
     rows = (await db.execute(stmt)).all()
     return [(txn, Decimal(amount)) for txn, amount in rows]
+
+
+async def refunded_for_order(db: AsyncSession, *, merchant_id: str, order_id: str) -> Decimal:
+    """How much of one order has been credited back to this merchant's deposit.
+
+    The sum of the **debit** legs on the merchant's ``merchant_deposit``
+    account across every ledger transaction referencing this order —
+    ``merchant_deposit`` is debit-normal, so a debit is money returning. The
+    charge itself is a credit and is therefore not counted, which is why this
+    reads a direction rather than a transaction kind: it does not have to know
+    the name M3 will give a refund.
+
+    Today it always returns zero, because **nothing refunds a merchant order
+    yet** (the module README's posting table marks that row *not implemented*).
+    It is computed rather than hardcoded so the field on
+    ``GET /merchant/v1/orders/{id}`` starts telling the truth the moment M3
+    posts the row, with no change here and no change to the contract.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The owning merchant — the account scope.
+        order_id: The order whose ledger reference to sum.
+
+    Returns:
+        The amount returned to the deposit for this order; ``Decimal("0")``
+        when nothing has been.
+    """
+    normal = wallet_service.NORMAL_SIDE["merchant_deposit"]
+    stmt = (
+        select(func.coalesce(func.sum(WalletPosting.amount), Decimal("0")))
+        .join(WalletAccount, WalletAccount.id == WalletPosting.account_id)
+        .join(WalletTransaction, WalletTransaction.id == WalletPosting.transaction_id)
+        .where(
+            WalletAccount.owner_type == "merchant",
+            WalletAccount.owner_id == merchant_id,
+            WalletAccount.kind == "merchant_deposit",
+            WalletAccount.currency == DEPOSIT_CURRENCY,
+            WalletPosting.direction == normal,
+            WalletTransaction.reference_type == "order",
+            WalletTransaction.reference_id == order_id,
+        )
+    )
+    return Decimal((await db.execute(stmt)).scalar_one())
 
 
 __all__ = [
@@ -321,4 +390,5 @@ __all__ = [
     "credit_deposit",
     "deposit_balance",
     "list_deposit_transactions",
+    "refunded_for_order",
 ]

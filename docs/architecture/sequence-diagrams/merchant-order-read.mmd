@@ -1,0 +1,37 @@
+sequenceDiagram
+    autonumber
+    participant R as Reseller server
+    participant API as GET /merchant/v1/orders/{merchant_order_id}
+    participant S as merchants.order_status.read
+    participant O as orders.service.find_merchant_order
+    participant F as fulfillment.service
+    participant L as merchants.deposit.refunded_for_order
+    participant DB as Postgres
+
+    R->>API: GET /merchant/v1/orders/acme%2F2026%2F000417 (signed)
+    Note over R,API: merchant_order_id is ^[!-~]+$, which INCLUDES "/" -- the id<br/>travels percent-encoded and the route uses Starlette's :path convertor
+    API->>API: merchant_auth verifies HMAC over the RAW request line ("%2F" as sent)
+    Note over API: sign the bytes, match the value -- the two must not be confused
+    API->>S: read(merchant=<from the signature>, merchant_order_id="acme/2026/000417")
+
+    S->>O: find_merchant_order(merchant_id, merchant_order_id)
+    Note over S,O: scope is the AUTHENTICATED merchant; no parameter names one
+    O->>DB: SELECT orders WHERE idempotency_key = ? AND merchant_id = ?<br/>+ items + events (eager)
+    alt no such order, or it belongs to another merchant
+        S-->>R: 404 order_not_found -- one identical body for both,<br/>so "not yours" is not an oracle for a competitor's numbering
+    end
+
+    S->>S: failure_reason: order.status == failed -> "order_failed"<br/>else item.fulfillment_state == failed -> "fulfillment_failed"
+    Note over S: reads the ITEM, not the task: a supplier failure for OUR low<br/>balance leaves the item in_progress on purpose, and a reseller<br/>must not refund their customer for an order we will deliver
+
+    S->>F: list_deliveries_for_order(order_id)
+    F->>DB: SELECT deliveries JOIN order_items
+    S->>F: buyer_safe_artifact(delivery)
+    Note over S,F: the storefront's own allow-list, shared not copied:<br/>the voucher code goes out, the supplier's name and order id do not
+
+    S->>L: refunded_for_order(merchant_id, order_id)
+    L->>DB: SUM(debit legs on merchant_deposit) WHERE reference = (order, id)
+    Note over L: always 0 today -- nothing refunds a merchant order until M3 --<br/>but computed, so the field starts telling the truth without a code change
+
+    S-->>R: 200 {status, price_usd, refunded_usd, failure_reason,<br/>delivery{artifact_kind, artifact}, timeline[], ...}
+    Note over R: THE ONLY place the voucher code is handed over --<br/>M3's webhook will not carry it (a bearer instrument in two log files)
