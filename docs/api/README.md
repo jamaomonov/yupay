@@ -287,8 +287,7 @@ not resolved addresses, so it is not the DNS-rebinding control.
 **There is deliberately no `/merchant/v1` write for this.** Configuration is
 admin-only in M3a by owner decision and moves to the merchant's own cabinet in
 M4: the only thing a machine-API write would buy is letting a stranger aim our
-worker at an address of their choosing. Until M3a's delivery worker lands, a
-configured endpoint is stored and not called — poll the order read.
+worker at an address of their choosing (ADR-0070 decision 7).
 
 Requests to the machine API `/merchant/v1` carry `X-Merchant-Key`,
 `X-Merchant-Timestamp` and
@@ -311,6 +310,44 @@ Application-level `429`s now carry a `Retry-After` header: any `AppError`
 whose extras include an integer `retry_after` gets one
 (`core.errors.app_error_handler`), which is what the auth IP guard and the
 merchant per-key counter set.
+
+## Merchant outgoing webhooks — delivery (M3a)
+
+Live since M3a Task 4. `apps/worker` drains `merchant_webhook_deliveries` on its
+own LISTEN channel (`merchant_webhook_queue`) in its own asyncio task, claims
+with `FOR UPDATE SKIP LOCKED`, and POSTs through `core.outbound.post_json` —
+the only fetcher allowed a URL a third party chose, which re-checks the resolved
+address at connect time (ADR-0070 decision 2).
+
+Two event types, the complete v1 list: `order.status_changed`
+(`{merchant_order_id, order_id, status, at}`) and `balance.credited`
+(`{amount_usd, balance_usd}`). Both are exact key sets — a voucher code never
+rides in a body, because the receiver logs bodies wholesale. Four headers, all
+named in `merchants/signing.py` because they are wire format:
+`X-Yupay-Delivery` (stable across retries, and the receiver's dedupe handle),
+`X-Yupay-Event`, `X-Yupay-Timestamp` (per attempt) and `X-Yupay-Signature` =
+`hex(HMAC_SHA256(ypmw_secret, canonical))` where
+
+```
+canonical = {timestamp}\n{delivery_id}\n{event_type}\n{sha256_hex(body)}
+```
+
+Delivery is **at-least-once** and only tie-broken, not globally ordered: a
+retried event lands after events queued behind it, so a receiver orders by the
+payload's `at` and dedupes on the delivery id. `2xx` is success; `408`/`429`/`5xx`
+and an unanswered attempt retry on a 30 s doubling backoff capped at 1 h, ten
+attempts over ~3 h; every other answer — another `4xx`, a redirect (never
+followed), a response over 64 KiB or a compressed one, and an address we refuse
+to connect to — is terminal. After 20 consecutive failed attempts the hook is
+auto-disabled and the merchant's operators are emailed once;
+`PUT /admin/merchants/{id}/webhook` is the only way back on.
+
+**The contract a receiver implements against is
+`apps/api/src/yupay/modules/merchants/README.md`, section "Outgoing
+webhooks"** — payload shapes, the canonical string, an executed worked example
+and a runnable Node verifier. The decisions behind it are ADR-0070; the
+operational side (setting a pilot's URL, reading the delivery log, replaying a
+delivery) is `docs/runbooks/merchant-b2b.md`.
 
 ## Merchant machine API (M2) — `/merchant/v1`
 
@@ -467,8 +504,8 @@ construction.
 
 Status, timeline, failure reason, refund mark and **the delivered voucher
 code**. That last one is deliberate and is the reason this endpoint is the
-reseller's delivery channel rather than a convenience: M3's
-`order.status_changed` webhook (spec §10) will not carry the code, because a
+reseller's delivery channel rather than a convenience: the M3a
+`order.status_changed` webhook (spec §10) does not carry the code, because a
 webhook body lands in the receiver's logs and in ours and a voucher code is a
 bearer instrument. A pull, over a signed request, scoped exactly like the
 order. Drawn in
@@ -476,8 +513,9 @@ order. Drawn in
 
 The route's `:path` convertor is **greedy** — it compiles to `.*`, so
 `/merchant/v1/orders/a/b/c/d` matches this handler and answers
-`order_not_found`. Nothing else lives under `/orders/` today, but M3's
-`/orders/{id}/refund` must be registered **above** it or Starlette will swallow
+`order_not_found`. Nothing else lives under `/orders/` today — M3a added no
+route here — but M3b's `/orders/{id}/refund` must be registered **above** it or
+Starlette will swallow
 it silently (first full match in declaration order). Noted at the route and in
 the module README's file map.
 

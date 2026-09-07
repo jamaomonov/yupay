@@ -270,7 +270,7 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
   operator who hand-edited a row to `{}` meaning "block this key" got the
   opposite, so the auth path logs a warning naming the key when it sees one.
 
-## Merchant outgoing webhooks — the payload (B2B, M3a Task 3, 2026-09-07)
+## Merchant outgoing webhooks — the payload (B2B, M3a Tasks 3–4, 2026-09-08)
 
 The SSRF row above covers the connection. This is what may travel over it.
 
@@ -293,10 +293,23 @@ The SSRF row above covers the connection. This is what may travel over it.
   because a webhook path can carry a token. Reaching that branch is our own
   bug — every column on the row is NOT NULL or length-bounded — so the type is
   enough to find it and the row is never needed.
-- **What is still accepted.** The body is unencrypted at the receiver; it is
-  signed (Task 4) so a merchant can prove it came from us, which is
-  authenticity, not confidentiality. That is why the rule above is "nothing
-  worth stealing in the body" rather than "encrypt the body".
+- **The body is signed, not encrypted** (Task 4, ADR-0070): HMAC-SHA256 under a
+  per-merchant `ypmw_` secret held encrypted at rest, over
+  `{timestamp}\n{delivery_id}\n{event_type}\n{sha256(body)}`. Every field is
+  fixed-width or cannot contain the LF separator, so no value can be spelled to
+  move a field boundary — the discipline ADR-0069 §3 sets for the inbound
+  direction. The delivery id is **inside** the signed material rather than only
+  in a header, because it is the receiver's dedupe handle and an unsigned one is
+  worthless against a replay.
+- **What is still accepted.** The body is unencrypted at the receiver; the
+  signature is authenticity, not confidentiality. That is why the rule above is
+  "nothing worth stealing in the body" rather than "encrypt the body".
+- **`response_body` is attacker-influenced text we store.** The merchant's
+  server writes it, that server may be compromised, and we keep the first 2048
+  characters as a **column bound** rather than a writer's promise. Nothing
+  escapes it on the way in, and M4's cabinet renders it: **that screen owns the
+  escaping.** The same is true of `last_error`, which interpolates a TLS or
+  httpx failure summary — capped at 512 for the same reason.
 
 ## Out of scope (we do not handle)
 

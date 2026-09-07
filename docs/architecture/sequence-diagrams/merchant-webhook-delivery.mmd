@@ -27,11 +27,11 @@ sequenceDiagram
                 M-->>OUT: 200
                 D->>DB: status=delivered, response_code, response_body (clipped 2048)
                 D->>DB: hook.failure_streak = 0, last_success_at
-            else 408 / 429 / 5xx, or a transport failure (they did not answer)
+            else 408 / 429 / 5xx, or nobody answered (DNS, connect, TLS, timeout, reset)
                 D->>DB: status=pending, next_attempt_at = now + backoff<br/>(30s doubling to 1h; Retry-After honoured on 429/503, clamped)
                 D->>DB: hook.failure_streak += 1 (hook row locked FOR UPDATE)
-            else 4xx / redirect, or a RECEIVED refusal (too large, compressed)
-                Note right of D: retrying re-delivers, or gets the same answer
+            else 4xx / redirect, a RECEIVED refusal (too large, compressed),<br/>or an address WE refused to connect to
+                Note right of D: retrying re-delivers, gets the same answer, or<br/>aims at the same refused url snapshot
                 D->>DB: status=failed, last_error (clipped 512)
                 D->>DB: hook.failure_streak += 1
             else OutboundBrokenError -- our own bug

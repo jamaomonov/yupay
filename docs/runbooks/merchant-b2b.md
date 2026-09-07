@@ -2,9 +2,9 @@
 
 Two halves. The **catalog** sections cover M1's B2B visibility flags and the
 one-time launch flip. The **machine API** sections, from "The machine API"
-onward, cover the `/merchant/v1` surface a reseller's server calls: onboarding,
-credentials, the failure modes that need a human, and the gaps a pilot
-integrator will meet.
+onward, cover the `/merchant/v1` surface a reseller's server calls **and the
+outgoing webhooks we send back**: onboarding, credentials, the failure modes
+that need a human, and the gaps a pilot integrator will meet.
 
 ## Catalog: verify the launch-flip after deploy (migration 0068)
 
@@ -58,15 +58,17 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yup
 Everything from here on concerns the reseller-facing API that M2 shipped. The
 contract a merchant implements against is
 `apps/api/src/yupay/modules/merchants/README.md`; the decisions behind it are
-ADR-0068 and ADR-0069. **Read "Known gaps before a pilot integrates" at the
-bottom before you put the first reseller on this.**
+ADR-0068, ADR-0069 and ADR-0070 (the outgoing webhooks). **Read "Known gaps
+before a pilot integrates" at the bottom before you put the first reseller on
+this.**
 
 Admin calls below use `-H "Authorization: Bearer <admin JWT>"` — the same
 admin session the SPA uses.
 
 ## Onboarding a merchant, end to end
 
-Four steps, in this order. Steps 1–2 have SPA screens; step 3 does not yet.
+Five steps, in this order. Steps 1–2 have SPA screens; steps 3 and 5 do not
+yet, and step 5 is optional.
 
 ### 1. Create the account
 
@@ -154,6 +156,59 @@ curl "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/api-keys" \
 throttled to one write a minute per key, so it lags a burst; it never lags by
 more than that.
 
+### 5. Set the webhook, if they want one
+
+Optional, and there is **no SPA screen and no merchant-facing endpoint** for it:
+configuration is admin-only until M4's cabinet (ADR-0070 decision 7), so a pilot
+who wants push depends on this call.
+
+```bash
+curl -X PUT "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/webhook" \
+  -H "Authorization: Bearer <admin JWT>" \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://hooks.acme.example/yupay"}'
+```
+
+The response carries the row **and `secret`** — a `ypmw_…` value that, like the
+API secret, exists nowhere else, ever. Hand it over in the same message as the
+`key_id`/`secret` pair and point them at "Outgoing webhooks" in the module
+README, which carries the canonical string, a worked example and a runnable
+verifier.
+
+Four things to say in that message, because each of them is a support ticket
+otherwise:
+
+- the webhook **never carries a voucher code** — they still poll
+  `GET /merchant/v1/orders/{merchant_order_id}` to collect it;
+- delivery is **at-least-once**: dedupe on `X-Yupay-Delivery`, order by the
+  payload's `at`;
+- their endpoint has **10 seconds** and must answer `2xx` with **at most 64 KiB**,
+  uncompressed — a server that gzips unconditionally fails every delivery;
+- nothing tells them when a fulfilment fails on its own (`paid → fulfilling →`
+  silence); `failure_reason` on the order read is where that lives.
+
+Read it back, and note what is missing on purpose:
+
+```bash
+curl "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/webhook" \
+  -H "Authorization: Bearer <admin JWT>"
+```
+
+`GET` returns the URL, `disabled_at`, `failure_streak`, `last_success_at` and
+`last_failure_at` — the delivery worker's running health — and **no secret
+field at all**. A `PUT` to a merchant that already has a hook edits the URL and
+answers `secret: null`: changing where deliveries go must not silently break a
+working verifier. Rotation is its own call
+(`POST .../webhook/rotate-secret`), has no overlap window — one live secret at
+a time — and takes effect on the very next attempt, so tell them before you run
+it. `DELETE .../webhook` stops delivery by setting `disabled_at`; it is not a
+delete, so the log and the URL stay readable and turning it back on does not
+mean re-onboarding.
+
+There is **no "send test event"** in M3a (it is a cabinet feature, spec §11).
+The cheapest live test is the pilot's first real order, which emits `paid` and
+`fulfilling` from one transaction and `delivered` from the worker.
+
 ## Rotating and revoking a key
 
 Several keys can be live at once, which is what makes rotation zero-downtime:
@@ -183,16 +238,31 @@ the merchant's whole deposit balance, a signature is valid for the ±300 s
 window it was made in, and there is no per-order approval step to catch a
 fraudulent order after the fact.
 
-## `INVENTORY_ENC_KEY` is now load-bearing for two subsystems
+## `INVENTORY_ENC_KEY` is now load-bearing for three subsystems
 
 It was the voucher-code warehouse's key. It is now also the input from which
-merchant API-key secrets are encrypted (`core/crypto.py` derives a separate key
-per purpose by HKDF, so the two never share key material — but they share the
-one input).
+**merchant API-key secrets** (M2) and **merchant webhook signing secrets**
+(M3a) are encrypted. `core/crypto.py` derives a separate key per purpose by
+HKDF — `yupay:merchants:apikey:v1` and `yupay:merchants:webhook:v1` — so the
+three never share key material, but they share the one input.
 
-**If it is rotated or lost, every merchant API key stops verifying.** The
-symptom is precise and worth memorising, because it does not look like an
-encryption failure from the outside:
+Losing it therefore breaks two merchant-facing things at once, with two
+different symptoms. **Every merchant API key stops verifying**, and **no webhook
+can be signed**: the secret is decrypted per attempt, `crypto.decrypt` raises a
+`CryptoError`, the drain's poison belt catches it, and the delivery row is
+written `failed` with
+
+```
+merchant_webhook.attempt_crashed   delivery_id=… error=CryptoError: …
+```
+
+The merchant's failure streak is deliberately **not** touched by that — the
+fault is ours, so it must not auto-disable a working endpoint — which means a
+lost key produces a queue that fails silently rather than a hook that switches
+itself off. Grep for that log line, not for a disable.
+
+The API-key symptom is precise and worth memorising, because it does not look
+like an encryption failure from the outside:
 
 - every `/merchant/v1` request answers an ordinary `401 invalid_credentials` —
   the same body an unknown key gets, because the auth path treats an
@@ -211,7 +281,11 @@ plaintext secrets are gone with the old key. Restore the old value of
 `INVENTORY_ENC_KEY` if you still have it (the voucher warehouse needs that
 anyway — the same rotation breaks every stored code); otherwise every merchant
 needs a new key issued and deployed on their side, which is a conversation, not
-a command.
+a command. The webhook half of that conversation is
+`POST /api/v1/admin/merchants/{id}/webhook/rotate-secret` per merchant, and the
+deliveries that crashed while the key was wrong are `failed` **terminally** —
+nothing retries them, so replay the ones that matter by hand (below) once the
+merchant is verifying again.
 
 If the variable is **empty** in prod rather than wrong, the failure is louder
 and earlier: `core.crypto` raises at first use, so key issuance and
@@ -298,10 +372,64 @@ it stopped. There is deliberately no second re-enable path — do not clear
 `disabled_at` by hand in SQL, because the streak would stay at its ceiling and
 the very next failure would disable the hook again.
 
+Two things "the backlog resumes" does not mean, and the merchant will ask about
+both:
+
+- **Events that happened while the hook was off were never queued.** The
+  producer writes nothing for a disabled hook, so re-enabling releases what was
+  waiting when it went off and nothing after that. Tell them to reconcile the
+  gap by polling the order read; there is no backfill.
+- **A queued row keeps the URL it was queued with.** `url` is snapshotted at
+  enqueue so the log can say which host answered, which means re-`PUT`ting a
+  _corrected_ address does not re-aim the rows already waiting: they will be
+  attempted against the old host and fail out. If the endpoint moved, expect the
+  backlog to die rather than arrive, and replay what matters (below) so the new
+  address gets it.
+
+A backlog also has **no expiry**: rows stay `pending` forever if a merchant
+never comes back, so a hook re-enabled after a week delivers a week-old `paid`.
+That is a deliberate omission (M4's cabinet is where "discard the backlog"
+belongs) and worth checking before you re-enable a long-dead hook:
+
+```sql
+-- what a re-enable would release, for one merchant
+SELECT event_type, status, count(*), min(created_at) AS oldest
+FROM merchant_webhook_deliveries
+WHERE merchant_id = '<merchant-id>' AND status = 'pending'
+GROUP BY 1, 2;
+```
+
 **Reading the delivery log.** One row per event in
 `merchant_webhook_deliveries`: `status`, `attempts_count`, `next_attempt_at`,
 their `response_code` and the first 2 KB of their `response_body`, plus our own
-`last_error`. Three answers that surprise people:
+`last_error`.
+
+```sql
+-- "did merchant X hear about order Y, and what did their server say?"
+SELECT id, event_type, status, attempts_count, next_attempt_at,
+       response_code, last_error, left(response_body, 200) AS body, created_at
+FROM merchant_webhook_deliveries
+WHERE merchant_id = '<merchant-id>'
+  AND payload ->> 'order_id' = '<order-id>'
+ORDER BY created_at;
+```
+
+There is **no index for that predicate** — the order id lives inside `payload`
+JSONB and `(merchant_id, created_at DESC)` is what narrows it. Fine at our
+volume, a known limitation for M4's screen; always keep the `merchant_id` on
+the query.
+
+```sql
+-- queue health, all merchants. There are no metrics for this yet.
+SELECT status, count(*), min(next_attempt_at) AS next_due
+FROM merchant_webhook_deliveries GROUP BY 1;
+```
+
+A growing `pending` count whose `next_due` is in the past means nobody is
+draining — check the worker, not the merchants (`worker.consumer.queue_loop_died`
+and `docs/runbooks/fulfillment-queue.md`).
+
+Three answers that surprise people:
 
 - `last_error` starting `AddressNotAllowedError` / `UrlNotAllowedError` means
   **we** refused to connect — their hostname resolved to a private or loopback
@@ -315,13 +443,76 @@ their `response_code` and the first 2 KB of their `response_body`, plus our own
 - `OutboundBrokenError` is **ours**, not theirs. It never counts toward the
   failure streak and never disables a hook; treat one as a bug report.
 
-**Not yet verified on real infrastructure** (M3a Task 4): every test is
-loopback or stubbed, so the first TLS handshake to a real merchant endpoint
-happens in staging. The specific thing to watch there is `AI_ADDRCONFIG` on the
-resolver combined with the client's no-fallback address pin: glibc-in-container
-has known quirks (loopback does not count as a "configured" address), so
-confirm a real dual-stack merchant host is actually deliverable from the prod
-worker before a pilot integrates.
+**Replaying a failed delivery.** There is no endpoint and no admin screen for
+this; it is a deliberate SQL edit on one row, and the drain picks it up on the
+next tick (≤ `FULFILMENT_POLL_SECONDS`, default 5 — no NOTIFY needed).
+
+```sql
+-- one row, by id, after you have read it and know why it failed
+UPDATE merchant_webhook_deliveries
+   SET status = 'pending', attempts_count = 0, next_attempt_at = now(),
+       last_error = NULL, response_code = NULL, response_body = NULL
+ WHERE id = '<delivery-id>' AND status = 'failed';
+```
+
+Five things to check before you run it:
+
+- **the hook must be enabled.** A disabled hook's rows are not claimed, so this
+  does nothing until `disabled_at` is cleared by a `PUT`.
+- **it re-sends the row's own `url` snapshot**, not the currently configured
+  address. If the URL was the problem, the fix is a `PUT` _and_ then this — and
+  it still goes to the old host, so for a moved endpoint the honest answer is to
+  tell the merchant to fetch the affected orders over the API instead.
+- **the payload is whatever was queued**, including a `status` the order has
+  since moved past. Replaying an old `paid` after a `delivered` is exactly the
+  out-of-order case the contract tells receivers to handle, but do not create it
+  casually.
+- **`attempts_count = 0` restarts the ten-attempt budget.** Leave it alone if
+  you want the row to get one more try and then die.
+- **never replay a `delivered` row.** It re-delivers an event they processed;
+  the delivery id is unchanged, so a receiver that dedupes correctly ignores it,
+  and one that does not double-provisions.
+
+Replaying a **batch** (say, everything that crashed while `INVENTORY_ENC_KEY`
+was wrong) is the same statement scoped by `last_error LIKE 'CryptoError%'` and
+a time window. Count first, and cap it — every released row is an HTTP call to
+somebody's production server.
+
+**Not yet verified on real infrastructure** (M3a): every test is loopback or
+stubbed, so the first TLS handshake to a real merchant endpoint happens in
+staging. Two questions only a staging run answers, and they go together:
+
+- **`AI_ADDRCONFIG` plus the client's no-fallback address pin.**
+  glibc-in-container has known quirks (loopback does not count as a
+  "configured" address), so confirm a real dual-stack merchant host is actually
+  deliverable from the prod worker before a pilot integrates. There is also no
+  fallback across a host's other addresses: we pin the first answer, so a
+  merchant whose first public address is down fails every attempt until their
+  DNS changes.
+- **A real SIGTERM.** The worker's shutdown budget is 8 s because Docker's
+  **default** `stop_grace_period` is 10 s and neither compose file overrides it
+  for `worker` — raising the budget means setting that first, in both files.
+  The 8 s is measured against a stuck fake drain, never against a container stop
+  with a live Postgres and a real G2B pool.
+
+**Before the deploy: check the DB pool.** The worker now drains two queues from
+one connection pool, so its peak is `FULFILMENT_CONCURRENCY +
+MERCHANT_WEBHOOK_CONCURRENCY` sessions — **4 + 2** at the defaults, where it
+used to be 4. Nobody has checked that against the configured pool size on prod.
+If it is short, the symptom is a **connection checkout timeout**, most visibly
+on the fulfilment side, which looks nothing like a webhook problem.
+
+**`worker.consumer.queue_loop_died` needs an alert rule** (outside this repo). A
+dead queue loop takes the container down on purpose — `run()` exits `1`, so
+`restart: unless-stopped` restarts it — but the exit code only helps if
+something notices the restart loop. Until that alert exists, the queue-health
+query above is the manual check.
+
+**For whoever builds M4's cabinet:** `response_body` is text a merchant's own
+server wrote, stored to 2048 characters and rendered on our screen. It is
+never escaped on the way in. The auto-disable email is Russian-only, like every
+other template in this module, so an English-speaking integrator gets a Russian
+notice.
 
 ## `POST /merchant/v1/validate/player` keeps answering `error`
 
@@ -531,9 +722,11 @@ settled by a manual deposit credit that the order read does not show.
   transfer, and a merchant reconciling by order rather than by statement cannot
   see the settlement at all. It scales with order volume, so it is fine for a
   pilot and not for ten merchants.
-- **Fix:** M3, which adds the refund posting (the module README's posting table
-  already reserves the row) and the outbound webhook. `refunded_usd` starts
-  telling the truth the moment that row is posted, with no contract change.
+- **Fix:** M3b, which adds the refund posting — the module README's posting
+  table already reserves the row. `refunded_usd` starts telling the truth the
+  moment that row is posted, with no contract change. (M3a shipped the other
+  half of that milestone, the outbound webhook, and it does not help here: no
+  event fires for a fulfilment that fails on its own.)
 
 ### Closed in M2: the ±2% drift giveaway
 
