@@ -244,12 +244,26 @@ async def place(
     # than one local import that says why it is local.
     from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
 
+    # ``merchant.id`` is read **once**, here, and every line below uses this
+    # plain ``str`` rather than the ORM attribute. ``create_order`` resolves a
+    # lost unique-index race with ``db.rollback()``, and a rollback expires
+    # every object in this session's identity map — including the ``merchant``
+    # that ``auth.merchant_auth`` loaded from this same session. Reading
+    # ``merchant.id`` after that point triggers a lazy refresh, which under
+    # asyncio raises ``MissingGreenlet``: an unhandled ``500`` on the money
+    # endpoint, in exactly the concurrent-duplicate case the replay branch
+    # below exists to handle.
+    #
+    # The rule this encodes, for anything added after ``create_order``
+    # returns: no attribute of an object loaded *before* it may be read there.
+    # Only ``order`` is safe, because ``create_order`` re-reads it itself.
+    merchant_id = merchant.id
     digest = _request_digest(body)
     already = await orders.find_merchant_order(
-        db, merchant_id=merchant.id, merchant_order_id=body.merchant_order_id
+        db, merchant_id=merchant_id, merchant_order_id=body.merchant_order_id
     )
     if already is not None:
-        return await _replayed(db, already, merchant_id=merchant.id, digest=digest)
+        return await _replayed(db, already, merchant_id=merchant_id, digest=digest)
 
     sku, cost = await quote.load_orderable_sku(db, sku_id=body.sku_id)
     price = quote.price_for(sku, cost, merchant, body)
@@ -258,7 +272,7 @@ async def place(
     # ``charge_deposit``'s row lock (Ruling 3) — but it is what keeps the
     # ordinary "you are out of money" answer from riding on a rolled-back
     # INSERT.
-    balance = await deposit.deposit_balance(db, merchant_id=merchant.id)
+    balance = await deposit.deposit_balance(db, merchant_id=merchant_id)
     if balance < price:
         raise ConflictError(
             "deposit balance does not cover this order",
@@ -273,7 +287,7 @@ async def place(
             required_usd=str(price),
         )
 
-    actor = orders.Actor(user_id=None, email=None, merchant_id=merchant.id)
+    actor = orders.Actor(user_id=None, email=None, merchant_id=merchant_id)
     order = await orders.create_order(
         db,
         OrderCreate(
@@ -290,9 +304,9 @@ async def place(
         # winner's row, already paid and already debited. Postgres blocks the
         # loser's INSERT until the winner's transaction ends, so what we read
         # here is committed, not half-written.
-        return await _replayed(db, order, merchant_id=merchant.id, digest=digest)
+        return await _replayed(db, order, merchant_id=merchant_id, digest=digest)
 
-    await deposit.charge_deposit(db, merchant_id=merchant.id, amount=price, order_id=order.id)
+    await deposit.charge_deposit(db, merchant_id=merchant_id, amount=price, order_id=order.id)
     await orders.mark_merchant_order_paid(db, order=order, actor=actor, request_digest=digest)
 
     # The same call the payment path makes, with two deliberate differences.
@@ -312,12 +326,12 @@ async def place(
 
     log.info(
         "merchant_order_placed",
-        merchant_id=merchant.id,
+        merchant_id=merchant_id,
         order_id=order.id,
         sku_code=sku.sku_code,
         price_usd=str(price),
     )
-    return _out(order, balance=await deposit.deposit_balance(db, merchant_id=merchant.id))
+    return _out(order, balance=await deposit.deposit_balance(db, merchant_id=merchant_id))
 
 
 __all__ = [

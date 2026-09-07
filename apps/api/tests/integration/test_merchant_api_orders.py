@@ -1047,6 +1047,93 @@ async def test_two_concurrent_creates_with_one_key_make_one_order_and_one_debit(
     assert await _balance(db_session, merchant_id) == Decimal("8.93")
 
 
+async def test_a_duplicate_that_loses_the_unique_index_gets_the_winner_not_a_500(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    db_engine: Any,
+) -> None:
+    """The documented concurrent-replay branch in ``orders.place``, actually entered.
+
+    The test above cannot reach it. Two ASGI requests on one event loop
+    serialise, so the second one's *pre-check* finds the first order and
+    returns from there — and even an interleave that commits the winner later
+    is caught by ``create_order``'s own ``_existing_idempotent_order``. The
+    branch that handles a genuine loss of the unique index — every pre-check
+    missed, the INSERT violated, ``create_order`` rolled back and handed us
+    the winner's row — had no test on this branch at all, which is how a
+    ``500`` lived on the money endpoint through six task reviews.
+
+    The interleave is written by hand, and it is the real one rather than a
+    simulation of it: session W places the winning order and **does not
+    commit**, so it holds the uncommitted ``(merchant_id, idempotency_key)``
+    key. The loser then goes through the live endpoint, misses on both
+    pre-checks (W's row is invisible), reaches its INSERT and **blocks** on
+    W's key — which is what ``assert not loser.done()`` pins, and what makes
+    the rest of the test more than a re-run of the replay path. Committing W
+    releases it into the unique violation, the rollback, and the branch.
+
+    Before the fix the loser answered a bare ``500``. ``create_order``'s
+    ``db.rollback()`` expires every object in the session's identity map — the
+    authenticated ``Merchant`` included, since ``merchant_auth`` loaded it
+    from that same session — so reading ``merchant.id`` on the way into
+    ``_replayed`` triggers a lazy refresh, which under asyncio raises
+    ``MissingGreenlet``. Nothing catches it: restore ``merchant.id`` in place
+    of the captured ``merchant_id`` and this test does not even get a response
+    object, because the ASGI transport re-raises out of the request.
+    """
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from yupay.modules.merchants import api as merchants
+    from yupay.modules.merchants.machine_schemas import MerchantOrderCreateIn
+    from yupay.modules.merchants.models import Merchant
+
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+    sku_id = await _seeded(db_session)
+    payload = {"merchant_order_id": "race-lost", "sku_id": sku_id, "expected_price": "1.07"}
+
+    factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    async with factory() as winner:
+        merchant = (
+            await winner.execute(select(Merchant).where(Merchant.id == merchant_id))
+        ).scalar_one()
+        placed = await merchants.place_order(
+            winner, merchant=merchant, body=MerchantOrderCreateIn(**payload)
+        )
+        await winner.flush()
+
+        loser = asyncio.create_task(_post_order(integration_client, key_id, secret, payload))
+        await asyncio.sleep(0.5)
+        assert not loser.done(), (
+            "the loser answered without waiting on the winner's key — it never "
+            "reached the INSERT, so this test is not exercising the branch"
+        )
+
+        await winner.commit()
+        r = await loser
+
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["order_id"] == placed.order_id
+    assert body["merchant_order_id"] == "race-lost"
+    # One order and one debit: the loser rolled back and bought nothing.
+    orders = (await db_session.execute(select(Order))).scalars().all()
+    assert len(orders) == 1
+    charges = (
+        (
+            await db_session.execute(
+                select(WalletTransaction).where(WalletTransaction.kind == "merchant_order_charge")
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(charges) == 1
+    assert body["balance_usd"] == "8.93"
+    assert await _balance(db_session, merchant_id) == Decimal("8.93")
+
+
 # ---------- the seam: retail cannot inject a price ----------
 
 
