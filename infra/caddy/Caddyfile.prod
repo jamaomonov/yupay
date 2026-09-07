@@ -75,9 +75,27 @@ http://yupay.uz, http://www.yupay.uz {
 	#
 	# To stdout, because promtail already ships container output to Loki; the
 	# container's json-file driver caps it at 10MB x 3.
+	#
+	# The header filter is load-bearing, not tidiness: Caddy's JSON log
+	# redacts ``Authorization`` and nothing else, so the merchant API's
+	# signed-request credentials were being written verbatim to a log that
+	# promtail ships to Loki — a logged secret (AGENTS §9), replayable for
+	# the signature's 300s window by anyone with read access. Verified
+	# against ``caddy:2-alpine`` before and after this block existed.
+	#
+	# Editing this file on prod needs ``up -d --force-recreate caddy``:
+	# it is a single-file bind mount, and ``git checkout`` swaps the inode
+	# out from under a running ``caddy reload``, which then re-reads the
+	# stale one.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Merchant-Signature delete
+				request>headers>X-Merchant-Key delete
+			}
+		}
 	}
 	# Hold and retry across a restart instead of answering 502.
 	#
@@ -236,9 +254,27 @@ http://api.yupay.uz {
 	#
 	# To stdout, because promtail already ships container output to Loki; the
 	# container's json-file driver caps it at 10MB x 3.
+	#
+	# The header filter is load-bearing, not tidiness: Caddy's JSON log
+	# redacts ``Authorization`` and nothing else, so the merchant API's
+	# signed-request credentials were being written verbatim to a log that
+	# promtail ships to Loki — a logged secret (AGENTS §9), replayable for
+	# the signature's 300s window by anyone with read access. Verified
+	# against ``caddy:2-alpine`` before and after this block existed.
+	#
+	# Editing this file on prod needs ``up -d --force-recreate caddy``:
+	# it is a single-file bind mount, and ``git checkout`` swaps the inode
+	# out from under a running ``caddy reload``, which then re-reads the
+	# stale one.
 	log {
 		output stdout
-		format json
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Merchant-Signature delete
+				request>headers>X-Merchant-Key delete
+			}
+		}
 	}
 	reverse_proxy api:8000 {
 		lb_try_duration 15s

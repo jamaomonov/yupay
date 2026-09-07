@@ -322,7 +322,6 @@ The whole path is drawn in
 | A credential header missing                                  | 401    | `missing_credentials` |
 | Timestamp not digits-only, or more than **±300 s** from ours | 401    | `stale_timestamp`     |
 | Unknown `key_id`, revoked key, or wrong signature            | 401    | `invalid_credentials` |
-| This exact signature was already used                        | 401    | `signature_replayed`  |
 | Merchant frozen                                              | 403    | `merchant_frozen`     |
 | Caller's address not in the key's IP allowlist               | 403    | `ip_not_allowed`      |
 
@@ -330,26 +329,37 @@ The three credential failures return **one identical body** on purpose: the
 payload does not reveal whether a `key_id` exists, and the HMAC is computed
 either way so the crypto cost does not either.
 
-### Replay: the ±300 s window and single-use signatures
+### Replay and retries
 
-Reject-outside-±300 s bounds how long a captured request stays interesting.
-Inside that window, **each signature may be used exactly once** — the second
-request carrying the same signature gets `signature_replayed`.
+**Retries are safe. Resend the identical request, headers and all.** A
+signature is valid for the whole ±300 s window and may be presented more than
+once — there is no single-use marker, no "re-sign the retry" rule, and no
+minimum interval between identical requests. That is deliberate: an attacker
+replaying a request and your client retrying one are byte-identical, so a
+server-side marker cannot separate them and would only turn a network fault
+into an auth error. Neither AWS SigV4 nor Stripe single-uses a signature
+either.
 
-Two practical rules follow:
+What bounds replay instead:
 
-- **Re-sign every retry.** A client that retries a timed-out request must
-  compute a fresh signature (a fresh timestamp is usually enough). Re-sending
-  the identical headers will fail.
-- **Do not send byte-identical requests more than once per second.** The
-  timestamp has one-second resolution, so two otherwise-identical requests in
-  the same second produce the same signature and the second is rejected. Poll
-  no faster than once a second, or vary something (a `cursor`, a filter).
+- **The ±300 s window.** A captured request stops working five minutes after
+  it was signed. Keep your server's clock in sync.
+- **Your credentials stay out of our logs.** Our edge deletes
+  `X-Merchant-Signature` and `X-Merchant-Key` from the access log, so a signed
+  request is not sitting in a log store waiting to be replayed. Keep your side
+  of that bargain too: these two headers do not belong in your own request
+  logs, and neither does the secret.
+- **Idempotency, for anything that changes state.** Order creation is
+  idempotent on your `merchant_order_id` (spec §9.3): the same id twice returns
+  the existing order rather than placing a second one, whether the repeat came
+  from your retry or from somebody replaying you. That is what makes a replayed
+  mutation harmless, so **always send a `merchant_order_id` you control and
+  reuse it across retries of the same intent.**
 
-When order creation ships it will additionally be idempotent on
-`merchant_order_id` (spec §9.3), so a re-signed retry of a create returns the
-existing order rather than placing a second one. Until then, the ±300 s window
-and the single-use signature are the whole of the replay story.
+Stated plainly, because you should design against it rather than assume
+otherwise: a replay inside the window by somebody who can observe your traffic
+is **accepted**. The mitigation for mutations is the idempotency above, not the
+auth layer.
 
 ### Errors
 

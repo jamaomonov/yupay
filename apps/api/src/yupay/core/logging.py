@@ -56,6 +56,12 @@ REDACTED_KEYS = frozenset(
         "api_key",
         "authorization",
         "stripe-signature",
+        # The merchant API's signed-request credentials. Nothing logs
+        # request headers wholesale today, but "stripe-signature" above
+        # sets the precedent: a header that authorises a request belongs
+        # on the blocklist before something starts logging it, not after.
+        "x-merchant-key",
+        "x-merchant-signature",
         "octo_secret",
         "octo_signature_key",
         "payme_key",

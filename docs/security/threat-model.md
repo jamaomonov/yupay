@@ -200,15 +200,29 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
   control. Signing the query is what stops a `?limit=10` lifted from the edge
   access log (which records query strings verbatim) being replayed as
   `?limit=100000`.
-- **Replay is bounded twice.** The ±300 s timestamp window bounds how long a
-  captured request is interesting, and inside it each signature is **single
-  use**: `SET NX merchants:sig:{sha256(signature)} EX 600`, the shape
-  `auth:tg-widget:{hash}` already uses. The signature is hashed into the key
-  rather than stored verbatim. The guard **fails open** on a Redis error, so a
-  cache outage degrades to window-bounded replay rather than refusing every
-  request. Per-endpoint idempotency (order creation on `merchant_order_id`,
-  spec §9.3) will narrow this further, but those endpoints do not exist yet and
-  the auth layer does not assume them.
+- **Replay: bounded by the window, kept out of the logs, and made harmless
+  by idempotency — deliberately not by single-use signatures.** The ±300 s
+  timestamp window bounds how long a captured request is interesting. An
+  earlier revision made each signature single-use (`SET NX merchants:sig:…`)
+  and that was **reverted**: a replaying attacker and a retrying client send
+  byte-identical requests, so no marker can separate them, and single-use
+  therefore breaks at-least-once retries on the money path — an HTTP client
+  auto-retrying a reset connection would get an auth error for a network
+  fault, and on order creation could never learn that its first attempt
+  succeeded. Neither AWS SigV4 nor Stripe single-uses a signature, for the
+  same reason.
+  The capture vector that motivated it is closed at its source instead:
+  Caddy's JSON access log redacts `Authorization` but logged our
+  `X-Merchant-Key` / `X-Merchant-Signature` **verbatim** to stdout, which
+  promtail ships to Loki — verified by reproducing the prod log block against
+  `caddy:2-alpine`. Both headers are now deleted at the edge
+  (`infra/caddy/Caddyfile.prod`, `format filter`), which AGENTS §9 requires
+  independently of any replay argument. What remains accepted: a replay inside
+  the window by someone who can observe traffic. For **mutations** the
+  mitigation is endpoint idempotency — order creation keyed on
+  `merchant_order_id` (spec §9.3) — which is therefore load-bearing rather
+  than belt-and-braces, and is a binding constraint on the endpoint that
+  introduces it.
 - **No enumeration oracle on the credential.** Unknown `key_id`, revoked key
   and a wrong signature return one identical RFC 7807 body, and the
   unknown/revoked paths compute an HMAC against a constant dummy secret rather

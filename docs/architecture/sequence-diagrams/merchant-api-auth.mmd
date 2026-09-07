@@ -2,7 +2,7 @@ sequenceDiagram
     autonumber
     participant Reseller as Merchant's server
     participant Guard as merchants.auth.merchant_auth (FastAPI dependency)
-    participant Redis as Redis (ip_guard.hit_counter / SET NX)
+    participant Redis as Redis (ip_guard.hit_counter)
     participant DB as Postgres
     participant Route as /merchant/v1 endpoint
 
@@ -21,10 +21,6 @@ sequenceDiagram
     alt unknown key OR revoked OR mismatch
         Guard-->>Reseller: 401 invalid_credentials -- one identical body for all three
     end
-    Guard->>Redis: SET NX merchants:sig:{sha256(signature)} EX 600
-    alt this signature was already used
-        Guard-->>Reseller: 401 signature_replayed -- re-sign every retry
-    end
     Guard->>Redis: INCR merchants:apikey:{key_id} (600/60s) -- only now that it is authenticated
     alt over the per-key ceiling
         Guard-->>Reseller: 429 + Retry-After
@@ -35,5 +31,6 @@ sequenceDiagram
         Guard-->>Reseller: 403 ip_not_allowed
     end
     Guard->>DB: UPDATE last_used_at (best effort, at most once a minute per key)
+    Note over Guard: A signature is NOT single-use: an attacker replaying and a client<br/>retrying are byte-identical. Replay is bounded by the +/-300s window,<br/>by keeping credentials out of the edge access log, and by endpoint idempotency.
     Guard-->>Route: the authenticated Merchant row (a real UUID, loaded from the DB)
     Route-->>Reseller: 200

@@ -32,17 +32,42 @@ a form endpoint would need the body read hoisted into middleware.
    credential.
 3. **The credential itself** — unknown key, revoked key and bad signature are
    one indistinguishable 401 (spec §9.2).
-4. **Single-use signature.** A valid signature is burned in Redis for the
-   width of the timestamp window, so a captured request cannot be replayed
-   inside it. Fails open on a Redis error, which degrades to replay bounded by
-   the timestamp window alone. Two consequences the README states as contract:
-   a retry must be re-signed, and byte-identical requests cannot repeat inside
-   one second.
-5. **Merchant axis of the rate guard**, charged on the key only once the
+4. **Merchant axis of the rate guard**, charged on the key only once the
    signature has verified. See ``settings.merchant_api_key_rate_max``.
-6. **Frozen merchant** → 403 ``merchant_frozen``; **IP allowlist** → 403
+5. **Frozen merchant** → 403 ``merchant_frozen``; **IP allowlist** → 403
    ``ip_not_allowed``. Both are authenticated failures, so they are counted.
-7. ``last_used_at``, best effort and throttled.
+6. ``last_used_at``, best effort and throttled.
+
+## Replay, and why nothing here single-uses a signature
+
+A signature is valid for the ±300 s window and **may be presented more than
+once**. That is deliberate, and it was briefly the other way: a ``SET NX``
+marker made each signature single-use, which was reverted because **a
+replaying attacker and a retrying client send byte-identical requests** — no
+marker can tell them apart. Single-use therefore does not buy replay
+protection so much as it breaks at-least-once retries, on the money path: an
+HTTP client that resends after a reset connection gets an auth error for a
+network fault, and if the first attempt already created an order the caller
+never learns it exists. Our own edge makes that likelier than average, since
+deploys are stop-then-start (the Caddyfile's ``lb_try_duration`` comment
+exists because that gap used to produce 502s).
+
+Neither AWS SigV4 nor Stripe single-uses a signature either, for the same
+reason. The posture we actually rely on is three-layered and each layer is
+someone's job:
+
+- **The ±300 s window** bounds how long a captured request stays usable — this
+  module.
+- **Credentials stay out of logs.** Caddy redacts only ``Authorization``, so
+  both ``X-Merchant-Key`` and ``X-Merchant-Signature`` were being written to
+  stdout and shipped to Loki verbatim; ``infra/caddy/Caddyfile.prod`` now
+  deletes them from the access log. That was the capture vector the single-use
+  marker was reaching for, closed where it actually lives.
+- **Idempotency makes a repeat harmless** for mutations. Order creation is
+  idempotent on ``merchant_order_id`` (spec §9.3) — Task 4's job, and now the
+  only thing standing between a replayed mutation and a duplicate order.
+
+A replay inside the window by someone who can observe traffic is **accepted**.
 
 ## Timing shape
 
@@ -76,7 +101,6 @@ primary control: an attacker who can spoof the header still has no secret.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import ipaddress
 import re
 from datetime import timedelta
@@ -95,7 +119,6 @@ from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.errors import ForbiddenError, RateLimitedError, UnauthorizedError
 from yupay.core.logging import get_logger
-from yupay.core.redis import get_redis
 from yupay.modules.auth.ip_guard import guard_ip, hit_counter
 from yupay.modules.merchants import signing
 from yupay.modules.merchants.models import Merchant, MerchantApiKey
@@ -119,15 +142,6 @@ RATE_BUCKET = "merchant-api"
 #: ``docs/architecture/cache-keys.md``.
 _RATE_KEY = "merchants:apikey:{key_id}"
 
-#: Redis key burning one signature. Catalogued in the same file.
-_SEEN_KEY = "merchants:sig:{digest}"
-
-#: How long a burned signature is remembered. A request may be up to
-#: ``TIMESTAMP_TOLERANCE_SECONDS`` old *and* up to that far in the future, so
-#: twice the tolerance is exactly the width of the replayable window: the
-#: marker expires when a replay would already be rejected on age.
-_SEEN_TTL_SECONDS = TIMESTAMP_TOLERANCE_SECONDS * 2
-
 #: Unix seconds, strictly. ``int()`` would also accept ``"1_725_000_000"``,
 #: ``" 1725 "``, ``"+1725"`` and Arabic-Indic digits — harmless (the raw
 #: header is what gets signed, so no two readings can disagree) but the
@@ -144,7 +158,6 @@ _RAW_SAFE = "!\"#$%&'()*+,-./:;<=>?@[\\]^_`{|}~ "
 CODE_MISSING_CREDENTIALS = "missing_credentials"
 CODE_STALE_TIMESTAMP = "stale_timestamp"
 CODE_INVALID_CREDENTIALS = "invalid_credentials"
-CODE_SIGNATURE_REPLAYED = "signature_replayed"
 CODE_MERCHANT_FROZEN = "merchant_frozen"
 CODE_IP_NOT_ALLOWED = "ip_not_allowed"
 
@@ -252,34 +265,6 @@ def address_allowed(allowlist: list[str] | None, address: str) -> bool:
         if caller in network:
             return True
     return False
-
-
-async def _burn_signature(signature: str) -> bool:
-    """Mark a signature used. False when it had already been used.
-
-    ``SET NX`` on a digest of the signature, the shape
-    ``auth.telegram._burn_widget_hash`` uses for the login-widget replay
-    guard. The signature is hashed rather than stored: it is a MAC over the
-    request, and a Redis instance anything can ``SCAN`` should not hold one
-    verbatim.
-
-    Best-effort by design — a Redis error reads as "not seen", so an outage
-    degrades to replay bounded by the timestamp window alone rather than
-    refusing every request. That window is the only other bound this module
-    provides; per-endpoint idempotency (order creation on ``merchant_order_id``,
-    spec §9.3) is a property of endpoints that do not exist yet, so nothing
-    here may assume it.
-
-    Args:
-        signature: The verified ``X-Merchant-Signature`` value.
-
-    Returns:
-        Whether this signature had not been seen before.
-    """
-    key = _SEEN_KEY.format(digest=hashlib.sha256(signature.encode("utf-8")).hexdigest())
-    with contextlib.suppress(Exception):  # fail open on Redis trouble
-        return bool(await get_redis().set(key, "1", ex=_SEEN_TTL_SECONDS, nx=True))
-    return True
 
 
 async def _touch_last_used(db: AsyncSession, key: MerchantApiKey) -> None:
@@ -435,12 +420,6 @@ async def merchant_auth(
     if key is None or merchant is None or key.revoked_at is not None or not signature_ok:
         raise UnauthorizedError(_INVALID_DETAIL, code=CODE_INVALID_CREDENTIALS)
 
-    if not await _burn_signature(provided):
-        raise UnauthorizedError(
-            "this signature has already been used; sign each request once, with a fresh timestamp",
-            code=CODE_SIGNATURE_REPLAYED,
-        )
-
     over_key = await hit_counter(
         _RATE_KEY.format(key_id=key.key_id),
         limit=settings.merchant_api_key_rate_max,
@@ -483,7 +462,6 @@ __all__ = [
     "CODE_IP_NOT_ALLOWED",
     "CODE_MERCHANT_FROZEN",
     "CODE_MISSING_CREDENTIALS",
-    "CODE_SIGNATURE_REPLAYED",
     "CODE_STALE_TIMESTAMP",
     "KEY_HEADER",
     "RATE_BUCKET",

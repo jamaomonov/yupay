@@ -11,12 +11,11 @@ testing proves only that the function is deterministic. The canonical string
 below is transcribed from the module README, which is what a third party
 implements against.
 
-**Why almost every call carries a distinct query string.** A verified
-signature is burned in Redis for the width of the timestamp window, so the
-same signed bytes never authenticate twice — and two byte-identical requests
-inside one second *are* the same signed bytes, because the timestamp is in
-seconds. Varying the query is how a test repeats a call; it is also how a
-real client would.
+A signature is deliberately **not** single-use: a replaying attacker and a
+retrying client send byte-identical requests, so no marker can separate them,
+and single-use would break at-least-once retries on the money path.
+``test_an_identical_retry_still_authenticates`` pins that, and would fail if
+anyone re-introduced a burn marker.
 """
 
 from __future__ import annotations
@@ -207,13 +206,13 @@ async def _call(
     *,
     method: str = "GET",
     path: str = PROBE_PATH,
-    query: str | None = None,
+    query: str = "",
     body: bytes = b"",
     extra: dict[str, str] | None = None,
     **sign: Any,
 ) -> Response:
-    """Sign and send one request. ``query=None`` mints a unique one — see the module docstring."""
-    q = f"n={uuid.uuid4().hex}" if query is None else query
+    """Sign and send one request."""
+    q = query
     headers = _signed(key_id, secret, method=method, path=path, query=q, body=body, **sign)
     if extra:
         headers.update(extra)
@@ -553,26 +552,34 @@ async def test_unknown_revoked_and_bad_signature_are_indistinguishable(
     assert row.revoked_at is not None
 
 
-async def test_a_replayed_signature_is_rejected(
+async def test_an_identical_retry_still_authenticates(
     machine_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
-    """A verified signature is single-use for the width of the window (I2).
+    """A signature is NOT single-use, and that is the deliberate choice.
 
-    Without this, a request captured from the edge access log (or anywhere
-    else it is echoed) is replayable for up to five minutes. The guard fails
-    OPEN on a Redis error, so it supplements downstream idempotency rather
-    than replacing it.
+    Round 1 burned each verified signature in Redis. It was reverted because a
+    replaying attacker and a retrying client send byte-identical requests, so
+    no marker separates them — single-use only breaks at-least-once retries,
+    and it breaks them on the money path: a client resending after a reset
+    connection would get an auth error for a network fault, and if the first
+    attempt already created an order the caller would never learn it exists.
+    Neither AWS SigV4 nor Stripe single-uses a signature for the same reason.
+
+    Replay is bounded by the ±300 s window, by keeping credentials out of the
+    edge access log (``infra/caddy/Caddyfile.prod``), and — for mutations — by
+    ``merchant_order_id`` idempotency, which Task 4 owns. This test is what
+    fails if anyone re-introduces the burn.
     """
     merchant_id = await _new_merchant(machine_client, admin_headers)
     key_id, secret = await _new_key(machine_client, admin_headers, merchant_id)
     headers = _signed(key_id, secret, query="")
 
     first = await machine_client.get(PROBE_PATH, headers=headers)
-    replay = await machine_client.get(PROBE_PATH, headers=headers)
+    retry = await machine_client.get(PROBE_PATH, headers=headers)
 
     assert first.status_code == 200, first.text
-    assert replay.status_code == 401
-    assert replay.json()["code"] == "signature_replayed"
+    assert retry.status_code == 200, retry.text
+    assert retry.json()["merchant_id"] == first.json()["merchant_id"]
 
 
 # ---------- the 403s ----------
