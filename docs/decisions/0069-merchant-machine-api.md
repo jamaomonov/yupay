@@ -172,6 +172,37 @@ recoverable. And enqueue-only was contract-compatible from the start — the
 endpoint already answers `status: "fulfilling"` and already tells resellers to
 poll — so nothing on the wire changed.
 
+### 7. The RFC 7807 validation handler is scoped to this prefix, not app-wide
+
+`RequestValidationError` — anything a request schema refuses before our code
+runs — answered FastAPI's `{"detail": [ … ]}`: `application/json`, no `type`,
+no `code`, from endpoints whose error table decision 1 makes a published
+contract. `core.errors.problem_json_validation_handler` renders those as
+problem+json with `code: "invalid_request"`.
+
+It is registered app-wide and **delegates to FastAPI's own handler for every
+path outside `/merchant/v1`**, byte for byte. Replacing the body everywhere
+looks like the simpler change and is the wrong one: FastAPI documents every
+route's 422 as `HTTPValidationError` and `packages/api-client` types every
+operation in the repo from that schema, so changing the runtime body without
+changing the schema would make the generated client wrong nearly everywhere —
+and `openapi-drift` could not catch it, because the schema would not have
+moved. For this prefix the schema _does_ move
+(`machine_routes._VALIDATION_PROBLEM` overrides the 422 response), so the
+document and the client follow.
+
+Two details that are load-bearing rather than incidental:
+
+- `exc.errors()` goes through `jsonable_encoder`, not `json.dumps`. A
+  `value_error` entry carries the original exception **object** under
+  `ctx["error"]`; a naive handler raises `TypeError` and turns a clean 422 into
+  a 500 — on a non-UUID `sku_id`, which is among the likeliest integrator
+  mistakes.
+- `detail` stays a **string** and the per-failure list moved to a new `errors`
+  key. Retyping `detail` from string to array would contradict every other
+  error this API returns, and decision 1 makes that a `/merchant/v2` rather
+  than an edit — which is why it landed now, at zero integrators.
+
 ## Consequences
 
 - **The merchant channel depends on the worker being up, always.** Turning

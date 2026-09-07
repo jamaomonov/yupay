@@ -61,7 +61,7 @@ problem+json, from an endpoint whose error contract we published.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Any, Final
 
 from fastapi import APIRouter, Depends, Path, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -76,6 +76,7 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantOrderStatusOut,
     MerchantProfileOut,
     MerchantTransactionsOut,
+    MerchantValidationProblem,
 )
 from yupay.modules.merchants.models import Merchant
 
@@ -85,6 +86,25 @@ from yupay.modules.merchants.models import Merchant
 #: 500 and got 200 has no way to tell.
 TRANSACTIONS_PAGE_MAX = 200
 TRANSACTIONS_PAGE_DEFAULT = 50
+
+#: The 422 this prefix really answers, overriding the ``HTTPValidationError``
+#: FastAPI documents by default on every route with a body or a constrained
+#: parameter. Without this the schema would promise ``{"detail": [ … ]}`` while
+#: ``core.errors.problem_json_validation_handler`` returns problem+json here —
+#: which is precisely the class of drift this milestone kept finding, and the
+#: one ``openapi-drift`` cannot see because it compares the schema to itself.
+#:
+#: Declared as an inline schema rather than via ``model=``: FastAPI would put a
+#: ``model``'s schema under ``application/json``, and the media type is half
+#: the point.
+_VALIDATION_PROBLEM: Final[dict[int | str, dict[str, Any]]] = {
+    422: {
+        "description": "The request did not validate (RFC 7807, `code: invalid_request`)",
+        "content": {
+            "application/problem+json": {"schema": MerchantValidationProblem.model_json_schema()}
+        },
+    }
+}
 
 #: ``dependencies`` on the router rather than only on each handler: a route
 #: added later without an ``AuthedMerchant`` parameter is still authenticated,
@@ -97,6 +117,7 @@ router = APIRouter(
     prefix="/merchant/v1",
     tags=["merchant-api"],
     dependencies=[Depends(merchant_auth)],
+    responses=_VALIDATION_PROBLEM,
 )
 
 AuthedMerchant = Annotated[Merchant, Depends(merchant_auth)]

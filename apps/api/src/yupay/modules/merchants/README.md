@@ -412,7 +412,7 @@ The complete set of `type` URIs this API can return:
 | `https://app.yupay.uz/errors/forbidden`    | 403    | Frozen merchant, IP not allowed                   |
 | `https://app.yupay.uz/errors/not-found`    | 404    | No such order / SKU / resource                    |
 | `https://app.yupay.uz/errors/conflict`     | 409    | Deposit too small, or an id reused for a new body |
-| `https://app.yupay.uz/errors/validation`   | 422    | A value we rejected — see the caveat below        |
+| `https://app.yupay.uz/errors/validation`   | 422    | A value we rejected, or a body that did not parse |
 | `https://app.yupay.uz/errors/rate-limited` | 429    | Either rate-limit axis                            |
 
 The `type` host is an identifier namespace, not a URL to fetch.
@@ -441,29 +441,50 @@ always a **string**. Beyond those, an error carries whatever names the failure:
 }
 ```
 
-#### Two answers that are **not** problem+json
+#### A body that does not parse: `422 invalid_request`
 
-Write your error handling so it survives a response that does not parse as
-problem+json, because two exist and we would rather tell you than have you
-find out:
+Anything the schema itself refuses — a missing `sku_id`, a misspelled
+`fulfilment_data`, an `expected_price` with three decimals, `?limit=0` —
+answers problem+json too, with `code: "invalid_request"` and one extra field:
+an `errors` array carrying a machine-readable entry per failure.
 
-- **A body or parameter rejected before our code runs.** Anything the schema
-  itself refuses — a missing `sku_id`, a misspelled `fulfilment_data`, an
-  `expected_price` with three decimals, `?limit=0` — answers `422` with the
-  framework's own body: `{"detail": [ … ]}`, sent as plain
-  `application/json`. Same status, no `type` and no `code`. Everything our own
-  code refuses (`price_changed`, `margin_floor`, `invalid_cursor`, a
-  `fulfillment_data` field the product's schema rejects) is proper
-  problem+json. **Branch on the status code first, and treat a missing `code`
-  as "my request was malformed".**
-- **A `5xx`.** No endpoint here raises one deliberately: nothing on this
-  surface calls a supplier while you wait (see "Fulfilment is asynchronous,
-  always"), so there is no upstream to be unavailable. A `500` means an
-  unhandled bug on our side and arrives as a bare `Internal Server Error`, not
-  problem+json; a `502` or `504` is our edge, not our application — most
-  likely a deploy, which holds and retries for 15 s before giving up. Both are
-  safe to retry: resend the identical signed request if it is still inside the
-  ±300 s window, re-sign if it is not, and keep the same `merchant_order_id`.
+```json
+{
+  "type": "https://app.yupay.uz/errors/validation",
+  "title": "Validation failed",
+  "status": 422,
+  "detail": "body.sku_id: Value error, sku_id must be a UUID",
+  "code": "invalid_request",
+  "errors": [
+    {
+      "type": "value_error",
+      "loc": ["body", "sku_id"],
+      "msg": "Value error, sku_id must be a UUID",
+      "input": "not-a-uuid",
+      "ctx": { "error": {} }
+    }
+  ]
+}
+```
+
+Read `errors` for diagnostics — `loc` tells you which field, and `loc[0]` is
+`"body"`, `"query"` or `"path"` — but **do not switch on it.** (`ctx.error` is
+sometimes an empty object; that is our framework declining to serialise an
+internal exception, not a field you are missing.) It is our web framework's shape, passed through unchanged, and
+it is the one part of this contract that may be reshaped inside v1. `detail`
+summarises the first few in one sentence; `code` is what your code should
+branch on.
+
+#### The one answer that is **not** problem+json
+
+**A `5xx`.** No endpoint here raises one deliberately: nothing on this surface
+calls a supplier while you wait (see "Fulfilment is asynchronous, always"), so
+there is no upstream to be unavailable. A `500` means an unhandled bug on our
+side and arrives as a bare `Internal Server Error`; a `502` or `504` is our
+edge rather than our application — most likely a deploy, which holds and
+retries for 15 s before giving up. Both are safe to retry: resend the identical
+signed request if it is still inside the ±300 s window, re-sign if it is not,
+and keep the same `merchant_order_id`.
 
 ### Rate limits
 
@@ -710,16 +731,16 @@ defeats the whole mechanism and will place duplicate orders.
 
 #### Errors
 
-| Status | `code`                 | Meaning                                                                                                                                                                                      |
-| ------ | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 404    | `item_unavailable`     | This SKU cannot be ordered right now. The body carries a `reason` — see below.                                                                                                               |
-| 422    | `price_changed`        | Drift beyond ±2%. Body carries `current_price` and the `expected_price` you sent.                                                                                                            |
-| 422    | `margin_floor`         | Our own pricing for this SKU is misconfigured. Not your fault; tell support.                                                                                                                 |
-| 422    | —                      | A `fulfillment_data` field the product's schema rejects. problem+json; `extra` names the `field` and the `reason` (`missing`, `type`, `pattern`, …).                                         |
-| 422    | _(no body of ours)_    | The request body itself did not parse — a missing field, an unknown one, more than two decimals on `expected_price`. Framework body, no `code`; see "Two answers that are not problem+json". |
-| 409    | `insufficient_deposit` | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.                                                                                                             |
-| 409    | `order_conflict`       | A rare write conflict on our side. Retry the **same** id; it is safe.                                                                                                                        |
-| 409    | `order_id_reused`      | This `merchant_order_id` already belongs to a different order.                                                                                                                               |
+| Status | `code`                 | Meaning                                                                                                                                                                                   |
+| ------ | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `item_unavailable`     | This SKU cannot be ordered right now. The body carries a `reason` — see below.                                                                                                            |
+| 422    | `price_changed`        | Drift beyond ±2%. Body carries `current_price` and the `expected_price` you sent.                                                                                                         |
+| 422    | `margin_floor`         | Our own pricing for this SKU is misconfigured. Not your fault; tell support.                                                                                                              |
+| 422    | —                      | A `fulfillment_data` field the product's schema rejects. The nested `extra` object names the `field` and the `reason` (`missing`, `type`, `pattern`, …) — see "Extra fields on the body". |
+| 422    | `invalid_request`      | The request body itself did not parse — a missing field, an unknown one, more than two decimals on `expected_price`, a `sku_id` that is not a UUID. `errors` says which.                  |
+| 409    | `insufficient_deposit` | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.                                                                                                          |
+| 409    | `order_conflict`       | A rare write conflict on our side. Retry the **same** id; it is safe.                                                                                                                     |
+| 409    | `order_id_reused`      | This `merchant_order_id` already belongs to a different order.                                                                                                                            |
 
 `item_unavailable` reasons, because a 404 you cannot act on is a support
 ticket:
@@ -912,10 +933,10 @@ export.
 
 Errors:
 
-| Status | `code`           | Meaning                                                         |
-| ------ | ---------------- | --------------------------------------------------------------- |
-| 422    | `invalid_cursor` | Not a cursor we issued. Drop it and start from the newest page. |
-| 422    | —                | `limit` outside 1–200.                                          |
+| Status | `code`            | Meaning                                                         |
+| ------ | ----------------- | --------------------------------------------------------------- |
+| 422    | `invalid_cursor`  | Not a cursor we issued. Drop it and start from the newest page. |
+| 422    | `invalid_request` | `limit` outside 1–200. `errors[0].loc` is `["query", "limit"]`. |
 
 #### No emails, ever
 
@@ -1121,29 +1142,31 @@ path segment is percent-encoded and **the encoded form is what you sign**
   that cannot be covered is a `409 insufficient_deposit`, which is recoverable
   but only after somebody tops you up.
 - Parse money with a decimal type. `"1.06"` through a float is `1.0599…`.
-- Handle the two answers that are not problem+json (see "Errors"), and branch
-  on the HTTP status before you look for a `code`.
+- Branch on `code`, not on `detail`. Every error here is problem+json except a
+  `5xx` (see "Errors"), and a request we could not even parse is
+  `422 invalid_request`.
 
 ## Implementation map
 
-| Concern                                                    | Where                                                                                                                                                                                                                                     |
-| ---------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The merchant account (create / load / freeze)              | `service.py`                                                                                                                                                                                                                              |
-| Wire format: key/secret minting, canonical string, digests | `signing.py` — the one home; nothing else may re-derive these                                                                                                                                                                             |
-| Secret encryption at rest                                  | `core/crypto.py` (purpose `yupay:merchants:apikey:v1`)                                                                                                                                                                                    |
-| Credential lifecycle (create / list / revoke)              | `credentials.py`, via the `api` facade                                                                                                                                                                                                    |
-| Request verification + the FastAPI dependency              | `auth.py`                                                                                                                                                                                                                                 |
-| The deposit: credit, charge, balance, ledger listing       | `deposit.py` — every movement of a merchant's money                                                                                                                                                                                       |
-| Admin HTTP surface                                         | `admin_routes.py`                                                                                                                                                                                                                         |
-| Machine API routes (`/merchant/v1`)                        | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it. |
-| The priced catalog read model                              | `price_list.py`                                                                                                                                                                                                                           |
-| What may be ordered and at what price                      | `quote.py` — orderability, margin floor, ±2 % drift                                                                                                                                                                                       |
-| Reading one order back (status, code, refund mark)         | `order_status.py`                                                                                                                                                                                                                         |
-| The deposit ledger page (`/transactions`)                  | `transactions.py` — cursor codec; the query is `deposit.py`'s                                                                                                                                                                             |
-| Order placement + the deposit charge                       | `orders.py`; the debit itself is `deposit.charge_deposit`                                                                                                                                                                                 |
-| The wholesale price formula and the ±2% drift rule         | `pricing.py` — the one home for both                                                                                                                                                                                                      |
-| Machine-API wire DTOs (the third-party contract)           | `machine_schemas.py` — additive changes only                                                                                                                                                                                              |
-| Admin-surface DTOs                                         | `schemas.py`                                                                                                                                                                                                                              |
+| Concern                                                     | Where                                                                                                                                                                                                                                                                                                                                                       |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| The merchant account (create / load / freeze)               | `service.py`                                                                                                                                                                                                                                                                                                                                                |
+| Wire format: key/secret minting, canonical string, digests  | `signing.py` — the one home; nothing else may re-derive these                                                                                                                                                                                                                                                                                               |
+| Secret encryption at rest                                   | `core/crypto.py` (purpose `yupay:merchants:apikey:v1`)                                                                                                                                                                                                                                                                                                      |
+| Credential lifecycle (create / list / revoke)               | `credentials.py`, via the `api` facade                                                                                                                                                                                                                                                                                                                      |
+| Request verification + the FastAPI dependency               | `auth.py`                                                                                                                                                                                                                                                                                                                                                   |
+| The deposit: credit, charge, balance, ledger listing        | `deposit.py` — every movement of a merchant's money                                                                                                                                                                                                                                                                                                         |
+| Admin HTTP surface                                          | `admin_routes.py`                                                                                                                                                                                                                                                                                                                                           |
+| Machine API routes (`/merchant/v1`)                         | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it.                                                                                                                   |
+| The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                             |
+| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift                                                                                                                                                                                                                                                                                                         |
+| Reading one order back (status, code, refund mark)          | `order_status.py`                                                                                                                                                                                                                                                                                                                                           |
+| The deposit ledger page (`/transactions`)                   | `transactions.py` — cursor codec; the query is `deposit.py`'s                                                                                                                                                                                                                                                                                               |
+| Order placement + the deposit charge                        | `orders.py`; the debit itself is `deposit.charge_deposit`                                                                                                                                                                                                                                                                                                   |
+| The wholesale price formula and the ±2% drift rule          | `pricing.py` — the one home for both                                                                                                                                                                                                                                                                                                                        |
+| Machine-API wire DTOs (the third-party contract)            | `machine_schemas.py` — additive changes only                                                                                                                                                                                                                                                                                                                |
+| A request the schema itself refused (`422 invalid_request`) | `core/errors.py::problem_json_validation_handler` — registered app-wide by `bootstrap`, **scoped to this prefix**; every other path is delegated to FastAPI's own handler byte for byte, because the generated TS client types every operation in the repo from the `HTTPValidationError` schema. The OpenAPI half is `machine_routes._VALIDATION_PROBLEM`. |
+| Admin-surface DTOs                                          | `schemas.py`                                                                                                                                                                                                                                                                                                                                                |
 
 Three of those files were carved out of two in M2 Task 5, when `service.py`
 (487 lines) and `orders.py` (468) had both drifted past the 400-line soft
@@ -1222,7 +1245,6 @@ appears on `/transactions`, while the order's own `refunded_usd` stays
 `"0.00"`, because no surface can book a transaction against an order. And there
 is **no push of any kind** — poll the order read.
 
-Those two, the ±2% drift giveaway and the two error bodies that are not
-problem+json are written up with what each costs in
+Those two and the ±2% drift giveaway are written up with what each costs in
 `docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates".
 Read it before you put the first reseller on this.

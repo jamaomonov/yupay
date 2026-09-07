@@ -366,9 +366,11 @@ The steps:
 
 ## Known gaps before a pilot integrates
 
-Three things a reseller can meet on day one. None is a bug in the sense of
+Two things a reseller can meet on day one. Neither is a bug in the sense of
 "something broke"; each is a decision or an omission with a price, and the
-price is worth knowing before it is paid.
+price is worth knowing before it is paid. A third gap — error bodies that did
+not match the published contract — was closed in M2 and is recorded at the end
+so a regression is recognisable.
 
 ### 1. The ±2% drift rule gives 2% away, per order, forever
 
@@ -391,28 +393,7 @@ cannot compute that. Here it is a machine that can.
 - **Watch for it** by comparing `order_items.unit_price_usd` against the SKU's
   computed list price on merchant orders.
 
-### 2. Two error bodies do not conform to the published contract
-
-The module README publishes an RFC 7807 table. Two answers on `/merchant/v1`
-are not problem+json, because **there is no app-wide
-`RequestValidationError` handler**: FastAPI's default fires instead and returns
-`{"detail": [ … ]}` with no `type` and no `code`.
-
-- `GET /merchant/v1/transactions?limit=0` (or anything outside 1–200);
-- any `POST /merchant/v1/orders` body the schema rejects — a missing field, an
-  unknown one, `expected_price` with three decimals.
-
-- **Cost of leaving it:** an integrator whose error handling switches on `code`
-  gets an unhandled shape on the two failures most likely to happen while they
-  are writing their client. The README documents it, which is a warning, not a
-  fix.
-- **Fix:** one `app.add_exception_handler(RequestValidationError, …)` in
-  `bootstrap.create_app` rendering the existing
-  `https://app.yupay.uz/errors/validation` type URI. It closes both cases and
-  every other surface at the same time — the storefront has the same
-  non-conforming body today.
-
-### 3. No refund path
+### 2. No refund path
 
 Covered above. `refunded_usd` is `"0.00"` on every order; a failed delivery is
 settled by a manual deposit credit that the order read does not show.
@@ -424,3 +405,24 @@ settled by a manual deposit credit that the order read does not show.
 - **Fix:** M3, which adds the refund posting (the module README's posting table
   already reserves the row) and the outbound webhook. `refunded_usd` starts
   telling the truth the moment that row is posted, with no contract change.
+
+### Closed in M2: the non-conforming validation bodies
+
+`/merchant/v1` used to answer FastAPI's own `{"detail": [ … ]}` — no `type`,
+no `code`, `application/json` — for anything the schema itself refused
+(`?limit=0`, a malformed order body), while the module README published an RFC
+7807 table. `core.errors.problem_json_validation_handler` now renders those as
+`422` problem+json with `code: "invalid_request"`, and it is **scoped to the
+`/merchant/v1` prefix**: every other path is delegated to FastAPI's own
+handler, byte for byte.
+
+That scoping is deliberate and must survive: the generated TypeScript client
+types every operation in the repo from the `HTTPValidationError` schema, so
+making the handler app-wide would make the client wrong everywhere without
+moving the schema — and `openapi-drift` compares the schema to itself, so
+nothing in CI would notice. If somebody "simplifies" it later, the test that
+fails is
+`test_outside_the_merchant_prefix_the_body_is_fastapis_own_byte_for_byte`.
+
+**Spotting a regression from the outside:** a `422` from `/merchant/v1` whose
+`content-type` is `application/json` rather than `application/problem+json`.

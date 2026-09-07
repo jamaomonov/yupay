@@ -2,10 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import Request
-from fastapi.responses import JSONResponse
+from fastapi.encoders import jsonable_encoder
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, Response
+
+if TYPE_CHECKING:  # pragma: no cover -- type hints only
+    from collections.abc import Awaitable, Callable, Sequence
 
 
 class AppError(Exception):
@@ -141,3 +147,108 @@ async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
         media_type="application/problem+json",
         headers=headers,
     )
+
+
+#: RFC 7807 ``code`` for a request the schema itself refused — a missing or
+#: unknown field, a value of the wrong shape, a query parameter out of range.
+#: Distinct from every business ``code`` because the cause is different in kind:
+#: nothing about the account or the catalog is wrong, the bytes were.
+CODE_INVALID_REQUEST = "invalid_request"
+
+#: How many individual failures :func:`_summarise` spells out before it counts
+#: the rest. A body can fail every field at once and ``detail`` is a sentence,
+#: not a report — the full list rides in ``errors``.
+_SUMMARY_LIMIT = 3
+
+
+def _summarise(errors: list[Any]) -> str:
+    """One human sentence for a list of validation failures.
+
+    ``detail`` stays a **string** (RFC 7807 §3.1). The machine-readable list
+    is a separate field, which is the whole reason this function is short: it
+    exists so a human reading a log line knows what broke, not so a client can
+    parse it.
+
+    Args:
+        errors: ``exc.errors()`` after :func:`jsonable_encoder`.
+
+    Returns:
+        ``"body.sku_id: Value error, sku_id must be a UUID"``, several such
+        joined by ``"; "``, or a bare fallback when the list is empty.
+    """
+    parts: list[str] = []
+    for error in errors[:_SUMMARY_LIMIT]:
+        if not isinstance(error, dict):  # pragma: no cover -- defensive
+            continue
+        location = ".".join(str(part) for part in error.get("loc", ()))
+        message = str(error.get("msg", "invalid value"))
+        parts.append(f"{location}: {message}" if location else message)
+    if len(errors) > _SUMMARY_LIMIT:
+        parts.append(f"and {len(errors) - _SUMMARY_LIMIT} more")
+    return "; ".join(parts) or "request validation failed"
+
+
+def problem_json_validation_handler(
+    *, prefixes: Sequence[str]
+) -> Callable[[Request, RequestValidationError], Awaitable[Response]]:
+    """Build the app-wide ``RequestValidationError`` handler.
+
+    FastAPI's own handler answers ``422`` with ``{"detail": [ … ]}`` —
+    ``application/json``, no ``type``, no ``code``. That is fine everywhere the
+    consumer is our own generated TypeScript client, and it is **not** fine on
+    ``/merchant/v1``, whose error table is published to third parties as RFC
+    7807.
+
+    So this is scoped rather than app-wide in effect: paths under ``prefixes``
+    get problem+json, and **every other path is delegated to FastAPI's own
+    handler**, byte for byte. Two reasons it is not simply replaced everywhere:
+
+    - FastAPI documents each route's 422 as ``HTTPValidationError`` and
+      ``packages/api-client`` types every operation from that schema. Changing
+      the runtime body without changing the schema would make the generated
+      client wrong for nearly every endpoint in the repo — and ``openapi-drift``
+      could not catch it, because the schema would not have moved.
+    - The storefront and the admin SPA already read ``detail[]``. Retyping it
+      is a breaking change to them for no gain.
+
+    ``exc.errors()`` goes through :func:`jsonable_encoder` and not
+    ``json.dumps``: a ``value_error`` entry carries the original exception
+    object under ``ctx["error"]``, which ``json.dumps`` refuses with a
+    ``TypeError`` — and a non-UUID ``sku_id`` is one of the likeliest
+    integrator mistakes, so a handler that raised on it would turn a clean 422
+    into a 500 on the most-hit path. FastAPI's own handler encodes for exactly
+    the same reason.
+
+    Args:
+        prefixes: Path prefixes that receive problem+json. Pass the router's
+            own ``prefix`` rather than a literal, so the two cannot drift.
+
+    Returns:
+        The handler to register with ``app.add_exception_handler``.
+    """
+    scoped = tuple(prefixes)
+
+    async def handler(request: Request, exc: RequestValidationError) -> Response:
+        """Render a validation failure for whoever asked."""
+        if not request.url.path.startswith(scoped):
+            return await request_validation_exception_handler(request, exc)
+        errors = jsonable_encoder(exc.errors())
+        return JSONResponse(
+            status_code=ValidationError.status_code,
+            content={
+                "type": ValidationError.type_uri,
+                "title": ValidationError.title,
+                "status": ValidationError.status_code,
+                "detail": _summarise(errors),
+                "code": CODE_INVALID_REQUEST,
+                # The machine-readable list, under its own key. ``detail`` is a
+                # string in RFC 7807 and FastAPI's ``detail`` is an array, so
+                # one of the two names had to move; moving ours keeps the
+                # published contract's ``detail`` the same type on every error
+                # this API can return.
+                "errors": errors,
+            },
+            media_type="application/problem+json",
+        )
+
+    return handler

@@ -431,6 +431,35 @@ async def test_fulfillment_data_reaches_the_order_item(
     assert item.fulfillment_data == {"player_id": "5123456789"}
 
 
+async def test_a_malformed_body_answers_problem_json_and_not_a_500(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """A non-UUID ``sku_id`` — the likeliest integrator typo on this endpoint.
+
+    Two things are pinned. The body is the RFC 7807 shape the module README
+    publishes, where it used to be FastAPI's ``{"detail": [ ... ]}`` with no
+    ``type`` and no ``code``. And it does not 500: pydantic puts the original
+    ``ValueError`` **object** in ``ctx["error"]``, so a handler that reached
+    for ``json.dumps`` instead of ``jsonable_encoder`` would turn this exact
+    request into an unhandled server error.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "bad-1", "sku_id": "not-a-uuid", "expected_price": "1.07"},
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.headers["content-type"].startswith("application/problem+json")
+    body = r.json()
+    assert body["code"] == "invalid_request"
+    assert body["errors"][0]["loc"] == ["body", "sku_id"]
+
+
 async def test_a_missing_required_field_is_a_validation_error(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:

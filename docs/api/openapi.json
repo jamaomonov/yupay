@@ -6720,7 +6720,7 @@
         "type": "object"
       },
       "MerchantDeliveryOut": {
-        "description": "The artifact a delivered order handed over \u2014 the voucher code lives here.\n\nPresent only once the order reaches ``delivered``. ``artifact``'s shape\ndepends on ``artifact_kind``; for ``voucher_code`` it carries ``code`` (or\n``codes``). Internal fields recorded alongside it \u2014 our supplier's name,\ntheir order id, our warehouse row \u2014 are filtered out by\n``fulfillment.buyer_safe_artifact``, the same allow-list the storefront\nuses.",
+        "description": "The artifact a delivered order handed over \u2014 the voucher code lives here.\n\nPresent as soon as a ``deliveries`` row exists for the order \u2014 it is the\ndelivery record that decides, not the order's status, which is what\n``order_status._delivery`` reads. The two normally move together.\n``artifact``'s shape depends on ``artifact_kind`` (``voucher_code`` or\n``topup_receipt`` today); for ``voucher_code`` it carries ``code`` (or\n``codes``). Internal fields recorded alongside it \u2014 our supplier's name,\ntheir order id, our warehouse row \u2014 are filtered out by\n``fulfillment.buyer_safe_artifact``, the same allow-list the storefront\nuses.",
         "properties": {
           "artifact": {
             "additionalProperties": true,
@@ -27628,6 +27628,56 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
           }
         },
         "summary": "The wholesale price list, priced for the calling merchant",
@@ -27650,6 +27700,56 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
           }
         },
         "summary": "The calling merchant's profile and live deposit balance",
@@ -27685,13 +27785,53 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
           }
         },
         "summary": "Place an order and settle it from the deposit",
@@ -27730,13 +27870,53 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
           }
         },
         "summary": "Read one of your orders back, with its delivered code",
@@ -27747,7 +27927,7 @@
     },
     "/merchant/v1/transactions": {
       "get": {
-        "description": "Return one page of the calling merchant's deposit movements.\n\nPaging, the shared grouped query and why it is keyset rather than OFFSET\nare all ``merchants.transactions``'. The merchant comes from the signature;\nno parameter here names one.\n\nNote that ``limit`` and ``cursor`` are part of the signed canonical string\n(Task 2's fifth field), so a signature does not carry across a change of\npage.",
+        "description": "Return one page of the calling merchant's deposit movements.\n\nPaging, the shared grouped query and why it is keyset rather than OFFSET\nare all ``merchants.transactions``'. The merchant comes from the signature;\nno parameter here names one.\n\nNote that ``limit`` and ``cursor`` are part of the signed canonical string\n(Task 2's fourth field, the raw query), so a signature does not carry\nacross a change of page.",
         "operationId": "read_transactions_merchant_v1_transactions_get",
         "parameters": [
           {
@@ -27792,13 +27972,53 @@
           },
           "422": {
             "content": {
-              "application/json": {
+              "application/problem+json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
           }
         },
         "summary": "Your deposit ledger, newest first",

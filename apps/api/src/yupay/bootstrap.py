@@ -17,6 +17,7 @@ from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.routing import APIRoute
 from prometheus_fastapi_instrumentator import Instrumentator, metrics
@@ -28,7 +29,7 @@ from yupay.api.v1 import router as v1_router
 from yupay.core.client_ip import client_ip as _client_ip
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import dispose_engine
-from yupay.core.errors import AppError, app_error_handler
+from yupay.core.errors import AppError, app_error_handler, problem_json_validation_handler
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.redis import close_redis
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
@@ -337,6 +338,13 @@ def create_app() -> FastAPI:
         )
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
+    # Scoped, not app-wide: problem+json under the machine API's prefix and
+    # FastAPI's own untouched body everywhere else. See the handler's docstring
+    # — replacing it repo-wide would silently falsify the generated TS client
+    # for every endpoint without moving the schema ``openapi-drift`` compares.
+    # The prefix comes from the router itself so the two cannot drift apart.
+    validation_handler = problem_json_validation_handler(prefixes=[merchant_machine_router.prefix])
+    app.add_exception_handler(RequestValidationError, validation_handler)  # type: ignore[arg-type]
 
     @app.get("/healthz", tags=["meta"], summary="Liveness probe")
     @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types

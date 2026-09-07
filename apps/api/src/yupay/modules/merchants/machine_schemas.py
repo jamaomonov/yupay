@@ -99,6 +99,36 @@ def _cents(value: Decimal) -> Decimal:
 UsdAmount = Annotated[Decimal, AfterValidator(_cents)]
 
 
+class MerchantValidationProblem(BaseModel):
+    """The ``422`` a request the schema itself refused answers with.
+
+    Not raised anywhere — it exists so the OpenAPI document tells the truth for
+    this prefix. Every other surface answers a validation failure with
+    FastAPI's ``HTTPValidationError`` (``{"detail": [ … ]}``); ``/merchant/v1``
+    answers RFC 7807, because its error table is published to third parties
+    who cannot redeploy on our schedule. The renderer is
+    ``core.errors.problem_json_validation_handler``, which is scoped to this
+    prefix for that reason and delegates everywhere else.
+
+    ``detail`` is a **string** here, as RFC 7807 requires and as every other
+    error on this API already is; the per-field list FastAPI would have put
+    there rides in ``errors`` instead.
+    """
+
+    type: str
+    title: str
+    status: int
+    detail: str
+    #: Always ``core.errors.CODE_INVALID_REQUEST``. A field rather than a
+    #: constant on the wire so a client switching on ``code`` needs no special
+    #: case for this one.
+    code: str
+    #: FastAPI's own per-failure entries — ``{type, loc, msg, input, ctx}`` —
+    #: passed through unchanged. Read them for diagnostics; do not switch on
+    #: them, they are a framework's shape and not part of this contract.
+    errors: list[dict[str, Any]]
+
+
 class MerchantProfileOut(BaseModel):
     """Body of ``GET /merchant/v1/me`` — who is calling, and what they can spend.
 
@@ -354,6 +384,7 @@ __all__ = [
     "MerchantSkuOut",
     "MerchantTransactionOut",
     "MerchantTransactionsOut",
+    "MerchantValidationProblem",
     "UsdAmount",
     "UsdBalance",
     "UsdPrice",

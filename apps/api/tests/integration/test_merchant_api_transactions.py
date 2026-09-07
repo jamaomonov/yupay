@@ -550,6 +550,31 @@ async def test_limit_is_bounded_by_the_contract(
     assert (await _page(integration_client, key_id, secret, query="limit=200")).status_code == 200
 
 
+async def test_an_out_of_range_limit_answers_the_published_error_shape(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Not just a 422 — the RFC 7807 body the module README's table promises.
+
+    This used to be FastAPI's own ``{"detail": [ ... ]}``: same status, no
+    ``type`` and no ``code``, from an endpoint whose error contract we publish
+    to people who cannot read our source.
+    ``core.errors.problem_json_validation_handler`` closes it for this prefix
+    and delegates everywhere else.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+
+    r = await _page(integration_client, key_id, secret, query="limit=0")
+
+    assert r.status_code == 422
+    assert r.headers["content-type"].startswith("application/problem+json")
+    body = r.json()
+    assert body["type"] == "https://app.yupay.uz/errors/validation"
+    assert body["code"] == "invalid_request"
+    assert isinstance(body["detail"], str)
+    assert body["errors"][0]["loc"] == ["query", "limit"]
+
+
 # ---------- signing and cost ----------
 
 

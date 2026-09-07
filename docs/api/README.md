@@ -19,7 +19,8 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
   header — signature-verified instead).
 - JSON only; `snake_case` keys; ISO-8601 timestamps; cursor pagination
   (`?cursor=...&limit=...`).
-- Errors are RFC 7807 `problem+json` with stable `type` URIs.
+- Errors are RFC 7807 `problem+json` with stable `type` URIs — with the
+  exceptions listed under "Validation errors" at the end of this file.
 - All write endpoints accept an `Idempotency-Key` header (>=16 chars). Enforced today on
   `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund` —
   **missing/short key → 422**; a repeated key replays the original result.
@@ -570,9 +571,9 @@ check a _truncated_ cursor — a reseller's `VARCHAR(88)` column, a line-wrapped
 URL in a retry — reached `uuid < $2`, asyncpg raised `DataError`, and it
 escaped as a **500** from an endpoint whose published contract promises a
 recoverable 422. That is the same class as the missing app-wide
-`RequestValidationError` handler (see "Errors that are not problem+json"
-below), one notch worse (a 500, not a non-conforming 422 body), and unlike the
-handler it was not pre-existing.
+`RequestValidationError` handler — since closed for this prefix, see
+"Validation errors" below — one notch worse (a 500, not a non-conforming 422
+body), and unlike the handler it was not pre-existing.
 
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so
@@ -595,26 +596,54 @@ limit was never the control protecting it.
 The full third-party contract, sample bodies included, is
 `apps/api/src/yupay/modules/merchants/README.md`.
 
-## Errors that are not problem+json
+## Validation errors: problem+json under `/merchant/v1`, FastAPI's body elsewhere
 
 "Conventions" above says errors are RFC 7807. That holds for every `AppError`
-— `core.errors.app_error_handler` renders those, and it is the only error
-handler `bootstrap.create_app` registers besides slowapi's. Three answers get
-past it, and they are worth knowing about before a third party discovers them:
+— `core.errors.app_error_handler` renders those. It does **not** hold for
+`RequestValidationError`, which FastAPI raises before any of our code runs and
+answers with `{"detail": [ … ]}` at `422`, `application/json`, no `type` and no
+`code`.
 
-- **`RequestValidationError` — no app-wide handler exists.** Anything a
-  Pydantic request model or a `Query`/`Path` constraint refuses answers with
-  FastAPI's own `{"detail": [ … ]}` at `422` and `Content-Type:
-application/json`: no `type`, no `code`, not problem+json. Every surface has
-  this, and it has always had it, but `/merchant/v1` is the first whose error
-  table is a **published contract**, so it is the first place it costs
-  something. Two concrete cases there: `GET /merchant/v1/transactions?limit=0`
-  (or `201`), and any body `machine_schemas.MerchantOrderCreateIn` rejects — a
-  missing field, an unknown one, `expected_price` with three decimals. One
-  `app.add_exception_handler(RequestValidationError, …)` that renders the
-  existing `validation` type URI closes both and every other surface at the
-  same time; until then the module README tells integrators to branch on the
-  status code and read a missing `code` as "my request was malformed".
+That was fine while the only consumers were our own frontends. `/merchant/v1`
+is the first surface whose error table is a **published contract**, so
+`core.errors.problem_json_validation_handler` now renders those failures as
+problem+json — `code: "invalid_request"`, a string `detail` summarising the
+first few failures, and FastAPI's per-failure entries under a new `errors` key
+rather than retyping `detail`. Two cases reach it in practice:
+`GET /merchant/v1/transactions?limit=0` (or above 200), and any body
+`machine_schemas.MerchantOrderCreateIn` rejects.
+
+**It is registered app-wide and scoped in effect: every path outside
+`/merchant/v1` is delegated to FastAPI's own handler, byte for byte.** Two
+reasons, and the first is the one that would make an app-wide replacement a
+mistake rather than a simplification:
+
+- **The generated client would be silently falsified.** FastAPI documents every
+  route's 422 as `HTTPValidationError`, and
+  `packages/api-client/src/generated/types.gen.ts` types every operation from
+  it. Changing the runtime body without changing the schema makes the client
+  wrong for nearly every endpoint in the repo — and `openapi-drift` cannot
+  catch it, because the schema has not moved. (For the merchant prefix the
+  schema _does_ move: `machine_routes._VALIDATION_PROBLEM` overrides the 422
+  response with the problem+json media type, so `openapi.json` and the client
+  both follow. The generated client now types the merchant operations' error as
+  the problem shape and every other operation's as `HTTPValidationError` —
+  which is exactly the split.)
+- **The storefront and admin SPA already read `detail[]`.** Retyping it is a
+  breaking change to them for no gain.
+
+The handler encodes `exc.errors()` with `jsonable_encoder` rather than handing
+it to `json.dumps`: a `value_error` entry carries the original exception object
+under `ctx["error"]`, so a naive version raises `TypeError` and turns a clean
+422 into a 500 — on a non-UUID `sku_id`, which is one of the likeliest
+integrator mistakes. `tests/integration/test_validation_problem_json.py` pins
+the delegation byte for byte, the problem+json body, and the `ctx` encoding;
+`test_a_malformed_body_answers_problem_json_and_not_a_500` and
+`test_an_out_of_range_limit_answers_the_published_error_shape` pin the two HTTP
+cases.
+
+Two answers still get past `app_error_handler`, both deliberately:
+
 - **An unhandled exception.** Starlette's `ServerErrorMiddleware` answers a
   bare `Internal Server Error` as `text/plain`. Nothing raises the `AppError`
   base class directly, so `https://app.yupay.uz/errors/internal` is a type URI
