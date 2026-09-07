@@ -36,6 +36,41 @@ curl -fsS https://api.yupay.io/readyz
 docker compose -f docker-compose.prod.yml ps
 ```
 
+## If `alembic upgrade head` fails with `lock_not_available`
+
+A migration that takes a lock on a busy table sets `lock_timeout` so it gives
+up rather than queueing behind an in-flight transaction — Postgres grants lock
+requests FIFO, so a migration _waiting_ on `orders` also blocks every
+`INSERT`/`UPDATE` that arrives after it, and the old api containers are still
+serving traffic while this step runs. Failing fast trades a checkout write
+stall for a failed deploy step.
+
+Nothing is half-applied: the whole run is one transaction (`migrations/env.py`).
+
+What to do:
+
+1. Re-run the same command. Most waits are one slow transaction, already gone.
+2. If it keeps failing, find what is holding the table and decide whether to
+   wait for a quieter minute or end it:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml exec postgres \
+     psql -U yupay_app -d yupay -c \
+     "SELECT pid, state, now() - xact_start AS age, left(query, 120) \
+        FROM pg_stat_activity \
+       WHERE state <> 'idle' AND xact_start IS NOT NULL \
+       ORDER BY xact_start;"
+   ```
+
+3. Only then, and only for one that is genuinely stuck (minutes old, state
+   `idle in transaction`), end it with `SELECT pg_terminate_backend(<pid>)`. A
+   live checkout is a customer; let it finish.
+
+Migrations carrying this guard today: `0069_orders_merchant_idempotency`.
+Older index migrations on `orders` (0039, 0055) have the same exposure and no
+timeout — they are already applied everywhere, so it is history rather than
+risk.
+
 ## Rollback
 
 ```bash

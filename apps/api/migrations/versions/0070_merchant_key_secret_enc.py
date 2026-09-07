@@ -24,7 +24,9 @@ re-encrypt and no integrator to break.
 
 ``NOT NULL`` on both new columns is therefore safe without a server default;
 the downgrade recreates ``secret_hash`` the same way, and is likewise only
-correct while the table is empty (it says so in place).
+correct while the table is empty — so it counts the rows first and refuses
+with a readable message, the way 0066's downgrade refuses over existing
+merchant orders.
 
 Revision ID: 0070_merchant_key_secret_enc
 Revises: 0069_orders_merchant_idempotency
@@ -48,6 +50,26 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Guard FIRST, in words, the way 0066's downgrade does. Without it the
+    # operator finds out from Postgres — a NOT NULL column added with no
+    # default over existing rows — in an error that names ``secret_hash`` and
+    # never mentions why a merchant's key cannot be turned back into a digest.
+    # The transaction aborts either way and no ciphertext is lost; this only
+    # decides whether the message is readable.
+    #
+    # Advisory, not race-proof, for the same reason 0066's is: nothing locks
+    # the table between this count and the DDL below. A key issued in that
+    # window is still caught by the NOT NULL, just with the opaque error
+    # instead of this one.
+    keys = op.get_bind().execute(sa.text("SELECT count(*) FROM merchant_api_keys")).scalar_one()
+    if keys:
+        raise RuntimeError(
+            f"Refusing to downgrade 0070: {keys} merchant API key(s) exist. "
+            "``secret_hash`` cannot be reconstructed — a SHA-256 of the secret is not "
+            "derivable from the ciphertext this revision stores, and the digest was "
+            "never the signing key anyway. Revoke those keys and issue new ones after "
+            "the downgrade, or restore from a backup taken before this revision."
+        )
     # Only correct because the table is empty: there is no way to recover a
     # SHA-256 of a secret we can decrypt, and nothing to recover it for.
     op.add_column(
