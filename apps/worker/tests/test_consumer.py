@@ -22,6 +22,7 @@ from yupay_worker.consumer import (
     Queue,
     _await_stray_tasks,
     _drain_all,
+    _queue_loop,
     _queues,
     _wait_for_wake_or_tick,
     raw_dsn,
@@ -64,7 +65,7 @@ async def test_listener_failure_falls_back_to_polling() -> None:
         raise OSError("no route to host")
 
     mgr = ListenerManager(
-        "postgresql://x", asyncio.Event(), channel="fulfillment_queue", connect=exploding_connect
+        "postgresql://x", [asyncio.Event()], channel="fulfillment_queue", connect=exploding_connect
     )
     await mgr.ensure()  # must not raise
     assert mgr.connected is False
@@ -130,7 +131,7 @@ async def test_drainers_run_in_parallel_each_on_its_own_session() -> None:
     factory = _FakeSessionFactory()
 
     await asyncio.wait_for(
-        _drain_all(factory, (_queue(fake_drain, concurrency=concurrency),)), timeout=5
+        _drain_all(factory, _queue(fake_drain, concurrency=concurrency)), timeout=5
     )
 
     assert len(factory.sessions) == concurrency
@@ -149,7 +150,7 @@ async def test_drainer_commits_after_every_batch() -> None:
 
     factory = _FakeSessionFactory()
 
-    await _drain_all(factory, (_queue(fake_drain),))
+    await _drain_all(factory, _queue(fake_drain))
 
     assert factory.sessions[0].commits == 3  # two full batches + the dry one
 
@@ -169,34 +170,182 @@ async def test_one_drainers_failure_neither_escapes_nor_stops_the_others() -> No
 
     factory = _FakeSessionFactory()
 
-    await _drain_all(factory, (_queue(fake_drain, concurrency=2),))  # must not raise
+    await _drain_all(factory, _queue(fake_drain, concurrency=2))  # must not raise
 
     assert sum(s.rollbacks for s in factory.sessions) == 1
     assert sum(s.commits for s in factory.sessions) == 1
 
 
-# ---------- two queues, one loop ----------
+# ---------- two queues, one task each ----------
 
 
-async def test_one_wake_drains_every_queue() -> None:
-    """The merchant-webhook outbox is a second queue on the same loop. A wake
-    (or a tick) has to drain both, or one NOTIFY would leave the other queue
-    waiting on the next tick for no reason."""
-    drained: list[str] = []
+class _FakeConnection:
+    """The two asyncpg methods ``ListenerManager`` calls, and nothing else."""
 
-    def _recorder(name: str) -> Any:
-        async def _drain(db: Any) -> int:
-            drained.append(name)
+    def __init__(self) -> None:
+        self.channels: list[str] = []
+        self.callbacks: list[Any] = []
+        self.closed = False
+
+    async def add_listener(self, channel: str, callback: Any) -> None:
+        self.channels.append(channel)
+        self.callbacks.append(callback)
+
+    def is_closed(self) -> bool:
+        return self.closed
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+def _listener(*wakes: asyncio.Event) -> tuple[ListenerManager, _FakeConnection]:
+    connection = _FakeConnection()
+
+    async def _connect(dsn: str) -> Any:
+        return connection
+
+    return ListenerManager("postgresql://x", wakes, channel="c", connect=_connect), connection
+
+
+async def test_a_notification_on_one_channel_wakes_every_queue() -> None:
+    """A wake drains **both** queues -- an empty one answers 0 on its first
+    claim and returns, which costs less than routing wake-ups by channel."""
+    fulfilment, webhooks = asyncio.Event(), asyncio.Event()
+    manager, connection = _listener(fulfilment, webhooks)
+    await manager.ensure()
+
+    connection.callbacks[0](None, 0, "c", None)
+
+    assert fulfilment.is_set()
+    assert webhooks.is_set()
+
+
+async def test_each_queue_has_its_own_event_so_one_cannot_eat_the_others_wake() -> None:
+    """The reason a *shared* event is wrong once each queue has its own loop:
+    ``_wait_for_wake_or_tick`` consumes what it waited on, so the first loop to
+    return would clear a flag the second has not read yet and that loop waits
+    out a whole tick for a signal already thrown away."""
+    fulfilment, webhooks = asyncio.Event(), asyncio.Event()
+    manager, connection = _listener(fulfilment, webhooks)
+    await manager.ensure()
+    connection.callbacks[0](None, 0, "c", None)
+
+    await _wait_for_wake_or_tick(fulfilment, asyncio.Event(), seconds=5)
+
+    assert not fulfilment.is_set()  # consumed by the loop that read it
+    assert webhooks.is_set()  # and the other queue's signal survives
+
+
+async def test_a_slow_queue_does_not_pace_the_other() -> None:
+    """The coupling this shape exists to remove, measured against its own control.
+
+    With both queues drained inside one awaited ``gather``, the call returned
+    with its slowest member, so a slow webhook drain became the fulfilment
+    queue's polling period. The real scenario is a re-enabled hook with a large
+    backlog against a slow-but-healthy endpoint: hours of draining, with every
+    paid order waiting behind it.
+
+    A bare "more than N drains" assertion would pass for reasons that have
+    nothing to do with the fix, so this runs the **coupled** shape too, in the
+    same window with the same fakes, and compares. That control is the whole
+    test: it is what makes the number mean something.
+    """
+    window, slow_drain, tick = 0.6, 0.25, 0.01
+
+    def _fakes() -> tuple[Any, Any, list[int]]:
+        counter = [0]
+
+        async def fast(db: Any) -> int:
+            counter[0] += 1
             return 0
 
-        return _drain
+        async def slow(db: Any) -> int:
+            await asyncio.sleep(slow_drain)
+            return 0
 
-    await _drain_all(
-        _FakeSessionFactory(),
-        (_queue(_recorder("tasks"), name="tasks"), _queue(_recorder("hooks"), name="hooks")),
+        return fast, slow, counter
+
+    async def _measure_decoupled() -> int:
+        fast, slow, counter = _fakes()
+        stop = asyncio.Event()
+        wakes = (asyncio.Event(), asyncio.Event())
+        factory = _FakeSessionFactory()
+        loops = [
+            asyncio.create_task(
+                _queue_loop(
+                    factory,
+                    _queue(drain, name=name),
+                    listener=_listener(*wakes)[0],
+                    wake=wake,
+                    stop=stop,
+                    poll_seconds=tick,
+                )
+            )
+            for drain, name, wake in ((fast, "fast", wakes[0]), (slow, "slow", wakes[1]))
+        ]
+        try:
+            await asyncio.sleep(window)
+            stop.set()
+            await asyncio.wait_for(asyncio.gather(*loops), timeout=5)
+        finally:
+            for task in loops:
+                task.cancel()
+        return counter[0]
+
+    async def _measure_coupled() -> int:
+        """The shape this replaced: one loop, one gather across both queues."""
+        fast, slow, counter = _fakes()
+        stop = asyncio.Event()
+        factory = _FakeSessionFactory()
+        queues = (_queue(fast, name="fast"), _queue(slow, name="slow"))
+
+        async def _both() -> None:
+            while not stop.is_set():
+                await _wait_for_wake_or_tick(asyncio.Event(), stop, seconds=tick)
+                if stop.is_set():
+                    break
+                await asyncio.gather(*(_drain_all(factory, queue) for queue in queues))
+
+        task = asyncio.create_task(_both())
+        try:
+            await asyncio.sleep(window)
+            stop.set()
+            await asyncio.wait_for(task, timeout=5)
+        finally:
+            task.cancel()
+        return counter[0]
+
+    decoupled = await _measure_decoupled()
+    coupled = await _measure_coupled()
+
+    assert coupled < window / slow_drain + 2, coupled  # paced by the slow queue
+    assert decoupled > 10, decoupled
+    assert decoupled > coupled * 3, (decoupled, coupled)
+
+
+async def test_a_queue_loop_stops_on_the_shared_stop_event() -> None:
+    stop = asyncio.Event()
+    drains = 0
+
+    async def drain(db: Any) -> int:
+        nonlocal drains
+        drains += 1
+        return 0
+
+    task = asyncio.create_task(
+        _queue_loop(
+            _FakeSessionFactory(),
+            _queue(drain),
+            listener=_listener(asyncio.Event())[0],
+            wake=asyncio.Event(),
+            stop=stop,
+            poll_seconds=0.01,
+        )
     )
-
-    assert sorted(drained) == ["hooks", "tasks"]
+    await asyncio.sleep(0.05)
+    stop.set()
+    await asyncio.wait_for(task, timeout=2)
+    assert drains > 0
 
 
 async def test_an_empty_queue_costs_one_query_and_returns() -> None:
@@ -209,30 +358,9 @@ async def test_an_empty_queue_costs_one_query_and_returns() -> None:
         calls += 1
         return 0
 
-    await _drain_all(_FakeSessionFactory(), (_queue(fake_drain),))
+    await _drain_all(_FakeSessionFactory(), _queue(fake_drain))
 
     assert calls == 1
-
-
-async def test_a_queue_that_crashes_does_not_stop_the_other_queue() -> None:
-    """The webhook drain reaches a third party's server; the fulfilment drain
-    must not be taken down with it, in either direction."""
-    ran = 0
-
-    async def exploding(db: Any) -> int:
-        raise OSError("connection reset")
-
-    async def healthy(db: Any) -> int:
-        nonlocal ran
-        ran += 1
-        return 0
-
-    await _drain_all(
-        _FakeSessionFactory(),
-        (_queue(exploding, name="bad"), _queue(healthy, name="good")),
-    )
-
-    assert ran == 1
 
 
 def test_the_two_queues_are_the_two_channels_their_producers_notify() -> None:

@@ -7,7 +7,7 @@ sequenceDiagram
     participant M as The merchant's server
     participant MAIL as notifications (email)
 
-    Note over WK: woken by NOTIFY merchant_webhook_queue,<br/>or by the poll tick. One wake drains both queues.
+    Note over WK: this queue's own asyncio task, woken by a NOTIFY on<br/>EITHER channel or by its own poll tick. Its own task because a<br/>gather across both queues returns with the slowest member —<br/>a slow endpoint would become fulfilment's polling period.
 
     WK->>D: drain_pending_deliveries(db)
     D->>DB: SELECT id, merchant_id FROM merchant_webhook_deliveries<br/>JOIN merchant_webhooks (disabled_at IS NULL)<br/>WHERE status='pending' AND next_attempt_at <= now()<br/>ORDER BY next_attempt_at, created_at, id<br/>LIMIT 20 FOR UPDATE OF deliveries SKIP LOCKED

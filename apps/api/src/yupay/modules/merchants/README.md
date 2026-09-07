@@ -148,11 +148,13 @@ the row's log, the hook's health, the auto-disable and its one email;
 `webhook_retry.py` is the pure decision table both consult.
 
 M3a Task 4, run from `apps/worker` (`yupay_worker.consumer` LISTENs on
-`merchant_webhook_queue` beside `fulfillment_queue`, sharing one wake event, and
+`merchant_webhook_queue` beside `fulfillment_queue`, in this queue's **own
+asyncio task** so a slow endpoint cannot become the fulfilment queue's polling
+period, and
 calls `merchants.api.drain_pending_deliveries`). Same ADR-0064 shape as
 fulfilment: claim `FOR UPDATE SKIP LOCKED`, one SAVEPOINT per row, never commit
 — the worker owns the transaction. Drawn in
-`sequence-diagrams/merchant-webhook-deliver.mmd`.
+`sequence-diagrams/merchant-webhook-delivery.mmd`.
 
 ### What each attempt sends
 
@@ -249,7 +251,7 @@ recovery path and there is deliberately no second one.
 
 ### Falsification
 
-`uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py` — 15
+`uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py` — 17
 mutations, each asserting it changed the file before the suite runs. Read its
 docstring before running it beside anything else.
 

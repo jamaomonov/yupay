@@ -254,6 +254,35 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=("test_a_received_delivery_is_never_retried_whatever_its_family",),
     ),
     Mutation(
+        name="unfamilied_leaf_blamed_on_the_merchant",
+        breaks="a leaf nobody classified counts against a merchant's endpoint",
+        edits=(
+            (
+                RETRY,
+                "    # An ``OutboundError`` in neither family cannot exist today (a test walks\n"
+                "    # the taxonomy to keep it that way). If one ever does, blame ourselves\n"
+                "    # rather than a merchant: a leaf nobody classified is our omission.\n"
+                "    return _TERMINAL_OURS",
+                "    return _TERMINAL_THEIRS",
+            ),
+        ),
+        tests=(UNIT,),
+        expect=("test_a_leaf_in_neither_family_is_blamed_on_us_not_on_the_merchant",),
+    ),
+    Mutation(
+        name="retry_after_not_ascii_checked",
+        breaks="a non-ASCII digit header raises and fails a delivery terminally",
+        edits=(
+            (
+                RETRY,
+                "    if candidate.isascii() and candidate.isdigit():",
+                "    if candidate.isdigit():",
+            ),
+        ),
+        tests=(UNIT,),
+        expect=("test_a_non_ascii_digit_header_never_escapes_as_an_exception",),
+    ),
+    Mutation(
         name="every_4xx_retried",
         breaks="a 404 is retried for hours instead of being given up on",
         edits=(
@@ -391,8 +420,14 @@ def main() -> int:
         print(f"{mutation.name:36} {verdict}", flush=True)
 
     print("\n--- summary ---")
+    # ``TIMED OUT`` belongs in this tuple: a mutation whose pytest hangs past
+    # the timeout proves nothing, and counting it green would let this script
+    # lie about its own result -- which is the thing ``_apply``'s SystemExit
+    # message says is worse than having no harness at all.
     unfalsified = [
-        name for name, verdict in rows if verdict.startswith(("UNFALSIFIED", "failed, but"))
+        name
+        for name, verdict in rows
+        if verdict.startswith(("UNFALSIFIED", "failed, but", "TIMED OUT"))
     ]
     for name, verdict in rows:
         print(f"{name:36} {verdict}")

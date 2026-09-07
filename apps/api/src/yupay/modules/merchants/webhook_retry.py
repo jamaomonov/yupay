@@ -169,9 +169,20 @@ def parse_retry_after(value: str | None, *, now: datetime) -> float | None:
     """Read a ``Retry-After`` header into a clamped number of seconds.
 
     Both RFC forms are accepted: a decimal count of seconds, and an HTTP-date.
-    Anything else — a float, an empty string, prose, a date in the past — is
+    Anything else — a float, an empty string, prose, a non-ASCII digit — is
     ``None`` rather than an approximation, because the caller has a backoff of
     its own and a header we half-understood is worse than one we ignored.
+
+    A **date in the past** is not in that set: it parses, so it is honoured and
+    clamped up to :data:`RETRY_AFTER_FLOOR_SECONDS`. A server answering every
+    ``503`` with a stale HTTP-date is therefore retried at one second rather
+    than at the backoff — which is what it asked for, bounded.
+
+    Nothing in here may raise. This runs inside the drain's per-row savepoint,
+    so an exception escaping it is caught by the poison belt and the row is
+    written **terminally failed** over a header: the merchant is never retried,
+    their streak is untouched, and nobody is told. That is why the ASCII check
+    below is not decoration.
 
     Args:
         value: The header exactly as it arrived, or ``None``.
@@ -186,7 +197,12 @@ def parse_retry_after(value: str | None, *, now: datetime) -> float | None:
     candidate = value.strip()
     if not candidate:
         return None
-    if candidate.isdigit():  # ASCII digits only: no sign, no exponent, no dot
+    # ``isascii()`` first, and not because it is tidier: ``str.isdigit()`` is
+    # **not** ASCII-only. ``'²'`` (two UTF-8 bytes httpx will happily decode
+    # from a header) is a digit to Python and a ``ValueError`` to ``float()``,
+    # and Eastern Arabic ``'١٢٠'`` is a digit that ``float()`` does parse — as
+    # 120, from a header we should not be reading that liberally.
+    if candidate.isascii() and candidate.isdigit():  # no sign, no exponent, no dot
         seconds = float(candidate)
     else:
         try:

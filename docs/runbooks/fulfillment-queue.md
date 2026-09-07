@@ -63,13 +63,37 @@ orders to inline fulfilment, and must not be attempted as a way to do so.
 
 ## The worker drains a second queue
 
-Since M3a Task 4 the same loop also drains `merchant_webhook_deliveries` on
-`LISTEN merchant_webhook_queue` — outgoing merchant webhooks. Both listeners
-share **one** wake event, so a NOTIFY on either channel drains both queues and
-an empty one costs a single indexed query. Nothing about the fulfilment queue's
-behaviour changed; what did change is that a stalled worker now also means no
-webhooks. Its operational side (the failure streak, the auto-disable and the
-one way to re-enable a hook) is in `docs/runbooks/merchant-b2b.md`.
+Since M3a Task 4 the same **process** also drains `merchant_webhook_deliveries`
+on `LISTEN merchant_webhook_queue` — outgoing merchant webhooks. Its
+operational side (the failure streak, the auto-disable and the one way to
+re-enable a hook) is in `docs/runbooks/merchant-b2b.md`.
+
+Each queue runs in its **own asyncio task**, with its own tick, its own LISTEN
+connection and its own concurrency. That is load-bearing rather than tidy: with
+both queues drained inside one awaited `gather` the call returns with its
+slowest member, so a webhook drain that takes minutes would become the
+fulfilment queue's polling period — and a re-enabled hook with a large backlog
+against a slow-but-healthy endpoint can drain for hours. If you ever see paid
+orders sitting undelivered while the webhook queue is deep, that coupling is
+what to check for first; it is regression-tested
+(`apps/worker/tests/test_consumer.py::test_a_slow_queue_does_not_pace_the_other`,
+which measures the coupled shape as its own control).
+
+A NOTIFY on **either** channel still wakes both queues — an empty one answers 0
+on its first claim and returns, which costs less than routing wake-ups by
+channel — but each queue owns its own `asyncio.Event`, because one shared event
+between two consumers is a lost wake-up.
+
+So the fulfilment queue's own behaviour is unchanged, with one honest caveat:
+the two queues share this process's DB connection pool and event loop. Sizing
+is `fulfilment_concurrency + merchant_webhook_concurrency` sessions at peak,
+not `fulfilment_concurrency`.
+
+**At deploy:** the `worker.consumer.started` log line's `concurrency=<int>`
+field became `queues={"fulfillment": 4, "merchant_webhook": 2}`. Nothing in
+this repo reads it, but a Grafana or Loki panel outside the repo might; there
+is also a new `worker.consumer.shutdown_left_draining` line when SIGTERM
+arrives mid-drain.
 
 ## The worker's own settings
 

@@ -49,6 +49,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
@@ -121,9 +122,11 @@ async def record(
             event_type=delivery.event_type,
             status_code=delivery.response_code,
             attempts=delivery.attempts_count,
-            # Their server's address, not a person's (AGENTS §9) — "we
-            # recorded a 200, from which of their hosts" is the delivery log's
-            # question.
+            # The merchant server's resolved address. AGENTS §9's never-log
+            # list says "IP" flatly, so this is a named carve-out written into
+            # that section rather than an exception argued only here: it is a
+            # business's server, never an end user's, and "we recorded a 200 —
+            # from which of their hosts?" is the delivery log's whole question.
             address=response.address if response is not None else None,
         )
         await db.flush()
@@ -244,21 +247,12 @@ async def announce_disable(db: AsyncSession, notice: DisableNotice) -> None:
         log.warning("merchant_webhook.disable_unannounced", merchant_id=notice.merchant_id)
         return
     for email in recipients:
-        schedule_after_commit(db, _sender(email, notice))
-
-
-def _sender(email: str, notice: DisableNotice):  # type: ignore[no-untyped-def]
-    """Build the zero-arg factory ``schedule_after_commit`` wants.
-
-    Untyped return on purpose: the annotation would be
-    ``Callable[[], Coroutine[Any, Any, bool]]``, which is the hook's own
-    signature and adds nothing over reading it.
-    """
-
-    def _factory():  # type: ignore[no-untyped-def]
-        return _send_disabled_email(email, notice)
-
-    return _factory
+        # ``partial`` and not a closure over the loop variable: the hook wants a
+        # zero-argument factory, and a ``lambda: _send_disabled_email(email, …)``
+        # would late-bind ``email`` to whatever the loop ended on, mailing the
+        # last operator once per operator. It also types exactly as
+        # ``Callable[[], Coroutine[Any, Any, bool]]``, so no ``type: ignore``.
+        schedule_after_commit(db, partial(_send_disabled_email, email, notice))
 
 
 async def _send_disabled_email(email: str, notice: DisableNotice) -> bool:

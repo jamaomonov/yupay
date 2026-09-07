@@ -11,11 +11,20 @@ parameterised by a :class:`Queue` rather than hardcoded:
   rather than sharing the fulfilment one: a hung supplier call and a hung
   merchant endpoint are different failures and should be tuned apart.
 
+Each queue runs in its **own task**, on its own loop, so a slow queue delays
+only itself. That is not tidiness: ``asyncio.gather`` returns with its slowest
+member, so draining both queues in one awaited call made the webhook drain's
+duration the fulfilment queue's polling period — a re-enabled hook with a large
+backlog against a slow-but-healthy endpoint would have stalled every paid
+order behind it for as long as that took.
+
 LISTEN gives instant wake-ups; a lazy poll tick (``fulfilment_poll_seconds``)
-catches notifications lost to restarts. Both listeners share **one** wake
-event, so any notification drains **both** queues — an empty queue costs one
-indexed query and returns, which is far cheaper than routing wake-ups by
-channel and getting the routing wrong.
+catches notifications lost to restarts. A notification on **either** channel
+wakes **every** queue — an empty queue costs one indexed query and returns,
+which is far cheaper than routing wake-ups by channel and getting the routing
+wrong. Each queue nonetheless owns its own ``asyncio.Event``: one shared event
+between two consumers is a lost wake-up, because the first to return clears the
+flag the second has not read yet.
 
 The rows in those tables are the queues — this process holds no state worth
 preserving and can be killed at any moment: row locks die with the connection
@@ -30,6 +39,7 @@ import asyncio
 import signal
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
+from typing import Final
 
 import asyncpg  # type: ignore[import-untyped]  # no bundled stubs
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -56,6 +66,11 @@ configure_logging()
 log = get_logger("yupay.worker.consumer")
 
 CHANNEL = "fulfillment_queue"
+
+#: How long shutdown waits for a queue loop that is mid-drain before letting
+#: the runtime cancel it. A cancelled drain rolls back its uncommitted batch,
+#: so the cost is re-doing that batch, never losing it.
+SHUTDOWN_DRAIN_SECONDS: Final = 5.0
 
 #: One drain of one queue. Both drains take ``(db, *, limit=...)`` and return
 #: how many rows the batch claimed; the loop only needs "did that do
@@ -154,13 +169,13 @@ class ListenerManager:
     def __init__(
         self,
         dsn: str,
-        wake: asyncio.Event,
+        wakes: Sequence[asyncio.Event],
         *,
         channel: str,
         connect: Callable[[str], Awaitable[asyncpg.Connection]] = asyncpg.connect,
     ) -> None:
         self._dsn = dsn
-        self._wake = wake
+        self._wakes = tuple(wakes)
         self._channel = channel
         self._connect = connect
         self._conn: asyncpg.Connection | None = None
@@ -194,14 +209,22 @@ class ListenerManager:
         channel: str,  # noqa: ARG002
         payload: object,  # noqa: ARG002
     ) -> None:
-        """Wake the consumer loop.
+        """Wake every queue's loop.
 
         The notification carries no information the loop needs -- each queue's
         table is re-queried on wake, so this is a pure signal, not a message.
-        Every listener sets the **same** event, which is why one NOTIFY drains
-        both queues: an empty one answers 0 on its first claim and returns.
+        Every listener sets **every** queue's event, which is why one NOTIFY
+        drains both queues: an empty one answers 0 on its first claim and
+        returns, which costs less than routing wake-ups by channel.
+
+        One event *per queue* rather than one shared between them, because
+        ``_wait_for_wake_or_tick`` consumes what it waited on: with a single
+        event the first loop to return clears the flag, and a second loop that
+        was still draining when the NOTIFY landed waits out its whole tick for
+        a signal that has already been thrown away.
         """
-        self._wake.set()
+        for wake in self._wakes:
+            wake.set()
 
     async def close(self) -> None:
         """Close the LISTEN connection, if any. Idempotent."""
@@ -239,14 +262,12 @@ async def _drain_until_dry(session_factory: async_sessionmaker[AsyncSession], qu
             await db.rollback()
 
 
-async def _drain_all(
-    session_factory: async_sessionmaker[AsyncSession], queues: Sequence[Queue]
-) -> None:
-    """Run every queue's drainers, all of them, to completion.
+async def _drain_all(session_factory: async_sessionmaker[AsyncSession], queue: Queue) -> None:
+    """Run one queue's drainers, all of them, to completion.
 
-    One ``gather`` across every queue rather than a queue at a time: the two
-    are independent work against one database, and serialising them would make
-    a slow merchant endpoint delay the next order's fulfilment for no reason.
+    One queue, because the caller is that queue's own task: a ``gather`` that
+    spanned both returns with its slowest member, which is how a slow merchant
+    endpoint became the fulfilment queue's polling period.
 
     No coordination between drainers by design: ``FOR UPDATE SKIP LOCKED``
     makes their claims disjoint, so the only thing parallelism changes is that
@@ -261,11 +282,7 @@ async def _drain_all(
     taking the whole tick down with one bad connection.
     """
     results = await asyncio.gather(
-        *(
-            _drain_until_dry(session_factory, queue)
-            for queue in queues
-            for _ in range(queue.concurrency)
-        ),
+        *(_drain_until_dry(session_factory, queue) for _ in range(queue.concurrency)),
         return_exceptions=True,
     )
     for result in results:
@@ -277,8 +294,52 @@ async def _drain_all(
             message = str(result).strip().splitlines()
             log.error(
                 "worker.consumer.drainer_crashed",
+                queue=queue.name,
                 error=f"{type(result).__name__}: {message[0] if message else ''}"[:200],
             )
+
+
+async def _queue_loop(
+    session_factory: async_sessionmaker[AsyncSession],
+    queue: Queue,
+    *,
+    listener: ListenerManager,
+    wake: asyncio.Event,
+    stop: asyncio.Event,
+    poll_seconds: float,
+) -> None:
+    """One queue's whole life: wake, drain, repeat, until told to stop.
+
+    Each queue gets one of these as its **own task**. That is the fix for a
+    real coupling rather than a tidiness preference: with both queues drained
+    inside one awaited ``gather``, the call returned only when the slowest
+    drainer of either queue did, so the webhook drain's duration became the
+    fulfilment queue's polling period. Measured with fakes, a 3 s webhook drain
+    cut fulfilment drains in a 6 s window from 116 to 8; the real shape is a
+    re-enabled hook with a large backlog against a slow-but-healthy merchant,
+    which can drain for hours with every paid order waiting behind it.
+
+    The listener is ensured here, once per iteration, for the same reason it
+    always was: no backoff on a failed LISTEN, because the fixed poll tick IS
+    the retry cadence and the queue's actual guarantee of progress. A LISTEN
+    connection can also go stale silently -- nothing keepalives it -- in which
+    case wake-ups stop arriving and the tick is the bound on latency until
+    ``ensure()`` notices.
+
+    Args:
+        session_factory: Per-drainer session factory.
+        queue: What to drain, and how wide.
+        listener: This queue's LISTEN connection, re-ensured every iteration.
+        wake: This queue's own event. Every listener sets every queue's.
+        stop: Shared shutdown signal.
+        poll_seconds: The tick.
+    """
+    while not stop.is_set():
+        await listener.ensure()
+        await _wait_for_wake_or_tick(wake, stop, seconds=poll_seconds)
+        if stop.is_set():
+            break
+        await _drain_all(session_factory, queue)
 
 
 async def _await_stray_tasks(*, timeout: float) -> None:
@@ -301,13 +362,7 @@ async def _await_stray_tasks(*, timeout: float) -> None:
 
 
 async def run() -> None:
-    """Drain every queue until told to stop.
-
-    LISTEN gives instant wake-ups; the poll tick guarantees forward progress no
-    matter what LISTEN is doing. One wake event is shared by every listener, so
-    a notification on either channel drains **both** queues and each fans out
-    to its own ``concurrency`` independent drainers -- one slow supplier, or
-    one slow merchant endpoint, stalls one drainer rather than a queue.
+    """Start one loop per queue and wait for a stop signal.
 
     Nothing here is stateful across iterations except the connections
     themselves -- kill the process at any point and the next start (or another
@@ -319,30 +374,47 @@ async def run() -> None:
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, stop.set)
 
-    wake = asyncio.Event()
     queues = _queues(cfg)
+    # One event per queue, and every listener sets all of them -- see
+    # ``_on_notify`` for why both halves of that sentence matter.
+    wakes = tuple(asyncio.Event() for _ in queues)
     dsn = raw_dsn(cfg.database_url)
-    # One event, several listeners: see ``_on_notify``.
-    listeners = tuple(ListenerManager(dsn, wake, channel=queue.channel) for queue in queues)
+    listeners = tuple(ListenerManager(dsn, wakes, channel=queue.channel) for queue in queues)
+    session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
     log.info(
         "worker.consumer.started",
         poll_seconds=cfg.fulfilment_poll_seconds,
+        # Renamed from ``concurrency`` when the second queue landed: nothing in
+        # this repo reads it, but a Loki/Grafana panel outside it might.
         queues={queue.name: queue.concurrency for queue in queues},
     )
-    session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
 
-    while not stop.is_set():
-        # No backoff on a failed LISTEN: the fixed poll tick below IS the
-        # retry cadence (and the queues' actual guarantee of progress). Note
-        # a LISTEN connection can also go stale silently -- nothing here
-        # keepalives it -- in which case wake-ups simply stop arriving and
-        # the tick is the bound on latency until ``ensure()`` notices.
-        for listener in listeners:
-            await listener.ensure()
-        await _wait_for_wake_or_tick(wake, stop, seconds=cfg.fulfilment_poll_seconds)
-        if stop.is_set():
-            break
-        await _drain_all(session_factory, queues)
+    loops = [
+        asyncio.create_task(
+            _queue_loop(
+                session_factory,
+                queue,
+                listener=listener,
+                wake=wake,
+                stop=stop,
+                poll_seconds=cfg.fulfilment_poll_seconds,
+            ),
+            name=f"drain:{queue.name}",
+        )
+        for queue, wake, listener in zip(queues, wakes, listeners, strict=True)
+    ]
+
+    await stop.wait()
+    # Bounded: a loop caught mid-drain finishes its batch if it can, and is
+    # otherwise cancelled by ``asyncio.run`` on the way out. Cancelling a drain
+    # is safe by construction -- it rolls back an uncommitted batch and its rows
+    # go back to ``pending`` (ADR-0064's "loses nothing but row locks").
+    _done, still_draining = await asyncio.wait(loops, timeout=SHUTDOWN_DRAIN_SECONDS)
+    if still_draining:
+        log.info(
+            "worker.consumer.shutdown_left_draining",
+            queues=[task.get_name() for task in still_draining],
+        )
 
     await _await_stray_tasks(timeout=5.0)
     for listener in listeners:
