@@ -60,6 +60,13 @@ KEY_ID_PREFIX = "ypm_"
 #: swapped by a merchant reading their own config file.
 SECRET_PREFIX = "ypms_"  # noqa: S105  # a prefix, not a credential
 
+#: The **outgoing-webhook** signing secret (M3a). A third prefix for the same
+#: reason there is a second one: a merchant holds both at once, they key
+#: opposite directions of the same integration, and a config file that mixes
+#: them up should fail visibly rather than produce a signature nobody can
+#: explain.
+WEBHOOK_SECRET_PREFIX = "ypmw_"  # noqa: S105  # a prefix, not a credential
+
 #: Bytes of entropy behind each half. 24 raw bytes → 32 url-safe characters
 #: for the id (plus the prefix, 36 of the column's 48); 32 raw bytes → 256
 #: bits for the secret, which is why no slow hash is needed anywhere here.
@@ -91,6 +98,20 @@ def new_secret() -> str:
         A ``ypms_``-prefixed, url-safe secret carrying 256 bits of entropy.
     """
     return SECRET_PREFIX + secrets.token_urlsafe(_SECRET_BYTES)
+
+
+def new_webhook_secret() -> str:
+    """Mint an outgoing-webhook signing secret. Returned to the merchant once.
+
+    Same 256 bits as :func:`new_secret` and minted here for the same reason:
+    this module is the one home for the credential format, so a second
+    ``secrets.token_urlsafe`` call elsewhere is how two halves of one scheme
+    start disagreeing about entropy.
+
+    Returns:
+        A ``ypmw_``-prefixed, url-safe secret carrying 256 bits of entropy.
+    """
+    return WEBHOOK_SECRET_PREFIX + secrets.token_urlsafe(_SECRET_BYTES)
 
 
 def body_digest(body: bytes) -> str:
@@ -171,10 +192,12 @@ def signature_matches(secret: str, message: bytes, provided: str) -> bool:
 __all__ = [
     "KEY_ID_PREFIX",
     "SECRET_PREFIX",
+    "WEBHOOK_SECRET_PREFIX",
     "body_digest",
     "canonical_message",
     "expected_signature",
     "new_key_id",
     "new_secret",
+    "new_webhook_secret",
     "signature_matches",
 ]

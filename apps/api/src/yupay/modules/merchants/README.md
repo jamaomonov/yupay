@@ -27,6 +27,20 @@ in this module the merchant is the reseller.
   (`secret_enc` / `secret_nonce`, migration 0070 — see "Storage" below), with
   an optional IP allowlist, a `last_used_at` stamp and a `revoked_at`
   tombstone. See "Machine-API authentication" below.
+- `merchant_webhooks` — the **one** endpoint (unique on `merchant_id`) we
+  POST a merchant's events to, its `ypmw_`-prefixed signing secret held
+  encrypted at rest under its own HKDF purpose label
+  (`yupay:merchants:webhook:v1`), a `disabled_at` switch, and the delivery
+  worker's running health: `failure_streak`, `last_success_at`,
+  `last_failure_at`. Migration 0071.
+- `merchant_webhook_deliveries` — the outbox, in ADR-0064's shape: `payload`
+  JSONB, a claimable `status` (`pending` → `in_progress` → `delivered` |
+  `failed`), `attempts_count` / `next_attempt_at` for backoff, and — because
+  this table is also the cabinet's delivery log from M4 — the merchant's
+  `response_code`, the first 2048 characters of their `response_body`, and
+  our own `last_error`. The body cap is a **column bound**: it is text a
+  third-party server chose and our own cabinet renders, so "the writer
+  truncates" is not a promise worth resting on.
 
 ## Deposit ledger
 
@@ -156,23 +170,55 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   timestamp rather than moving it), and matches on `(merchant_id, key_id)`
   so one merchant's id in the path can never revoke another's credential.
 
+- `PUT /admin/merchants/{id}/webhook` — point the merchant's outgoing
+  webhook at a URL. **The signing secret is in this response and nowhere
+  else, ever.** One endpoint per merchant in v1, so this is an upsert: the
+  first call mints the secret and returns it once; a later call edits the URL
+  of the same row and answers `secret: null`, because changing where
+  deliveries go must not silently break a working verifier — rotation is its
+  own endpoint. Setting a URL also clears `disabled_at` and resets
+  `failure_streak`, which is the recovery path after the delivery worker
+  auto-disables a hook. The URL is refused at save time unless it is `https`
+  with a public host, through the same
+  `catalog.image_url_safety.validate_public_https_url` the catalog's image
+  URLs go through — one blocked-range table in the repo, not two that drift.
+  That check reads notation, not resolved addresses; DNS rebinding is the
+  outbound client's problem, not this validator's.
+  `POST .../webhook/rotate-secret` mints a replacement and returns it once,
+  with no overlap window (unlike an API key, where the _merchant_ redeploys
+  between issue and revoke — here we are the sender and the switch is ours).
+  `DELETE .../webhook` disables by setting `disabled_at`, is naturally
+  idempotent, and is a disable rather than a delete so the delivery log and
+  the URL stay readable. `GET .../webhook` returns the configuration and its
+  delivery health, and its response model has no `secret` field at all.
+
+  **Configuration is admin-only in M3a by owner decision.** The merchant gets
+  this control from the cabinet in M4; there is deliberately no
+  `/merchant/v1` write for it, because its only purpose would be to let a
+  stranger aim our own worker at an address of their choosing. The
+  consequence, stated rather than discovered: a pilot cannot receive webhooks
+  before M4 unless support sets the URL.
+
 The non-ledger writes accept an optional `Idempotency-Key` and replay
 through the generic `(scope, key)` store (`core.idempotency`), like the
 other admin write endpoints. Each scope is **per resource** —
 `merchants.sku_b2b:{sku_id}`, `merchants.brand_b2b:{brand_id}`,
 `merchants.bulk_markup:{target}`, `merchants.set_status.{to}:{merchant_id}`,
 `merchants.api_key_create:{merchant_id}`,
-`merchants.api_key_revoke:{merchant_id}:{key_id}` — because an admin client
+`merchants.api_key_revoke:{merchant_id}:{key_id}`,
+`merchants.webhook_set:{merchant_id}`,
+`merchants.webhook_rotate:{merchant_id}`,
+`merchants.webhook_disable:{merchant_id}` — because an admin client
 that mints one key per session and reuses it across two SKUs would
 otherwise get the first SKU's response replayed for the second, and the
 second SKU would silently never be patched.
 
-Key creation is the one endpoint where the replay snapshot is deliberately
-**not** the response: the stored body carries `secret: null`, so a retry
-returns the original `key_id` with no secret. `idempotent_responses` has no
-reaper, and a usable credential sitting there in the clear forever is worse
-than telling an operator whose first response was lost to revoke the key and
-issue another.
+Key creation and the two webhook writes that can mint a secret are the
+endpoints where the replay snapshot is deliberately **not** the response: the
+stored body carries `secret: null`, so a retry returns the original row with
+no secret. `idempotent_responses` has no reaper, and a usable credential
+sitting there in the clear forever is worse than telling an operator whose
+first response was lost to revoke or rotate and take the new one.
 
 The admin SPA screens for this surface live in
 `apps/admin/src/features/merchants/` (`/merchants` list + create,
@@ -1239,6 +1285,12 @@ so merchant secrets and voucher codes never share a key. The same protection
 `inventory_codes` has had all along, applied to the instrument that is worth
 more.
 
+The **outgoing-webhook** secret (`merchant_webhooks`) is stored the same way
+for the same reason — we compute the HMAC on every delivery — under its own
+label, `yupay:merchants:webhook:v1`. A third label rather than a shared one:
+the two secrets key opposite directions of the same integration, and
+compromising the derived key behind one should not read the other's rows.
+
 ### Rate limiting internals
 
 Two axes, one counter implementation (`auth.ip_guard.hit_counter`):
@@ -1275,7 +1327,13 @@ and `GET /merchant/v1/catalog` (M2 Task 3), `POST /merchant/v1/orders`
 (M2 Task 4) and the two reads a reseller's back office lives on —
 `GET /merchant/v1/orders/{merchant_order_id}` and
 `GET /merchant/v1/transactions` (M2 Task 5) — are in place. **Those five are
-the whole machine API.** Spec §9.1 also sketches a sixth row,
+the whole machine API.** M3a Task 1 adds the webhook _storage_ and its
+admin-only configuration surface (`merchant_webhooks`,
+`merchant_webhook_deliveries`, migration 0071, and the four
+`/admin/merchants/{id}/webhook` endpoints above). Nothing is enqueued and
+nothing is delivered yet — emitting events is Task 3 and the worker that
+drains the outbox is Task 4, and the wire contract a merchant verifies
+against is written up in Task 6. Spec §9.1 also sketches a sixth row,
 `POST /merchant/v1/validate/…`, which is deliberately not in v1: it would only
 be honest for the SKUs a real player-check provider covers, and a validator
 that approves whatever it is given is worse than no endpoint. Outbound
@@ -1286,7 +1344,9 @@ a merchant order:** a failed delivery leaves the deposit debited, and support
 settles it by crediting the deposit by hand — which moves `balance_usd` and
 appears on `/transactions`, while the order's own `refunded_usd` stays
 `"0.00"`, because no surface can book a transaction against an order. And there
-is **no push of any kind** — poll the order read.
+is **no push of any kind** — poll the order read. (A configured webhook does
+not change that until M3a Tasks 3–4 land; setting a URL today stores an
+endpoint nobody delivers to.)
 
 The refund gap is written up with what it costs in
 `docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates" —

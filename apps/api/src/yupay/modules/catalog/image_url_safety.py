@@ -28,6 +28,16 @@ Residual risk — read before assuming this closes the finding:
   bare-integer IPv4, e.g. ``http://2130706433/``). Other obfuscations
   (octal/hex-per-octet forms) are not normalised here; treat this as raising
   the bar, not as a hermetic filter.
+
+The rules outgrew the name. :func:`validate_public_https_url` is the generic
+form — same checks, a caller-supplied noun for the error message — and
+:func:`validate_public_image_url` is the catalog's thin wrapper over it. The
+second caller is the merchant webhook URL (M3a Task 1,
+``merchants.admin.set_webhook``): sharing this function is what keeps one
+blocked-range table in the repo instead of two that drift. It is the
+**save-time** half there too, and the DNS-rebinding caveat above applies
+unchanged — ``core/outbound.py`` re-checks the address it actually connects
+to, which is a control this module cannot be.
 """
 
 from __future__ import annotations
@@ -60,7 +70,7 @@ def _parse_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None
     return None
 
 
-def validate_public_image_url(url: str) -> str:
+def validate_public_https_url(url: str, *, subject: str = "URL") -> str:
     """Reject ``url`` unless it is an ``https`` URL pointing at a public host.
 
     Intended for a non-empty, already-stripped candidate URL — callers own
@@ -79,7 +89,11 @@ def validate_public_image_url(url: str) -> str:
           ``::1``, ``fc00::/7`` and ``fe80::/10``.
 
     Args:
-        url: A non-empty candidate image URL.
+        url: A non-empty candidate URL.
+        subject: What the URL is, as it should read in an error message
+            ("image URL", "webhook URL"). Only the wording depends on it;
+            every rule above is the same for every caller, which is the
+            point of having one function.
 
     Returns:
         ``url`` unchanged, once it has passed every check.
@@ -90,12 +104,12 @@ def validate_public_image_url(url: str) -> str:
     """
     parsed = urlsplit(url)
     if parsed.scheme != "https":
-        raise ValueError("image URL must use https")
+        raise ValueError(f"{subject} must use https")
     host = (parsed.hostname or "").lower().rstrip(".")
     if not host:
-        raise ValueError("image URL must have a host")
+        raise ValueError(f"{subject} must have a host")
     if host in _BLOCKED_HOSTS or host.endswith(_BLOCKED_HOST_SUFFIXES):
-        raise ValueError(f"image URL host {host!r} is not allowed")
+        raise ValueError(f"{subject} host {host!r} is not allowed")
     ip = _parse_ip(host)
     if ip is not None and (
         ip.is_private
@@ -105,8 +119,23 @@ def validate_public_image_url(url: str) -> str:
         or ip.is_multicast
         or ip.is_unspecified
     ):
-        raise ValueError(f"image URL host {host!r} resolves to a blocked network")
+        raise ValueError(f"{subject} host {host!r} resolves to a blocked network")
     return url
+
+
+def validate_public_image_url(url: str) -> str:
+    """:func:`validate_public_https_url` worded for a catalog image URL.
+
+    Args:
+        url: A non-empty candidate image URL.
+
+    Returns:
+        ``url`` unchanged, once it has passed every check.
+
+    Raises:
+        ValueError: The URL is missing/malformed or targets a blocked host.
+    """
+    return validate_public_https_url(url, subject="image URL")
 
 
 def validate_optional_public_image_url(url: str | None) -> str | None:
@@ -125,5 +154,6 @@ def validate_optional_public_image_url(url: str | None) -> str | None:
 
 __all__ = [
     "validate_optional_public_image_url",
+    "validate_public_https_url",
     "validate_public_image_url",
 ]

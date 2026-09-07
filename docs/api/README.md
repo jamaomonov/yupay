@@ -260,6 +260,32 @@ revoked ones included) and its response model has no `secret` field at all.
 naturally idempotent, and matches on `(merchant_id, key_id)` so one merchant's
 id in the path cannot revoke another's key.
 
+## Merchant outgoing webhooks — configuration (M3a)
+
+`PUT /admin/merchants/{id}/webhook` points a merchant's webhook at a URL and
+returns its signing secret **once**; `POST .../webhook/rotate-secret` mints a
+replacement (also once); `DELETE .../webhook` disables it by setting
+`disabled_at`; `GET .../webhook` returns the configuration plus the delivery
+worker's health counters and has no `secret` field in its response model at
+all. All four are admin-gated, and the three writes replay through per-resource
+scopes (`merchants.webhook_set:{id}`, `…_rotate:{id}`, `…_disable:{id}`) with
+the same `secret: null` snapshot rule the key mint uses.
+
+One endpoint per merchant in v1 (unique on `merchant_id`), so `PUT` is an
+upsert: the first call mints the secret, a later one edits the URL of the same
+row and answers `secret: null` — changing where deliveries go must not silently
+break a working verifier. Setting a URL also clears `disabled_at` and resets
+`failure_streak`, which is how a hook the delivery worker auto-disabled is
+brought back. The URL must be `https` with a public host, checked at save time
+by the same validator the catalog's image URLs use; that check reads notation,
+not resolved addresses, so it is not the DNS-rebinding control.
+
+**There is deliberately no `/merchant/v1` write for this.** Configuration is
+admin-only in M3a by owner decision and moves to the merchant's own cabinet in
+M4: the only thing a machine-API write would buy is letting a stranger aim our
+worker at an address of their choosing. Until M3a's delivery worker lands, a
+configured endpoint is stored and not called — poll the order read.
+
 Requests to the machine API `/merchant/v1` carry `X-Merchant-Key`,
 `X-Merchant-Timestamp` and
 `X-Merchant-Signature = hex(HMAC_SHA256(secret, canonical))` where

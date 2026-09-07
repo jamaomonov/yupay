@@ -20,17 +20,24 @@ and are exported normally.
 
 Where each name comes from is an implementation detail this facade exists to
 hide — ``service`` (the account), ``credentials`` (its API keys), ``deposit``
-(its money), ``admin``, ``orders``, ``price_list``, ``pricing``, ``signing``.
+(its money), ``admin`` (the catalog B2B knobs and the outgoing-webhook
+configuration), ``orders``, ``price_list``, ``pricing``, ``signing``.
 Importers see one surface and are unaffected when a file is split.
 """
 
 from __future__ import annotations
 
 from yupay.modules.merchants.admin import (
+    ConfiguredWebhook,
     bulk_set_markup,
+    disable_webhook,
+    get_webhook,
     list_merchants_with_balances,
+    rotate_webhook_secret,
     set_brand_b2b,
     set_sku_b2b,
+    set_webhook,
+    validate_webhook_url,
 )
 from yupay.modules.merchants.credentials import (
     IssuedApiKey,
@@ -45,7 +52,13 @@ from yupay.modules.merchants.deposit import (
     deposit_balance,
     list_deposit_transactions,
 )
-from yupay.modules.merchants.models import Merchant, MerchantApiKey, MerchantUser
+from yupay.modules.merchants.models import (
+    Merchant,
+    MerchantApiKey,
+    MerchantUser,
+    MerchantWebhook,
+    MerchantWebhookDelivery,
+)
 from yupay.modules.merchants.order_status import read as read_order_status
 from yupay.modules.merchants.orders import place as place_order
 from yupay.modules.merchants.price_list import build as build_price_list
@@ -66,10 +79,13 @@ from yupay.modules.merchants.transactions import build as build_transactions_pag
 
 __all__ = [
     "DEPOSIT_CURRENCY",
+    "ConfiguredWebhook",
     "IssuedApiKey",
     "Merchant",
     "MerchantApiKey",
     "MerchantUser",
+    "MerchantWebhook",
+    "MerchantWebhookDelivery",
     "body_digest",
     "build_price_list",
     "build_transactions_page",
@@ -80,8 +96,10 @@ __all__ = [
     "create_merchant",
     "credit_deposit",
     "deposit_balance",
+    "disable_webhook",
     "effective_cost",
     "expected_signature",
+    "get_webhook",
     "list_api_keys",
     "list_deposit_transactions",
     "list_merchants_with_balances",
@@ -90,9 +108,12 @@ __all__ = [
     "place_order",
     "read_order_status",
     "revoke_api_key",
+    "rotate_webhook_secret",
     "set_brand_b2b",
     "set_sku_b2b",
     "set_status",
+    "set_webhook",
     "signature_matches",
+    "validate_webhook_url",
     "violates_margin_floor",
 ]

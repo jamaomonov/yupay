@@ -144,6 +144,7 @@ async def db_engine():
                     # After orders: orders.merchant_id is ON DELETE RESTRICT,
                     # but TRUNCATE ... CASCADE in one statement handles it; the
                     # rows must go regardless or merchants leak across tests.
+                    "merchant_webhook_deliveries, merchant_webhooks, "
                     "merchant_api_keys, merchant_users, merchants, "
                     "sku_prices, skus, product_translations, products, "
                     "brand_translations, brands, "

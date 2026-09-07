@@ -13701,6 +13701,81 @@
         "title": "WalletTopUpIn",
         "type": "object"
       },
+      "WebhookOut": {
+        "description": "A merchant's webhook configuration, as every read returns it.\n\nThere is deliberately no ``secret`` field: the secret exists only in the\nresponse to the call that minted it (:class:`WebhookSecretOut`).\n``failure_streak`` and the two timestamps are the delivery worker's\nrunning state \u2014 an operator answering \"is this hook healthy\" reads them\nhere rather than counting rows in the delivery log.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "failure_streak": {
+            "title": "Failure Streak",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_id",
+          "url",
+          "disabled_at",
+          "failure_streak",
+          "last_success_at",
+          "last_failure_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "WebhookOut",
+        "type": "object"
+      },
       "WebhookResolveIn": {
         "additionalProperties": false,
         "description": "Body of admin's ``POST /admin/webhooks/{id}/mark-resolved``.",
@@ -13716,6 +13791,110 @@
           "reason"
         ],
         "title": "WebhookResolveIn",
+        "type": "object"
+      },
+      "WebhookSecretOut": {
+        "description": "The response of the two calls that can mint a secret \u2014 the only ones carrying it.\n\n``secret`` is ``None`` when the call did not mint one: a URL change or a\nre-enable on an existing hook, and every idempotent replay. The replay\nsnapshot lives in ``idempotent_responses``, a table with no reaper, and a\nusable signing key sitting there forever is worse than telling an\noperator whose first response was lost to rotate and take the new one.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "failure_streak": {
+            "title": "Failure Streak",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_id",
+          "url",
+          "disabled_at",
+          "failure_streak",
+          "last_success_at",
+          "last_failure_at",
+          "created_at",
+          "updated_at",
+          "secret"
+        ],
+        "title": "WebhookSecretOut",
+        "type": "object"
+      },
+      "WebhookSetIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PUT /admin/merchants/{id}/webhook``.\n\nOnly shape is checked here. The SSRF rules (https, no private/loopback\nliterals) live in ``admin.validate_webhook_url`` so that every caller of\nthe facade gets them \u2014 including M4's cabinet, which will not reuse this\nDTO \u2014 rather than only the requests that happen to arrive through this\nschema.",
+        "properties": {
+          "url": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "WebhookSetIn",
         "type": "object"
       },
       "WebhookTriageRow": {
@@ -20739,6 +20918,296 @@
           }
         },
         "summary": "Reactivate a frozen merchant",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/webhook": {
+      "delete": {
+        "description": "Set ``disabled_at``; nothing is enqueued or delivered while it is set.\n\nNaturally idempotent \u2014 a second call returns the FIRST timestamp rather\nthan moving it \u2014 and it is a disable, not a delete: the row and the\ndelivery log stay readable, and re-enabling is a ``PUT`` with the URL.",
+        "operationId": "disable_webhook_api_v1_admin_merchants__merchant_id__webhook_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Disable a merchant's webhook (keeps the row and its log)",
+        "tags": [
+          "admin:merchants"
+        ]
+      },
+      "get": {
+        "description": "Never returns the secret \u2014 the response model has no such field.\n\n404 both when the merchant does not exist and when it has never\nregistered an endpoint.",
+        "operationId": "read_webhook_api_v1_admin_merchants__merchant_id__webhook_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A merchant's webhook configuration and its delivery health",
+        "tags": [
+          "admin:merchants"
+        ]
+      },
+      "put": {
+        "description": "Set the endpoint. The secret is in this response and nowhere else, ever.\n\nAn upsert, because v1 allows one endpoint per merchant: the first call\nmints the signing secret and returns it once; a later call edits the URL\nof the same row and answers ``secret: null``, because changing where\ndeliveries go must not silently break a working verifier. Setting a URL\nalso clears ``disabled_at`` and the failure streak \u2014 that is the recovery\npath after an auto-disable.\n\nAdmin-only in M3a by owner decision; the merchant gets this control from\nthe cabinet in M4. A ``/merchant/v1`` write would exist only to let a\nstranger aim our worker at an address of their choosing.\n\nA retry carrying the same ``Idempotency-Key`` replays the original\nresponse with ``secret: null`` \u2014 ``idempotent_responses`` has no reaper,\nso a usable signing key must not be persisted there. If the first\nresponse was lost, rotate.",
+        "operationId": "set_webhook_api_v1_admin_merchants__merchant_id__webhook_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Point a merchant's outgoing webhook at a URL",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/webhook/rotate-secret": {
+      "post": {
+        "description": "Mint a new secret and return it once; the old one stops signing immediately.\n\nOne live key at a time, unlike the machine credential's overlapping\nrotation \u2014 there the merchant redeploys between issue and revoke and only\nthey know when that finished, whereas here we are the sender and the\nswitch is ours to make. A replay answers ``secret: null`` rather than\nrotating a second time.",
+        "operationId": "rotate_webhook_secret_api_v1_admin_merchants__merchant_id__webhook_rotate_secret_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace a merchant's webhook signing secret",
         "tags": [
           "admin:merchants"
         ]

@@ -59,6 +59,9 @@ from yupay.modules.merchants.schemas import (
     MerchantTxnOut,
     SkuB2bOut,
     SkuB2bPatchIn,
+    WebhookOut,
+    WebhookSecretOut,
+    WebhookSetIn,
 )
 from yupay.modules.users.models import User
 
@@ -103,6 +106,13 @@ async def _remember(
     """Store a response for replay when a key was supplied."""
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=body, status_code=status_code)
+
+
+def _webhook_secret_out(configured: merchants.ConfiguredWebhook) -> WebhookSecretOut:
+    """Render a just-written webhook, carrying the secret only if one was minted."""
+    return WebhookSecretOut(
+        **WebhookOut.model_validate(configured.webhook).model_dump(), secret=configured.secret
+    )
 
 
 def _merchant_out(merchant: merchants.Merchant, balance: Decimal) -> MerchantOut:
@@ -385,6 +395,128 @@ async def revoke_api_key(
         return cached
     row = await merchants.revoke_api_key(db, merchant_id=merchant_id, key_id=key_id)
     out = ApiKeyOut.model_validate(row)
+    await _remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.put(
+    "/{merchant_id}/webhook",
+    response_model=WebhookSecretOut,
+    summary="Point a merchant's outgoing webhook at a URL",
+)
+async def set_webhook(
+    merchant_id: str,
+    body: WebhookSetIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> WebhookSecretOut:
+    """Set the endpoint. The secret is in this response and nowhere else, ever.
+
+    An upsert, because v1 allows one endpoint per merchant: the first call
+    mints the signing secret and returns it once; a later call edits the URL
+    of the same row and answers ``secret: null``, because changing where
+    deliveries go must not silently break a working verifier. Setting a URL
+    also clears ``disabled_at`` and the failure streak — that is the recovery
+    path after an auto-disable.
+
+    Admin-only in M3a by owner decision; the merchant gets this control from
+    the cabinet in M4. A ``/merchant/v1`` write would exist only to let a
+    stranger aim our worker at an address of their choosing.
+
+    A retry carrying the same ``Idempotency-Key`` replays the original
+    response with ``secret: null`` — ``idempotent_responses`` has no reaper,
+    so a usable signing key must not be persisted there. If the first
+    response was lost, rotate.
+    """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = f"merchants.webhook_set:{merchant_id}"
+    cached = await _replayed(db, scope=scope, key=key, model=WebhookSecretOut)
+    if cached is not None:
+        return cached
+    configured = await merchants.set_webhook(db, merchant_id=merchant_id, url=body.url)
+    out = _webhook_secret_out(configured)
+    await _remember(
+        db,
+        scope=scope,
+        key=key,
+        body=out.model_copy(update={"secret": None}).model_dump(mode="json"),
+    )
+    return out
+
+
+@admin_router.get(
+    "/{merchant_id}/webhook",
+    response_model=WebhookOut,
+    summary="A merchant's webhook configuration and its delivery health",
+)
+async def read_webhook(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> WebhookOut:
+    """Never returns the secret — the response model has no such field.
+
+    404 both when the merchant does not exist and when it has never
+    registered an endpoint.
+    """
+    return WebhookOut.model_validate(await merchants.get_webhook(db, merchant_id=merchant_id))
+
+
+@admin_router.post(
+    "/{merchant_id}/webhook/rotate-secret",
+    response_model=WebhookSecretOut,
+    summary="Replace a merchant's webhook signing secret",
+)
+async def rotate_webhook_secret(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> WebhookSecretOut:
+    """Mint a new secret and return it once; the old one stops signing immediately.
+
+    One live key at a time, unlike the machine credential's overlapping
+    rotation — there the merchant redeploys between issue and revoke and only
+    they know when that finished, whereas here we are the sender and the
+    switch is ours to make. A replay answers ``secret: null`` rather than
+    rotating a second time.
+    """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = f"merchants.webhook_rotate:{merchant_id}"
+    cached = await _replayed(db, scope=scope, key=key, model=WebhookSecretOut)
+    if cached is not None:
+        return cached
+    configured = await merchants.rotate_webhook_secret(db, merchant_id=merchant_id)
+    out = _webhook_secret_out(configured)
+    await _remember(
+        db,
+        scope=scope,
+        key=key,
+        body=out.model_copy(update={"secret": None}).model_dump(mode="json"),
+    )
+    return out
+
+
+@admin_router.delete(
+    "/{merchant_id}/webhook",
+    response_model=WebhookOut,
+    summary="Disable a merchant's webhook (keeps the row and its log)",
+)
+async def disable_webhook(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> WebhookOut:
+    """Set ``disabled_at``; nothing is enqueued or delivered while it is set.
+
+    Naturally idempotent — a second call returns the FIRST timestamp rather
+    than moving it — and it is a disable, not a delete: the row and the
+    delivery log stay readable, and re-enabling is a ``PUT`` with the URL.
+    """
+    replay_key = normalize_idempotency_key(idempotency_key)
+    scope = f"merchants.webhook_disable:{merchant_id}"
+    cached = await _replayed(db, scope=scope, key=replay_key, model=WebhookOut)
+    if cached is not None:
+        return cached
+    out = WebhookOut.model_validate(await merchants.disable_webhook(db, merchant_id=merchant_id))
     await _remember(db, scope=scope, key=replay_key, body=out.model_dump(mode="json"))
     return out
 
