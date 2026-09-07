@@ -5,19 +5,45 @@ decides a delivery outcome by catching these — so it lives in its own module,
 importable without the client and readable without the transport around it.
 :mod:`yupay.core.outbound` re-exports every name here; import from either.
 
-Two families and one flag:
+Two families and one three-valued fact:
 
 - :class:`OutboundRefusedError` — the attempt ended on **our** side.
 - :class:`OutboundUnreachableError` — it ended on **theirs**.
-- :attr:`OutboundError.attempt_delivered` — whether the request nonetheless
-  reached them, which is what decides if a retry is safe. It is a flag rather
-  than a third family so that a caller matching the two families cannot miss a
-  branch.
+- :attr:`OutboundError.delivery` — whether their server got the request. It is
+  three-valued because two of the three answers are not "no": a boolean here
+  collapses "nothing was sent" into the same bucket as "it was sent and we
+  never heard back", and a retry policy reading that boolean re-delivers a
+  webhook to a merchant who answered eleven seconds into a ten-second budget.
+  The families stay two-wide so a caller matching on them cannot miss a
+  branch; the delivery question is answered by this attribute, not by the
+  class.
+
+Every leaf declares its own :attr:`~OutboundError.delivery`, and a test walks
+``OutboundError.__subclasses__()`` to insist on it — a new leaf cannot be
+added without deciding what it means for a retry.
 """
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import ClassVar
+
+
+class Delivery(StrEnum):
+    """What is known about whether the merchant's server got the request.
+
+    Attributes:
+        NOT_SENT: Nothing left this process for their server. Safe to retry.
+        UNKNOWN: The request went out and the outcome is not known. A retry
+            may deliver a second copy; whether that is acceptable is the
+            caller's call, not this module's.
+        RECEIVED: Their server took the request and answered. A retry
+            **re-delivers**.
+    """
+
+    NOT_SENT = "not_sent"
+    UNKNOWN = "unknown"
+    RECEIVED = "received"
 
 
 class OutboundError(Exception):
@@ -30,12 +56,13 @@ class OutboundError(Exception):
     never reaches a terminal state and is re-claimed forever.
 
     Attributes:
-        attempt_delivered: Whether the request reached their server before the
-            failure. Read **this**, not the class, when deciding whether a
-            retry is safe: ``True`` means a retry re-delivers.
+        delivery: What is known about the request reaching their server. The
+            default is :attr:`Delivery.UNKNOWN` — the conservative answer, so
+            a leaf that forgets to decide errs towards "might have been
+            delivered" rather than towards a blind retry.
     """
 
-    attempt_delivered: ClassVar[bool] = False
+    delivery: ClassVar[Delivery] = Delivery.UNKNOWN
 
 
 class OutboundRefusedError(OutboundError):
@@ -44,10 +71,8 @@ class OutboundRefusedError(OutboundError):
     Their server did not reject anything. Retrying changes nothing until the
     input changes — a different URL, different DNS, or a smaller response.
     Whether they nonetheless *received* the request is
-    :attr:`OutboundError.attempt_delivered`, which is true for the two
-    children that refuse an *answer* rather than a destination; that flag is
-    why the family stays two-wide instead of growing a third branch a caller
-    could forget to catch.
+    :attr:`OutboundError.delivery`, which is :attr:`Delivery.RECEIVED` for the
+    two children that refuse an *answer* rather than a destination.
     """
 
 
@@ -62,6 +87,8 @@ class UrlNotAllowedError(OutboundRefusedError):
     lookup does.)
     """
 
+    delivery: ClassVar[Delivery] = Delivery.NOT_SENT
+
 
 class AddressNotAllowedError(OutboundRefusedError):
     """A resolved address is not one we will connect to.
@@ -70,6 +97,8 @@ class AddressNotAllowedError(OutboundRefusedError):
         host: The hostname that resolved to it.
         reasons: One ``"<address>: <family>"`` string per offending answer.
     """
+
+    delivery: ClassVar[Delivery] = Delivery.NOT_SENT
 
     def __init__(self, message: str, *, host: str = "", reasons: tuple[str, ...] = ()) -> None:
         super().__init__(message)
@@ -80,12 +109,11 @@ class AddressNotAllowedError(OutboundRefusedError):
 class ResponseTooLargeError(OutboundRefusedError):
     """The response passed ``max_bytes`` and the read was cut off.
 
-    The odd one out, and the reason :attr:`OutboundError.attempt_delivered`
-    exists: their server **received** the delivery and answered it, so a retry
-    re-delivers. Terminal, not retryable.
+    One of the two refusals that mean the delivery landed: their server
+    received it and answered, so a retry re-delivers. Terminal.
     """
 
-    attempt_delivered: ClassVar[bool] = True
+    delivery: ClassVar[Delivery] = Delivery.RECEIVED
 
 
 class ContentEncodingNotAllowedError(OutboundRefusedError):
@@ -98,7 +126,7 @@ class ContentEncodingNotAllowedError(OutboundRefusedError):
     Like :class:`ResponseTooLargeError` it means the delivery landed.
     """
 
-    attempt_delivered: ClassVar[bool] = True
+    delivery: ClassVar[Delivery] = Delivery.RECEIVED
 
 
 class OutboundBrokenError(OutboundRefusedError):
@@ -108,8 +136,20 @@ class OutboundBrokenError(OutboundRefusedError):
     "ended on our side" rather than under "they did not answer" on purpose: an
     unexpected exception is deterministic in its input, so retrying it walks a
     merchant's endpoint into an auto-disable for a fault that is ours.
-    ``__cause__`` carries the original, and it is logged with a stack.
+    ``__cause__`` carries the original.
+
+    **The caller must not count this toward a merchant's failure budget.** It
+    is in the refusal family because forgetting the branch should mean "we
+    blame ourselves", but the special case moved rather than disappeared: a
+    bug of ours must not auto-disable a working endpoint and show in the
+    merchant's log as "we refused your URL".
+
+    Its delivery is :attr:`Delivery.UNKNOWN` and not ``NOT_SENT``, because the
+    net covers the whole call and cannot know where inside it the break
+    happened.
     """
+
+    delivery: ClassVar[Delivery] = Delivery.UNKNOWN
 
 
 class OutboundUnreachableError(OutboundError):
@@ -119,19 +159,49 @@ class OutboundUnreachableError(OutboundError):
 class ResolutionFailedError(OutboundUnreachableError):
     """The hostname did not resolve at all."""
 
+    delivery: ClassVar[Delivery] = Delivery.NOT_SENT
+
 
 class ConnectFailedError(OutboundUnreachableError):
-    """The connection, the TLS handshake, or the exchange itself failed."""
+    """The TCP connection or the TLS handshake never came up.
+
+    Nothing was written, so this is the one transport failure that is safe to
+    retry blindly. A failure *after* the connection came up is
+    :class:`ExchangeFailedError`, which is not.
+    """
+
+    delivery: ClassVar[Delivery] = Delivery.NOT_SENT
+
+
+class ExchangeFailedError(OutboundUnreachableError):
+    """The connection came up and the exchange broke — a reset, a bad framing.
+
+    Split from :class:`ConnectFailedError` because the request may already
+    have been written and processed by then. Same family, different answer to
+    the only question a retry policy needs to ask.
+    """
+
+    delivery: ClassVar[Delivery] = Delivery.UNKNOWN
 
 
 class OutboundTimeoutError(OutboundUnreachableError):
-    """The attempt passed its total wall-clock budget."""
+    """The attempt passed its total wall-clock budget.
+
+    ``UNKNOWN``, not ``NOT_SENT``: the live suite's timeout case asserts the
+    server **did** receive the request and simply never answered, which is the
+    ordinary shape of a timeout. A merchant answering in eleven seconds
+    against a ten-second budget has already provisioned the order.
+    """
+
+    delivery: ClassVar[Delivery] = Delivery.UNKNOWN
 
 
 __all__ = [
     "AddressNotAllowedError",
     "ConnectFailedError",
     "ContentEncodingNotAllowedError",
+    "Delivery",
+    "ExchangeFailedError",
     "OutboundBrokenError",
     "OutboundError",
     "OutboundRefusedError",

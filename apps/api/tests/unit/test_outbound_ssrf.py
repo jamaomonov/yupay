@@ -42,6 +42,7 @@ from yupay.core.outbound import (
     DEFAULT_MAX_BYTES,
     AddressNotAllowedError,
     ContentEncodingNotAllowedError,
+    Delivery,
     OutboundBrokenError,
     OutboundError,
     OutboundRefusedError,
@@ -274,7 +275,7 @@ async def test_an_unexpected_failure_still_comes_out_typed(
 
     assert isinstance(caught.value, OutboundError)
     assert isinstance(caught.value.__cause__, RuntimeError)
-    assert caught.value.attempt_delivered is False
+    assert caught.value.delivery is Delivery.UNKNOWN
 
 
 async def test_the_refusal_message_never_carries_the_url_query(
@@ -694,6 +695,30 @@ async def test_a_transport_failure_is_unreachable_not_a_policy_refusal(
 
     assert not isinstance(caught.value, OutboundRefusedError)
     assert isinstance(caught.value, outbound.OutboundUnreachableError)
+    assert caught.value.delivery is Delivery.NOT_SENT, "nothing was written; retry is safe"
+
+
+async def test_a_broken_exchange_is_told_apart_from_a_connection_that_never_came_up(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The two transport failures a retry policy must not confuse.
+
+    A connect failure wrote nothing and is safe to retry blindly; a reset
+    mid-exchange may already have been read and acted on by their server. One
+    class for both would have made the safe case indistinguishable from the
+    unsafe one.
+    """
+
+    def _reset(_request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError("server disconnected without sending a response")
+
+    _wire(monkeypatch, handler=_reset)
+
+    with pytest.raises(outbound.ExchangeFailedError) as caught:
+        await post_json(URL, body=b"{}")
+
+    assert isinstance(caught.value, outbound.OutboundUnreachableError)
+    assert caught.value.delivery is Delivery.UNKNOWN
 
 
 async def test_dns_failure_is_unreachable_not_a_policy_refusal(
@@ -835,7 +860,29 @@ async def test_a_compressed_response_is_refused_and_never_expanded(
         tracemalloc.stop()
 
     assert peak < 5_000_000, f"decoded somewhere: peak {peak} bytes"
-    assert caught.value.attempt_delivered is True, "they received it — a retry re-delivers"
+    assert caught.value.delivery is Delivery.RECEIVED, "they received it — a retry re-delivers"
+
+
+async def test_the_body_is_read_off_the_wire_and_never_through_the_decoder(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Pins the *other* half of the compression defence, which nothing did.
+
+    The encoding refusal short-circuits before the read, so reverting the read
+    to ``aiter_bytes`` left the whole suite green — the two mitigations are
+    redundant today and the report claimed a falsification that did not
+    reproduce. This one fails on that mutation: it makes calling the decoding
+    reader an error, so an ordinary uncompressed delivery proves which reader
+    is in use.
+    """
+
+    def _never(*_args: object, **_kwargs: object) -> AsyncIterator[bytes]:
+        raise AssertionError("aiter_bytes runs httpx's decoder — the read must be raw")
+
+    monkeypatch.setattr(httpx.Response, "aiter_bytes", _never)
+    _wire(monkeypatch, handler=lambda _r: _response(200, b"ok"))
+
+    assert (await post_json(URL, body=b"{}")).body == "ok"
 
 
 async def test_an_identity_content_encoding_is_read_normally(
@@ -849,45 +896,84 @@ async def test_an_identity_content_encoding_is_read_normally(
 # ---------- the taxonomy the caller branches on ----------
 
 
-@pytest.mark.parametrize(
-    ("error", "delivered"),
-    [
-        (outbound.UrlNotAllowedError, False),
-        (AddressNotAllowedError, False),
-        (outbound.ResponseTooLargeError, True),
-        (ContentEncodingNotAllowedError, True),
-        (OutboundBrokenError, False),
-        (ResolutionFailedError, False),
-        (outbound.ConnectFailedError, False),
-        (OutboundTimeoutError, False),
-    ],
-)
-async def test_attempt_delivered_answers_whether_a_retry_re_delivers(
-    error: type[OutboundError], delivered: bool
-) -> None:
-    """The flag, not the class, is what a retry table reads.
+def _leaves(root: type[BaseException]) -> set[type[BaseException]]:
+    """Every concrete error under ``root``, found rather than listed.
 
-    Two refusals mean the merchant's server already has the webhook. A caller
-    branching on the family alone would retry both.
+    The listed version of this could not fail: adding an unclassified leaf to
+    the module left the suite green, because the test iterated a copy of the
+    answer. Walking ``__subclasses__`` means a new leaf has to satisfy the
+    invariants or break the build.
     """
-    assert error.attempt_delivered is delivered
+    children = root.__subclasses__()
+    if not children:
+        return {root}
+    return set().union(*(_leaves(child) for child in children))
 
 
-async def test_every_error_is_one_of_the_two_families() -> None:
+def test_every_error_is_in_exactly_one_family() -> None:
     """A third family would be a branch a caller could forget."""
     families = (OutboundRefusedError, outbound.OutboundUnreachableError)
-    leaves = [
-        outbound.UrlNotAllowedError,
-        AddressNotAllowedError,
-        outbound.ResponseTooLargeError,
-        ContentEncodingNotAllowedError,
-        OutboundBrokenError,
-        ResolutionFailedError,
-        outbound.ConnectFailedError,
-        OutboundTimeoutError,
-    ]
+    leaves = _leaves(OutboundError)
+    assert leaves, "the walk found nothing — the taxonomy moved"
     for leaf in leaves:
         assert sum(issubclass(leaf, family) for family in families) == 1, leaf
+
+
+def test_every_error_decides_what_it_means_for_a_retry() -> None:
+    """Each leaf declares ``delivery`` itself; inheriting the default is not deciding.
+
+    The base defaults to ``UNKNOWN`` so a forgotten leaf errs towards "might
+    have been delivered" at runtime, and this test makes sure nobody has to
+    rely on that.
+    """
+    for leaf in _leaves(OutboundError):
+        assert "delivery" in leaf.__dict__, f"{leaf.__name__} did not decide its delivery"
+        assert isinstance(leaf.__dict__["delivery"], Delivery)
+
+
+@pytest.mark.parametrize(
+    ("error", "delivery"),
+    [
+        (outbound.UrlNotAllowedError, Delivery.NOT_SENT),
+        (AddressNotAllowedError, Delivery.NOT_SENT),
+        (ResolutionFailedError, Delivery.NOT_SENT),
+        (outbound.ConnectFailedError, Delivery.NOT_SENT),
+        (outbound.ResponseTooLargeError, Delivery.RECEIVED),
+        (ContentEncodingNotAllowedError, Delivery.RECEIVED),
+        (OutboundTimeoutError, Delivery.UNKNOWN),
+        (outbound.ExchangeFailedError, Delivery.UNKNOWN),
+        (OutboundBrokenError, Delivery.UNKNOWN),
+    ],
+)
+async def test_delivery_answers_what_a_retry_would_do(
+    error: type[OutboundError], delivery: Delivery
+) -> None:
+    """Three values, because two of the three answers are not "no".
+
+    A boolean here collapsed "nothing was sent" into the same bucket as "it
+    was sent and we never heard back". A timeout is the second: the live suite
+    asserts the server received the request and simply did not answer, so a
+    merchant who answers at eleven seconds against a ten-second budget would
+    have been retried into provisioning the order twice.
+    """
+    assert error.delivery is delivery
+
+
+async def test_a_timeout_is_not_reported_as_nothing_sent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The regression that motivated the three-valued answer, end to end."""
+
+    async def _slow(_request: httpx.Request) -> httpx.Response:
+        await asyncio.sleep(5)
+        return _response(200)
+
+    _wire(monkeypatch, handler=_slow)
+
+    with pytest.raises(OutboundTimeoutError) as caught:
+        await post_json(URL, body=b"{}", timeout=0.05)
+
+    assert caught.value.delivery is Delivery.UNKNOWN
 
 
 # ---------- the result the caller records ----------

@@ -48,6 +48,7 @@ from yupay.core.outbound import (
     AddressNotAllowedError,
     ConnectFailedError,
     ContentEncodingNotAllowedError,
+    Delivery,
     OutboundTimeoutError,
     ResponseTooLargeError,
     UrlNotAllowedError,
@@ -530,7 +531,7 @@ async def test_a_compressed_answer_is_refused_off_a_real_socket(
         with pytest.raises(ContentEncodingNotAllowedError) as caught:
             await post_json(f"https://{HOSTNAME}:{port}/hooks", body=b"{}")
 
-        assert caught.value.attempt_delivered is True
+        assert caught.value.delivery is Delivery.RECEIVED
         assert len(server.requests) == 1, "they received the webhook; only the answer is refused"
 
 

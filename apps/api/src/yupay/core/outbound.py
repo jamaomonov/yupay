@@ -71,6 +71,8 @@ from yupay.core.outbound_errors import (
     AddressNotAllowedError,
     ConnectFailedError,
     ContentEncodingNotAllowedError,
+    Delivery,
+    ExchangeFailedError,
     OutboundBrokenError,
     OutboundError,
     OutboundRefusedError,
@@ -278,6 +280,15 @@ async def _read_capped(response: httpx.Response, *, max_bytes: int, host: str) -
     compression bomb cannot expand inside this process at all — and an encoded
     body is refused below rather than handed back undecoded.
 
+    The refusal below and this raw read are **deliberately redundant**: today
+    the refusal fires first and nothing reaches the loop with an encoding on
+    it, so the raw read is doing no work a decoded read would not have done.
+    It is here for the day someone relaxes the refusal for a merchant whose
+    server gzips everything — at which point this is the only thing standing
+    between us and an attacker-chosen expansion ratio. A test asserts the
+    decoder is never even constructed, so the redundancy cannot rot into a
+    comment that used to be true.
+
     Note that ``brotli``/``zstandard`` are not installed, so httpx cannot
     decode those today. That is not what makes this safe, and installing
     either must not be read as re-opening the question: the guarantee here is
@@ -358,9 +369,16 @@ async def _send(
                     await response.aclose()
         except httpx.TimeoutException as exc:
             raise OutboundTimeoutError(f"{target.host} did not answer in time") from exc
-        except httpx.HTTPError as exc:
+        except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+            # Nothing was written: the socket or the handshake never came up.
+            # This is the only transport failure a caller may retry blindly,
+            # which is why it is a different type from the one below.
             raise ConnectFailedError(
                 f"{target.host} could not be reached: {type(exc).__name__}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            raise ExchangeFailedError(
+                f"the exchange with {target.host} failed: {type(exc).__name__}"
             ) from exc
         return response.status_code, raw
     finally:
@@ -368,6 +386,42 @@ async def _send(
         # failure to hang up must not replace the failure being reported.
         with contextlib.suppress(httpx.HTTPError):
             await client.aclose()
+
+
+def _log_broken(exc: BaseException, *, host: str) -> None:
+    """Report an unexpected failure without rendering the exception chain.
+
+    Not ``log.exception``: that renders every ``__cause__`` under it, and
+    :func:`_send`'s docstring warns the caller off exactly that, because an
+    httpx error down the chain holds the pinned URL with its query. Reaching
+    here is a bug in this module and nothing above will report it, so the
+    type and the innermost frame are logged instead — enough to find it, and
+    nothing that carries a merchant's token.
+    """
+    frame = exc.__traceback__
+    while frame is not None and frame.tb_next is not None:
+        frame = frame.tb_next
+    where = f"{frame.tb_frame.f_code.co_filename}:{frame.tb_lineno}" if frame else "unknown"
+    log.error("outbound.broken", host=host, failure=type(exc).__name__, where=where)
+
+
+def _parse_or_broken(url: str) -> Target:
+    """:func:`parse_target`, with the same total-typing guarantee as the rest.
+
+    Nothing but a non-``str`` argument gets past mypy into the untyped half
+    today, but the module docstring promises every path out of
+    :func:`post_json` is an :class:`OutboundError`, and a promise with one
+    unguarded call in front of it is not one.
+    """
+    try:
+        return parse_target(url)
+    except OutboundError:
+        raise
+    except Exception as exc:
+        _log_broken(exc, host="<unparsed>")
+        raise OutboundBrokenError(
+            f"the destination could not be parsed: {type(exc).__name__}"
+        ) from exc
 
 
 async def post_json(
@@ -407,13 +461,16 @@ async def post_json(
             the wire.
         ContentEncodingNotAllowedError: They answered with a compressed body.
         ResolutionFailedError: The host did not resolve.
-        ConnectFailedError: The connection or the exchange failed.
+        ConnectFailedError: The socket or the TLS handshake never came up —
+            the one transport failure that is safe to retry blindly.
+        ExchangeFailedError: The connection came up and the exchange broke,
+            so the request may already have been written.
         OutboundTimeoutError: The attempt passed ``timeout``.
         OutboundBrokenError: Anything else at all — every path out of here is
             one of these, so a queue drain catching :class:`OutboundError`
             cannot be handed an untyped exception.
     """
-    target = parse_target(url)
+    target = _parse_or_broken(url)
     started = time.monotonic()
     try:
         async with asyncio.timeout(timeout):
@@ -437,10 +494,8 @@ async def post_json(
         raise
     except Exception as exc:
         # The net that makes ``OutboundError`` total (see its docstring). Only
-        # ``Exception``, so a cancellation still cancels. Logged with a stack
-        # because reaching here is a bug in this module, not a merchant's
-        # doing, and nothing above will report it.
-        log.exception("outbound.broken", host=target.host, failure=type(exc).__name__)
+        # ``Exception``, so a cancellation still cancels.
+        _log_broken(exc, host=target.host)
         raise OutboundBrokenError(
             f"the attempt to {target.host} broke: {type(exc).__name__}"
         ) from exc
@@ -471,6 +526,8 @@ __all__ = [
     "AddressNotAllowedError",
     "ConnectFailedError",
     "ContentEncodingNotAllowedError",
+    "Delivery",
+    "ExchangeFailedError",
     "OutboundBrokenError",
     "OutboundError",
     "OutboundRefusedError",
