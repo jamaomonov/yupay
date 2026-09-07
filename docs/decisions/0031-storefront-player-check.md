@@ -218,6 +218,34 @@ have to match the owning module. `integrations/api.py` exposes the service as
 `check_player_for_product(session, product_id, player_id, server_id) ->
 PlayerCheckOut` for reuse.
 
+### A third caller: the machine API (added 2026-09-08)
+
+`POST /merchant/v1/validate/player` (Merchant B2B M3a, spec §9.1) exposes this
+same service to a reseller's server, through `merchants/validate.py`. It
+resolves the merchant's `sku_id` to a product, scoped to what that surface can
+see (`brand.visible_b2b AND sku.visible_b2b`), and then calls
+`check_player_for_product` unchanged. Nothing about the providers, the breaker
+or the cache is duplicated or altered.
+
+Two things about that surface are worth recording here, because they are
+consequences of decisions made above:
+
+- **The three-way status is what makes the endpoint safe to publish.** The
+  spec's rule is "never a fake approver", and it is satisfied by the choice
+  made in this ADR: folding every fault into `error` rather than into a
+  cheerful `valid`. A storefront that mis-reads `error` shows a customer a
+  needless warning; a reseller that mis-reads it sells a top-up into a
+  stranger's account. Same discriminator, higher stakes.
+- **A fourth status exists on that surface only.** The storefront answers a
+  product with no checker with a `422` (`ValidationError`, per the endpoint
+  section above), which is right for a UI that only ever calls it for products
+  it knows are checkable. A machine caller iterating its own catalog needs
+  "there is no check here" as an ordinary outcome rather than an exception, and
+  needs it distinguishable from "we could not check" — one is permanent, the
+  other is worth retrying. So `MerchantPlayerCheckOut.status` adds
+  `unsupported`. It is a wire-contract addition on `/merchant/v1`, not a change
+  to `PlayerCheckOut`, and the storefront's shape is untouched.
+
 ### §10 deviation — one synchronous external HTTP call
 
 AGENTS.md §10 states: "No synchronous external HTTP calls in request
@@ -239,6 +267,13 @@ rule with one in-handler call to G2B. Justification:
   (`GET /admin/integrations/g2b/games/{game_code}/check-player`, ADR-0019)
   already makes this exact synchronous call; this endpoint reuses the same
   shape for a second, public caller instead of introducing a new pattern.
+
+The machine API's `POST /merchant/v1/validate/player` (above) inherits every
+one of those, with one addition: it is called by a _server_ rather than by a
+person tapping a button, so "user-initiated, no fan-out" no longer holds on its
+own. That is what its dedicated `merchant-validate` IP bucket is for — 120/60 s
+against the prefix's 600, because it is the only endpoint on that surface that
+spends a supplier's quota rather than ours.
 
 ### Positive consequences
 

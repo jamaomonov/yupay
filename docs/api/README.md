@@ -321,13 +321,15 @@ would force somebody else's integration to move for our reasons.
 
 Every endpoint sits behind `merchants.auth.merchant_auth` — `401` unsigned,
 `403` `merchant_frozen` — and **none of them takes `Idempotency-Key`**. Four of
-the five are reads, which is outside AGENTS.md §9's scope; `POST
-/merchant/v1/orders` is a mutation and is exempt on purpose, being idempotent
-on the caller's own `merchant_order_id` instead (spec §9.3, recorded as the
-exception in AGENTS.md §9). All five endpoints landed by M2 Task 5. Spec §9.1
-sketches a sixth row, `POST /merchant/v1/validate/…`, deliberately left out of
-v1 — it is honest only for the SKUs a real player-check provider covers, and
-the spec's own qualifier is "never a fake approver".
+the six are reads, which is outside AGENTS.md §9's scope; `POST
+/merchant/v1/validate/player` is a `POST` that writes nothing, so it is outside
+that scope too (the third such advisory lookup, named in AGENTS.md §9); and
+`POST /merchant/v1/orders` is a mutation and is exempt on purpose, being
+idempotent on the caller's own `merchant_order_id` instead (spec §9.3, recorded
+as the exception in AGENTS.md §9). Five endpoints landed by M2 Task 5; spec
+§9.1's sixth row, `POST /merchant/v1/validate/player`, landed in M3a Task 5
+once its qualifier — "never a fake approver" — could be the endpoint's contract
+rather than the reason to omit it.
 
 `GET /merchant/v1/me` returns `{merchant_id, title, status, balance_usd}`.
 The balance is the deposit ledger's signed posting sum, read live; there is no
@@ -615,7 +617,8 @@ body), and unlike the handler it was not pre-existing.
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so
 later endpoints are covered on the day they are written). Throttling here is
-the dependency's two Redis counters and nothing else. The earlier reading —
+the dependency's two Redis counters, plus the one `POST /validate/player`
+charges for itself. The earlier reading —
 that the coarse tier applied but could never bind first, because it buckets
 per IP **per endpoint** while the `merchant-api` bucket is one counter for
 the whole prefix — is true only when a caller's traffic spreads across
@@ -629,6 +632,52 @@ slowapi's handler body carries no `type` and no `code`, which is a contract
 we published and cannot revise inside `v1`. The exemption's argument is the
 list's own: every route on it authenticates its own caller, so the per-IP
 limit was never the control protecting it.
+
+### `POST /merchant/v1/validate/player` — the truthful player check
+
+Spec §9.1's sixth row, and the only endpoint here that calls a supplier while
+the caller waits. It exposes `integrations.player_check` — the storefront's own
+G2B nickname lookup and Waxpeer Steam-login check, with their circuit breaker
+and 300 s cache — to a reseller who wants to verify an end customer's id before
+spending a deposit on it. `merchants/validate.py` resolves the SKU and projects
+the result; it performs no check of its own.
+
+**The rule is "never a fake approver", and it decides the response shape.**
+`player_check` already folds every fault into `status: "error"` rather than
+raising, so an upstream outage, a timeout, a credential of ours G2B rejected
+and a circuit we opened all arrive as one answer meaning "we learned nothing".
+Rendering any of those as `valid` would have a reseller sell a top-up into a
+stranger's account, which is the failure the endpoint exists to prevent. The
+wire contract therefore has **four** statuses, not three: `valid`, `invalid`,
+`error`, and `unsupported` for a SKU whose product has no checker configured —
+distinct from `error` because that one is worth retrying and this one never
+is, and distinct from a `404` because "no check exists" must not read as "no
+such SKU". Nothing reports whether an answer came from the cache: a cached
+verdict is still our best answer, and a caveat would only invite integrators to
+distrust a good one.
+
+**Scoped to what the merchant can already see**: `brand.visible_b2b AND
+sku.visible_b2b`, exactly `/catalog`'s rule, so the endpoint cannot be used to
+enumerate SKUs withheld from B2B. The refusal is `quote.unavailable`'s —
+`404 item_unavailable` with `reason: unknown_sku` or `not_b2b_visible`, the same
+words the order path uses — rather than a second vocabulary for the same idea.
+The order path's _other_ reasons (`out_of_stock`, `not_for_sale`, `no_cost`)
+deliberately do not apply: stock and pricing move between a check and an order,
+and this call is the step before the order.
+
+**A `POST` that writes nothing, and no `Idempotency-Key`.** `player_id`
+identifies the reseller's end customer, so it must not travel in a URL — the
+`api.yupay.uz` site block logs query strings verbatim (spec §9.2) — which is
+the same reason `POST /catalog/products/{id}/check-player` and
+`POST /gifts/steam-profile` are POSTs. It is transit-only and never logged;
+`player_check` logs `hash_short` of it and nothing else.
+
+**Its own rate-limit bucket**, `merchant-validate` at 120/60 s per IP, charged
+in the handler on top of the prefix-wide `merchant-api` counter at 600/60 s.
+Stricter because it is the one endpoint that spends a _supplier's_ quota rather
+than ours (spec §12: "stricter on `validate/*`"), and still a machine caller's
+ceiling rather than a person's. Both counters advance on a validate call; the
+tighter one binds first.
 
 The full third-party contract, sample bodies included, is
 `apps/api/src/yupay/modules/merchants/README.md`.

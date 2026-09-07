@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
@@ -343,6 +343,70 @@ class MerchantOrderStatusOut(BaseModel):
     timeline: list[MerchantOrderEventOut]
 
 
+class MerchantPlayerCheckIn(BaseModel):
+    """Body of ``POST /merchant/v1/validate/player`` (spec §9.1).
+
+    ``extra="forbid"``, for the same reason ``MerchantOrderCreateIn`` sets it:
+    on a request, silently ignoring an unknown key is how a typo'd
+    ``player_id`` becomes a check of nothing that answers ``unsupported`` and
+    gets read as "this SKU needs no verification".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The SKU you are about to order, from ``GET /merchant/v1/catalog``. A
+    #: SKU, not a product, so the id you check is the id you buy — and parsed
+    #: as a UUID here rather than taken as free text, since an unparseable one
+    #: reaches Postgres as ``uuid = 'whatever'``, a ``DataError`` and a 500
+    #: where a clean refusal belongs.
+    sku_id: str
+    #: Your **end customer's** identifier: the game's player id, or the Steam
+    #: login for a Steam top-up. We hold it for the length of the request and
+    #: never write it to a log or a URL (spec §9.5).
+    player_id: str = Field(min_length=1, max_length=64)
+    #: The game server / zone, for the games that ask for one. Send what the
+    #: SKU's product declares; omit it otherwise.
+    server_id: str | None = Field(default=None, max_length=64)
+
+    @field_validator("sku_id")
+    @classmethod
+    def _is_a_uuid(cls, value: str) -> str:
+        """Reject anything that is not a UUID, at the parse boundary."""
+        try:
+            UUID(value)
+        except ValueError:
+            raise ValueError("sku_id must be a UUID") from None
+        return value
+
+
+class MerchantPlayerCheckOut(BaseModel):
+    """Body of ``POST /merchant/v1/validate/player`` — an **advisory** verdict.
+
+    Four outcomes, and the difference between them is the whole point of the
+    endpoint. Switch on ``status``; never treat "not ``invalid``" as approval.
+
+    * ``valid`` — the provider resolved the id. ``name`` carries the account
+      nickname where the provider returns one (G2B does; Steam has no display
+      name to give, so it stays ``null`` — an absence, not a placeholder).
+    * ``invalid`` — the provider answered and the id does not exist. This is
+      the one answer that says your customer mistyped something.
+    * ``error`` — **we could not check.** An upstream fault, a timeout, a
+      rejected credential of ours, or a circuit we opened after a run of
+      failures. It says nothing at all about the id, so it must not be read as
+      either approval or refusal; retry, or order without a check.
+    * ``unsupported`` — this SKU's product has no player check configured, and
+      will not grow one on its own. Distinct from ``error`` because that one is
+      worth retrying and this one never is.
+
+    Nothing here reports how the answer was reached, deliberately: a verdict
+    served from the 300 s cache is still our best answer, and a "this was
+    cached" caveat would only invite integrators to distrust a good one.
+    """
+
+    status: Literal["valid", "invalid", "error", "unsupported"]
+    name: str | None = None
+
+
 class MerchantTransactionOut(BaseModel):
     """One movement of the merchant's deposit.
 
@@ -381,6 +445,8 @@ __all__ = [
     "MerchantOrderEventOut",
     "MerchantOrderOut",
     "MerchantOrderStatusOut",
+    "MerchantPlayerCheckIn",
+    "MerchantPlayerCheckOut",
     "MerchantProductOut",
     "MerchantProfileOut",
     "MerchantSkuOut",

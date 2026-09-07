@@ -16,15 +16,19 @@ routers parse and dispatch).
 endpoint declaring ``Form(...)`` or ``UploadFile`` would send FastAPI down the
 ``request.form()`` branch, which consumes the stream without populating the
 cache the dependency relies on, and every call to it would raise
-``RuntimeError("Stream consumed")``. Four of the five endpoints here are GETs
-and the fifth takes a JSON body, so the rule binds today and as this router
+``RuntimeError("Stream consumed")``. Four of the six endpoints here are GETs
+and the other two take a JSON body, so the rule binds today and as this router
 grows.
 
 ## No ``Idempotency-Key`` anywhere on this router
 
-AGENTS.md §9 requires the header on state-changing endpoints. ``/me`` and
-``/catalog`` are reads, so it does not reach them. ``POST /orders`` *is* a
-mutation and still does not take it: it is idempotent on the merchant's own
+AGENTS.md §9 requires the header on state-changing endpoints. ``/me``,
+``/catalog``, ``/orders/{id}`` and ``/transactions`` are reads, so it does not
+reach them, and neither does it reach ``POST /validate/player``: that one is a
+``POST`` only to keep an end customer's identifier out of the URL — and
+therefore out of the edge access log, which records the query string verbatim
+— and it writes nothing at all. AGENTS.md §9 names it as the third such
+advisory lookup. ``POST /orders`` *is* a mutation and still does not take it: it is idempotent on the merchant's own
 ``merchant_order_id`` instead (spec §9.3), which is stronger here rather than
 weaker. A header key is minted per attempt by our client; ``merchant_order_id``
 is minted per *intent* by theirs, is the id their own system already keys on,
@@ -36,10 +40,12 @@ and one of them wrong. AGENTS.md §9 records the exception.
 
 ## Rate limiting: this prefix is exempt from the coarse tier
 
-Throttling here is the dependency's two Redis counters and nothing else: per
-source IP on the ``merchant-api`` bucket, and per ``key_id`` once the
-signature verifies, both 600/60 s, both answering RFC 7807 with a
-``Retry-After``.
+Throttling here is the dependency's two Redis counters and, on one endpoint,
+a third: per source IP on the ``merchant-api`` bucket, and per ``key_id`` once
+the signature verifies, both 600/60 s, both answering RFC 7807 with a
+``Retry-After``. ``POST /validate/player`` charges its own, stricter
+``merchant-validate`` bucket on top, because it is the one endpoint here that
+spends a *supplier's* quota rather than ours (spec §12).
 
 The app-wide slowapi limiter does **not** apply — ``bootstrap.
 _exempt_self_authenticating_routes`` walks this router and exempts every
@@ -63,10 +69,11 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Final
 
-from fastapi import APIRouter, Depends, Path, Query, status
+from fastapi import APIRouter, Depends, Path, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.merchants import api as merchants
 from yupay.modules.merchants.auth import merchant_auth
 from yupay.modules.merchants.machine_schemas import (
@@ -74,6 +81,8 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantOrderCreateIn,
     MerchantOrderOut,
     MerchantOrderStatusOut,
+    MerchantPlayerCheckIn,
+    MerchantPlayerCheckOut,
     MerchantProfileOut,
     MerchantTransactionsOut,
     MerchantValidationProblem,
@@ -224,6 +233,39 @@ async def read_order(
     """
     return await merchants.read_order_status(
         db, merchant=merchant, merchant_order_id=merchant_order_id
+    )
+
+
+@router.post(
+    "/validate/player",
+    response_model=MerchantPlayerCheckOut,
+    summary="Check an end customer's player id before you order for them",
+)
+async def validate_player(
+    body: MerchantPlayerCheckIn, _merchant: AuthedMerchant, db: Db, request: Request
+) -> MerchantPlayerCheckOut:
+    """Verify a player id (or Steam login) against the SKU you intend to buy.
+
+    Advisory, and never a fake approver (spec §9.1): ``valid`` and ``invalid``
+    are the provider's own verdict, ``error`` means we could not check and says
+    nothing about the id, and ``unsupported`` means this SKU has no checker at
+    all. The rules, and why ``error`` may never render as ``valid``, are
+    ``merchants.validate``'s; this parses and dispatches.
+
+    A ``POST`` although it writes nothing — the identifier must not travel in a
+    URL (spec §9.2) — so it takes no ``Idempotency-Key``; see the module
+    docstring. The extra ``guard_ip`` is this endpoint's own supplier-quota
+    bucket, charged after authentication because the prefix-wide IP counter in
+    ``merchant_auth`` has already turned away anyone unauthenticated.
+
+    The authenticated row is named ``_merchant`` and then unused, unlike every
+    other handler here: what a merchant may check is a property of the catalog
+    row (``brand.visible_b2b AND sku.visible_b2b``), not of the caller. Naming
+    it anyway keeps the gate visible at the handler.
+    """
+    await guard_ip(request, bucket=merchants.VALIDATE_RATE_BUCKET)
+    return await merchants.check_player_for_sku(
+        db, sku_id=body.sku_id, player_id=body.player_id, server_id=body.server_id
     )
 
 

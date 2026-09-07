@@ -750,9 +750,12 @@ branch on.
 
 #### The answers that are **not** problem+json
 
-**A `5xx`.** No endpoint here raises one deliberately: nothing on this surface
-calls a supplier while you wait (see "Fulfilment is asynchronous, always"), so
-there is no upstream to be unavailable. A `500` means an unhandled bug on our
+**A `5xx`.** No endpoint here raises one deliberately. Nothing on this surface
+calls a supplier while you wait for _money_ to move (see "Fulfilment is
+asynchronous, always"), and the one endpoint that does call a supplier inline —
+`POST /merchant/v1/validate/player` — is built to answer `200` with
+`status: "error"` when that call fails, precisely so an upstream's bad day is
+never your `5xx`. A `500` means an unhandled bug on our
 side and arrives as a bare `Internal Server Error`; a `502` or `504` is our
 edge rather than our application — most likely a deploy, which holds and
 retries for 15 s before giving up. Both are safe to retry: resend the identical
@@ -780,16 +783,19 @@ touch your signing code.
 
 Two independent counters, both fixed 60-second windows:
 
-| Axis                  | Limit          | Applies to                           |
-| --------------------- | -------------- | ------------------------------------ |
-| Per source IP address | **600 / 60 s** | Every request, before authentication |
-| Per `key_id`          | **600 / 60 s** | Requests whose signature verified    |
+| Axis                             | Limit          | Applies to                                   |
+| -------------------------------- | -------------- | -------------------------------------------- |
+| Per source IP address            | **600 / 60 s** | Every request, before authentication         |
+| Per `key_id`                     | **600 / 60 s** | Requests whose signature verified            |
+| Per source IP, `validate/*` only | **120 / 60 s** | `POST /merchant/v1/validate/player`, as well |
 
-Both return `429` with a `Retry-After` header in seconds; wait that long
+All three return `429` with a `Retry-After` header in seconds; wait that long
 rather than retrying immediately. The per-key counter is charged only after a
 signature verifies, so someone who observes your `key_id` in a header cannot
 spend your budget. Each live key has its own counter, so a rotation window
-briefly has two.
+briefly has two. The third is _additional_, not instead of: a validate call
+advances the general counter too, and the tighter one simply binds first —
+it exists because that endpoint spends a supplier's quota rather than ours.
 
 ### IP allowlist
 
@@ -1249,6 +1255,89 @@ We never mail your customer. We do not hold their address, we do not accept
 one, and the delivery path skips merchant orders explicitly rather than by
 accident. Delivery to you is the order read and, from M3, the outbound webhook.
 
+### `POST /merchant/v1/validate/player`
+
+Check the identifier your customer gave you **before** you spend a deposit on
+it — a game player id, or a Steam login for a Steam top-up. Optional: no order
+consults it, and skipping it costs you nothing but the chance to catch a typo
+before the code is gone.
+
+```json
+POST /merchant/v1/validate/player
+{
+  "sku_id": "0198c3d0-11a2-7b31-9ac4-5f2b7d0e8c41",
+  "player_id": "51234567",
+  "server_id": null
+}
+```
+
+| Field       | Required | Notes                                                                              |
+| ----------- | -------- | ---------------------------------------------------------------------------------- |
+| `sku_id`    | yes      | The SKU you are about to order, from `/catalog`. A UUID; anything else is a `422`. |
+| `player_id` | yes      | Your **customer's** identifier. 1–64 characters.                                   |
+| `server_id` | no       | The game server / zone, for the games whose form asks for one. `null` or omitted.  |
+
+A SKU, not a product, so the id you check is the id you buy. Unknown fields are
+rejected (`422`) rather than ignored — a typo'd `player_id` that we silently
+dropped would come back as "no check needed", which is the one answer you must
+not get by accident.
+
+```json
+{ "status": "valid", "name": "NeoUZ" }
+```
+
+| `status`      | What it means                                                                   | What to do                                            |
+| ------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| `valid`       | The provider resolved the id. `name` is the account nickname when there is one. | Show the name back to your customer; order.           |
+| `invalid`     | The provider answered, and there is no such player.                             | **The only answer that says your customer mistyped.** |
+| `error`       | **We could not check.** Says nothing at all about the id.                       | Retry later, or order without a check. Never refuse.  |
+| `unsupported` | This SKU has no player check configured, and will not grow one on its own.      | Order without a check. Do not retry.                  |
+
+> **`error` is not a verdict.** An upstream fault, a timeout, a credential of
+> ours that got rejected, or a circuit we opened after a run of failures all
+> arrive as `error`, and every one of them means "we learned nothing". If you
+> branch on `status != "invalid"` you will treat those as approval; if you
+> branch on `status != "valid"` you will refuse perfectly good ids whenever a
+> supplier has a bad ten minutes. Branch on all four.
+
+`name` is `null` whenever the provider gives us no name — Steam has no display
+name to return, so a `valid` Steam login always reads `{"status": "valid",
+"name": null}`. It is an absence, not a failure.
+
+We do not tell you how the answer was reached. A verdict may be served from a
+short cache and it is still our best answer; there is no "this was cached"
+field to make you doubt a good one.
+
+**No `Idempotency-Key`, and no `GET`.** This endpoint writes nothing, so the
+header does not apply. It is a `POST` anyway because `player_id` identifies
+_your customer_ and must not travel in a URL: our edge writes an access log
+that records query strings verbatim, and a player id in it is a leak in the
+one place that otherwise logs only a hash. Send it in the body, and note that
+the body is part of the signed canonical string (its SHA-256 is the fifth
+field), so a signature is good for exactly one payload.
+
+**Its own rate limit.** This is the only endpoint here that spends a
+_supplier's_ quota rather than ours, so it carries a second, tighter per-IP
+counter of **120 / 60 s** on top of the 600 / 60 s the whole prefix shares
+(both are charged; this one binds first). A `429` here is problem+json with a
+`Retry-After`, like every other. One check per order is well inside it; a
+validation loop is not, by design.
+
+Errors:
+
+| Status | `code`             | Meaning                                                                                                           |
+| ------ | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| 404    | `item_unavailable` | `reason: unknown_sku` — no such SKU; `reason: not_b2b_visible` — withheld from B2B, so there is nothing to check. |
+| 422    | `invalid_request`  | The body did not parse — a `sku_id` that is not a UUID, a missing or unknown field. `errors` says which.          |
+| 429    | —                  | Over either the prefix counter or this endpoint's own. Wait `Retry-After` seconds.                                |
+
+Note what is **not** here. The order path's other refusals — `out_of_stock`,
+`not_for_sale`, `no_cost` — do not apply: stock and pricing move between a
+check and an order, and refusing to verify an id because a SKU is momentarily
+unbuyable would answer a question you did not ask. Visibility is the one
+condition that governs both, so a SKU you cannot see in `/catalog` is a SKU you
+cannot check.
+
 ## Your first order in ten minutes
 
 `bash`, `curl` and `openssl`, nothing else — deliberately not Python, because
@@ -1468,7 +1557,8 @@ path segment is percent-encoded and **the encoded form is what you sign**
 | Admin HTTP surface                                          | `admin_routes.py` (`/admin/merchants`) and `catalog_b2b_routes.py` (`/admin/catalog`), over the shared replay helpers in `route_replay.py`                                                                                                                                                                                                                                                                                              |
 | Machine API routes (`/merchant/v1`)                         | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it.                                                                                                                                                                                               |
 | The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift                                                                                                                                                                                                                                                                                                                                                                                     |
+| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift. Its `unavailable()` is the one `item_unavailable` refusal on this API; `validate.py` raises the same one.                                                                                                                                                                                                                                                                          |
+| The advisory player check (`/validate/player`)              | `validate.py` — resolves the SKU, decides `unsupported`, and hands the rest to `integrations.player_check`. It performs no check of its own and must never turn that module's `error` into anything friendlier.                                                                                                                                                                                                                         |
 | Reading one order back (status, code, refund mark)          | `order_status.py`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | The deposit ledger page (`/transactions`)                   | `transactions.py` — cursor codec; the query is `deposit.py`'s                                                                                                                                                                                                                                                                                                                                                                           |
 | Order placement + the deposit charge                        | `orders.py`; the debit itself is `deposit.charge_deposit`                                                                                                                                                                                                                                                                                                                                                                               |
@@ -1522,6 +1612,12 @@ Two axes, one counter implementation (`auth.ip_guard.hit_counter`):
   requests a minute.
 - **per key** — `settings.merchant_api_key_rate_max`, charged after the
   signature verifies.
+- **per IP, on `/validate/player` only** — `guard_ip(request,
+bucket="merchant-validate")` in the handler, ceiling
+  `auth_ip_guard_bucket_max["merchant-validate"]` (120). Charged _after_
+  authentication, since the prefix-wide counter has already turned away
+  anyone unauthenticated, and stricter than that counter because the quota it
+  protects is a supplier's rather than ours (spec §12).
 
 Brute force is not the threat model — the secret is 256 bits and compared with
 `compare_digest` — throughput is, which is what both numbers are sized for.
@@ -1546,18 +1642,19 @@ Schema (M1 Task 1), the deposit service (M1 Task 3), wholesale pricing
 and `GET /merchant/v1/catalog` (M2 Task 3), `POST /merchant/v1/orders`
 (M2 Task 4) and the two reads a reseller's back office lives on —
 `GET /merchant/v1/orders/{merchant_order_id}` and
-`GET /merchant/v1/transactions` (M2 Task 5) — are in place. **Those five are
-the whole machine API.** M3a Task 1 adds the webhook _storage_ and its
-admin-only configuration surface (`merchant_webhooks`,
-`merchant_webhook_deliveries`, migration 0071, and the four
-`/admin/merchants/{id}/webhook` endpoints above), and Task 3 the producer
-that fills the outbox (`webhooks.py`, below). Nothing is **delivered** yet —
-the worker that drains the outbox is Task 4, and the wire contract a merchant
-verifies against is written up in Task 6. Spec §9.1 also sketches a sixth row,
-`POST /merchant/v1/validate/…`, which is deliberately not in v1: it would only
-be honest for the SKUs a real player-check provider covers, and a validator
-that approves whatever it is given is worse than no endpoint. Outbound
-webhooks, refunds and the cabinet BFF are M3+.
+`GET /merchant/v1/transactions` (M2 Task 5) — are in place. M3a Task 1 adds
+the webhook _storage_ and its admin-only configuration surface
+(`merchant_webhooks`, `merchant_webhook_deliveries`, migration 0071, and the
+four `/admin/merchants/{id}/webhook` endpoints above), Task 3 the producer
+that fills the outbox (`webhooks.py`, below) and Task 4 the worker that drains
+it. M3a Task 5 adds spec §9.1's sixth row,
+`POST /merchant/v1/validate/player` — which M2 had deliberately left out
+because it is honest only for the SKUs a real player-check provider covers,
+and a validator that approves whatever it is given is worse than no endpoint.
+That constraint is now the endpoint's contract rather than a reason to omit
+it: a SKU with no provider answers `unsupported`, and a check we could not
+make answers `error`, neither of which a client can mistake for approval.
+**Those six are the whole machine API.** Refunds and the cabinet BFF are M3+.
 
 Two things a reseller will ask about and we do not have yet. **Nothing refunds
 a merchant order:** a failed delivery leaves the deposit debited, and support

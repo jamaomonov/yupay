@@ -238,9 +238,11 @@ yupay/
   `Idempotency-Key` header and persist results keyed by it. The rule protects writes from
   replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`
   only to keep an identifier out of the URL — and therefore out of the edge access log,
-  which records the full query string — not because they mutate anything. Two such
-  endpoints exist today: `POST /catalog/products/{id}/check-player` and
-  `POST /gifts/steam-profile`. If you add a third, say in its docstring why it is keyless.
+  which records the full query string — not because they mutate anything. Three such
+  endpoints exist today: `POST /catalog/products/{id}/check-player`,
+  `POST /gifts/steam-profile` and `POST /merchant/v1/validate/player` (the same
+  player check, exposed to a reseller — the identifier it carries is their end
+  customer's). If you add a fourth, say in its docstring why it is keyless.
   The one **mutation** exempt from the header is `POST /merchant/v1/orders`, which is
   idempotent on the caller's own `merchant_order_id` instead (spec §9.3): that id is
   minted per _intent_ by the reseller's system rather than per attempt by ours, is what

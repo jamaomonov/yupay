@@ -244,6 +244,19 @@ class Settings(BaseSettings):
             # per-merchant axis is ``merchant_api_key_rate_max`` below
             # instead.
             "merchant-api": 600,
+            # `POST /merchant/v1/validate/player`, and stricter than the
+            # prefix above it on purpose (spec §12: "stricter on validate/* —
+            # it spends supplier quota"). Every other endpoint there spends
+            # only our own database; this one calls G2B or Waxpeer, whose
+            # quota we buy and whose rate limit is not ours to raise. 120 is
+            # two a second sustained from one address — comfortably above one
+            # check per order for a reseller polling and ordering all day, and
+            # a fifth of what the prefix allows, so a client that starts
+            # validating in a loop is stopped by this bucket long before it
+            # exhausts anything upstream. Both counters are charged on a
+            # validate call: this one is the binding constraint, and the
+            # `merchant-api` one still covers everything else the caller does.
+            "merchant-validate": 120,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "

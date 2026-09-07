@@ -34,7 +34,7 @@ hide — ``service`` (the account), ``credentials`` (its API keys), ``deposit``
 configuration), ``webhooks`` (the outbox producer), ``webhook_delivery`` (the
 drain ``apps/worker`` runs, exported beside the channel constant it wakes on
 so the queue cannot be spelled twice), ``orders``, ``price_list``,
-``pricing``, ``signing``.
+``pricing``, ``signing``, ``validate`` (the advisory player check).
 Importers see one surface and are unaffected when a file is split.
 """
 
@@ -89,6 +89,17 @@ from yupay.modules.merchants.signing import (
     signature_matches,
 )
 from yupay.modules.merchants.transactions import build as build_transactions_page
+
+# Renamed on the way out, like ``enqueue`` below and for the same reason: at
+# this facade's altitude a bare ``RATE_BUCKET`` sits beside ``auth``'s and a
+# bare ``check_player`` beside the storefront's, and neither reader could tell
+# which is which.
+from yupay.modules.merchants.validate import (
+    RATE_BUCKET as VALIDATE_RATE_BUCKET,
+)
+from yupay.modules.merchants.validate import (
+    check_player as check_player_for_sku,
+)
 from yupay.modules.merchants.webhook_delivery import drain_pending_deliveries
 from yupay.modules.merchants.webhooks import (
     EVENT_BALANCE_CREDITED,
@@ -107,6 +118,7 @@ __all__ = [
     "EVENT_BALANCE_CREDITED",
     "EVENT_ORDER_STATUS_CHANGED",
     "EVENT_TYPES",
+    "VALIDATE_RATE_BUCKET",
     "WEBHOOK_QUEUE_CHANNEL",
     "ConfiguredWebhook",
     "IssuedApiKey",
@@ -121,6 +133,7 @@ __all__ = [
     "bulk_set_markup",
     "canonical_message",
     "charge_deposit",
+    "check_player_for_sku",
     "create_api_key",
     "create_merchant",
     "credit_deposit",

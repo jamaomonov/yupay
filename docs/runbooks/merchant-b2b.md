@@ -323,6 +323,48 @@ has known quirks (loopback does not count as a "configured" address), so
 confirm a real dual-stack merchant host is actually deliverable from the prod
 worker before a pilot integrates.
 
+## `POST /merchant/v1/validate/player` keeps answering `error`
+
+`error` on that endpoint means one thing only — **we could not check** — and it
+is deliberately the same word for four different causes, because none of them
+says anything about the player id and a reseller must not act on any of them as
+if it did. Which one it is, in the order worth checking:
+
+1. **The supplier is unconfigured on this stack.** `G2B_API_KEY` (or
+   `WAXPEER_API_KEY`) empty makes the adapter report itself unavailable and
+   every check answers `error` with no outbound call at all. Nothing is logged
+   by the check itself in this case — the absence of any `player_check` line is
+   the signal.
+2. **The circuit is open.** Three consecutive counted failures open
+   `breaker:g2b:player_check:open` for 30 s and every check in that window is
+   short-circuited to `error`; the log line is
+   `player_check_short_circuited`. It closes itself — the key simply expires
+   and the next call runs for real (ADR-0059).
+3. **The upstream is failing.** `player_check_failed` carries the game code and
+   a truncated error, never the player id.
+4. **The product is mapped to two G2B game codes.** A misconfiguration, not an
+   outage: `player_check_ambiguous_game_code` names the product and the codes,
+   and the check refuses rather than validating against the wrong region's game
+   (ADR-0048). Fix the `sku_supplier_mapping` rows; region belongs to separate
+   products.
+
+```bash
+docker compose -f docker-compose.prod.yml logs --since 30m api \
+  | grep -E 'player_check_failed|player_check_short_circuited|player_check_ambiguous_game_code'
+```
+
+**`unsupported` is not a fault** and needs no investigation: it means the SKU's
+product declares no `check` on any field, which is true of every voucher and
+gift-card SKU. Tell the merchant to order without a check.
+
+**A `429` on this endpoint and nowhere else** is the tighter bucket doing its
+job: `merchant-validate` allows 120/60 s per IP against the prefix's 600, since
+this is the one endpoint that spends a supplier's quota rather than ours (spec
+§12). A merchant checking once per order is nowhere near it; one that trips it
+is validating in a loop. `AUTH_IP_GUARD_BUCKET_MAX` can raise it per
+deployment, but raise the supplier-side quota first — the bucket is protecting
+G2B's rate limit, not our CPU.
+
 ## A merchant order stuck in `fulfilling`
 
 Two very different situations wear the same status, and `failure_reason` on
