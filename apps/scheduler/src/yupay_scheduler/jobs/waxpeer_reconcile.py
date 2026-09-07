@@ -29,6 +29,18 @@ introduced here.
 
 from __future__ import annotations
 
+# Prime ``yupay.api.v1`` as a *fully resolved* module before anything below
+# reaches into it, the same guard ``payme_timeout``/``uzum_timeout`` carry.
+# This sweep settles orders, and the settle path is what trips the cycle:
+# ``_try_settle_order`` -> ``_publish_delivered`` -> ``realtime.api`` ->
+# ``auth.deps`` -> ``yupay.api.v1``'s own ``__init__`` -> ``admin.deps`` ->
+# ``auth.deps`` again, still mid-import. The resulting ``ImportError`` was
+# swallowed by the per-task ``except Exception`` below and rolled the whole
+# settle back, leaving the task ``in_progress`` and logging a line
+# indistinguishable from a supplier hiccup. Priming makes the nested import a
+# ``sys.modules`` hit instead of a second, partial execution.
+import yupay.api.v1  # noqa: F401  isort: skip
+
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
