@@ -646,6 +646,18 @@ the result; it performs no check of its own.
 `player_check` already folds every fault into `status: "error"` rather than
 raising, so an upstream outage, a timeout, a credential of ours G2B rejected
 and a circuit we opened all arrive as one answer meaning "we learned nothing".
+
+**And, since 2026-09-08, never a fake _rejecter_ either** — the mirror bug, and
+the louder one. Both providers used to read any unrecognised body as `invalid`:
+G2B's `_map_response` on "not the string `valid`", Waxpeer's client on
+`bool(body.get("valid", False))`. `invalid` is published as the one answer
+meaning the customer mistyped, so a renamed field on the supplier's side would
+have returned HTTP 200 forever, fired no breaker, logged no failure, and told
+every customer and every reseller that their good player id did not exist. Both
+now require a **recognised** verdict token and answer `error` otherwise
+(`_G2B_VERDICTS`; `validate_login` raises, like `get_balance_units` already did
+for `user.wallet`). This changed the storefront's behaviour too and is recorded
+as an amendment in ADR-0031.
 Rendering any of those as `valid` would have a reseller sell a top-up into a
 stranger's account, which is the failure the endpoint exists to prevent. The
 wire contract therefore has **four** statuses, not three: `valid`, `invalid`,
@@ -655,6 +667,13 @@ is, and distinct from a `404` because "no check exists" must not read as "no
 such SKU". Nothing reports whether an answer came from the cache: a cached
 verdict is still our best answer, and a caveat would only invite integrators to
 distrust a good one.
+
+The product lookup behind it selects **columns, not the entity**:
+`session.get(Product, …)` fanned out to nine or more statements per check
+through `Product`'s selectin relationships (and `Brand.products` in turn),
+which is a lot of retail catalog to drag through an advisory lookup at two
+calls a second. `test_the_check_does_not_fan_out_over_the_catalog` counts the
+statements.
 
 **Scoped to what the merchant can already see**: `brand.visible_b2b AND
 sku.visible_b2b`, exactly `/catalog`'s rule, so the endpoint cannot be used to
@@ -672,12 +691,20 @@ the same reason `POST /catalog/products/{id}/check-player` and
 `POST /gifts/steam-profile` are POSTs. It is transit-only and never logged;
 `player_check` logs `hash_short` of it and nothing else.
 
-**Its own rate-limit bucket**, `merchant-validate` at 120/60 s per IP, charged
-in the handler on top of the prefix-wide `merchant-api` counter at 600/60 s.
-Stricter because it is the one endpoint that spends a _supplier's_ quota rather
-than ours (spec §12: "stricter on `validate/*`"), and still a machine caller's
-ceiling rather than a person's. Both counters advance on a validate call; the
-tighter one binds first.
+**Its own rate limits, on two axes**, charged in the handler on top of the
+prefix-wide `merchant-api` counter at 600/60 s: `merchant-validate` at 120/60 s
+per **address**, and `merchants:validate:{merchant_id}` at
+`merchant_validate_rate_max` (120/60 s) per **merchant**. Stricter because it is
+the one endpoint that spends a _supplier's_ quota rather than ours (spec §12:
+"stricter on `validate/*`"), and two axes because that quota follows the
+account: with the address counter alone a six-node egress pool held six budgets
+and the binding ceiling fell back to `merchant_api_key_rate_max` (600), five
+times what the bucket advertises. Keyed on `merchant_id` and not `key_id` —
+unlike the prefix's per-key counter — because a key rotation may briefly double
+a share of _our_ capacity without hurting anyone, but must not double a claim on
+a supplier's. Every counter here, the 300 s result cache and the breaker live in
+Redis and fail open together; the module README says so rather than implying a
+guarantee that does not hold.
 
 The full third-party contract, sample bodies included, is
 `apps/api/src/yupay/modules/merchants/README.md`.

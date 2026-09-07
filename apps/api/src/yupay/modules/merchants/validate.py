@@ -56,6 +56,9 @@ from typing import TYPE_CHECKING, Any, Final
 
 from sqlalchemy import select
 
+from yupay.core.config import get_settings
+from yupay.core.errors import RateLimitedError
+from yupay.modules.auth.ip_guard import hit_counter
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.integrations import player_check
 from yupay.modules.merchants import quote
@@ -70,19 +73,74 @@ if TYPE_CHECKING:  # pragma: no cover -- type hints only
 #: quota rather than ours (spec §12: "stricter on ``validate/*``").
 RATE_BUCKET: Final = "merchant-validate"
 
+#: Redis key for the per-merchant axis of the same guard. Catalogued in
+#: ``docs/architecture/cache-keys.md``. See :func:`charge_merchant_quota` for
+#: why an address counter alone is the wrong shape for this limit.
+_RATE_KEY: Final = "merchants:validate:{merchant_id}"
+
 #: The fourth status, and the one this API adds to ``player_check``'s three:
 #: this product has no checker, today or ever. Distinct from ``error`` because
 #: that one is transient and this one is not.
 STATUS_UNSUPPORTED: Final = "unsupported"
 
 
+async def charge_merchant_quota(merchant_id: str) -> None:
+    """Count one check against this merchant's share of the supplier quota.
+
+    The second axis of this endpoint's guard, and the one that matches what is
+    being rationed. :data:`RATE_BUCKET` counts **addresses**; the resource is a
+    supplier's per-account quota, which a reseller spends per *merchant* and
+    not per egress node — so with the address counter alone a six-node NAT pool
+    held six budgets, and the ceiling that actually bound was
+    ``merchant_api_key_rate_max`` (600), five times the number the bucket
+    advertises. The address counter stays, because it is charged before we know
+    who is calling and is what an unauthenticated flood meets.
+
+    Keyed on ``merchant_id``, not ``key_id`` — deliberately unlike
+    ``merchant_auth``'s per-key counter. A fair share of *our* request capacity
+    may briefly double during a key rotation and nobody is worse off; a
+    supplier's quota is a real external budget, and rotating a key must not
+    double a merchant's claim on it.
+
+    Best-effort, like every counter in this codebase: ``hit_counter`` fails
+    open on Redis trouble. That is the same outage that empties the 300 s
+    result cache and the supplier breaker, so a Redis failure removes all three
+    protections at once and the supplier's own limiter is what remains. Known
+    and accepted; the module README says so rather than implying a guarantee
+    that does not hold.
+
+    Args:
+        merchant_id: The authenticated merchant's id.
+
+    Raises:
+        RateLimitedError: 429 with ``Retry-After``, in the prefix's RFC 7807
+            shape.
+    """
+    settings = get_settings()
+    window = settings.auth_ip_guard_window_seconds
+    if await hit_counter(
+        _RATE_KEY.format(merchant_id=merchant_id),
+        limit=settings.merchant_validate_rate_max,
+        window=window,
+    ):
+        raise RateLimitedError(
+            "too many player checks for this merchant, slow down", retry_after=window
+        )
+
+
 async def _checkable_product(db: AsyncSession, *, sku_id: str) -> tuple[str, list[dict[str, Any]]]:
     """Resolve a merchant-visible ``sku_id`` to its product and form schema.
 
     Columns rather than entities: ``Product`` configures ``lazy="selectin"``
-    relationships for its translations, FAQs and whole SKU set, so loading it
-    as an entity to read one JSONB column would drag the retail catalog along
-    behind it.
+    relationships for its translations, FAQs and whole SKU set — and
+    ``Brand.products`` is selectin too — so loading it as an entity to read one
+    JSONB column would drag the retail catalog along behind it.
+
+    That claim was briefly only half true: ``player_check`` then re-read the
+    same product with ``session.get``, which fanned out to nine statements per
+    call and undid the saving one line later. It now selects the column as
+    well, so this rationale holds end to end and
+    ``test_the_check_does_not_fan_out_over_the_catalog`` keeps it that way.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -164,4 +222,4 @@ async def check_player(
     return MerchantPlayerCheckOut(status=result.status, name=result.name)
 
 
-__all__ = ["RATE_BUCKET", "STATUS_UNSUPPORTED", "check_player"]
+__all__ = ["RATE_BUCKET", "STATUS_UNSUPPORTED", "charge_merchant_quota", "check_player"]

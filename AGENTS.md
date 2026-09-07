@@ -275,7 +275,17 @@ yupay/
 - Identify and prevent N+1: use `selectinload`/`joinedload` in SQLAlchemy 2; every list
   endpoint must have an integration test that asserts query count.
 - **No synchronous external HTTP calls in request handlers.** Always enqueue and respond
-  with a pending status; the client subscribes via WebSocket or polls.
+  with a pending status; the client subscribes via WebSocket or polls. The rule protects
+  the **money path**: a supplier call inside a request handler can leave the supplier paid
+  with no record of it, and one slow upstream holds a pool connection somebody's checkout
+  needed. Three **advisory player-check** endpoints deviate from it deliberately, and they
+  are the whole list: `GET /admin/integrations/g2b/games/{game_code}/check-player`
+  (ADR-0019, the precedent), `POST /catalog/products/{id}/check-player` and
+  `POST /merchant/v1/validate/player` (both ADR-0031, which carries the justification and
+  the conditions — advisory, off the order path, short timeout, breaker, Redis-cached, its
+  own rate-limit bucket). If you add a fourth, it needs an ADR entry saying why it clears
+  those conditions and a line here. A rule that does not name its exceptions stops being
+  read as a rule: this one was silently deviated from three times before the list existed.
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
 - DB indices are added in the same migration as the query that needs them.

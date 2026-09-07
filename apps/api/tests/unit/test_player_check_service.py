@@ -41,11 +41,37 @@ def test_map_g2b_response_invalid() -> None:
     assert out.name is None
 
 
-def test_map_g2b_response_unexpected_body_is_invalid_not_error() -> None:
-    # A 200 with an unexpected shape still means "the id didn't resolve",
-    # which is the customer's problem (invalid), not our fault (error).
-    out = pc._map_response({})
-    assert out.status == "invalid"
+def test_map_g2b_response_unexpected_body_is_error_not_invalid() -> None:
+    """A shape we cannot read is "we could not check", never "no such player".
+
+    This assertion is the reverse of the one it replaces, which read: "a 200
+    with an unexpected shape still means the id didn't resolve, which is the
+    customer's problem (invalid), not our fault (error)." That was wrong, and
+    wrong in the direction this whole three-way status exists to prevent —
+    only mirrored. `invalid` is published (module README, `/merchant/v1`) as
+    the one answer meaning the customer mistyped, so mapping an unreadable
+    body to it makes the check a fake **rejecter**: if G2B renamed `valid`,
+    every call would be a 200, no breaker would fire, nothing would log a
+    failure, and every player id on the platform would come back "no such
+    player". The empty body below is the cheapest instance of that shape.
+    """
+    assert pc._map_response({}).status == "error"
+
+
+def test_map_g2b_response_unknown_verdict_token_is_error() -> None:
+    """A third token nobody told us about is not a verdict either."""
+    assert pc._map_response({"valid": "maybe"}).status == "error"
+
+
+def test_map_g2b_response_renamed_verdict_key_is_error() -> None:
+    """The failure scenario in full: the field moves and the body still parses."""
+    assert pc._map_response({"is_valid": "valid", "name": "Neo"}).status == "error"
+
+
+def test_map_g2b_response_tolerates_case_and_padding_on_a_real_verdict() -> None:
+    """Strictness is about *recognising* the token, not about punishing whitespace."""
+    assert pc._map_response({"valid": " VALID ", "name": "Neo"}).status == "valid"
+    assert pc._map_response({"valid": "Invalid"}).status == "invalid"
 
 
 def test_cache_key_does_not_embed_raw_player_id() -> None:

@@ -157,9 +157,53 @@ case precisely and never blame the customer for an outage. (An earlier draft
 returned `{valid: bool, reason}`; that collapsed "wrong id" and "our fault"
 into one "couldn't check", which mis-told users to re-check a correct id.)
 
+#### Amended 2026-09-08: a verdict we recognise, or `error`
+
+The mapping originally read **any** unrecognised body as `invalid` — the
+docstring said so in as many words: "any other body (`invalid`, empty,
+unexpected) means the supplier answered but the id does not resolve". That was
+wrong, and wrong in the same direction the three-way status exists to prevent,
+only mirrored: it made the check a fake **rejecter**.
+
+The failure it allowed: G2B renames the `valid` field (their client already
+tolerates three different list keys on `fetch_products`, so shape drift is not
+hypothetical). Every call still returns HTTP 200. No breaker fires — 200s are
+successes. Nothing logs a failure. And **every player id on the platform comes
+back `invalid`**, telling every customer, and from M3a every reseller, that
+they mistyped. That is louder and likelier than the fake-approver case, and
+`invalid` is published on `/merchant/v1` as the one answer meaning the customer
+was wrong.
+
+So both providers now require a **recognised** verdict token and answer `error`
+otherwise:
+
+- G2B: `_G2B_VERDICTS` in `player_check.py` — `valid` and `invalid`, case- and
+  whitespace-tolerant. Anything else logs `player_check_unrecognised_verdict`
+  and maps to `error`.
+- Waxpeer: `WaxpeerClient.validate_login` **raises** `WaxpeerError` when the
+  body carries no boolean `valid`, instead of `bool(body.get("valid", False))`
+  reading a missing field as a refusal. Same rule `get_balance_units` already
+  applied to `user.wallet`, for the same stated reason — a silently wrong
+  answer is worse than a loud failure. `player_check` catches it and degrades
+  to `error`, so nothing above the client changes shape.
+
+This is a **behaviour change on the storefront**, not only on the machine API:
+a customer whose check meets an unreadable supplier response now sees "couldn't
+check" rather than "player not found". That is the correct message for what
+happened, and the endpoint still never blocks checkout either way.
+`test_player_check_service.py::test_map_g2b_response_unexpected_body_is_error_not_invalid`
+replaces the test that asserted the old behaviour.
+
 Handler logic (`yupay.modules.integrations.player_check.check_player_for_product`):
 
-1. Load the product. Unknown `product_id` → **404**. A product with no field
+1. Load the product — as **columns**, not as an entity. `session.get(Product,
+…)` fanned out to nine or more statements per check (`Product` configures
+   `lazy="selectin"` for its translations, FAQs, SKU set and brand, and
+   `Brand.products` is selectin in turn), which dragged the brand's whole
+   product subtree through an advisory lookup. Only `required_fields` is read.
+   Unknown `product_id` → **404**, carrying `code: "product_not_found"` since
+   2026-09-08 so the one 4xx on this path is typed like every other on
+   `/merchant/v1`. A product with no field
    carrying `check.provider == "g2b"` → **422** — this codebase maps
    `ValidationError` to 422 app-wide (`yupay.core.errors.ValidationError`),
    so the check-descriptor precondition follows the same convention as every
@@ -169,7 +213,12 @@ Handler logic (`yupay.modules.integrations.player_check.check_player_for_product
 2. Resolve the G2B `game_code`: the first **active**
    `sku_supplier_mapping` among the product's SKUs with
    `supplier_slug='g2b'`, `kind='game'` → `external_product_id`. No mapping →
-   `status="error"` — advisory, never an error boundary.
+   `status="error"` — advisory, never an error boundary — and, since
+   2026-09-08, a `player_check_no_game_mapping` warning naming the product.
+   That case is the likeliest cause of a product that answers `error` forever
+   (the import queue ships the form field before the mapping, or a mapping is
+   deactivated during a supplier switch) and it used to log nothing at all,
+   which made it indistinguishable from an unconfigured supplier.
 3. Call `games_check_player(game_code, player_id, server_id, charname=None)`.
 4. Map the raw response to the public `PlayerCheckOut` shape
    (`{status, name}`, dropping the internal `openid`). A 200 body whose

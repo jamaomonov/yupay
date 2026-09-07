@@ -7025,6 +7025,7 @@
             "anyOf": [
               {
                 "maxLength": 64,
+                "minLength": 1,
                 "type": "string"
               },
               {
@@ -28563,7 +28564,7 @@
     },
     "/merchant/v1/validate/player": {
       "post": {
-        "description": "Verify a player id (or Steam login) against the SKU you intend to buy.\n\nAdvisory, and never a fake approver (spec \u00a79.1): ``valid`` and ``invalid``\nare the provider's own verdict, ``error`` means we could not check and says\nnothing about the id, and ``unsupported`` means this SKU has no checker at\nall. The rules, and why ``error`` may never render as ``valid``, are\n``merchants.validate``'s; this parses and dispatches.\n\nA ``POST`` although it writes nothing \u2014 the identifier must not travel in a\nURL (spec \u00a79.2) \u2014 so it takes no ``Idempotency-Key``; see the module\ndocstring. The extra ``guard_ip`` is this endpoint's own supplier-quota\nbucket, charged after authentication because the prefix-wide IP counter in\n``merchant_auth`` has already turned away anyone unauthenticated.\n\nThe authenticated row is named ``_merchant`` and then unused, unlike every\nother handler here: what a merchant may check is a property of the catalog\nrow (``brand.visible_b2b AND sku.visible_b2b``), not of the caller. Naming\nit anyway keeps the gate visible at the handler.",
+        "description": "Verify a player id (or Steam login) against the SKU you intend to buy.\n\nAdvisory, and never a fake approver (spec \u00a79.1): ``valid`` and ``invalid``\nare the provider's own verdict, ``error`` means we could not check and says\nnothing about the id, and ``unsupported`` means this SKU has no checker at\nall. The rules, and why ``error`` may never render as ``valid``, are\n``merchants.validate``'s; this parses and dispatches.\n\nA ``POST`` although it writes nothing \u2014 the identifier must not travel in a\nURL (spec \u00a79.2) \u2014 so it takes no ``Idempotency-Key``; see the module\ndocstring.\n\n**Two counters, both this endpoint's own**, charged after authentication\nbecause the prefix-wide IP counter in ``merchant_auth`` has already turned\naway anyone unauthenticated: one per source address, and one per\n*merchant*. The second is not redundant \u2014 the quota being rationed is a\nsupplier's, which a reseller spends per account rather than per egress\nnode, so an address counter alone hands a multi-node NAT pool one budget\neach. ``merchants.validate.charge_merchant_quota`` carries the argument.\n\n``merchant`` is used for that counter and for nothing else: what a merchant\nmay *check* is a property of the catalog row (``brand.visible_b2b AND\nsku.visible_b2b``), not of the caller.",
         "operationId": "validate_player_merchant_v1_validate_player_post",
         "requestBody": {
           "content": {

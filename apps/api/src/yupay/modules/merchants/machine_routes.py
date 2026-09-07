@@ -28,9 +28,10 @@ reach them, and neither does it reach ``POST /validate/player``: that one is a
 ``POST`` only to keep an end customer's identifier out of the URL — and
 therefore out of the edge access log, which records the query string verbatim
 — and it writes nothing at all. AGENTS.md §9 names it as the third such
-advisory lookup. ``POST /orders`` *is* a mutation and still does not take it: it is idempotent on the merchant's own
-``merchant_order_id`` instead (spec §9.3), which is stronger here rather than
-weaker. A header key is minted per attempt by our client; ``merchant_order_id``
+advisory lookup. ``POST /orders`` *is* a mutation and still does not take it:
+it is idempotent on the merchant's own ``merchant_order_id`` instead (spec
+§9.3), which is stronger here rather than weaker. A header key is minted per
+attempt by our client; ``merchant_order_id``
 is minted per *intent* by theirs, is the id their own system already keys on,
 and is what a replayed request necessarily carries — and a signature on this
 API is deliberately not single-use (see ``auth.py``), so endpoint idempotency
@@ -43,9 +44,11 @@ and one of them wrong. AGENTS.md §9 records the exception.
 Throttling here is the dependency's two Redis counters and, on one endpoint,
 a third: per source IP on the ``merchant-api`` bucket, and per ``key_id`` once
 the signature verifies, both 600/60 s, both answering RFC 7807 with a
-``Retry-After``. ``POST /validate/player`` charges its own, stricter
-``merchant-validate`` bucket on top, because it is the one endpoint here that
-spends a *supplier's* quota rather than ours (spec §12).
+``Retry-After``. ``POST /validate/player`` charges two more on top — per
+address on the ``merchant-validate`` bucket and per *merchant* on
+``merchant_validate_rate_max``, both 120/60 s — because it is the one endpoint
+here that spends a *supplier's* quota rather than ours (spec §12), and that
+quota follows the account rather than the egress address.
 
 The app-wide slowapi limiter does **not** apply — ``bootstrap.
 _exempt_self_authenticating_routes`` walks this router and exempts every
@@ -242,7 +245,7 @@ async def read_order(
     summary="Check an end customer's player id before you order for them",
 )
 async def validate_player(
-    body: MerchantPlayerCheckIn, _merchant: AuthedMerchant, db: Db, request: Request
+    body: MerchantPlayerCheckIn, merchant: AuthedMerchant, db: Db, request: Request
 ) -> MerchantPlayerCheckOut:
     """Verify a player id (or Steam login) against the SKU you intend to buy.
 
@@ -254,16 +257,22 @@ async def validate_player(
 
     A ``POST`` although it writes nothing — the identifier must not travel in a
     URL (spec §9.2) — so it takes no ``Idempotency-Key``; see the module
-    docstring. The extra ``guard_ip`` is this endpoint's own supplier-quota
-    bucket, charged after authentication because the prefix-wide IP counter in
-    ``merchant_auth`` has already turned away anyone unauthenticated.
+    docstring.
 
-    The authenticated row is named ``_merchant`` and then unused, unlike every
-    other handler here: what a merchant may check is a property of the catalog
-    row (``brand.visible_b2b AND sku.visible_b2b``), not of the caller. Naming
-    it anyway keeps the gate visible at the handler.
+    **Two counters, both this endpoint's own**, charged after authentication
+    because the prefix-wide IP counter in ``merchant_auth`` has already turned
+    away anyone unauthenticated: one per source address, and one per
+    *merchant*. The second is not redundant — the quota being rationed is a
+    supplier's, which a reseller spends per account rather than per egress
+    node, so an address counter alone hands a multi-node NAT pool one budget
+    each. ``merchants.validate.charge_merchant_quota`` carries the argument.
+
+    ``merchant`` is used for that counter and for nothing else: what a merchant
+    may *check* is a property of the catalog row (``brand.visible_b2b AND
+    sku.visible_b2b``), not of the caller.
     """
     await guard_ip(request, bucket=merchants.VALIDATE_RATE_BUCKET)
+    await merchants.charge_validate_quota(merchant.id)
     return await merchants.check_player_for_sku(
         db, sku_id=body.sku_id, player_id=body.player_id, server_id=body.server_id
     )

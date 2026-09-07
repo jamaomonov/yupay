@@ -98,6 +98,9 @@ from yupay.modules.merchants.validate import (
     RATE_BUCKET as VALIDATE_RATE_BUCKET,
 )
 from yupay.modules.merchants.validate import (
+    charge_merchant_quota as charge_validate_quota,
+)
+from yupay.modules.merchants.validate import (
     check_player as check_player_for_sku,
 )
 from yupay.modules.merchants.webhook_delivery import drain_pending_deliveries
@@ -133,6 +136,7 @@ __all__ = [
     "bulk_set_markup",
     "canonical_message",
     "charge_deposit",
+    "charge_validate_quota",
     "check_player_for_sku",
     "create_api_key",
     "create_merchant",

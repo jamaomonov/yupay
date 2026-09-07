@@ -36,7 +36,7 @@ import hashlib
 import hmac
 import json
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
@@ -180,6 +180,29 @@ async def _validate(
         content=body,
         headers=_signed(key_id, secret, method="POST", path=VALIDATE_PATH, body=body),
     )
+
+
+@pytest.fixture
+async def sql_counter(db_engine) -> AsyncIterator[dict[str, int]]:  # type: ignore[no-untyped-def]  # conftest fixture is untyped
+    """Counts every cursor execution on the engine the app is wired to.
+
+    Same shape as ``test_merchant_api_read.py``'s, which pins the catalog's
+    query count for the same reason: a fan-out is invisible until it is
+    counted.
+    """
+    from sqlalchemy import event
+
+    holder = {"n": 0}
+
+    def _before(conn, cursor, statement, parameters, context, executemany) -> None:  # type: ignore[no-untyped-def]  # SQLAlchemy event signature
+        holder["n"] += 1
+
+    sync_engine = db_engine.sync_engine
+    event.listen(sync_engine, "before_cursor_execute", _before)
+    try:
+        yield holder
+    finally:
+        event.remove(sync_engine, "before_cursor_execute", _before)
 
 
 # ---------- catalog seeding ----------
@@ -441,6 +464,47 @@ async def test_a_tripped_breaker_is_error_never_valid(
     assert r.json()["status"] == "error"
 
 
+@respx.mock
+async def test_a_verdict_we_cannot_read_is_error_never_invalid(
+    integration_client: AsyncClient, credentials: tuple[str, str], g2b_sku_id: str
+) -> None:
+    """The mirror of the rule above, and the louder half of it.
+
+    ``invalid`` is published as the one answer meaning the customer mistyped.
+    So a 200 whose ``valid`` field has been renamed must **not** map to it: no
+    breaker fires on a 200, nothing logs a failure, and the whole platform
+    would quietly start telling every customer their id was wrong. It is
+    ``error`` — we could not check.
+    """
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(200, json={"is_valid": "valid", "name": "Neo"})
+    )
+
+    r = await _validate(
+        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "error"
+
+
+@respx.mock
+async def test_a_steam_verdict_we_cannot_read_is_error_never_invalid(
+    integration_client: AsyncClient, credentials: tuple[str, str], waxpeer_sku_id: str
+) -> None:
+    """The same rule on the other provider: Waxpeer's ``valid`` gone missing."""
+    respx.get(url__regex=r".*/steam-topup/validate").mock(
+        return_value=httpx.Response(200, json={"success": True, "msg": "ok"})
+    )
+
+    r = await _validate(
+        integration_client, credentials, {"sku_id": waxpeer_sku_id, "player_id": "gaben"}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "error"
+
+
 async def test_an_unconfigured_supplier_is_error_never_valid(
     integration_client: AsyncClient,
     credentials: tuple[str, str],
@@ -585,6 +649,101 @@ async def test_a_cached_verdict_is_returned_unchanged(
     assert second.json() == first.json()
 
 
+@respx.mock
+async def test_an_error_is_never_cached(
+    integration_client: AsyncClient, credentials: tuple[str, str], g2b_sku_id: str
+) -> None:
+    """The complement of the test above, and the one a refactor breaks silently.
+
+    A cached ``error`` would outlive the outage that produced it by up to five
+    minutes, so a merchant retrying after we recovered would still be told we
+    could not check. It is structurally impossible today — only mapped verdicts
+    reach ``redis.set`` — which is exactly why it needs an assertion rather
+    than a reading of the code.
+    """
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(401, json={"message": "unauthorized"})
+    )
+    broken = await _validate(
+        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "24242424"}
+    )
+    assert broken.json()["status"] == "error"
+
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+    repaired = await _validate(
+        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "24242424"}
+    )
+
+    assert repaired.json() == {"status": "valid", "name": "Neo"}
+
+
+@respx.mock
+async def test_the_check_does_not_fan_out_over_the_catalog(
+    integration_client: AsyncClient,
+    credentials: tuple[str, str],
+    g2b_sku_id: str,
+    sql_counter: dict[str, int],
+) -> None:
+    """AGENTS §10: an advisory lookup must not drag the retail catalog with it.
+
+    ``player_check`` used to re-read the product with ``session.get``, whose
+    selectin relationships (translations, FAQs, the SKU set, the brand — and
+    ``Brand.products`` in turn) fanned out to nine statements per call, at up
+    to two calls a second. The ceiling is deliberately generous and far below
+    that: what it pins is the absence of a per-relationship fan-out, not an
+    exact plan.
+    """
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+    before = sql_counter["n"]
+
+    r = await _validate(
+        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "61616161"}
+    )
+
+    assert r.status_code == 200, r.text
+    spent = sql_counter["n"] - before
+    assert spent <= 6, f"{spent} statements for one check — the entity fan-out is back"
+
+
+@pytest.mark.parametrize(
+    "spelling",
+    ["braced", "urn", "undashed", "upper"],
+)
+async def test_every_uuid_spelling_python_accepts_reaches_postgres(
+    integration_client: AsyncClient,
+    credentials: tuple[str, str],
+    plain_sku_id: str,
+    spelling: str,
+) -> None:
+    """``UUID()`` takes four spellings; Postgres takes two. Normalise, or 500.
+
+    A .NET client formatting ids with ``Guid.ToString("B")`` sends the braced
+    form. Before the schema returned ``str(UUID(value))`` that reached
+    ``where(Sku.id == "{0198…}")``, raised ``DataError``, and — with no handler
+    registered for ``DBAPIError`` — came back as Starlette's plain-text 500,
+    from the very validator whose docstring promised it could not. Our own
+    README calls a 500 safe to retry, so the client would have retried forever.
+
+    ``plain_sku_id`` is used so a pass is unambiguous: the answer is a
+    ``200 unsupported``, which only a SKU that was actually **found** can give.
+    """
+    written = {
+        "braced": "{" + plain_sku_id + "}",
+        "urn": f"urn:uuid:{plain_sku_id}",
+        "undashed": plain_sku_id.replace("-", ""),
+        "upper": plain_sku_id.upper(),
+    }[spelling]
+
+    r = await _validate(integration_client, credentials, {"sku_id": written, "player_id": "1"})
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "unsupported"
+
+
 # ---------- rate limiting ----------
 
 
@@ -631,6 +790,70 @@ async def test_the_bucket_throttles_with_a_retry_after(
     assert last.status_code == 429, last.text
     assert last.headers["content-type"].startswith("application/problem+json")
     assert last.headers["Retry-After"]
+    cfg.get_settings.cache_clear()
+
+
+@respx.mock
+async def test_the_merchant_axis_throttles_across_addresses(
+    integration_client: AsyncClient,
+    credentials: tuple[str, str],
+    g2b_sku_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The address bucket is not what bounds a merchant's supplier spend.
+
+    A reseller on a multi-node egress pool has one IP counter per NAT address,
+    so the ceiling that follows the *account* has to be its own counter. Here
+    the IP bucket is set far above the merchant ceiling, which means only the
+    merchant axis can produce the 429 — if it were missing, all six calls would
+    answer 200.
+    """
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"merchant-validate": 9999}')
+    monkeypatch.setenv("MERCHANT_VALIDATE_RATE_MAX", "3")
+    cfg.get_settings.cache_clear()
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+
+    last: Response | None = None
+    for _ in range(6):
+        last = await _validate(
+            integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+        )
+    assert last is not None
+
+    assert last.status_code == 429, last.text
+    assert last.headers["Retry-After"]
+    assert last.headers["content-type"].startswith("application/problem+json")
+    cfg.get_settings.cache_clear()
+
+
+@respx.mock
+async def test_one_merchants_checks_do_not_spend_anothers_quota(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    g2b_sku_id: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The counter follows the account, so it must not be shared between them."""
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"merchant-validate": 9999}')
+    monkeypatch.setenv("MERCHANT_VALIDATE_RATE_MAX", "2")
+    cfg.get_settings.cache_clear()
+    respx.post(url__regex=CHECK_PLAYER_URL).mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+    noisy = await _new_key(
+        integration_client, admin_headers, await _new_merchant(integration_client, admin_headers)
+    )
+    quiet = await _new_key(
+        integration_client, admin_headers, await _new_merchant(integration_client, admin_headers)
+    )
+    for _ in range(4):
+        await _validate(integration_client, noisy, {"sku_id": g2b_sku_id, "player_id": "51234567"})
+
+    r = await _validate(integration_client, quiet, {"sku_id": g2b_sku_id, "player_id": "51234567"})
+
+    assert r.status_code == 200, r.text
     cfg.get_settings.cache_clear()
 
 

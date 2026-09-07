@@ -330,40 +330,98 @@ is deliberately the same word for four different causes, because none of them
 says anything about the player id and a reseller must not act on any of them as
 if it did. Which one it is, in the order worth checking:
 
-1. **The supplier is unconfigured on this stack.** `G2B_API_KEY` (or
+1. **The product has no active supplier mapping.** Check this one first: it is
+   the likeliest, it is a routine state rather than an outage, and it is
+   permanent until somebody fixes it. A product whose form declares
+   `check: {provider: "g2b"}` needs an **active** `sku_supplier_mapping`
+   (`supplier_slug='g2b'`, `kind='game'`) on one of its SKUs to resolve a game
+   code from; without one, every check answers `error` forever. The g2b import
+   queue ships the form field before the mapping, and a supplier switch
+   deactivates mappings, so both directions happen. It logs
+   `player_check_no_game_mapping` with the `product_id`.
+
+   ```sql
+   -- which of a brand's products declare a check but cannot resolve one
+   SELECT p.slug,
+          count(*) FILTER (WHERE m.is_active) AS active_g2b_game_mappings
+   FROM products p
+   JOIN brands b ON b.id = p.brand_id
+   LEFT JOIN skus s ON s.product_id = p.id
+   LEFT JOIN sku_supplier_mapping m
+          ON m.sku_id = s.id AND m.supplier_slug = 'g2b' AND m.kind = 'game'
+   WHERE b.slug = '<brand>'
+     AND p.required_fields::text LIKE '%"provider": "g2b"%'
+   GROUP BY p.slug
+   ORDER BY 2, 1;
+   ```
+
+   Zero in the second column is the fault. Fix it by adding the mapping, or by
+   dropping the `check` descriptor from the product's form — an honest
+   `unsupported` beats a permanent `error`.
+
+2. **The supplier is unconfigured on this stack.** `G2B_API_KEY` (or
    `WAXPEER_API_KEY`) empty makes the adapter report itself unavailable and
-   every check answers `error` with no outbound call at all. Nothing is logged
-   by the check itself in this case — the absence of any `player_check` line is
-   the signal.
-2. **The circuit is open.** Three consecutive counted failures open
+   every check answers `error` with no outbound call at all. This is the one
+   cause that logs **nothing at all** — now that cause 1 has its own line, an
+   `error` with no `player_check*` line of any kind is this.
+3. **The circuit is open.** Three consecutive counted failures open
    `breaker:g2b:player_check:open` for 30 s and every check in that window is
    short-circuited to `error`; the log line is
    `player_check_short_circuited`. It closes itself — the key simply expires
    and the next call runs for real (ADR-0059).
-3. **The upstream is failing.** `player_check_failed` carries the game code and
+4. **The upstream is failing.** `player_check_failed` carries the game code and
    a truncated error, never the player id.
-4. **The product is mapped to two G2B game codes.** A misconfiguration, not an
+5. **The product is mapped to two G2B game codes.** A misconfiguration, not an
    outage: `player_check_ambiguous_game_code` names the product and the codes,
    and the check refuses rather than validating against the wrong region's game
    (ADR-0048). Fix the `sku_supplier_mapping` rows; region belongs to separate
    products.
+6. **The supplier changed its wire format.**
+   `player_check_unrecognised_verdict` means we got an HTTP 200 whose `valid`
+   field we could not read — the field renamed, or a token we do not know. This
+   is the one cause that is an emergency of a different kind: **before
+   2026-09-08 it answered `invalid` instead**, i.e. it told every customer and
+   every reseller that their perfectly good player id did not exist, with
+   nothing in the logs reading as a fault (ADR-0031's 2026-09-08 amendment).
+   The line lists the body's top-level keys. Compare them against
+   `player_check._G2B_VERDICTS` and raise it with the supplier.
 
 ```bash
 docker compose -f docker-compose.prod.yml logs --since 30m api \
-  | grep -E 'player_check_failed|player_check_short_circuited|player_check_ambiguous_game_code'
+  | grep -E 'player_check_(failed|short_circuited|ambiguous_game_code|no_game_mapping|unrecognised_verdict)'
 ```
 
 **`unsupported` is not a fault** and needs no investigation: it means the SKU's
 product declares no `check` on any field, which is true of every voucher and
 gift-card SKU. Tell the merchant to order without a check.
 
-**A `429` on this endpoint and nowhere else** is the tighter bucket doing its
-job: `merchant-validate` allows 120/60 s per IP against the prefix's 600, since
-this is the one endpoint that spends a supplier's quota rather than ours (spec
-§12). A merchant checking once per order is nowhere near it; one that trips it
-is validating in a loop. `AUTH_IP_GUARD_BUCKET_MAX` can raise it per
-deployment, but raise the supplier-side quota first — the bucket is protecting
-G2B's rate limit, not our CPU.
+**A `429` on this endpoint and nowhere else** is one of its two tighter
+counters doing its job, and which one matters when you decide what to raise:
+
+- `auth:ipguard:merchant-validate:{ip}`, ceiling `AUTH_IP_GUARD_BUCKET_MAX`
+  (120) — per source address.
+- `merchants:validate:{merchant_id}`, ceiling `MERCHANT_VALIDATE_RATE_MAX`
+  (120) — per merchant account, and the one that actually bounds what a
+  reseller can spend, since a multi-node egress pool holds one of the first
+  kind per address.
+
+Both against the prefix's 600, because this is the one endpoint that spends a
+supplier's quota rather than ours (spec §12). A merchant checking once per
+order is nowhere near either; one that trips them is validating in a loop.
+Raise the supplier-side quota **before** either ceiling — they protect G2B's
+rate limit, not our CPU.
+
+```bash
+docker compose -f docker-compose.prod.yml exec redis \
+  redis-cli --scan --pattern 'merchants:validate:*'
+```
+
+Note that both counters, the 300 s result cache and the supplier breaker all
+live in Redis and all fail **open**. A Redis outage therefore removes every one
+of them at once: checks stop being throttled, stop being cached and stop being
+short-circuited, and the supplier's own limiter is the only thing left. If
+Redis is down and G2B starts 429ing us, that is the mechanism — do not go
+looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 

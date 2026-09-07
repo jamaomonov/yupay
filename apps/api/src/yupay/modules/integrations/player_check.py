@@ -46,6 +46,13 @@ _BREAKER_COOLDOWN_SECONDS = 30
 
 _KNOWN_PROVIDERS = ("g2b", "waxpeer")
 
+#: RFC 7807 ``code`` on the 404 an unknown ``product_id`` answers with. Every
+#: other 4xx on ``/merchant/v1`` carries one and its published table says to
+#: switch on it; this one is reachable there only as a race (a product deleted
+#: between the SKU lookup and the check), which is exactly the kind of rarity
+#: that gets shipped untyped and then cannot be handled.
+CODE_PRODUCT_NOT_FOUND = "product_not_found"
+
 
 def _checkable_provider(required_fields: list[dict[str, Any]]) -> str | None:
     """The ``check.provider`` of the product's first checkable field, if any."""
@@ -62,15 +69,49 @@ def product_is_checkable(required_fields: list[dict[str, Any]]) -> bool:
     return _checkable_provider(required_fields) is not None
 
 
+#: The only two things G2B's ``valid`` field is allowed to say. Anything else
+#: — a missing key, a renamed one, a third token, a null — is a shape we do not
+#: understand, and understanding it is the whole job here.
+_G2B_VERDICTS = frozenset({"valid", "invalid"})
+
+
 def _map_response(resp: dict[str, Any]) -> PlayerCheckOut:
     """Map a successful G2B ``checkPlayerId`` body to a public result.
 
-    A 200 response with ``valid == "valid"`` is a real hit; any other body
-    (``"invalid"``, empty, unexpected) means the supplier answered but the id
-    does not resolve — that is the customer's mistake, so ``status="invalid"``,
-    NOT ``"error"`` (which is reserved for our/supplier faults).
+    **A verdict we recognise, or none at all.** ``"valid"`` is a real hit and
+    ``"invalid"`` is the customer's mistake; every other body — the key absent,
+    the key renamed, a third token nobody told us about — is ``"error"``,
+    because it means the supplier answered and we could not read the answer.
+
+    This used to collapse the unrecognised case into ``"invalid"``, which made
+    the check a fake **rejecter**: the mirror of the fake approver the whole
+    three-way status exists to prevent, and the louder failure of the two. If
+    G2B renamed this field, every call would still be an HTTP 200, no breaker
+    would fire, nothing would be logged as a failure — and every player id on
+    the platform would come back "no such player", telling every customer and
+    every reseller that they had mistyped. ``"error"`` says what is true: we
+    could not check. (The client already tolerates three different list keys on
+    ``fetch_products``, so this supplier's shape drifting is not hypothetical.)
+
+    Args:
+        resp: The parsed 200 body, or the verdict body unwrapped from a 400 by
+            ``g2b_client.games_check_player``.
+
+    Returns:
+        The three-way advisory result.
     """
-    if str(resp.get("valid") or "").lower() == "valid":
+    verdict = str(resp.get("valid") or "").strip().lower()
+    if verdict not in _G2B_VERDICTS:
+        logger.warning(
+            "player_check_unrecognised_verdict",
+            provider="g2b",
+            keys=sorted(str(k) for k in resp)[:10],
+            hint="G2B answered 200 with no verdict we recognise in `valid`; "
+            "reporting `error` rather than telling every customer they mistyped. "
+            "If their wire format changed, `_G2B_VERDICTS` is where it is read.",
+        )
+        return PlayerCheckOut(status="error")
+    if verdict == "valid":
         return PlayerCheckOut(status="valid", name=str(resp["name"]) if resp.get("name") else None)
     return PlayerCheckOut(status="invalid")
 
@@ -107,7 +148,25 @@ async def resolve_g2b_game_code(session: AsyncSession, product_id: str) -> str |
             codes=sorted(codes),
         )
         return None
-    return codes[0] if codes else None
+    if not codes:
+        # The likeliest cause of a product that answers ``error`` forever, and
+        # until now the only one that logged nothing at all: the form field
+        # declares ``check.provider == "g2b"`` but no active g2b/game mapping
+        # exists to resolve a game code from. Routine rather than exotic — the
+        # import queue ships the field before the mapping, or a mapping is
+        # deactivated during a supplier switch — and indistinguishable from an
+        # unconfigured supplier without this line. ``product_id`` is our own
+        # identifier, never PII, and naming it is the only way to find the row.
+        logger.warning(
+            "player_check_no_game_mapping",
+            product_id=product_id,
+            hint="this product's form declares a g2b player check but has no active "
+            "sku_supplier_mapping (supplier_slug='g2b', kind='game') on any of its "
+            "SKUs, so every check answers `error`; add the mapping or drop the "
+            "check descriptor",
+        )
+        return None
+    return codes[0]
 
 
 def _cache_key(game_code: str, player_id: str, server_id: str | None) -> str:
@@ -131,6 +190,29 @@ def _waxpeer_cache_key(steam_login: str) -> str:
     return f"playercheck:waxpeer:{hash_short(steam_login)}"
 
 
+async def _cached(key: str) -> PlayerCheckOut | None:
+    """A previously cached verdict, or ``None`` to go and ask the supplier.
+
+    The **parse** is inside the guard, not only the ``GET``. A cache entry
+    written by an older shape of ``PlayerCheckOut`` — or half-written, or
+    hand-edited — would otherwise raise ``ValidationError`` out of a function
+    whose docstring promises it never raises, turning an advisory lookup into a
+    500 for as long as the entry lives. Falling through costs one supplier
+    call.
+
+    Args:
+        key: The Redis key, already namespaced and PII-hashed by the caller.
+
+    Returns:
+        The cached result, or ``None`` when there is none we can use.
+    """
+    try:
+        raw = await get_redis().get(key)
+        return PlayerCheckOut.model_validate_json(raw) if raw else None
+    except Exception:  # noqa: BLE001 — cache is best-effort, in both directions
+        return None
+
+
 async def _check_waxpeer_login(
     fulfiller: WaxpeerFulfiller | None, *, steam_login: str
 ) -> PlayerCheckOut:
@@ -138,18 +220,18 @@ async def _check_waxpeer_login(
 
     Same three-way contract as the g2b path: Waxpeer says the login is
     supported -> ``status="valid"`` (Steam has no display name, so ``name``
-    stays ``None``); Waxpeer answers but the login isn't supported ->
-    ``status="invalid"`` (the customer's mistake, not a fault); anything else
-    (unconfigured, network/API failure) -> ``status="error"``, never raised.
+    stays ``None``); Waxpeer answers ``valid: false`` and the login isn't
+    supported -> ``status="invalid"`` (the customer's mistake, not a fault);
+    anything else — unconfigured, network/API failure, or a body carrying no
+    boolean ``valid`` at all, which ``validate_login`` raises on for the same
+    reason :func:`_map_response` refuses an unrecognised token — is
+    ``status="error"``, never raised.
     """
     redis = get_redis()
     key = _waxpeer_cache_key(steam_login)
-    try:
-        cached = await redis.get(key)
-    except Exception:  # noqa: BLE001 — cache is best-effort
-        cached = None
-    if cached:
-        return PlayerCheckOut.model_validate_json(cached)
+    cached = await _cached(key)
+    if cached is not None:
+        return cached
 
     if fulfiller is None:
         return PlayerCheckOut(status="error")
@@ -235,12 +317,29 @@ async def check_player_for_product(
     try:
         uuid.UUID(product_id)
     except ValueError as exc:
-        raise NotFoundError("product not found") from exc
+        raise NotFoundError("product not found", code=CODE_PRODUCT_NOT_FOUND) from exc
 
-    product = await session.get(Product, product_id)
-    if product is None:
-        raise NotFoundError("product not found")
-    provider = _checkable_provider(list(product.required_fields or []))
+    # One column, not the entity. ``session.get(Product, …)`` here fanned out to
+    # **nine statements per check**: ``Product`` configures ``lazy="selectin"``
+    # for its translations, FAQs, SKU set and its brand, and ``Brand.products``
+    # is selectin too — so an advisory lookup dragged the brand's whole product
+    # subtree back with it, at up to two checks a second. All this path reads is
+    # ``required_fields``. Selecting the column also removes the loader question
+    # entirely rather than answering it with ``load_only``/``raiseload``, which
+    # a later hand could weaken without noticing. Pinned by
+    # ``test_the_check_does_not_fan_out_over_the_catalog``.
+    # ``id`` is selected alongside so that "no such product" is the absence of
+    # a row and nothing else: ``required_fields`` is NOT NULL, but a JSONB
+    # column can still hold the JSON literal ``null``, which would come back as
+    # Python ``None`` and turn a checkable product into a 404.
+    row = (
+        await session.execute(
+            select(Product.id, Product.required_fields).where(Product.id == product_id)
+        )
+    ).one_or_none()
+    if row is None:
+        raise NotFoundError("product not found", code=CODE_PRODUCT_NOT_FOUND)
+    provider = _checkable_provider(list(row.required_fields or []))
     if provider is None:
         raise ValidationError("product is not checkable")
 
@@ -278,12 +377,9 @@ async def _check_g2b_player(
 
     redis = get_redis()
     key = _cache_key(game_code, player_id, server_id)
-    try:
-        cached = await redis.get(key)
-    except Exception:  # noqa: BLE001 — cache is best-effort
-        cached = None
-    if cached:
-        return PlayerCheckOut.model_validate_json(cached)
+    cached = await _cached(key)
+    if cached is not None:
+        return cached
 
     fulfiller = _g2b_fulfiller_or_none()
     if fulfiller is None:

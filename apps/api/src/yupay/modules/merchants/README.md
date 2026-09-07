@@ -783,19 +783,22 @@ touch your signing code.
 
 Two independent counters, both fixed 60-second windows:
 
-| Axis                             | Limit          | Applies to                                   |
-| -------------------------------- | -------------- | -------------------------------------------- |
-| Per source IP address            | **600 / 60 s** | Every request, before authentication         |
-| Per `key_id`                     | **600 / 60 s** | Requests whose signature verified            |
-| Per source IP, `validate/*` only | **120 / 60 s** | `POST /merchant/v1/validate/player`, as well |
+| Axis                               | Limit          | Applies to                                        |
+| ---------------------------------- | -------------- | ------------------------------------------------- |
+| Per source IP address              | **600 / 60 s** | Every request, before authentication              |
+| Per `key_id`                       | **600 / 60 s** | Requests whose signature verified                 |
+| Per source IP, `validate/*` only   | **120 / 60 s** | `POST /merchant/v1/validate/player`, as well      |
+| Per merchant account, `validate/*` | **120 / 60 s** | the same endpoint, whatever address you call from |
 
 All three return `429` with a `Retry-After` header in seconds; wait that long
 rather than retrying immediately. The per-key counter is charged only after a
 signature verifies, so someone who observes your `key_id` in a header cannot
 spend your budget. Each live key has its own counter, so a rotation window
-briefly has two. The third is _additional_, not instead of: a validate call
-advances the general counter too, and the tighter one simply binds first —
-it exists because that endpoint spends a supplier's quota rather than ours.
+briefly has two — but the `validate/*` pair is keyed on your address and on
+your **merchant account**, so neither a key rotation nor a spread of egress
+nodes doubles your claim on a supplier's quota. The last two are _additional_,
+not instead of: a validate call advances the general counters too, and the
+tighter ones simply bind first.
 
 ### IP allowlist
 
@@ -1286,12 +1289,12 @@ not get by accident.
 { "status": "valid", "name": "NeoUZ" }
 ```
 
-| `status`      | What it means                                                                   | What to do                                            |
-| ------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------- |
-| `valid`       | The provider resolved the id. `name` is the account nickname when there is one. | Show the name back to your customer; order.           |
-| `invalid`     | The provider answered, and there is no such player.                             | **The only answer that says your customer mistyped.** |
-| `error`       | **We could not check.** Says nothing at all about the id.                       | Retry later, or order without a check. Never refuse.  |
-| `unsupported` | This SKU has no player check configured, and will not grow one on its own.      | Order without a check. Do not retry.                  |
+| `status`      | What it means                                                                   | What to do                                           |
+| ------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `valid`       | The provider resolved the id. `name` is the account nickname when there is one. | Show the name back to your customer; order.          |
+| `invalid`     | The provider gave us a verdict we understand, and it is "no such player".       | The answer to show your customer as "check that id". |
+| `error`       | **We could not check.** Says nothing at all about the id.                       | Retry later, or order without a check. Never refuse. |
+| `unsupported` | This SKU has no player check configured, and will not grow one on its own.      | Order without a check. Do not retry.                 |
 
 > **`error` is not a verdict.** An upstream fault, a timeout, a credential of
 > ours that got rejected, or a circuit we opened after a run of failures all
@@ -1299,6 +1302,14 @@ not get by accident.
 > branch on `status != "invalid"` you will treat those as approval; if you
 > branch on `status != "valid"` you will refuse perfectly good ids whenever a
 > supplier has a bad ten minutes. Branch on all four.
+>
+> **And `invalid` is a verdict.** You get it only when the provider sent a
+> token we recognise and that token said "no such player". A response we cannot
+> read — a field renamed, a shape we have not seen before — is `error`, not
+> `invalid`, deliberately: the alternative is that one supplier-side rename
+> makes us tell every one of your customers they mistyped, on a stream of HTTP
+> 200s, with nothing anywhere reading as a fault. You may act on `invalid`;
+> that is what it is for.
 
 `name` is `null` whenever the provider gives us no name — Steam has no display
 name to return, so a `valid` Steam login always reads `{"status": "valid",
@@ -1316,20 +1327,35 @@ one place that otherwise logs only a hash. Send it in the body, and note that
 the body is part of the signed canonical string (its SHA-256 is the fifth
 field), so a signature is good for exactly one payload.
 
-**Its own rate limit.** This is the only endpoint here that spends a
-_supplier's_ quota rather than ours, so it carries a second, tighter per-IP
-counter of **120 / 60 s** on top of the 600 / 60 s the whole prefix shares
-(both are charged; this one binds first). A `429` here is problem+json with a
-`Retry-After`, like every other. One check per order is well inside it; a
-validation loop is not, by design.
+**Its own rate limits — two of them.** This is the only endpoint here that
+spends a _supplier's_ quota rather than ours, so on top of the 600 / 60 s the
+whole prefix shares it carries **120 / 60 s per source address** and **120 /
+60 s per merchant account**. All of them are charged; the tight pair binds
+first. The account counter is not redundant with the address one — a supplier's
+quota is spent by _you_, not by your egress node, so calling us from a six-node
+NAT pool must not buy six budgets, and neither should rotating a key. A `429`
+here is problem+json with a `Retry-After`, like every other. One check per
+order is well inside it; a validation loop is not, by design.
+
+What these counters are and are not: fixed 60-second windows in Redis that
+**fail open**, so if our Redis is unwell they stop counting rather than
+refusing everything — and that is the same outage that empties this endpoint's
+result cache and its supplier circuit breaker. All three protections go
+together, and the supplier's own limiter is what remains. We would rather say
+so than let the numbers above read as a guarantee they are not.
 
 Errors:
 
-| Status | `code`             | Meaning                                                                                                           |
-| ------ | ------------------ | ----------------------------------------------------------------------------------------------------------------- |
-| 404    | `item_unavailable` | `reason: unknown_sku` — no such SKU; `reason: not_b2b_visible` — withheld from B2B, so there is nothing to check. |
-| 422    | `invalid_request`  | The body did not parse — a `sku_id` that is not a UUID, a missing or unknown field. `errors` says which.          |
-| 429    | —                  | Over either the prefix counter or this endpoint's own. Wait `Retry-After` seconds.                                |
+| Status | `code`              | Meaning                                                                                                                                        |
+| ------ | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `item_unavailable`  | `reason: unknown_sku` — no such SKU; `reason: not_b2b_visible` — withheld from B2B, so there is nothing to check.                              |
+| 404    | `product_not_found` | The SKU's product vanished between our two lookups. A race, and vanishingly rare; retry once.                                                  |
+| 422    | `invalid_request`   | The body did not parse — a `sku_id` that is not a UUID in any spelling, an empty `server_id`, a missing or unknown field. `errors` says which. |
+| 429    | —                   | Over any of the counters that apply here. Wait `Retry-After` seconds.                                                                          |
+
+Any spelling of a UUID your language emits is accepted and normalised — plain,
+uppercase, undashed, braced (`{0198…}`, which is .NET's `Guid.ToString("B")`),
+or `urn:uuid:…`. You never have to reformat an id you got from us.
 
 Note what is **not** here. The order path's other refusals — `out_of_stock`,
 `not_for_sale`, `no_cost` — do not apply: stock and pricing move between a
