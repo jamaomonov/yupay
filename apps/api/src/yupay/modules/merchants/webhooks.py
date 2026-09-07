@@ -1,8 +1,9 @@
 """The webhook outbox's **producer** — a delivery row, written with its cause.
 
 Spec §10, M3a Task 3. Task 1 built the tables, Task 2 the client that may
-safely connect to a merchant's address, and Task 4 drains what this module
-writes. Nothing here talks to a merchant; it puts work in a queue.
+safely connect to a merchant's address, and :mod:`.webhook_delivery` (Task 4,
+run from ``apps/worker``) drains what this module writes. Nothing here talks to
+a merchant; it puts work in a queue.
 
 ## One transaction, or none
 
@@ -14,8 +15,8 @@ neither outrun the fact that caused it nor survive that fact being undone. An
 order that rolls back has no event, and a merchant is never told about a sale
 that did not happen.
 
-Task 4's poll tick covers a nudge lost to a worker restart, so nothing here
-has to care about a listener being down.
+The worker's poll tick covers a nudge lost to a restart, so nothing here has to
+care about a listener being down.
 
 ## A courtesy may never fail money
 
@@ -79,8 +80,9 @@ if TYPE_CHECKING:  # pragma: no cover -- type hints only
 log = get_logger("yupay.merchants.webhooks")
 
 #: The LISTEN/NOTIFY channel the delivery worker wakes on. One constant, in
-#: one place: Task 4's ``ListenerManager`` imports **this name**, because a
-#: channel spelled twice is a queue nobody drains and no test fails.
+#: one place: ``yupay_worker.consumer``'s ``ListenerManager`` imports **this
+#: name** (through ``merchants.api``), because a channel spelled twice is a
+#: queue nobody drains and no test fails.
 WEBHOOK_QUEUE_CHANNEL: Final = "merchant_webhook_queue"
 
 #: An order's status moved. Its payload is the order's public identity plus

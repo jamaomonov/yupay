@@ -608,6 +608,48 @@ async def test_every_redirect_status_is_an_outcome(
     assert len(seen) == 1
 
 
+# ---------- the one response header the retry policy reads ----------
+
+
+async def test_retry_after_is_carried_back_for_the_retry_policy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A 429/503 answer may say when to come back, and the caller honours it.
+
+    It is the only header this client surfaces: the rest of a merchant's
+    response is not the delivery log's business, and handing a caller the
+    whole attacker-written header map invites exactly that.
+    """
+    _wire(monkeypatch, handler=lambda _r: _response(429, b"slow down", {"retry-after": "120"}))
+
+    result = await post_json(URL, body=b"{}")
+
+    assert result.status_code == 429
+    assert result.retry_after == "120"
+
+
+async def test_an_answer_without_retry_after_carries_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _wire(monkeypatch, handler=lambda _r: _response(200, b"ok"))
+
+    assert (await post_json(URL, body=b"{}")).retry_after is None
+
+
+async def test_an_absurd_retry_after_is_clipped_before_it_leaves_the_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Third-party text, bounded where it is read. The caller parses it and
+    the delivery row is length-bounded; neither should have to cope with a
+    kilobyte of header."""
+    _wire(monkeypatch, handler=lambda _r: _response(503, b"", {"retry-after": "9" * 4096}))
+
+    result = await post_json(URL, body=b"{}")
+
+    assert result.retry_after is not None
+    assert len(result.retry_after) == outbound._RETRY_AFTER_MAX
+
+
 # ---------- property 5: size and time are both capped ----------
 
 

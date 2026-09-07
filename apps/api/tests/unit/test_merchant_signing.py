@@ -184,3 +184,80 @@ def test_an_unreadable_caller_address_never_matches() -> None:
 def test_one_unparseable_entry_does_not_disable_the_rest() -> None:
     assert address_allowed(["not-an-address", "203.0.113.0/24"], "203.0.113.9")
     assert not address_allowed(["not-an-address"], "203.0.113.9")
+
+
+# ---------- the outgoing-webhook signature (M3a, Task 4) ----------
+
+
+def _hook_msg(**over: object) -> bytes:
+    fields: dict[str, object] = {
+        "timestamp": "1757000000",
+        "delivery_id": "0198c0d1-2f34-7a56-b789-0123456789ab",
+        "event_type": "order.status_changed",
+        "body": b'{"order_id":"x"}',
+    }
+    fields.update(over)
+    return signing.webhook_canonical_message(**fields)  # type: ignore[arg-type]
+
+
+def test_the_webhook_canonical_message_is_the_documented_four_fields() -> None:
+    """The exact text a third party implements verification from."""
+    digest = hashlib.sha256(b'{"order_id":"x"}').hexdigest()
+    assert (
+        _hook_msg()
+        == (
+            f"1757000000\n0198c0d1-2f34-7a56-b789-0123456789ab\norder.status_changed\n{digest}"
+        ).encode()
+    )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"timestamp": "1757000001"},
+        {"delivery_id": "0198c0d1-2f34-7a56-b789-0123456789ac"},
+        {"event_type": "balance.credited"},
+        {"body": b"{}"},
+    ],
+)
+def test_every_webhook_field_changes_the_signature(change: dict[str, object]) -> None:
+    base = signing.expected_signature("ypmw_x", _hook_msg())
+    assert signing.expected_signature("ypmw_x", _hook_msg(**change)) != base
+
+
+def test_the_delivery_id_is_inside_the_signed_material() -> None:
+    """The receiver's only dedupe handle. Unsigned it would be worthless
+    against a replay, and it cannot be added after the first integrator
+    without a new contract version."""
+    assert b"0198c0d1-2f34-7a56-b789-0123456789ab" in _hook_msg()
+
+
+def test_every_webhook_field_is_fixed_width_or_cannot_carry_the_separator() -> None:
+    """Task 2's canonical-string discipline: no field can be spelled so that a
+    verifier reads it as the end of one field and the start of the next.
+
+    The timestamp is ASCII digits, the delivery id is a UUID, the event type
+    comes from a two-value closed vocabulary, and the body is a hash — so a
+    body full of newlines shifts nothing."""
+    message = _hook_msg(body=b"a\nb\nc\n\n")
+    assert message.count(b"\n") == 3  # exactly the three separators
+    assert message.endswith(hashlib.sha256(b"a\nb\nc\n\n").hexdigest().encode())
+
+
+def test_the_webhook_headers_are_named_once_and_are_not_the_inbound_ones() -> None:
+    """A merchant holds both credentials at once and they key opposite
+    directions; two header families that cannot be confused is the same
+    reasoning as the two secret prefixes."""
+    names = {
+        signing.WEBHOOK_DELIVERY_HEADER,
+        signing.WEBHOOK_EVENT_HEADER,
+        signing.WEBHOOK_TIMESTAMP_HEADER,
+        signing.WEBHOOK_SIGNATURE_HEADER,
+    }
+    assert names == {
+        "X-Yupay-Delivery",
+        "X-Yupay-Event",
+        "X-Yupay-Timestamp",
+        "X-Yupay-Signature",
+    }
+    assert not any(name.lower().startswith("x-merchant-") for name in names)

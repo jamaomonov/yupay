@@ -139,8 +139,113 @@ updates off with no test to fail. The facade exports the generic `enqueue` as
 
 Drawn in `docs/architecture/sequence-diagrams/merchant-webhook-emit.mmd`.
 
-Delivery — signing, backoff, the failure streak and the auto-disable — is Task
-4's `apps/worker`. Nothing in this module talks to a merchant.
+## Outgoing webhooks — the delivery drain (`webhook_delivery.py`, `webhook_retry.py`)
+
+M3a Task 4, run from `apps/worker` (`yupay_worker.consumer` LISTENs on
+`merchant_webhook_queue` beside `fulfillment_queue`, sharing one wake event, and
+calls `merchants.api.drain_pending_deliveries`). Same ADR-0064 shape as
+fulfilment: claim `FOR UPDATE SKIP LOCKED`, one SAVEPOINT per row, never commit
+— the worker owns the transaction. Drawn in
+`sequence-diagrams/merchant-webhook-deliver.mmd`.
+
+### What each attempt sends
+
+`POST` of the stored payload, serialised with sorted keys and compact
+separators so two attempts at one row put identical bytes on the wire, to the
+row's **`url` snapshot** — never to whatever the hook says now. Four headers,
+all named in `signing.py` because they are wire format:
+
+| Header              | Value                                           |
+| ------------------- | ----------------------------------------------- |
+| `X-Yupay-Delivery`  | the delivery row id — stable across every retry |
+| `X-Yupay-Event`     | `order.status_changed` / `balance.credited`     |
+| `X-Yupay-Timestamp` | Unix seconds, ASCII digits                      |
+| `X-Yupay-Signature` | hex HMAC-SHA256 under the `ypmw_` secret        |
+
+The canonical string is
+`{timestamp}\n{delivery_id}\n{event_type}\n{hex(sha256(body))}` — four fields,
+each either fixed-width or unable to contain the LF separator, exactly the
+discipline §9.2's inbound scheme follows. The `ypmw_` secret is decrypted at
+send time under its own `crypto` purpose label and never logged, never stored
+on the delivery row, never in a body.
+
+**The delivery id is inside the signed material, not only in a header**, and
+that is the one decision here that could not be taken later: a webhook is
+at-least-once, so a retry after a lost `200` is indistinguishable from a
+genuine second transition unless something stable identifies the attempt — and
+an unsigned header is worthless against a replay. `order.status_changed` has no
+event id in its payload (that would have broken the exact-key-set rule above),
+so this is the receiver's only dedupe handle. Adding it after the first
+integrator would be a `/merchant/v2`.
+
+### The retry table is derived from the client's taxonomy, not invented
+
+`webhook_retry.py` is pure and reads `core/outbound_errors.py` rather than
+matching on exception names. Two questions answer everything:
+
+| Outcome                                             | What happens                       | Counts toward the streak |
+| --------------------------------------------------- | ---------------------------------- | ------------------------ |
+| `2xx`                                               | `delivered`                        | resets it to 0           |
+| `408`, `429`, `5xx`                                 | `pending`, backoff                 | yes                      |
+| any other `4xx`, and a redirect (never followed)    | `failed`                           | yes                      |
+| `Delivery.RECEIVED` refusal (too large, compressed) | `failed` — a retry **re-delivers** | yes                      |
+| `Delivery.NOT_SENT` / `UNKNOWN` transport failure   | `pending`, backoff                 | yes                      |
+| `OutboundBrokenError` — **our** bug                 | `failed`                           | **no**                   |
+
+`UNKNOWN` (a timeout, an exchange broken mid-flight) may already have been
+processed by the merchant, and we retry it anyway: that is what at-least-once
+means, and the delivery id is what makes it actionable rather than a warning.
+`OutboundBrokenError` is the one class special-cased against its own family —
+counting it would auto-disable a working endpoint and tell the merchant, in the
+log they read, that we refused their URL.
+
+Backoff is 30 s doubling to a 1 h cap, no jitter (the herd is one merchant's own
+backlog, and a deterministic schedule is one support can predict from
+`attempts_count`), and a row is given up on after `MAX_ATTEMPTS` = 10 — a
+backstop for the intermittent case, since a dead endpoint auto-disables first.
+`Retry-After` is honoured on the two statuses RFC 9110 defines it for (`429`,
+`503`), both forms parsed, clamped into `[1 s, 1 h]` — the header is written by
+a third party and `Retry-After: 0` on every answer would be a hot loop.
+
+### Ordering
+
+The claim orders by `next_attempt_at, created_at, id`. The third term is
+load-bearing: both timestamps default to `CURRENT_TIMESTAMP`, which in Postgres
+is the **transaction start**, so the `paid` and `fulfilling` rows one placement
+enqueues are byte-identical in both columns and an ORDER BY over them alone
+leaves the order unspecified. A reseller receiving `fulfilling` before `paid`
+reads the later `paid` as a status regression and re-opens an order their back
+office closed. `id` is a uuid7, so it encodes enqueue order.
+
+That fixes the tie, not global ordering: a **retried** event lands after events
+enqueued behind it, which is inherent to per-row backoff. Integrator docs must
+say so — order by the payload's `at`, dedupe on the delivery id.
+
+Rows are processed merchant-major (merchants in id order) so two concurrent
+drainers take hook-row locks in one global order and cannot deadlock.
+
+### Auto-disable, and the one recovery path
+
+A failure that is the merchant's increments `failure_streak`; any success
+resets it. At `MERCHANT_WEBHOOK_DISABLE_AFTER_FAILURES` (default 20 — attempts,
+not events, so retries reach it) the hook's `disabled_at` is set and every
+`merchant_users` operator is emailed **once per disable**, naming the endpoint's
+**host** and not its URL (a webhook path can carry a token, and an email goes
+through a third-party provider). A merchant with no operator row is still
+disabled, silently.
+
+Nothing is deleted and no queued event is thrown away: rows stay `pending` and
+are simply not claimed while the hook is off — including rows already claimed
+in the batch that tripped the disable, which are skipped rather than sent to an
+endpoint we have just switched off. `PUT /admin/merchants/{id}/webhook` clears
+`disabled_at` and the streak, and that resumes the backlog. It is the only
+recovery path and there is deliberately no second one.
+
+### Falsification
+
+`uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py` — 15
+mutations, each asserting it changed the file before the suite runs. Read its
+docstring before running it beside anything else.
 
 ## Deposit ledger
 

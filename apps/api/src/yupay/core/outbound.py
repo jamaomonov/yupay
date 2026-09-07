@@ -96,6 +96,12 @@ DEFAULT_TIMEOUT_SECONDS: Final = 10.0
 #: endpoint has to say about a webhook fits many times over.
 DEFAULT_MAX_BYTES: Final = 64 * 1024
 
+#: Cap on the ``Retry-After`` value we carry back. It is text a third party
+#: wrote, so it is bounded where it is read rather than wherever it lands: the
+#: two forms that mean anything are a short integer and a 29-character
+#: HTTP-date, and nothing downstream should have to cope with more.
+_RETRY_AFTER_MAX: Final = 64
+
 #: httpcore's trace event for "about to open a TCP connection to this host".
 #: Pinned by :func:`_connect_guard` and asserted by the live test suite, so an
 #: httpcore upgrade that renames it fails a test rather than silently
@@ -117,12 +123,22 @@ class OutboundResponse:
             "we recorded a 502 — from which of their hosts?" is otherwise
             unanswerable.
         elapsed_ms: Wall clock for the whole attempt, DNS included.
+        retry_after: Their ``Retry-After`` header, verbatim and clipped to
+            :data:`_RETRY_AFTER_MAX`, or ``None``. The **only** response
+            header surfaced, and it is here because a retry policy that
+            ignores a ``429``'s own answer to "when should I come back" is
+            hammering a server that asked it not to. Handing a caller the
+            whole header map would put a merchant's (or their compromised
+            server's) arbitrary text in front of code that has no use for it;
+            parsing this one — both RFC forms, and a clamp — is the caller's
+            job (``merchants.webhook_retry.parse_retry_after``).
     """
 
     status_code: int
     body: str
     address: str
     elapsed_ms: int
+    retry_after: str | None = None
 
 
 async def _resolve_or_fail(target: Target) -> tuple[str, ...]:
@@ -325,8 +341,12 @@ async def _send(
     headers: Mapping[str, str] | None,
     timeout: float,
     max_bytes: int,
-) -> tuple[int, bytes]:
+) -> tuple[int, bytes, str | None]:
     """Send one request to the pinned address and read a bounded response.
+
+    Returns:
+        The status, the capped body bytes, and their ``Retry-After`` header
+        (clipped, or ``None``) — see :class:`OutboundResponse`.
 
     Note for a caller that logs this module's exceptions: the ``__cause__``
     chained onto :class:`ConnectFailedError` is an ``httpx.RequestError``
@@ -385,7 +405,12 @@ async def _send(
             raise ExchangeFailedError(
                 f"the exchange with {target.host} failed: {type(exc).__name__}"
             ) from exc
-        return response.status_code, raw
+        retry_after = response.headers.get("retry-after")
+        return (
+            response.status_code,
+            raw,
+            retry_after[:_RETRY_AFTER_MAX] if retry_after is not None else None,
+        )
     finally:
         # Suppressed for the same reason as the response close above: a
         # failure to hang up must not replace the failure being reported.
@@ -455,7 +480,8 @@ async def post_json(
         max_bytes: Cap on the response body.
 
     Returns:
-        The status, the response text, the address used and the elapsed time.
+        The status, the response text, the address used, the elapsed time and
+        their ``Retry-After`` header if they sent one.
 
     Raises:
         UrlNotAllowedError: The URL itself is refused, or no request could be
@@ -482,7 +508,7 @@ async def post_json(
             addresses = await _resolve_or_fail(target)
             _reject_unless_every_address_is_public(target.host, addresses)
             pinned = addresses[0]
-            status_code, raw = await _send(
+            status_code, raw, retry_after = await _send(
                 target,
                 pinned,
                 body=body,
@@ -522,6 +548,7 @@ async def post_json(
         body=raw.decode("utf-8", errors="replace"),
         address=pinned,
         elapsed_ms=elapsed_ms,
+        retry_after=retry_after,
     )
 
 

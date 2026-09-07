@@ -1,10 +1,25 @@
-"""The worker: drain the Postgres-native fulfilment queue.
+"""The worker: drain the Postgres-native queues.
 
-LISTEN fulfillment_queue for instant wake-ups; a lazy poll tick
-(fulfilment_poll_seconds) catches notifications lost to restarts. The rows
-in fulfillment_tasks are the queue — this process holds no state worth
-preserving and can be killed at any moment: row locks die with the
-connection and the next tick reclaims the work.
+Two of them now, and the second is why almost everything here is
+parameterised by a :class:`Queue` rather than hardcoded:
+
+- ``fulfillment_tasks`` / ``fulfillment_queue`` — the fulfilment work every
+  retail order flows through (ADR-0064).
+- ``merchant_webhook_deliveries`` / ``merchant_webhook_queue`` — the outgoing
+  merchant webhooks (M3a). Its drain reaches a **third party's** server, which
+  is the reason it has its own concurrency dial and its own LISTEN connection
+  rather than sharing the fulfilment one: a hung supplier call and a hung
+  merchant endpoint are different failures and should be tuned apart.
+
+LISTEN gives instant wake-ups; a lazy poll tick (``fulfilment_poll_seconds``)
+catches notifications lost to restarts. Both listeners share **one** wake
+event, so any notification drains **both** queues — an empty queue costs one
+indexed query and returns, which is far cheaper than routing wake-ups by
+channel and getting the routing wrong.
+
+The rows in those tables are the queues — this process holds no state worth
+preserving and can be killed at any moment: row locks die with the connection
+and the next tick reclaims the work.
 
 Run as: ``python -m yupay_worker.consumer``.
 """
@@ -13,7 +28,8 @@ from __future__ import annotations
 
 import asyncio
 import signal
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import dataclass
 
 import asyncpg  # type: ignore[import-untyped]  # no bundled stubs
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -29,16 +45,62 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 # starts that chain from the wrong end and deadlocks on a partially
 # initialised ``fulfillment.api`` module.
 import yupay.api.v1  # noqa: F401  isort: skip
-from yupay.core.config import get_settings
+from yupay.core.config import Settings, get_settings
 from yupay.core.db import get_engine
 from yupay.core.logging import configure_logging, get_logger
 from yupay.modules.fulfillment.api import drain_pending_tasks
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
+from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL, drain_pending_deliveries
 
 configure_logging()
 log = get_logger("yupay.worker.consumer")
 
 CHANNEL = "fulfillment_queue"
+
+#: One drain of one queue. Both drains take ``(db, *, limit=...)`` and return
+#: how many rows the batch claimed; the loop only needs "did that do
+#: anything", so the limit stays each module's own decision.
+Drain = Callable[[AsyncSession], Awaitable[int]]
+
+
+@dataclass(frozen=True, slots=True)
+class Queue:
+    """One Postgres-native queue this process drains.
+
+    Attributes:
+        name: Short label for log lines. Not the table and not the channel.
+        channel: The LISTEN channel its producer NOTIFYs on. Imported from
+            the producing module, never respelled here — a channel spelled
+            twice is a queue nobody drains and no test fails.
+        drain: The module's claim-and-run function, behind its ``api`` facade.
+        concurrency: Independent drainers to fan out per wake.
+    """
+
+    name: str
+    channel: str
+    drain: Drain
+    concurrency: int
+
+
+def _queues(cfg: Settings) -> tuple[Queue, ...]:
+    """The queues this process drains, in the order a wake drains them.
+
+    Fulfilment first: it is the money path, and a webhook is a courtesy.
+    """
+    return (
+        Queue(
+            name="fulfillment",
+            channel=CHANNEL,
+            drain=drain_pending_tasks,
+            concurrency=cfg.fulfilment_concurrency,
+        ),
+        Queue(
+            name="merchant_webhook",
+            channel=WEBHOOK_QUEUE_CHANNEL,
+            drain=drain_pending_deliveries,
+            concurrency=cfg.merchant_webhook_concurrency,
+        ),
+    )
 
 
 def raw_dsn(url: str) -> str:
@@ -73,8 +135,12 @@ async def _wait_for_wake_or_tick(
 
 
 class ListenerManager:
-    """Owns the asyncpg LISTEN connection on ``fulfillment_queue`` and its
-    reconnect story.
+    """Owns one asyncpg LISTEN connection, on one channel, and its reconnect
+    story.
+
+    One instance per :class:`Queue`, parameterised rather than duplicated: two
+    copies of this class would be two copies of the never-raise contract
+    below, and the second copy is where it stops being true.
 
     LISTEN is a pure accelerant: it wakes the consumer loop the instant a
     task lands instead of waiting out the poll tick. It is never the queue's
@@ -90,10 +156,12 @@ class ListenerManager:
         dsn: str,
         wake: asyncio.Event,
         *,
+        channel: str,
         connect: Callable[[str], Awaitable[asyncpg.Connection]] = asyncpg.connect,
     ) -> None:
         self._dsn = dsn
         self._wake = wake
+        self._channel = channel
         self._connect = connect
         self._conn: asyncpg.Connection | None = None
 
@@ -113,9 +181,9 @@ class ListenerManager:
         self._conn = None
         try:
             conn = await self._connect(self._dsn)
-            await conn.add_listener(CHANNEL, self._on_notify)
+            await conn.add_listener(self._channel, self._on_notify)
         except Exception:  # degrade to polling, never crash the loop
-            log.exception("worker.consumer.listen_failed")
+            log.exception("worker.consumer.listen_failed", channel=self._channel)
             return
         self._conn = conn
 
@@ -128,9 +196,10 @@ class ListenerManager:
     ) -> None:
         """Wake the consumer loop.
 
-        The notification carries no information the loop needs --
-        ``fulfillment_tasks`` itself is re-queried on wake, so this is a pure
-        signal, not a message.
+        The notification carries no information the loop needs -- each queue's
+        table is re-queried on wake, so this is a pure signal, not a message.
+        Every listener sets the **same** event, which is why one NOTIFY drains
+        both queues: an empty one answers 0 on its first claim and returns.
         """
         self._wake.set()
 
@@ -142,43 +211,47 @@ class ListenerManager:
         await conn.close()
 
 
-async def _drain_until_dry(session_factory: async_sessionmaker[AsyncSession]) -> None:
+async def _drain_until_dry(session_factory: async_sessionmaker[AsyncSession], queue: Queue) -> None:
     """One drainer: claim-run-commit batches on its own session until dry.
 
     A session per drainer is mandatory, not tidiness: ``AsyncSession`` is not
     safe under concurrent use, so drainers sharing one would interleave
     statements on a single connection.
 
-    Drain until dry: one NOTIFY or tick may cover more pending tasks than a
+    Drain until dry: one NOTIFY or tick may cover more pending rows than a
     single batch (limit=20), so keep claiming until a batch comes back empty.
     Commit after every batch -- the invariant a crash must preserve is "loses
     nothing but row locks", not "loses nothing".
     """
     async with session_factory() as db:
         try:
-            while await drain_pending_tasks(db) > 0:
+            while await queue.drain(db) > 0:
                 await db.commit()
             await db.commit()
         except Exception:
             # Outer belt for infra failures (DB down, a deadlock with a
-            # concurrent refund cascade, etc.). A poisoned individual task is
-            # already contained inside drain_pending_tasks's own per-task
-            # savepoint and never escapes to reach here. Rolling back loses
-            # only this drainer's uncommitted batch: its rows go back to
-            # ``pending`` and the next tick reclaims them.
-            log.exception("worker.consumer.drain_failed")
+            # concurrent refund cascade, etc.). A poisoned individual row is
+            # already contained inside each drain's own per-row savepoint and
+            # never escapes to reach here. Rolling back loses only this
+            # drainer's uncommitted batch: its rows go back to ``pending`` and
+            # the next tick reclaims them.
+            log.exception("worker.consumer.drain_failed", queue=queue.name)
             await db.rollback()
 
 
 async def _drain_all(
-    session_factory: async_sessionmaker[AsyncSession], *, concurrency: int
+    session_factory: async_sessionmaker[AsyncSession], queues: Sequence[Queue]
 ) -> None:
-    """Run ``concurrency`` independent drainers to completion.
+    """Run every queue's drainers, all of them, to completion.
 
-    No coordination between them by design: ``FOR UPDATE SKIP LOCKED`` makes
-    their claims disjoint, so the only thing parallelism changes is that a
-    supplier that hangs for 20s stalls one drainer instead of the whole
-    queue.
+    One ``gather`` across every queue rather than a queue at a time: the two
+    are independent work against one database, and serialising them would make
+    a slow merchant endpoint delay the next order's fulfilment for no reason.
+
+    No coordination between drainers by design: ``FOR UPDATE SKIP LOCKED``
+    makes their claims disjoint, so the only thing parallelism changes is that
+    a supplier (or a merchant's server) that hangs for 20s stalls one drainer
+    instead of the whole queue.
 
     ``return_exceptions=True`` is what makes "each drainer is isolated"
     literally true. ``_drain_until_dry`` handles what happens *inside* the
@@ -188,7 +261,11 @@ async def _drain_all(
     taking the whole tick down with one bad connection.
     """
     results = await asyncio.gather(
-        *(_drain_until_dry(session_factory) for _ in range(concurrency)),
+        *(
+            _drain_until_dry(session_factory, queue)
+            for queue in queues
+            for _ in range(queue.concurrency)
+        ),
         return_exceptions=True,
     )
     for result in results:
@@ -224,15 +301,17 @@ async def _await_stray_tasks(*, timeout: float) -> None:
 
 
 async def run() -> None:
-    """Drain the fulfilment queue until told to stop.
+    """Drain every queue until told to stop.
 
-    LISTEN gives instant wake-ups; the poll tick guarantees forward progress
-    no matter what LISTEN is doing. Every wake fans out to
-    ``fulfilment_concurrency`` independent drainers so one slow supplier
-    stalls one drainer, not the queue. Nothing here is stateful across
-    iterations except the connections themselves -- kill the process at any
-    point and the next start (or another replica) picks up exactly where the
-    row locks left off.
+    LISTEN gives instant wake-ups; the poll tick guarantees forward progress no
+    matter what LISTEN is doing. One wake event is shared by every listener, so
+    a notification on either channel drains **both** queues and each fans out
+    to its own ``concurrency`` independent drainers -- one slow supplier, or
+    one slow merchant endpoint, stalls one drainer rather than a queue.
+
+    Nothing here is stateful across iterations except the connections
+    themselves -- kill the process at any point and the next start (or another
+    replica) picks up exactly where the row locks left off.
     """
     cfg = get_settings()
     stop = asyncio.Event()
@@ -241,28 +320,33 @@ async def run() -> None:
         loop.add_signal_handler(sig, stop.set)
 
     wake = asyncio.Event()
-    listener = ListenerManager(raw_dsn(cfg.database_url), wake)
+    queues = _queues(cfg)
+    dsn = raw_dsn(cfg.database_url)
+    # One event, several listeners: see ``_on_notify``.
+    listeners = tuple(ListenerManager(dsn, wake, channel=queue.channel) for queue in queues)
     log.info(
         "worker.consumer.started",
         poll_seconds=cfg.fulfilment_poll_seconds,
-        concurrency=cfg.fulfilment_concurrency,
+        queues={queue.name: queue.concurrency for queue in queues},
     )
     session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
 
     while not stop.is_set():
         # No backoff on a failed LISTEN: the fixed poll tick below IS the
-        # retry cadence (and the queue's actual guarantee of progress). Note
-        # the LISTEN connection can also go stale silently -- nothing here
+        # retry cadence (and the queues' actual guarantee of progress). Note
+        # a LISTEN connection can also go stale silently -- nothing here
         # keepalives it -- in which case wake-ups simply stop arriving and
         # the tick is the bound on latency until ``ensure()`` notices.
-        await listener.ensure()
+        for listener in listeners:
+            await listener.ensure()
         await _wait_for_wake_or_tick(wake, stop, seconds=cfg.fulfilment_poll_seconds)
         if stop.is_set():
             break
-        await _drain_all(session_factory, concurrency=cfg.fulfilment_concurrency)
+        await _drain_all(session_factory, queues)
 
     await _await_stray_tasks(timeout=5.0)
-    await listener.close()
+    for listener in listeners:
+        await listener.close()
     await close_g2b_pool()
     log.info("worker.consumer.stopped")
 

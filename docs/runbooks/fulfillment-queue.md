@@ -61,18 +61,29 @@ Two operational consequences:
 Rolling the flag back (see "Rollback") therefore does **not** return merchant
 orders to inline fulfilment, and must not be attempted as a way to do so.
 
+## The worker drains a second queue
+
+Since M3a Task 4 the same loop also drains `merchant_webhook_deliveries` on
+`LISTEN merchant_webhook_queue` — outgoing merchant webhooks. Both listeners
+share **one** wake event, so a NOTIFY on either channel drains both queues and
+an empty one costs a single indexed query. Nothing about the fulfilment queue's
+behaviour changed; what did change is that a stalled worker now also means no
+webhooks. Its operational side (the failure streak, the auto-disable and the
+one way to re-enable a hook) is in `docs/runbooks/merchant-b2b.md`.
+
 ## The worker's own settings
 
-Neither is gated by `FULFILMENT_ASYNC` — the worker drains whatever exists,
-so both apply from the moment it starts.
+None is gated by `FULFILMENT_ASYNC` — the worker drains whatever exists, so all
+apply from the moment it starts.
 
-| Setting                   | Env                       | Default | What it does                                                                                                                                                           |
-| ------------------------- | ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fulfilment_poll_seconds` | `FULFILMENT_POLL_SECONDS` | `5`     | Poll tick. `LISTEN` does the real-time work; the tick catches notifications lost to a restart and is the retry cadence for a dropped `LISTEN` connection.              |
-| `fulfilment_concurrency`  | `FULFILMENT_CONCURRENCY`  | `4`     | Drainers per wake, each on its own DB session and connection. Raising it costs pool connections; lowering it to 1 means one hung supplier call stalls the whole queue. |
+| Setting                        | Env                            | Default | What it does                                                                                                                                                                                                     |
+| ------------------------------ | ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fulfilment_poll_seconds`      | `FULFILMENT_POLL_SECONDS`      | `5`     | Poll tick, shared by both queues. `LISTEN` does the real-time work; the tick catches notifications lost to a restart and is the retry cadence for a dropped `LISTEN` connection.                                 |
+| `fulfilment_concurrency`       | `FULFILMENT_CONCURRENCY`       | `4`     | Fulfilment drainers per wake, each on its own DB session and connection. Raising it costs pool connections; lowering it to 1 means one hung supplier call stalls the whole queue.                                |
+| `merchant_webhook_concurrency` | `MERCHANT_WEBHOOK_CONCURRENCY` | `2`     | The same dial for the webhook queue, separate because what hangs there is a **third party's** server. Two attempts to one endpoint still serialise at commit, which bounds how hard one queue hits one merchant. |
 
-Both are read once at worker start — changing either needs a **worker**
-restart (unlike `FULFILMENT_ASYNC`, which only the api reads).
+All are read once at worker start — changing any needs a **worker** restart
+(unlike `FULFILMENT_ASYNC`, which only the api reads).
 
 ## Checking queue depth
 

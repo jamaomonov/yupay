@@ -1,11 +1,13 @@
 """Unit tests for the Postgres-queue consumer's pure seams.
 
-Fakes only, no DB. The DB-touching path (``drain_pending_tasks`` itself,
-claim/execute/commit under concurrency) is proven end-to-end in
-``apps/api/tests/integration/test_fulfillment_async.py`` -- this file owns
-only the consumer loop's own logic: the wake/tick race, the listener's
-never-raise reconnect contract, the fan-out to K independent drainers, and
-the shutdown window for fire-and-forget notification sends.
+Fakes only, no DB. The DB-touching paths (``drain_pending_tasks`` and
+``drain_pending_deliveries`` themselves, claim/execute/commit under
+concurrency) are proven end-to-end in
+``apps/api/tests/integration/test_fulfillment_async.py`` and
+``test_merchant_webhook_delivery.py`` -- this file owns only the consumer
+loop's own logic: the wake/tick race, the listener's never-raise reconnect
+contract, the fan-out to K independent drainers **per queue**, and the
+shutdown window for fire-and-forget notification sends.
 """
 
 from __future__ import annotations
@@ -14,15 +16,22 @@ import asyncio
 import time
 from typing import Any
 
-import pytest
-from yupay_worker import consumer
+from yupay.core.config import get_settings
 from yupay_worker.consumer import (
     ListenerManager,
+    Queue,
     _await_stray_tasks,
     _drain_all,
+    _queues,
     _wait_for_wake_or_tick,
     raw_dsn,
 )
+
+
+def _queue(drain: Any, *, name: str = "test", concurrency: int = 1) -> Queue:
+    """A queue whose drain is a fake -- the loop's own logic is what is under
+    test here, never the SQL."""
+    return Queue(name=name, channel=f"{name}_queue", drain=drain, concurrency=concurrency)
 
 
 def test_raw_dsn_strips_the_driver() -> None:
@@ -54,7 +63,9 @@ async def test_listener_failure_falls_back_to_polling() -> None:
     async def exploding_connect(dsn: str):
         raise OSError("no route to host")
 
-    mgr = ListenerManager("postgresql://x", asyncio.Event(), connect=exploding_connect)
+    mgr = ListenerManager(
+        "postgresql://x", asyncio.Event(), channel="fulfillment_queue", connect=exploding_connect
+    )
     await mgr.ensure()  # must not raise
     assert mgr.connected is False
 
@@ -96,9 +107,7 @@ class _FakeSessionFactory:
         return session
 
 
-async def test_drainers_run_in_parallel_each_on_its_own_session(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_drainers_run_in_parallel_each_on_its_own_session() -> None:
     """K drainers must be genuinely concurrent and must not share a session.
 
     The fake drain blocks until all K have entered it, so a sequential
@@ -110,7 +119,7 @@ async def test_drainers_run_in_parallel_each_on_its_own_session(
     all_in = asyncio.Event()
     entered = 0
 
-    async def fake_drain(db: Any, *, limit: int = 20) -> int:
+    async def fake_drain(db: Any) -> int:
         nonlocal entered
         entered += 1
         if entered == concurrency:
@@ -118,10 +127,11 @@ async def test_drainers_run_in_parallel_each_on_its_own_session(
         await all_in.wait()
         return 0
 
-    monkeypatch.setattr(consumer, "drain_pending_tasks", fake_drain)
     factory = _FakeSessionFactory()
 
-    await asyncio.wait_for(_drain_all(factory, concurrency=concurrency), timeout=5)
+    await asyncio.wait_for(
+        _drain_all(factory, (_queue(fake_drain, concurrency=concurrency),)), timeout=5
+    )
 
     assert len(factory.sessions) == concurrency
     assert len({id(s) for s in factory.sessions}) == concurrency  # no sharing
@@ -129,44 +139,118 @@ async def test_drainers_run_in_parallel_each_on_its_own_session(
     assert all(s.closed for s in factory.sessions)
 
 
-async def test_drainer_commits_after_every_batch(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_drainer_commits_after_every_batch() -> None:
     """Drain-until-dry: a full batch is committed before the next is claimed,
     so a crash mid-drain loses only the batch in flight."""
     batches = [20, 20, 0]
 
-    async def fake_drain(db: Any, *, limit: int = 20) -> int:
+    async def fake_drain(db: Any) -> int:
         return batches.pop(0)
 
-    monkeypatch.setattr(consumer, "drain_pending_tasks", fake_drain)
     factory = _FakeSessionFactory()
 
-    await _drain_all(factory, concurrency=1)
+    await _drain_all(factory, (_queue(fake_drain),))
 
     assert factory.sessions[0].commits == 3  # two full batches + the dry one
 
 
-async def test_one_drainers_failure_neither_escapes_nor_stops_the_others(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+async def test_one_drainers_failure_neither_escapes_nor_stops_the_others() -> None:
     """An infra failure (DB down, a deadlock with a refund cascade) must roll
     that drainer back and leave the rest of the fan-out working -- ``gather``
     must never see the exception."""
     calls = 0
 
-    async def fake_drain(db: Any, *, limit: int = 20) -> int:
+    async def fake_drain(db: Any) -> int:
         nonlocal calls
         calls += 1
         if calls == 1:
             raise OSError("connection reset")
         return 0
 
-    monkeypatch.setattr(consumer, "drain_pending_tasks", fake_drain)
     factory = _FakeSessionFactory()
 
-    await _drain_all(factory, concurrency=2)  # must not raise
+    await _drain_all(factory, (_queue(fake_drain, concurrency=2),))  # must not raise
 
     assert sum(s.rollbacks for s in factory.sessions) == 1
     assert sum(s.commits for s in factory.sessions) == 1
+
+
+# ---------- two queues, one loop ----------
+
+
+async def test_one_wake_drains_every_queue() -> None:
+    """The merchant-webhook outbox is a second queue on the same loop. A wake
+    (or a tick) has to drain both, or one NOTIFY would leave the other queue
+    waiting on the next tick for no reason."""
+    drained: list[str] = []
+
+    def _recorder(name: str) -> Any:
+        async def _drain(db: Any) -> int:
+            drained.append(name)
+            return 0
+
+        return _drain
+
+    await _drain_all(
+        _FakeSessionFactory(),
+        (_queue(_recorder("tasks"), name="tasks"), _queue(_recorder("hooks"), name="hooks")),
+    )
+
+    assert sorted(drained) == ["hooks", "tasks"]
+
+
+async def test_an_empty_queue_costs_one_query_and_returns() -> None:
+    """The cheap half of "a wake drains both": a queue with nothing due
+    answers 0 on its first claim and the drainer stops."""
+    calls = 0
+
+    async def fake_drain(db: Any) -> int:
+        nonlocal calls
+        calls += 1
+        return 0
+
+    await _drain_all(_FakeSessionFactory(), (_queue(fake_drain),))
+
+    assert calls == 1
+
+
+async def test_a_queue_that_crashes_does_not_stop_the_other_queue() -> None:
+    """The webhook drain reaches a third party's server; the fulfilment drain
+    must not be taken down with it, in either direction."""
+    ran = 0
+
+    async def exploding(db: Any) -> int:
+        raise OSError("connection reset")
+
+    async def healthy(db: Any) -> int:
+        nonlocal ran
+        ran += 1
+        return 0
+
+    await _drain_all(
+        _FakeSessionFactory(),
+        (_queue(exploding, name="bad"), _queue(healthy, name="good")),
+    )
+
+    assert ran == 1
+
+
+def test_the_two_queues_are_the_two_channels_their_producers_notify() -> None:
+    """A channel spelled twice is a queue nobody drains and no test fails, so
+    both names come from the modules that emit them."""
+    from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL
+
+    channels = [queue.channel for queue in _queues(get_settings())]
+    assert channels == ["fulfillment_queue", WEBHOOK_QUEUE_CHANNEL]
+
+
+def test_each_queue_gets_its_own_concurrency_dial() -> None:
+    """One dial for both would mean tuning a hung supplier call and a hung
+    merchant endpoint with the same number."""
+    cfg = get_settings()
+    tasks, hooks = _queues(cfg)
+    assert tasks.concurrency == cfg.fulfilment_concurrency
+    assert hooks.concurrency == cfg.merchant_webhook_concurrency
 
 
 # ---------- shutdown window for fire-and-forget sends ----------

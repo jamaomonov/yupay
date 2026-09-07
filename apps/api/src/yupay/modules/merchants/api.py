@@ -31,8 +31,10 @@ and are exported normally.
 Where each name comes from is an implementation detail this facade exists to
 hide — ``service`` (the account), ``credentials`` (its API keys), ``deposit``
 (its money), ``admin`` (the catalog B2B knobs and the outgoing-webhook
-configuration), ``webhooks`` (the outbox producer), ``orders``,
-``price_list``, ``pricing``, ``signing``.
+configuration), ``webhooks`` (the outbox producer), ``webhook_delivery`` (the
+drain ``apps/worker`` runs, exported beside the channel constant it wakes on
+so the queue cannot be spelled twice), ``orders``, ``price_list``,
+``pricing``, ``signing``.
 Importers see one surface and are unaffected when a file is split.
 """
 
@@ -87,6 +89,7 @@ from yupay.modules.merchants.signing import (
     signature_matches,
 )
 from yupay.modules.merchants.transactions import build as build_transactions_page
+from yupay.modules.merchants.webhook_delivery import drain_pending_deliveries
 from yupay.modules.merchants.webhooks import (
     EVENT_BALANCE_CREDITED,
     EVENT_ORDER_STATUS_CHANGED,
@@ -123,6 +126,7 @@ __all__ = [
     "credit_deposit",
     "deposit_balance",
     "disable_webhook",
+    "drain_pending_deliveries",
     "effective_cost",
     "enqueue_balance_credited",
     "enqueue_order_status_changed",

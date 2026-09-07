@@ -434,6 +434,37 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- Merchant outgoing webhooks (M3a) ---
+    merchant_webhook_concurrency: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "How many delivery drainers the worker runs in parallel for "
+            "`merchant_webhook_deliveries`, each on its own DB session. Same "
+            "reasoning as `fulfilment_concurrency` and a separate dial for a "
+            "different failure: here the thing that hangs is a merchant's own "
+            "server, and one drainer would let a single endpoint sitting on "
+            "the 10s budget stall every other reseller's events behind it. "
+            "Two attempts to the SAME endpoint still serialise at commit "
+            "(both write that merchant's hook row), which is a feature — it "
+            "bounds how hard one queue can hit one server."
+        ),
+    )
+    merchant_webhook_disable_after_failures: int = Field(
+        default=20,
+        ge=1,
+        description=(
+            "Consecutive failed deliveries before a merchant's webhook is "
+            "auto-disabled and their operator is emailed. Counts attempts, "
+            "not events, so retries of one dead endpoint reach it: with the "
+            "30s-doubling backoff, 20 is roughly two hours of sustained "
+            "failure at ordinary volume — long enough not to punish a deploy "
+            "window, short enough that nobody reads a week-old backlog. "
+            "Reset to 0 by any success and by `PUT /admin/merchants/{id}/"
+            "webhook`, which is the whole recovery path."
+        ),
+    )
+
     # --- Stuck-order watchdog (ADR-0046) ---
     stuck_order_alert_after_minutes: int = Field(
         default=15,

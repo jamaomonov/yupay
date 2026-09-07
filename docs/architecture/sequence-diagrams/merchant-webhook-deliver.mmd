@@ -1,0 +1,51 @@
+sequenceDiagram
+    autonumber
+    participant WK as apps/worker (yupay_worker.consumer)
+    participant D as merchants.webhook_delivery.drain_pending_deliveries
+    participant DB as Postgres (the worker's transaction)
+    participant OUT as core.outbound.post_json (SSRF-checked)
+    participant M as The merchant's server
+    participant MAIL as notifications (email)
+
+    Note over WK: woken by NOTIFY merchant_webhook_queue,<br/>or by the poll tick. One wake drains both queues.
+
+    WK->>D: drain_pending_deliveries(db)
+    D->>DB: SELECT id, merchant_id FROM merchant_webhook_deliveries<br/>JOIN merchant_webhooks (disabled_at IS NULL)<br/>WHERE status='pending' AND next_attempt_at <= now()<br/>ORDER BY next_attempt_at, created_at, id<br/>LIMIT 20 FOR UPDATE OF deliveries SKIP LOCKED
+    Note right of DB: `id` is the tie-break: both timestamps default to<br/>CURRENT_TIMESTAMP = TRANSACTION START, so the paid and<br/>fulfilling rows of one placement are byte-identical in<br/>both. uuid7 encodes enqueue order.
+
+    loop each row, merchant-major (merchants in id order), one SAVEPOINT each
+        D->>DB: SELECT disabled_at, secret_enc, secret_nonce
+        alt disabled since the claim (admin, or this batch's own auto-disable)
+            D-->>WK: skipped, row untouched and still pending
+        else enabled
+            D->>D: decrypt under PURPOSE_MERCHANT_WEBHOOK, sign<br/>{ts}\n{delivery_id}\n{event_type}\n{sha256(body)}
+            D->>DB: attempts_count += 1, status = in_progress
+            D->>OUT: POST url (snapshot) + X-Yupay-{Delivery,Event,Timestamp,Signature}
+            OUT->>M: TLS to a re-checked, pinned public address
+
+            alt 2xx
+                M-->>OUT: 200
+                D->>DB: status=delivered, response_code, response_body (clipped 2048)
+                D->>DB: hook.failure_streak = 0, last_success_at
+            else 408 / 429 / 5xx, or a transport failure (they did not answer)
+                D->>DB: status=pending, next_attempt_at = now + backoff<br/>(30s doubling to 1h; Retry-After honoured on 429/503, clamped)
+                D->>DB: hook.failure_streak += 1 (hook row locked FOR UPDATE)
+            else 4xx / redirect, or a RECEIVED refusal (too large, compressed)
+                Note right of D: retrying re-delivers, or gets the same answer
+                D->>DB: status=failed, last_error (clipped 512)
+                D->>DB: hook.failure_streak += 1
+            else OutboundBrokenError -- our own bug
+                D->>DB: status=failed
+                Note right of D: the hook is NOT touched: our bug must never<br/>auto-disable a working endpoint
+            end
+
+            alt failure_streak reached merchant_webhook_disable_after_failures
+                D->>DB: hook.disabled_at = now
+                D->>MAIL: schedule_after_commit -> one email per disable,<br/>naming the HOST only (a path can carry a token)
+                Note over D,DB: queued rows stay pending; PUT /admin/merchants/{id}/webhook<br/>clears disabled_at + the streak and resumes them
+            end
+        end
+    end
+
+    D-->>WK: rows claimed
+    WK->>DB: COMMIT (after every batch), then drain again until a batch is empty

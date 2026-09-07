@@ -273,6 +273,56 @@ Two consequences for whoever is on call:
   whole point of the call-site override: inline, a supplier purchase would sit
   inside the transaction that debits the deposit.
 
+## Outgoing webhooks: the auto-disable, and turning one back on
+
+The worker drains `merchant_webhook_deliveries` on a second LISTEN channel
+(`merchant_webhook_queue`) beside the fulfilment queue, so **a stalled worker
+means no webhooks** as well as no fulfilment. Nothing is lost while it is
+down: rows stay `pending` and are claimed when it comes back.
+
+**What auto-disable looks like.** After
+`MERCHANT_WEBHOOK_DISABLE_AFTER_FAILURES` (default 20) consecutive failed
+_attempts_ — retries count — `merchant_webhooks.disabled_at` is set and every
+`merchant_users` operator gets one email. One per disable, never one per
+attempt. In Loki:
+
+```
+merchant_webhook.auto_disabled     merchant_id=… failures=… error=…
+merchant_webhook.attempt_failed    delivery_id=… status_code=… outcome=…
+```
+
+**The only way back on** is `PUT /api/v1/admin/merchants/{id}/webhook` with the
+URL (the same one, or a corrected one). It clears `disabled_at` **and** the
+streak, does not rotate the secret, and the queued backlog resumes from where
+it stopped. There is deliberately no second re-enable path — do not clear
+`disabled_at` by hand in SQL, because the streak would stay at its ceiling and
+the very next failure would disable the hook again.
+
+**Reading the delivery log.** One row per event in
+`merchant_webhook_deliveries`: `status`, `attempts_count`, `next_attempt_at`,
+their `response_code` and the first 2 KB of their `response_body`, plus our own
+`last_error`. Three answers that surprise people:
+
+- `last_error` starting `AddressNotAllowedError` / `UrlNotAllowedError` means
+  **we** refused to connect — their hostname resolved to a private or loopback
+  address at send time. It is terminal for that row (the row carries a URL
+  snapshot), and the fix is on their side plus a re-`PUT`.
+- `ResponseTooLargeError` / `ContentEncodingNotAllowedError` mean their server
+  **received** the webhook and answered unusably — over 64 KB, or compressed
+  when we asked for `identity`. Terminal by design: retrying would deliver a
+  second copy of an event they already have. A merchant whose server gzips
+  unconditionally will see every delivery fail this way.
+- `OutboundBrokenError` is **ours**, not theirs. It never counts toward the
+  failure streak and never disables a hook; treat one as a bug report.
+
+**Not yet verified on real infrastructure** (M3a Task 4): every test is
+loopback or stubbed, so the first TLS handshake to a real merchant endpoint
+happens in staging. The specific thing to watch there is `AI_ADDRCONFIG` on the
+resolver combined with the client's no-fallback address pin: glibc-in-container
+has known quirks (loopback does not count as a "configured" address), so
+confirm a real dual-stack merchant host is actually deliverable from the prod
+worker before a pilot integrates.
+
 ## A merchant order stuck in `fulfilling`
 
 Two very different situations wear the same status, and `failure_reason` on
