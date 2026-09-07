@@ -30,8 +30,11 @@ their own short timeout and a hang counts as the expected failure.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -402,19 +405,35 @@ def _run(mutation: Mutation) -> tuple[str, list[str]]:
         "--no-cov",
         *mutation.extra_args,
     ]
+    # Own process group, killed as a group in ``finally``.
+    #
+    # Two mutations here hang on purpose, and ``subprocess.run(timeout=...)``
+    # kills only its direct child — and only if its own ``except`` gets to run.
+    # Kill this harness while a hung pytest is in flight (Ctrl-C, an agent
+    # stopped, a terminal closed) and that pytest is orphaned. Three of them
+    # were found alive after two hours on one occasion, competing for the same
+    # Postgres and Redis the rest of the suite uses, which is exactly the kind
+    # of load that makes unrelated tests flake.
+    process = subprocess.Popen(
+        command,
+        cwd=REPO,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
     try:
-        completed = subprocess.run(
-            command,
-            cwd=REPO,
-            capture_output=True,
-            text=True,
-            timeout=mutation.timeout,
-            check=False,
-        )
+        stdout, _ = process.communicate(timeout=mutation.timeout)
     except subprocess.TimeoutExpired:
         if mutation.hang_is_failure:
             return "HUNG (the failure this prevents)", []
         return "TIMED OUT", []
+    finally:
+        if process.poll() is None:
+            with contextlib.suppress(ProcessLookupError, PermissionError):
+                os.killpg(process.pid, signal.SIGKILL)
+            process.wait()
+    completed = subprocess.CompletedProcess(command, process.returncode, stdout, "")
     failures = [
         match.group("name")
         for line in completed.stdout.splitlines()
