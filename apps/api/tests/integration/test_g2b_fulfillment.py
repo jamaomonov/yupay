@@ -438,8 +438,8 @@ async def test_game_pending_then_webhook_completes(
     items = deliveries.json()["items"]
     assert len(items) == 1
     assert items[0]["artifact_kind"] == "topup_receipt"
-    # external_order_id is an internal audit field stripped by the artifact
-    # allow-list (fulfillment.service.BUYER_SAFE_ARTIFACT_KEYS); the
+    # external_order_id is an internal audit field, stripped by the artifact
+    # allow-list ``fulfillment.service.BUYER_SAFE_ARTIFACT_KEYS``. The
     # human-readable message is the only buyer-safe field on a game top-up
     # receipt.
     assert "external_order_id" not in items[0]["artifact"]

@@ -26,7 +26,7 @@ from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient, Response
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
@@ -1048,6 +1048,47 @@ async def test_two_concurrent_creates_with_one_key_make_one_order_and_one_debit(
     assert await _balance(db_session, merchant_id) == Decimal("8.93")
 
 
+async def _wait_until_blocked_on_the_orders_insert(db: AsyncSession) -> None:
+    """Block until another backend is waiting on a lock to INSERT into ``orders``.
+
+    Polling ``pg_stat_activity`` rather than sleeping a guessed interval. A
+    sleep would make the test *look* deterministic and quietly stop
+    discriminating on a slow machine: if the request had not reached its
+    INSERT yet, ``not loser.done()`` is true for the wrong reason, the winner
+    commits, and the loser then finds it on a pre-check and never enters the
+    branch under test. Waiting for the lock itself cannot degrade that way —
+    either the wait appears, or the test fails saying it never did.
+
+    Args:
+        db: A session on the same database, used only to read the view.
+
+    Raises:
+        AssertionError: If no such wait appears within the deadline.
+    """
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        # End the transaction each round. ``pg_stat_activity`` is snapshotted
+        # once per transaction, so a session that holds one open re-reads the
+        # same stale answer until the deadline and then fails on a wait that
+        # did in fact happen.
+        await db.rollback()
+        waiting = (
+            await db.execute(
+                text(
+                    "SELECT count(*) FROM pg_stat_activity "
+                    "WHERE wait_event_type = 'Lock' AND query ILIKE 'INSERT INTO orders %'"
+                )
+            )
+        ).scalar_one()
+        if waiting:
+            return
+        await asyncio.sleep(0.05)
+    raise AssertionError(
+        "no backend ever waited on a lock to insert into orders — the loser did "
+        "not reach its INSERT, so this test would not be exercising the branch"
+    )
+
+
 async def test_a_duplicate_that_loses_the_unique_index_gets_the_winner_not_a_500(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],
@@ -1070,9 +1111,10 @@ async def test_a_duplicate_that_loses_the_unique_index_gets_the_winner_not_a_500
     commit**, so it holds the uncommitted ``(merchant_id, idempotency_key)``
     key. The loser then goes through the live endpoint, misses on both
     pre-checks (W's row is invisible), reaches its INSERT and **blocks** on
-    W's key — which is what ``assert not loser.done()`` pins, and what makes
-    the rest of the test more than a re-run of the replay path. Committing W
-    releases it into the unique violation, the rollback, and the branch.
+    W's key. That wait is read out of ``pg_stat_activity`` rather than waited
+    for by a sleep, and it is what makes the rest of the test more than a
+    re-run of the replay path. Committing W releases it into the unique
+    violation, the rollback, and the branch.
 
     Before the fix the loser answered a bare ``500``. ``create_order``'s
     ``db.rollback()`` expires every object in the session's identity map — the
@@ -1100,16 +1142,13 @@ async def test_a_duplicate_that_loses_the_unique_index_gets_the_winner_not_a_500
             await winner.execute(select(Merchant).where(Merchant.id == merchant_id))
         ).scalar_one()
         placed = await merchants.place_order(
-            winner, merchant=merchant, body=MerchantOrderCreateIn(**payload)
+            winner, merchant=merchant, body=MerchantOrderCreateIn.model_validate(payload)
         )
         await winner.flush()
 
         loser = asyncio.create_task(_post_order(integration_client, key_id, secret, payload))
-        await asyncio.sleep(0.5)
-        assert not loser.done(), (
-            "the loser answered without waiting on the winner's key — it never "
-            "reached the INSERT, so this test is not exercising the branch"
-        )
+        await _wait_until_blocked_on_the_orders_insert(db_session)
+        assert not loser.done(), "the loser answered without waiting on the winner's key"
 
         await winner.commit()
         r = await loser
