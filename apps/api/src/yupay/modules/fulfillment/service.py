@@ -20,13 +20,13 @@ from collections.abc import Coroutine, Iterable
 from typing import Any
 
 from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import ConflictError, NotFoundError
+from yupay.core.errors import AppError, ConflictError, NotFoundError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.models import (
@@ -722,6 +722,196 @@ def _apply_failure(*, task: FulfillmentTask, item: OrderItem, result: FulfillRes
     _record_or_warn(task, result.money_outcome, discovered="fulfill")
 
 
+# ---------- the merchant deposit, after a terminal failure ----------
+
+#: Recorded on the refund's ledger transaction. A closed internal label, not a
+#: supplier's or an operator's words: the row is readable through the admin
+#: audit feed.
+_MERCHANT_REFUND_REASON = "fulfillment_failed"
+
+
+async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
+    """Give a merchant back what a failed order took, or call a human.
+
+    The one seam M3b Task 3 adds to the saga. It fires only on
+    :attr:`MoneyOutcome.RETURNED` and only on a **merchant** order; ``SPENT``
+    and ``UNKNOWN`` post nothing and raise an ops alert instead, because
+    refunding money we did not get back is not a safe failure mode.
+
+    **Retail is untouched, and the gate is one line.**
+    :data:`INVENTORY_FAILURE_MONEY_OUTCOME` is ``RETURNED`` and fires on every
+    storefront order that runs the warehouse dry — the most common terminal
+    failure in this codebase — so ``order.merchant_id is not None`` is doing
+    real work rather than documenting an impossibility. It is also checked
+    before ``merchants`` is imported at all.
+
+    **Why the caller runs this and not ``process_task``.** Under
+    ``drain_pending_tasks`` a task runs inside a SAVEPOINT whose crash arm
+    answers an unexpected exception by recording ``UNKNOWN`` — the one value
+    :func:`record_money_outcome` will never let anything move back down, with
+    no operator re-grade path anywhere. A refund that raised inside that
+    savepoint would therefore roll back the ``RETURNED`` it was acting on and
+    replace it with a permanent "we cannot tell": a refundable failure turned
+    unrefundable by the attempt to refund it. So this runs **after** the
+    savepoint is released, at each of the three sites that can terminally fail
+    a merchant task — the drain, an admin retry, and the poll/webhook
+    reconciler. Those three are exhaustive because merchant orders are
+    enqueue-only by construction (``merchants.orders._enqueue_only``), so no
+    merchant task is ever run by the synchronous ``start_for_order`` path.
+
+    A refusal from ``refund_order`` is caught, logged at ``error`` and
+    alerted, leaving a task that still reads ``failed`` + ``RETURNED`` — a
+    human decides, and the failure stays refundable by hand. What is **not**
+    caught is anything outside the modelled refusals and the database's own
+    errors: a ``NameError`` from a circular import on the money path is
+    exactly what ``main``'s 64decbd hid behind a bare ``except Exception``
+    for six weeks, and it must be loud. The cost of that is one drain batch
+    rolled back and re-run, which the supplier idempotency key
+    (``process_task`` passes ``task.id``) makes safe.
+
+    Args:
+        db: Session. The caller owns the transaction. The task's failure must
+            already be durable in it — see above.
+        task_id: The task that has just terminated.
+    """
+    task = await _load_task(db, task_id)
+    # ``money_outcome_of`` outlives the failure that wrote it (``retry_task``
+    # does not clear it), so the pair its docstring requires is checked here:
+    # a task that failed and then succeeded on a retry still answers, and
+    # refunding on that would give away the goods and the money.
+    if task.status != "failed":
+        return
+    outcome = money_outcome_of(task)
+    if outcome is None:
+        return
+    order = (await db.execute(select(Order).where(Order.id == task.order_id))).scalar_one()
+    if order.merchant_id is None:
+        return
+    order_id = order.id
+    supplier = task.supplier
+
+    # The **item**, not just the task, and the rule is inherited rather than
+    # invented: a supplier that refuses for lack of *our* balance fails the
+    # task but deliberately leaves the item ``in_progress``, so the storefront
+    # keeps saying "обработка" while an operator tops up and retries.
+    # ``order_status._failure_reason`` reads the item for that same reason.
+    #
+    # It matters here because ``money_outcome`` outlives the attempt that
+    # wrote it and the stall records none: a task that failed ``RETURNED``,
+    # whose refund then failed, and which an admin retried into a stall,
+    # arrives here still carrying the earlier attempt's verdict. Refunding
+    # then would return the money for an order we are about to deliver, and
+    # would publish ``refunded_usd`` against a ``failure_reason`` of ``null``.
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one()
+    if item.fulfillment_state != "failed":
+        return
+
+    if outcome is not MoneyOutcome.RETURNED:
+        _dispatch_alert(
+            _alert_merchant_needs_a_human(
+                task_id=task_id, order_id=order_id, supplier=supplier, outcome=outcome
+            )
+        )
+        return
+
+    # Imported here, not at module scope: ``merchants`` imports this module
+    # (``order_status.py``, for the delivery artifact and its allow-list), so
+    # a module-scope import back would close the cycle and break every caller
+    # that is not already inside the app. Same discipline, and same reason,
+    # as ``orders.service``'s reach for ``affiliate.discount``.
+    from yupay.modules.merchants import refund as merchant_refund
+
+    try:
+        # Its own savepoint: a refusal must roll back the half-written
+        # posting without touching the failure record this is acting on.
+        async with db.begin_nested():
+            txn = await merchant_refund.refund_order(
+                db, order=order, reason=_MERCHANT_REFUND_REASON
+            )
+    except (merchant_refund.RefundError, AppError, SQLAlchemyError) as exc:
+        # Neither ``order`` nor ``task`` may be read from here: a savepoint
+        # rollback expires the objects it touched, and a lazy refresh under
+        # asyncio raises ``MissingGreenlet``. Everything below is a plain
+        # ``str`` captured before the savepoint opened.
+        # ``_crash_detail``, not ``str(exc)`` and not ``log.exception``: a
+        # SQLAlchemy error stringifies as the driver message, then the full
+        # statement, then its **bound parameters** — customer email, delivery
+        # address (AGENTS.md §9). Its first-line-plus-cap rule is what keeps
+        # those out of the log, and a traceback would put them straight back.
+        detail = _crash_detail(exc)
+        log.error(  # noqa: TRY400 -- see above: no traceback on this path
+            "merchant_refund.failed",
+            order_id=order_id,
+            task_id=task_id,
+            supplier=supplier,
+            error=detail,
+        )
+        _dispatch_alert(
+            _alert_merchant_refund_failed(task_id=task_id, order_id=order_id, error=detail)
+        )
+        return
+    log.info(
+        "merchant_refund.posted",
+        order_id=order_id,
+        task_id=task_id,
+        supplier=supplier,
+        transaction_id=txn.id,
+    )
+
+
+async def _refuse_a_settled_merchant_order(db: AsyncSession, *, task: FulfillmentTask) -> None:
+    """Refuse to re-drive a merchant order whose money has already gone back.
+
+    The loophole this closes needs no misbehaviour to reach.
+    ``deposit.charge_deposit`` is idempotent on ``merchant-order:{order_id}``,
+    so a **second** charge for one order replays the first transaction and
+    debits nothing. Refund the deposit, click Retry — the ordinary response to
+    a failed task, one button in the admin SPA, and the failure it is for
+    looks identical to this one — and a success hands the reseller the goods
+    *and* their money, with no code path noticing.
+
+    Refusing is the answer rather than re-charging under a fresh key. A
+    reseller who has been told the money is back has very likely already
+    settled with their own end customer; silently debiting them again for an
+    order they closed is a surprise money movement, and it can fail on a
+    balance that no longer covers it, mid-retry. The recovery is the one their
+    contract already describes: place a new order.
+
+    It reads the same sum ``refunded_usd`` publishes, so it catches a **hand**
+    settlement too — support crediting the order at 10:00 and an operator
+    retrying at 10:05 is the same free-goods loophole through a different
+    door, and it predates the automatic refund.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        task: The task about to be re-driven or force-completed.
+
+    Raises:
+        ConflictError: ``deposit_already_returned``.
+    """
+    merchant_id = (
+        await db.execute(select(Order.merchant_id).where(Order.id == task.order_id))
+    ).scalar_one()
+    if merchant_id is None:
+        return
+    from yupay.modules.merchants import refund as merchant_refund
+
+    returned = await merchant_refund.returned_for_order(
+        db, merchant_id=merchant_id, order_id=task.order_id
+    )
+    if returned <= 0:
+        return
+    raise ConflictError(
+        "this order's deposit has already been returned; delivering it now "
+        "would hand over goods nobody paid for",
+        code=merchant_refund.CODE_DEPOSIT_ALREADY_RETURNED,
+        order_id=task.order_id,
+        returned_usd=str(returned),
+    )
+
+
 #: Cap for a crashed task's stored error. Long enough to keep a stack-less
 #: message useful in the admin UI, short enough that a driver that dumps a
 #: whole statement can't fill the column (or a log line) with it.
@@ -822,6 +1012,11 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
                 task_id=task_id,
                 error=detail[:200],
             )
+        # Outside the SAVEPOINT above, deliberately: its crash arm answers an
+        # unexpected exception with a permanent ``UNKNOWN``, so a refund that
+        # raised inside it would convert a refundable failure into an
+        # unrefundable one. See ``_settle_merchant_deposit``.
+        await _settle_merchant_deposit(db, task_id=task_id)
         settled.add(order_id)
         ran += 1
     for order_id in settled:
@@ -844,6 +1039,10 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
             "task is not retryable in its current state",
             extra={"status": task.status},
         )
+    # Before anything is written: a retry of an order whose deposit already
+    # went back would deliver goods nobody paid for, because a second charge
+    # replays its key and debits nothing.
+    await _refuse_a_settled_merchant_order(db, task=task)
     task.status = "pending"
     task.last_error = None
     # ``money_outcome`` is deliberately **not** cleared. It is the only memory
@@ -854,6 +1053,7 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     task.updated_at = now()
     await db.flush()
     task = await process_task(db, task_id=task_id)
+    await _settle_merchant_deposit(db, task_id=task_id)
     await _try_settle_order(db, order_id=task.order_id)
     await db.flush()
     return task
@@ -1084,6 +1284,100 @@ async def _alert_fulfillment_error(
         )
 
 
+# ---------- merchant money alerting ----------
+
+#: How long one supplier's "a human must decide" alerts stay quiet after the
+#: first. Same window and same reason as the low-balance one: a supplier
+#: outage parks fifty merchant orders in a minute and every one of them wants
+#: the same person to look at the same inbox. Keyed by supplier **and**
+#: outcome, so "waxpeer kept our money" does not silence "we cannot tell about
+#: g2b" — two different investigations.
+_MERCHANT_MONEY_ALERT_DEDUPE_SECONDS = 15 * 60
+
+
+async def _alert_merchant_needs_a_human(
+    *, task_id: str, order_id: str, supplier: str | None, outcome: MoneyOutcome
+) -> None:
+    """Tell ops a merchant order failed with money we cannot return automatically.
+
+    ``SPENT`` and ``UNKNOWN`` say different things to the person who reads
+    this — one is "go and get our money back", the other is "find out what
+    happened" — so the outcome is in the message and in the dedupe key even
+    though the automatic refund treats them identically.
+
+    Takes plain strings, not the ORM objects: this runs later, on the event
+    loop, after the caller's session has moved on or been rolled back to a
+    savepoint that expired them.
+
+    Never raises: an alerting outage must not fail an order (AGENTS.md §9 —
+    order ids, amounts and supplier slugs are fine to log; nothing here is
+    PII).
+    """
+    from yupay.modules.notifications import api as notifications
+
+    key = f"alert:merchant_money:{supplier or '?'}:{outcome.value}"
+    try:
+        if await _set_redis_dedupe(key, ttl_seconds=_MERCHANT_MONEY_ALERT_DEDUPE_SECONDS):
+            return
+        verdict = (
+            "поставщик оставил деньги себе"
+            if outcome is MoneyOutcome.SPENT
+            else "что с деньгами — выяснить нельзя"
+        )
+        text = (
+            "<b>💸 Заказ реселлера: депозит не вернётся сам</b>\n"
+            f"Поставщик: <code>{html.escape(supplier or '?')}</code> · "
+            f"<code>{html.escape(outcome.value)}</code> — {verdict}\n"
+            f"Заказ: <code>{order_id}</code>\n"
+            f"Задача: <code>{task_id}</code>\n"
+            "<i>Автовозврат не сработал по правилу, а не по ошибке. "
+            "Решение за человеком — см. Fulfilment Inbox и раннбук "
+            "merchant-b2b.</i>"
+        )
+        await notifications.send_admin_alert(text, kind="merchant_money_outcome")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.merchant_money_alert_failed",
+            task_id=task_id,
+            error=str(exc)[:200],
+        )
+
+
+async def _alert_merchant_refund_failed(*, task_id: str, order_id: str, error: str) -> None:
+    """Tell ops an automatic deposit refund did not post.
+
+    Deduped **per order** and for an hour, not per supplier: each one of these
+    is one reseller's money sitting where it should not, and collapsing two of
+    them into one message would lose the second order id — the only thing an
+    operator needs to settle it by hand.
+
+    Never raises, for the same reason as :func:`_alert_fulfillment_error`.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    try:
+        if await _set_redis_dedupe(
+            f"alert:merchant_refund_failed:{order_id}",
+            ttl_seconds=_ERROR_ALERT_DEDUPE_SECONDS,
+        ):
+            return
+        text = (
+            "<b>🛑 Автовозврат депозита не прошёл</b>\n"
+            f"Заказ: <code>{order_id}</code>\n"
+            f"Задача: <code>{task_id}</code>\n"
+            f"<pre>{html.escape(error[:300])}</pre>"
+            "<i>Заказ остаётся возвращаемым: верни депозит вручную "
+            "(раннбук merchant-b2b, «Settling a failed order»).</i>"
+        )
+        await notifications.send_admin_alert(text, kind="merchant_refund_failed")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.merchant_refund_alert_failed",
+            order_id=order_id,
+            error=str(exc)[:200],
+        )
+
+
 # ---------- low-balance alerting ----------
 
 
@@ -1264,6 +1558,11 @@ async def process_webhook_update(
         task.last_error = status.error or "supplier reported failure"
         item.fulfillment_state = "failed"
         _record_or_warn(task, status.money_outcome, discovered="check_status")
+        # The third and last site that can terminally fail a merchant task.
+        # Inside the branch rather than below it so an ordinary
+        # still-in-progress tick — which is most of them, every 60 s per open
+        # task — does not pay for a task reload it has no use for.
+        await _settle_merchant_deposit(db, task_id=task_id)
     # ``in_progress`` — leave the task untouched; the next poll / webhook
     # will fire again.
 
@@ -1322,6 +1621,13 @@ async def complete_manual_task(
             "task cannot be force-completed in its current state",
             extra={"status": task.status},
         )
+    # The same free-goods loophole as ``retry_task``'s, through the other
+    # button: ``force=True`` accepts any supplier's ``failed`` task and hands
+    # the artifact over without touching the ledger. Checked for both modes —
+    # a ``manual`` task in ``in_progress`` cannot have been refunded, since a
+    # refund only ever follows a failure, so the guard costs one bounded read
+    # and removes the need to reason about that each time the guards move.
+    await _refuse_a_settled_merchant_order(db, task=task)
     if artifact_kind not in _VALID_ARTIFACT_KINDS:
         from yupay.core.errors import ValidationError
 

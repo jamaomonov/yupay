@@ -216,6 +216,14 @@ async def credit_deposit(
     delivery stops being invisible to the merchant it was paid to. It must be
     an order of **this** merchant's; one that is not answers ``404
     order_not_found``, identically to an id that never existed.
+
+    Since M3b Task 3 an attributed credit that would take the order past what
+    it charged answers ``409 order_already_settled``. Most failed deliveries
+    now settle themselves within seconds, so the operator reaching for this
+    form is the one most likely to be acting on what they saw a minute ago,
+    and ``refunded_usd`` is published to the merchant as "how much of
+    ``price_usd`` came back". Goodwill beyond the order's own price is an
+    **unattributed** credit — omit ``order_id``.
     """
     if not idempotency_key or len(idempotency_key) < MIN_IDEMPOTENCY_KEY_LENGTH:
         raise ValidationError(

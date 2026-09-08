@@ -653,12 +653,24 @@ retail order) or settle it — next section.
 
 ## Settling a failed order by hand
 
-**Nothing refunds a merchant order on its own.** A failed supplier delivery
-leaves the deposit debited, and support settles it as a **deposit credit that
-names the order** — the `order_id` body field on the deposit-credit endpoint
-(M3b). Use it. A credit without it is an ordinary top-up of the balance and is
-invisible on the order it was meant to settle, which is what the merchant will
-be looking at.
+**Check `refunded_usd` first — most failed orders now settle themselves.**
+Since M3b Task 3 a supplier failure whose money came back to us posts the
+refund automatically, within seconds of the failure, as a
+`merchant_order_refund` row against the order. This procedure is for the rest:
+a supplier that kept our money (`spent`), one we cannot get an answer out of
+(`unknown` — which today is every `g2b` failure), and an automatic refund that
+could not post. Those raise a Telegram alert of their own; see "When the
+automatic refund does not fire" below.
+
+If the order has already been settled automatically, this procedure will
+refuse you with `409 order_already_settled` rather than double-credit the
+merchant. That is the guard working, not a problem to route around.
+
+**For everything else, support settles it as a deposit credit that names the
+order** — the `order_id` body field on the deposit-credit endpoint (M3b). Use
+it. A credit without it is an ordinary top-up of the balance and is invisible
+on the order it was meant to settle, which is what the merchant will be
+looking at.
 
 What an attributed credit does, so you can tell a merchant what to expect:
 
@@ -731,6 +743,13 @@ The steps:
    twice, however many times you run it. The `note` still quotes both ids for
    the human reading the ledger.
 
+   That convention is a habit, not an invariant — the key is whatever you
+   type, and a fresh `uuidgen` credits again. Since M3b Task 3 the invariant
+   is behind it: an attributed credit that would take the order past what it
+   charged is refused with `409 order_already_settled`. If you see that, read
+   the order's `refunded_usd` — somebody (or the drain) has already settled
+   it.
+
    Read the response before you move on. The ledger replays **without
    comparing parameters**, so a key you have used before returns the original
    transaction and books nothing new — and the response's `amount` and
@@ -754,6 +773,10 @@ The steps:
    transaction; book the difference as a fresh, attributed credit only if the
    merchant was under-credited, and otherwise tell them where to find it.
 
+   A `merchant_order_refund` row instead of your credit means the drain got
+   there first — this is the automatic refund, `actor = fulfillment`. Nothing
+   further is owed on that order.
+
    The SPA does this half for you at credit time: it prints the order the
    ledger booked against beside the new balance, and raises a red banner
    instead of a success toast when what came back is not what you sent.
@@ -771,21 +794,52 @@ knowing before it is paid. Two other gaps — the ±2% drift giveaway, and error
 bodies that did not match the published contract — were closed in M2 and are
 recorded at the end so a regression is recognisable.
 
-### No automatic refund path
+### Only a supplier that gave our money back refunds automatically
 
-Covered above. A failed delivery is settled by a **manual** deposit credit.
-Since M3b that credit names the order, so the merchant can see it on
-`refunded_usd` and on their statement — but nothing books it for them.
+M3b Task 3 posts the refund itself when the failed task's money outcome is
+`returned`. `spent` and `unknown` never do — refunding money we did not get
+back is not a safe failure mode — so those still reach a person through the
+procedure above.
 
-- **Cost of leaving it:** every failed delivery is a support ticket and a hand
-  credit. It scales with order volume, so it is fine for a pilot and not for
-  ten merchants. What it no longer costs is reconciliation: a merchant
-  reconciling by order rather than by statement can see the settlement.
-- **Fix:** the rest of M3b, which posts the refund automatically on a failed
-  fulfilment — the module README's posting table reserves the row, and
-  `refunded_usd` already reads it, so that lands with no contract change.
-  (M3a shipped the outbound webhook and it does not help here: no event fires
-  for a fulfilment that fails on its own.)
+- **Cost of leaving it:** every `g2b` terminal failure is `unknown` today,
+  because their API exposes no refund field and the only evidence is a
+  sentence in their documentation (`fulfillment/README.md`). So the manual
+  lane is not a rare edge — on current supplier mix it carries most merchant
+  failures.
+- **Fix:** evidence from G2B, not a softer default. A `returned` we cannot
+  substantiate would refund a merchant for goods we paid for.
+- **Second gap, smaller:** there is **no operator re-grade path**. An operator
+  who chases a `spent` and gets our money back cannot record it, so that order
+  will never refund automatically; it is settled by hand instead, which costs
+  minutes and not money.
+
+### When the automatic refund does not fire
+
+Two Telegram alerts, both from the fulfilment saga:
+
+- **«Заказ реселлера: депозит не вернётся сам»** (`merchant_money_outcome`) —
+  the outcome was `spent` or `unknown`. Working as designed. Settle by hand if
+  the merchant is owed, using the procedure above. Deduped per supplier per
+  15 minutes, so one supplier outage is one message and the Fulfilment Inbox
+  is where the rest of the parked orders are.
+- **«Автовозврат депозита не прошёл»** (`merchant_refund_failed`) — the
+  outcome _was_ `returned` and the posting failed anyway. Deduped per order
+  for an hour, because each one is one reseller's money. The task still reads
+  `returned`, so the order is still refundable by hand: settle it with the
+  procedure above and file the alert text, which names the refusal.
+
+  The refusals you can meet: `AlreadySettledError` (somebody credited the
+  order first — nothing is wrong, and nothing further is owed),
+  `MissingChargeError` (the order has no charge posting at all — that cannot
+  happen through the code, so treat it as data damage and escalate), and a
+  database error (retry the drain).
+
+**Do not click Retry on a refunded order.** It is refused with
+`409 deposit_already_returned`, and the refusal is the point: a second charge
+for one order replays its ledger key and debits nothing, so a successful retry
+would hand the reseller the goods _and_ their money. If they still want the
+order, they place a **new** one. The same refusal guards the force-complete
+button.
 
 ### Closed in M2: the ±2% drift giveaway
 

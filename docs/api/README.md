@@ -238,7 +238,13 @@ an amended amount or an amended order can detect the mismatch. The optional
 body field `order_id` (M3b) names the order a credit settles; the ledger key is
 deliberately **not** derived from it, because the client key is the replay
 handle and a settlement is already namespaced by order through the runbook's
-`refund-<order-id>` convention. The other writes accept an optional `Idempotency-Key` and
+`refund-<order-id>` convention. That convention is prose in a document, not an
+invariant — the key is whatever the operator sends — so M3b Task 3 put the
+invariant behind it: an attributed credit that would take the order past what
+it charged answers `409 order_already_settled`. It is what keeps the automatic
+refund and a hand settlement from stacking on one order, and it is checked
+only on a genuinely new key so a retry still replays.
+The other writes accept an optional `Idempotency-Key` and
 replay via the generic `(scope, key)` store, whose scope is **per resource**
 (`merchants.sku_b2b:{sku_id}` and so on) so one reused client key cannot replay
 one SKU's response for another. See
@@ -518,10 +524,11 @@ order. Drawn in
 The route's `:path` convertor is **greedy** — it compiles to `.*`, so
 `/merchant/v1/orders/a/b/c/d` matches this handler and answers
 `order_not_found`. Nothing else lives under `/orders/` today — M3a added no
-route here — but M3b's `/orders/{id}/refund` must be registered **above** it or
-Starlette will swallow
-it silently (first full match in declaration order). Noted at the route and in
-the module README's file map.
+route here, and neither did M3b, whose refund is **automatic and has no
+endpoint at all**. The hazard is still live for whatever comes next: any
+future `/orders/{id}/something` must be registered **above** this one or
+Starlette will swallow it silently (first full match in declaration order).
+Noted at the route and in the module README's file map.
 
 An id that could never have been stored — anything outside
 `^[\x21-\x7e]{1,128}$`, the schema `POST /orders` writes through — is refused
@@ -578,10 +585,20 @@ Anything the storefront shows as an error, this shows too — no more, no less.
 
 `refunded_usd` is summed from the ledger (the debit legs on the merchant's
 `merchant_deposit` for transactions referencing this order), not stored on a
-flag. It reads a **direction, not an intent**, which is deliberate — it does
-not have to know the name the automatic refund gets — so whatever M3b posts
-against the order lands here without a contract change. The README therefore
-describes it as "money that came back on this order" rather than as a refund.
+flag. It reads a **direction, not an intent**, which is deliberate — and the
+design paid off in M3b Task 3: the automatic refund posts a new transaction
+kind, `merchant_order_refund`, and landed on this field with no change to the
+read and none to the published contract. The README therefore describes it as
+"money that came back on this order" rather than as a refund.
+
+Since Task 3 it also drives `failure_reason`. A failed delivery reads
+`fulfillment_failed_refunded` when this sum is positive and
+`fulfillment_failed` when it is not — so the field a client switches on is
+derived from the money actually having moved, and cannot announce a refund
+that did not post. That is the one value M3b adds to the vocabulary; whether a
+supplier kept our money or we cannot tell stays internal, because a reseller
+who could read it off our API would learn which of our suppliers is
+unreliable.
 
 Until M3b it was `"0.00"` for every order, and the reason was stronger than
 "refunds are unbuilt": **no surface could book a transaction against an

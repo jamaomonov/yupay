@@ -85,6 +85,34 @@ MERCHANT_REFERENCE_TYPE: Final = "merchant"
 #: order-scoped refusals in this module are one word.
 CODE_ORDER_NOT_FOUND: Final = "order_not_found"
 
+#: RFC 7807 ``code`` for a settlement that would take an order past what it
+#: charged. See :func:`credit_deposit`.
+CODE_ORDER_ALREADY_SETTLED: Final = "order_already_settled"
+
+#: Namespace of the ledger key an order charge is keyed by. Spelled once, and
+#: read back by :func:`charge_key` and by ``refund.refund_key``'s disjointness
+#: proof — the refund's key family must be incapable of colliding with this
+#: one, because ``wallet.service.post`` replays by key **without comparing
+#: parameters** and a collision would silently return the charge.
+CHARGE_KEY_PREFIX: Final = "merchant-order:"
+
+
+def charge_key(order_id: str) -> str:
+    """The ledger idempotency key of an order's deposit charge.
+
+    A function rather than an f-string at the call site because two things now
+    need it: :func:`charge_deposit`, which writes it, and
+    :func:`charged_for_order`, which finds the charge back to answer "what did
+    we actually take from this merchant for this order?".
+
+    Args:
+        order_id: The order the charge belongs to.
+
+    Returns:
+        The key ``charge_deposit`` posts under.
+    """
+    return f"{CHARGE_KEY_PREFIX}{order_id}"
+
 
 def order_reference_of(txn: WalletTransaction) -> str | None:
     """The order a ledger transaction belongs to, or ``None`` if it names none.
@@ -172,6 +200,54 @@ async def _resolve_order_reference(
     return wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=canonical)
 
 
+async def deposit_account(db: AsyncSession, *, merchant_id: str) -> WalletAccount:
+    """The merchant's ``merchant_deposit`` account, created if it is the first movement.
+
+    One definition of the owner/kind/currency tuple, shared by the three
+    functions that move a deposit. Four copies of the same ``ensure_account``
+    call is four chances for one of them to name a different account and post
+    a leg nobody's balance can see.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Whose deposit.
+
+    Returns:
+        The account row.
+    """
+    return await wallet_service.ensure_account(
+        db,
+        owner_type="merchant",
+        owner_id=merchant_id,
+        kind="merchant_deposit",
+        currency=DEPOSIT_CURRENCY,
+    )
+
+
+async def house_received_account(db: AsyncSession) -> WalletAccount:
+    """The house counter-account every deposit movement balances against.
+
+    ``house_payments_received`` (NORMAL=D) is the dedicated bucket for money
+    customers paid us directly — a merchant's bank-transferred prepayment is
+    exactly that, drawn down against goods by a charge and put back by a
+    refund. No new house account is invented for the refund; see ADR-0004 for
+    the ledger model.
+
+    Args:
+        db: Session. The caller owns the transaction.
+
+    Returns:
+        The account row.
+    """
+    return await wallet_service.ensure_account(
+        db,
+        owner_type=_HOUSE_OWNER,
+        owner_id=_HOUSE_OWNER,
+        kind="house_payments_received",
+        currency=DEPOSIT_CURRENCY,
+    )
+
+
 async def credit_deposit(
     db: AsyncSession,
     *,
@@ -179,8 +255,8 @@ async def credit_deposit(
     amount: Decimal,
     actor: str,
     idempotency_key: str,
+    order_id: str | None,
     note: str | None = None,
-    order_id: str | None = None,
 ) -> WalletTransaction:
     """Book a support-credited top-up: ``D merchant_deposit / C house_payments_received``.
 
@@ -200,9 +276,30 @@ async def credit_deposit(
     performs after a failed delivery moved the balance and appeared nowhere on
     the order it paid for.
 
-    Omitting it is the ordinary prepayment, unchanged in every observable way:
-    ``Reference(type="merchant", id=merchant_id)``, the same row on
+    Passing ``None`` is the ordinary prepayment, unchanged in every observable
+    way: ``Reference(type="merchant", id=merchant_id)``, the same row on
     ``/transactions`` with a null ``order_id``.
+
+    **It has no default, and that is deliberate.** The defect M3b Task 2 came
+    back to fix was a writer and a reader disagreeing about one word; the same
+    field has a second axis, and a default would put the invisible behaviour
+    on it. Omit the argument and money moves while the order it settles reads
+    ``refunded_usd: "0.00"`` forever — mypy --strict happy, no test failing,
+    and no way to re-point the transaction afterwards. Requiring the keyword
+    turns that omission into a type error at every call site, including the
+    ones a future milestone adds.
+
+    **A settlement may not take an order past what it charged**
+    (``order_already_settled``). ``refunded_usd`` is published as "how much of
+    ``price_usd`` has been credited back", and this is what makes that
+    sentence true rather than hopeful. It matters more since M3b Task 3 than
+    it did before it: most failed deliveries now settle themselves within
+    seconds, so an operator reaching for this form is the one more likely to
+    be acting on what they saw a minute ago. The automatic refund refuses the
+    mirror image of this — an order support already settled by hand — for the
+    same reason and in the same words. Goodwill beyond the order's own price
+    is still perfectly possible; it is an **unattributed** credit, which is
+    what it always was.
 
     A fresh credit also enqueues ``balance.credited`` (spec §10), in this same
     transaction. A **replay** does not: it books nothing, and announcing money
@@ -227,9 +324,10 @@ async def credit_deposit(
         amount: Positive USD amount.
         actor: Who did it, e.g. ``admin:<id>`` — recorded on the transaction.
         idempotency_key: The caller's key; the replay handle.
+        order_id: The order this credit settles, or ``None`` for an ordinary
+            prepayment. Required as a keyword — see above. Must be an order
+            **of this merchant's**.
         note: Optional free-text reason, kept in the transaction metadata.
-        order_id: The order this credit settles, if it settles one. Must be an
-            order **of this merchant's**.
 
     Returns:
         The ledger transaction (existing one on replay).
@@ -238,46 +336,42 @@ async def credit_deposit(
         ValidationError: If ``amount`` is not positive.
         NotFoundError: If no merchant with that id exists, or if ``order_id``
             is not an order of theirs (``order_not_found``).
+        ConflictError: If ``order_id`` is given and this credit would take
+            that order past what it charged (``order_already_settled``).
     """
     if amount <= 0:
         raise ValidationError("deposit credit must be positive", extra={"amount": str(amount)})
     await get_merchant(db, merchant_id)
-    reference = (
-        wallet_service.Reference(type=MERCHANT_REFERENCE_TYPE, id=merchant_id)
-        if order_id is None
-        else await _resolve_order_reference(db, merchant_id=merchant_id, order_id=order_id)
-    )
 
     # Read *before* posting, because ``post()`` answers a replay with the
     # original transaction and gives the caller no way to tell the two apart
     # afterwards. A replay books nothing, so it must announce nothing: a
     # ``balance.credited`` for money that did not move would have a reseller
-    # crediting their own customer twice.
+    # crediting their own customer twice. It is read here, before the
+    # over-settlement guard, because that guard counts money this key may
+    # already have moved — running it on a replay would answer ``409`` to the
+    # operator's own retry and turn the endpoint's idempotency off.
     replayed = (
         await db.execute(
             select(WalletTransaction.id).where(WalletTransaction.idempotency_key == idempotency_key)
         )
     ).scalar_one_or_none() is not None
 
-    deposit = await wallet_service.ensure_account(
-        db,
-        owner_type="merchant",
-        owner_id=merchant_id,
-        kind="merchant_deposit",
-        currency=DEPOSIT_CURRENCY,
-    )
-    # Counter-account for the merchant-side debit.
-    # ``house_payments_received`` (NORMAL=D) is the dedicated bucket for
-    # money customers paid us directly — a merchant's bank-transferred
-    # prepayment is exactly that, so no new house account is invented here.
-    # See ADR-0004 for the ledger model.
-    received = await wallet_service.ensure_account(
-        db,
-        owner_type=_HOUSE_OWNER,
-        owner_id=_HOUSE_OWNER,
-        kind="house_payments_received",
-        currency=DEPOSIT_CURRENCY,
-    )
+    if order_id is None:
+        reference = wallet_service.Reference(type=MERCHANT_REFERENCE_TYPE, id=merchant_id)
+    else:
+        reference = await _resolve_order_reference(db, merchant_id=merchant_id, order_id=order_id)
+        if not replayed:
+            # ``reference.id``, not the caller's argument: the canonical
+            # spelling is what ``refunded_for_order`` matches on, and
+            # comparing a braced or undashed id against it would sum nothing
+            # and wave every settlement through.
+            await _refuse_over_settlement(
+                db, merchant_id=merchant_id, order_id=reference.id, amount=amount
+            )
+
+    deposit = await deposit_account(db, merchant_id=merchant_id)
+    received = await house_received_account(db)
     txn = await wallet_service.post(
         db,
         kind="merchant_deposit_credit",
@@ -364,13 +458,7 @@ async def charge_deposit(
         raise ValidationError("deposit charge must be positive", extra={"amount": str(amount)})
     await get_merchant(db, merchant_id)
 
-    deposit = await wallet_service.ensure_account(
-        db,
-        owner_type="merchant",
-        owner_id=merchant_id,
-        kind="merchant_deposit",
-        currency=DEPOSIT_CURRENCY,
-    )
+    deposit = await deposit_account(db, merchant_id=merchant_id)
     locked = (
         await db.execute(
             select(WalletAccount).where(WalletAccount.id == deposit.id).with_for_update()
@@ -384,13 +472,7 @@ async def charge_deposit(
             balance_usd=str(have.quantize(_CENT, rounding=ROUND_DOWN)),
             required_usd=str(amount),
         )
-    received = await wallet_service.ensure_account(
-        db,
-        owner_type=_HOUSE_OWNER,
-        owner_id=_HOUSE_OWNER,
-        kind="house_payments_received",
-        currency=DEPOSIT_CURRENCY,
-    )
+    received = await house_received_account(db)
     return await wallet_service.post(
         db,
         kind="merchant_order_charge",
@@ -410,7 +492,7 @@ async def charge_deposit(
                 currency=DEPOSIT_CURRENCY,
             ),
         ],
-        idempotency_key=f"merchant-order:{order_id}",
+        idempotency_key=charge_key(order_id),
         reference=wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=order_id),
         actor=f"merchant:{merchant_id}",
     )
@@ -574,15 +656,103 @@ async def refunded_for_order(db: AsyncSession, *, merchant_id: str, order_id: st
     return Decimal((await db.execute(stmt)).scalar_one())
 
 
+async def charged_for_order(db: AsyncSession, *, merchant_id: str, order_id: str) -> Decimal | None:
+    """What this order actually took from the merchant's deposit, or ``None``.
+
+    The mirror of :func:`refunded_for_order`, and the **only** authority on
+    the amount an automatic refund may return. Read off the charge's own
+    ledger transaction — found by its key, which is the tightest identity a
+    posting has — rather than off ``order_items.unit_price_usd`` or the order
+    total, because those answer a different question:
+
+    - the list price is allowed to move between quote and charge (M2's ±2 %
+      drift rule), so the line and the debit may legitimately disagree;
+    - an order that was never charged must refund **nothing**, and a price on
+      a line is present whether or not any money followed it.
+
+    ``None`` and ``Decimal("0")`` are different answers and only the first can
+    occur: ``charge_deposit`` refuses a non-positive amount, so a charge
+    transaction always moved something. ``None`` means *there is no charge* —
+    impossible today (the debit and the order row are written in one
+    transaction) and therefore a bug or a hand-edited row, which is why
+    ``refund.refund_order`` refuses it out loud instead of treating it as
+    "nothing to give back".
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The owning merchant — the account scope.
+        order_id: The order whose charge to read.
+
+    Returns:
+        The amount charged, or ``None`` if this order has no charge posting.
+    """
+    normal = wallet_service.NORMAL_SIDE["merchant_deposit"]
+    stmt = (
+        select(func.sum(WalletPosting.amount))
+        .join(WalletAccount, WalletAccount.id == WalletPosting.account_id)
+        .join(WalletTransaction, WalletTransaction.id == WalletPosting.transaction_id)
+        .where(
+            WalletAccount.owner_type == "merchant",
+            WalletAccount.owner_id == merchant_id,
+            WalletAccount.kind == "merchant_deposit",
+            WalletAccount.currency == DEPOSIT_CURRENCY,
+            # The non-normal side of a debit-normal account: money leaving.
+            WalletPosting.direction != normal,
+            WalletTransaction.idempotency_key == charge_key(order_id),
+        )
+    )
+    total = (await db.execute(stmt)).scalar_one_or_none()
+    return None if total is None else Decimal(total)
+
+
+async def _refuse_over_settlement(
+    db: AsyncSession, *, merchant_id: str, order_id: str, amount: Decimal
+) -> None:
+    """Refuse a credit that would return more than the order ever charged.
+
+    See :func:`credit_deposit` for why this exists. An order with no charge is
+    left alone here — that is a broken row, and this guard is not the place
+    that decides what to do about one; refusing on it would also make the
+    hand settlement of a mis-booked order impossible.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The owning merchant — the account scope.
+        order_id: The order, canonically spelled.
+        amount: The credit being attempted.
+
+    Raises:
+        ConflictError: ``order_already_settled``.
+    """
+    charged = await charged_for_order(db, merchant_id=merchant_id, order_id=order_id)
+    if charged is None:
+        return
+    already = await refunded_for_order(db, merchant_id=merchant_id, order_id=order_id)
+    if already + amount > charged:
+        raise ConflictError(
+            "this order has already had its charge returned",
+            code=CODE_ORDER_ALREADY_SETTLED,
+            order_id=order_id,
+            charged_usd=str(charged),
+            returned_usd=str(already),
+        )
+
+
 __all__ = [
+    "CHARGE_KEY_PREFIX",
+    "CODE_ORDER_ALREADY_SETTLED",
     "CODE_ORDER_NOT_FOUND",
     "DEPOSIT_CURRENCY",
     "INSUFFICIENT_DEPOSIT_CODE",
     "MERCHANT_REFERENCE_TYPE",
     "ORDER_REFERENCE_TYPE",
     "charge_deposit",
+    "charge_key",
+    "charged_for_order",
     "credit_deposit",
+    "deposit_account",
     "deposit_balance",
+    "house_received_account",
     "list_deposit_transactions",
     "order_reference_of",
     "refunded_for_order",

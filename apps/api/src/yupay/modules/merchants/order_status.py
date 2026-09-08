@@ -68,6 +68,8 @@ from yupay.modules.merchants.machine_schemas import (
 from yupay.modules.orders import service as orders
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
+    from decimal import Decimal
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from yupay.modules.merchants.models import Merchant
@@ -118,8 +120,23 @@ TIMELINE_EVENTS: Final[frozenset[str]] = frozenset(
 REASON_ORDER_FAILED: Final = "order_failed"
 REASON_FULFILLMENT_FAILED: Final = "fulfillment_failed"
 
+#: A delivery that failed **and** whose money is already back on the deposit.
+#:
+#: M3b Task 3 adds exactly **one** value here, not two, and this is it. The
+#: distinction a reseller needs is "we are refunding you" versus "a human is
+#: deciding", and the second half is what ``fulfillment_failed`` has always
+#: meant — so the new word goes on the new fact and nothing a client switches
+#: on today changes meaning.
+#:
+#: What is deliberately *not* in this vocabulary is whether the supplier kept
+#: our money or we cannot tell. That is a fact about **our** supplier
+#: relationship: a reseller who could read it off this field would learn which
+#: of our suppliers is unreliable. It stays on the task, in the admin inbox
+#: and in the ops alert, which is where the person who acts on it looks.
+REASON_FULFILLMENT_REFUNDED: Final = "fulfillment_failed_refunded"
 
-def _failure_reason(order: Order) -> str | None:
+
+def _failure_reason(order: Order, *, refunded: Decimal) -> str | None:
     """Why this order has stopped moving, or ``None`` if it has not.
 
     Two sources, in order:
@@ -141,8 +158,29 @@ def _failure_reason(order: Order) -> str | None:
     in ``fulfilling`` — nothing advances it — so without this field a stalled
     order is indistinguishable from a busy one, forever.
 
+    A failed delivery then splits on ``refunded``, and it splits on the
+    **ledger** rather than on anything the fulfilment path wrote down. That is
+    what makes the field incapable of lying: it says "your money is back"
+    only when money is actually back, so an automatic refund that raised, an
+    order whose charge could not be found, and a supplier that kept our money
+    all read ``fulfillment_failed`` — "a human is deciding" — without any of
+    those paths having to remember to say so.
+
+    It counts money back **by any route**, which is why a hand settlement
+    reaches it too: whether an operator or the saga returned the money is our
+    business, not the reseller's, and ``refunded_usd`` beside it carries how
+    much.
+
+    ``order_failed`` still wins when support closed the order by hand. A
+    closure is a human already in the loop with the reseller, and the amount
+    is on ``refunded_usd`` either way; layering a fourth combination onto a
+    field a client switches on would buy nothing.
+
     Args:
         order: The order, with its items loaded.
+        refunded: What has come back to the deposit on this order — the same
+            number the response's ``refunded_usd`` carries, passed in rather
+            than re-read so the two cannot disagree.
 
     Returns:
         A value from the closed vocabulary above, or ``None``.
@@ -150,7 +188,7 @@ def _failure_reason(order: Order) -> str | None:
     if order.status == "failed":
         return REASON_ORDER_FAILED
     if any(item.fulfillment_state == "failed" for item in order.items):
-        return REASON_FULFILLMENT_FAILED
+        return REASON_FULFILLMENT_REFUNDED if refunded > 0 else REASON_FULFILLMENT_FAILED
     return None
 
 
@@ -213,19 +251,18 @@ async def read(
         raise NotFoundError("no order with that merchant_order_id", code=CODE_ORDER_NOT_FOUND)
 
     item = order.items[0]
+    refunded = await deposit.refunded_for_order(db, merchant_id=merchant.id, order_id=order.id)
     return MerchantOrderStatusOut(
         merchant_order_id=order.idempotency_key or "",
         order_id=order.id,
         status=order.status,
         sku_id=item.sku_id,
         price_usd=item.unit_price_usd,
-        refunded_usd=await deposit.refunded_for_order(
-            db, merchant_id=merchant.id, order_id=order.id
-        ),
+        refunded_usd=refunded,
         created_at=order.created_at,
         paid_at=order.paid_at,
         delivered_at=order.delivered_at,
-        failure_reason=_failure_reason(order),
+        failure_reason=_failure_reason(order, refunded=refunded),
         delivery=await _delivery(db, order),
         # ``Order.events`` is eagerly loaded and already ordered
         # ``created_at, id`` by the relationship, so this is a filter and not
@@ -241,6 +278,7 @@ async def read(
 __all__ = [
     "CODE_ORDER_NOT_FOUND",
     "REASON_FULFILLMENT_FAILED",
+    "REASON_FULFILLMENT_REFUNDED",
     "REASON_ORDER_FAILED",
     "TIMELINE_EVENTS",
     "read",

@@ -151,6 +151,20 @@ third event type and a payload shape — and M3b's stall visibility is where the
 real answer belongs. The integrator contract says this outright rather than
 letting every integrator discover it by building a timeout.
 
+**So M3b Task 3 splits the two halves of a failed order, and an integrator has
+to know which is which: the money arrives by _push_, the order state only by
+_poll_.** The automatic refund emits `balance.credited` — it is a deposit
+credit like any other and the hand settlement it replaces already emitted one,
+so an automatic path that stayed silent would _remove_ a notification
+integrators get today. The order itself still moves nothing: `status` stays
+`fulfilling`, `failure_reason` flips to `fulfillment_failed_refunded`, and
+both are seen only on `GET /merchant/v1/orders/{merchant_order_id}`. A
+receiver that acts on `balance.credited` alone therefore learns that money
+came back and not which order it came back on — the payload is exactly
+`{amount_usd, balance_usd}` and naming the order in it would be a
+`/merchant/v2`. Reconcile on the order read or on `/transactions`, where the
+refund carries `order_id` and `merchant_order_id`.
+
 The two typed producers are `enqueue_order_status_changed` and
 `enqueue_balance_credited`, and the first is deliberately **not** called
 `on_order_status_changed`: that is the name of the seam in `orders.service`, it
@@ -324,13 +338,20 @@ caller may re-derive a direction from it:
 | --------------------------- | ------------------------------------------------ | ------------------------- |
 | Support credits top-up (M1) | `D merchant_deposit / C house_payments_received` | `merchant_deposit_credit` |
 | Order charge (M2)           | `C merchant_deposit / D house_payments_received` | `merchant_order_charge`   |
-| (M3) refund on failure      | `D merchant_deposit / C house_payments_received` | _not implemented_         |
+| Refund on failure (M3b)     | `D merchant_deposit / C house_payments_received` | `merchant_order_refund`   |
 
 The first two rows are live. `deposit.credit_deposit` posts the credit with
 the caller's idempotency key, so a replay returns the original transaction;
-`deposit.charge_deposit` posts the debit keyed `merchant-order:{order_id}`,
-which makes a double debit impossible even if the order path were re-entered
-for one order. `charge_deposit` is also **where the overdraw guard binds**: it
+`deposit.charge_deposit` posts the debit keyed `merchant-order:{order_id}`
+(`deposit.charge_key`), which makes a double debit impossible even if the
+order path were re-entered for one order — and, because a _second_ charge for
+one order therefore debits nothing, is also why a refunded order may not be
+re-driven; see "Automatic refunds" below. `refund.refund_order` posts the
+third row keyed `merchant-order-refund:{order_id}`, a namespace that
+**cannot** collide with the charge's: neither prefix is a prefix of the other,
+so no order id on either side can make the two keys equal. That is not
+tidiness — `wallet.service.post` replays by key without comparing parameters,
+so a collision would silently hand the caller the charge and call it a refund. `charge_deposit` is also **where the overdraw guard binds**: it
 locks the `merchant_deposit` row with `SELECT … FOR UPDATE` before reading the
 balance, the same shape `wallet.service.reverse_topup` uses, so two concurrent
 orders serialise instead of both spending the same dollars. The order path's
@@ -355,6 +376,7 @@ failed order.
 | Prepayment (no order)    | `merchant`       | `merchant_id`  |
 | Order charge             | `order`          | our `order_id` |
 | Credit settling an order | `order`          | our `order_id` |
+| Automatic refund (M3b)   | `order`          | our `order_id` |
 
 Both words are spelled once, in `deposit.ORDER_REFERENCE_TYPE` /
 `MERCHANT_REFERENCE_TYPE`, and read back through one function,
@@ -374,7 +396,14 @@ telling the truth:
   a direction, not a transaction kind, so whatever M3b's automatic refund
   calls its posting lands there too.
 - `order_id` / `merchant_order_id` on `GET /merchant/v1/transactions` are set
-  on any row that names an order — a charge, and now a settlement credit.
+  on any row that names an order — a charge, a settlement credit, and an
+  automatic refund.
+
+`reference_type` is a free-form `String(32)` and **nothing validates it**, so
+a posting spelled `merchant_refund` — naming the reference after its purpose,
+which is the natural thing to write — would move the money and read `"0.00"`
+on the order, silently. Every writer goes through the constants above; that is
+the whole reason they exist.
 
 Attributing a credit is **additive and optional**. Omit `order_id` and the
 posting is byte-for-byte what it was: same legs, same kind, same
@@ -394,6 +423,83 @@ is compared **and** before it is stored, because `orders.id` is a Postgres
 `uuid` — a `{braced}` .NET spelling reaching it raw is a 500 — while
 `reference_id` is a `VARCHAR` that would happily store a spelling matching
 nothing, which is this same defect one layer down.
+
+### Automatic refunds (M3b Task 3)
+
+`refund.refund_order` posts the third row of the table above:
+`D merchant_deposit / C house_payments_received`, keyed
+`merchant-order-refund:{order_id}`, referencing the order, `kind`
+`merchant_order_refund`.
+
+**One thing fires it**, from `fulfillment.service._settle_merchant_deposit`:
+a terminal fulfilment failure on an order with a `merchant_id` whose
+`MoneyOutcome` is `RETURNED`. `SPENT` and `UNKNOWN` post nothing and raise
+`_alert_merchant_needs_a_human` instead — refunding money we did not get back
+is not a safe failure mode, and it is the owner's decision, not a default
+waiting to be optimised. Today that lane is not small: every `g2b` terminal
+failure is `UNKNOWN` (see `fulfillment/README.md`), so most merchant failures
+still reach a person.
+
+**The amount is the charge's, read off the charge's own ledger transaction**
+(`deposit.charged_for_order`), never off `order_items.unit_price_usd` and
+never off the order total. The list price is allowed to move between quote and
+charge (the ±2 % rule), and an order that was never charged must refund
+nothing. An order with **no** charge posting is not swallowed: it cannot
+happen — the debit and the order row are written in one transaction — so it is
+a bug or a hand-edited row, and it raises, alerts and leaves the failure
+refundable by hand.
+
+**Where it runs, and why not where the failure is recorded.** Under
+`drain_pending_tasks` a task runs inside a SAVEPOINT whose crash arm answers
+an unexpected exception with `UNKNOWN` — the one value `record_money_outcome`
+never lets anything move back down, with no operator re-grade path anywhere in
+the system. A refund raising inside that savepoint would roll back the
+`RETURNED` it was acting on and replace it with a permanent "we cannot tell":
+_the attempt to refund would make the order unrefundable._ So the seam runs
+after the savepoint is released, at the three sites that can terminally fail a
+merchant task — the drain, `retry_task`, and `process_webhook_update`. Those
+three are exhaustive because merchant orders are enqueue-only by construction
+(`orders._enqueue_only`), so no merchant task is ever run by the synchronous
+`start_for_order` path.
+
+A refusal is caught (`RefundError`, `AppError`, `SQLAlchemyError` — modelled
+refusals and the database's own errors, never a bare `except Exception`),
+logged at `error`, alerted, and leaves a task reading `failed` + `RETURNED`. A
+`NameError` from a circular import is deliberately **not** caught: that is
+what `main`'s 64decbd hid for six weeks on this very path.
+
+**A refunded order may not be re-driven.** `charge_deposit` is idempotent on
+`merchant-order:{order_id}`, so a _second_ charge for one order replays the
+first transaction and **debits nothing**. Refund the deposit, click Retry —
+one button in the admin SPA, and the failure it exists for looks identical to
+this one — and a success hands the reseller the goods _and_ their money back,
+with no code path noticing. `_refuse_a_settled_merchant_order` closes it in
+`retry_task` (and so in `bulk_retry_tasks`) and in `complete_manual_task`'s
+`force=True` arm, with `409 deposit_already_returned`. It reads the same sum
+`refunded_usd` publishes, so it catches a **hand** settlement too — an
+operator crediting the order and another retrying it is the same loophole
+through a different door, and it predates the automatic refund. Refusing beats
+re-charging under a fresh key: a reseller told the money is back has probably
+already settled with their own customer, and silently debiting them again for
+an order they closed is a surprise money movement that can also fail on a
+balance no longer covering it, mid-retry. The recovery is the one the contract
+already describes — place a new order.
+
+**The automatic path and the hand path cannot stack.** They live in different
+ledger-key namespaces (the operator's key is
+`merchant-credit:{merchant}:{whatever they typed}`), so `post()` cannot dedupe
+them: without a check, support settling at 10:00 and the drain running at
+10:05 would credit one order's deposit twice and publish `refunded_usd:
+"2.14"` on a `"1.07"` order. Both directions are closed —
+`refund_order` refuses an order anything has already returned money on
+(`AlreadySettledError`, after its own key check so a replay still replays),
+and `credit_deposit` refuses a credit that would take an order past what it
+charged (`409 order_already_settled`). Goodwill beyond the order's price is
+still an **unattributed** credit, exactly as before.
+
+**A frozen merchant is refunded like any other.** Freezing blocks new orders
+and has never blocked money in; an account under review is still owed for
+goods we failed to deliver.
 
 ## Pricing
 
@@ -563,9 +669,11 @@ The admin SPA screens for this surface live in
 `apps/admin/src/features/merchants/` (`/merchants` list + create,
 `/merchants/:id` freeze / deposit credit / ledger). The deposit-credit form
 is the UI half of the replay-visibility mechanism above: it compares the
-response's `amount` with what the operator typed and warns loudly on a
-mismatch, mints one idempotency key per logical credit attempt (stable
-across retries), and blocks double-submit while a credit is in flight.
+response's `amount` **and its `order_id`** with what the operator entered and
+warns loudly on either mismatch (`1db6ccf` — a replay can silently ignore the
+order just as it can the amount, and unlike the amount the attribution cannot
+be repaired afterwards), mints one idempotency key per logical credit attempt
+(stable across retries), and blocks double-submit while a credit is in flight.
 
 The catalog B2B knobs (Task 8) live on the catalog edit screens instead —
 `apps/admin/src/features/catalog/b2b.ts` plus a `SkuB2bCard` /
@@ -1260,14 +1368,14 @@ line as sent. Signing the decoded path is a `401`, not a `404`.
 }
 ```
 
-| Field            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `status`         | `paid`, `fulfilling`, `delivered`, `failed`. Those four are what a merchant order reaches today, in that order (`failed` from any of the first three). New values may be added — treat an unknown one as "still in flight".                                                                                                                                                                                                                                                                                                                                              |
-| `price_usd`      | What the order charged. Final.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| `refunded_usd`   | **Money that came back to your deposit on this order.** Read off the ledger as a direction rather than as a transaction named "refund", so whatever the automatic path calls a refund will land here without a contract change. Since M3b it is no longer always `"0.00"`: when we settle a failed delivery by hand, the credit names this order, and the amount appears here as well as on `GET /merchant/v1/transactions` and in `balance_usd`. It is still a **sum**, not a flag — reconcile on the number, and expect `"0.00"` on an order nothing has come back on. |
-| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| `delivery`       | `null` until something has actually been delivered, and present as soon as it has — it is the delivery record that decides, not `status`. Normally the two move together. See below.                                                                                                                                                                                                                                                                                                                                                                                     |
-| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. A merchant order produces `order.created`, `order.paid`, `order.fulfilling`, `order.delivered` and `order.failed`. `order.cancelled` is accepted by the same filter but cannot occur on this channel today — cancelling is legal only before payment, and a merchant order is born paid. More kinds may be added.                                                                                                                                                                                             |
+| Field            | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `status`         | `paid`, `fulfilling`, `delivered`, `failed`. Those four are what a merchant order reaches today, in that order (`failed` from any of the first three). New values may be added — treat an unknown one as "still in flight".                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `price_usd`      | What the order charged. Final.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| `refunded_usd`   | **Money that came back to your deposit on this order.** Read off the ledger as a direction rather than as a transaction named "refund", so both paths that return money land here with no contract change: since M3b a supplier that failed the order **and gave our money back** is refunded automatically within seconds, and a settlement we make by hand names the order too. It is a **sum**, not a flag — reconcile on the number, and expect `"0.00"` on an order nothing has come back on. It can never exceed `price_usd`: the automatic path refuses an order support already settled, and a hand credit that would take the total past the charge is refused with `order_already_settled`. |
+| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `delivery`       | `null` until something has actually been delivered, and present as soon as it has — it is the delivery record that decides, not `status`. Normally the two move together. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. A merchant order produces `order.created`, `order.paid`, `order.fulfilling`, `order.delivered` and `order.failed`. `order.cancelled` is accepted by the same filter but cannot occur on this channel today — cancelling is legal only before payment, and a merchant order is born paid. More kinds may be added.                                                                                                                                                                                                                                                                                                                          |
 
 **The goods are in `delivery.artifact`.** Two `artifact_kind` values exist
 today: `voucher_code`, which carries `code` (or `codes` for a line delivered as
@@ -1286,15 +1394,29 @@ the redeemable ones, the rest is context".
 **Failure reasons** are a closed set. You will never get a supplier's own words
 or an operator's note: neither is switchable, and both are internal.
 
-| `failure_reason`     | What happened                                  | What to do                                           |
-| -------------------- | ---------------------------------------------- | ---------------------------------------------------- |
-| `fulfillment_failed` | The delivery failed and will not retry itself. | Contact support quoting `order_id`. Do not re-order. |
-| `order_failed`       | Support closed the order as undeliverable.     | Contact support. Refunds are manual until M3.        |
+| `failure_reason`              | What happened                                                                        | What to do                                                                                                                        |
+| ----------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `fulfillment_failed_refunded` | The delivery failed **and we have already put what you paid back on your deposit.**  | Refund your own customer. Nothing to chase. Do not re-send this `merchant_order_id`; place a **new** order if they still want it. |
+| `fulfillment_failed`          | The delivery failed and will not retry itself. Your money has **not** come back yet. | Contact support quoting `order_id`. Do not re-order.                                                                              |
+| `order_failed`                | Support closed the order as undeliverable.                                           | Contact support. Read `refunded_usd` for what has come back.                                                                      |
+
+`fulfillment_failed_refunded` is M3b's one addition to this vocabulary, and it
+is exactly one: the distinction you need is "we are refunding you" versus "a
+human is deciding", and `fulfillment_failed` has always meant the second — so
+nothing you switch on today changes meaning. Whether a supplier kept our money
+or we cannot tell is **not** in this field and will not be: that is a fact
+about our supplier relationships, not about your order, and `fulfillment_failed`
+covers both.
+
+The value is derived from the ledger, not from a flag: it says
+`fulfillment_failed_refunded` only when money is genuinely back on your
+deposit, whichever route put it there. Read the amount on `refunded_usd`.
 
 Note that `failure_reason` can be set while `status` is still `fulfilling` —
 nothing advances the order row when a delivery fails, so the status alone would
-say "in progress" indefinitely. Treat a non-null `failure_reason` as terminal
-for your own purposes even if the status has not moved.
+say "in progress" indefinitely, and that is true of a refunded order too. Treat
+a non-null `failure_reason` as terminal for your own purposes even if the
+status has not moved.
 
 Errors:
 
@@ -1355,12 +1477,19 @@ on `limit=200`.
 }
 ```
 
+Three `kind`s exist today. `merchant_deposit_credit` is money we put on your
+deposit — an ordinary top-up, or a settlement support booked against one of
+your orders. `merchant_order_charge` is an order spending it.
+`merchant_order_refund` is M3b's automatic return of a charge whose supplier
+failed the order and gave our money back; it carries the order it belongs to
+and the same amount that order's `refunded_usd` reports. More kinds may be
+added — treat an unknown one as "some movement" and trust `amount_usd`.
+
 `merchant_order_id` is on every row that names an order, so a statement line
 reconciles against your books without a second call. That is every order
-charge — and, since M3b, a settlement credit we booked against one of your
-failed orders, which is the same amount you will see in that order's
-`refunded_usd`. A `merchant_deposit_credit` with a **null** `order_id` is an
-ordinary top-up of your balance and belongs to no order.
+charge, every automatic refund, and a settlement credit we booked against one
+of your failed orders. A `merchant_deposit_credit` with a **null** `order_id`
+is an ordinary top-up of your balance and belongs to no order.
 
 **Paging.** Follow `next_cursor` until it is `null`; a `null` means this page
 was the last one, so never call again on one. Do not page with an offset of
@@ -2104,16 +2233,17 @@ it: a SKU with no provider answers `unsupported`, and a check we could not
 make answers `error`, neither of which a client can mistake for approval.
 **Those six are the whole machine API.** Refunds and the cabinet BFF are M3+.
 
-One thing a reseller will ask about and we do not have yet. **Nothing refunds
-a merchant order automatically:** a failed delivery leaves the deposit
-debited, and support settles it by crediting the deposit by hand. M3b Task 2
-closed the half of that gap which was a defect rather than an omission — the
-credit can now name the order it settles, so it moves `balance_usd`, appears
-on `/transactions` against the order, **and** shows in that order's
-`refunded_usd`. What is still missing is the automation: nobody is credited
-until an operator does it.
+**A merchant order now refunds itself when it can.** M3b Task 3 closes the gap
+M2 left: a terminal fulfilment failure whose money outcome is `RETURNED` posts
+the charge straight back to the deposit, in the same transaction the drain
+records the failure in, referencing the order. `SPENT` and `UNKNOWN` refund
+nothing and raise an ops alert instead — see "Automatic refunds" below for
+what that costs and who carries it. Task 2 had already closed the half of the
+gap that was a defect rather than an omission: an operator's settlement can
+name the order it settles, which is both the manual fallback and the reason
+`refunded_usd` was capable of reading anything but `"0.00"`.
 
-The remaining gap is written up with what it costs in
+What is left is written up with what it costs in
 `docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates" —
 read it, and the settlement procedure beside it, before you put the first
 reseller on this.

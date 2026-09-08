@@ -44,6 +44,7 @@ async def test_credit_shows_up_in_balance(db_session: AsyncSession) -> None:
         amount=Decimal("100.00"),
         actor="admin:test",
         idempotency_key="merchant-credit-1",
+        order_id=None,
         note="first top-up",
     )
     balance = await merchants_deposit.deposit_balance(db_session, merchant_id=merchant.id)
@@ -74,6 +75,7 @@ async def test_credit_is_idempotent_by_key(db_session: AsyncSession) -> None:
         amount=Decimal("50.00"),
         actor="admin:test",
         idempotency_key="merchant-credit-replay",
+        order_id=None,
         note=None,
     )
     second = await merchants_deposit.credit_deposit(
@@ -82,6 +84,7 @@ async def test_credit_is_idempotent_by_key(db_session: AsyncSession) -> None:
         amount=Decimal("50.00"),
         actor="admin:test",
         idempotency_key="merchant-credit-replay",
+        order_id=None,
         note=None,
     )
     assert second.id == first.id
@@ -122,6 +125,7 @@ async def test_two_concurrent_credits_both_land(db_engine: AsyncEngine) -> None:
                 amount=Decimal(amount),
                 actor="admin:test",
                 idempotency_key=key,
+                order_id=None,
                 note=None,
             )
             await session.commit()
@@ -150,6 +154,7 @@ async def test_frozen_merchant_can_still_be_credited(db_session: AsyncSession) -
         amount=Decimal("25.00"),
         actor="admin:test",
         idempotency_key="merchant-credit-frozen",
+        order_id=None,
         note=None,
     )
     balance = await merchants_deposit.deposit_balance(db_session, merchant_id=merchant.id)
@@ -176,6 +181,7 @@ async def test_credit_rejects_non_positive_amount(db_session: AsyncSession) -> N
                 amount=bad,
                 actor="admin:test",
                 idempotency_key=f"merchant-credit-bad-{bad}",
+                order_id=None,
                 note=None,
             )
 
@@ -188,6 +194,7 @@ async def test_credit_unknown_merchant_is_refused(db_session: AsyncSession) -> N
             amount=Decimal("10.00"),
             actor="admin:test",
             idempotency_key="merchant-credit-ghost",
+            order_id=None,
             note=None,
         )
 

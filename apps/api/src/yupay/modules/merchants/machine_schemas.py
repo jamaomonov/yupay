@@ -363,14 +363,22 @@ class MerchantOrderStatusOut(BaseModel):
     #: What this order charged. Final — see ``POST /merchant/v1/orders``.
     price_usd: UsdPrice
     #: How much of ``price_usd`` has been credited back to your deposit.
-    #: ``"0.00"`` until a refund exists; read from the ledger, not a flag.
+    #: ``"0.00"`` until something has come back; read from the ledger, not a
+    #: flag, so both routes land here — M3b's automatic refund of a supplier
+    #: failure that returned our money, and a settlement support books by
+    #: hand. Never more than ``price_usd``: both writers refuse to take an
+    #: order past its own charge.
     refunded_usd: UsdAmount
     created_at: datetime
     paid_at: datetime | None
     delivered_at: datetime | None
-    #: ``null``, ``"fulfillment_failed"`` or ``"order_failed"`` — a closed
-    #: vocabulary, additive only. Never an operator's or a supplier's own
-    #: words: those are internal, and a client cannot switch on prose.
+    #: ``null``, ``"fulfillment_failed_refunded"``, ``"fulfillment_failed"``
+    #: or ``"order_failed"`` — a closed vocabulary, additive only. Never an
+    #: operator's or a supplier's own words: those are internal, and a client
+    #: cannot switch on prose. The first of those is M3b Task 3's single
+    #: addition and means "the delivery failed **and** your money is already
+    #: back"; whether a supplier kept our money or we cannot tell is
+    #: deliberately not distinguishable here — see the module README.
     failure_reason: str | None
     delivery: MerchantDeliveryOut | None
     timeline: list[MerchantOrderEventOut]
@@ -442,8 +450,10 @@ class MerchantTransactionOut(BaseModel):
 
     transaction_id: str
     #: ``merchant_deposit_credit`` (we credited your deposit),
-    #: ``merchant_order_charge`` (an order spent it), and more later. Treat an
-    #: unknown kind as "some movement" and trust ``amount_usd``.
+    #: ``merchant_order_charge`` (an order spent it),
+    #: ``merchant_order_refund`` (M3b: we returned a failed order's charge),
+    #: and more later. Treat an unknown kind as "some movement" and trust
+    #: ``amount_usd``.
     kind: str
     amount_usd: UsdAmount
     #: Set on rows an order caused; ``null`` on a deposit credit.

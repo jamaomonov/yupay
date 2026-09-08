@@ -680,12 +680,15 @@ async def test_an_order_support_closed_reports_order_failed(
 async def test_refunded_usd_is_read_from_the_ledger_not_hardcoded(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """Nothing refunds a merchant order yet (M3 owns that), so this field is
-    always ``"0.00"`` today — which is exactly how a hardcoded zero would look.
+    """The field is a ledger read, and this posts against it by hand.
 
-    So the test posts the refund M3 will post: the README's posting table row
-    ``D merchant_deposit / C house_payments_received``, referencing the order.
-    If the field is computed, it moves.
+    Two paths now move it — ``merchants.refund.refund_order`` on a supplier
+    that gave our money back (M3b Task 3) and an operator's attributed credit
+    (Task 2) — and both are covered by their own suites. What this test keeps
+    is the property underneath them: the number is summed off the postings, so
+    a row written by *any* future path with the README's legs and the order's
+    reference shows up here without a change to the read. A hardcoded zero and
+    a field wired to one particular writer both fail it.
     """
     merchant_id, key_id, secret, order_id = await _place(
         integration_client, admin_headers, db_session, merchant_order_id="acme-refund"
