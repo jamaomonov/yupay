@@ -228,24 +228,25 @@ async def _record_attempt(
 # ---------- realtime ----------
 
 
-async def _publish_status_changed(order: Order) -> None:
-    """Nudge the order's owner (if any) over the realtime channel.
+async def _publish_status_changed(
+    db: AsyncSession, order: Order, *, publish_realtime: bool = True
+) -> None:
+    """Route a status change through the orders module's one seam.
 
-    No-op for guest orders (``order.user_id is None``) — that check lives in
-    ``publish_order_event`` itself. Imported lazily to avoid pulling the WS
-    route stack into every fulfilment import.
+    This used to be a verbatim copy of the realtime nudge — one of three. The
+    nudge, and the merchant webhook beside it, now live in
+    ``orders.service.on_order_status_changed``; the local name is kept so the
+    call sites read as they always did. ``publish_realtime=False`` is for the
+    settle path, which emits ``order.delivered`` instead and must not start
+    sending a connected storefront a second event as well.
+
+    Imported lazily for the reason ``orders.service`` imports *this* module
+    lazily: the two reach into each other and a module-level import would
+    close the cycle.
     """
-    from yupay.modules.realtime import api as realtime
+    from yupay.modules.orders import service as orders_svc
 
-    await realtime.publish_order_event(
-        order.user_id,
-        {
-            "type": "order.status_changed",
-            "orderId": order.id,
-            "status": order.status,
-            "at": order.updated_at.isoformat(),
-        },
-    )
+    await orders_svc.on_order_status_changed(db, order, publish_realtime=publish_realtime)
 
 
 async def _publish_delivered(order: Order) -> None:
@@ -328,7 +329,7 @@ async def start_for_order(
 
     await db.flush()
     if transitioned_to_fulfilling:
-        await _publish_status_changed(order)
+        await _publish_status_changed(db, order)
 
     cfg = settings or get_settings()
     if cfg.fulfilment_async:
@@ -1319,6 +1320,15 @@ async def _try_settle_order(db: AsyncSession, *, order_id: str) -> None:
     # treats it as a nudge and re-fetches the order, so a rare rollback after
     # this point self-corrects on that refetch.
     await _publish_delivered(order)
+
+    # And the status-change seam, for its **webhook** half only. ``delivered``
+    # is the event a reseller actually waits for and this is the one site that
+    # reaches it, so skipping the seam here would ship a webhook that never
+    # announces the delivery. ``publish_realtime=False`` because the nudge
+    # above already went out as ``order.delivered``: routing this site through
+    # the nudge as well would start sending every connected retail storefront a
+    # second event it has never received.
+    await _publish_status_changed(db, order, publish_realtime=False)
 
     # Telegram push — fire-and-forget *after commit* so a slow / down
     # Telegram never blocks the saga AND the notification's own session can

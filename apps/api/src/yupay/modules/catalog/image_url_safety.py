@@ -24,10 +24,33 @@ Residual risk — read before assuming this closes the finding:
   requires the fetcher itself to re-resolve and re-check the IP at request
   time (or pin the resolved IP), which is Next's image optimizer's
   responsibility, not this validator's — Next does not offer a hook for it.
-* It only understands standard dotted-decimal / colon-hex IP notation (plus
-  bare-integer IPv4, e.g. ``http://2130706433/``). Other obfuscations
-  (octal/hex-per-octet forms) are not normalised here; treat this as raising
-  the bar, not as a hermetic filter.
+* Notation is read the way the **fetcher** reads it, because anything else
+  checks a different string from the one that is fetched: the host is
+  IDNA-normalised first (so ``ⓛⓞⓒⓐⓛⓗⓞⓢⓣ`` and ``127。0。0。1`` are seen as
+  ``localhost`` and ``127.0.0.1``, which is what Node's ``new URL()`` makes of
+  them), and IP literals are parsed by the URL standard's IPv4 rules — bare
+  integer, octal, hex, short dotted — not only by ``ipaddress``. Still treat
+  it as raising the bar rather than as a hermetic filter: it is a
+  string-shaped check, and the only real answer is the connect-time one this
+  path cannot have.
+
+The rules outgrew the name. :func:`validate_public_https_url` is the generic
+form — same checks, a caller-supplied noun for the error message — and
+:func:`validate_public_image_url` is the catalog's thin wrapper over it. The
+second caller is the merchant webhook URL (M3a Task 1,
+``merchants.admin.set_webhook``): sharing this function is what keeps one
+blocked-range table in the repo instead of two that drift. It is the
+**save-time** half there too, and the DNS-rebinding caveat above applies
+unchanged for this function.
+
+What closes that caveat is a fetcher that re-checks the address it actually
+connects to, and for the webhook path one now exists:
+:mod:`yupay.core.outbound` (M3a Task 2) resolves the host itself, refuses
+unless every answer is public, and connects to the address it checked. Read
+the two together: this module is the cheap early refusal on the admin write,
+that one is the control. **The image path still has no such fetcher** — Next
+owns it and offers no hook — so for catalog images this file remains the only
+check there is, with the residual risk above intact.
 """
 
 from __future__ import annotations
@@ -35,32 +58,119 @@ from __future__ import annotations
 import ipaddress
 from urllib.parse import urlsplit
 
+from yupay.core.outbound_addresses import blocked_reason
+
 # mDNS / common internal-only TLDs. None of these should ever resolve on the
 # public internet, so there is no legitimate catalog-image use for them.
 _BLOCKED_HOST_SUFFIXES = (".local", ".localhost", ".internal")
 _BLOCKED_HOSTS = frozenset({"localhost", "internal"})
 
 
+def normalize_host(host: str) -> str:
+    """The host as **Node** will read it, which is what this must classify.
+
+    The fetcher on this path is Next's image optimizer, i.e. Node's WHATWG
+    ``new URL()``, which applies IDNA/UTS-46 mapping to the host. Classifying
+    the raw ``urlsplit`` hostname therefore checks a different string from the
+    one that is fetched: ``https://ⓛⓞⓒⓐⓛⓗⓞⓢⓣ/x.png`` and
+    ``https://127。0。0。1/x.png`` are what an attacker writes and
+    ``localhost`` / ``127.0.0.1`` are what Node connects to.
+
+    Python's IDNA codec does the same mapping for our purposes — nameprep is
+    NFKC plus case folding, and it treats the ideographic and fullwidth full
+    stops as label separators — so one call closes the gap. ASCII hosts skip
+    it entirely: the codec would also reject spellings the DNS accepts, and an
+    ASCII host has nothing to map.
+
+    Args:
+        host: ``urlsplit``'s hostname.
+
+    Returns:
+        The normalised, lowercased host with any trailing dot removed.
+
+    Raises:
+        ValueError: A non-ASCII host that will not encode. Refused rather than
+            passed through raw — this is the one path with no connect-time
+            re-check, so an unclassifiable host is not a host we will store.
+    """
+    if host.isascii():
+        return host.lower().rstrip(".")
+    try:
+        return host.encode("idna").decode("ascii").lower().rstrip(".")
+    except (UnicodeError, ValueError) as exc:
+        raise ValueError("host is not a usable domain name") from exc
+
+
+def _ipv4_number(part: str) -> int | None:
+    """One dotted part as WHATWG's IPv4 parser reads it: hex, octal or decimal.
+
+    ``int(part, base)`` alone is too generous — it accepts underscores, signs
+    and surrounding whitespace, none of which Node accepts — so the digits are
+    checked against the base first.
+    """
+    digits, base = part, 10
+    if part[:2].lower() == "0x":
+        digits, base = part[2:], 16
+    elif len(part) > 1 and part[0] == "0":
+        digits, base = part[1:], 8
+    if digits == "":
+        return 0
+    allowed = "0123456789abcdef"[:base] if base != 8 else "01234567"
+    if not all(character in allowed for character in digits.lower()):
+        return None
+    return int(digits, base)
+
+
+def _whatwg_ipv4(host: str) -> ipaddress.IPv4Address | None:
+    """WHATWG's IPv4 parser, or ``None`` when the host is a name.
+
+    ``ipaddress`` reads exactly one spelling of an IPv4 address; the URL
+    standard reads several, and Node implements the URL standard. Every one of
+    ``0x7f.1``, ``0177.0.0.1``, ``127.1`` and ``2130706433`` is 127.0.0.1 to
+    ``new URL()`` and a mere hostname to ``ipaddress``, which is how a
+    loopback URL used to be storable.
+
+    An out-of-range value returns ``None``: Node rejects the URL outright, so
+    nothing fetches it and there is nothing to block.
+    """
+    parts = host.split(".")
+    if len(parts) > 1 and parts[-1] == "":
+        parts.pop()
+    if not 1 <= len(parts) <= 4:
+        return None
+    numbers: list[int] = []
+    for part in parts:
+        number = _ipv4_number(part)
+        if number is None:
+            return None
+        numbers.append(number)
+    if any(number > 255 for number in numbers[:-1]):
+        return None
+    if numbers[-1] >= 256 ** (5 - len(numbers)):
+        return None
+    value = numbers[-1]
+    for index, number in enumerate(numbers[:-1]):
+        value += number * 256 ** (3 - index)
+    try:
+        return ipaddress.IPv4Address(value)
+    except ipaddress.AddressValueError:  # pragma: no cover -- bounded above
+        return None
+
+
 def _parse_ip(host: str) -> ipaddress.IPv4Address | ipaddress.IPv6Address | None:
     """Best-effort parse of ``host`` as an IP literal, or ``None`` if it isn't one.
 
-    Handles standard dotted-decimal/colon-hex notation directly, plus the
-    common bare-integer IPv4 bypass (``http://2130706433/`` == 127.0.0.1)
-    that ``ipaddress.ip_address`` alone does not accept.
+    Standard dotted-decimal/colon-hex notation first, then the URL standard's
+    IPv4 forms (:func:`_whatwg_ipv4`) — bare integer, octal, hex and short
+    dotted — because those are the ones the fetcher on this path resolves.
     """
     try:
         return ipaddress.ip_address(host)
     except ValueError:
-        pass
-    if host.isdigit():
-        try:
-            return ipaddress.IPv4Address(int(host))
-        except (ValueError, ipaddress.AddressValueError):
-            return None
-    return None
+        return _whatwg_ipv4(host)
 
 
-def validate_public_image_url(url: str) -> str:
+def validate_public_https_url(url: str, *, subject: str = "URL") -> str:
     """Reject ``url`` unless it is an ``https`` URL pointing at a public host.
 
     Intended for a non-empty, already-stripped candidate URL — callers own
@@ -71,15 +181,22 @@ def validate_public_image_url(url: str) -> str:
         * Any non-``https`` scheme (``http``, ``file``, ``gopher``, ``ftp``, ...).
         * ``localhost`` / ``internal`` and anything under ``*.local`` /
           ``*.localhost`` / ``*.internal``.
-        * A host that is an IP literal in a private, loopback, link-local
-          (this covers the ``169.254.169.254`` cloud metadata address),
-          reserved, multicast, or unspecified range — i.e.
-          ``ipaddress.ip_address(...).is_private`` and friends, which
-          together cover RFC1918 (10/8, 172.16/12, 192.168/16), 127/8,
-          ``::1``, ``fc00::/7`` and ``fe80::/10``.
+        * A host that is an IP literal in any family
+          :data:`yupay.core.outbound_addresses.BLOCKED_FAMILIES` names —
+          loopback, RFC 1918 private, link-local (which covers the
+          ``169.254.169.254`` cloud metadata address), unique-local,
+          site-local, multicast, ``0.0.0.0/8``, unspecified and reserved —
+          plus anything that is not globally routable, such as carrier-grade
+          NAT. That table is shared with the connect-time client rather than
+          restated here: two lists drift, and the review that added
+          ``fec0::/10`` had to fix it in both.
 
     Args:
-        url: A non-empty candidate image URL.
+        url: A non-empty candidate URL.
+        subject: What the URL is, as it should read in an error message
+            ("image URL", "webhook URL"). Only the wording depends on it;
+            every rule above is the same for every caller, which is the
+            point of having one function.
 
     Returns:
         ``url`` unchanged, once it has passed every check.
@@ -90,23 +207,34 @@ def validate_public_image_url(url: str) -> str:
     """
     parsed = urlsplit(url)
     if parsed.scheme != "https":
-        raise ValueError("image URL must use https")
-    host = (parsed.hostname or "").lower().rstrip(".")
+        raise ValueError(f"{subject} must use https")
+    try:
+        host = normalize_host(parsed.hostname or "")
+    except ValueError as exc:
+        raise ValueError(f"{subject} host is not a usable domain name") from exc
     if not host:
-        raise ValueError("image URL must have a host")
+        raise ValueError(f"{subject} must have a host")
     if host in _BLOCKED_HOSTS or host.endswith(_BLOCKED_HOST_SUFFIXES):
-        raise ValueError(f"image URL host {host!r} is not allowed")
+        raise ValueError(f"{subject} host {host!r} is not allowed")
     ip = _parse_ip(host)
-    if ip is not None and (
-        ip.is_private
-        or ip.is_loopback
-        or ip.is_link_local
-        or ip.is_reserved
-        or ip.is_multicast
-        or ip.is_unspecified
-    ):
-        raise ValueError(f"image URL host {host!r} resolves to a blocked network")
+    if ip is not None and blocked_reason(ip) is not None:
+        raise ValueError(f"{subject} host {host!r} resolves to a blocked network")
     return url
+
+
+def validate_public_image_url(url: str) -> str:
+    """:func:`validate_public_https_url` worded for a catalog image URL.
+
+    Args:
+        url: A non-empty candidate image URL.
+
+    Returns:
+        ``url`` unchanged, once it has passed every check.
+
+    Raises:
+        ValueError: The URL is missing/malformed or targets a blocked host.
+    """
+    return validate_public_https_url(url, subject="image URL")
 
 
 def validate_optional_public_image_url(url: str | None) -> str | None:
@@ -124,6 +252,8 @@ def validate_optional_public_image_url(url: str | None) -> str | None:
 
 
 __all__ = [
+    "normalize_host",
     "validate_optional_public_image_url",
+    "validate_public_https_url",
     "validate_public_image_url",
 ]

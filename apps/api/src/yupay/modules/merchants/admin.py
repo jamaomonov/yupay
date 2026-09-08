@@ -8,22 +8,35 @@ established pattern for cross-module row access (``integrations.merchant_feed``,
 ``admin.service`` do the same) — and into ``wallet.models`` for the grouped
 balance read, mirroring ``deposit.deposit_balance``.
 
+The outgoing-webhook configuration lives here too (M3a Task 1): in this
+milestone support is the only way to set a merchant's endpoint, by owner
+decision — the merchant gets the control from the cabinet in M4, and there is
+deliberately no ``/merchant/v1`` write for it, because its only purpose would
+be to let a stranger point our own worker at an address of their choosing.
+
 The per-merchant ledger listing used to live here too; it moved to
 ``deposit.py`` with the rest of the deposit's reads and writes.
 """
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import String, case, func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from yupay.core import crypto
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
+from yupay.core.ids import new_id
+from yupay.modules.catalog.image_url_safety import validate_public_https_url
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
+from yupay.modules.merchants import signing
 from yupay.modules.merchants.deposit import DEPOSIT_CURRENCY
-from yupay.modules.merchants.models import Merchant
+from yupay.modules.merchants.models import Merchant, MerchantWebhook
+from yupay.modules.merchants.service import get_merchant
 from yupay.modules.wallet.models import WalletAccount, WalletPosting
 from yupay.modules.wallet.service import NORMAL_SIDE
 
@@ -204,9 +217,250 @@ async def bulk_set_markup(
     return int(result.rowcount or 0)  # type: ignore[attr-defined]  # rowcount lives on CursorResult
 
 
+# ---------------------------------------------------------------------------
+# Outgoing webhook configuration (M3a Task 1, spec §10)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ConfiguredWebhook:
+    """A webhook row plus the plaintext secret, when one was just minted.
+
+    ``secret`` is ``None`` whenever the call did not create a new signing key
+    — a URL change on an existing hook, or a re-enable. It exists in the clear
+    only in this object and in the single HTTP response that carries it; the
+    row holds it encrypted (``core.crypto``), which is what lets us sign each
+    delivery without keeping key material in the clear.
+    """
+
+    webhook: MerchantWebhook
+    secret: str | None
+
+
+def validate_webhook_url(url: str) -> str:
+    """Reject a webhook URL that is not https, or that names a non-public host.
+
+    The **save-time** half of the SSRF story, and deliberately the same
+    function the catalog's image URLs go through
+    (``catalog.image_url_safety``) rather than a second copy of the blocked
+    ranges — one table that can drift is enough.
+
+    It reads *notation*, not resolved addresses, so a hostname that resolves
+    publicly now and privately at delivery time passes here. That is not an
+    oversight and this function must not be described as closing it: the
+    control for DNS rebinding is the outbound client re-checking the address
+    it actually connects to.
+
+    Args:
+        url: The candidate URL, already stripped.
+
+    Returns:
+        ``url`` unchanged, once it has passed every check.
+
+    Raises:
+        ValidationError: The URL is malformed, not https, or targets a
+            loopback / private / link-local / reserved address literal.
+    """
+    try:
+        return validate_public_https_url(url, subject="webhook URL")
+    except ValueError as exc:
+        raise ValidationError(str(exc), extra={"field": "url"}) from None
+
+
+async def get_webhook(db: AsyncSession, *, merchant_id: str) -> MerchantWebhook:
+    """The merchant's configured endpoint.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Whose endpoint to read. Must exist.
+
+    Returns:
+        The row, disabled ones included — "is it off, and since when" is the
+        question the screen exists to answer.
+
+    Raises:
+        NotFoundError: If the merchant does not exist, or has no webhook
+            configured. A merchant that never registered one and a typo'd id
+            are both 404 here; the distinction is not one an operator can act
+            on differently.
+    """
+    await get_merchant(db, merchant_id)
+    hook = await _find_webhook(db, merchant_id=merchant_id)
+    if hook is None:
+        raise NotFoundError("webhook not configured")
+    return hook
+
+
+async def set_webhook(db: AsyncSession, *, merchant_id: str, url: str) -> ConfiguredWebhook:
+    """Point a merchant's webhook at ``url``, minting the secret on first use.
+
+    One endpoint per merchant in v1, so this is an upsert on the merchant:
+    the first call creates the row and returns a secret the caller must show
+    once and then forget; a later call edits the URL of the same row and
+    returns ``secret=None``. Changing where deliveries go deliberately does
+    **not** rotate the key — that would silently break a working verifier,
+    and rotation has its own endpoint.
+
+    Setting a URL also **re-enables**: ``disabled_at`` is cleared and
+    ``failure_streak`` reset to 0. That is the recovery path after the
+    delivery worker auto-disables a hook whose endpoint was down, and it is
+    the same action whether the operator is fixing the URL or merely
+    confirming the old one still stands.
+
+    Two callers racing the first write both miss the pre-check, both INSERT,
+    and the loser takes the uniqueness violation. It **resolves the race
+    rather than raising**: rolls back, re-reads and returns the winner with no
+    secret. That costs the loser its transaction, which on this endpoint is
+    nothing but the read it just did.
+
+    Args:
+        db: Session. The caller owns the transaction — note that losing the
+            race above rolls it back, so nothing written before this call
+            survives. Today's only caller writes nothing before it.
+        merchant_id: Whose endpoint to set. Must exist.
+        url: The https endpoint. Validated by :func:`validate_webhook_url`.
+
+    Returns:
+        The row, plus the plaintext secret **only** when this call minted
+        one. A URL change, a re-enable and the losing side of a concurrent
+        first write all return ``secret=None`` — the last of those because
+        the winner holds the key, and handing back a second one would give
+        the operator a value that signs nothing.
+
+    Raises:
+        NotFoundError: If no merchant with that id exists.
+        ValidationError: If the URL is refused by the save-time check.
+        IntegrityError: If the insert failed on something other than the
+            per-merchant uniqueness — re-raised rather than reported as a
+            success.
+    """
+    await get_merchant(db, merchant_id)
+    clean = validate_webhook_url(url.strip())
+    hook = await _find_webhook(db, merchant_id=merchant_id)
+    if hook is not None:
+        hook.url = clean
+        hook.disabled_at = None
+        hook.failure_streak = 0
+        hook.updated_at = now()
+        await db.flush()
+        return ConfiguredWebhook(webhook=hook, secret=None)
+
+    secret = signing.new_webhook_secret()
+    secret_enc, secret_nonce = crypto.encrypt(secret, purpose=crypto.PURPOSE_MERCHANT_WEBHOOK)
+    hook = MerchantWebhook(
+        id=new_id(),
+        merchant_id=merchant_id,
+        url=clean,
+        secret_enc=secret_enc,
+        secret_nonce=secret_nonce,
+    )
+    db.add(hook)
+    try:
+        await db.flush()
+    except IntegrityError:
+        # Both callers missed the pre-check and both inserted; the loser hit
+        # ``uq_merchant_webhooks_merchant``. Ordinary traffic, not an exotic
+        # interleave — a double-clicked Save, or the SPA retrying a slow PUT
+        # — and the same class M2 already paid for on the order path (commit
+        # 58fbcb8). Unhandled it is a 500 on the one endpoint whose job is to
+        # return a secret that can never be seen again.
+        #
+        # Return the winner **with no secret**: the winner minted the key and
+        # holds it, so claiming one here would hand the operator a value that
+        # signs nothing. The advice on a lost response is the same as for a
+        # lost mint — rotate.
+        await db.rollback()
+        winner = await _find_webhook(db, merchant_id=merchant_id)
+        if winner is None:
+            # Not the uniqueness race: some other constraint failed, and
+            # swallowing it would hide a real bug behind a plausible 200.
+            raise
+        return ConfiguredWebhook(webhook=winner, secret=None)
+    # Pick up the server defaults (``failure_streak``, the timestamps) so the
+    # caller can render the row without a round-trip of its own.
+    await db.refresh(hook)
+    return ConfiguredWebhook(webhook=hook, secret=secret)
+
+
+async def rotate_webhook_secret(db: AsyncSession, *, merchant_id: str) -> ConfiguredWebhook:
+    """Mint a new signing secret, overwriting the old one.
+
+    There is one live key at a time and no overlap window, which is the
+    opposite of the machine credential's rotation (spec §9.2, several live
+    keys) — and on purpose. The overlap there exists because *the merchant*
+    redeploys between issuing and revoking, and only they know when that
+    finished. Here we are the sender: from the moment this returns, every
+    delivery is signed with the new secret, so the merchant's window is
+    "update the value, redeploy", and a second accepted secret would only
+    widen what a leaked one is worth.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Whose secret to rotate. Must exist and have a webhook.
+
+    Returns:
+        The row and the new plaintext secret. Shown once.
+
+    Raises:
+        NotFoundError: If the merchant does not exist, or has no webhook.
+    """
+    hook = await get_webhook(db, merchant_id=merchant_id)
+    secret = signing.new_webhook_secret()
+    hook.secret_enc, hook.secret_nonce = crypto.encrypt(
+        secret, purpose=crypto.PURPOSE_MERCHANT_WEBHOOK
+    )
+    hook.updated_at = now()
+    await db.flush()
+    return ConfiguredWebhook(webhook=hook, secret=secret)
+
+
+async def disable_webhook(db: AsyncSession, *, merchant_id: str) -> MerchantWebhook:
+    """Stop delivering to a merchant's endpoint. Idempotent.
+
+    A timestamp, never a DELETE: the delivery log keeps pointing at a row an
+    operator can read, and turning the hook back on is
+    :func:`set_webhook` rather than a re-onboarding with a new secret. A
+    second call leaves the first ``disabled_at`` alone — "when did we stop
+    delivering" must not move because someone clicked twice.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Whose endpoint to disable. Must exist and have a webhook.
+
+    Returns:
+        The row, with ``disabled_at`` set.
+
+    Raises:
+        NotFoundError: If the merchant does not exist, or has no webhook.
+    """
+    hook = await get_webhook(db, merchant_id=merchant_id)
+    if hook.disabled_at is None:
+        # One clock read, bound once: two calls would leave ``disabled_at``
+        # and ``updated_at`` microseconds apart for no reason, and the rest
+        # of this module binds it.
+        at = now()
+        hook.disabled_at = at
+        hook.updated_at = at
+        await db.flush()
+    return hook
+
+
+async def _find_webhook(db: AsyncSession, *, merchant_id: str) -> MerchantWebhook | None:
+    """The merchant's webhook row, or ``None``. Unique on ``merchant_id``."""
+    return (
+        await db.execute(select(MerchantWebhook).where(MerchantWebhook.merchant_id == merchant_id))
+    ).scalar_one_or_none()
+
+
 __all__ = [
+    "ConfiguredWebhook",
     "bulk_set_markup",
+    "disable_webhook",
+    "get_webhook",
     "list_merchants_with_balances",
+    "rotate_webhook_secret",
     "set_brand_b2b",
     "set_sku_b2b",
+    "set_webhook",
+    "validate_webhook_url",
 ]

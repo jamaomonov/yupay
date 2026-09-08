@@ -215,14 +215,34 @@ yupay/
 - Webhook endpoints (Stripe, PayPal, suppliers, Telegram) **must** verify signatures **before**
   parsing the body. Raw-body middleware required.
 - **Never log PII**: email, phone, full card data, Telegram user ID, IP. Use the structured
-  logger's redactor. Order IDs and amounts are OK to log.
+  logger's redactor. Order IDs and amounts are OK to log. "IP" means **an address we
+  observed a person arriving from** — a customer's, a cabinet operator's, an admin's.
+  The carve-out is the mirror image: **an address a third party published to us as a
+  destination we should send to**. The test is _who chose the endpoint_, not who is
+  behind it — a sole trader self-hosting a webhook on a residential line still chose
+  to hand us that address as a delivery target, and nothing in the request path could
+  check the difference anyway. Three sites carry one today, all on the outbound
+  merchant-webhook path and all recording where a delivery went:
+  - `core/outbound.py`'s `outbound.delivered` (`address=pinned`);
+  - `merchants/webhook_outcome.py`'s `merchant_webhook.delivered` (`address=`);
+  - `AddressNotAllowedError`'s message, which names the refused addresses and reaches
+    `merchant_webhook_deliveries.last_error` and the `error=` field of
+    `merchant_webhook.attempt_failed` — a refusal is unactionable without them.
+
+  "We recorded a 200 — to which of their hosts?" is the question that log exists to
+  answer, and the SSRF client pins one address per attempt so it is answerable. A
+  fourth site needs the same shape — an address the counterparty supplied as a
+  destination — and a line here.
+
 - All **state-changing** endpoints (`POST`, `PUT`, `PATCH`, `DELETE`) **must** accept an
   `Idempotency-Key` header and persist results keyed by it. The rule protects writes from
   replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`
   only to keep an identifier out of the URL — and therefore out of the edge access log,
-  which records the full query string — not because they mutate anything. Two such
-  endpoints exist today: `POST /catalog/products/{id}/check-player` and
-  `POST /gifts/steam-profile`. If you add a third, say in its docstring why it is keyless.
+  which records the full query string — not because they mutate anything. Three such
+  endpoints exist today: `POST /catalog/products/{id}/check-player`,
+  `POST /gifts/steam-profile` and `POST /merchant/v1/validate/player` (the same
+  player check, exposed to a reseller — the identifier it carries is their end
+  customer's). If you add a fourth, say in its docstring why it is keyless.
   The one **mutation** exempt from the header is `POST /merchant/v1/orders`, which is
   idempotent on the caller's own `merchant_order_id` instead (spec §9.3): that id is
   minted per _intent_ by the reseller's system rather than per attempt by ours, is what
@@ -255,7 +275,22 @@ yupay/
 - Identify and prevent N+1: use `selectinload`/`joinedload` in SQLAlchemy 2; every list
   endpoint must have an integration test that asserts query count.
 - **No synchronous external HTTP calls in request handlers.** Always enqueue and respond
-  with a pending status; the client subscribes via WebSocket or polls.
+  with a pending status; the client subscribes via WebSocket or polls. The rule protects
+  the **money path**: a supplier call inside a request handler can leave the supplier paid
+  with no record of it, and one slow upstream holds a pool connection somebody's checkout
+  needed. Four **advisory pre-purchase lookups** deviate from it, and they are the whole
+  list: `GET /admin/integrations/g2b/games/{game_code}/check-player` (ADR-0019, the
+  precedent), `POST /catalog/products/{id}/check-player` and
+  `POST /merchant/v1/validate/player` (both ADR-0031, which carries the justification and
+  the conditions — advisory, off the order path, short timeout, breaker, Redis-cached, its
+  own rate-limit bucket), and `POST /gifts/steam-profile`, which calls the Steam Web API
+  from its handler with a short-timeout client of its own. **The fourth has no ADR**: it
+  predates this list and clears some of ADR-0031's conditions (advisory, off the order
+  path, short timeout, Redis-cached, own bucket) but not the breaker. That gap is real and
+  is recorded here rather than left to be rediscovered; closing it means either an ADR
+  saying why a breaker is unnecessary there, or a breaker. If you add a fifth, it needs an
+  ADR entry saying why it clears those conditions and a line here. A rule that does not name its exceptions stops being
+  read as a rule: this one was silently deviated from three times before the list existed.
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
 - DB indices are added in the same migration as the query that needs them.

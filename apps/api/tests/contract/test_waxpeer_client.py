@@ -48,6 +48,33 @@ async def test_validate_login_reports_the_reason() -> None:
 
 
 @respx.mock
+async def test_validate_login_raises_when_the_body_carries_no_verdict() -> None:
+    """A 200 with no boolean ``valid`` is "we could not check", not "invalid".
+
+    ``bool(body.get("valid", False))`` used to read a missing or renamed field
+    as a refusal, which ``integrations.player_check`` then reports to the
+    customer as "no such Steam login". Raising makes an unreadable answer
+    degrade to ``status="error"`` instead — the same rule
+    ``get_balance_units`` applies to ``user.wallet``.
+    """
+    respx.get(f"{BASE}/steam-topup/validate").mock(
+        return_value=httpx.Response(200, json={"success": True, "msg": "ok"})
+    )
+    with pytest.raises(WaxpeerError):
+        await _client().validate_login("gaben")
+
+
+@respx.mock
+async def test_validate_login_raises_on_a_non_boolean_verdict() -> None:
+    """A string ``"true"`` is a shape change, and truthy — the worst kind."""
+    respx.get(f"{BASE}/steam-topup/validate").mock(
+        return_value=httpx.Response(200, json={"success": True, "valid": "true"})
+    )
+    with pytest.raises(WaxpeerError):
+        await _client().validate_login("gaben")
+
+
+@respx.mock
 async def test_create_topup_parses_the_topup_object() -> None:
     respx.post(f"{BASE}/steam-topup").mock(
         return_value=httpx.Response(

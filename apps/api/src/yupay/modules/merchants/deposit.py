@@ -33,6 +33,7 @@ from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import ConflictError, ValidationError
+from yupay.modules.merchants import webhooks
 from yupay.modules.merchants.service import get_merchant
 from yupay.modules.wallet import service as wallet_service
 from yupay.modules.wallet.models import WalletAccount, WalletPosting, WalletTransaction
@@ -67,6 +68,15 @@ async def credit_deposit(
     already guarantees it), so an admin retry after a timeout cannot credit
     twice.
 
+    A fresh credit also enqueues ``balance.credited`` (spec §10), in this same
+    transaction. A **replay** does not: it books nothing, and announcing money
+    that did not move would have a reseller crediting their own end customer
+    twice. The check is a read taken before the posting, because ``post()``
+    gives its caller no way to tell a replay from a fresh write afterwards; two
+    genuinely concurrent credits under one key can therefore both miss it and
+    both announce, which is the at-least-once delivery a webhook receiver has
+    to be built for regardless.
+
     Args:
         db: Session. The caller owns the transaction.
         merchant_id: Who gets the money. Must exist; may be frozen.
@@ -85,6 +95,17 @@ async def credit_deposit(
     if amount <= 0:
         raise ValidationError("deposit credit must be positive", extra={"amount": str(amount)})
     await get_merchant(db, merchant_id)
+
+    # Read *before* posting, because ``post()`` answers a replay with the
+    # original transaction and gives the caller no way to tell the two apart
+    # afterwards. A replay books nothing, so it must announce nothing: a
+    # ``balance.credited`` for money that did not move would have a reseller
+    # crediting their own customer twice.
+    replayed = (
+        await db.execute(
+            select(WalletTransaction.id).where(WalletTransaction.idempotency_key == idempotency_key)
+        )
+    ).scalar_one_or_none() is not None
 
     deposit = await wallet_service.ensure_account(
         db,
@@ -105,7 +126,7 @@ async def credit_deposit(
         kind="house_payments_received",
         currency=DEPOSIT_CURRENCY,
     )
-    return await wallet_service.post(
+    txn = await wallet_service.post(
         db,
         kind="merchant_deposit_credit",
         legs=[
@@ -130,6 +151,16 @@ async def credit_deposit(
         actor=actor,
         metadata={"note": note} if note is not None else {},
     )
+    if not replayed:
+        # In this transaction, with the credit, so a merchant is told about
+        # money that is committed or about nothing at all.
+        await webhooks.enqueue_balance_credited(
+            db,
+            merchant_id=merchant_id,
+            amount=amount,
+            balance=await deposit_balance(db, merchant_id=merchant_id),
+        )
+    return txn
 
 
 async def charge_deposit(

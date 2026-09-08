@@ -157,9 +157,53 @@ case precisely and never blame the customer for an outage. (An earlier draft
 returned `{valid: bool, reason}`; that collapsed "wrong id" and "our fault"
 into one "couldn't check", which mis-told users to re-check a correct id.)
 
+#### Amended 2026-09-08: a verdict we recognise, or `error`
+
+The mapping originally read **any** unrecognised body as `invalid` — the
+docstring said so in as many words: "any other body (`invalid`, empty,
+unexpected) means the supplier answered but the id does not resolve". That was
+wrong, and wrong in the same direction the three-way status exists to prevent,
+only mirrored: it made the check a fake **rejecter**.
+
+The failure it allowed: G2B renames the `valid` field (their client already
+tolerates three different list keys on `fetch_products`, so shape drift is not
+hypothetical). Every call still returns HTTP 200. No breaker fires — 200s are
+successes. Nothing logs a failure. And **every player id on the platform comes
+back `invalid`**, telling every customer, and from M3a every reseller, that
+they mistyped. That is louder and likelier than the fake-approver case, and
+`invalid` is published on `/merchant/v1` as the one answer meaning the customer
+was wrong.
+
+So both providers now require a **recognised** verdict token and answer `error`
+otherwise:
+
+- G2B: `_G2B_VERDICTS` in `player_check.py` — `valid` and `invalid`, case- and
+  whitespace-tolerant. Anything else logs `player_check_unrecognised_verdict`
+  and maps to `error`.
+- Waxpeer: `WaxpeerClient.validate_login` **raises** `WaxpeerError` when the
+  body carries no boolean `valid`, instead of `bool(body.get("valid", False))`
+  reading a missing field as a refusal. Same rule `get_balance_units` already
+  applied to `user.wallet`, for the same stated reason — a silently wrong
+  answer is worse than a loud failure. `player_check` catches it and degrades
+  to `error`, so nothing above the client changes shape.
+
+This is a **behaviour change on the storefront**, not only on the machine API:
+a customer whose check meets an unreadable supplier response now sees "couldn't
+check" rather than "player not found". That is the correct message for what
+happened, and the endpoint still never blocks checkout either way.
+`test_player_check_service.py::test_map_g2b_response_unexpected_body_is_error_not_invalid`
+replaces the test that asserted the old behaviour.
+
 Handler logic (`yupay.modules.integrations.player_check.check_player_for_product`):
 
-1. Load the product. Unknown `product_id` → **404**. A product with no field
+1. Load the product — as **columns**, not as an entity. `session.get(Product,
+…)` fanned out to nine or more statements per check (`Product` configures
+   `lazy="selectin"` for its translations, FAQs, SKU set and brand, and
+   `Brand.products` is selectin in turn), which dragged the brand's whole
+   product subtree through an advisory lookup. Only `required_fields` is read.
+   Unknown `product_id` → **404**, carrying `code: "product_not_found"` since
+   2026-09-08 so the one 4xx on this path is typed like every other on
+   `/merchant/v1`. A product with no field
    carrying `check.provider == "g2b"` → **422** — this codebase maps
    `ValidationError` to 422 app-wide (`yupay.core.errors.ValidationError`),
    so the check-descriptor precondition follows the same convention as every
@@ -169,14 +213,23 @@ Handler logic (`yupay.modules.integrations.player_check.check_player_for_product
 2. Resolve the G2B `game_code`: the first **active**
    `sku_supplier_mapping` among the product's SKUs with
    `supplier_slug='g2b'`, `kind='game'` → `external_product_id`. No mapping →
-   `status="error"` — advisory, never an error boundary.
+   `status="error"` — advisory, never an error boundary — and, since
+   2026-09-08, a `player_check_no_game_mapping` warning naming the product.
+   That case is the likeliest cause of a product that answers `error` forever
+   (the import queue ships the form field before the mapping, or a mapping is
+   deactivated during a supplier switch) and it used to log nothing at all,
+   which made it indistinguishable from an unconfigured supplier.
 3. Call `games_check_player(game_code, player_id, server_id, charname=None)`.
 4. Map the raw response to the public `PlayerCheckOut` shape
-   (`{status, name}`, dropping the internal `openid`). A 200 body whose
-   `valid != "valid"` maps to `status="invalid"` (the id genuinely does not
-   resolve). **Any** exception — timeout, non-2xx, malformed response — is
-   folded into `status="error"`, mirroring the existing admin route. The
-   endpoint never returns a 5xx for an upstream failure.
+   (`{status, name}`, dropping the internal `openid`). A 200 body carrying a
+   **recognised** verdict maps to it: `valid` to `status="valid"`, `invalid`
+   to `status="invalid"` (the id genuinely does not resolve). A body carrying
+   anything else — a renamed key, a shape we do not know — maps to
+   `status="error"`, not `invalid`; see the 2026-09-08 amendment above for why
+   that distinction is the point. **Any** exception — timeout, non-2xx,
+   malformed response — is likewise folded into `status="error"`, mirroring the
+   existing admin route. The endpoint never returns a 5xx for an upstream
+   failure.
 
 ### A second provider: waxpeer (Steam login)
 
@@ -218,6 +271,34 @@ have to match the owning module. `integrations/api.py` exposes the service as
 `check_player_for_product(session, product_id, player_id, server_id) ->
 PlayerCheckOut` for reuse.
 
+### A third caller: the machine API (added 2026-09-08)
+
+`POST /merchant/v1/validate/player` (Merchant B2B M3a, spec §9.1) exposes this
+same service to a reseller's server, through `merchants/validate.py`. It
+resolves the merchant's `sku_id` to a product, scoped to what that surface can
+see (`brand.visible_b2b AND sku.visible_b2b`), and then calls
+`check_player_for_product` unchanged. Nothing about the providers, the breaker
+or the cache is duplicated or altered.
+
+Two things about that surface are worth recording here, because they are
+consequences of decisions made above:
+
+- **The three-way status is what makes the endpoint safe to publish.** The
+  spec's rule is "never a fake approver", and it is satisfied by the choice
+  made in this ADR: folding every fault into `error` rather than into a
+  cheerful `valid`. A storefront that mis-reads `error` shows a customer a
+  needless warning; a reseller that mis-reads it sells a top-up into a
+  stranger's account. Same discriminator, higher stakes.
+- **A fourth status exists on that surface only.** The storefront answers a
+  product with no checker with a `422` (`ValidationError`, per the endpoint
+  section above), which is right for a UI that only ever calls it for products
+  it knows are checkable. A machine caller iterating its own catalog needs
+  "there is no check here" as an ordinary outcome rather than an exception, and
+  needs it distinguishable from "we could not check" — one is permanent, the
+  other is worth retrying. So `MerchantPlayerCheckOut.status` adds
+  `unsupported`. It is a wire-contract addition on `/merchant/v1`, not a change
+  to `PlayerCheckOut`, and the storefront's shape is untouched.
+
 ### §10 deviation — one synchronous external HTTP call
 
 AGENTS.md §10 states: "No synchronous external HTTP calls in request
@@ -239,6 +320,13 @@ rule with one in-handler call to G2B. Justification:
   (`GET /admin/integrations/g2b/games/{game_code}/check-player`, ADR-0019)
   already makes this exact synchronous call; this endpoint reuses the same
   shape for a second, public caller instead of introducing a new pattern.
+
+The machine API's `POST /merchant/v1/validate/player` (above) inherits every
+one of those, with one addition: it is called by a _server_ rather than by a
+person tapping a button, so "user-initiated, no fan-out" no longer holds on its
+own. That is what its dedicated `merchant-validate` IP bucket is for — 120/60 s
+against the prefix's 600, because it is the only endpoint on that surface that
+spends a supplier's quota rather than ours.
 
 ### Positive consequences
 

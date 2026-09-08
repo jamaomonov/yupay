@@ -96,6 +96,34 @@ as the storefront, with three merchant-only differences, all guarded here:
   merchant order never rests in `pending_payment` and is invisible to the expiry
   sweep. It records the machine API's replay fingerprint on the `order.paid`
   event, and publishes nothing to realtime — `user_id` is NULL by construction.
+  It does call the status-change seam below, with `publish_realtime=False`: the
+  webhook half is the point, the nudge half is the thing that sentence declines.
+
+## The status-change seam
+
+`on_order_status_changed(db, order, *, publish_realtime=True)` is the **one
+place** where "the order's status just changed" has consequences. Every site
+that writes `order.status` calls it — this module's four, `payments.service`'s
+four, `fulfillment.service`'s two — so a fourth consequence is added once
+rather than to three of the four sites somebody remembered. The three modules
+used to keep a verbatim copy of the realtime nudge each; they now delegate.
+
+Two consequences today, disjoint by construction: the realtime nudge reaches a
+**retail owner**, and `merchants.webhooks` reaches a **merchant**. The webhook
+needed a seam rather than the existing publish precisely because
+`publish_order_event` is a no-op for a NULL `user_id`, which every merchant
+order has — the branch is `order.merchant_id is not None`.
+
+Call it after `status` and `updated_at` are set and, for the webhook half,
+from inside the transaction that set them: the delivery row and its
+`pg_notify` ride the caller's transaction.
+
+`publish_realtime=False` at the two sites that deliberately have no
+`order.status_changed` nudge — `mark_merchant_order_paid` (no owner to nudge)
+and `fulfillment`'s settle, which publishes `order.delivered` instead and must
+not start sending a connected storefront a second event for one transition.
+
+Drawn in `docs/architecture/sequence-diagrams/merchant-webhook-emit.mmd`.
 
 `source` stays `"unknown"` on a merchant order, and now carries a fourth
 meaning: not "the client did not say" but "no storefront placed this". The

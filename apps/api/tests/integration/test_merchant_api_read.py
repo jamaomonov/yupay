@@ -293,6 +293,7 @@ async def test_the_sweep_enumerates_every_endpoint_the_machine_api_ships() -> No
         ("POST", "/merchant/v1/orders"),
         ("GET", "/merchant/v1/orders/placeholder"),
         ("GET", "/merchant/v1/transactions"),
+        ("POST", "/merchant/v1/validate/player"),
     }
 
 

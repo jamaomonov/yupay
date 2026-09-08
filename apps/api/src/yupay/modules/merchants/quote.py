@@ -57,7 +57,7 @@ CODE_PRICE_CHANGED: Final = "price_changed"
 CODE_MARGIN_FLOOR: Final = "margin_floor"
 
 
-def _unavailable(sku_id: str, reason: str) -> NotFoundError:
+def unavailable(sku_id: str, reason: str) -> NotFoundError:
     """A 404 a reseller can act on without opening a support ticket.
 
     Ruling 2: ``/catalog`` listing a SKU is not a promise that sourcing can
@@ -66,6 +66,10 @@ def _unavailable(sku_id: str, reason: str) -> NotFoundError:
     cost is missing, and one the supplier is out of are three different
     problems with three different answers, and a bare "not found" makes them
     all look like a bad id.
+
+    Public because ``validate.py`` refuses the same SKUs with the same words:
+    "you cannot have this SKU" is one answer on this API, and a second
+    spelling of it would be a second contract for integrators to switch on.
 
     Args:
         sku_id: The SKU asked for. Our own identifier, never PII.
@@ -106,28 +110,28 @@ async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Dec
         )
     ).scalar_one_or_none()
     if sku is None:
-        raise _unavailable(sku_id, "unknown_sku")
+        raise unavailable(sku_id, "unknown_sku")
     product = sku.product
     brand = product.brand if product is not None else None
     if not sku.visible_b2b or brand is None or not brand.visible_b2b:
-        raise _unavailable(sku_id, "not_b2b_visible")
+        raise unavailable(sku_id, "not_b2b_visible")
     # The retail buyability rule, shared rather than restated: the active
     # chain, brand maintenance and supplier stock mean the same thing on both
     # surfaces, and a second copy of them would drift.
     if not orders.sku_is_buyable(sku):
-        raise _unavailable(sku_id, "out_of_stock" if not sku.in_stock else "not_for_sale")
+        raise unavailable(sku_id, "out_of_stock" if not sku.in_stock else "not_for_sale")
     if sku.variable_amount:
         # A customer-chosen amount has no wholesale price to quote: the B2B
         # formula is cost × markup, while these SKUs price off a guarded FX
         # rate and a margin multiplier. Not orderable in v1, and
         # ``expected_price`` would be meaningless for them.
-        raise _unavailable(sku_id, "variable_amount")
+        raise unavailable(sku_id, "variable_amount")
     cost = pricing.effective_cost(sku)
     if cost is None:
         # Not sellable, never free — spec §8.2. The catalog withholds these
         # too, so reaching here means the SKU lost its cost between the poll
         # and the order.
-        raise _unavailable(sku_id, "no_cost")
+        raise unavailable(sku_id, "no_cost")
     return sku, cost
 
 
@@ -189,4 +193,5 @@ __all__ = [
     "CODE_PRICE_CHANGED",
     "load_orderable_sku",
     "price_for",
+    "unavailable",
 ]

@@ -15,10 +15,10 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import ROUND_CEILING, ROUND_DOWN, Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
 _CENT = Decimal("0.01")
 
@@ -97,6 +97,48 @@ def _cents(value: Decimal) -> Decimal:
 
 #: A signed USD ledger amount, or a total of them, on the wire.
 UsdAmount = Annotated[Decimal, AfterValidator(_cents)]
+
+
+def _canonical_uuid(value: str) -> str:
+    """Parse an id as a UUID and return **Postgres'** spelling of it.
+
+    ``str(UUID(value))`` and not ``value``, which is the whole point.
+    ``UUID()`` accepts four spellings of the same id — plain, braced
+    (``{0198…}``), undashed, and ``urn:uuid:0198…`` — and Postgres' ``uuid``
+    type accepts only the first two of those four. Returning the caller's
+    original string therefore validated an id and then handed the database one
+    it refuses: ``where(Sku.id == "{0198…}")`` raised ``DataError``, nothing
+    handles ``DBAPIError``, and the caller got Starlette's plain-text **500**
+    from a schema whose entire job was to prevent exactly that.
+
+    That is not a hypothetical spelling. ``Guid.ToString("B")`` in .NET is
+    braced, and our own README tells integrators a 500 is safe to retry — so
+    the failure mode was a client retrying forever against an endpoint that can
+    never accept its ids.
+
+    Args:
+        value: The id as sent.
+
+    Returns:
+        The canonical, dashed, unbraced lowercase form.
+
+    Raises:
+        ValueError: It is not a UUID in any spelling. The message names the
+            field rather than being generic because the published error example
+            in the module README quotes it verbatim, and both fields carrying
+            this annotation are called ``sku_id``.
+    """
+    try:
+        return str(UUID(value))
+    except ValueError:
+        raise ValueError("sku_id must be a UUID") from None
+
+
+#: A catalog id on the wire: parsed as a UUID at the boundary and normalised to
+#: the one spelling Postgres accepts. One annotation shared by every id field on
+#: this contract — the order body's and the validate body's — because a second
+#: copy of the parse is a second chance to return the unnormalised string.
+SkuId = Annotated[str, AfterValidator(_canonical_uuid)]
 
 
 class MerchantValidationProblem(BaseModel):
@@ -224,10 +266,11 @@ class MerchantOrderCreateIn(BaseModel):
     #: canonical signing string without an encoding argument.
     merchant_order_id: str = Field(min_length=1, max_length=128, pattern=r"^[\x21-\x7e]+$")
     #: From ``GET /merchant/v1/catalog``. Parsed as a UUID here rather than
-    #: taken as free text: an unparseable id reaches Postgres as
+    #: taken as free text — an unparseable id reaches Postgres as
     #: ``uuid = 'whatever'``, which is a ``DataError`` and a 500 where a clean
-    #: refusal belongs.
-    sku_id: str
+    #: refusal belongs — and normalised to the spelling Postgres accepts; see
+    #: :func:`_canonical_uuid`.
+    sku_id: SkuId
     #: The price you last read from ``/catalog``. A tolerance, not a bid:
     #: within ±2% of ours the order proceeds and is charged at **our** current
     #: price; outside it, ``422 price_changed`` carries that price (spec §8.4,
@@ -239,16 +282,6 @@ class MerchantOrderCreateIn(BaseModel):
     #: key the product does not declare rather than dropping it — so a SKU that
     #: requires nothing accepts only ``{}``. The README says so at the field.
     fulfillment_data: dict[str, Any] = Field(default_factory=dict)
-
-    @field_validator("sku_id")
-    @classmethod
-    def _is_a_uuid(cls, value: str) -> str:
-        """Reject anything that is not a UUID, at the parse boundary."""
-        try:
-            UUID(value)
-        except ValueError:
-            raise ValueError("sku_id must be a UUID") from None
-        return value
 
 
 class MerchantOrderOut(BaseModel):
@@ -316,9 +349,9 @@ class MerchantOrderStatusOut(BaseModel):
 
     The reseller's whole view of one order: where it is, what it cost, what it
     delivered, and whether anything came back. **This is the only place the
-    delivered voucher code is handed over** — M3's ``order.status_changed``
-    webhook will not carry it, because a webhook body lands in the merchant's
-    logs and in ours, and a voucher code is a bearer instrument.
+    delivered voucher code is handed over** — the ``order.status_changed``
+    webhook (M3a, ADR-0070) does not carry it, because a webhook body lands in
+    the merchant's logs and in ours, and a voucher code is a bearer instrument.
     """
 
     merchant_order_id: str
@@ -341,6 +374,63 @@ class MerchantOrderStatusOut(BaseModel):
     failure_reason: str | None
     delivery: MerchantDeliveryOut | None
     timeline: list[MerchantOrderEventOut]
+
+
+class MerchantPlayerCheckIn(BaseModel):
+    """Body of ``POST /merchant/v1/validate/player`` (spec §9.1).
+
+    ``extra="forbid"``, for the same reason ``MerchantOrderCreateIn`` sets it:
+    on a request, silently ignoring an unknown key is how a typo'd
+    ``player_id`` becomes a check of nothing that answers ``unsupported`` and
+    gets read as "this SKU needs no verification".
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: The SKU you are about to order, from ``GET /merchant/v1/catalog``. A
+    #: SKU, not a product, so the id you check is the id you buy. Same
+    #: :data:`SkuId` the order body uses: parsed as a UUID at the boundary and
+    #: normalised to the spelling Postgres accepts.
+    sku_id: SkuId
+    #: Your **end customer's** identifier: the game's player id, or the Steam
+    #: login for a Steam top-up. We hold it for the length of the request and
+    #: never write it to a log or a URL (spec §9.5).
+    player_id: str = Field(min_length=1, max_length=64)
+    #: The game server / zone, for the games that ask for one. Send what the
+    #: SKU's product declares; omit it otherwise. ``min_length=1`` so that an
+    #: empty string is a refusal rather than a third spelling of "no server":
+    #: downstream it would read as ``None`` (``server_id or "-"`` in the cache
+    #: key), and a client that sent ``""`` meaning something else would never
+    #: find out.
+    server_id: str | None = Field(default=None, min_length=1, max_length=64)
+
+
+class MerchantPlayerCheckOut(BaseModel):
+    """Body of ``POST /merchant/v1/validate/player`` — an **advisory** verdict.
+
+    Four outcomes, and the difference between them is the whole point of the
+    endpoint. Switch on ``status``; never treat "not ``invalid``" as approval.
+
+    * ``valid`` — the provider resolved the id. ``name`` carries the account
+      nickname where the provider returns one (G2B does; Steam has no display
+      name to give, so it stays ``null`` — an absence, not a placeholder).
+    * ``invalid`` — the provider answered and the id does not exist. This is
+      the one answer that says your customer mistyped something.
+    * ``error`` — **we could not check.** An upstream fault, a timeout, a
+      rejected credential of ours, or a circuit we opened after a run of
+      failures. It says nothing at all about the id, so it must not be read as
+      either approval or refusal; retry, or order without a check.
+    * ``unsupported`` — this SKU's product has no player check configured, and
+      will not grow one on its own. Distinct from ``error`` because that one is
+      worth retrying and this one never is.
+
+    Nothing here reports how the answer was reached, deliberately: a verdict
+    served from the 300 s cache is still our best answer, and a "this was
+    cached" caveat would only invite integrators to distrust a good one.
+    """
+
+    status: Literal["valid", "invalid", "error", "unsupported"]
+    name: str | None = None
 
 
 class MerchantTransactionOut(BaseModel):
@@ -381,12 +471,15 @@ __all__ = [
     "MerchantOrderEventOut",
     "MerchantOrderOut",
     "MerchantOrderStatusOut",
+    "MerchantPlayerCheckIn",
+    "MerchantPlayerCheckOut",
     "MerchantProductOut",
     "MerchantProfileOut",
     "MerchantSkuOut",
     "MerchantTransactionOut",
     "MerchantTransactionsOut",
     "MerchantValidationProblem",
+    "SkuId",
     "UsdAmount",
     "UsdBalance",
     "UsdPrice",

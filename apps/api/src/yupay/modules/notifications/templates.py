@@ -395,8 +395,68 @@ def order_delivered_email(
     )
 
 
+def merchant_webhook_disabled_email(*, host: str, failures: int, last_error: str) -> EmailContent:
+    """Tell a reseller's operator we stopped delivering to their endpoint.
+
+    Sent exactly once per auto-disable (M3a Task 4), never per failed attempt.
+    It has to answer three questions before anyone opens a ticket: which
+    endpoint, why we stopped, and what turns it back on.
+
+    Only the **host** is named, not the configured URL: a webhook path can
+    carry a token (``merchants.models.WEBHOOK_URL_MAX`` is sized for one), and
+    an email goes through a third-party provider and sits in a mailbox. The
+    host is enough to identify the endpoint for someone who configured it.
+
+    Args:
+        host: The endpoint's hostname.
+        failures: The consecutive-failure count that tripped the threshold.
+        last_error: Our own short description of the final failure — already
+            truncated by the caller and free of merchant credentials.
+
+    Returns:
+        The rendered subject, HTML and plain-text bodies.
+    """
+    body = (
+        _paragraph(
+            f"Мы приостановили отправку webhook-уведомлений на <b>{html.escape(host)}</b>: "
+            f"подряд не удалось доставить {failures} событий."
+        )
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">Последняя ошибка: '
+            f"{html.escape(last_error)}</span>"
+        )
+        + _paragraph(
+            "События за это время не потеряны — актуальный статус любого заказа "
+            "доступен в API: <code>GET /merchant/v1/orders/{merchant_order_id}</code>."
+        )
+        + _paragraph(
+            "Когда эндпоинт снова заработает, напишите нам — мы включим отправку "
+            "обратно. Секрет подписи при этом не меняется."
+        )
+    )
+    return EmailContent(
+        subject="Отправка webhook приостановлена — YuPay",
+        html=_layout(
+            preheader=f"Webhook на {host} отключён после {failures} неудачных попыток.",
+            heading="Webhook отключён",
+            body_html=body,
+        ),
+        text=(
+            "Отправка webhook приостановлена — YuPay\n\n"
+            f"Мы приостановили отправку уведомлений на {host}: "
+            f"подряд не удалось доставить {failures} событий.\n"
+            f"Последняя ошибка: {last_error}\n\n"
+            "События не потеряны — статус заказа доступен в API: "
+            "GET /merchant/v1/orders/{merchant_order_id}\n\n"
+            "Когда эндпоинт заработает, напишите нам — мы включим отправку обратно. "
+            "Секрет подписи не меняется.\n"
+        ),
+    )
+
+
 __all__ = [
     "EmailContent",
+    "merchant_webhook_disabled_email",
     "order_confirmation_email",
     "order_delivered_email",
     "partner_invite_email",

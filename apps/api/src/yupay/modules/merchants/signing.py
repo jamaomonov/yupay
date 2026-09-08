@@ -43,6 +43,32 @@ Five fields, and the shape is load-bearing:
   LF-free and two distinct requests cannot produce identical signed bytes.
 
 ``\\n`` is a single LF (0x0A), never CRLF. Every string is UTF-8.
+
+## The outgoing-webhook signature (M3a, spec §10)
+
+The same scheme pointed the other way: we sign, the merchant verifies, keyed
+by the ``ypmw_`` secret rather than the ``ypms_`` one. Four fields:
+
+    {timestamp}\\n{delivery_id}\\n{event_type}\\n{hex(sha256(body))}
+
+sent as ``X-Yupay-Timestamp`` / ``X-Yupay-Delivery`` / ``X-Yupay-Event`` /
+``X-Yupay-Signature`` beside the JSON body. The shape is load-bearing for the
+same reason as above — every field is either fixed-width or cannot contain the
+separator, so no value can be spelled to move a field boundary:
+
+- ``timestamp`` is ASCII digits (Unix seconds);
+- ``delivery_id`` is a UUID, and it is in the **signed** material rather than
+  only in a header. It is the receiver's dedupe handle, and a webhook is
+  at-least-once: a retry after a lost ``200`` is indistinguishable from a
+  genuine second transition unless something stable identifies the attempt.
+  An unsigned header cannot do that job against a replay;
+- ``event_type`` comes from ``webhooks.EVENT_TYPES``, a closed two-value
+  vocabulary of ASCII dotted names;
+- the body is a **hash**, so a payload full of newlines shifts nothing.
+
+There is no query string and no method field: a webhook is always a ``POST``
+to the merchant's one configured URL, and the URL is not signed because they
+already know which endpoint received the request.
 """
 
 from __future__ import annotations
@@ -59,6 +85,26 @@ KEY_ID_PREFIX = "ypm_"
 #: Private half. A different prefix from the key id so the two cannot be
 #: swapped by a merchant reading their own config file.
 SECRET_PREFIX = "ypms_"  # noqa: S105  # a prefix, not a credential
+
+#: The **outgoing-webhook** signing secret (M3a). A third prefix for the same
+#: reason there is a second one: a merchant holds both at once, they key
+#: opposite directions of the same integration, and a config file that mixes
+#: them up should fail visibly rather than produce a signature nobody can
+#: explain.
+WEBHOOK_SECRET_PREFIX = "ypmw_"  # noqa: S105  # a prefix, not a credential
+
+#: The four headers one outgoing delivery carries. Named here rather than at
+#: the sender because they are wire format a third party implements against —
+#: the same rule that keeps the canonical string in this module. The
+#: ``X-Yupay-`` family (matching the storefront's existing ``X-Yupay-Surface``)
+#: is deliberately **not** the inbound ``X-Merchant-`` one: a merchant holds
+#: both credentials at once, they key opposite directions of one integration,
+#: and two header families that cannot be confused is the same reasoning as the
+#: two secret prefixes above.
+WEBHOOK_DELIVERY_HEADER = "X-Yupay-Delivery"
+WEBHOOK_EVENT_HEADER = "X-Yupay-Event"
+WEBHOOK_TIMESTAMP_HEADER = "X-Yupay-Timestamp"
+WEBHOOK_SIGNATURE_HEADER = "X-Yupay-Signature"
 
 #: Bytes of entropy behind each half. 24 raw bytes → 32 url-safe characters
 #: for the id (plus the prefix, 36 of the column's 48); 32 raw bytes → 256
@@ -93,6 +139,20 @@ def new_secret() -> str:
     return SECRET_PREFIX + secrets.token_urlsafe(_SECRET_BYTES)
 
 
+def new_webhook_secret() -> str:
+    """Mint an outgoing-webhook signing secret. Returned to the merchant once.
+
+    Same 256 bits as :func:`new_secret` and minted here for the same reason:
+    this module is the one home for the credential format, so a second
+    ``secrets.token_urlsafe`` call elsewhere is how two halves of one scheme
+    start disagreeing about entropy.
+
+    Returns:
+        A ``ypmw_``-prefixed, url-safe secret carrying 256 bits of entropy.
+    """
+    return WEBHOOK_SECRET_PREFIX + secrets.token_urlsafe(_SECRET_BYTES)
+
+
 def body_digest(body: bytes) -> str:
     """Lowercase hex SHA-256 of a request body. ``b""`` hashes like anything else.
 
@@ -123,6 +183,30 @@ def canonical_message(
         The message to run HMAC-SHA256 over.
     """
     return (f"{timestamp}\n{method.upper()}\n{raw_path}\n{raw_query}\n{body_digest(body)}").encode()
+
+
+def webhook_canonical_message(
+    *, timestamp: str, delivery_id: str, event_type: str, body: bytes
+) -> bytes:
+    """Build the byte string one outgoing delivery is signed over.
+
+    See the module docstring for why these four fields and why the delivery id
+    is among them rather than only in a header.
+
+    Args:
+        timestamp: The ``X-Yupay-Timestamp`` value exactly as sent — Unix
+            seconds as ASCII digits, and the same characters we put on the
+            wire, so a verifier re-signs what it received.
+        delivery_id: The ``merchant_webhook_deliveries`` row id. Stable across
+            every retry of that row, which is what makes it a dedupe handle.
+        event_type: One of ``webhooks.EVENT_TYPES``.
+        body: The exact JSON bytes being POSTed.
+
+    Returns:
+        The message to run HMAC-SHA256 over with the merchant's ``ypmw_``
+        secret.
+    """
+    return (f"{timestamp}\n{delivery_id}\n{event_type}\n{body_digest(body)}").encode()
 
 
 def expected_signature(secret: str, message: bytes) -> str:
@@ -171,10 +255,17 @@ def signature_matches(secret: str, message: bytes, provided: str) -> bool:
 __all__ = [
     "KEY_ID_PREFIX",
     "SECRET_PREFIX",
+    "WEBHOOK_DELIVERY_HEADER",
+    "WEBHOOK_EVENT_HEADER",
+    "WEBHOOK_SECRET_PREFIX",
+    "WEBHOOK_SIGNATURE_HEADER",
+    "WEBHOOK_TIMESTAMP_HEADER",
     "body_digest",
     "canonical_message",
     "expected_signature",
     "new_key_id",
     "new_secret",
+    "new_webhook_secret",
     "signature_matches",
+    "webhook_canonical_message",
 ]

@@ -58,12 +58,19 @@ def _apply_migrations(_pg_container: PostgresContainer, worker_id: str) -> None:
     #
     # Redis itself isn't per-worker like the Postgres container above — it's one
     # shared instance (GH Actions `services:` / local docker-compose) — so under
-    # pytest-xdist every worker would otherwise share DB 0 and `_reset_realtime_redis`
-    # below (autouse, runs before every test) would `flushdb()` another worker's
-    # in-flight test out from under it. `worker_id` is pytest-xdist's built-in fixture
-    # ("master" outside xdist, "gw0"/"gw1"/... under it) — give each worker its own
-    # logical Redis DB (0-15) instead.
-    db_index = int(worker_id[2:]) % 16 if worker_id.startswith("gw") else 0
+    # pytest-xdist every worker would otherwise share one DB and
+    # `_reset_realtime_redis` below (autouse, runs before every test) would
+    # `flushdb()` another worker's in-flight test out from under it. `worker_id` is
+    # pytest-xdist's built-in fixture ("master" outside xdist, "gw0"/"gw1"/... under
+    # it) — give each worker its own logical Redis DB instead.
+    #
+    # DB 0 is deliberately excluded, because it is not free: the dev stack itself
+    # runs on `redis://redis:6379/0` (docker-compose.yml), and locally that is the
+    # very instance these tests connect to. With `gw0` on DB 0, the autouse
+    # `flushdb()` wiped the running dev stack's Redis before every test in that
+    # worker, and the dev worker/scheduler/bot wrote into the DB `gw0` was asserting
+    # against. Both directions were silent. Workers now map to 1-15.
+    db_index = (int(worker_id[2:]) % 15) + 1 if worker_id.startswith("gw") else 1
     os.environ["REDIS_URL"] = f"redis://localhost:6379/{db_index}"
     cfg.get_settings.cache_clear()
 
@@ -144,6 +151,7 @@ async def db_engine():
                     # After orders: orders.merchant_id is ON DELETE RESTRICT,
                     # but TRUNCATE ... CASCADE in one statement handles it; the
                     # rows must go regardless or merchants leak across tests.
+                    "merchant_webhook_deliveries, merchant_webhooks, "
                     "merchant_api_keys, merchant_users, merchants, "
                     "sku_prices, skus, product_translations, products, "
                     "brand_translations, brands, "

@@ -244,6 +244,27 @@ class Settings(BaseSettings):
             # per-merchant axis is ``merchant_api_key_rate_max`` below
             # instead.
             "merchant-api": 600,
+            # `POST /merchant/v1/validate/player`, and stricter than the
+            # prefix above it on purpose (spec §12: "stricter on validate/* —
+            # it spends supplier quota"). Every other endpoint there spends
+            # only our own database; this one calls G2B or Waxpeer, whose quota
+            # we buy and whose rate limit is not ours to raise. 120 is two a
+            # second sustained — comfortably above one check per order for a
+            # reseller polling and ordering all day, and a fifth of what the
+            # prefix allows.
+            #
+            # This is the per-*address* half only, and on its own it does not
+            # bound what one merchant can spend: a caller behind a multi-node
+            # egress pool has one of these counters per NAT address, so the
+            # ceiling that actually follows the merchant is
+            # `merchant_validate_rate_max` below. Keep the two numbers equal
+            # unless there is a reason not to. Both fail open on Redis trouble
+            # (`ip_guard.hit_counter`), which is the same outage that empties
+            # the 300s result cache and the supplier breaker — so a Redis
+            # failure removes all three protections at once and the supplier's
+            # own limiter is what is left. That is a known and accepted
+            # property, not an oversight.
+            "merchant-validate": 120,
         },
         description=(
             "Per-bucket overrides for auth_ip_guard_max. The default is written for "
@@ -269,6 +290,27 @@ class Settings(BaseSettings):
             "verifies: a key id travels in a plaintext header, and a third party "
             "who reads one must not be able to spend its owner's budget. Forged "
             "traffic is bounded by the IP axis instead."
+        ),
+    )
+
+    merchant_validate_rate_max: int = Field(
+        default=120,
+        description=(
+            "Max POST /merchant/v1/validate/player calls per window per MERCHANT "
+            "-- the axis that matches what the limit is protecting. The bucket "
+            "above counts addresses, and the resource being rationed is a "
+            "supplier's quota, which a reseller spends per account and not per "
+            "egress node: with the IP counter alone, a six-node NAT pool got six "
+            "times the budget and the binding constraint fell back to "
+            "merchant_api_key_rate_max (600), five times the number the bucket's "
+            "own comment advertises. Keyed on merchant_id rather than key_id, "
+            "unlike merchant_api_key_rate_max: a fair share of OUR request "
+            "capacity may briefly double during a key rotation without hurting "
+            "anyone, but a supplier's quota is a real external budget and "
+            "rotating a key must not double a merchant's claim on it. Charged in "
+            "the handler, after authentication. Shares "
+            "auth_ip_guard_window_seconds, so widening that window loosens this "
+            "ceiling by the same factor."
         ),
     )
 
@@ -431,6 +473,37 @@ class Settings(BaseSettings):
             "DB session. One would mean a single hung supplier call stalls "
             "every order behind it; SKIP LOCKED already keeps their claims "
             "disjoint, so this is a dial with no coordination cost."
+        ),
+    )
+
+    # --- Merchant outgoing webhooks (M3a) ---
+    merchant_webhook_concurrency: int = Field(
+        default=2,
+        ge=1,
+        description=(
+            "How many delivery drainers the worker runs in parallel for "
+            "`merchant_webhook_deliveries`, each on its own DB session. Same "
+            "reasoning as `fulfilment_concurrency` and a separate dial for a "
+            "different failure: here the thing that hangs is a merchant's own "
+            "server, and one drainer would let a single endpoint sitting on "
+            "the 10s budget stall every other reseller's events behind it. "
+            "Two attempts to the SAME endpoint still serialise at commit "
+            "(both write that merchant's hook row), which is a feature — it "
+            "bounds how hard one queue can hit one server."
+        ),
+    )
+    merchant_webhook_disable_after_failures: int = Field(
+        default=20,
+        ge=1,
+        description=(
+            "Consecutive failed deliveries before a merchant's webhook is "
+            "auto-disabled and their operator is emailed. Counts attempts, "
+            "not events, so retries of one dead endpoint reach it: with the "
+            "30s-doubling backoff, 20 is roughly two hours of sustained "
+            "failure at ordinary volume — long enough not to punish a deploy "
+            "window, short enough that nobody reads a week-old backlog. "
+            "Reset to 0 by any success and by `PUT /admin/merchants/{id}/"
+            "webhook`, which is the whole recovery path."
         ),
     )
 

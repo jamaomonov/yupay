@@ -6,7 +6,8 @@ other part of the merchant B2B feature (the machine API, the cabinet BFF, the
 deposit ledger, admin) builds on.
 
 **Spec:** `docs/superpowers/specs/2026-09-06-merchant-b2b-design.md`
-**Decisions:** ADR-0068 (the foundation), ADR-0069 (the machine API)
+**Decisions:** ADR-0068 (the foundation), ADR-0069 (the machine API),
+ADR-0070 (the outgoing webhooks)
 **Runbook:** `docs/runbooks/merchant-b2b.md` — onboarding, key rotation, and
 the known gaps a pilot integrator will meet
 
@@ -27,6 +28,281 @@ in this module the merchant is the reseller.
   (`secret_enc` / `secret_nonce`, migration 0070 — see "Storage" below), with
   an optional IP allowlist, a `last_used_at` stamp and a `revoked_at`
   tombstone. See "Machine-API authentication" below.
+- `merchant_webhooks` — the **one** endpoint (unique on `merchant_id`) we
+  POST a merchant's events to, its `ypmw_`-prefixed signing secret held
+  encrypted at rest under its own HKDF purpose label
+  (`yupay:merchants:webhook:v1`), a `disabled_at` switch, and the delivery
+  worker's running health: `failure_streak`, `last_success_at`,
+  `last_failure_at`. Migration 0071.
+- `merchant_webhook_deliveries` — the outbox, in ADR-0064's shape: `payload`
+  JSONB, a claimable `status` (`pending` → `in_progress` → `delivered` |
+  `failed`), `attempts_count` / `next_attempt_at` for backoff, and — because
+  this table is also the cabinet's delivery log from M4 — the `url` we
+  addressed, the merchant's `response_code`, the first 2048 characters of
+  their `response_body`, and our own `last_error` (capped at 512). Both text
+  caps are **column bounds**, because both interpolate material a third party
+  chose and our own cabinet renders it, so "the writer truncates" is not a
+  promise worth resting on.
+
+  Three shapes here are load-bearing rather than incidental. `url` is a
+  **snapshot taken at enqueue**, not a join onto `merchant_webhooks` — setting
+  a URL edits that row in place, so a join would re-attribute every historical
+  response to whatever address is configured now, and "we recorded a 200, but
+  was that their old staging host?" is exactly what this log exists to answer.
+  `next_attempt_at` is **NOT NULL, defaulting to now**: nullable-meaning-now
+  makes the claim predicate `next_attempt_at <= now()` NULL-_false_ for a
+  never-attempted row, so it is never claimed and, never being claimed, never
+  gets a value — a queue that silently delivers nothing; and the `IS NULL`
+  workaround trades that for starvation, since btree ASC sorts NULLs last and
+  every fresh event would queue behind one dead endpoint's retries. `payload`
+  has **no** server default, so an enqueue that forgets the body fails instead
+  of logging a delivery whose content is unrecoverable.
+
+  **Known limitation for M4:** there is no index that reaches a delivery by
+  order id — the order lives inside `payload` JSONB, and "did merchant X hear
+  about order Y" is the commonest support question. `(merchant_id,
+created_at DESC)` narrows it to one merchant's log, which is enough at our
+  volume; a real answer needs either an expression index on the payload key or
+  a promoted column, and that is a decision for whoever builds the screen.
+
+## Outgoing webhooks — the producer (`webhooks.py`)
+
+M3a Task 3. `enqueue(db, *, merchant_id, event_type, payload)` writes one
+`pending` row **into the caller's transaction** and issues
+`pg_notify('merchant_webhook_queue', <delivery_id>)` inside it. Postgres
+delivers a NOTIFY on COMMIT and drops it on ROLLBACK, so an order that rolls
+back tells nobody and no nudge can outrun the fact behind it. The channel name
+is one constant, `WEBHOOK_QUEUE_CHANNEL` — Task 4's listener imports it rather
+than respelling the string, because a channel spelled twice is a queue nobody
+drains and no test fails.
+
+**A merchant with no webhook row and one whose row is disabled are the same
+outcome: nothing is written.** The outbox holds only deliverable work; a row
+the worker must skip makes the backlog meaningless and the cabinet's delivery
+log a lie.
+
+**A courtesy may never fail money.** The insert runs inside a SAVEPOINT, and
+an `IntegrityError`/`DataError` from it is swallowed — the order commits, the
+merchant misses one event, ops gets an `error` line. Three details make that
+safe rather than sloppy:
+
+- the swallow is _narrow_ (those two types only), so a broken session or a
+  programming error still propagates instead of hiding behind a plausible
+  commit;
+- it is a SAVEPOINT, not a bare `try` — a failed flush poisons a session until
+  something rolls back, and rolling back the _caller's_ transaction is the
+  exact harm the rule exists to prevent. The caller's own pending writes are
+  flushed **before** the savepoint opens so they can never sit inside it;
+- the log line carries the exception type and the SQLSTATE and **not** the
+  driver's message. A `NotNullViolation` renders `DETAIL: Failing row contains
+(…)` — the whole row, including the `url` snapshot, which is sized to hold a
+  path with a token in it. Reaching here is our bug (every column is NOT NULL
+  or length-bounded on purpose), so the type is enough to find it.
+
+### The payloads are a contract
+
+| Event                  | Body                                                        |
+| ---------------------- | ----------------------------------------------------------- |
+| `order.status_changed` | `merchant_order_id`, `order_id`, `status`, `at` (see below) |
+| `balance.credited`     | `amount_usd`, `balance_usd` — two-decimal **strings**       |
+
+`at` is `order.updated_at.isoformat()` — a real timestamp taken per transition
+(`core.clock.now`, so `paid` and `fulfilling` from one placement differ by
+microseconds rather than sharing a transaction clock) rendered with an explicit
+`+00:00` offset. That is **not** the `Z` the machine API's Pydantic DTOs emit
+for the same instant: this string is built by hand into JSONB and never passes
+through a response model. Both are ISO 8601, the contract section says which one
+this is, and neither may change shape inside v1.
+
+Those key sets are exact, and the tests assert them as key sets rather than as
+"no key named `code`". A voucher code is a bearer instrument and a webhook body
+is written to the receiver's logs wholesale (spec §10), so the code is fetched
+over `GET /merchant/v1/orders/{merchant_order_id}` and never pushed — and an
+exact-shape assertion is what stops a future field addition from smuggling a
+value into a body somebody else logs. Money goes through the same
+`machine_schemas` annotations `/merchant/v1` uses, so a webhook body and the
+read endpoint cannot disagree about the shape of a balance.
+
+### Where events come from
+
+- **`order.status_changed`** — `orders.service.on_order_status_changed`, the
+  one seam every status transition in the system passes through (`orders`,
+  `payments` and `fulfillment` all call it; the three used to keep a verbatim
+  copy of the realtime nudge each). The webhook could not ride that existing
+  nudge: `publish_order_event` is a no-op for a NULL `user_id`, which every
+  merchant order has. A merchant order therefore emits `paid` and `fulfilling`
+  from the placement transaction and `delivered` from the worker's settle.
+- **`balance.credited`** — `deposit.credit_deposit`, in the same transaction as
+  the ledger posting. A **replay** of the admin's idempotency key books nothing
+  and so announces nothing: a `balance.credited` for money that did not move
+  would have a reseller crediting their own customer twice.
+
+**No event exists for a fulfilment that fails on its own.** The seam fires
+where `orders.status` moves, and a permanent fulfilment failure moves the
+_task_: the order sits at `fulfilling` with a non-null `failure_reason`, so a
+reseller sees `paid → fulfilling → silence` and a `failed` event only when
+support closes the order by hand (`orders.service.mark_order_failed_admin`,
+which does go through the seam). Adding a task-level event is not a small change — it is a
+third event type and a payload shape — and M3b's stall visibility is where the
+real answer belongs. The integrator contract says this outright rather than
+letting every integrator discover it by building a timeout.
+
+The two typed producers are `enqueue_order_status_changed` and
+`enqueue_balance_credited`, and the first is deliberately **not** called
+`on_order_status_changed`: that is the name of the seam in `orders.service`, it
+takes the same two arguments, and it also nudges retail. One name for both
+would let an autocomplete in any module that imports `merchants` — most do —
+swap the seam for this half of it, silently turning the storefront's live
+updates off with no test to fail. The facade exports the generic `enqueue` as
+`enqueue_webhook_event` for the same reason.
+
+Drawn in `docs/architecture/sequence-diagrams/merchant-webhook-emit.mmd`.
+
+## Outgoing webhooks — the delivery drain (`webhook_delivery.py`, `webhook_outcome.py`, `webhook_retry.py`)
+
+Three files, split at their concerns once they passed AGENTS §6's 500-line
+limit together: `webhook_delivery.py` claims a row, signs it and sends it;
+`webhook_outcome.py` is everything that happens after the answer comes back —
+the row's log, the hook's health, the auto-disable and its one email;
+`webhook_retry.py` is the pure decision table both consult.
+
+M3a Task 4, run from `apps/worker` (`yupay_worker.consumer` LISTENs on
+`merchant_webhook_queue` beside `fulfillment_queue`, in this queue's **own
+asyncio task** so a slow endpoint cannot become the fulfilment queue's polling
+period, and
+calls `merchants.api.drain_pending_deliveries`). Same ADR-0064 shape as
+fulfilment: claim `FOR UPDATE SKIP LOCKED`, one SAVEPOINT per row, never commit
+— the worker owns the transaction. Drawn in
+`sequence-diagrams/merchant-webhook-delivery.mmd`.
+
+### What each attempt sends
+
+The receiver's half of this is written for an integrator under
+["Outgoing webhooks"](#outgoing-webhooks) below, with an executed worked example
+and a runnable verifier. This is the sender's half; the two must not drift.
+
+`POST` of the stored payload, serialised with sorted keys and compact
+separators so two attempts at one row put identical bytes on the wire, to the
+row's **`url` snapshot** — never to whatever the hook says now. Four headers,
+all named in `signing.py` because they are wire format:
+
+| Header              | Value                                           |
+| ------------------- | ----------------------------------------------- |
+| `X-Yupay-Delivery`  | the delivery row id — stable across every retry |
+| `X-Yupay-Event`     | `order.status_changed` / `balance.credited`     |
+| `X-Yupay-Timestamp` | Unix seconds, ASCII digits                      |
+| `X-Yupay-Signature` | hex HMAC-SHA256 under the `ypmw_` secret        |
+
+The canonical string is
+`{timestamp}\n{delivery_id}\n{event_type}\n{hex(sha256(body))}` — four fields,
+each either fixed-width or unable to contain the LF separator, exactly the
+discipline §9.2's inbound scheme follows. The `ypmw_` secret is decrypted at
+send time under its own `crypto` purpose label and never logged, never stored
+on the delivery row, never in a body.
+
+**The delivery id is inside the signed material, not only in a header**, and
+that is the one decision here that could not be taken later: a webhook is
+at-least-once, so a retry after a lost `200` is indistinguishable from a
+genuine second transition unless something stable identifies the attempt — and
+an unsigned header is worthless against a replay. `order.status_changed` has no
+event id in its payload (that would have broken the exact-key-set rule above),
+so this is the receiver's only dedupe handle. Adding it after the first
+integrator would be a `/merchant/v2`.
+
+### The retry table is derived from the client's taxonomy, not invented
+
+`webhook_retry.py` is pure and reads `core/outbound_errors.py` rather than
+matching on exception names. Two questions answer everything:
+
+| Outcome                                                                 | What happens                       | Counts toward the streak |
+| ----------------------------------------------------------------------- | ---------------------------------- | ------------------------ |
+| `2xx`                                                                   | `delivered`                        | resets it to 0           |
+| `408`, `429`, `5xx`                                                     | `pending`, backoff                 | yes                      |
+| any other `4xx`, and a redirect (never followed)                        | `failed`                           | yes                      |
+| `Delivery.RECEIVED` refusal (too large, compressed)                     | `failed` — a retry **re-delivers** | yes                      |
+| any other `OutboundRefusedError` (`UrlNotAllowed`, `AddressNotAllowed`) | `failed`                           | yes                      |
+| `OutboundUnreachableError` — they did not answer                        | `pending`, backoff                 | yes                      |
+| `OutboundBrokenError` — **our** bug                                     | `failed`                           | **no**                   |
+
+Read the rows as the code does: **the delivery fact outranks the family, and
+the family answers the rest.** `RECEIVED` is terminal wherever it appears, and
+below it the split is refusal-versus-unreachable, not `NOT_SENT`-versus-the-rest
+— a refusal we made (their host resolved to a private address, their URL will
+not encode) is terminal even though nothing was sent, because the delivery row
+carries a `url` **snapshot** and no change on their side fixes _that_ row.
+
+`UNKNOWN` (a timeout, an exchange broken mid-flight) may already have been
+processed by the merchant, and we retry it anyway: that is what at-least-once
+means, and the delivery id is what makes it actionable rather than a warning.
+`OutboundBrokenError` is the one class special-cased against its own family —
+counting it would auto-disable a working endpoint and tell the merchant, in the
+log they read, that we refused their URL.
+
+Backoff is 30 s doubling to a 1 h cap, no jitter (the herd is one merchant's own
+backlog, and a deterministic schedule is one support can predict from
+`attempts_count`), and a row is given up on after `MAX_ATTEMPTS` = 10 — a
+backstop for the intermittent case, since a dead endpoint auto-disables first.
+`Retry-After` is honoured on the two statuses that define it for a retry —
+`503` (RFC 9110 §10.2.3) and `429` (RFC 6585 §4) — both forms parsed, clamped
+into `[1 s, 1 h]`; the header is written by a third party and `Retry-After: 0`
+on every answer would be a hot loop. A `3xx` also defines it (RFC 9110 §10.2.3)
+and never reaches this table: we do not follow redirects, so a `30x` is
+terminal.
+
+### Ordering
+
+The claim orders by `next_attempt_at, created_at, id`. The third term is
+load-bearing: both timestamps default to `CURRENT_TIMESTAMP`, which in Postgres
+is the **transaction start**, so the `paid` and `fulfilling` rows one placement
+enqueues are byte-identical in both columns and an ORDER BY over them alone
+leaves the order unspecified. A reseller receiving `fulfilling` before `paid`
+reads the later `paid` as a status regression and re-opens an order their back
+office closed. `id` is a uuid7, so it encodes enqueue order.
+
+That fixes the tie, not global ordering: a **retried** event lands after events
+enqueued behind it, which is inherent to per-row backoff. Integrator docs must
+say so — order by the payload's `at`, dedupe on the delivery id.
+
+Rows are processed merchant-major (merchants in id order) so two concurrent
+drainers take hook-row locks in one global order and cannot deadlock.
+
+### Auto-disable, and the one recovery path
+
+A failure that is the merchant's increments `failure_streak`; any success
+resets it. At `MERCHANT_WEBHOOK_DISABLE_AFTER_FAILURES` (default 20 — attempts,
+not events, so retries reach it) the hook's `disabled_at` is set and every
+`merchant_users` operator is emailed **once per disable**, naming the endpoint's
+**host** and not its URL (a webhook path can carry a token, and an email goes
+through a third-party provider). A merchant with no operator row is still
+disabled, silently.
+
+Nothing is deleted and no queued event is thrown away: rows stay `pending` and
+are simply not claimed while the hook is off — including rows already claimed
+in the batch that tripped the disable, which are skipped rather than sent to an
+endpoint we have just switched off. `PUT /admin/merchants/{id}/webhook` clears
+`disabled_at` and the streak, and that resumes the backlog. It is the only
+recovery path and there is deliberately no second one.
+
+Two things "resumes the backlog" does **not** mean, both of which support has to
+be able to say out loud:
+
+- **Events that happen while the hook is off are not queued at all.** The
+  producer treats "no hook" and "disabled hook" as one outcome (above), so the
+  backlog is what was waiting when it went off, and nothing else. A merchant
+  coming back from a disable has a gap, and the order read is the only thing
+  that closes it.
+- **A queued row keeps the URL it was enqueued with.** `url` is a snapshot, so
+  correcting a wrong address re-enables the hook without re-aiming the rows
+  already in the queue: they will be attempted against the old host and fail
+  out. That is the price of a delivery log that can answer "which host answered
+  us at 14:02", and it is the right trade — but a merchant who moved hosts
+  should be told to expect it rather than discover it.
+
+### Falsification
+
+`uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py` — 20
+mutations, each asserting it changed the file before the suite runs. Read its
+docstring before running it beside anything else.
 
 ## Deposit ledger
 
@@ -114,9 +390,12 @@ every other symbol in this module.
 
 Everything support needs to run a pilot merchant by hand (Task 6), all
 admin-gated (`require_admin`), business logic imported through the `api`
-facade only. Two routers in `admin_routes.py` (mounted by `api/v1` directly
-from that file — the facade never exports a router, or it would close a
-cycle back through the route stack, same rule as `affiliate.routes`):
+facade only. Two routers — `admin_router` in `admin_routes.py` and
+`catalog_b2b_router` in `catalog_b2b_routes.py`, split apart in M3a Task 2
+when the one file passed §6's split-before-500 line, sharing the replay
+helpers in `route_replay.py` (both mounted by `api/v1` directly from their
+own module — the facade never exports a router, or it would close a cycle
+back through the route stack, same rule as `affiliate.routes`):
 
 - `POST`/`GET /admin/merchants` — create a reseller; list every merchant
   with its USD deposit balance joined in **one grouped query**
@@ -156,23 +435,59 @@ cycle back through the route stack, same rule as `affiliate.routes`):
   timestamp rather than moving it), and matches on `(merchant_id, key_id)`
   so one merchant's id in the path can never revoke another's credential.
 
+- `PUT /admin/merchants/{id}/webhook` — point the merchant's outgoing
+  webhook at a URL. **The signing secret is in this response and nowhere
+  else, ever.** One endpoint per merchant in v1, so this is an upsert: the
+  first call mints the secret and returns it once; a later call edits the URL
+  of the same row and answers `secret: null`, because changing where
+  deliveries go must not silently break a working verifier — rotation is its
+  own endpoint. Setting a URL also clears `disabled_at` and resets
+  `failure_streak`, which is the recovery path after the delivery worker
+  auto-disables a hook. Two operators saving at once both miss the pre-check
+  and both insert; the loser resolves the uniqueness violation by returning
+  the **winner's** row with `secret: null` rather than a 500 — the winner
+  minted the key, so a second secret would sign nothing, and the advice on a
+  lost response is the same as for a lost mint: rotate. The URL is refused at save time unless it is `https`
+  with a public host, through the same
+  `catalog.image_url_safety.validate_public_https_url` the catalog's image
+  URLs go through — one blocked-range table in the repo, not two that drift.
+  That check reads notation, not resolved addresses; DNS rebinding is the
+  outbound client's problem, not this validator's.
+  `POST .../webhook/rotate-secret` mints a replacement and returns it once,
+  with no overlap window (unlike an API key, where the _merchant_ redeploys
+  between issue and revoke — here we are the sender and the switch is ours).
+  `DELETE .../webhook` disables by setting `disabled_at`, is naturally
+  idempotent, and is a disable rather than a delete so the delivery log and
+  the URL stay readable. `GET .../webhook` returns the configuration and its
+  delivery health, and its response model has no `secret` field at all.
+
+  **Configuration is admin-only in M3a by owner decision.** The merchant gets
+  this control from the cabinet in M4; there is deliberately no
+  `/merchant/v1` write for it, because its only purpose would be to let a
+  stranger aim our own worker at an address of their choosing. The
+  consequence, stated rather than discovered: a pilot cannot receive webhooks
+  before M4 unless support sets the URL.
+
 The non-ledger writes accept an optional `Idempotency-Key` and replay
 through the generic `(scope, key)` store (`core.idempotency`), like the
 other admin write endpoints. Each scope is **per resource** —
 `merchants.sku_b2b:{sku_id}`, `merchants.brand_b2b:{brand_id}`,
 `merchants.bulk_markup:{target}`, `merchants.set_status.{to}:{merchant_id}`,
 `merchants.api_key_create:{merchant_id}`,
-`merchants.api_key_revoke:{merchant_id}:{key_id}` — because an admin client
+`merchants.api_key_revoke:{merchant_id}:{key_id}`,
+`merchants.webhook_set:{merchant_id}`,
+`merchants.webhook_rotate:{merchant_id}`,
+`merchants.webhook_disable:{merchant_id}` — because an admin client
 that mints one key per session and reuses it across two SKUs would
 otherwise get the first SKU's response replayed for the second, and the
 second SKU would silently never be patched.
 
-Key creation is the one endpoint where the replay snapshot is deliberately
-**not** the response: the stored body carries `secret: null`, so a retry
-returns the original `key_id` with no secret. `idempotent_responses` has no
-reaper, and a usable credential sitting there in the clear forever is worse
-than telling an operator whose first response was lost to revoke the key and
-issue another.
+Key creation and the two webhook writes that can mint a secret are the
+endpoints where the replay snapshot is deliberately **not** the response: the
+stored body carries `secret: null`, so a retry returns the original row with
+no secret. `idempotent_responses` has no reaper, and a usable credential
+sitting there in the clear forever is worse than telling an operator whose
+first response was lost to revoke or rotate and take the new one.
 
 The admin SPA screens for this surface live in
 `apps/admin/src/features/merchants/` (`/merchants` list + create,
@@ -202,9 +517,11 @@ change without a new API version — `/merchant/v1` is consumed by code nobody
 but its owner can redeploy.
 
 > **Status:** every endpoint documented below is live — authentication, the
-> two reads, order placement, the order read and the deposit ledger. The
-> scheme is final. What does not exist yet is outbound webhooks, any refund
-> path, and the self-service cabinet; see "Status" at the end of this file.
+> two reads, order placement, the order read, the deposit ledger and the player
+> check. The scheme is final. **Outgoing webhooks are live too** (see "Outgoing
+> webhooks" below), configured by support rather than by you. What does not
+> exist yet is any refund path and the self-service cabinet; see "Status" at
+> the end of this file.
 
 Base URL: **`https://api.yupay.uz`**. All requests are HTTPS. All strings are
 UTF-8. Every `\n` below is a single LF byte (`0x0A`) — never CRLF.
@@ -484,9 +801,12 @@ branch on.
 
 #### The answers that are **not** problem+json
 
-**A `5xx`.** No endpoint here raises one deliberately: nothing on this surface
-calls a supplier while you wait (see "Fulfilment is asynchronous, always"), so
-there is no upstream to be unavailable. A `500` means an unhandled bug on our
+**A `5xx`.** No endpoint here raises one deliberately. Nothing on this surface
+calls a supplier while you wait for _money_ to move (see "Fulfilment is
+asynchronous, always"), and the one endpoint that does call a supplier inline —
+`POST /merchant/v1/validate/player` — is built to answer `200` with
+`status: "error"` when that call fails, precisely so an upstream's bad day is
+never your `5xx`. A `500` means an unhandled bug on our
 side and arrives as a bare `Internal Server Error`; a `502` or `504` is our
 edge rather than our application — most likely a deploy, which holds and
 retries for 15 s before giving up. Both are safe to retry: resend the identical
@@ -512,18 +832,25 @@ touch your signing code.
 
 ### Rate limits
 
-Two independent counters, both fixed 60-second windows:
+Four independent counters — two on every request, two more on
+`validate/player` — all fixed 60-second windows:
 
-| Axis                  | Limit          | Applies to                           |
-| --------------------- | -------------- | ------------------------------------ |
-| Per source IP address | **600 / 60 s** | Every request, before authentication |
-| Per `key_id`          | **600 / 60 s** | Requests whose signature verified    |
+| Axis                               | Limit          | Applies to                                        |
+| ---------------------------------- | -------------- | ------------------------------------------------- |
+| Per source IP address              | **600 / 60 s** | Every request, before authentication              |
+| Per `key_id`                       | **600 / 60 s** | Requests whose signature verified                 |
+| Per source IP, `validate/*` only   | **120 / 60 s** | `POST /merchant/v1/validate/player`, as well      |
+| Per merchant account, `validate/*` | **120 / 60 s** | the same endpoint, whatever address you call from |
 
-Both return `429` with a `Retry-After` header in seconds; wait that long
+All four return `429` with a `Retry-After` header in seconds; wait that long
 rather than retrying immediately. The per-key counter is charged only after a
 signature verifies, so someone who observes your `key_id` in a header cannot
 spend your budget. Each live key has its own counter, so a rotation window
-briefly has two.
+briefly has two — but the `validate/*` pair is keyed on your address and on
+your **merchant account**, so neither a key rotation nor a spread of egress
+nodes doubles your claim on a supplier's quota. The last two are _additional_,
+not instead of: a validate call advances the general counters too, and the
+tighter ones simply bind first.
 
 ### IP allowlist
 
@@ -540,8 +867,12 @@ outage.
 
 ## Endpoints (`/merchant/v1`)
 
-Also part of the contract. Every response is JSON; every request is
-signed as above. **Money is always a JSON string with exactly two decimal
+Also part of the contract. Every response is JSON, and so is every request
+body: no endpoint on this surface takes a form-encoded or `multipart` body, and
+none will be added inside `v1` — the signature covers the raw body bytes, and
+the dependency that verifies it reads them before your handler does, so a form
+endpoint would be a different auth scheme wearing this one's name. Every request
+is signed as above. **Money is always a JSON string with exactly two decimal
 places** (`"1.06"`), never a JSON number — a float round-trips through
 IEEE-754 and turns `1.06` into `1.0599999999999999`. Parse it with your
 language's decimal type, not its float.
@@ -815,9 +1146,10 @@ long `fulfilling` as "in progress", never as a reason to place a second order.
 ### `GET /merchant/v1/orders/{merchant_order_id}`
 
 Where an order ends up, and **where you collect the code**. Poll it after a
-`201`; there is no push in v1, and when the M3 webhook arrives it will tell you
-that something changed without carrying the goods — a voucher code in a webhook
-body is a bearer instrument written to your logs and ours.
+`201`. If you have a webhook configured it tells you that something changed
+without carrying the goods — a voucher code in a webhook body is a bearer
+instrument written to your logs and ours — so this read is the delivery channel
+either way.
 
 The path segment is **your** id, percent-encoded:
 
@@ -981,7 +1313,391 @@ Errors:
 
 We never mail your customer. We do not hold their address, we do not accept
 one, and the delivery path skips merchant orders explicitly rather than by
-accident. Delivery to you is the order read and, from M3, the outbound webhook.
+accident. Delivery to you is the order read, with the outbound webhook as the
+notification beside it. The one address we do mail is your **operator's**, and
+only to say we have stopped delivering webhooks (see "Auto-disable").
+
+### `POST /merchant/v1/validate/player`
+
+Check the identifier your customer gave you **before** you spend a deposit on
+it — a game player id, or a Steam login for a Steam top-up. Optional: no order
+consults it, and skipping it costs you nothing but the chance to catch a typo
+before the code is gone.
+
+```json
+POST /merchant/v1/validate/player
+{
+  "sku_id": "0198c3d0-11a2-7b31-9ac4-5f2b7d0e8c41",
+  "player_id": "51234567",
+  "server_id": null
+}
+```
+
+| Field       | Required | Notes                                                                              |
+| ----------- | -------- | ---------------------------------------------------------------------------------- |
+| `sku_id`    | yes      | The SKU you are about to order, from `/catalog`. A UUID; anything else is a `422`. |
+| `player_id` | yes      | Your **customer's** identifier. 1–64 characters.                                   |
+| `server_id` | no       | The game server / zone, for the games whose form asks for one. `null` or omitted.  |
+
+A SKU, not a product, so the id you check is the id you buy. Unknown fields are
+rejected (`422`) rather than ignored — a typo'd `player_id` that we silently
+dropped would come back as "no check needed", which is the one answer you must
+not get by accident.
+
+```json
+{ "status": "valid", "name": "NeoUZ" }
+```
+
+| `status`      | What it means                                                                   | What to do                                           |
+| ------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| `valid`       | The provider resolved the id. `name` is the account nickname when there is one. | Show the name back to your customer; order.          |
+| `invalid`     | The provider gave us a verdict we understand, and it is "no such player".       | The answer to show your customer as "check that id". |
+| `error`       | **We could not check.** Says nothing at all about the id.                       | Retry later, or order without a check. Never refuse. |
+| `unsupported` | This SKU has no player check configured, and will not grow one on its own.      | Order without a check. Do not retry.                 |
+
+> **`error` is not a verdict.** An upstream fault, a timeout, a credential of
+> ours that got rejected, or a circuit we opened after a run of failures all
+> arrive as `error`, and every one of them means "we learned nothing". If you
+> branch on `status != "invalid"` you will treat those as approval; if you
+> branch on `status != "valid"` you will refuse perfectly good ids whenever a
+> supplier has a bad ten minutes. Branch on all four.
+>
+> **And `invalid` is a verdict.** You get it only when the provider sent a
+> token we recognise and that token said "no such player". A response we cannot
+> read — a field renamed, a shape we have not seen before — is `error`, not
+> `invalid`, deliberately: the alternative is that one supplier-side rename
+> makes us tell every one of your customers they mistyped, on a stream of HTTP
+> 200s, with nothing anywhere reading as a fault. You may act on `invalid`;
+> that is what it is for.
+
+`name` is `null` whenever the provider gives us no name — Steam has no display
+name to return, so a `valid` Steam login always reads `{"status": "valid",
+"name": null}`. It is an absence, not a failure.
+
+We do not tell you how the answer was reached. A verdict may be served from a
+short cache and it is still our best answer; there is no "this was cached"
+field to make you doubt a good one.
+
+**No `Idempotency-Key`, and no `GET`.** This endpoint writes nothing, so the
+header does not apply. It is a `POST` anyway because `player_id` identifies
+_your customer_ and must not travel in a URL: our edge writes an access log
+that records query strings verbatim, and a player id in it is a leak in the
+one place that otherwise logs only a hash. Send it in the body, and note that
+the body is part of the signed canonical string (its SHA-256 is the fifth
+field), so a signature is good for exactly one payload.
+
+**Its own rate limits — two of them.** This is the only endpoint here that
+spends a _supplier's_ quota rather than ours, so on top of the 600 / 60 s the
+whole prefix shares it carries **120 / 60 s per source address** and **120 /
+60 s per merchant account**. All of them are charged; the tight pair binds
+first. The account counter is not redundant with the address one — a supplier's
+quota is spent by _you_, not by your egress node, so calling us from a six-node
+NAT pool must not buy six budgets, and neither should rotating a key. A `429`
+here is problem+json with a `Retry-After`, like every other. One check per
+order is well inside it; a validation loop is not, by design.
+
+What these counters are and are not: fixed 60-second windows in Redis that
+**fail open**, so if our Redis is unwell they stop counting rather than
+refusing everything — and that is the same outage that empties this endpoint's
+result cache and its supplier circuit breaker. All three protections go
+together, and the supplier's own limiter is what remains. We would rather say
+so than let the numbers above read as a guarantee they are not.
+
+Errors:
+
+| Status | `code`              | Meaning                                                                                                                                        |
+| ------ | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| 404    | `item_unavailable`  | `reason: unknown_sku` — no such SKU; `reason: not_b2b_visible` — withheld from B2B, so there is nothing to check.                              |
+| 404    | `product_not_found` | The SKU's product vanished between our two lookups. A race, and vanishingly rare; retry once.                                                  |
+| 422    | `invalid_request`   | The body did not parse — a `sku_id` that is not a UUID in any spelling, an empty `server_id`, a missing or unknown field. `errors` says which. |
+| 429    | —                   | Over any of the counters that apply here. Wait `Retry-After` seconds.                                                                          |
+
+Any spelling of a UUID your language emits is accepted and normalised — plain,
+uppercase, undashed, braced (`{0198…}`, which is .NET's `Guid.ToString("B")`),
+or `urn:uuid:…`. You never have to reformat an id you got from us.
+
+Note what is **not** here. The order path's other refusals — `out_of_stock`,
+`not_for_sale`, `no_cost` — do not apply: stock and pricing move between a
+check and an order, and refusing to verify an id because a SKU is momentarily
+unbuyable would answer a question you did not ask. Visibility is the one
+condition that governs both, so a SKU you cannot see in `/catalog` is a SKU you
+cannot check.
+
+## Outgoing webhooks
+
+**Also part of the contract**, and the second half of it: everything above is
+your server calling ours, this is ours calling yours. You register one `https`
+endpoint and we `POST` a signed JSON body to it when one of your orders changes
+status or support credits your deposit.
+
+Registration is done **by support** — ask them for it, with the URL. There is no
+`/merchant/v1` write for the webhook configuration and there will not be one in
+v1; the merchant cabinet gets the control in M4. Setting it returns a signing
+secret (`ypmw_…`, 48 characters) that is **shown once**, exactly like your API
+secret and stored the same way.
+
+The webhook is a **notification, not a delivery channel**. It tells you
+something moved; `GET /merchant/v1/orders/{merchant_order_id}` is where you read
+what it moved to and where you collect the code. Every guarantee below is about
+telling you promptly, and none of them replaces the read.
+
+### What arrives
+
+A `POST` to your URL, `Content-Type: application/json` and
+`Accept-Encoding: identity`, with a compact JSON body and four headers of ours
+(anything else on the request is our HTTP client's ordinary business and is not
+part of this contract):
+
+| Header              | Value                                                               |
+| ------------------- | ------------------------------------------------------------------- |
+| `X-Yupay-Delivery`  | The delivery id (UUID). **Stable across every retry of one event.** |
+| `X-Yupay-Event`     | `order.status_changed` or `balance.credited`                        |
+| `X-Yupay-Timestamp` | Unix seconds, ASCII digits. **Per attempt**, not per event.         |
+| `X-Yupay-Signature` | Lowercase hex HMAC-SHA256. See below.                               |
+
+They are `X-Yupay-*` and not `X-Merchant-*` on purpose: you hold two credentials
+at once and they key opposite directions of one integration, so the two header
+families cannot be confused.
+
+Two event types, and they are the complete v1 list:
+
+| Event                  | Body — these keys, exactly                      |
+| ---------------------- | ----------------------------------------------- |
+| `order.status_changed` | `merchant_order_id`, `order_id`, `status`, `at` |
+| `balance.credited`     | `amount_usd`, `balance_usd`                     |
+
+```json
+{
+  "at": "2026-09-07T08:20:19.881204+00:00",
+  "merchant_order_id": "acme-2026-000417",
+  "order_id": "0198c3d1-7f22-7a90-b118-9d3c5e604a7f",
+  "status": "delivered"
+}
+```
+
+```json
+{ "amount_usd": "500.00", "balance_usd": "541.44" }
+```
+
+- **The keys are sorted and there is no whitespace.** We serialise with sorted
+  keys and compact separators so two attempts at one event put identical bytes
+  on the wire. Do not infer meaning from the order, and do not re-serialise
+  before you verify — see below.
+- **`at` is the instant the status was written**, ISO 8601 with an explicit
+  `+00:00` offset and microseconds. Note the difference from the REST responses
+  above, which render UTC as `Z`: parse it with a real ISO 8601 parser rather
+  than by matching a suffix.
+- **`status`** is the same vocabulary the order read publishes: `paid`,
+  `fulfilling`, `delivered`, `failed`. New values may be added; treat one you do
+  not know as "still in flight".
+- **Money is a two-decimal string** here as everywhere else on this API.
+  `amount_usd` is what was credited; `balance_usd` is your deposit after it.
+- Fields may be **added** to these bodies without notice, and nothing is ever
+  renamed, retyped or removed inside v1. Ignore keys you do not know — but see
+  "What never rides in a body" for the one addition we will not make.
+
+### The signature
+
+Four fields joined by single LF bytes (`0x0A`), HMAC-SHA256 under your `ypmw_`
+secret — the secret's UTF-8 bytes are the key, with **no derivation step**:
+
+```
+canonical = timestamp + "\n" + delivery_id + "\n" + event_type + "\n" + sha256_hex(body)
+```
+
+`timestamp`, `delivery_id` and `event_type` are the header values exactly as
+sent, and `body` is the **raw bytes you received**. There is no method field and
+no URL field: a webhook is always a `POST` to the one endpoint you configured,
+and you already know which endpoint received the request.
+
+Three things worth knowing before you write the verifier:
+
+- **Hash the bytes, not your parse of them.** `JSON.parse` then `JSON.stringify`
+  gives you a different byte string and therefore a different digest. Capture
+  the raw body first (`express.raw({ type: "application/json" })`,
+  `await request.body()`, `req.rawBody`), verify, then parse.
+- **Compare in constant time**, and treat a bad signature as a `401` rather than
+  as a `500` — a `401` is terminal for us, so a delivery you reject stays
+  rejected instead of coming back. (`408` and `429` are the two `4xx`es we do
+  retry; see the table below.)
+- **A retry re-signs.** The delivery id is the same, the timestamp and therefore
+  the signature are not. Deduplicate on `X-Yupay-Delivery`, never on the
+  signature.
+
+### Worked example
+
+Generated by the server's own signing code, not composed by hand. Secret:
+
+```
+ypmw_EXAMPLE9wQ2vR7kB4mN8sT3jH6dF1gL5xZ0cY4uA2eK
+```
+
+Headers, and the body exactly as it goes on the wire. `X-Yupay-Timestamp`
+decodes to one second after the `at` inside the body, because an attempt
+follows the transition it reports.
+
+```
+X-Yupay-Delivery: 0198c3d2-4e11-7c05-8a6d-1b2f9e7a0c34
+X-Yupay-Event: order.status_changed
+X-Yupay-Timestamp: 1788769220
+X-Yupay-Signature: 256046194be552f3c3a99d322334320f3b1b1898c66ca7af711d6968873e4277
+```
+
+```
+{"at":"2026-09-07T08:20:19.881204+00:00","merchant_order_id":"acme-2026-000417","order_id":"0198c3d1-7f22-7a90-b118-9d3c5e604a7f","status":"delivered"}
+```
+
+so that
+
+```
+sha256_hex(body) = 31b8745c082c9c37390c5d19fe80b4831721815e1094ea20a1af52577d06102c
+
+canonical = "1788769220\n0198c3d2-4e11-7c05-8a6d-1b2f9e7a0c34\norder.status_changed\n31b8745c082c9c37390c5d19fe80b4831721815e1094ea20a1af52577d06102c"
+```
+
+That example secret authenticates nothing — it exists so you can check your
+verifier's arithmetic before you have an account. Node 18+, no dependencies:
+
+```js
+import crypto from "node:crypto";
+
+const SECRET = process.env.YUPAY_WEBHOOK_SECRET; // "ypmw_…"
+const TOLERANCE_SECONDS = 300;
+
+// rawBody MUST be the bytes as received. Do not JSON.parse and re-stringify:
+// the signature covers the exact bytes, and our key order is not yours.
+export function verify(rawBody, headers, { now = Date.now() / 1000 } = {}) {
+  const timestamp = headers["x-yupay-timestamp"];
+  const deliveryId = headers["x-yupay-delivery"];
+  const eventType = headers["x-yupay-event"];
+  const provided = headers["x-yupay-signature"];
+  if (!timestamp || !deliveryId || !eventType || !provided) return false;
+  if (!/^[0-9]+$/.test(timestamp)) return false;
+  if (Math.abs(now - Number(timestamp)) > TOLERANCE_SECONDS) return false;
+
+  const bodyHash = crypto.createHash("sha256").update(rawBody).digest("hex");
+  const canonical = [timestamp, deliveryId, eventType, bodyHash].join("\n");
+  const expected = crypto
+    .createHmac("sha256", SECRET) // the secret itself is the key — no pre-hashing
+    .update(canonical, "utf8")
+    .digest("hex");
+
+  const a = Buffer.from(expected, "utf8");
+  const b = Buffer.from(String(provided).trim().toLowerCase(), "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+```
+
+Run it against the example above — the body as a `Buffer`, the four headers
+lower-cased, `now: 1788769220` — and it prints:
+
+```
+signature valid: true
+tampered body: false
+stale timestamp: false
+```
+
+The timestamp tolerance is **yours**, not ours: we sign the instant of each
+attempt and never re-send an old signature, so a window is worth having, and 300
+seconds is the same figure this API uses in the other direction. Nothing breaks
+if you widen it; a backlog released after a long outage can carry timestamps
+minutes old.
+
+### At-least-once, and the ordering you get
+
+**Delivery is at-least-once. Build for a duplicate.** A timeout, or an exchange
+that breaks after we have written the request, leaves us unable to tell an
+answer that never arrived from one that was never sent, so we retry — which
+means an event you have already processed can arrive again. `X-Yupay-Delivery`
+is the handle that makes that safe: it is stable across every retry of one
+event, it is inside the signed material rather than only in a header, and
+recording it is the whole of deduplication.
+
+Ordering, precisely:
+
+- Two events written by one transaction (`paid` and `fulfilling`, which a
+  placement emits together) are **tie-broken** into enqueue order, so you do not
+  see `fulfilling` before `paid` on a first attempt.
+- Nothing beyond that is globally ordered. A retried event lands **after**
+  events queued behind it, which is inherent to per-event backoff, so you can
+  see `paid` after `delivered`.
+- **Order by the payload's `at`**, and never treat a status you have already
+  passed as a regression. Applying only forward transitions is the rule; there
+  is no sequence number and `at` plus your own state is enough.
+
+### Retries, and what is terminal
+
+| Your answer                                            | What we do                                            |
+| ------------------------------------------------------ | ----------------------------------------------------- |
+| Any `2xx`                                              | Done. Your failure streak resets.                     |
+| `408`, `429`, any `5xx`                                | Retry with backoff.                                   |
+| Any other `4xx`, or a redirect                         | **Given up on immediately.** We never follow a `30x`. |
+| More than **64 KiB** of body, or a compressed body     | **Given up on immediately** — you received it.        |
+| No answer at all (DNS, TCP, TLS, timeout, reset)       | Retry with backoff.                                   |
+| We would not connect (not `https`, non-public address) | **Given up on immediately.**                          |
+
+The backoff doubles from 30 seconds to a one-hour ceiling, with no jitter, and
+one event gets **ten attempts** before it is abandoned:
+
+```
+30s → 1m → 2m → 4m → 8m → 16m → 32m → 1h → 1h   (10 attempts over 3h 03m 30s)
+```
+
+`Retry-After` is honoured on the two statuses that define it for a retry —
+`503` (RFC 9110 §10.2.3) and `429` (RFC 6585 §4) — in both its forms, clamped
+into `[1 s, 1 h]`. On any other status we use our own schedule, including a
+`3xx`, which defines the header too and which we never follow anyway.
+
+What your endpoint has to live inside: **10 seconds** of total wall clock per
+attempt, DNS and TLS included, and **64 KiB** of response body. Answer `2xx` as
+soon as you have durably recorded the delivery id and do the work afterwards —
+an endpoint that provisions synchronously is an endpoint we time out on and
+retry, which is the double-delivery you were trying to avoid. We send
+`Accept-Encoding: identity` and refuse a compressed answer, so a server that
+gzips unconditionally fails **every** delivery.
+
+### Auto-disable, and getting turned back on
+
+After **20 consecutive failed attempts** (not events — retries count, and the
+streak is per account across all your events) we stop delivering: the hook is
+disabled and your operator addresses get one email, once per disable.
+
+Turning it back on is a support action — the same `PUT` that set the URL, which
+clears the disable and the streak. Three consequences to plan around:
+
+- **Events that occur while the hook is off are never queued.** Only what was
+  already waiting resumes. There is no backfill, so after an outage on your side
+  reconcile by polling the order read for anything you have open.
+- **Queued events keep the URL they were queued with.** If the fix was a new
+  address, expect the waiting rows to fail out against the old one rather than
+  arrive.
+- **The signing secret does not change.** Neither a URL change nor a re-enable
+  rotates it; rotation is its own action, has no overlap window (there is one
+  live secret at a time), and takes effect on the next attempt of every event —
+  so deploy the new value promptly once you ask for it.
+
+### What never rides in a body
+
+**A voucher code, ever.** The webhook says `delivered`; you fetch the artifact
+over `GET /merchant/v1/orders/{merchant_order_id}`. A webhook receiver logs the
+bodies it is sent, wholesale, and a code is a bearer instrument — whoever reads
+it can redeem it. A code in your nginx log is our leak as much as yours, so the
+payload shapes above are asserted as exact key sets in our own tests
+specifically to stop a later field addition from smuggling one in.
+
+### What has no webhook at all
+
+- **A fulfilment that fails on its own.** Our order row does not move when a
+  delivery fails — the failure is recorded against the fulfilment task — so you
+  see `paid → fulfilling → silence`, and a `failed` event arrives only when
+  support closes the order by hand. Poll anything that has been `fulfilling`
+  longer than you expect, and read `failure_reason`, which goes non-null while
+  the status is still `fulfilling`.
+- **Prices.** There are no price webhooks and never will be; poll `/catalog` and
+  watch `updated_at`.
+- **A low balance.** There is no `balance.low`. `balance_usd` rides
+  `balance.credited`, every order response and `GET /merchant/v1/me`; the
+  threshold is yours to pick.
 
 ## Your first order in ten minutes
 
@@ -1174,8 +1890,11 @@ path segment is percent-encoded and **the encoded form is what you sign**
 - Reuse `merchant_order_id` across every retry of one intent. A fresh id per
   HTTP attempt places duplicate orders — this is the single most expensive
   mistake available on this API.
-- There is **no push**. Poll the order read; there is no webhook in v1 and no
-  price webhook ever.
+- **Poll the order read anyway.** A webhook is a notification and it is
+  at-least-once, not exactly-once and not guaranteed-once-only-in-order: it
+  never carries the code, it is silent on a fulfilment that fails on its own,
+  and it stops entirely if we auto-disable your endpoint. There is no price
+  webhook, ever. See "Outgoing webhooks".
 - Honour `Retry-After` on a `429` instead of retrying immediately.
 - Watch `balance_usd` yourself. Nothing warns you before it runs out; an order
   that cannot be covered is a `409 insufficient_deposit`, which is recoverable
@@ -1199,10 +1918,11 @@ path segment is percent-encoded and **the encoded form is what you sign**
 | Credential lifecycle (create / list / revoke)               | `credentials.py`, via the `api` facade                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Request verification + the FastAPI dependency               | `auth.py`                                                                                                                                                                                                                                                                                                                                                                                                                               |
 | The deposit: credit, charge, balance, ledger listing        | `deposit.py` — every movement of a merchant's money                                                                                                                                                                                                                                                                                                                                                                                     |
-| Admin HTTP surface                                          | `admin_routes.py`                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Admin HTTP surface                                          | `admin_routes.py` (`/admin/merchants`) and `catalog_b2b_routes.py` (`/admin/catalog`), over the shared replay helpers in `route_replay.py`                                                                                                                                                                                                                                                                                              |
 | Machine API routes (`/merchant/v1`)                         | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it.                                                                                                                                                                                               |
 | The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift                                                                                                                                                                                                                                                                                                                                                                                     |
+| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift. Its `unavailable()` is the one `item_unavailable` refusal on this API; `validate.py` raises the same one.                                                                                                                                                                                                                                                                          |
+| The advisory player check (`/validate/player`)              | `validate.py` — resolves the SKU, decides `unsupported`, and hands the rest to `integrations.player_check`. It performs no check of its own and must never turn that module's `error` into anything friendlier.                                                                                                                                                                                                                         |
 | Reading one order back (status, code, refund mark)          | `order_status.py`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | The deposit ledger page (`/transactions`)                   | `transactions.py` — cursor codec; the query is `deposit.py`'s                                                                                                                                                                                                                                                                                                                                                                           |
 | Order placement + the deposit charge                        | `orders.py`; the debit itself is `deposit.charge_deposit`                                                                                                                                                                                                                                                                                                                                                                               |
@@ -1223,7 +1943,7 @@ behind. **Import it from `merchants.auth` directly, never from
 `merchants.api`**: it takes its session from `api.v1.deps.db_session` so the
 endpoint behind it shares one transaction, which means the facade cannot
 re-export it without closing an import cycle back through the v1 route stack —
-the same rule the routers in `admin_routes` follow. It supports **byte-body
+the same rule the two admin routers follow. It supports **byte-body
 endpoints only**: it reads `await request.body()`, and an endpoint declaring
 `Form(...)`/`UploadFile` would send FastAPI down the `request.form()` branch,
 consuming the stream without populating the cache the dependency relies on.
@@ -1239,6 +1959,12 @@ so merchant secrets and voucher codes never share a key. The same protection
 `inventory_codes` has had all along, applied to the instrument that is worth
 more.
 
+The **outgoing-webhook** secret (`merchant_webhooks`) is stored the same way
+for the same reason — we compute the HMAC on every delivery — under its own
+label, `yupay:merchants:webhook:v1`. A third label rather than a shared one:
+the two secrets key opposite directions of the same integration, and
+compromising the derived key behind one should not read the other's rows.
+
 ### Rate limiting internals
 
 Two axes, one counter implementation (`auth.ip_guard.hit_counter`):
@@ -1250,6 +1976,12 @@ Two axes, one counter implementation (`auth.ip_guard.hit_counter`):
   requests a minute.
 - **per key** — `settings.merchant_api_key_rate_max`, charged after the
   signature verifies.
+- **per IP, on `/validate/player` only** — `guard_ip(request,
+bucket="merchant-validate")` in the handler, ceiling
+  `auth_ip_guard_bucket_max["merchant-validate"]` (120). Charged _after_
+  authentication, since the prefix-wide counter has already turned away
+  anyone unauthenticated, and stricter than that counter because the quota it
+  protects is a supplier's rather than ours (spec §12).
 
 Brute force is not the threat model — the secret is 256 bits and compared with
 `compare_digest` — throughput is, which is what both numbers are sized for.
@@ -1274,22 +2006,34 @@ Schema (M1 Task 1), the deposit service (M1 Task 3), wholesale pricing
 and `GET /merchant/v1/catalog` (M2 Task 3), `POST /merchant/v1/orders`
 (M2 Task 4) and the two reads a reseller's back office lives on —
 `GET /merchant/v1/orders/{merchant_order_id}` and
-`GET /merchant/v1/transactions` (M2 Task 5) — are in place. **Those five are
-the whole machine API.** Spec §9.1 also sketches a sixth row,
-`POST /merchant/v1/validate/…`, which is deliberately not in v1: it would only
-be honest for the SKUs a real player-check provider covers, and a validator
-that approves whatever it is given is worse than no endpoint. Outbound
-webhooks, refunds and the cabinet BFF are M3+.
+`GET /merchant/v1/transactions` (M2 Task 5) — are in place. M3a lands outgoing
+webhooks end to end (ADR-0070): Task 1 the _storage_ and its admin-only
+configuration surface (`merchant_webhooks`, `merchant_webhook_deliveries`,
+migration 0071, and the four `/admin/merchants/{id}/webhook` endpoints above),
+Task 2 the SSRF-checked outbound client (`core/outbound.py`), Task 3 the
+producer that fills the outbox (`webhooks.py`, above) and Task 4 the worker
+that drains it, signs it and gives up on it. M3a Task 5 adds spec §9.1's sixth
+row,
+`POST /merchant/v1/validate/player` — which M2 had deliberately left out
+because it is honest only for the SKUs a real player-check provider covers,
+and a validator that approves whatever it is given is worse than no endpoint.
+That constraint is now the endpoint's contract rather than a reason to omit
+it: a SKU with no provider answers `unsupported`, and a check we could not
+make answers `error`, neither of which a client can mistake for approval.
+**Those six are the whole machine API.** Refunds and the cabinet BFF are M3+.
 
-Two things a reseller will ask about and we do not have yet. **Nothing refunds
+One thing a reseller will ask about and we do not have yet. **Nothing refunds
 a merchant order:** a failed delivery leaves the deposit debited, and support
 settles it by crediting the deposit by hand — which moves `balance_usd` and
 appears on `/transactions`, while the order's own `refunded_usd` stays
-`"0.00"`, because no surface can book a transaction against an order. And there
-is **no push of any kind** — poll the order read.
+`"0.00"`, because no surface can book a transaction against an order.
 
 The refund gap is written up with what it costs in
 `docs/runbooks/merchant-b2b.md`, under "Known gaps before a pilot integrates" —
-read it before you put the first reseller on this. The absence of push is a
-deliberate v1 scope decision rather than a gap, and is stated wherever polling
-is described.
+read it before you put the first reseller on this.
+
+Push exists now and is deliberately narrow: a webhook notifies, it never
+carries the artifact, it is silent on a fulfilment that fails on its own, and it
+is configured by support until M4's cabinet. Polling the order read remains the
+contract's delivery channel, which is why it is described that way wherever it
+appears.

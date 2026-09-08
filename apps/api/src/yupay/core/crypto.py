@@ -56,6 +56,14 @@ NONCE_SIZE = SecretBox.NONCE_SIZE
 #: existing rows.
 PURPOSE_MERCHANT_API_KEY = "yupay:merchants:apikey:v1"
 
+#: Purpose label for merchant **outgoing-webhook** signing secrets (M3a).
+#: A separate label from :data:`PURPOSE_MERCHANT_API_KEY` on purpose: the two
+#: secrets protect opposite directions — one authenticates a reseller calling
+#: us, the other authenticates us calling a reseller — and HKDF separation
+#: means compromising the key behind either one does not read the other's
+#: rows. Same reasoning that keeps voucher codes off the merchant key.
+PURPOSE_MERCHANT_WEBHOOK = "yupay:merchants:webhook:v1"
+
 
 def _derive_dev_key(seed: str) -> bytes:
     """Deterministic dev/test key. Never reached when ``is_prod``."""
@@ -160,6 +168,7 @@ def decrypt(ciphertext: bytes, nonce: bytes, *, purpose: str) -> str:
 __all__ = [
     "NONCE_SIZE",
     "PURPOSE_MERCHANT_API_KEY",
+    "PURPOSE_MERCHANT_WEBHOOK",
     "box_for",
     "decrypt",
     "derive_key",

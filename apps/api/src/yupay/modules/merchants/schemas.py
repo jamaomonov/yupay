@@ -27,6 +27,8 @@ from pydantic import (
     model_validator,
 )
 
+from yupay.modules.merchants.models import WEBHOOK_URL_MAX
+
 #: What ``Numeric(5, 2)`` can hold — the schema bound for markup fields.
 _MARKUP_BOUND = Decimal("999.99")
 
@@ -185,6 +187,56 @@ class ApiKeyCreatedOut(ApiKeyOut):
     secret: str | None
 
 
+class WebhookSetIn(BaseModel):
+    """Body of ``PUT /admin/merchants/{id}/webhook``.
+
+    Only shape is checked here. The SSRF rules (https, no private/loopback
+    literals) live in ``admin.validate_webhook_url`` so that every caller of
+    the facade gets them — including M4's cabinet, which will not reuse this
+    DTO — rather than only the requests that happen to arrive through this
+    schema.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, max_length=WEBHOOK_URL_MAX)
+
+
+class WebhookOut(BaseModel):
+    """A merchant's webhook configuration, as every read returns it.
+
+    There is deliberately no ``secret`` field: the secret exists only in the
+    response to the call that minted it (:class:`WebhookSecretOut`).
+    ``failure_streak`` and the two timestamps are the delivery worker's
+    running state — an operator answering "is this hook healthy" reads them
+    here rather than counting rows in the delivery log.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    merchant_id: str
+    url: str
+    disabled_at: datetime | None
+    failure_streak: int
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WebhookSecretOut(WebhookOut):
+    """The response of the two calls that can mint a secret — the only ones carrying it.
+
+    ``secret`` is ``None`` when the call did not mint one: a URL change or a
+    re-enable on an existing hook, and every idempotent replay. The replay
+    snapshot lives in ``idempotent_responses``, a table with no reaper, and a
+    usable signing key sitting there forever is worse than telling an
+    operator whose first response was lost to rotate and take the new one.
+    """
+
+    secret: str | None
+
+
 class SkuB2bPatchIn(BaseModel):
     """Body of ``PATCH /admin/catalog/skus/{id}/b2b``; absent fields stay untouched."""
 
@@ -273,4 +325,7 @@ __all__ = [
     "MerchantTxnOut",
     "SkuB2bOut",
     "SkuB2bPatchIn",
+    "WebhookOut",
+    "WebhookSecretOut",
+    "WebhookSetIn",
 ]

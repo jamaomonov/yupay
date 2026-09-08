@@ -150,11 +150,37 @@ class WaxpeerClient:
 
         Returns ``(valid, reason)`` — ``reason`` is Waxpeer's ``msg`` when
         ``valid`` is ``False``, else ``None``.
+
+        **A body with no boolean ``valid`` raises** rather than reading as
+        ``False``, the same rule :meth:`get_balance_units` applies to
+        ``user.wallet`` and for the same reason: ``bool(body.get("valid",
+        False))`` cannot tell "Waxpeer says no" from "Waxpeer answered
+        something we do not understand", and the caller
+        (``integrations.player_check``) turns the first into "your customer
+        mistyped their login". If this field is ever renamed, that reading
+        would tell every customer and every reseller they were wrong, on an
+        HTTP 200, with nothing in the logs. Raising makes it "we could not
+        check", which is what it is.
+
+        Args:
+            steam_login: The Steam account name to check.
+
+        Returns:
+            ``(valid, reason)``.
+
+        Raises:
+            WaxpeerError: The response carried no boolean ``valid``.
+            WaxpeerUnavailableError: Waxpeer could not be reached.
         """
-        body, _ = await self._request(
+        body, raw_text = await self._request(
             "GET", "/steam-topup/validate", params={"steam_login": steam_login}
         )
-        return bool(body.get("valid", False)), body.get("msg")
+        valid = body.get("valid")
+        if not isinstance(valid, bool):
+            raise WaxpeerError(
+                "waxpeer validate response carried no boolean `valid`", body=raw_text
+            )
+        return valid, body.get("msg")
 
     async def create_topup(
         self, *, steam_login: str, amount_units: int, custom_id: str

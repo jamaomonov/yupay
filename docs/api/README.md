@@ -260,6 +260,35 @@ revoked ones included) and its response model has no `secret` field at all.
 naturally idempotent, and matches on `(merchant_id, key_id)` so one merchant's
 id in the path cannot revoke another's key.
 
+## Merchant outgoing webhooks — configuration (M3a)
+
+`PUT /admin/merchants/{id}/webhook` points a merchant's webhook at a URL and
+returns its signing secret **once**; `POST .../webhook/rotate-secret` mints a
+replacement (also once); `DELETE .../webhook` disables it by setting
+`disabled_at`; `GET .../webhook` returns the configuration plus the delivery
+worker's health counters and has no `secret` field in its response model at
+all. All four are admin-gated, and the three writes replay through per-resource
+scopes (`merchants.webhook_set:{id}`, `…_rotate:{id}`, `…_disable:{id}`) with
+the same `secret: null` snapshot rule the key mint uses.
+
+One endpoint per merchant in v1 (unique on `merchant_id`), so `PUT` is an
+upsert: the first call mints the secret, a later one edits the URL of the same
+row and answers `secret: null` — changing where deliveries go must not silently
+break a working verifier. Two operators saving at once (or one double-clicked
+Save) both miss the pre-check and both insert; the loser resolves the
+uniqueness violation by returning the **winner's** row with `secret: null`
+rather than a 500 — the winner minted the key, so a second secret here would
+sign nothing. Setting a URL also clears `disabled_at` and resets
+`failure_streak`, which is how a hook the delivery worker auto-disabled is
+brought back. The URL must be `https` with a public host, checked at save time
+by the same validator the catalog's image URLs use; that check reads notation,
+not resolved addresses, so it is not the DNS-rebinding control.
+
+**There is deliberately no `/merchant/v1` write for this.** Configuration is
+admin-only in M3a by owner decision and moves to the merchant's own cabinet in
+M4: the only thing a machine-API write would buy is letting a stranger aim our
+worker at an address of their choosing (ADR-0070 decision 7).
+
 Requests to the machine API `/merchant/v1` carry `X-Merchant-Key`,
 `X-Merchant-Timestamp` and
 `X-Merchant-Signature = hex(HMAC_SHA256(secret, canonical))` where
@@ -282,6 +311,44 @@ whose extras include an integer `retry_after` gets one
 (`core.errors.app_error_handler`), which is what the auth IP guard and the
 merchant per-key counter set.
 
+## Merchant outgoing webhooks — delivery (M3a)
+
+Live since M3a Task 4. `apps/worker` drains `merchant_webhook_deliveries` on its
+own LISTEN channel (`merchant_webhook_queue`) in its own asyncio task, claims
+with `FOR UPDATE SKIP LOCKED`, and POSTs through `core.outbound.post_json` —
+the only fetcher allowed a URL a third party chose, which re-checks the resolved
+address at connect time (ADR-0070 decision 2).
+
+Two event types, the complete v1 list: `order.status_changed`
+(`{merchant_order_id, order_id, status, at}`) and `balance.credited`
+(`{amount_usd, balance_usd}`). Both are exact key sets — a voucher code never
+rides in a body, because the receiver logs bodies wholesale. Four headers, all
+named in `merchants/signing.py` because they are wire format:
+`X-Yupay-Delivery` (stable across retries, and the receiver's dedupe handle),
+`X-Yupay-Event`, `X-Yupay-Timestamp` (per attempt) and `X-Yupay-Signature` =
+`hex(HMAC_SHA256(ypmw_secret, canonical))` where
+
+```
+canonical = {timestamp}\n{delivery_id}\n{event_type}\n{sha256_hex(body)}
+```
+
+Delivery is **at-least-once** and only tie-broken, not globally ordered: a
+retried event lands after events queued behind it, so a receiver orders by the
+payload's `at` and dedupes on the delivery id. `2xx` is success; `408`/`429`/`5xx`
+and an unanswered attempt retry on a 30 s doubling backoff capped at 1 h, ten
+attempts over ~3 h; every other answer — another `4xx`, a redirect (never
+followed), a response over 64 KiB or a compressed one, and an address we refuse
+to connect to — is terminal. After 20 consecutive failed attempts the hook is
+auto-disabled and the merchant's operators are emailed once;
+`PUT /admin/merchants/{id}/webhook` is the only way back on.
+
+**The contract a receiver implements against is
+`apps/api/src/yupay/modules/merchants/README.md`, section "Outgoing
+webhooks"** — payload shapes, the canonical string, an executed worked example
+and a runnable Node verifier. The decisions behind it are ADR-0070; the
+operational side (setting a pilot's URL, reading the delivery log, replaying a
+delivery) is `docs/runbooks/merchant-b2b.md`.
+
 ## Merchant machine API (M2) — `/merchant/v1`
 
 Mounted at **its own prefix**, not under `/api/v1`: it is a third-party
@@ -291,13 +358,15 @@ would force somebody else's integration to move for our reasons.
 
 Every endpoint sits behind `merchants.auth.merchant_auth` — `401` unsigned,
 `403` `merchant_frozen` — and **none of them takes `Idempotency-Key`**. Four of
-the five are reads, which is outside AGENTS.md §9's scope; `POST
-/merchant/v1/orders` is a mutation and is exempt on purpose, being idempotent
-on the caller's own `merchant_order_id` instead (spec §9.3, recorded as the
-exception in AGENTS.md §9). All five endpoints landed by M2 Task 5. Spec §9.1
-sketches a sixth row, `POST /merchant/v1/validate/…`, deliberately left out of
-v1 — it is honest only for the SKUs a real player-check provider covers, and
-the spec's own qualifier is "never a fake approver".
+the six are reads, which is outside AGENTS.md §9's scope; `POST
+/merchant/v1/validate/player` is a `POST` that writes nothing, so it is outside
+that scope too (the third such advisory lookup, named in AGENTS.md §9); and
+`POST /merchant/v1/orders` is a mutation and is exempt on purpose, being
+idempotent on the caller's own `merchant_order_id` instead (spec §9.3, recorded
+as the exception in AGENTS.md §9). Five endpoints landed by M2 Task 5; spec
+§9.1's sixth row, `POST /merchant/v1/validate/player`, landed in M3a Task 5
+once its qualifier — "never a fake approver" — could be the endpoint's contract
+rather than the reason to omit it.
 
 `GET /merchant/v1/me` returns `{merchant_id, title, status, balance_usd}`.
 The balance is the deposit ledger's signed posting sum, read live; there is no
@@ -435,8 +504,8 @@ construction.
 
 Status, timeline, failure reason, refund mark and **the delivered voucher
 code**. That last one is deliberate and is the reason this endpoint is the
-reseller's delivery channel rather than a convenience: M3's
-`order.status_changed` webhook (spec §10) will not carry the code, because a
+reseller's delivery channel rather than a convenience: the M3a
+`order.status_changed` webhook (spec §10) does not carry the code, because a
 webhook body lands in the receiver's logs and in ours and a voucher code is a
 bearer instrument. A pull, over a signed request, scoped exactly like the
 order. Drawn in
@@ -444,8 +513,9 @@ order. Drawn in
 
 The route's `:path` convertor is **greedy** — it compiles to `.*`, so
 `/merchant/v1/orders/a/b/c/d` matches this handler and answers
-`order_not_found`. Nothing else lives under `/orders/` today, but M3's
-`/orders/{id}/refund` must be registered **above** it or Starlette will swallow
+`order_not_found`. Nothing else lives under `/orders/` today — M3a added no
+route here — but M3b's `/orders/{id}/refund` must be registered **above** it or
+Starlette will swallow
 it silently (first full match in declaration order). Noted at the route and in
 the module README's file map.
 
@@ -585,7 +655,8 @@ body), and unlike the handler it was not pre-existing.
 **`/merchant/v1` is exempt from the coarse slowapi limiter**
 (`bootstrap._exempt_self_authenticating_routes`, which walks the router so
 later endpoints are covered on the day they are written). Throttling here is
-the dependency's two Redis counters and nothing else. The earlier reading —
+the dependency's two Redis counters, plus the one `POST /validate/player`
+charges for itself. The earlier reading —
 that the coarse tier applied but could never bind first, because it buckets
 per IP **per endpoint** while the `merchant-api` bucket is one counter for
 the whole prefix — is true only when a caller's traffic spreads across
@@ -599,6 +670,79 @@ slowapi's handler body carries no `type` and no `code`, which is a contract
 we published and cannot revise inside `v1`. The exemption's argument is the
 list's own: every route on it authenticates its own caller, so the per-IP
 limit was never the control protecting it.
+
+### `POST /merchant/v1/validate/player` — the truthful player check
+
+Spec §9.1's sixth row, and the only endpoint here that calls a supplier while
+the caller waits. It exposes `integrations.player_check` — the storefront's own
+G2B nickname lookup and Waxpeer Steam-login check, with their circuit breaker
+and 300 s cache — to a reseller who wants to verify an end customer's id before
+spending a deposit on it. `merchants/validate.py` resolves the SKU and projects
+the result; it performs no check of its own.
+
+**The rule is "never a fake approver", and it decides the response shape.**
+`player_check` already folds every fault into `status: "error"` rather than
+raising, so an upstream outage, a timeout, a credential of ours G2B rejected
+and a circuit we opened all arrive as one answer meaning "we learned nothing".
+
+**And, since 2026-09-08, never a fake _rejecter_ either** — the mirror bug, and
+the louder one. Both providers used to read any unrecognised body as `invalid`:
+G2B's `_map_response` on "not the string `valid`", Waxpeer's client on
+`bool(body.get("valid", False))`. `invalid` is published as the one answer
+meaning the customer mistyped, so a renamed field on the supplier's side would
+have returned HTTP 200 forever, fired no breaker, logged no failure, and told
+every customer and every reseller that their good player id did not exist. Both
+now require a **recognised** verdict token and answer `error` otherwise
+(`_G2B_VERDICTS`; `validate_login` raises, like `get_balance_units` already did
+for `user.wallet`). This changed the storefront's behaviour too and is recorded
+as an amendment in ADR-0031.
+Rendering any of those as `valid` would have a reseller sell a top-up into a
+stranger's account, which is the failure the endpoint exists to prevent. The
+wire contract therefore has **four** statuses, not three: `valid`, `invalid`,
+`error`, and `unsupported` for a SKU whose product has no checker configured —
+distinct from `error` because that one is worth retrying and this one never
+is, and distinct from a `404` because "no check exists" must not read as "no
+such SKU". Nothing reports whether an answer came from the cache: a cached
+verdict is still our best answer, and a caveat would only invite integrators to
+distrust a good one.
+
+The product lookup behind it selects **columns, not the entity**:
+`session.get(Product, …)` fanned out to nine or more statements per check
+through `Product`'s selectin relationships (and `Brand.products` in turn),
+which is a lot of retail catalog to drag through an advisory lookup at two
+calls a second. `test_the_check_does_not_fan_out_over_the_catalog` counts the
+statements.
+
+**Scoped to what the merchant can already see**: `brand.visible_b2b AND
+sku.visible_b2b`, exactly `/catalog`'s rule, so the endpoint cannot be used to
+enumerate SKUs withheld from B2B. The refusal is `quote.unavailable`'s —
+`404 item_unavailable` with `reason: unknown_sku` or `not_b2b_visible`, the same
+words the order path uses — rather than a second vocabulary for the same idea.
+The order path's _other_ reasons (`out_of_stock`, `not_for_sale`, `no_cost`)
+deliberately do not apply: stock and pricing move between a check and an order,
+and this call is the step before the order.
+
+**A `POST` that writes nothing, and no `Idempotency-Key`.** `player_id`
+identifies the reseller's end customer, so it must not travel in a URL — the
+`api.yupay.uz` site block logs query strings verbatim (spec §9.2) — which is
+the same reason `POST /catalog/products/{id}/check-player` and
+`POST /gifts/steam-profile` are POSTs. It is transit-only and never logged;
+`player_check` logs `hash_short` of it and nothing else.
+
+**Its own rate limits, on two axes**, charged in the handler on top of the
+prefix-wide `merchant-api` counter at 600/60 s: `merchant-validate` at 120/60 s
+per **address**, and `merchants:validate:{merchant_id}` at
+`merchant_validate_rate_max` (120/60 s) per **merchant**. Stricter because it is
+the one endpoint that spends a _supplier's_ quota rather than ours (spec §12:
+"stricter on `validate/*`"), and two axes because that quota follows the
+account: with the address counter alone a six-node egress pool held six budgets
+and the binding ceiling fell back to `merchant_api_key_rate_max` (600), five
+times what the bucket advertises. Keyed on `merchant_id` and not `key_id` —
+unlike the prefix's per-key counter — because a key rotation may briefly double
+a share of _our_ capacity without hurting anyone, but must not double a claim on
+a supplier's. Every counter here, the 300 s result cache and the breaker live in
+Redis and fail open together; the module README says so rather than implying a
+guarantee that does not hold.
 
 The full third-party contract, sample bodies included, is
 `apps/api/src/yupay/modules/merchants/README.md`.

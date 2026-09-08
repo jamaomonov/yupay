@@ -1,0 +1,48 @@
+sequenceDiagram
+    autonumber
+    participant CALLER as Any status-transition site<br/>(orders / payments / fulfillment)
+    participant SEAM as orders.service.on_order_status_changed
+    participant RT as realtime.publish_order_event
+    participant W as merchants.webhooks.enqueue
+    participant DB as Postgres (caller's transaction)
+    participant WK as apps/worker (M3a Task 4)
+
+    Note over CALLER: order.status and order.updated_at are already set
+
+    CALLER->>SEAM: on_order_status_changed(db, order)
+
+    alt publish_realtime (the default)
+        SEAM->>RT: {type: order.status_changed, orderId, status, at}
+        Note right of RT: no-op when order.user_id IS NULL --<br/>which every merchant order is.<br/>That is why the webhook needed a seam<br/>rather than riding this call.
+    end
+
+    alt order.merchant_id IS NULL -- retail
+        SEAM-->>CALLER: None, nothing enqueued
+    else a merchant order
+        SEAM->>W: enqueue(merchant_id, order.status_changed, payload)
+        W->>DB: SELECT merchant_webhooks WHERE merchant_id AND disabled_at IS NULL
+        alt no hook, or disabled
+            W-->>CALLER: None -- the outbox holds only deliverable work
+        else configured and enabled
+            W->>DB: flush the caller's pending writes (outside the savepoint)
+            W->>DB: SAVEPOINT
+            W->>DB: INSERT merchant_webhook_deliveries<br/>(status=pending, url=<snapshot>, payload)
+            W->>DB: SELECT pg_notify('merchant_webhook_queue', delivery_id)
+            alt IntegrityError / DataError -- our bug, never a merchant's input
+                W->>DB: ROLLBACK TO SAVEPOINT
+                W->>W: log.error(type + SQLSTATE only, never the driver's<br/>message -- it renders the failing row, url included)
+                W-->>CALLER: None -- the order still commits
+                Note over W,DB: An order is money; a webhook is a courtesy.
+            else inserted
+                W-->>CALLER: delivery_id
+            end
+        end
+    end
+
+    CALLER->>DB: COMMIT (or ROLLBACK)
+    alt COMMIT
+        DB-->>WK: NOTIFY merchant_webhook_queue, delivery_id
+        WK->>DB: claim FOR UPDATE SKIP LOCKED, deliver (Task 4)
+    else ROLLBACK
+        Note over DB,WK: the row AND the NOTIFY are dropped together --<br/>a merchant is never told about a sale that did not happen
+    end

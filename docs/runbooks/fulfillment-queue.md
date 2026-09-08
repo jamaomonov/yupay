@@ -61,18 +61,68 @@ Two operational consequences:
 Rolling the flag back (see "Rollback") therefore does **not** return merchant
 orders to inline fulfilment, and must not be attempted as a way to do so.
 
+## The worker drains a second queue
+
+Since M3a Task 4 the same **process** also drains `merchant_webhook_deliveries`
+on `LISTEN merchant_webhook_queue` — outgoing merchant webhooks. Its
+operational side (the failure streak, the auto-disable and the one way to
+re-enable a hook) is in `docs/runbooks/merchant-b2b.md`.
+
+Each queue runs in its **own asyncio task**, with its own tick, its own LISTEN
+connection and its own concurrency. That is load-bearing rather than tidy: with
+both queues drained inside one awaited `gather` the call returns with its
+slowest member, so a webhook drain that takes minutes would become the
+fulfilment queue's polling period — and a re-enabled hook with a large backlog
+against a slow-but-healthy endpoint can drain for hours. If you ever see paid
+orders sitting undelivered while the webhook queue is deep, that coupling is
+what to check for first; it is regression-tested
+(`apps/worker/tests/test_consumer.py::test_a_slow_queue_does_not_pace_the_other`,
+which measures the coupled shape as its own control).
+
+A NOTIFY on **either** channel still wakes both queues — an empty one answers 0
+on its first claim and returns, which costs less than routing wake-ups by
+channel — but each queue owns its own `asyncio.Event`, because one shared event
+between two consumers is a lost wake-up.
+
+So the fulfilment queue's own behaviour is unchanged, with one honest caveat:
+the two queues share this process's DB connection pool and event loop. Sizing
+is `fulfilment_concurrency + merchant_webhook_concurrency` sessions at peak,
+not `fulfilment_concurrency`.
+
+**A dead queue now takes the container down.** `run()` supervises its loop
+tasks: one that raises, or returns without a stop signal, is logged as
+`worker.consumer.queue_loop_died` and the process exits **1** so
+`restart: unless-stopped` restarts it. Alert on that line — it is the one
+shape where fulfilment stops while the container still reads healthy.
+
+**Shutdown is bounded at 8 s** (`SHUTDOWN_BUDGET_SECONDS`), of which the first
+3 go to a queue loop caught mid-drain and the rest to in-flight notification
+sends. It is 8 rather than 10 because Docker's default `stop_grace_period` is
+10 s and neither compose file overrides it for `worker`: a shutdown that spends
+the whole grace period is SIGKILLed with `close_g2b_pool()` and
+`worker.consumer.stopped` still to come. A cancelled drain is safe — the batch
+rolls back and its rows return to `pending`.
+
+**At deploy:** the `worker.consumer.started` log line's `concurrency=<int>`
+field became `queues={"fulfillment": 4, "merchant_webhook": 2}`. Nothing in
+this repo reads it, but a Grafana or Loki panel outside the repo might. Three
+other lines are new: `worker.consumer.queue_loop_died` (above — worth an
+alert), `worker.consumer.shutdown_left_draining` when SIGTERM arrives
+mid-drain, and a `crashed=` field on `worker.consumer.stopped`.
+
 ## The worker's own settings
 
-Neither is gated by `FULFILMENT_ASYNC` — the worker drains whatever exists,
-so both apply from the moment it starts.
+None is gated by `FULFILMENT_ASYNC` — the worker drains whatever exists, so all
+apply from the moment it starts.
 
-| Setting                   | Env                       | Default | What it does                                                                                                                                                           |
-| ------------------------- | ------------------------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fulfilment_poll_seconds` | `FULFILMENT_POLL_SECONDS` | `5`     | Poll tick. `LISTEN` does the real-time work; the tick catches notifications lost to a restart and is the retry cadence for a dropped `LISTEN` connection.              |
-| `fulfilment_concurrency`  | `FULFILMENT_CONCURRENCY`  | `4`     | Drainers per wake, each on its own DB session and connection. Raising it costs pool connections; lowering it to 1 means one hung supplier call stalls the whole queue. |
+| Setting                        | Env                            | Default | What it does                                                                                                                                                                                                     |
+| ------------------------------ | ------------------------------ | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fulfilment_poll_seconds`      | `FULFILMENT_POLL_SECONDS`      | `5`     | Poll tick, shared by both queues. `LISTEN` does the real-time work; the tick catches notifications lost to a restart and is the retry cadence for a dropped `LISTEN` connection.                                 |
+| `fulfilment_concurrency`       | `FULFILMENT_CONCURRENCY`       | `4`     | Fulfilment drainers per wake, each on its own DB session and connection. Raising it costs pool connections; lowering it to 1 means one hung supplier call stalls the whole queue.                                |
+| `merchant_webhook_concurrency` | `MERCHANT_WEBHOOK_CONCURRENCY` | `2`     | The same dial for the webhook queue, separate because what hangs there is a **third party's** server. Two attempts to one endpoint still serialise at commit, which bounds how hard one queue hits one merchant. |
 
-Both are read once at worker start — changing either needs a **worker**
-restart (unlike `FULFILMENT_ASYNC`, which only the api reads).
+All are read once at worker start — changing any needs a **worker** restart
+(unlike `FULFILMENT_ASYNC`, which only the api reads).
 
 ## Checking queue depth
 
