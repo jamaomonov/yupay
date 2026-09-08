@@ -654,7 +654,11 @@ sentinel-filtered query and to the low-balance alert, which is also keyed on
 that string. Two queries, and run the first:
 
 ```bash
-# Every stall, whatever caused it — this is what the reseller is reading.
+# Every merchant stall, whatever caused it — this is what the reseller is
+# reading. The `merchant_id IS NOT NULL` clause is not decoration: the stall
+# shape is deliberately retail's rule too, so without it most rows here are
+# storefront orders showing "обработка" to a buyer who has a support chat,
+# and a B2B incident gets sized off a count that is mostly not B2B.
 docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
   "SELECT t.id, t.supplier, t.last_error, t.failed_at, o.merchant_id,
           o.idempotency_key AS merchant_order_id
@@ -663,6 +667,7 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yup
      JOIN orders o ON o.id = t.order_id
     WHERE t.status = 'failed'
       AND i.fulfillment_state IN ('pending', 'reserved', 'in_progress')
+      AND o.merchant_id IS NOT NULL
     ORDER BY t.failed_at DESC LIMIT 20;"
 
 # The low-balance ones, with the numbers the alert quotes.
