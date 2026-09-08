@@ -633,29 +633,51 @@ stalled.** Nothing is wrong with the order. Check queue depth and the worker
 orders even with the flag off.
 
 **`failure_reason` is `fulfillment_delayed` — the delivery stopped on _our_
-side and the order is still ours to finish.** Since M3b Task 4 this is what a
-low-supplier-balance task publishes: the task is `failed` and in the admin
-inbox, the item is still `in_progress`, and the storefront rule that hides
-this from a retail buyer is unchanged. **This one is yours, not the
-merchant's** — they are told to keep polling and not to refund their end
-customer, so nobody outside is waiting on a reply. Top the supplier up and
-retry the task, or force-complete it if you delivered by hand; either clears
-the value on its own, because it is derived from the task and the item rather
-than stored. Find the supplier and the shortfall on the task, never on the
-order read — the reseller is deliberately not told which supplier we are short
-at:
+side and the order is still ours to finish.** Since M3b Task 4 it means a
+fulfilment task went `failed` while the item it was fulfilling stayed open:
+the task is in the admin inbox, the item is still `in_progress`, and the
+storefront rule that hides this from a retail buyer is unchanged. **This one
+is yours, not the merchant's** — they are told to keep polling and not to
+refund their end customer, so nobody outside is waiting on a reply. Top the
+supplier up and retry the task, or force-complete it if you delivered by hand;
+either clears the value on its own, because it is derived from the task and
+the item rather than stored. Find the supplier and the shortfall on the task,
+never on the order read — the reseller is deliberately not told which supplier
+we are short at.
+
+**Query the shape, not the sentinel.** The predicate matches "task failed,
+item still open", and a low supplier balance is the only thing that produces
+it _today_ — but widening beyond `last_error = 'supplier_low_balance'` is the
+entire reason it matches the shape, so a second soft failure added later would
+publish "still coming" to a reseller while being invisible both to a
+sentinel-filtered query and to the low-balance alert, which is also keyed on
+that string. Two queries, and run the first:
 
 ```bash
+# Every stall, whatever caused it — this is what the reseller is reading.
 docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
-  "SELECT t.id, t.supplier, t.last_error, t.metadata->>'current_balance' AS balance,
+  "SELECT t.id, t.supplier, t.last_error, t.failed_at, o.merchant_id,
+          o.idempotency_key AS merchant_order_id
+     FROM fulfillment_tasks t
+     JOIN order_items i ON i.id = t.order_item_id
+     JOIN orders o ON o.id = t.order_id
+    WHERE t.status = 'failed'
+      AND i.fulfillment_state IN ('pending', 'reserved', 'in_progress')
+    ORDER BY t.failed_at DESC LIMIT 20;"
+
+# The low-balance ones, with the numbers the alert quotes.
+docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+  "SELECT t.id, t.supplier, t.metadata->>'current_balance' AS balance,
           t.metadata->>'required' AS required, t.failed_at
      FROM fulfillment_tasks t
     WHERE t.status = 'failed' AND t.last_error = 'supplier_low_balance'
     ORDER BY t.failed_at DESC LIMIT 20;"
 ```
 
-The per-supplier ops alert fires on the first such task with a 15-minute Redis
-dedupe, so a 50-order backlog is one message, not fifty.
+A row in the first query and not the second is a stall nothing alerted on —
+treat it as an incident in its own right, not just as this order's problem.
+The per-supplier low-balance alert fires on the first such task with a
+15-minute Redis dedupe, so a 50-order backlog is one message, not fifty.
 
 **`failure_reason` is `fulfillment_failed` — the delivery failed and nothing
 will move the order on its own.** The order row stays `fulfilling` for good,

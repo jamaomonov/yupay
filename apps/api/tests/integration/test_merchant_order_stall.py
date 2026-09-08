@@ -732,7 +732,96 @@ async def test_delivering_a_stalled_order_by_hand_clears_it(
     assert body["status"] == "delivered"
 
 
+async def test_a_terminal_failure_can_become_a_delay_again(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[object],
+) -> None:
+    """ "Terminal" is about the delivery attempt, not about the order for ever.
+
+    An operator may retry a ``fulfillment_failed`` order whose money never came
+    back — ``_refuse_a_settled_merchant_order`` only blocks the retry once the
+    deposit has gone back — and if that retry stalls, the published value goes
+    ``fulfillment_failed`` → ``fulfillment_delayed``. Backwards, by the
+    README's own ``Terminal?`` column.
+
+    It is the right answer (the order really is coming again) and it is a
+    promise we have not made, so the contract text now says the three terminal
+    values mean "act now", not "this can never change". Written as a test
+    because that is a published claim, and a published claim nobody executed
+    is how the two sentences this task had to repair got written.
+    """
+    _merchant, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-backwards"
+    )
+    _mock_returns(monkeypatch, _terminal(MoneyOutcome.SPENT))
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+    first = (await _read(integration_client, key_id, secret, "acme-backwards")).json()
+    assert first["failure_reason"] == "fulfillment_failed"
+    assert first["refunded_usd"] == "0.00"
+
+    _mock_returns(monkeypatch, _stall())
+    await ff_svc.retry_task(db_session, task_id=await _task_id(db_session, order_id))
+    await db_session.commit()
+
+    second = (await _read(integration_client, key_id, secret, "acme-backwards")).json()
+    assert second["failure_reason"] == "fulfillment_delayed"
+    assert second["status"] == "fulfilling"
+
+
 # ---------- the predicate on its own terms ----------
+
+
+async def test_one_merchants_stall_does_not_delay_another_merchants_order(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[object],
+) -> None:
+    """The predicate is scoped to **this** order, and that is the whole ballgame.
+
+    Every other test here builds one order in a TRUNCATE-isolated database, so
+    ``FulfillmentTask.order_id == order.id`` could be deleted and nothing would
+    notice. Deleting it is not a fanciful mutation: folding the filter into the
+    join, or reusing this query for a "list stalled orders" admin view, gets
+    there without anybody intending it.
+
+    What it would cost is this task's own harm, inverted. One reseller running
+    us out of balance at a supplier would make **every other merchant's**
+    healthy in-flight order publish ``fulfillment_delayed`` — and their
+    machines, which this value exists to give something to act on, would stop
+    escalating on orders that are perfectly fine, indefinitely.
+
+    So: two merchants, two orders, one stalled. The healthy one must be
+    ``null``, and the stalled one must still be ``fulfillment_delayed`` — the
+    second half is the control, without which this test would pass on a
+    function that answers ``False`` to everything.
+    """
+    _m1, key_stalled, secret_stalled, stalled_order = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-noisy", n=1
+    )
+    await _drain_into_the_stall(db_session, monkeypatch, stalled_order)
+
+    _m2, key_ok, secret_ok, healthy_order = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="beta-quiet", n=2
+    )
+    _mock_returns(monkeypatch, _in_progress())
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    healthy = await _reload_order(db_session, healthy_order)
+    assert await ff_stall.order_is_stalled(db_session, order=healthy) is False
+
+    beta = (await _read(integration_client, key_ok, secret_ok, "beta-quiet")).json()
+    assert beta["failure_reason"] is None
+    assert beta["status"] == "fulfilling"
+
+    acme = (await _read(integration_client, key_stalled, secret_stalled, "acme-noisy")).json()
+    assert acme["failure_reason"] == "fulfillment_delayed"
 
 
 async def test_a_terminally_failed_order_is_not_stalled(

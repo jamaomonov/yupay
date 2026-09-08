@@ -21,6 +21,19 @@ task did not write and cannot exercise by adding a test.
   outrank the stall. Every ingredient is individually right, so the ordering
   is what a test has to pin, and the only way to falsify an ordering is to
   reorder it.
+* **The scoping** — every test here builds its orders in a TRUNCATE-isolated
+  database, so ``FulfillmentTask.order_id == order.id`` could be deleted with
+  the whole integration selection still green (measured: 679 passed, 0
+  failed). ``stall_ignores_the_order`` plus the two-merchant test it reddens
+  are what stop one reseller's stall from publishing ``fulfillment_delayed``
+  on everybody else's healthy orders — this task's own harm, inverted.
+
+**Two rows here exist because they were found vacuous first.**
+``stall_ignores_the_item_state`` reported ``UNFALSIFIED`` until a two-**line**
+order gave the item half something to be wrong about, and
+``stall_ignores_the_order`` was added after a review deleted that one line and
+watched nothing fail. Both are the same lesson: a mutation that grades nothing
+is worse than no row, and the only fix is the test shape that reaches the half.
 
 Run it::
 
@@ -119,7 +132,9 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_line_that_terminally_failed_does_not_stall_the_line_beside_it",
             "test_a_second_stall_still_reads_as_delayed",
             "test_a_supplier_low_balance_stall_says_the_order_is_delayed",
+            "test_a_terminal_failure_can_become_a_delay_again",
             "test_a_top_up_and_a_successful_retry_clear_the_stall",
+            "test_one_merchants_stall_does_not_delay_another_merchants_order",
             "test_the_stall_never_says_why_it_stalled",
             "test_the_storefront_cannot_tell_a_stalled_order_from_a_busy_one",
         ),
@@ -140,7 +155,9 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_second_stall_still_reads_as_delayed",
             "test_a_stall_is_never_reported_for_an_order_with_no_charge_on_file",
             "test_a_supplier_low_balance_stall_says_the_order_is_delayed",
+            "test_a_terminal_failure_can_become_a_delay_again",
             "test_a_top_up_and_a_successful_retry_clear_the_stall",
+            "test_one_merchants_stall_does_not_delay_another_merchants_order",
             "test_the_failure_reason_table[stalled-fulfilling-in_progress-True-refunded3-fulfillment_delayed]",
             "test_the_stall_never_says_why_it_stalled",
         ),
@@ -159,7 +176,9 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=(
             "test_a_second_stall_still_reads_as_delayed",
             "test_a_supplier_low_balance_stall_says_the_order_is_delayed",
+            "test_a_terminal_failure_can_become_a_delay_again",
             "test_a_top_up_and_a_successful_retry_clear_the_stall",
+            "test_one_merchants_stall_does_not_delay_another_merchants_order",
             "test_the_delayed_value_never_names_its_cause",
             "test_the_stall_never_says_why_it_stalled",
         ),
@@ -206,6 +225,13 @@ MUTATIONS: tuple[Mutation, ...] = (
     ),
     # ---- the predicate's two halves
     Mutation(
+        name="stall_ignores_the_order",
+        breaks="one reseller's stall publishes fulfillment_delayed on everybody's orders",
+        edits=((STALL, "                FulfillmentTask.order_id == order.id,\n", ""),),
+        tests=TESTS,
+        expect=("test_one_merchants_stall_does_not_delay_another_merchants_order",),
+    ),
+    Mutation(
         name="stall_ignores_the_task_status",
         breaks="every order with an open item reads as delayed, including a busy one",
         edits=((STALL, '                FulfillmentTask.status == "failed",\n', ""),),
@@ -214,6 +240,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_line_that_terminally_failed_does_not_stall_the_line_beside_it",
             "test_a_terminally_failed_order_is_not_stalled",
             "test_an_order_still_in_flight_is_not_delayed",
+            "test_one_merchants_stall_does_not_delay_another_merchants_order",
         ),
     ),
     Mutation(

@@ -7,11 +7,24 @@ task has stopped while its item has not.
 
 The integration suites walk the real edges: an operator tops up and retries, a
 retry fails terminally, a task is cancelled, support closes the order. What
-they cannot do cheaply is walk **combinations** — an order that is stalled
-*and* closed by hand, one that is stalled *and* already refunded — and those
-are where a precedence bug lives, because each ingredient is individually
-right. The table below is the contract, and it is exhaustive over the
-combinations the endpoint can produce.
+they cannot walk at all is **combinations** — an order that is stalled *and*
+closed by hand, one that is stalled *and* already refunded — because on a
+merchant order those are currently **unreachable**, and that is a fact about
+today's call graph rather than about the contract:
+
+* ``orders/service.py`` is the only site that writes ``order.status =
+  "failed"``, and it cascades through ``cancel_open_tasks_for_order`` (which
+  cancels a ``failed`` task too) *before* the status write, so closed-and-
+  stalled cannot coexist;
+* every terminal failure site writes ``item.fulfillment_state = "failed"`` in
+  the same block, and a merchant order has exactly one item, so failed-and-
+  stalled cannot either — on a **multi-line** order it can, and there the
+  precedence does real work.
+
+So the last three rows below are the only statement of the precedence
+anywhere, and they are load-bearing for exactly the case the integration tests
+cannot reach. The table is exhaustive over the states of the four inputs, not
+over what the endpoint can be made to emit today.
 
 It is a unit test on a private function on purpose. The mapping is the
 published vocabulary a reseller switches on, and a mapping is the one thing

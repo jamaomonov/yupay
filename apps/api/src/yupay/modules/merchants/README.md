@@ -1492,6 +1492,15 @@ A value you do not recognise is **not** a stop condition: treat it as
 `fulfillment_delayed` — keep polling and raise it with a human. Guessing the
 other way costs you a customer refund on an order that then arrives.
 
+**"Terminal" is about the delivery attempt, not about the order for ever.** A
+`fulfillment_failed` order whose money has not come back can be retried by an
+operator, and if that retry stalls the value moves `fulfillment_failed` →
+`fulfillment_delayed`. So the three terminal values mean "nothing will move
+this on its own, act now" — not "this can never change again". They are safe
+to act on, which is what you need; they are not safe to cache as final. If you
+stop polling on one, poll it once more before you write off the order, or read
+`refunded_usd`, which only ever grows.
+
 `fulfillment_delayed` is M3b's second and last addition, and it exists because
 its absence was worse than a wrong value. A delivery can stop for a reason that
 is ours to fix in minutes; until M3b that order published `failure_reason:
