@@ -1,5 +1,13 @@
 #!/usr/bin/env python
-"""Mutation harness for the automatic deposit refund (M3b, Task 3).
+"""Mutation harness for the automatic deposit refund (M3b, Tasks 3 and 5).
+
+Task 5 added four rows for the **merchant's quote** (`order_items.
+merchant_expected_price_usd`, migration 0072). They are here rather than in a
+harness of their own because they belong to the same record: what a reseller
+quoted is what a charge dispute is settled from, and it is written on the order
+line whose price the refund's amount is deliberately *not* read from. Their
+mutations are the two ways to lose the write and the two guards that keep the
+column's NULL meaningful.
 
 Same contract as its three siblings: break one property at a time and check
 that the named test actually goes red. A test that stays green under a
@@ -81,11 +89,18 @@ SRC = REPO / "apps/api/src/yupay"
 LIVE = "apps/api/tests/integration/test_merchant_auto_refund.py"
 KEYS = "apps/api/tests/unit/test_merchant_refund_keys.py"
 ATTRIB = "apps/api/tests/integration/test_merchant_deposit_attribution.py"
+#: Task 5's quote record. Not a refund, but the same money record: what a
+#: reseller quoted is what a charge dispute is settled from, and it is written
+#: on the order line the refund's amount is deliberately *not* read from.
+PLACE = "apps/api/tests/integration/test_merchant_api_orders.py"
+ACTOR = "apps/api/tests/integration/test_orders_merchant_actor.py"
 
 REFUND = SRC / "modules/merchants/refund.py"
 DEPOSIT = SRC / "modules/merchants/deposit.py"
 STATUS = SRC / "modules/merchants/order_status.py"
 SAGA = SRC / "modules/fulfillment/service.py"
+PLACEMENT = SRC / "modules/merchants/orders.py"
+ORDERS = SRC / "modules/orders/service.py"
 
 #: ``FAILED apps/.../test_x.py::test_name[param] - AssertionError: …``.
 _FAILED_LINE = re.compile(r"^FAILED\s+\S+?\.py::(?P<name>.+?)(?:\s+-\s.*)?$")
@@ -415,6 +430,65 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_an_order_with_no_charge_refunds_nothing_and_calls_a_human",
             "test_the_refund_is_what_we_charged_not_what_the_line_says_now",
         ),
+    ),
+    # ---- the merchant's quote (Task 5, spec item 3b)
+    Mutation(
+        name="quote_not_recorded",
+        breaks="a charge dispute has only our own number in it",
+        edits=(
+            (
+                PLACEMENT,
+                "        merchant_expected_price_usd=(body.expected_price,),",
+                "        merchant_expected_price_usd=None,",
+            ),
+        ),
+        tests=(PLACE,),
+        expect=("test_the_merchants_own_quote_is_recorded_beside_the_price_we_charged",),
+    ),
+    Mutation(
+        name="quote_never_stored",
+        breaks="the column is threaded through and then dropped on the floor",
+        edits=(
+            (
+                ORDERS,
+                "                merchant_expected_price_usd=(\n"
+                "                    None\n"
+                "                    if merchant_expected_price_usd is None\n"
+                "                    else merchant_expected_price_usd[index]\n"
+                "                ),",
+                "                merchant_expected_price_usd=None,",
+            ),
+        ),
+        tests=(PLACE,),
+        expect=("test_the_merchants_own_quote_is_recorded_beside_the_price_we_charged",),
+    ),
+    Mutation(
+        name="quote_from_a_retail_actor",
+        breaks="a retail line can carry a merchant's figure, so NULL stops meaning anything",
+        edits=(
+            (
+                ORDERS,
+                "        if actor.merchant_id is None:\n"
+                '            raise ValidationError("a merchant quote is only accepted from a merchant actor")',
+                "        if False:\n"
+                '            raise ValidationError("a merchant quote is only accepted from a merchant actor")',
+            ),
+        ),
+        tests=(ACTOR,),
+        expect=("test_a_merchant_quote_from_a_retail_actor_is_refused",),
+    ),
+    Mutation(
+        name="quote_length_unchecked",
+        breaks="a short sequence is an IndexError on the money endpoint",
+        edits=(
+            (
+                ORDERS,
+                "        if len(merchant_expected_price_usd) != len(body.items):",
+                "        if False:",
+            ),
+        ),
+        tests=(ACTOR,),
+        expect=("test_a_merchant_quote_must_line_up_with_the_lines",),
     ),
     # ---- the ledger key
     Mutation(

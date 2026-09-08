@@ -25,7 +25,7 @@ sequenceDiagram
     SEAM->>DB: flush the CALLER's pending writes (outside the try and the savepoint,<br/>the only statement that is -- a rollback here would discard the failure record)
     SEAM->>DB: _merchant_of_task -- one indexed read, inside the try, outside the savepoint
     alt retail order (merchant_id IS NULL)
-        SEAM-->>S: return. One query, no savepoint, no merchants import.<br/>INVENTORY_FAILURE_MONEY_OUTCOME is RETURNED and fires on every<br/>storefront order that runs the warehouse dry, so this gate does real work
+        SEAM-->>S: return. One query, no savepoint, no merchants import.<br/>INVENTORY_FAILURE_MONEY_OUTCOME is RETURNED and fires whenever an<br/>inventory route runs dry with no fallback, so this gate does real work
     end
 
     rect rgba(200,200,200,0.25)

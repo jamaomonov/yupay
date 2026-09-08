@@ -25,11 +25,18 @@ runbook's regression query — which earns its keep by *recomputing* the price
 from ``order_items.cost_usdt`` and the SKU's markup — would become a
 comparison of a value with itself.
 
-No index. Nothing filters, joins or orders on this column: the dispute case is
-one order read on the primary key, and the drift measurement is a sweep already
-bounded by ``orders.merchant_id IS NOT NULL`` (``ix_orders_merchant_created``,
-0066). An index on a price would be low-selectivity write cost for a query
-nobody runs.
+No index, and the reason is **who reads it**, not whether anything filters on
+it — the drift sweep in ``docs/runbooks/merchant-b2b.md`` filters on exactly
+this column (``WHERE merchant_expected_price_usd IS NOT NULL``). What makes an
+index wrong today is that no **code path** reads the column at all and nothing
+orders by it; its only reader is an operator running a sweep by hand, for which
+a sequential scan is fine and an index is write cost on every checkout.
+
+And if that ever changes, the right index is not the one this migration would
+have added. The predicate is ``IS NOT NULL``, so what a frequent reader would
+want is a **partial** index restricted to the merchant lines, not a plain btree
+over a price. Per AGENTS.md §10 it belongs in the same migration as the query
+that needs it, which does not exist yet.
 
 NULL means **not recorded**, and that covers two different things a reader must
 not confuse: every retail line, which never had a quote, and any merchant line

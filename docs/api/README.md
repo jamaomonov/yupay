@@ -646,6 +646,21 @@ supplier kept our money or we cannot tell stays internal, because a reseller
 who could read it off our API would learn which of our suppliers is
 unreliable.
 
+Until M3b `refunded_usd` was `"0.00"` for every order, and the reason was
+stronger than "refunds are unbuilt": **no surface could book a transaction
+against an order's deposit at all.** `POST /admin/merchants/{id}/deposit-credits` — the
+manual settlement support performs for a failed delivery — posted
+`reference=(merchant, merchant_id)` while this field filters on
+`(order, order_id)`, so the credit moved `balance_usd`, appeared on
+`/transactions` with a null `merchant_order_id`, and left `refunded_usd` at
+zero. M3b Task 2 gave that endpoint an optional `order_id`: an attributed
+credit posts `(order, order_id)` — same legs, same kind, only the reference
+moves — and lands here. The order must be the credited merchant's; one that is
+not, one that does not exist and a malformed id all answer a single
+`404 order_not_found`, the same non-oracle discipline `/merchant/v1`'s own
+reads keep. `docs/runbooks/merchant-b2b.md` is written around the attributed
+form, which the admin SPA's deposit-credit screen now produces directly.
+
 **The vocabulary is published in the README and not in the schema, and that is
 a decision rather than an omission** (ADR-0071). `failure_reason` reaches
 `docs/api/openapi.json` as a bare nullable string with no `enum`, because an
@@ -669,21 +684,6 @@ already is that number (`merchants.orders.place` passes one value to both the
 order line and the deposit charge), so a second column would be filled from the
 same expression and would make the runbook's regression query compare a value
 with itself.
-
-Until M3b it was `"0.00"` for every order, and the reason was stronger than
-"refunds are unbuilt": **no surface could book a transaction against an
-order's deposit at all.** `POST /admin/merchants/{id}/deposit-credits` — the
-manual settlement support performs for a failed delivery — posted
-`reference=(merchant, merchant_id)` while this field filters on
-`(order, order_id)`, so the credit moved `balance_usd`, appeared on
-`/transactions` with a null `merchant_order_id`, and left `refunded_usd` at
-zero. M3b Task 2 gave that endpoint an optional `order_id`: an attributed
-credit posts `(order, order_id)` — same legs, same kind, only the reference
-moves — and lands here. The order must be the credited merchant's; one that is
-not, one that does not exist and a malformed id all answer a single
-`404 order_not_found`, the same non-oracle discipline `/merchant/v1`'s own
-reads keep. `docs/runbooks/merchant-b2b.md` is written around the attributed
-form, which the admin SPA's deposit-credit screen now produces directly.
 
 ### `GET /merchant/v1/transactions` — the deposit ledger
 

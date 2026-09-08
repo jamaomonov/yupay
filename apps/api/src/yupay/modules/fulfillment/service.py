@@ -740,12 +740,15 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     refunding money we did not get back is not a safe failure mode.
 
     **Retail is untouched, and it pays one indexed read to stay that way.**
-    :data:`INVENTORY_FAILURE_MONEY_OUTCOME` is ``RETURNED`` and fires on every
-    storefront order that runs the warehouse dry — the most common terminal
-    failure in this codebase — so the ``merchant_id`` gate is doing real work
-    rather than documenting an impossibility. It runs **before** the savepoint
-    and before ``merchants`` is imported at all, so a retail task costs one
-    query and no ``SAVEPOINT``/``RELEASE`` pair.
+    :data:`INVENTORY_FAILURE_MONEY_OUTCOME` is ``RETURNED`` and fires whenever
+    an inventory route runs dry with nothing to fall back to (see the
+    ``decision.strict or decision.fallback is None`` arm in
+    :func:`process_task`; a dry warehouse *with* a supplier fallback re-routes
+    instead of failing) — a common terminal failure here — so the
+    ``merchant_id`` gate is doing real work rather than documenting an
+    impossibility. It runs **before** the savepoint and before ``merchants`` is
+    imported at all, so a retail task costs one query and no
+    ``SAVEPOINT``/``RELEASE`` pair.
 
     **Why the caller runs this and not ``process_task``.** Under
     ``drain_pending_tasks`` a task runs inside a SAVEPOINT whose crash arm
@@ -819,10 +822,10 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # **The merchant gate, ahead of the savepoint.** One indexed read, and a
     # retail task pays that and nothing else: no task reload, no order read,
     # no item read, and no SAVEPOINT/RELEASE pair.
-    # ``INVENTORY_FAILURE_MONEY_OUTCOME`` is ``RETURNED`` and fires on every
-    # storefront order that runs the warehouse dry, which is the commonest
-    # terminal failure in this codebase, so "retail is untouched" has to mean
-    # round trips and not only behaviour.
+    # ``INVENTORY_FAILURE_MONEY_OUTCOME`` is ``RETURNED`` and fires whenever an
+    # inventory route runs dry with no fallback to switch to, which is a common
+    # terminal failure here, so "retail is untouched" has to mean round trips
+    # and not only behaviour.
     #
     # It is **inside the try and outside the savepoint**, and those are two
     # different things — a distinction this function got wrong once. Inside the
