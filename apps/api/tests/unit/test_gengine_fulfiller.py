@@ -12,7 +12,7 @@ from typing import Any, ClassVar
 
 import pytest
 from yupay.modules.fulfillment.suppliers.base import FulfillerError
-from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
+from yupay.modules.fulfillment.suppliers.gengine import PAY_REQUESTED_KEY, GEngineFulfiller
 from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineError,
     GEngineOrder,
@@ -107,13 +107,27 @@ async def test_a_fresh_order_is_in_progress_not_a_delivery() -> None:
     assert result.artifact is None
 
 
-async def test_a_verified_order_is_paid_immediately() -> None:
-    # `verified` is the only state that opens payment, and every minute it
-    # waits is a minute the customer is staring at "в обработке".
+async def test_a_verified_order_banks_the_intent_before_it_pays() -> None:
+    """`verified` is the only state that opens payment, and every minute it
+    waits is a minute the customer is staring at "в обработке" — so this used
+    to pay on the first sight of it.
+
+    It now costs one extra 60-second tick, bought deliberately: the record that
+    we are about to spend must be committed by a transaction that does *not*
+    spend, or an abort anywhere in the paying tick (the metadata merge,
+    ``_try_settle_order``'s blocking lock, the COMMIT) rolls the record back
+    while the money stays gone. See ``gengine.PAY_REQUESTED_KEY``.
+    """
     client = FakeClient(paid=_order("shipped"))
     f = GEngineFulfiller(client)  # type: ignore[arg-type]
 
-    result = await f._advance(_order("verified"), first_call=False)
+    banked = await f._advance(_order("verified"), first_call=False)
+
+    assert client.pay_calls == 0, "nothing is spent on the tick that records the intent"
+    assert banked.outcome == "in_progress"
+    assert banked.extra_metadata[PAY_REQUESTED_KEY] is True
+
+    result = await f._advance(_order("verified"), first_call=False, paid_before=True)
 
     assert client.pay_calls == 1
     assert result.outcome == "succeeded"
@@ -172,7 +186,7 @@ async def test_a_refused_payment_fails_with_the_supplier_s_own_words() -> None:
     client = FakeClient(paid=GEngineError("insufficient funds"))
     f = GEngineFulfiller(client)  # type: ignore[arg-type]
 
-    result = await f._advance(_order("verified"), first_call=False)
+    result = await f._advance(_order("verified"), first_call=False, paid_before=True)
 
     assert result.outcome == "failed"
     assert "insufficient funds" in (result.error or "")
@@ -679,7 +693,12 @@ async def test_a_lost_create_response_is_recovered_instead_of_bought_twice(
     )
 
     assert client.create_calls == 1
-    assert result.outcome == "succeeded"
+    # The recovered order is already `verified`, so this lands on the same
+    # rule as any other: bank the intent now, pay on the next tick. What this
+    # test is about — one create, not two — is unchanged.
+    assert client.pay_calls == 0
+    assert result.outcome == "in_progress"
+    assert result.extra_metadata[PAY_REQUESTED_KEY] is True
 
 
 async def test_a_create_that_truly_failed_is_reported_not_retried(

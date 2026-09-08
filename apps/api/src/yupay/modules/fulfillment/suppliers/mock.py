@@ -25,7 +25,11 @@ if TYPE_CHECKING:
 
 
 class MockFulfiller(Fulfiller):
-    """No-op fulfiller used by tests and the dev admin SPA."""
+    """No-op fulfiller used by tests and the dev admin SPA.
+
+    It always succeeds, so it has no terminal failure to classify and every
+    result here carries ``money_outcome=None``.
+    """
 
     supplier = "mock"
 
@@ -76,6 +80,7 @@ class MockFulfiller(Fulfiller):
                 "idempotency_key": idempotency_key,
                 "product_kind": kind,
             },
+            money_outcome=None,
         )
 
     async def check_status(
@@ -89,6 +94,7 @@ class MockFulfiller(Fulfiller):
             artifact_kind="voucher_code",
             artifact={"code": "MOCK"},
             error=None,
+            money_outcome=None,
         )
 
     async def cancel(

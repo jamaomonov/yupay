@@ -39,6 +39,7 @@ from yupay.modules.fulfillment.suppliers import (
     FulfillerError,
     FulfillerNotIntegratedError,
     FulfillResult,
+    MoneyOutcome,
     get_fulfiller,
 )
 from yupay.modules.inventory import service as inv_svc
@@ -62,6 +63,175 @@ _LOW_BALANCE_ERROR = "supplier_low_balance"
 # 15 min covers a typical "see the alert, top up the wallet, retry"
 # loop without burying ops in repeats.
 _LOW_BALANCE_ALERT_DEDUPE_SECONDS = 15 * 60
+
+#: Where a task records what became of our money when it failed. It lives in
+#: ``extra_metadata`` rather than a column because that is where every other
+#: structured fact about a task already lives, and because nothing queries it
+#: yet — M3b Task 3 reads it at the moment the failure happens, on the row it
+#: has in hand. Read it with :func:`money_outcome_of`, never by key.
+MONEY_OUTCOME_KEY = "money_outcome"
+
+#: Our own warehouse running dry. No supplier is involved in an inventory
+#: route at all, so nothing external was ever charged — the cleanest
+#: :attr:`MoneyOutcome.RETURNED` in the codebase, and the one case where an
+#: automatic refund is unambiguously right.
+INVENTORY_FAILURE_MONEY_OUTCOME = MoneyOutcome.RETURNED
+
+#: How much a money outcome commits us to, lowest first. ``record_money_outcome``
+#: never moves a task down this ladder: knowledge about our own money only ever
+#: accumulates. ``RETURNED`` is the bottom because it is the one value that
+#: unlocks an automatic refund, so promoting to it is the expensive mistake;
+#: ``SPENT`` is the top because "we know it is gone" is a positive finding that
+#: a later "we cannot tell" must not erase — the very blur
+#: :class:`MoneyOutcome`'s docstring forbids.
+_CONFIDENCE: dict[MoneyOutcome, int] = {
+    MoneyOutcome.RETURNED: 0,
+    MoneyOutcome.UNKNOWN: 1,
+    MoneyOutcome.SPENT: 2,
+}
+
+#: A task that crashed on an exception nobody wrapped, or one an admin
+#: rejected by hand. Neither can say what happened upstream: the first died
+#: mid-saga, and the second is a human who bought (or did not buy) the goods
+#: somewhere this code cannot see.
+_NOBODY_CAN_SAY = MoneyOutcome.UNKNOWN
+
+
+def record_money_outcome(task: FulfillmentTask, outcome: MoneyOutcome) -> None:
+    """Persist what became of our money on a task that has just failed.
+
+    **A task never moves down :data:`_CONFIDENCE`.** The rung that matters is
+    the bottom one: every ``RETURNED`` an adapter can produce is a fact about
+    *one attempt* —
+    "the supplier refunded this order", "this create never reached the call
+    that pays". A task outlives its attempts: an admin Retry re-runs it, and
+    the retry knows nothing about what the attempt before it spent. Without
+    this rule the sequence is a real money loss, and needs no supplier
+    misbehaviour to reach:
+
+    1. ``pay`` is charged and *then* returns HTTP 500 → ``UNKNOWN``, correctly.
+    2. An admin clicks Retry — the ordinary response to that failure.
+    3. The replay trips a transient outage before it creates anything →
+       ``RETURNED``, also correctly, *for that attempt*.
+    4. M3b refunds the deposit for goods we have already paid for.
+
+    So once any attempt has left money unaccounted for, no later attempt may
+    declare the task's money whole. Upward stays open: a ``RETURNED`` task that
+    is retried and then loses money records that, because it is new knowledge
+    rather than an older attempt's absence of it. ``SPENT`` is likewise never
+    downgraded to ``UNKNOWN`` — a retry whose call fails ambiguously would
+    otherwise turn "waxpeer kept our money" into "we cannot tell" in the admin
+    inbox. Task 3 treats those two the same, but a human does not.
+
+    There is deliberately **no way to lower a recorded outcome**, here or
+    through ``retry_task`` / ``complete_manual_task``. That is safe while only
+    a terminal supplier verdict writes one, and it cuts both ways:
+
+    - a caller that starts recording on *transient* errors would make every
+      outage a permanent ``UNKNOWN`` on an otherwise fine task;
+    - and ``SPENT`` is already unrecoverable **today**. Waxpeer writes it for an
+      ``error`` top-up, the runbook's answer is "chase the money", and an
+      operator who chases it successfully has no way to record that we are whole
+      again — the task reads "money gone" forever and M3b will never refund that
+      merchant automatically.
+
+    Either direction needs an operator re-grade path. Neither has one yet.
+
+    The value is merged onto ``extra_metadata`` rather than assigned, so the
+    supplier flags the adapters wrote — ``supplier_refunded``,
+    ``needs_reconciliation`` and the rest — survive alongside it. Those keys
+    stay the admin inbox's and the runbooks' spelling of the same idea; this
+    one is the typed source of truth M3b acts on.
+
+    Args:
+        task: The task, already marked ``failed``.
+        outcome: What became of the money on the attempt that just ended.
+    """
+    standing = _standing_outcome(task)
+    if standing is not None and _CONFIDENCE[outcome] < _CONFIDENCE[standing]:
+        log.info(
+            "fulfillment.money_outcome.kept",
+            task_id=task.id,
+            supplier=task.supplier,
+            standing=standing.value,
+            refused=outcome.value,
+        )
+        return
+    task.extra_metadata = {**(task.extra_metadata or {}), MONEY_OUTCOME_KEY: outcome.value}
+
+
+def _standing_outcome(task: FulfillmentTask) -> MoneyOutcome | None:
+    """The value already on the task, for the ladder — **failing closed**.
+
+    ``money_outcome_of`` reads an unrecognised string as "nothing recorded",
+    which is right for a reader but wrong for the guard: it would let a later
+    ``RETURNED`` overwrite a value this build merely cannot parse. The one
+    re-grade available today is a hand DB edit (see
+    :func:`record_money_outcome`), and the enum's values are lowercase, so an
+    operator typing ``'UNKNOWN'`` would silently disarm the invariant on that
+    task — on the exact rows a human is already worried about.
+
+    A present-but-unreadable value therefore counts as
+    :attr:`MoneyOutcome.UNKNOWN`: high enough to block a promotion, low enough
+    that real knowledge still lands on top of it.
+    """
+    standing = money_outcome_of(task)
+    if standing is None and (task.extra_metadata or {}).get(MONEY_OUTCOME_KEY) is not None:
+        return MoneyOutcome.UNKNOWN
+    return standing
+
+
+def _record_or_warn(
+    task: FulfillmentTask, outcome: MoneyOutcome | None, *, discovered: str
+) -> None:
+    """Record a terminal failure's money outcome, or say out loud that it has none.
+
+    Never raising is the right *behaviour* — a saga must not die because an
+    adapter forgot — but swallowing it silently would make the totality
+    property unenforced at runtime, so a hole the AST guard cannot see (an
+    adapter's intermediate type, a value threaded through a helper) would
+    produce no signal at all. M3b Task 3 is about to start acting on this
+    field's absence, so absence gets a log line an alert can find.
+
+    The low-balance stall never reaches here: it returns earlier, without an
+    outcome and legitimately so.
+
+    Args:
+        task: The task, already marked ``failed``.
+        outcome: What the adapter said, or ``None`` if it said nothing.
+        discovered: Which path found the failure, for the log line.
+    """
+    if outcome is None:
+        log.warning(
+            "fulfillment.money_outcome.missing",
+            task_id=task.id,
+            supplier=task.supplier,
+            discovered=discovered,
+        )
+        return
+    record_money_outcome(task, outcome)
+
+
+def money_outcome_of(task: FulfillmentTask) -> MoneyOutcome | None:
+    """What this task's last terminal failure recorded about our money.
+
+    **It outlives that failure.** ``retry_task`` does not clear it and no
+    success path removes it, so a task that failed and then succeeded on a
+    retry still answers — deliberately, because it is the only trace that an
+    earlier attempt may have spent money the successful one did not account
+    for, and because :func:`record_money_outcome` needs it to refuse a replay's
+    false "we still have the money". A caller asking "what happened to *this*
+    order" must therefore pair it with ``task.status == "failed"``; a caller
+    asking "is there money unaccounted for on this task" must not.
+
+    ``None`` covers three rows and deliberately does not distinguish them: one
+    that has never failed, one that failed before this field existed, and one
+    carrying a value this build does not know. The last is why this is a lookup
+    rather than a cast — a row written by another deploy must not crash a saga,
+    and "we do not know" is already one of the three answers a caller handles.
+    """
+    raw = (task.extra_metadata or {}).get(MONEY_OUTCOME_KEY)
+    return next((m for m in MoneyOutcome if m.value == raw), None)
 
 
 # ---------- supplier routing ----------
@@ -107,7 +277,8 @@ async def _load_task(
 ) -> FulfillmentTask:
     """Load one task, optionally under a row lock.
 
-    ``for_update=True`` is for the *mutating* callers (admin retry/cancel).
+    ``for_update=True`` is for the *mutating* callers (admin retry/cancel, and
+    the poll/webhook reconciler, which read-modify-writes ``extra_metadata``).
     Without it they read a snapshot taken before the consumer's claim, decide
     on that stale status, and then queue behind the consumer's row lock only
     to overwrite what it just committed — an admin cancel landing on top of a
@@ -401,9 +572,7 @@ async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: O
     return True
 
 
-async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readability
-    db: AsyncSession, *, task_id: str
-) -> FulfillmentTask:
+async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     """Run a single task and persist the outcome.
 
     Routing: if ``task.supplier == 'inventory'`` (set by ``start_for_order`` from
@@ -444,6 +613,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             task.failed_at = now()
             task.last_error = "no stock and sourcing rule is strict"
             item.fulfillment_state = "failed"
+            record_money_outcome(task, INVENTORY_FAILURE_MONEY_OUTCOME)
             return task
         # Switch the route to the supplier fallback for the rest of this attempt.
         task.supplier = _supplier_slug(decision.fallback)
@@ -475,6 +645,9 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
         task.failed_at = now()
         task.last_error = str(exc)
         item.fulfillment_state = "failed"
+        # An adapter that raises has ended the order as terminally as one that
+        # returns ``failed``, and answers the same question at the raise site.
+        record_money_outcome(task, exc.money_outcome)
         log.warning(
             "fulfillment.fulfill.failed",
             task_id=task.id,
@@ -520,21 +693,33 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
         task.status = "in_progress"
         item.fulfillment_state = "in_progress"
     else:  # "failed"
-        task.status = "failed"
-        task.failed_at = now()
-        task.last_error = result.error
-        # Low-balance is the one "failed" mode we deliberately hide
-        # from the customer: the task lands in the admin inbox, but
-        # the order item stays ``in_progress`` so the storefront keeps
-        # saying "обработка" instead of flipping to an error state.
-        # The admin will either top up + retry, or fulfil manually.
-        if result.error == _LOW_BALANCE_ERROR:
-            item.fulfillment_state = "in_progress"
-            _dispatch_alert(_maybe_alert_low_balance(task=task, result=result))
-        else:
-            item.fulfillment_state = "failed"
+        _apply_failure(task=task, item=item, result=result)
 
     return task
+
+
+def _apply_failure(*, task: FulfillmentTask, item: OrderItem, result: FulfillResult) -> None:
+    """Land a ``failed`` supplier result on the task and its order item.
+
+    Low-balance is the one "failed" mode we deliberately hide from the
+    customer: the task lands in the admin inbox, but the order item stays
+    ``in_progress`` so the storefront keeps saying "обработка" instead of
+    flipping to an error state. The admin will either top up + retry, or
+    fulfil manually. It is also the one failure with **no** money outcome to
+    record — nothing has finished happening to the money yet (M3b Task 4 owns
+    making that stall visible).
+    """
+    task.status = "failed"
+    task.failed_at = now()
+    task.last_error = result.error
+
+    if result.error == _LOW_BALANCE_ERROR:
+        item.fulfillment_state = "in_progress"
+        _dispatch_alert(_maybe_alert_low_balance(task=task, result=result))
+        return
+
+    item.fulfillment_state = "failed"
+    _record_or_warn(task, result.money_outcome, discovered="fulfill")
 
 
 #: Cap for a crashed task's stored error. Long enough to keep a stack-less
@@ -621,6 +806,9 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
             task.failed_at = now()
             task.last_error = detail
             item.fulfillment_state = "failed"
+            # We crashed part-way through the saga. Whether the supplier call
+            # went out, and what it cost, is exactly what we do not know.
+            record_money_outcome(task, _NOBODY_CAN_SAY)
             await _record_attempt(
                 db,
                 task=task,
@@ -658,6 +846,10 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
         )
     task.status = "pending"
     task.last_error = None
+    # ``money_outcome`` is deliberately **not** cleared. It is the only memory
+    # the next attempt has of what an earlier one may have spent, and
+    # ``record_money_outcome`` needs it to refuse a false "we still have the
+    # money" from a replay. See that function.
     task.failed_at = None
     task.updated_at = now()
     await db.flush()
@@ -683,12 +875,15 @@ async def bulk_retry_tasks(
     The returned ``retried`` order changes with the sort; it is a result set,
     not an ordered contract.
 
-    Sorting does **not** cover bulk-retry vs. a drainer, and that variant is
-    accepted rather than fixed: this loop can hold an order-row lock (from
-    one iteration's ``_try_settle_order``) while the next iteration waits on
-    a task row a drainer holds, and that drainer waits on the same order row.
-    The exposure is tiny — drainers only ever claim ``pending`` tasks, while
-    a human bulk-retries ``failed`` ones — and closing it properly means
+    Sorting does **not** cover bulk-retry vs. a drainer or the reconcile
+    sweep, and that variant is accepted rather than fixed: this loop can hold
+    an order-row lock (from one iteration's ``_try_settle_order``) while the
+    next iteration waits on a task row one of them holds, and that holder waits
+    on the same order row. The exposure is tiny — drainers only ever claim
+    ``pending`` tasks and the sweep only ``in_progress`` ones, while a human
+    bulk-retries ``failed`` ones, and ``process_webhook_update`` deliberately
+    takes its task lock *after* the supplier call rather than across it — and
+    closing it properly means
     ordering locks across a loop of independent orders, which is a redesign
     of the bulk endpoint rather than a patch. If it ever fires, it is a
     deadlock error on the admin request, safe to retry.
@@ -971,6 +1166,12 @@ async def process_webhook_update(
     fulfiller's ``check_status`` for the authoritative view and apply the
     same state transitions the synchronous saga would have done.
     """
+    # Unlocked for the supplier round trip. The lock this function needs is
+    # taken below, *after* ``check_status`` answers — holding it across a live
+    # HTTP call (up to ``gengine_request_timeout_seconds``, and two requests on
+    # a paying tick) would park an admin retry or cancel behind the reconcile
+    # sweep for tens of seconds, and widen the AB/BA window ``bulk_retry_tasks``
+    # documents by the same factor.
     task = await _load_task(db, task_id)
     if task.status in ("succeeded", "cancelled"):
         # Nothing to do — terminal-but-good.
@@ -996,6 +1197,22 @@ async def process_webhook_update(
             task_id=task.id,
             supplier=task.supplier,
             error=str(exc),
+        )
+        return task
+
+    # Now take the lock, for the two read-modify-writes below: the
+    # ``extra_metadata`` merge, and the standing-value read inside
+    # ``record_money_outcome``. Re-loading under the lock also re-reads the
+    # status, so a task that terminated while we were talking to the supplier
+    # is caught here rather than overwritten — the same reason ``cancel_task``
+    # re-checks after waiting for its lock.
+    task = await _load_task(db, task_id, for_update=True)
+    if task.status in ("succeeded", "cancelled", "failed"):
+        log.info(
+            "fulfillment.check_status.raced",
+            task_id=task.id,
+            supplier=task.supplier,
+            status=task.status,
         )
         return task
 
@@ -1046,6 +1263,7 @@ async def process_webhook_update(
         task.failed_at = now()
         task.last_error = status.error or "supplier reported failure"
         item.fulfillment_state = "failed"
+        _record_or_warn(task, status.money_outcome, discovered="check_status")
     # ``in_progress`` — leave the task untouched; the next poll / webhook
     # will fire again.
 
@@ -1164,6 +1382,12 @@ async def complete_manual_task(
                 # activity feed so it's clear this delivery never passed
                 # through the supplier's fulfilment pipeline.
                 new_meta["force_complete"] = True
+            # A force-complete can land on a task that already failed and
+            # recorded what became of our money. That answer is kept: the
+            # admin delivered the goods some other way, which says nothing
+            # about the supplier spend the failed attempt may have made, and
+            # it is the only trace of it. (Not clearing also keeps an ordinary
+            # completion a no-op on ``extra_metadata``.)
             if new_meta:
                 task.extra_metadata = {**(task.extra_metadata or {}), **new_meta}
             item.fulfillment_state = "delivered"
@@ -1233,6 +1457,11 @@ async def fail_manual_task(
     task.admin_note = admin_note
     task.updated_at = moment
     item.fulfillment_state = "failed"
+    # A manual SKU has no supplier API, so nothing here can read what an
+    # operator did with the money — and this route deliberately leaves the
+    # refund to them (see the docstring). "A human decides" is what UNKNOWN
+    # means, so recording it changes nothing and hides nothing.
+    record_money_outcome(task, _NOBODY_CAN_SAY)
     await _record_attempt(
         db,
         task=task,

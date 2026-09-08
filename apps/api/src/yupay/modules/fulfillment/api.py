@@ -19,6 +19,7 @@ from yupay.modules.fulfillment.schemas import (
 )
 from yupay.modules.fulfillment.service import (
     BUYER_SAFE_ARTIFACT_KEYS,
+    MONEY_OUTCOME_KEY,
     buyer_safe_artifact,
     cancel_open_tasks_for_order,
     cancel_task,
@@ -29,6 +30,7 @@ from yupay.modules.fulfillment.service import (
     list_attempts_admin,
     list_deliveries_for_order,
     list_tasks_admin,
+    money_outcome_of,
     process_task,
     process_webhook_update,
     retry_task,
@@ -40,12 +42,14 @@ from yupay.modules.fulfillment.suppliers import (
     FulfillerNotIntegratedError,
     FulfillResult,
     FulfillStatus,
+    MoneyOutcome,
     available_suppliers,
     get_fulfiller,
 )
 
 __all__ = [
     "BUYER_SAFE_ARTIFACT_KEYS",
+    "MONEY_OUTCOME_KEY",
     "AttemptAdminListOut",
     "AttemptAdminOut",
     "Delivery",
@@ -63,6 +67,7 @@ __all__ = [
     "FulfillmentTaskOut",
     "ManualCompleteIn",
     "ManualFailIn",
+    "MoneyOutcome",
     "admin_router",
     "available_suppliers",
     "buyer_safe_artifact",
@@ -76,6 +81,7 @@ __all__ = [
     "list_attempts_admin",
     "list_deliveries_for_order",
     "list_tasks_admin",
+    "money_outcome_of",
     "process_task",
     "process_webhook_update",
     "retry_task",

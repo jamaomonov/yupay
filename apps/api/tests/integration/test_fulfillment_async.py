@@ -35,7 +35,7 @@ from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
 from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import FulfillmentTask
-from yupay.modules.fulfillment.suppliers import FulfillResult
+from yupay.modules.fulfillment.suppliers import FulfillerError, FulfillResult, MoneyOutcome
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.users.models import User
@@ -456,3 +456,63 @@ async def test_sibling_drainers_settle_the_order_exactly_once_and_never_lose_it(
         )
     ).scalar_one()
     assert delivered_events == 1  # and settled exactly once
+
+
+async def test_a_retry_cannot_declare_money_whole_that_an_earlier_attempt_may_have_spent(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The full path of the rule ``record_money_outcome`` enforces.
+
+    Not a unit test of that function: the point is that the answer survives
+    ``retry_task`` on a real row, because that is the step that used to erase
+    it. The sequence needs no supplier misbehaviour — a charge that lands and
+    then 500s, the ordinary admin Retry, and a transient outage on the replay:
+
+    1. ``fulfill`` raises with ``UNKNOWN`` — the charge may have gone through.
+    2. Retry. The task goes back to ``pending``; the answer must not.
+    3. The replay raises with ``RETURNED`` — true of *that* attempt, which
+       never reached the supplier at all.
+
+    If step 3 won, M3b Task 3 would refund a deposit for goods we had already
+    paid for.
+    """
+    # A phase switch rather than a queue: the saga may call ``fulfill`` more
+    # than once per phase (an inventory route falling back to a supplier is one
+    # way), and the test is about which answer *wins*, not about call counts.
+    answer = {"value": MoneyOutcome.UNKNOWN}
+    calls = {"n": 0}
+
+    async def _fail_with_the_phases_answer(
+        self: MockFulfiller,
+        *,
+        db: AsyncSession,
+        order: Order,
+        item: OrderItem,
+        idempotency_key: str,
+    ) -> FulfillResult:
+        calls["n"] += 1
+        raise FulfillerError("supplier said no", money_outcome=answer["value"])
+
+    monkeypatch.setattr(MockFulfiller, "fulfill", _fail_with_the_phases_answer)
+
+    order = await _make_paid_order(db_session, tag="promote")
+    await ff_svc.start_for_order(db_session, order_id=order.id, settings=_settings())
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order.id)
+        )
+    ).scalar_one()
+
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.UNKNOWN
+
+    await ff_svc.retry_task(db_session, task_id=task.id)
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.UNKNOWN, "retry must not erase it"
+
+    answer["value"] = MoneyOutcome.RETURNED
+    before = calls["n"]
+    await ff_svc.process_task(db_session, task_id=task.id)
+
+    assert calls["n"] > before, "the replay actually ran"
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.UNKNOWN

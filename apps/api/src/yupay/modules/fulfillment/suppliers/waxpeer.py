@@ -44,6 +44,7 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillOutcome,
     FulfillResult,
     FulfillStatus,
+    MoneyOutcome,
 )
 from yupay.modules.fulfillment.suppliers.waxpeer_client import (
     WaxpeerClient,
@@ -67,6 +68,15 @@ LOW_BALANCE_ERROR = "supplier_low_balance"
 # failure. Waxpeer has no dedicated code, so we sniff the message — a false
 # positive only demotes a hard failure to a retryable one, the safer mistake.
 _LOW_BALANCE_HINTS = ("not enough balance", "insufficient balance", "insufficient funds")
+
+#: A refusal raised before the top-up call goes out — a missing key, an order
+#: line with no Steam login. Nothing was ordered and nothing was charged.
+_NEVER_ORDERED = MoneyOutcome.RETURNED
+
+#: A call that may already have created (and been billed for) the top-up, or a
+#: status read that could not complete. Waxpeer bills on create, so an error
+#: from that call leaves both answers open.
+_MAY_HAVE_SPENT = MoneyOutcome.UNKNOWN
 
 _TERMINAL_OK: WaxpeerStatus = "completed"
 # "unknown" is in-flight, not terminal: see module docstring. It is the
@@ -116,6 +126,9 @@ def _low_balance_result(*, balance_units: int | None, required_units: int) -> Fu
         artifact=None,
         error=LOW_BALANCE_ERROR,
         extra_metadata=extra,
+        # Deliberately unclassified: the order is not finished failing. See
+        # ``FulfillResult.money_outcome``; M3b Task 4 owns this stall.
+        money_outcome=None,
     )
 
 
@@ -133,6 +146,11 @@ class _Reconciled:
     artifact: dict[str, Any] | None
     error: str | None
     extra_metadata: dict[str, Any]
+    #: The typed form of what the ``supplier_refunded`` /
+    #: ``needs_reconciliation`` flags below have been saying in prose since
+    #: this adapter landed. Both callers pass it straight through, so the
+    #: fulfil and the poll path answer identically.
+    money_outcome: MoneyOutcome | None
 
 
 class WaxpeerFulfiller(Fulfiller):
@@ -170,11 +188,14 @@ class WaxpeerFulfiller(Fulfiller):
         idempotency_key: str,
     ) -> FulfillResult:
         if not self.available:
-            raise FulfillerError("WAXPEER_API_KEY is not configured")
+            raise FulfillerError("WAXPEER_API_KEY is not configured", money_outcome=_NEVER_ORDERED)
 
         steam_login = str((item.fulfillment_data or {}).get("steam_login") or "").strip()
         if not steam_login:
-            raise FulfillerError("order item is missing fulfillment_data.steam_login")
+            raise FulfillerError(
+                "order item is missing fulfillment_data.steam_login",
+                money_outcome=_NEVER_ORDERED,
+            )
 
         s = get_settings()
         amount_units = to_units(item.unit_price_usd, fee_rate=s.waxpeer_fee_rate)
@@ -194,9 +215,13 @@ class WaxpeerFulfiller(Fulfiller):
             if _looks_like_low_balance(exc):
                 balance_units = await self._balance_units_or_none()
                 return _low_balance_result(balance_units=balance_units, required_units=amount_units)
-            raise FulfillerError(f"waxpeer top-up failed: HTTP {exc.status}") from exc
+            raise FulfillerError(
+                f"waxpeer top-up failed: HTTP {exc.status}", money_outcome=_MAY_HAVE_SPENT
+            ) from exc
         except WaxpeerUnavailableError as exc:
-            raise FulfillerError(f"waxpeer unreachable: {exc}") from exc
+            raise FulfillerError(
+                f"waxpeer unreachable: {exc}", money_outcome=_MAY_HAVE_SPENT
+            ) from exc
 
         reconciled = _reconcile(item=item, topup=topup)
         return FulfillResult(
@@ -206,6 +231,7 @@ class WaxpeerFulfiller(Fulfiller):
             artifact=reconciled.artifact,
             error=reconciled.error,
             extra_metadata=reconciled.extra_metadata,
+            money_outcome=reconciled.money_outcome,
         )
 
     async def check_status(
@@ -215,9 +241,15 @@ class WaxpeerFulfiller(Fulfiller):
         task: FulfillmentTask,
     ) -> FulfillStatus:
         if not self.available:
-            raise FulfillerError("WAXPEER_API_KEY is not configured")
+            # UNKNOWN, not "never ordered": by the time anything polls, the
+            # top-up has already been placed. A key that went missing since
+            # says nothing about the money it was spent with.
+            raise FulfillerError("WAXPEER_API_KEY is not configured", money_outcome=_MAY_HAVE_SPENT)
         if not task.external_order_id:
-            raise FulfillerError("task has no waxpeer custom_id to check")
+            # The top-up may well exist upstream — we simply cannot look it up.
+            raise FulfillerError(
+                "task has no waxpeer custom_id to check", money_outcome=_MAY_HAVE_SPENT
+            )
 
         # ``task.external_order_id`` is *our* custom_id (see fulfill()), not
         # a Waxpeer-issued id — lazy import mirrors g2b.py's check_status.
@@ -232,9 +264,13 @@ class WaxpeerFulfiller(Fulfiller):
         try:
             topup = await self._client().get_topup(custom_id=task.external_order_id)
         except WaxpeerError as exc:
-            raise FulfillerError(f"waxpeer status check failed: HTTP {exc.status}") from exc
+            raise FulfillerError(
+                f"waxpeer status check failed: HTTP {exc.status}", money_outcome=_MAY_HAVE_SPENT
+            ) from exc
         except WaxpeerUnavailableError as exc:
-            raise FulfillerError(f"waxpeer unreachable: {exc}") from exc
+            raise FulfillerError(
+                f"waxpeer unreachable: {exc}", money_outcome=_MAY_HAVE_SPENT
+            ) from exc
 
         reconciled = _reconcile(item=item, topup=topup)
         return FulfillStatus(
@@ -246,6 +282,7 @@ class WaxpeerFulfiller(Fulfiller):
             # / give_amount_shortfall_units) so the sweep persists them as queryable
             # fields — without this they'd exist only in the error string.
             extra_metadata=reconciled.extra_metadata,
+            money_outcome=reconciled.money_outcome,
         )
 
     async def cancel(
@@ -257,7 +294,16 @@ class WaxpeerFulfiller(Fulfiller):
         # Waxpeer has no cancel endpoint for steam-topup. Claiming to cancel
         # would hide the truth from the fulfilment inbox — the task stays
         # whatever it was, and an admin has to reconcile by hand.
-        raise FulfillerNotIntegratedError("waxpeer has no cancel endpoint for steam top-ups")
+        # Refusing a *cancellation*, not ending a purchase: the order it
+        # would have cancelled was already bought, and this call learns
+        # nothing about what became of that money. ``_apply_cancel``
+        # records the refusal and cancels locally, so the value is unread
+        # today — see :class:`FulfillerNotIntegratedError` for why a stub
+        # answers RETURNED here and an integrated adapter does not.
+        raise FulfillerNotIntegratedError(
+            "waxpeer has no cancel endpoint for steam top-ups",
+            money_outcome=MoneyOutcome.UNKNOWN,
+        )
 
     # ---------- balance probe ----------
 
@@ -388,7 +434,49 @@ def _reconcile(*, item: OrderItem, topup: WaxpeerTopup) -> _Reconciled:
         artifact=artifact,
         error=error,
         extra_metadata=extra,
+        money_outcome=_money_for(outcome=outcome, status=topup.status, shortfall=shortfall),
     )
+
+
+def _money_for(
+    *, outcome: FulfillOutcome, status: WaxpeerStatus, shortfall: int
+) -> MoneyOutcome | None:
+    """What one reconciled top-up means for our money.
+
+    A **function with no default**, deliberately. The obvious shape here is a
+    local seeded ``money = None`` that each branch overwrites, and that seed is
+    the default Ruling 2 forbids: a terminal sub-case someone adds later, in a
+    branch that forgets to assign, would pass mypy, pass the AST guard (which
+    sees only the constructor call, where the name is not a literal ``None``),
+    and be recorded as "nothing to say". Every path here has to ``return``, so
+    mypy's own return checking is what makes the mapping total.
+
+    Waxpeer is the one adapter with both ``SPENT`` cells, and neither is a
+    guess: ``canceled`` puts the amount back on our balance and ``error`` does
+    not, which this integration has known and written down since it landed.
+
+    Args:
+        outcome: The reconciled outcome, *after* an under-delivery has been
+            demoted from ``succeeded`` to ``failed``.
+        status: What Waxpeer called it.
+        shortfall: Units we promised the customer beyond what Waxpeer credited.
+
+    Returns:
+        The money outcome, or ``None`` when nothing terminal happened to it.
+    """
+    if outcome != "failed":
+        return None
+    if shortfall > 0:
+        # The top-up landed, for less than we promised. What we paid is gone —
+        # this is not a refusal, it is an under-delivery.
+        return MoneyOutcome.SPENT
+    if status == "canceled":
+        return MoneyOutcome.RETURNED
+    # "error", and any terminal status Waxpeer adds that the client maps
+    # here. SPENT rather than UNKNOWN: that Waxpeer does **not** auto-refund
+    # this case is a positive fact about their behaviour, which is what
+    # separates it from a supplier that simply tells us nothing.
+    return MoneyOutcome.SPENT
 
 
 def _receipt_artifact(*, item: OrderItem, topup: WaxpeerTopup) -> dict[str, Any]:

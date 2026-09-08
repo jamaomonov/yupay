@@ -34,7 +34,10 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import FulfillmentAttempt, FulfillmentTask
+from yupay.modules.fulfillment.suppliers.base import MoneyOutcome
+from yupay.modules.fulfillment.suppliers.gengine import PAY_REQUESTED_KEY
 from yupay.modules.orders.models import Order, OrderItem
 from yupay_scheduler.jobs import gengine_reconcile
 
@@ -242,10 +245,21 @@ async def _attempts_for(db: AsyncSession, task_id: str) -> list[FulfillmentAttem
 
 
 @respx.mock
-async def test_the_sweep_pays_a_verified_order(db_session: AsyncSession) -> None:
+async def test_the_sweep_pays_a_verified_order_on_the_tick_after_it_banks_the_intent(
+    db_session: AsyncSession,
+) -> None:
     """The whole reason this job exists. `verified` is not a state that
     resolves itself — we are what moves it, and without a sweep the order sits
-    there indefinitely while the customer waits."""
+    there indefinitely while the customer waits.
+
+    It now takes two ticks rather than one, and the extra 60 seconds is bought
+    on purpose: the record that we are about to spend has to be committed by a
+    transaction that does **not** spend. Writing it inside the paying tick puts
+    it behind ``_record_attempt``, the metadata merge, ``_try_settle_order``'s
+    blocking ``FOR UPDATE`` and the COMMIT — and this path has no crash net, so
+    any abort in that window rolls the record back while the money stays gone.
+    See ``gengine.PAY_REQUESTED_KEY``.
+    """
     task = await _seed_task(
         db_session,
         tag="verified",
@@ -262,7 +276,14 @@ async def test_the_sweep_pays_a_verified_order(db_session: AsyncSession) -> None
 
     await gengine_reconcile.run_gengine_reconcile()
 
-    assert pay.called, "a verified order must be paid by the sweep"
+    assert pay.call_count == 0, "the tick that banks the intent must spend nothing"
+    banked = await _reload_task(db_session, task.id)
+    assert banked.status == "in_progress"
+    assert banked.extra_metadata[PAY_REQUESTED_KEY] is True
+
+    await gengine_reconcile.run_gengine_reconcile()
+
+    assert pay.call_count == 1, "a verified order must be paid by the sweep"
     updated = await _reload_task(db_session, task.id)
     # `paid` is not delivery: the supplier still has to hand the stars over.
     assert updated.status == "in_progress"
@@ -340,6 +361,122 @@ async def test_a_wrong_username_fails_the_task_rather_than_hanging(
     updated = await _reload_task(db_session, task.id)
     assert updated.status == "failed"
     assert "invalid_account" in (updated.last_error or "")
+    # No pay request ever went out for this task, so our balance is provably
+    # whole and M3b may refund the merchant automatically.
+    assert ff_svc.money_outcome_of(updated) is MoneyOutcome.RETURNED
+    assert PAY_REQUESTED_KEY not in updated.extra_metadata
+
+
+@respx.mock
+async def test_a_paid_order_that_later_reports_a_bad_account_is_not_free(
+    db_session: AsyncSession,
+) -> None:
+    """The one the breadcrumb exists for, across two real sweep ticks.
+
+    Tick 1 pays a ``verified`` order; the pay returns 200 and the order goes
+    ``paid``, which is ``in_progress`` — an exit that records **no money
+    outcome at all**. Tick 2 then sees ``invalid_account``. Asking only
+    "did *this* call pay?" answers no for every status but ``verified``, so
+    without something durable on the task the sweep would answer ``RETURNED``
+    and M3b would refund a top-up whose pay call returned 200.
+
+    This is also the proof that ``extra_metadata`` survives the poll path: the
+    breadcrumb is written by ``fulfill``/``check_status`` and merged by
+    ``process_webhook_update``, and nothing between the ticks clears it.
+    """
+    task = await _seed_task(
+        db_session,
+        tag="paidthenbad",
+        supplier="gengine",
+        task_status="in_progress",
+        external_order_id="1721712",
+    )
+    respx.get(f"{BASE}/recharge/orders/1721712").mock(
+        return_value=httpx.Response(200, json=_order_json(1721712, task.id, "verified"))
+    )
+    pay = respx.post(f"{BASE}/recharge/orders/1721712/pay").mock(
+        return_value=httpx.Response(200, json=_order_json(1721712, task.id, "paid"))
+    )
+
+    # Tick 1 banks the intent, tick 2 spends it. That split is what makes the
+    # key durable: it is committed by a transaction that cannot have paid.
+    await gengine_reconcile.run_gengine_reconcile()
+    assert pay.call_count == 0
+    await gengine_reconcile.run_gengine_reconcile()
+    assert pay.call_count == 1
+
+    after_pay = await _reload_task(db_session, task.id)
+    assert after_pay.status == "in_progress"
+    assert ff_svc.money_outcome_of(after_pay) is None, "nothing terminal happened yet"
+    assert after_pay.extra_metadata[PAY_REQUESTED_KEY] is True
+
+    respx.get(f"{BASE}/recharge/orders/1721712").mock(
+        return_value=httpx.Response(200, json=_order_json(1721712, task.id, "invalid_account"))
+    )
+
+    await gengine_reconcile.run_gengine_reconcile()
+
+    updated = await _reload_task(db_session, task.id)
+    assert updated.status == "failed"
+    assert ff_svc.money_outcome_of(updated) is MoneyOutcome.UNKNOWN
+
+
+@respx.mock
+async def test_the_intent_survives_a_paying_tick_that_rolls_back(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Why the write and the spend are in different transactions.
+
+    Tick 1 banks the intent and commits it. Tick 2 pays — and then dies before
+    its own COMMIT, exactly as a deadlock victim, a statement timeout or a
+    malformed pay response would. Everything tick 2 wrote is gone; the money
+    is not. The intent has to be still on the row, because tick 3 is where the
+    supplier says ``invalid_account`` and an unarmed task answers ``RETURNED``
+    for a top-up we bought.
+
+    ``run_gengine_reconcile`` only logs a failed task — unlike the drain, this
+    path has no crash net to fall back on — which is what makes the ordering
+    load-bearing rather than belt-and-braces.
+    """
+    task = await _seed_task(
+        db_session,
+        tag="rollback",
+        supplier="gengine",
+        task_status="in_progress",
+        external_order_id="1721713",
+    )
+    respx.get(f"{BASE}/recharge/orders/1721713").mock(
+        return_value=httpx.Response(200, json=_order_json(1721713, task.id, "verified"))
+    )
+    pay = respx.post(f"{BASE}/recharge/orders/1721713/pay").mock(
+        return_value=httpx.Response(200, json=_order_json(1721713, task.id, "paid"))
+    )
+
+    await gengine_reconcile.run_gengine_reconcile()
+    assert (await _reload_task(db_session, task.id)).extra_metadata[PAY_REQUESTED_KEY] is True
+
+    async def _abort(*_args: Any, **_kwargs: Any) -> None:
+        raise RuntimeError("deadlock detected")
+
+    monkeypatch.setattr(ff_svc, "_try_settle_order", _abort)
+
+    await gengine_reconcile.run_gengine_reconcile()
+
+    assert pay.call_count == 1, "the money left on the tick that then died"
+    monkeypatch.undo()
+
+    survived = await _reload_task(db_session, task.id)
+    assert survived.extra_metadata[PAY_REQUESTED_KEY] is True, "committed before the pay"
+
+    respx.get(f"{BASE}/recharge/orders/1721713").mock(
+        return_value=httpx.Response(200, json=_order_json(1721713, task.id, "invalid_account"))
+    )
+
+    await gengine_reconcile.run_gengine_reconcile()
+
+    updated = await _reload_task(db_session, task.id)
+    assert updated.status == "failed"
+    assert ff_svc.money_outcome_of(updated) is MoneyOutcome.UNKNOWN
 
 
 @respx.mock

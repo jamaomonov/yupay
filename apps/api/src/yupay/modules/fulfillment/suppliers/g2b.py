@@ -33,6 +33,7 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillerError,
     FulfillResult,
     FulfillStatus,
+    MoneyOutcome,
 )
 from yupay.modules.fulfillment.suppliers.g2b_client import (
     G2bClient,
@@ -46,6 +47,49 @@ from yupay.modules.integrations.service import get_mapping
 # Keeping it machine-readable (snake_case, no human prose) lets the
 # admin UI badge it without trying to parse free-form error strings.
 LOW_BALANCE_ERROR = "supplier_low_balance"
+
+#: What a terminal G2B failure means for our money — and why it is the weakest
+#: of the three answers in this package.
+#:
+#: **No endpoint this adapter calls carries a refund field.** Their
+#: documentation says a FAILED order auto-refunds the balance (see
+#: :meth:`G2bFulfiller.cancel`, which has relied on that sentence since the
+#: integration landed), and the client's own comment reads a 410 on the
+#: delivery poll as "refunded / cancelled". All of that is a promise; no
+#: response we parse ever tells us the money came back.
+#:
+#: Compare the other two. ``gengine`` reads ``is_refunded`` — a real field, on
+#: every order. ``waxpeer`` splits ``canceled`` from ``error`` on refund
+#: behaviour it has watched and written down. Answering ``RETURNED`` here
+#: would flatten three very different confidences into one word, and M3b acts
+#: on that word: it would credit a reseller's deposit on the strength of
+#: someone else's paperwork. ``UNKNOWN`` is what the third value is for — no
+#: automatic refund, and a human who can go and look.
+#:
+#: **Promoting this is cheaper than it sounds, and does not need G2B's help:
+#: they already publish the evidence and we simply do not fetch it.**
+#: ``docs/g2b-intergation.md`` §7 documents ``GET /v1/games/orders``, whose
+#: per-order fields include ``is_refunded`` — the same field ``gengine`` reads
+#: — and §8 documents ``GET /v1/transactions``, typed balance movements
+#: (``add_balance`` = "пополнение или возврат", ``charge_balance`` with
+#: ``balance_before`` / ``balance_after``), which is the reconciled balance
+#: history this note used to name as a distant goal. Neither is wired up. A
+#: client method plus a poll would move the single largest ``UNKNOWN`` bucket
+#: in the codebase to a field we read; until one exists, this stays
+#: ``UNKNOWN``, because what is documented and what we observe are not the
+#: same thing — which is the whole point of this constant.
+_FAILURE_MONEY_OUTCOME = MoneyOutcome.UNKNOWN
+
+#: A refusal that happens **before** any call goes out to G2B — a missing key,
+#: an unmapped SKU, a malformed order line. Nothing was ordered, so nothing was
+#: charged, and our balance is provably whole.
+_NEVER_SENT = MoneyOutcome.RETURNED
+
+#: A refusal from a call that may already have placed (and been billed for) an
+#: order. ``G2bError`` covers every non-retryable status the client gives up
+#: on, so "they refused" and "they charged us and then errored" are not
+#: distinguishable from here.
+_MAY_HAVE_SPENT = MoneyOutcome.UNKNOWN
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -101,7 +145,7 @@ class G2bFulfiller(Fulfiller):
         idempotency_key: str,
     ) -> FulfillResult:
         if not self.available:
-            raise FulfillerError("G2B_API_KEY is not configured")
+            raise FulfillerError("G2B_API_KEY is not configured", money_outcome=_NEVER_SENT)
         mapping = await self._load_mapping(db, item.sku_id)
 
         if mapping.kind == "voucher":
@@ -117,9 +161,13 @@ class G2bFulfiller(Fulfiller):
         task: FulfillmentTask,
     ) -> FulfillStatus:
         if not self.available:
-            raise FulfillerError("G2B_API_KEY is not configured")
+            # Both guards answer UNKNOWN rather than "nothing was sent": a task
+            # only reaches ``check_status`` after an order went out, so a key
+            # that went missing since, or an id we failed to persist, says
+            # nothing about the money that order cost.
+            raise FulfillerError("G2B_API_KEY is not configured", money_outcome=_MAY_HAVE_SPENT)
         if not task.external_order_id:
-            raise FulfillerError("task has no G2B order id to check")
+            raise FulfillerError("task has no G2B order id to check", money_outcome=_MAY_HAVE_SPENT)
 
         # Re-derive the branch from the task's order item mapping, not from
         # the webhook body — webhook bodies are not trusted.
@@ -142,6 +190,7 @@ class G2bFulfiller(Fulfiller):
                     artifact_kind=None,
                     artifact=None,
                     error=str(exc),
+                    money_outcome=_FAILURE_MONEY_OUTCOME,
                 )
             if result.status == "completed" and result.delivery_items:
                 return FulfillStatus(
@@ -154,6 +203,7 @@ class G2bFulfiller(Fulfiller):
                         g2b_order_id=task.external_order_id,
                     ),
                     error=None,
+                    money_outcome=None,
                 )
             # "completed" with zero codes stays in_progress (see fulfill's guard):
             # never deliver an empty voucher; let the poller keep trying.
@@ -162,6 +212,7 @@ class G2bFulfiller(Fulfiller):
                 artifact_kind=None,
                 artifact=None,
                 error=None,
+                money_outcome=None,
             )
 
         # game
@@ -179,6 +230,7 @@ class G2bFulfiller(Fulfiller):
                     message=status.message,
                 ),
                 error=None,
+                money_outcome=None,
             )
         if status.status == "failed":
             return FulfillStatus(
@@ -186,12 +238,14 @@ class G2bFulfiller(Fulfiller):
                 artifact_kind=None,
                 artifact=None,
                 error=status.message or "g2b reported failure",
+                money_outcome=_FAILURE_MONEY_OUTCOME,
             )
         return FulfillStatus(
             outcome="in_progress",
             artifact_kind=None,
             artifact=None,
             error=None,
+            money_outcome=None,
         )
 
     async def cancel(
@@ -204,6 +258,11 @@ class G2bFulfiller(Fulfiller):
         # auto-refund the balance, and there's nothing to do for completed
         # ones. The admin /cancel route already flipped the task locally;
         # we accept that as the only action available.
+        #
+        # That "their docs say" is the whole of our evidence about G2B money,
+        # which is why ``_FAILURE_MONEY_OUTCOME`` is UNKNOWN — read its note
+        # before treating a failed G2B order as refunded, and for the two
+        # endpoints that would turn the promise into an observation.
         return None
 
     # ---------- voucher branch ----------
@@ -244,7 +303,8 @@ class G2bFulfiller(Fulfiller):
                     source=f"g2b HTTP {exc.status}",
                 )
             raise FulfillerError(
-                f"g2b purchase failed: HTTP {exc.status}: {_err_body(exc)}"
+                f"g2b purchase failed: HTTP {exc.status}: {_err_body(exc)}",
+                money_outcome=_MAY_HAVE_SPENT,
             ) from exc
 
         if result.status == "completed" and result.delivery_items:
@@ -264,6 +324,7 @@ class G2bFulfiller(Fulfiller):
                     "kind": "voucher",
                     "delivery_count": len(result.delivery_items),
                 },
+                money_outcome=None,
             )
         if result.status == "completed":
             # "completed" but zero codes: never deliver an empty voucher — that
@@ -280,6 +341,7 @@ class G2bFulfiller(Fulfiller):
                     "kind": "voucher",
                     "completed_without_codes": True,
                 },
+                money_outcome=None,
             )
         if result.status == "pending":
             return FulfillResult(
@@ -289,6 +351,7 @@ class G2bFulfiller(Fulfiller):
                 artifact=None,
                 error=None,
                 extra_metadata={"supplier": "g2b", "kind": "voucher"},
+                money_outcome=None,
             )
         return FulfillResult(
             outcome="failed",
@@ -297,6 +360,7 @@ class G2bFulfiller(Fulfiller):
             artifact=None,
             error="g2b returned failed status",
             extra_metadata={"supplier": "g2b", "kind": "voucher"},
+            money_outcome=_FAILURE_MONEY_OUTCOME,
         )
 
     # ---------- game branch ----------
@@ -311,7 +375,10 @@ class G2bFulfiller(Fulfiller):
         fulfillment_data = dict(item.fulfillment_data or {})
         player_id = str(fulfillment_data.get("player_id") or "").strip()
         if not player_id:
-            raise FulfillerError("order item is missing fulfillment_data.player_id required by g2b")
+            raise FulfillerError(
+                "order item is missing fulfillment_data.player_id required by g2b",
+                money_outcome=_NEVER_SENT,
+            )
         # The product's server/zone field is keyed ``server`` in its form schema
         # (e.g. Genshin: os_euro), which is what the order stores. Older data /
         # tests may use ``server_id`` — accept both. Reading the wrong key drops
@@ -322,7 +389,10 @@ class G2bFulfiller(Fulfiller):
         charname = _stringify_or_none(fulfillment_data.get("charname"))
         catalogue_name = mapping.external_variant_id
         if not catalogue_name:
-            raise FulfillerError("g2b mapping is missing external_variant_id for kind=game")
+            raise FulfillerError(
+                "g2b mapping is missing external_variant_id for kind=game",
+                money_outcome=_NEVER_SENT,
+            )
 
         s = get_settings()
         callback_url = s.g2b_callback_url or None
@@ -360,7 +430,8 @@ class G2bFulfiller(Fulfiller):
                     source=f"g2b HTTP {exc.status}",
                 )
             raise FulfillerError(
-                f"g2b game order failed: HTTP {exc.status}: {_err_body(exc)}"
+                f"g2b game order failed: HTTP {exc.status}: {_err_body(exc)}",
+                money_outcome=_MAY_HAVE_SPENT,
             ) from exc
 
         if created.status == "completed":
@@ -380,6 +451,7 @@ class G2bFulfiller(Fulfiller):
                     "kind": "game",
                     "player_id_hash": hash_short(player_id),
                 },
+                money_outcome=None,
             )
         if created.status == "failed":
             return FulfillResult(
@@ -389,6 +461,7 @@ class G2bFulfiller(Fulfiller):
                 artifact=None,
                 error="g2b returned failed status on create",
                 extra_metadata={"supplier": "g2b", "kind": "game"},
+                money_outcome=_FAILURE_MONEY_OUTCOME,
             )
         # pending / processing — the webhook finishes it later (fast path). If
         # the webhook is lost (it fires once, 1 retry, 10s timeout), the
@@ -406,6 +479,7 @@ class G2bFulfiller(Fulfiller):
                 "kind": "game",
                 "player_id_hash": hash_short(player_id),
             },
+            money_outcome=None,
         )
 
     # ---------- helpers ----------
@@ -461,7 +535,8 @@ class G2bFulfiller(Fulfiller):
         row = await get_mapping(db, sku_id=sku_id, supplier_slug="g2b")
         if row is None or not row.is_active:
             raise FulfillerError(
-                "no active g2b mapping for SKU — set one via /admin/integrations/mappings"
+                "no active g2b mapping for SKU — set one via /admin/integrations/mappings",
+                money_outcome=_NEVER_SENT,
             )
         return row
 
@@ -597,6 +672,10 @@ def _low_balance_result(
             "external_variant_id": mapping.external_variant_id,
             "source": source,
         },
+        # Deliberately unclassified: this is not a terminal failure. The order
+        # stays in flight, an admin tops the supplier up, and nothing has
+        # happened to the money yet. M3b Task 4 owns making that visible.
+        money_outcome=None,
     )
 
 

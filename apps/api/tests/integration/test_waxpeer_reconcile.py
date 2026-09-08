@@ -37,7 +37,9 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import Delivery, FulfillmentAttempt, FulfillmentTask
+from yupay.modules.fulfillment.suppliers.base import MoneyOutcome
 from yupay.modules.orders.models import Order, OrderItem
 from yupay_scheduler.jobs import waxpeer_reconcile
 
@@ -301,6 +303,11 @@ async def test_sweep_flags_an_errored_topup_for_reconciliation(db_session: Async
     # admin inbox can filter on it — the sweep is the only path that reaches it
     # for Waxpeer (no webhook).
     assert updated.extra_metadata.get("needs_reconciliation") is True
+    # And the typed answer M3b acts on lands beside it, through the poll path
+    # rather than the synchronous one. ``SPENT``, not ``UNKNOWN``: Waxpeer does
+    # not auto-refund an error, which is a fact about their behaviour rather
+    # than an absence of one.
+    assert ff_svc.money_outcome_of(updated) is MoneyOutcome.SPENT
 
     item = await _reload_item(db_session, task.order_item_id)
     assert item.fulfillment_state == "failed"

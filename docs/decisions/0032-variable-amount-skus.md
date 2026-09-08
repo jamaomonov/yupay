@@ -129,13 +129,14 @@ an error on this top-up; it does not auto-refund this case — needs manual
 reconciliation"), and it surfaces in the admin Fulfilment Inbox's "Failed"
 tab like any other automatic-supplier failure — that `last_error` text is
 what an admin actually finds this task by. (`WaxpeerFulfiller` also builds
-an `extra_metadata.needs_reconciliation = true` flag, but almost every
-top-up's terminal outcome is discovered later by the reconciliation sweep
-via `check_status`, whose `FulfillStatus` return type has no
-`extra_metadata` field — and `fulfillment.process_webhook_update`, which the
-sweep calls, never writes `task.extra_metadata`. So this flag is not a
-reliable, queryable signal in production; `last_error` is. See the "Known
-limitation" note in `docs/runbooks/waxpeer-troubleshooting.md`.) There is no
+an `extra_metadata.needs_reconciliation = true` flag. **Superseded:** this
+paragraph used to say the flag was not a reliable production signal, because
+`FulfillStatus` carried no `extra_metadata` and `process_webhook_update`
+never wrote `task.extra_metadata` — so a terminal outcome discovered by the
+reconciliation sweep lost it. Both were fixed; the sweep now persists the
+flag, and M3b Task 1 added the typed `extra_metadata.money_outcome`, which
+rides the same poll path and is the **source of truth** for what became of
+our supplier balance. `SPENT` is what this `error` case records.) There is no
 auto-refund of the order — refunding the customer is a manual admin action
 (`POST /api/v1/admin/payments/{id}/refund`), the same path every other
 supplier failure already uses. An automatic per-line refund was considered
@@ -171,13 +172,12 @@ top-up's pay id to recover _our_ side of the money, since Waxpeer kept it.
   support ticket; there is no automated reconciliation of _our_ balance
   with Waxpeer, only of the _order's_ status (see the reconciliation sweep
   in `apps/scheduler`).
-- The structured reconciliation flags (`needs_reconciliation`,
+- ~~The structured reconciliation flags (`needs_reconciliation`,
   `supplier_refunded`, `give_amount_shortfall_units`) only reach
-  `task.extra_metadata` for a task resolved inline through `fulfill()`.
-  Since Waxpeer has no webhook, almost every task is instead resolved by
-  the polling sweep's `check_status()`, whose `FulfillStatus` return type
-  has no `extra_metadata` field — a known limitation, not a design choice.
-  `last_error` and the `waxpeer.give_amount_short` log line are the
+  `task.extra_metadata` for a task resolved inline through `fulfill()`.~~
+  **No longer true.** `FulfillStatus` carries `extra_metadata`, the polling
+  sweep persists it, and M3b Task 1 put the typed `money_outcome` on the same
+  path. `last_error` and the `waxpeer.give_amount_short` log line are the
   reliable signals until `FulfillStatus` gains a metadata slot (a
   follow-up, not done here).
 
