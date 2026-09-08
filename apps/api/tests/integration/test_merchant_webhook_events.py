@@ -22,6 +22,11 @@ it, because each is expensive to discover in production:
 - **retail is untouched.** A retail status change reaches
   ``realtime.publish_order_event`` with exactly the arguments it always did,
   and writes no delivery row.
+
+``balance.credited`` gained a **second producer** in M3b Task 3 — the automatic
+refund of a failed merchant order — and its payload is asserted with the same
+exactness in ``test_merchant_auto_refund.py``, beside the code that emits it.
+The event is unchanged: same two keys, same replay-announces-nothing rule.
 """
 
 from __future__ import annotations

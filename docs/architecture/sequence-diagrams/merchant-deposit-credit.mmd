@@ -6,22 +6,28 @@ sequenceDiagram
     participant Ledger as wallet.service.post()
     participant DB as Postgres
 
-    Admin->>API: amount, note + Idempotency-Key: {client_key}
+    Admin->>API: amount, note, order_id? + Idempotency-Key: {client_key}
     API->>API: require header (422 without) -- it is the replay handle
-    API->>Merchants: credit_deposit(key="merchant-credit:{merchant_id}:{client_key}", actor="admin:{id}")
+    API->>Merchants: credit_deposit(key="merchant-credit:{merchant_id}:{client_key}", actor="admin:{id}", order_id?)
     Merchants->>DB: SELECT merchants WHERE id (404 if missing; frozen is fine -- freeze never blocks money in)
+    opt order_id given -- settling one failed order
+        Merchants->>DB: SELECT orders WHERE id = uuid(order_id) AND merchant_id
+        Note over Merchants,DB: not this merchant's, no such order, not a UUID at all:<br/>ONE 404 order_not_found, so the refusal is no oracle
+    end
     Merchants->>Ledger: ensure_account(merchant_deposit) + ensure_account(house_payments_received)
     Merchants->>Ledger: post(kind=merchant_deposit_credit, D merchant_deposit / C house_payments_received)
+    Note over Merchants,Ledger: reference = order:{order_id} when given, else merchant:{merchant_id}.<br/>The legs never change -- only what the transaction is ABOUT
     Ledger->>DB: SELECT wallet_transactions WHERE idempotency_key
     alt key unseen -- first attempt
         Ledger->>DB: INSERT wallet_transactions + 2 wallet_postings (all-or-nothing)
         DB-->>Ledger: new transaction
-    else key already owned -- admin retry (or amended amount)
+    else key already owned -- admin retry (or amended amount/order_id)
         DB-->>Ledger: the ORIGINAL transaction, unchanged
-        Note over Ledger: post() replays by key WITHOUT comparing parameters:<br/>an amended amount books NOTHING new
+        Note over Ledger: post() replays by key WITHOUT comparing parameters:<br/>an amended amount or order_id books NOTHING new
     end
     Ledger-->>Merchants: transaction (original on replay)
     API->>Merchants: deposit_balance(merchant_id) -- signed SUM over postings
     Merchants-->>API: balance
-    API-->>Admin: 201 {transaction_id, amount = transaction's amount, balance}
-    Note over Admin: on a mismatched replay the response's amount is the ORIGINAL,<br/>so the UI can compare it with what was submitted and warn
+    API-->>Admin: 201 {transaction_id, amount + order_id = the transaction's, balance}
+    Note over Admin: on a mismatched replay the response's amount and order_id are the<br/>ORIGINAL's, so the UI can compare them with what was submitted and warn
+    Note over DB: an attributed credit is a DEBIT leg on merchant_deposit referencing the order,<br/>which is exactly what refunded_usd on the merchant's order read sums

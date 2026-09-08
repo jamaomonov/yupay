@@ -62,6 +62,8 @@ async def test_low_balance_alert_escapes_html_in_supplier_fields(
             "external_product_id": '"><img src=x onerror=alert(1)>',
             "external_variant_id": "<b>60 UC</b>",
         },
+        # The stall carries no money outcome — it has not finished failing.
+        money_outcome=None,
     )
 
     await ff_svc._maybe_alert_low_balance(task=task, result=result)

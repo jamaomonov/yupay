@@ -286,10 +286,14 @@ async def enqueue_order_status_changed(db: AsyncSession, order: Order) -> str | 
 async def enqueue_balance_credited(
     db: AsyncSession, *, merchant_id: str, amount: Decimal, balance: Decimal
 ) -> str | None:
-    """Queue ``balance.credited`` after support tops a deposit up.
+    """Queue ``balance.credited`` when a deposit balance goes up.
 
     Named for what it does rather than for the event it reacts to, matching
-    :func:`enqueue_order_status_changed` -- see the reason there.
+    :func:`enqueue_order_status_changed` -- see the reason there. That naming
+    is what let it gain a second producer without a rename: since M3b Task 3
+    the automatic refund of a failed order calls it too, and the payload is
+    identical, because "your deposit went up by X, it now holds Y" is the
+    whole of what this event has ever promised.
 
     Args:
         db: Session. The caller owns the transaction.

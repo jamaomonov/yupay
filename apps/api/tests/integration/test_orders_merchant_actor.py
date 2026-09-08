@@ -218,6 +218,77 @@ async def test_a_merchant_actor_can_place_an_order(db_session: AsyncSession) -> 
     assert [e.actor for e in order.events] == [f"merchant:{merchant_id}"]
 
 
+async def test_a_retail_order_records_no_merchant_quote(db_session: AsyncSession) -> None:
+    """0072's column has to mean something, so retail must never fill it.
+
+    Read the other way round: ``merchant_expected_price_usd IS NOT NULL`` is
+    exactly the set of merchant lines placed since 0072, which is what lets
+    the runbook's drift sweep select the right rows without a join.
+    """
+    from yupay.core.ids import new_id
+    from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+    from yupay.modules.orders.service import Actor, create_order
+
+    sku_id = await _seed_sku(db_session)
+
+    order = await create_order(
+        db_session,
+        OrderCreate(currency="USD", items=[OrderItemIn(sku_id=sku_id, qty=1)]),
+        actor=Actor(user_id=None, email="guest@example.com", merchant_id=None),
+        idempotency_key=new_id(),
+    )
+
+    assert order.items[0].merchant_expected_price_usd is None
+
+
+async def test_a_merchant_quote_from_a_retail_actor_is_refused(db_session: AsyncSession) -> None:
+    """The guard beside the price override's, against the same accident.
+
+    A retail line carrying a merchant's figure would make every reader of the
+    column wrong about which orders have one — the sweep above included.
+    """
+    from yupay.core.errors import ValidationError
+    from yupay.core.ids import new_id
+    from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+    from yupay.modules.orders.service import Actor, create_order
+
+    sku_id = await _seed_sku(db_session)
+
+    with pytest.raises(ValidationError):
+        await create_order(
+            db_session,
+            OrderCreate(currency="USD", items=[OrderItemIn(sku_id=sku_id, qty=1)]),
+            actor=Actor(user_id=None, email="guest@example.com", merchant_id=None),
+            idempotency_key=new_id(),
+            merchant_expected_price_usd=(Decimal("1.00"),),
+        )
+
+
+async def test_a_merchant_quote_must_line_up_with_the_lines(db_session: AsyncSession) -> None:
+    """One quote per line, checked like the price override's length is.
+
+    A short sequence would otherwise be an ``IndexError`` inside the item loop
+    — a 500 on the money endpoint — and a long one would silently drop the
+    quote of every line past the first.
+    """
+    from yupay.core.errors import ValidationError
+    from yupay.core.ids import new_id
+    from yupay.modules.orders.schemas import OrderCreate, OrderItemIn
+    from yupay.modules.orders.service import Actor, create_order
+
+    merchant_id = await _make_merchant(db_session)
+    sku_id = await _seed_sku(db_session)
+
+    with pytest.raises(ValidationError):
+        await create_order(
+            db_session,
+            OrderCreate(currency="USD", items=[OrderItemIn(sku_id=sku_id, qty=1)]),
+            actor=Actor(user_id=None, email=None, merchant_id=merchant_id),
+            idempotency_key=new_id(),
+            merchant_expected_price_usd=(Decimal("1.00"), Decimal("2.00")),
+        )
+
+
 async def test_same_merchant_key_returns_the_same_order(db_session: AsyncSession) -> None:
     """A merchant's retry replays its first order instead of buying twice."""
     from yupay.core.ids import new_id

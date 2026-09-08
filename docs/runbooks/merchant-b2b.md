@@ -105,6 +105,11 @@ curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-
 unique string that long). A fresh one per logical credit; the same one for
 every retry of that credit.
 
+This is the **prepayment** shape: money in, belonging to no particular order.
+Leave the SPA form's **ID заказа** field (`order_id` on the API) empty. A
+credit that settles one failed order fills it in and has its own procedure —
+see "Settling a failed order by hand" below.
+
 **Ordering is not blocked on the deposit** — a merchant with a zero balance
 authenticates, reads `/me` and `/catalog` fine, and only `POST /orders` refuses
 with `409 insufficient_deposit`. So a merchant can be handed a key and start
@@ -184,8 +189,11 @@ otherwise:
   payload's `at`;
 - their endpoint has **10 seconds** and must answer `2xx` with **at most 64 KiB**,
   uncompressed — a server that gzips unconditionally fails every delivery;
-- nothing tells them when a fulfilment fails on its own (`paid → fulfilling →`
-  silence); `failure_reason` on the order read is where that lives.
+- nothing tells them when a fulfilment fails **or stalls** on its own
+  (`paid → fulfilling →` silence); `failure_reason` on the order read is where
+  both live — and one of its values, `fulfillment_delayed`, is **not**
+  terminal, so a loop that breaks on "non-null" stops polling an order we are
+  about to deliver. Send them the "Failure reasons" table, not a summary.
 
 Read it back, and note what is missing on purpose:
 
@@ -616,21 +624,76 @@ looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 
-Two very different situations wear the same status, and `failure_reason` on
-`GET /merchant/v1/orders/{merchant_order_id}` is what separates them.
+**Four** very different situations wear the same status, and `failure_reason`
+on `GET /merchant/v1/orders/{merchant_order_id}` is what separates them.
+Nothing ever moves `orders.status` off `fulfilling` for any of them — a
+delivery failure, a stall and a refund are all recorded below the order row —
+so the status tells you only that the order was paid.
 
 **`failure_reason` is `null` — it is genuinely in progress, or the queue is
 stalled.** Nothing is wrong with the order. Check queue depth and the worker
 (`docs/runbooks/fulfillment-queue.md`); a backlog can be entirely merchant
 orders even with the flag off.
 
+**`failure_reason` is `fulfillment_delayed` — the delivery stopped on _our_
+side and the order is still ours to finish.** Since M3b Task 4 it means a
+fulfilment task went `failed` while the item it was fulfilling stayed open:
+the task is in the admin inbox, the item is still `in_progress`, and the
+storefront rule that hides this from a retail buyer is unchanged. **This one
+is yours, not the merchant's** — they are told to keep polling and not to
+refund their end customer, so nobody outside is waiting on a reply. Top the
+supplier up and retry the task, or force-complete it if you delivered by hand;
+either clears the value on its own, because it is derived from the task and
+the item rather than stored. Find the supplier and the shortfall on the task,
+never on the order read — the reseller is deliberately not told which supplier
+we are short at.
+
+**Query the shape, not the sentinel.** The predicate matches "task failed,
+item still open", and a low supplier balance is the only thing that produces
+it _today_ — but widening beyond `last_error = 'supplier_low_balance'` is the
+entire reason it matches the shape, so a second soft failure added later would
+publish "still coming" to a reseller while being invisible both to a
+sentinel-filtered query and to the low-balance alert, which is also keyed on
+that string. Two queries, and run the first:
+
+```bash
+# Every merchant stall, whatever caused it — this is what the reseller is
+# reading. The `merchant_id IS NOT NULL` clause is not decoration: the stall
+# shape is deliberately retail's rule too, so without it most rows here are
+# storefront orders showing "обработка" to a buyer who has a support chat,
+# and a B2B incident gets sized off a count that is mostly not B2B.
+docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+  "SELECT t.id, t.supplier, t.last_error, t.failed_at, o.merchant_id,
+          o.idempotency_key AS merchant_order_id
+     FROM fulfillment_tasks t
+     JOIN order_items i ON i.id = t.order_item_id
+     JOIN orders o ON o.id = t.order_id
+    WHERE t.status = 'failed'
+      AND i.fulfillment_state IN ('pending', 'reserved', 'in_progress')
+      AND o.merchant_id IS NOT NULL
+    ORDER BY t.failed_at DESC LIMIT 20;"
+
+# The low-balance ones, with the numbers the alert quotes.
+docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+  "SELECT t.id, t.supplier, t.metadata->>'current_balance' AS balance,
+          t.metadata->>'required' AS required, t.failed_at
+     FROM fulfillment_tasks t
+    WHERE t.status = 'failed' AND t.last_error = 'supplier_low_balance'
+    ORDER BY t.failed_at DESC LIMIT 20;"
+```
+
+A row in the first query and not the second is a stall nothing alerted on —
+treat it as an incident in its own right, not just as this order's problem.
+The per-supplier low-balance alert fires on the first such task with a
+15-minute Redis dedupe, so a 50-order backlog is one message, not fifty.
+
 **`failure_reason` is `fulfillment_failed` — the delivery failed and nothing
 will move the order on its own.** The order row stays `fulfilling` for good,
 because only the item's `fulfillment_state` went `failed`; the status alone
 would say "in progress" indefinitely. **Resolving this needs a human.** The
-merchant is told to treat a non-null `failure_reason` as terminal and to
-contact support quoting `order_id`, so by the time you see it they have already
-stopped waiting.
+merchant is told that this value (and `fulfillment_failed_refunded`, and
+`order_failed`) is terminal and to contact support quoting `order_id`, so by
+the time you see it they have already stopped waiting.
 
 Find the order:
 
@@ -646,22 +709,59 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yup
 Then either retry the fulfilment (the ordinary admin order tooling, same as a
 retail order) or settle it — next section.
 
-## There is no merchant refund path: settling a failed order by hand
+**`failure_reason` is `fulfillment_failed_refunded` — done, and nothing is
+owed.** The fourth case, and what **every** automatic refund leaves behind
+since M3b Task 3: the delivery failed and the whole charge is already on the
+merchant's deposit, posted by the drain within seconds. The order sits in
+`fulfilling` for ever like the others and needs **no action at all** — the
+merchant has been told to refund their own end customer and place a new order
+if they still want the goods. Do not retry it: that is refused
+(`409 deposit_already_returned`) and the refusal is the point.
 
-**Nothing refunds a merchant order.** `refunded_usd` is `"0.00"` on every order
-and will stay so until M3 posts the row. A failed supplier delivery leaves the
-deposit debited, and support settles it as a **deposit credit**.
+Closing it by hand raises no alert — the order is square, which is exactly the
+case the cancellation alert is gated against — but it is **not** neutral for
+the merchant: `order_failed` wins over `fulfillment_failed_refunded` in the
+precedence, so a closure rewrites a self-explanatory "your money is back" into
+"support closed this, contact support". Close it only when a person really is
+in the loop with them.
 
-Know what that does and does not do, before you tell a merchant what to expect:
+## Settling a failed order by hand
 
-- it moves `balance_usd` on `GET /merchant/v1/me`, and appears on
-  `GET /merchant/v1/transactions` as a `merchant_deposit_credit` row with a
-  positive `amount_usd` and a `null` `merchant_order_id`;
-- it does **not** change the failed order's `refunded_usd`, which stays
-  `"0.00"`. The credit is booked against the merchant, not against the order —
-  no admin surface can reference an order — so the order read will never show
-  it. Say so explicitly when you tell them it is settled, or they will go
-  looking for it in the wrong field.
+**Check `refunded_usd` first — some failed orders now settle themselves.**
+Since M3b Task 3 a supplier failure whose money came back to us posts the
+refund automatically, within seconds of the failure, as a
+`merchant_order_refund` row against the order. **Do not assume either case is
+the common one — nobody has counted.** Every `g2b` failure from a call that
+went out is `unknown` and refunds nothing, so this procedure is far from dead;
+`g2b` also has four refusals that never reach a call and do auto-refund. See
+"Known gaps" below. This procedure is for the rest:
+a supplier that kept our money (`spent`), one we cannot get an answer out of
+(`unknown` — every `g2b` failure from a call that went out, and `gengine`
+after a pay may have landed), and an automatic refund that could not post. Those raise a Telegram alert of their own; see "When the
+automatic refund does not fire" below.
+
+If the order has already been settled automatically, this procedure will
+refuse you with `409 order_already_settled` rather than double-credit the
+merchant. That is the guard working, not a problem to route around.
+
+**For everything else, support settles it as a deposit credit that names the
+order** — the `order_id` body field on the deposit-credit endpoint (M3b). Use
+it. A credit without it is an ordinary top-up of the balance and is invisible
+on the order it was meant to settle, which is what the merchant will be
+looking at.
+
+What an attributed credit does, so you can tell a merchant what to expect:
+
+- it moves `balance_usd` on `GET /merchant/v1/me`;
+- it appears on `GET /merchant/v1/transactions` as a `merchant_deposit_credit`
+  row with a positive `amount_usd` **and their own `merchant_order_id`**, so
+  the line reconciles against their books;
+- it shows in that order's `refunded_usd` on
+  `GET /merchant/v1/orders/{merchant_order_id}` — the field they will check
+  first, and the one that read `"0.00"` forever before M3b.
+
+It is still a **balance credit**, not a card reversal: money returns to their
+prepaid deposit, never to a bank. Say that plainly.
 
 The steps:
 
@@ -679,31 +779,103 @@ The steps:
    Legal from `paid`, `fulfilling` and `fulfilled` only, and it cancels any
    open fulfilment task. It **moves no money**.
 
-2. **Credit the deposit** for exactly what the order charged — the
-   `unit_price_usd` from the query above, which is also `price_usd` on the
-   merchant's own order read. `order_items.unit_price_usd` is `NUMERIC(20, 6)`
-   so psql prints it as `1.060000`; send `1.06`. (Both are accepted — the
-   amount is validated on significant decimals, and a merchant price is always
-   a whole cent — but the two-decimal form is what the merchant sees and what
-   your `note` should quote.) Use the SPA form, or:
+2. **Credit the deposit, naming the order**, for exactly what the order charged
+   — the `unit_price_usd` from the query above, which is also `price_usd` on
+   the merchant's own order read. `order_items.unit_price_usd` is
+   `NUMERIC(20, 6)` so psql prints it as `1.060000`; send `1.06`. (Both are
+   accepted — the amount is validated on significant decimals, and a merchant
+   price is always a whole cent — but the two-decimal form is what the merchant
+   sees and what your `note` should quote.)
+
+   **Use the SPA:** the merchant's detail page → the deposit-credit form →
+   the **ID заказа** field. It takes our order id, tells you so under the
+   label, refuses anything that is not a UUID _before_ posting (the API's own
+   refusal for a malformed id is a `404`, which reads as "no such order" and
+   sends you hunting in the wrong place), names the order in the confirm
+   dialog, and echoes back the order the ledger actually booked against. Or,
+   by hand:
 
    ```bash
    curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-credits" \
      -H "Authorization: Bearer <admin JWT>" \
      -H "Idempotency-Key: refund-<order-id>" \
      -H 'Content-Type: application/json' \
-     -d '{"amount":"1.06","note":"settlement for failed order <order-id> (<merchant_order_id>)"}'
+     -d '{"amount":"1.06","order_id":"<order-id>","note":"settlement for failed order <order-id> (<merchant_order_id>)"}'
    ```
+
+   `order_id` is **our** order id — the `id` column from the query above, the
+   same one the merchant sees as `order_id` on their order read — not their
+   `merchant_order_id`. It must belong to the merchant you are crediting;
+   anything else answers `404 order_not_found`, and so does a typo, so a 404
+   here means "check the two ids against each other", never "that order is
+   somebody else's".
+
+   Leave the field empty for an ordinary prepayment (step 2 of onboarding):
+   empty means "no order", not "attach it later" — **a posted attribution
+   cannot be re-pointed**, by anyone, ever. That is the one thing to get right
+   before you press the button rather than after.
 
    **Key it on the order id**, as above. That is what makes a retry after a
    timeout safe: the ledger replays by key, so the same
    `Idempotency-Key: refund-<order-id>` can never credit the same failed order
-   twice, however many times you run it. Put the `order_id` in the `note` as
-   well — it is the only place the connection is recorded until M3.
+   twice, however many times you run it. The `note` still quotes both ids for
+   the human reading the ledger.
 
-3. **Tell the merchant**, quoting their `merchant_order_id`: the order is
-   closed as `order_failed`, and the amount is back on their deposit balance,
-   visible on `/transactions` — not on the order.
+   That convention is a habit, not an invariant — the key is whatever you
+   type, and a fresh `uuidgen` credits again. Since M3b Task 3 the invariant
+   is behind it: an attributed credit that would take the order past what it
+   charged is refused with `409 order_already_settled`. If you see that, read
+   the order's `refunded_usd` — somebody (or the drain) has already settled
+   it.
+
+   **Credit the whole charge in one go, or finish the job.** A credit for
+   _part_ of it is accepted — deliberately, so you can settle in stages — and
+   it puts the order in the one state that needs you most. From that moment
+   three things are true. The merchant still reads `fulfillment_failed`, not
+   `..._refunded`, because the label requires the whole amount. The automatic
+   refund is refused for good — `AlreadySettledError`, on "something already
+   came back". And **Retry and force-complete are refused too**: the guard is
+   `deposit_already_returned` and it triggers on _any_ amount, not on a full
+   one. One cent parks the order. The way out is forward, not back: credit the
+   remainder as a second attributed credit under a **new** key — allowed right
+   up to the charge — and the state resolves itself. There is no way to
+   un-credit.
+
+   Read the response before you move on. The ledger replays **without
+   comparing parameters**, so a key you have used before returns the original
+   transaction and books nothing new — and the response's `amount` and
+   `order_id` are that original transaction's, not what you just sent. If
+   either disagrees with your request, you reused a key: nothing moved.
+
+3. **Verify**, as the merchant will:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+     "SELECT kind, reference_type, reference_id, actor, created_at
+        FROM wallet_transactions
+       WHERE reference_type = 'order' AND reference_id = '<order-id>'
+       ORDER BY created_at;"
+   ```
+
+   You want two rows: the `merchant_order_charge` and your
+   `merchant_deposit_credit`, both referencing the order. One row means the
+   credit was booked unattributed — it is not lost, it is on the balance, but
+   `refunded_usd` will read `"0.00"`. There is no way to re-point a posted
+   transaction; book the difference as a fresh, attributed credit only if the
+   merchant was under-credited, and otherwise tell them where to find it.
+
+   A `merchant_order_refund` row instead of your credit means the drain got
+   there first — this is the automatic refund, `actor = fulfillment`. Nothing
+   further is owed on that order.
+
+   The SPA does this half for you at credit time: it prints the order the
+   ledger booked against beside the new balance, and raises a red banner
+   instead of a success toast when what came back is not what you sent.
+
+4. **Tell the merchant**, quoting their `merchant_order_id`: the order is
+   closed as `order_failed`, and the amount is back on their deposit balance —
+   visible in `balance_usd`, on `/transactions` against that order, and in the
+   order's own `refunded_usd`.
 
 ## Known gaps before a pilot integrates
 
@@ -713,20 +885,82 @@ knowing before it is paid. Two other gaps — the ±2% drift giveaway, and error
 bodies that did not match the published contract — were closed in M2 and are
 recorded at the end so a regression is recognisable.
 
-### No refund path
+### Only a supplier that gave our money back refunds automatically
 
-Covered above. `refunded_usd` is `"0.00"` on every order; a failed delivery is
-settled by a manual deposit credit that the order read does not show.
+_Why it is built this way, including the gaps below and the one product
+question nobody has answered: [ADR-0071](../decisions/0071-merchant-refunds.md)._
 
-- **Cost of leaving it:** every failed delivery is a support ticket and a hand
-  transfer, and a merchant reconciling by order rather than by statement cannot
-  see the settlement at all. It scales with order volume, so it is fine for a
-  pilot and not for ten merchants.
-- **Fix:** M3b, which adds the refund posting — the module README's posting
-  table already reserves the row. `refunded_usd` starts telling the truth the
-  moment that row is posted, with no contract change. (M3a shipped the other
-  half of that milestone, the outbound webhook, and it does not help here: no
-  event fires for a fulfilment that fails on its own.)
+M3b Task 3 posts the refund itself when the failed task's money outcome is
+`returned`. `spent` and `unknown` never do — refunding money we did not get
+back is not a safe failure mode — so those still reach a person through the
+procedure above.
+
+- **Cost of leaving it:** every `g2b` failure **from a call that went out** is
+  `unknown`, because their API exposes no refund field and the only evidence
+  is a sentence in their documentation (`fulfillment/README.md`). Its four
+  **pre-call** refusals — no API key, an order line with no `player_id`, a
+  mapping with no `external_variant_id`, no active mapping — are `returned`
+  and do settle themselves, because nothing was ordered.
+- **How big is the manual lane? Nobody knows.** Nothing counts merchant
+  failures by supplier or by cause. Earlier drafts of this runbook and of
+  ADR-0071 said it carried "most" of them; that was never measured and is
+  withdrawn. If you need the number, it is a query away — and worth having
+  before this gap is priced.
+- **Fix:** evidence from G2B, not a softer default. A `returned` we cannot
+  substantiate would refund a merchant for goods we paid for.
+- **Second gap, smaller:** there is **no operator re-grade path**. An operator
+  who chases a `spent` and gets our money back cannot record it, so that order
+  will never refund automatically; it is settled by hand instead, which costs
+  minutes and not money.
+
+### When the automatic refund does not fire
+
+Three Telegram alerts, all from the fulfilment saga:
+
+- **«Заказ реселлера: депозит не вернётся сам»** (`merchant_money_outcome`) —
+  the outcome was `spent` or `unknown`. Working as designed. Settle by hand if
+  the merchant is owed, using the procedure above. Deduped per supplier per
+  15 minutes, so one supplier outage is one message and the Fulfilment Inbox
+  is where the rest of the parked orders are.
+- **«Автовозврат депозита не прошёл»** (`merchant_refund_failed`) — the
+  outcome _was_ `returned` and the posting failed anyway. Deduped per order
+  for an hour, because each one is one reseller's money. The task still reads
+  `returned`, so the order is still refundable by hand: settle it with the
+  procedure above and file the alert text, which names the refusal.
+
+  The refusals you can meet: `AlreadySettledError` (somebody credited the
+  order first — if that was a **partial** settlement, the order still reads
+  `fulfillment_failed` to the merchant and the rest is yours to finish),
+  `MissingChargeError` (the order has no charge posting at all — that cannot
+  happen through the code, so treat it as data damage and escalate), and a
+  database error (retry the drain). The alert's log line carries
+  `modelled=true` for those and `modelled=false` for a bug in our own refund
+  code — the second is an engineering ticket, not a settlement.
+
+- **«Отменена задача по заказу реселлера»** (`merchant_order_cancelled`) — a
+  merchant order's task was cancelled, by an admin or by an order/payment
+  cascade, **and the order is not square against what it charged**
+  (`refund.settled_in_full`, the same test `failure_reason` uses — not "has
+  anything come back"). That second half is part of the trigger, not a caveat:
+  closing an order the drain already refunded in full is the ordinary support
+  step and raises nothing, so an alert you do see is one where money is
+  genuinely still out — including a **partial** settlement, which is not
+  square and therefore still alerts.
+  **No automatic refund reaches this state and none ever will**: a
+  cancellation is a decision a person made for a reason this code cannot read,
+  and inferring "the supplier gave the money back" from it would be exactly
+  the guess the money outcome exists to prevent. What it leaves behind is a
+  debited deposit on an order nothing can move again — Retry and
+  force-complete both refuse a `cancelled` task. Decide the money yourself and
+  settle it with the procedure above; read `refunded_usd` first anyway, as
+  that procedure says. Deduped per order for an hour.
+
+**Do not click Retry on a refunded order.** It is refused with
+`409 deposit_already_returned`, and the refusal is the point: a second charge
+for one order replays its ledger key and debits nothing, so a successful retry
+would hand the reseller the goods _and_ their money. If they still want the
+order, they place a **new** one. The same refusal guards the force-complete
+button.
 
 ### Closed in M2: the ±2% drift giveaway
 
@@ -765,9 +999,41 @@ comment in `orders/models.py`). Merchant orders always populate it.
 Two things the query still cannot see, so a hit is evidence and not a verdict:
 a merchant with a negotiated `markup_adjustment_pp` prices below the computed
 figure legitimately, and `b2b_markup_pct` is read live — a markup edited after
-the order was placed moves the comparison. Nothing records either at order
-time; a stored list price would make this exact rather than approximate, and
-that is filed as an M3 follow-up.
+the order was placed moves the comparison. Neither is recorded at order time
+and **M3b deliberately did not add a stored list price to fix it** (ADR-0071,
+decision 10). The reason is worth knowing before somebody files it again: the
+charge and the line already come from one number —
+`merchants.orders.place` binds `quote.price_for`'s result once and hands it to
+both — so a stored "our price" column would be filled from the same expression
+this query compares against, and substituting it would turn the check into a
+comparison of a value with itself. **What makes this query worth running is
+that it recomputes from independent inputs.** Closing the two blind spots
+properly means recording the markup that was actually applied, which nothing
+does today.
+
+**What M3b did record is the merchant's own quote** (migration 0072), and it
+answers a different question the same section used to leave open — how far
+resellers quote from our prices, which was previously unmeasurable because
+`expected_price` survived only inside a request digest:
+
+```sql
+-- how far merchant quotes sit from what we charged. Not a regression check:
+-- anything inside +/-2% is normal and is charged at our price by design.
+SELECT o.merchant_id,
+       count(*)                                                   AS orders,
+       round(avg(oi.unit_price_usd - oi.merchant_expected_price_usd), 4) AS avg_gap_usd,
+       count(*) FILTER (WHERE oi.merchant_expected_price_usd < oi.unit_price_usd) AS quoted_low
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.id
+ WHERE oi.merchant_expected_price_usd IS NOT NULL
+ GROUP BY o.merchant_id
+ ORDER BY orders DESC;
+```
+
+`merchant_expected_price_usd IS NOT NULL` is the whole filter it needs: retail
+lines never carry one, and neither do merchant orders placed before 0072, so
+the sweep is over exactly the rows that can answer. For a single disputed
+charge, read the two columns off that order and quote both to the reseller.
 
 ### Closed in M2: the non-conforming validation bodies
 

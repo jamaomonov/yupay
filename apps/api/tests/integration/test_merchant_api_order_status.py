@@ -621,17 +621,27 @@ async def test_a_supplier_failure_surfaces_a_coded_failure_reason(
     assert r.json()["failure_reason"] == "fulfillment_failed"
 
 
-async def test_a_soft_failure_the_storefront_hides_is_hidden_here_too(
+async def test_a_soft_failure_the_storefront_hides_is_reported_as_a_delay(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """Our own supplier balance running out is not the reseller's failure.
+    """Our own supplier balance running out is not the reseller's *failure*.
 
-    ``fulfillment`` already draws this line: a low-balance task fails but the
-    item stays ``in_progress`` so the storefront keeps saying "processing"
-    while an operator tops up and retries. Reading the item's state rather
-    than the task's inherits that rule instead of re-deciding it — telling a
-    reseller "failed" here would have them refund their end customer for an
-    order we are about to deliver.
+    ``fulfillment`` draws that line and this endpoint inherits it: a
+    low-balance task fails but the item stays ``in_progress``, so the
+    storefront keeps saying "processing" while an operator tops up and
+    retries, and telling a reseller "failed" here would have them refund their
+    end customer for an order we are about to deliver.
+
+    It is not nothing either, which is what M3b Task 4 changed. Silence made a
+    stalled order byte-identical to one placed thirty seconds ago, for ever —
+    fine for a buyer with a support chat, useless to a machine with an SLA. So
+    the order says it is **delayed**: still coming, do not re-order, do not
+    refund your customer. What it never says is *why*: that we are short of
+    balance at a named supplier is our relationship, not their order.
+
+    The row is written by hand rather than drained, because what this file
+    tests is the projection. ``test_merchant_order_stall.py`` walks the same
+    state out of the real saga.
     """
     _, key_id, secret, order_id = await _place(
         integration_client, admin_headers, db_session, merchant_order_id="acme-lowbal"
@@ -641,14 +651,19 @@ async def test_a_soft_failure_the_storefront_hides_is_hidden_here_too(
             select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
         )
     ).scalar_one()
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order_id))
+    ).scalar_one()
     task.status = "failed"
     task.last_error = "supplier_low_balance"
+    item.fulfillment_state = "in_progress"  # exactly what ``_apply_failure`` writes
     await db_session.commit()
 
     r = await _read(integration_client, key_id, secret, "acme-lowbal")
 
     assert r.status_code == 200, r.text
-    assert r.json()["failure_reason"] is None
+    assert r.json()["failure_reason"] == "fulfillment_delayed"
+    assert r.json()["status"] == "fulfilling"
     assert "supplier_low_balance" not in r.text
 
 
@@ -680,12 +695,15 @@ async def test_an_order_support_closed_reports_order_failed(
 async def test_refunded_usd_is_read_from_the_ledger_not_hardcoded(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """Nothing refunds a merchant order yet (M3 owns that), so this field is
-    always ``"0.00"`` today — which is exactly how a hardcoded zero would look.
+    """The field is a ledger read, and this posts against it by hand.
 
-    So the test posts the refund M3 will post: the README's posting table row
-    ``D merchant_deposit / C house_payments_received``, referencing the order.
-    If the field is computed, it moves.
+    Two paths now move it — ``merchants.refund.refund_order`` on a supplier
+    that gave our money back (M3b Task 3) and an operator's attributed credit
+    (Task 2) — and both are covered by their own suites. What this test keeps
+    is the property underneath them: the number is summed off the postings, so
+    a row written by *any* future path with the README's legs and the order's
+    reference shows up here without a change to the read. A hardcoded zero and
+    a field wired to one particular writer both fail it.
     """
     merchant_id, key_id, secret, order_id = await _place(
         integration_client, admin_headers, db_session, merchant_order_id="acme-refund"

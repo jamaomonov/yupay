@@ -720,24 +720,27 @@ def _check_merchant_only_arguments(
     *,
     actor: Actor,
     unit_price_usd_override: Sequence[Decimal] | None,
+    merchant_expected_price_usd: Sequence[Decimal] | None,
 ) -> None:
-    """Refuse the two combinations that only make sense on the B2B channel.
+    """Refuse the combinations that only make sense on the B2B channel.
 
-    Both are guards on the same seam, which is why they live together: the
-    price override exists so a wholesale price can reach an order, and the
-    affiliate refusal exists so a *retail* discount cannot reach that same
-    order from the other side.
+    All three are guards on the same seam, which is why they live together:
+    the price override exists so a wholesale price can reach an order, the
+    quote record rides beside it, and the affiliate refusal exists so a
+    *retail* discount cannot reach that same order from the other side.
 
     Args:
         body: The parsed request.
         actor: Who is buying.
         unit_price_usd_override: The per-line override, if the caller passed
             one.
+        merchant_expected_price_usd: The per-line merchant quote, if the
+            caller passed one.
 
     Raises:
-        ValidationError: The override came from a non-merchant actor or does
-            not line up with ``body.items``, or a merchant order names an
-            affiliate code.
+        ValidationError: The override or the quote came from a non-merchant
+            actor or does not line up with ``body.items``, or a merchant order
+            names an affiliate code.
     """
     if unit_price_usd_override is not None:
         if actor.merchant_id is None:
@@ -747,6 +750,19 @@ def _check_merchant_only_arguments(
                 "a unit-price override must carry one unit price per line",
                 lines=len(body.items),
                 prices=len(unit_price_usd_override),
+            )
+    if merchant_expected_price_usd is not None:
+        # Guarded exactly like the override above, and for a weaker but real
+        # reason: the column is documented as "what a merchant quoted", so a
+        # retail line carrying a number would make every reader of it wrong
+        # about which orders have one.
+        if actor.merchant_id is None:
+            raise ValidationError("a merchant quote is only accepted from a merchant actor")
+        if len(merchant_expected_price_usd) != len(body.items):
+            raise ValidationError(
+                "a merchant quote must carry one price per line",
+                lines=len(body.items),
+                prices=len(merchant_expected_price_usd),
             )
     if body.affiliate_code and actor.merchant_id is not None:
         # ``resolve_code`` is called with ``user_id=actor.user_id``, which is
@@ -769,6 +785,7 @@ async def create_order(
     ua_hash: str | None = None,
     source: str = "unknown",
     unit_price_usd_override: Sequence[Decimal] | None = None,
+    merchant_expected_price_usd: Sequence[Decimal] | None = None,
 ) -> Order:
     """Validate, snapshot price + FX, persist the order. Idempotent per actor.
 
@@ -792,20 +809,34 @@ async def create_order(
             it with a non-merchant actor is a ``ValidationError``, not a
             silently-ignored argument: a retail price arriving from the client
             is the one thing this seam must never become.
+        merchant_expected_price_usd: **Merchant-only.** One quoted USD price
+            per line — what the reseller said they expected to pay — recorded
+            on the line and read by nothing (spec item 3b, ADR-0071). It is
+            not an input to any price: ``merchants.quote.price_for`` has
+            already decided the charge before this function is called, and a
+            different number here moves no money. Kept as its own argument
+            rather than folded into ``unit_price_usd_override`` because the
+            two answer different questions — one is what we charge, the other
+            is what they said — and one sequence of pairs would make an error
+            in either look like an error in both.
 
     Returns:
         The persisted order (with items + events loaded).
 
     Raises:
         ValidationError: An unknown or unbuyable SKU, invalid
-            ``fulfillment_data``, a price override from a non-merchant actor
-            or of the wrong length, or an affiliate code on a merchant order.
+            ``fulfillment_data``, a price override or a merchant quote from a
+            non-merchant actor or of the wrong length, or an affiliate code on
+            a merchant order.
         ConflictError: The idempotency key belongs to a different kind of
             request, or a concurrent create won the race and left nothing to
             replay.
     """
     _check_merchant_only_arguments(
-        body, actor=actor, unit_price_usd_override=unit_price_usd_override
+        body,
+        actor=actor,
+        unit_price_usd_override=unit_price_usd_override,
+        merchant_expected_price_usd=merchant_expected_price_usd,
     )
     existing = await _existing_idempotent_order(db, actor=actor, idempotency_key=idempotency_key)
     if existing is not None:
@@ -873,6 +904,14 @@ async def create_order(
                 # cost is the face value the customer chose, which
                 # ``unit_price_usd`` already records.
                 cost_usdt=None if sku.variable_amount else sku.cost_usdt,
+                # The merchant's own quote, recorded and never consulted —
+                # ``None`` on every retail line, which is what makes the
+                # column's meaning readable (see its comment in ``models.py``).
+                merchant_expected_price_usd=(
+                    None
+                    if merchant_expected_price_usd is None
+                    else merchant_expected_price_usd[index]
+                ),
                 fulfillment_data=cleaned,
             )
         )

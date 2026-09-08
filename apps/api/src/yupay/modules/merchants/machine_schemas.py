@@ -363,14 +363,36 @@ class MerchantOrderStatusOut(BaseModel):
     #: What this order charged. Final — see ``POST /merchant/v1/orders``.
     price_usd: UsdPrice
     #: How much of ``price_usd`` has been credited back to your deposit.
-    #: ``"0.00"`` until a refund exists; read from the ledger, not a flag.
+    #: ``"0.00"`` until something has come back; read from the ledger, not a
+    #: flag, so both routes land here — M3b's automatic refund of a supplier
+    #: failure that returned our money, and a settlement support books by
+    #: hand. Never more than ``price_usd``: both writers refuse to take an
+    #: order past its own charge.
     refunded_usd: UsdAmount
     created_at: datetime
     paid_at: datetime | None
     delivered_at: datetime | None
-    #: ``null``, ``"fulfillment_failed"`` or ``"order_failed"`` — a closed
-    #: vocabulary, additive only. Never an operator's or a supplier's own
-    #: words: those are internal, and a client cannot switch on prose.
+    #: ``null``, ``"fulfillment_delayed"``, ``"fulfillment_failed_refunded"``,
+    #: ``"fulfillment_failed"`` or ``"order_failed"`` — a closed vocabulary,
+    #: additive only. Never an operator's or a supplier's own words: those are
+    #: internal, and a client cannot switch on prose.
+    #:
+    #: **``"fulfillment_delayed"`` is the one value that is not terminal**
+    #: (M3b Task 4). It means the delivery has stopped but the order has not:
+    #: keep polling, do not re-order, do not refund your end customer. Every
+    #: other non-null value means stop. A loop that breaks on
+    #: ``failure_reason != null`` stops polling an order we are about to
+    #: deliver — see the module README.
+    #:
+    #: ``"fulfillment_failed_refunded"`` is M3b Task 3's addition and means
+    #: "the delivery failed **and all** of what you paid is back"; a *partial*
+    #: settlement is a human mid-decision and reads ``"fulfillment_failed"``.
+    #:
+    #: No value here says **which supplier** or **what went wrong with them**:
+    #: not whether one kept our money versus we cannot tell (both read
+    #: ``"fulfillment_failed"``), and not that a delay is our own balance
+    #: running short. Those are facts about our supplier relationships rather
+    #: than about your order.
     failure_reason: str | None
     delivery: MerchantDeliveryOut | None
     timeline: list[MerchantOrderEventOut]
@@ -442,11 +464,17 @@ class MerchantTransactionOut(BaseModel):
 
     transaction_id: str
     #: ``merchant_deposit_credit`` (we credited your deposit),
-    #: ``merchant_order_charge`` (an order spent it), and more later. Treat an
-    #: unknown kind as "some movement" and trust ``amount_usd``.
+    #: ``merchant_order_charge`` (an order spent it),
+    #: ``merchant_order_refund`` (M3b: we returned a failed order's charge),
+    #: and more later. Treat an unknown kind as "some movement" and trust
+    #: ``amount_usd``.
     kind: str
     amount_usd: UsdAmount
-    #: Set on rows an order caused; ``null`` on a deposit credit.
+    #: Set on every row that names an order, and that is **not** the same
+    #: as "not a credit": since M3b Task 2 a support settlement booked
+    #: against a failed order is a ``merchant_deposit_credit`` carrying one.
+    #: ``null`` means the movement belongs to no order — an ordinary
+    #: prepayment.
     order_id: str | None
     #: The same order's ``merchant_order_id`` — your own reference, so a
     #: statement line reconciles against your books without a second lookup.

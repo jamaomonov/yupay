@@ -16,17 +16,18 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
+import sys
 from collections.abc import Coroutine, Iterable
 from typing import Any
 
-from sqlalchemy import func, select, text
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import Row, func, select, text
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import ConflictError, NotFoundError
+from yupay.core.errors import AppError, ConflictError, NotFoundError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.models import (
@@ -39,6 +40,7 @@ from yupay.modules.fulfillment.suppliers import (
     FulfillerError,
     FulfillerNotIntegratedError,
     FulfillResult,
+    MoneyOutcome,
     get_fulfiller,
 )
 from yupay.modules.inventory import service as inv_svc
@@ -62,6 +64,175 @@ _LOW_BALANCE_ERROR = "supplier_low_balance"
 # 15 min covers a typical "see the alert, top up the wallet, retry"
 # loop without burying ops in repeats.
 _LOW_BALANCE_ALERT_DEDUPE_SECONDS = 15 * 60
+
+#: Where a task records what became of our money when it failed. It lives in
+#: ``extra_metadata`` rather than a column because that is where every other
+#: structured fact about a task already lives, and because nothing queries it
+#: yet — M3b Task 3 reads it at the moment the failure happens, on the row it
+#: has in hand. Read it with :func:`money_outcome_of`, never by key.
+MONEY_OUTCOME_KEY = "money_outcome"
+
+#: Our own warehouse running dry. No supplier is involved in an inventory
+#: route at all, so nothing external was ever charged — the cleanest
+#: :attr:`MoneyOutcome.RETURNED` in the codebase, and the one case where an
+#: automatic refund is unambiguously right.
+INVENTORY_FAILURE_MONEY_OUTCOME = MoneyOutcome.RETURNED
+
+#: How much a money outcome commits us to, lowest first. ``record_money_outcome``
+#: never moves a task down this ladder: knowledge about our own money only ever
+#: accumulates. ``RETURNED`` is the bottom because it is the one value that
+#: unlocks an automatic refund, so promoting to it is the expensive mistake;
+#: ``SPENT`` is the top because "we know it is gone" is a positive finding that
+#: a later "we cannot tell" must not erase — the very blur
+#: :class:`MoneyOutcome`'s docstring forbids.
+_CONFIDENCE: dict[MoneyOutcome, int] = {
+    MoneyOutcome.RETURNED: 0,
+    MoneyOutcome.UNKNOWN: 1,
+    MoneyOutcome.SPENT: 2,
+}
+
+#: A task that crashed on an exception nobody wrapped, or one an admin
+#: rejected by hand. Neither can say what happened upstream: the first died
+#: mid-saga, and the second is a human who bought (or did not buy) the goods
+#: somewhere this code cannot see.
+_NOBODY_CAN_SAY = MoneyOutcome.UNKNOWN
+
+
+def record_money_outcome(task: FulfillmentTask, outcome: MoneyOutcome) -> None:
+    """Persist what became of our money on a task that has just failed.
+
+    **A task never moves down :data:`_CONFIDENCE`.** The rung that matters is
+    the bottom one: every ``RETURNED`` an adapter can produce is a fact about
+    *one attempt* —
+    "the supplier refunded this order", "this create never reached the call
+    that pays". A task outlives its attempts: an admin Retry re-runs it, and
+    the retry knows nothing about what the attempt before it spent. Without
+    this rule the sequence is a real money loss, and needs no supplier
+    misbehaviour to reach:
+
+    1. ``pay`` is charged and *then* returns HTTP 500 → ``UNKNOWN``, correctly.
+    2. An admin clicks Retry — the ordinary response to that failure.
+    3. The replay trips a transient outage before it creates anything →
+       ``RETURNED``, also correctly, *for that attempt*.
+    4. M3b refunds the deposit for goods we have already paid for.
+
+    So once any attempt has left money unaccounted for, no later attempt may
+    declare the task's money whole. Upward stays open: a ``RETURNED`` task that
+    is retried and then loses money records that, because it is new knowledge
+    rather than an older attempt's absence of it. ``SPENT`` is likewise never
+    downgraded to ``UNKNOWN`` — a retry whose call fails ambiguously would
+    otherwise turn "waxpeer kept our money" into "we cannot tell" in the admin
+    inbox. Task 3 treats those two the same, but a human does not.
+
+    There is deliberately **no way to lower a recorded outcome**, here or
+    through ``retry_task`` / ``complete_manual_task``. That is safe while only
+    a terminal supplier verdict writes one, and it cuts both ways:
+
+    - a caller that starts recording on *transient* errors would make every
+      outage a permanent ``UNKNOWN`` on an otherwise fine task;
+    - and ``SPENT`` is already unrecoverable **today**. Waxpeer writes it for an
+      ``error`` top-up, the runbook's answer is "chase the money", and an
+      operator who chases it successfully has no way to record that we are whole
+      again — the task reads "money gone" forever and M3b will never refund that
+      merchant automatically.
+
+    Either direction needs an operator re-grade path. Neither has one yet.
+
+    The value is merged onto ``extra_metadata`` rather than assigned, so the
+    supplier flags the adapters wrote — ``supplier_refunded``,
+    ``needs_reconciliation`` and the rest — survive alongside it. Those keys
+    stay the admin inbox's and the runbooks' spelling of the same idea; this
+    one is the typed source of truth M3b acts on.
+
+    Args:
+        task: The task, already marked ``failed``.
+        outcome: What became of the money on the attempt that just ended.
+    """
+    standing = _standing_outcome(task)
+    if standing is not None and _CONFIDENCE[outcome] < _CONFIDENCE[standing]:
+        log.info(
+            "fulfillment.money_outcome.kept",
+            task_id=task.id,
+            supplier=task.supplier,
+            standing=standing.value,
+            refused=outcome.value,
+        )
+        return
+    task.extra_metadata = {**(task.extra_metadata or {}), MONEY_OUTCOME_KEY: outcome.value}
+
+
+def _standing_outcome(task: FulfillmentTask) -> MoneyOutcome | None:
+    """The value already on the task, for the ladder — **failing closed**.
+
+    ``money_outcome_of`` reads an unrecognised string as "nothing recorded",
+    which is right for a reader but wrong for the guard: it would let a later
+    ``RETURNED`` overwrite a value this build merely cannot parse. The one
+    re-grade available today is a hand DB edit (see
+    :func:`record_money_outcome`), and the enum's values are lowercase, so an
+    operator typing ``'UNKNOWN'`` would silently disarm the invariant on that
+    task — on the exact rows a human is already worried about.
+
+    A present-but-unreadable value therefore counts as
+    :attr:`MoneyOutcome.UNKNOWN`: high enough to block a promotion, low enough
+    that real knowledge still lands on top of it.
+    """
+    standing = money_outcome_of(task)
+    if standing is None and (task.extra_metadata or {}).get(MONEY_OUTCOME_KEY) is not None:
+        return MoneyOutcome.UNKNOWN
+    return standing
+
+
+def _record_or_warn(
+    task: FulfillmentTask, outcome: MoneyOutcome | None, *, discovered: str
+) -> None:
+    """Record a terminal failure's money outcome, or say out loud that it has none.
+
+    Never raising is the right *behaviour* — a saga must not die because an
+    adapter forgot — but swallowing it silently would make the totality
+    property unenforced at runtime, so a hole the AST guard cannot see (an
+    adapter's intermediate type, a value threaded through a helper) would
+    produce no signal at all. M3b Task 3 is about to start acting on this
+    field's absence, so absence gets a log line an alert can find.
+
+    The low-balance stall never reaches here: it returns earlier, without an
+    outcome and legitimately so.
+
+    Args:
+        task: The task, already marked ``failed``.
+        outcome: What the adapter said, or ``None`` if it said nothing.
+        discovered: Which path found the failure, for the log line.
+    """
+    if outcome is None:
+        log.warning(
+            "fulfillment.money_outcome.missing",
+            task_id=task.id,
+            supplier=task.supplier,
+            discovered=discovered,
+        )
+        return
+    record_money_outcome(task, outcome)
+
+
+def money_outcome_of(task: FulfillmentTask) -> MoneyOutcome | None:
+    """What this task's last terminal failure recorded about our money.
+
+    **It outlives that failure.** ``retry_task`` does not clear it and no
+    success path removes it, so a task that failed and then succeeded on a
+    retry still answers — deliberately, because it is the only trace that an
+    earlier attempt may have spent money the successful one did not account
+    for, and because :func:`record_money_outcome` needs it to refuse a replay's
+    false "we still have the money". A caller asking "what happened to *this*
+    order" must therefore pair it with ``task.status == "failed"``; a caller
+    asking "is there money unaccounted for on this task" must not.
+
+    ``None`` covers three rows and deliberately does not distinguish them: one
+    that has never failed, one that failed before this field existed, and one
+    carrying a value this build does not know. The last is why this is a lookup
+    rather than a cast — a row written by another deploy must not crash a saga,
+    and "we do not know" is already one of the three answers a caller handles.
+    """
+    raw = (task.extra_metadata or {}).get(MONEY_OUTCOME_KEY)
+    return next((m for m in MoneyOutcome if m.value == raw), None)
 
 
 # ---------- supplier routing ----------
@@ -107,7 +278,8 @@ async def _load_task(
 ) -> FulfillmentTask:
     """Load one task, optionally under a row lock.
 
-    ``for_update=True`` is for the *mutating* callers (admin retry/cancel).
+    ``for_update=True`` is for the *mutating* callers (admin retry/cancel, and
+    the poll/webhook reconciler, which read-modify-writes ``extra_metadata``).
     Without it they read a snapshot taken before the consumer's claim, decide
     on that stale status, and then queue behind the consumer's row lock only
     to overwrite what it just committed — an admin cancel landing on top of a
@@ -401,9 +573,7 @@ async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: O
     return True
 
 
-async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readability
-    db: AsyncSession, *, task_id: str
-) -> FulfillmentTask:
+async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     """Run a single task and persist the outcome.
 
     Routing: if ``task.supplier == 'inventory'`` (set by ``start_for_order`` from
@@ -444,6 +614,7 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
             task.failed_at = now()
             task.last_error = "no stock and sourcing rule is strict"
             item.fulfillment_state = "failed"
+            record_money_outcome(task, INVENTORY_FAILURE_MONEY_OUTCOME)
             return task
         # Switch the route to the supplier fallback for the rest of this attempt.
         task.supplier = _supplier_slug(decision.fallback)
@@ -475,6 +646,9 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
         task.failed_at = now()
         task.last_error = str(exc)
         item.fulfillment_state = "failed"
+        # An adapter that raises has ended the order as terminally as one that
+        # returns ``failed``, and answers the same question at the raise site.
+        record_money_outcome(task, exc.money_outcome)
         log.warning(
             "fulfillment.fulfill.failed",
             task_id=task.id,
@@ -520,21 +694,428 @@ async def process_task(  # noqa: PLR0915 -- linear saga; splitting hurts readabi
         task.status = "in_progress"
         item.fulfillment_state = "in_progress"
     else:  # "failed"
-        task.status = "failed"
-        task.failed_at = now()
-        task.last_error = result.error
-        # Low-balance is the one "failed" mode we deliberately hide
-        # from the customer: the task lands in the admin inbox, but
-        # the order item stays ``in_progress`` so the storefront keeps
-        # saying "обработка" instead of flipping to an error state.
-        # The admin will either top up + retry, or fulfil manually.
-        if result.error == _LOW_BALANCE_ERROR:
-            item.fulfillment_state = "in_progress"
-            _dispatch_alert(_maybe_alert_low_balance(task=task, result=result))
-        else:
-            item.fulfillment_state = "failed"
+        _apply_failure(task=task, item=item, result=result)
 
     return task
+
+
+def _apply_failure(*, task: FulfillmentTask, item: OrderItem, result: FulfillResult) -> None:
+    """Land a ``failed`` supplier result on the task and its order item.
+
+    Low-balance is the one "failed" mode we deliberately hide from the
+    customer: the task lands in the admin inbox, but the order item stays
+    ``in_progress`` so the storefront keeps saying "обработка" instead of
+    flipping to an error state. The admin will either top up + retry, or
+    fulfil manually. It is also the one failure with **no** money outcome to
+    record — nothing has finished happening to the money yet (M3b Task 4 owns
+    making that stall visible).
+    """
+    task.status = "failed"
+    task.failed_at = now()
+    task.last_error = result.error
+
+    if result.error == _LOW_BALANCE_ERROR:
+        item.fulfillment_state = "in_progress"
+        _dispatch_alert(_maybe_alert_low_balance(task=task, result=result))
+        return
+
+    item.fulfillment_state = "failed"
+    _record_or_warn(task, result.money_outcome, discovered="fulfill")
+
+
+# ---------- the merchant deposit, after a terminal failure ----------
+
+#: Recorded on the refund's ledger transaction. A closed internal label, not a
+#: supplier's or an operator's words: the row is readable through the admin
+#: audit feed.
+_MERCHANT_REFUND_REASON = "fulfillment_failed"
+
+
+async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
+    """Give a merchant back what a failed order took, or call a human.
+
+    The one seam M3b Task 3 adds to the saga. It fires only on
+    :attr:`MoneyOutcome.RETURNED` and only on a **merchant** order; ``SPENT``
+    and ``UNKNOWN`` post nothing and raise an ops alert instead, because
+    refunding money we did not get back is not a safe failure mode.
+
+    **Retail is untouched, and it pays one indexed read to stay that way.**
+    :data:`INVENTORY_FAILURE_MONEY_OUTCOME` is ``RETURNED`` and fires whenever
+    an inventory route runs dry with nothing to fall back to (see the
+    ``decision.strict or decision.fallback is None`` arm in
+    :func:`process_task`; a dry warehouse *with* a supplier fallback re-routes
+    instead of failing) — a common terminal failure here — so the
+    ``merchant_id`` gate is doing real work rather than documenting an
+    impossibility. It runs **before** the savepoint and before ``merchants`` is
+    imported at all, so a retail task costs one query and no
+    ``SAVEPOINT``/``RELEASE`` pair.
+
+    **Why the caller runs this and not ``process_task``.** Under
+    ``drain_pending_tasks`` a task runs inside a SAVEPOINT whose crash arm
+    answers an unexpected exception by recording ``UNKNOWN`` — the one value
+    :func:`record_money_outcome` will never let anything move back down, with
+    no operator re-grade path anywhere. A refund that raised inside that
+    savepoint would therefore roll back the ``RETURNED`` it was acting on and
+    replace it with a permanent "we cannot tell": a refundable failure turned
+    unrefundable by the attempt to refund it. So this runs **after** the
+    savepoint is released, at each of the **four** sites that can terminally
+    fail a merchant task — the drain, an admin retry, the poll/webhook
+    reconciler, and an operator rejecting a manual task. Merchant orders are
+    enqueue-only by construction (``merchants.orders._enqueue_only``), so no
+    merchant task is ever run by the synchronous ``start_for_order`` path,
+    and those four are the rest.
+
+    The fourth was nearly missed and is reachable: a B2B-visible **``top_up``**
+    SKU with no active ``SkuSupplierMapping`` — and no ``SkuSourcingRule`` at
+    all — falls through ``sourcing._resolve_auto`` to ``"supplier:manual"``,
+    so ``fail_manual_task`` ends real merchant orders. (An explicit
+    ``force_supplier`` rule reaches it too; the mapping is the operative
+    absence, and only for ``top_up``.) It records ``UNKNOWN``,
+    which refunds nothing — calling the seam there changes no money today. It
+    is called anyway, because "safe only because one constant happens to be
+    ``UNKNOWN``" is a trap, and the alert earns its place regardless: the
+    operator who rejects the task is not necessarily the one who settles the
+    deposit.
+
+    ``_apply_cancel`` is deliberately **not** one of these; see its docstring.
+
+    **Everything the refund raises is caught here, and the reason is worth
+    reading before anyone narrows it.** The rule this looks like it breaks is
+    "no bare ``except Exception`` on the money path", which exists because
+    ``main``'s 64decbd hid a circular import behind one for six weeks. That
+    rule forbids *swallowing*, and nothing is swallowed here: every exception
+    is logged at ``error`` with the order id and raises an ops alert, and the
+    log line says whether it was a modelled refusal or a bug, so a
+    ``NameError`` is one Loki query away rather than invisible.
+
+    What propagating would buy is nothing, and what it costs is the queue. A
+    deterministic crash escapes ``drain_pending_tasks``, rolls back the whole
+    batch, returns the task to ``pending``, and is re-run and re-crashed on
+    the next tick — for ever, taking up to ``limit`` other orders' completed
+    work with it each time. That is the **livelock** that function's own
+    docstring names as the entire reason its savepoint exists, and it would
+    be a total fulfilment outage for the storefront as well as for resellers.
+
+    Catching is safe in the only way that matters: this runs **outside** that
+    savepoint, so it cannot reach the crash arm and therefore cannot write
+    ``UNKNOWN``. The task keeps the ``RETURNED`` it earned and stays
+    refundable by hand.
+
+    Args:
+        db: Session. The caller owns the transaction. The task's failure must
+            already be durable in it — see above.
+        task_id: The task that has just terminated.
+    """
+    # **Outside the try and outside the savepoint below, and the only statement
+    # that is.** It flushes the *caller's* pending writes — the task's failure,
+    # its item, the crash arm's attempt row — not this function's. Containing
+    # it in the savepoint would mean a rollback here discarded the very
+    # failure record the refund exists to act on, which is ruling 4's poison
+    # arriving from the other side; and swallowing it would let the batch
+    # continue on a session that cannot write. It also cannot introduce a
+    # failure that was not already there: without this call the same writes
+    # are flushed a few lines later by the caller anyway. What it buys is that
+    # nothing pending is left for autoflush to drag *into* the savepoint,
+    # where a rollback would take it back out again.
+    await _flush_caller_writes(db)
+
+    # **The merchant gate, ahead of the savepoint.** One indexed read, and a
+    # retail task pays that and nothing else: no task reload, no order read,
+    # no item read, and no SAVEPOINT/RELEASE pair.
+    # ``INVENTORY_FAILURE_MONEY_OUTCOME`` is ``RETURNED`` and fires whenever an
+    # inventory route runs dry with no fallback to switch to, which is a common
+    # terminal failure here, so "retail is untouched" has to mean round trips
+    # and not only behaviour.
+    #
+    # It is **inside the try and outside the savepoint**, and those are two
+    # different things — a distinction this function got wrong once. Inside the
+    # try, because a fault here must be reported like any other; outside the
+    # savepoint, because opening one for a read that retail never gets past is
+    # the cost Minor 4 removed.
+    #
+    # What that trades, stated rather than implied: a transaction-poisoning
+    # fault here is **reported but not repaired**. There is no savepoint to
+    # roll back to, so the enclosing transaction stays aborted and the rest of
+    # the batch fails behind it — which the worker recovers by rolling back and
+    # re-ticking, and which is not reachable deterministically anyway
+    # (``one_or_none()`` over a primary-key join cannot raise ``MultipleResults``,
+    # and ``_flush_caller_writes`` has just run, so autoflush has nothing left
+    # to fail on). A dying session is the only way in, and a dying session is
+    # not something a savepoint fixes.
+    #
+    # A plain dict carries the order id out to the failure path: an operator
+    # settles by it, and it cannot be read back off an ORM object there,
+    # because a savepoint rollback expires those. A ``str`` in a ``dict``
+    # survives it. It is filled in only once the read has succeeded, which is
+    # why the handler reads it with ``.get``.
+    seen: dict[str, str] = {}
+    try:
+        row = await _merchant_of_task(db, task_id)
+        if row is None:
+            return
+        seen["order_id"] = row.id
+        # One savepoint over the whole body, not just the posting. Two things
+        # need it. A refusal must roll back a half-written posting without
+        # touching the failure record above — that was always true — and a
+        # ``SQLAlchemyError`` from any of the reads below poisons the
+        # enclosing transaction, which this function is *not* the owner of:
+        # it runs outside ``drain_pending_tasks``' per-task savepoint, so
+        # there would be nothing between a swallowed error and the rest of the
+        # batch running on a dead session. ``ROLLBACK TO SAVEPOINT`` clears
+        # the aborted state; catching without one would not.
+        async with db.begin_nested():
+            await _settle_merchant_deposit_inner(db, task_id=task_id, seen=seen)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring: propagating livelocks the whole fulfilment queue, and nothing is swallowed -- every exception is logged at ``error`` and alerted, tagged by whether it was modelled.
+        # **This handler is the last thing between a bug and a queue outage,
+        # so it gets a guard of its own.** An ``except`` arm is outside its own
+        # ``try`` by construction: fix round 2 put a lazy
+        # ``from ...refund import RefundError`` here, and on the one failure
+        # the widened catch was widened *for* — ``merchants.refund``
+        # unimportable, the 64decbd shape every document cites — the body's
+        # import raised, control arrived here, and this import raised too, so
+        # ``ImportError`` escaped the drain with no line and no alert. The
+        # classification below no longer imports anything (see
+        # :func:`_is_modelled`), and the rest is wrapped so that a raise from
+        # ``_crash_detail`` or ``_dispatch_alert`` degrades to one bare line
+        # instead of to a stalled queue.
+        try:
+            # ``_crash_detail``, not ``str(exc)`` and not ``log.exception``: a
+            # SQLAlchemy error stringifies as the driver message, then the
+            # full statement, then its **bound parameters** — customer email,
+            # delivery address (AGENTS.md §9). Its first-line-plus-cap rule is
+            # what keeps those out of the log, and a traceback would put them
+            # straight back.
+            #
+            # ``modelled`` is the whole difference between an ordinary refusal
+            # — an order support already settled, a database hiccup — and a
+            # bug in this code. Both leave the deposit for a human; only one
+            # is ours to go and fix, and a log line that could not tell them
+            # apart is what "swallowed" would actually mean.
+            detail = _crash_detail(exc)
+            log.error(  # noqa: TRY400 -- see above: no traceback on this path
+                "merchant_refund.failed",
+                order_id=seen.get("order_id", "?"),
+                task_id=task_id,
+                supplier=seen.get("supplier", "?"),
+                modelled=_is_modelled(exc),
+                error=detail,
+            )
+            _dispatch_alert(
+                _alert_merchant_refund_failed(
+                    task_id=task_id, order_id=seen.get("order_id"), error=detail
+                )
+            )
+        except Exception:  # noqa: BLE001 -- nothing may escape the reporter; see above
+            log.error(  # noqa: TRY400 -- the fallback cannot afford to format anything
+                "merchant_refund.reporting_failed", task_id=task_id
+            )
+
+
+def _is_modelled(exc: BaseException) -> bool:
+    """Is this an exception the refund path models, or a bug in it?
+
+    **It resolves ``RefundError`` without importing anything**, and that is the
+    point rather than an optimisation. This runs inside
+    :func:`_settle_merchant_deposit`'s ``except`` arm, which is outside its own
+    ``try``; an import there fails on exactly the case the arm exists to
+    report — ``merchants.refund`` unimportable, or a cycle that leaves
+    ``RefundError`` unbound part-way through ``refund.py`` — and an
+    ``ImportError`` raised while reporting an ``ImportError`` escapes the drain
+    and stalls the queue.
+
+    ``sys.modules.get`` and ``getattr`` cannot raise. A module that never
+    loaded, or loaded only part-way, yields no class and the answer is
+    ``False`` — which is the right answer, because an import that did not work
+    *is* a bug in this code and not a refusal the module modelled.
+
+    Args:
+        exc: What the seam raised.
+
+    Returns:
+        ``True`` for a modelled refusal or an error the database itself
+        reported; ``False`` for anything else, which is the signal worth
+        paging on.
+    """
+    module = sys.modules.get("yupay.modules.merchants.refund")
+    refund_error = getattr(module, "RefundError", None)
+    if isinstance(refund_error, type) and issubclass(refund_error, BaseException):
+        return isinstance(exc, refund_error | AppError | SQLAlchemyError)
+    return isinstance(exc, AppError | SQLAlchemyError)
+
+
+async def _merchant_of_task(db: AsyncSession, task_id: str) -> Row[tuple[str | None, str]] | None:
+    """The task's order, if it belongs to a merchant. One indexed read.
+
+    The gate that keeps retail out of the refund seam, in a function of its own
+    so the seam's own placement is nameable and testable — this read has now
+    been on both sides of the ``try`` and the difference was invisible in a
+    diff.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        task_id: The task that has just terminated.
+
+    Returns:
+        The ``(merchant_id, order_id)`` row for a merchant order, or ``None``
+        for a retail one and for a task whose order has gone.
+    """
+    row = (
+        await db.execute(
+            select(Order.merchant_id, Order.id)
+            .join(FulfillmentTask, FulfillmentTask.order_id == Order.id)
+            .where(FulfillmentTask.id == task_id)
+        )
+    ).one_or_none()
+    return row if row is not None and row.merchant_id is not None else None
+
+
+async def _flush_caller_writes(db: AsyncSession) -> None:
+    """Persist whatever the caller has pending, before the seam's savepoint.
+
+    A named function for one statement, because the boundary it draws is the
+    one thing :func:`_settle_merchant_deposit` deliberately does **not** make
+    exception-safe, and a boundary that cannot be named cannot be tested. See
+    the call site for why it is outside, and
+    ``test_a_failure_to_persist_the_callers_writes_is_not_turned_into_unknown``
+    for the property that depends on it.
+
+    Args:
+        db: Session. The caller owns the transaction.
+    """
+    await db.flush()
+
+
+async def _settle_merchant_deposit_inner(
+    db: AsyncSession, *, task_id: str, seen: dict[str, str]
+) -> None:
+    """The seam's body. Runs inside a savepoint; may raise.
+
+    Split out so :func:`_settle_merchant_deposit` can wrap **all** of it —
+    the lazy import and the three reads included — in one savepoint and one
+    catch. Fix round 1 wrapped only the posting, which left a deterministic
+    fault in any of these reads propagating out of ``drain_pending_tasks``
+    with no log line and no alert: the livelock, arriving from a line nobody
+    had looked at.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        task_id: The task that has just terminated. Already known to belong to
+            a merchant order — the caller gates on that before the savepoint.
+        seen: Filled in with the plain-``str`` facts the caller's failure path
+            needs. The caller seeds ``order_id`` (it has one by the time it
+            opens the savepoint, and an alert without it is useless); this
+            adds the supplier.
+    """
+    task = await _load_task(db, task_id)
+    # ``money_outcome_of`` outlives the failure that wrote it (``retry_task``
+    # does not clear it), so the pair its docstring requires is checked here:
+    # a task that failed and then succeeded on a retry still answers, and
+    # refunding on that would give away the goods and the money.
+    if task.status != "failed":
+        return
+    outcome = money_outcome_of(task)
+    if outcome is None:
+        return
+    # The merchant gate already ran, ahead of the savepoint — this is the row
+    # itself, which ``refund_order`` needs.
+    order = (await db.execute(select(Order).where(Order.id == task.order_id))).scalar_one()
+    order_id = order.id
+    supplier = task.supplier
+    seen["supplier"] = supplier or "?"
+
+    # The **item**, not just the task, and the rule is inherited rather than
+    # invented: a supplier that refuses for lack of *our* balance fails the
+    # task but deliberately leaves the item ``in_progress``, so the storefront
+    # keeps saying "обработка" while an operator tops up and retries.
+    # ``order_status._failure_reason`` reads the item for that same reason.
+    #
+    # It matters here because ``money_outcome`` outlives the attempt that
+    # wrote it and the stall records none: a task that failed ``RETURNED``,
+    # whose refund then failed, and which an admin retried into a stall,
+    # arrives here still carrying the earlier attempt's verdict. Refunding
+    # then would return the money for an order we are about to deliver, and
+    # would publish ``refunded_usd`` against a ``failure_reason`` of ``null``.
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one()
+    if item.fulfillment_state != "failed":
+        return
+
+    if outcome is not MoneyOutcome.RETURNED:
+        _dispatch_alert(
+            _alert_merchant_needs_a_human(
+                task_id=task_id, order_id=order_id, supplier=supplier, outcome=outcome
+            )
+        )
+        return
+
+    # Imported here, not at module scope: ``merchants`` imports this module
+    # (``order_status.py``, for the delivery artifact and its allow-list), so
+    # a module-scope import back would close the cycle and break every caller
+    # that is not already inside the app. Same discipline, and same reason,
+    # as ``orders.service``'s reach for ``affiliate.discount``. It sits inside
+    # the caller's try, so an ImportError here is reported rather than fatal.
+    from yupay.modules.merchants import refund as merchant_refund
+
+    txn = await merchant_refund.refund_order(db, order=order, reason=_MERCHANT_REFUND_REASON)
+    log.info(
+        "merchant_refund.posted",
+        order_id=order_id,
+        task_id=task_id,
+        supplier=supplier,
+        transaction_id=txn.id,
+    )
+
+
+async def _refuse_a_settled_merchant_order(db: AsyncSession, *, task: FulfillmentTask) -> None:
+    """Refuse to re-drive a merchant order whose money has already gone back.
+
+    The loophole this closes needs no misbehaviour to reach.
+    ``deposit.charge_deposit`` is idempotent on ``merchant-order:{order_id}``,
+    so a **second** charge for one order replays the first transaction and
+    debits nothing. Refund the deposit, click Retry — the ordinary response to
+    a failed task, one button in the admin SPA, and the failure it is for
+    looks identical to this one — and a success hands the reseller the goods
+    *and* their money, with no code path noticing.
+
+    Refusing is the answer rather than re-charging under a fresh key. A
+    reseller who has been told the money is back has very likely already
+    settled with their own end customer; silently debiting them again for an
+    order they closed is a surprise money movement, and it can fail on a
+    balance that no longer covers it, mid-retry. The recovery is the one their
+    contract already describes: place a new order.
+
+    It reads the same sum ``refunded_usd`` publishes, so it catches a **hand**
+    settlement too — support crediting the order at 10:00 and an operator
+    retrying at 10:05 is the same free-goods loophole through a different
+    door, and it predates the automatic refund.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        task: The task about to be re-driven or force-completed.
+
+    Raises:
+        ConflictError: ``deposit_already_returned``.
+    """
+    merchant_id = (
+        await db.execute(select(Order.merchant_id).where(Order.id == task.order_id))
+    ).scalar_one()
+    if merchant_id is None:
+        return
+    from yupay.modules.merchants import refund as merchant_refund
+
+    returned = await merchant_refund.returned_for_order(
+        db, merchant_id=merchant_id, order_id=task.order_id
+    )
+    if returned <= 0:
+        return
+    raise ConflictError(
+        "this order's deposit has already been returned; delivering it now "
+        "would hand over goods nobody paid for",
+        code=merchant_refund.CODE_DEPOSIT_ALREADY_RETURNED,
+        order_id=task.order_id,
+        returned_usd=str(returned),
+    )
 
 
 #: Cap for a crashed task's stored error. Long enough to keep a stack-less
@@ -601,9 +1182,16 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     ran = 0
     settled: set[str] = set()
     for task_id, order_id in rows:
+        # Whether the seam below is worth two round trips. Most drained tasks
+        # succeed, and a success has no money question — reading it here,
+        # from the task ``process_task`` already returned, is what keeps the
+        # worker's hot path free of a task reload and an order read per item.
+        # ``process_webhook_update`` draws the same line inside its own
+        # ``failed`` branch.
+        failed = False
         try:
             async with db.begin_nested():
-                await process_task(db, task_id=task_id)
+                failed = (await process_task(db, task_id=task_id)).status == "failed"
         except Exception as exc:  # noqa: BLE001 -- a poisoned task must not stall the queue; FulfillerError/FulfillerNotIntegratedError are already handled INSIDE process_task, so only a genuine unexpected crash reaches here.
             # The SAVEPOINT above already rolled back this task's partial
             # writes and expired the ORM objects it touched — same
@@ -621,6 +1209,9 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
             task.failed_at = now()
             task.last_error = detail
             item.fulfillment_state = "failed"
+            # We crashed part-way through the saga. Whether the supplier call
+            # went out, and what it cost, is exactly what we do not know.
+            record_money_outcome(task, _NOBODY_CAN_SAY)
             await _record_attempt(
                 db,
                 task=task,
@@ -634,6 +1225,13 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
                 task_id=task_id,
                 error=detail[:200],
             )
+            failed = True
+        if failed:
+            # Outside the SAVEPOINT above, deliberately: its crash arm answers
+            # an unexpected exception with a permanent ``UNKNOWN``, so a refund
+            # that raised inside it would convert a refundable failure into an
+            # unrefundable one. See ``_settle_merchant_deposit``.
+            await _settle_merchant_deposit(db, task_id=task_id)
         settled.add(order_id)
         ran += 1
     for order_id in settled:
@@ -656,12 +1254,21 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
             "task is not retryable in its current state",
             extra={"status": task.status},
         )
+    # Before anything is written: a retry of an order whose deposit already
+    # went back would deliver goods nobody paid for, because a second charge
+    # replays its key and debits nothing.
+    await _refuse_a_settled_merchant_order(db, task=task)
     task.status = "pending"
     task.last_error = None
+    # ``money_outcome`` is deliberately **not** cleared. It is the only memory
+    # the next attempt has of what an earlier one may have spent, and
+    # ``record_money_outcome`` needs it to refuse a false "we still have the
+    # money" from a replay. See that function.
     task.failed_at = None
     task.updated_at = now()
     await db.flush()
     task = await process_task(db, task_id=task_id)
+    await _settle_merchant_deposit(db, task_id=task_id)
     await _try_settle_order(db, order_id=task.order_id)
     await db.flush()
     return task
@@ -683,12 +1290,15 @@ async def bulk_retry_tasks(
     The returned ``retried`` order changes with the sort; it is a result set,
     not an ordered contract.
 
-    Sorting does **not** cover bulk-retry vs. a drainer, and that variant is
-    accepted rather than fixed: this loop can hold an order-row lock (from
-    one iteration's ``_try_settle_order``) while the next iteration waits on
-    a task row a drainer holds, and that drainer waits on the same order row.
-    The exposure is tiny — drainers only ever claim ``pending`` tasks, while
-    a human bulk-retries ``failed`` ones — and closing it properly means
+    Sorting does **not** cover bulk-retry vs. a drainer or the reconcile
+    sweep, and that variant is accepted rather than fixed: this loop can hold
+    an order-row lock (from one iteration's ``_try_settle_order``) while the
+    next iteration waits on a task row one of them holds, and that holder waits
+    on the same order row. The exposure is tiny — drainers only ever claim
+    ``pending`` tasks and the sweep only ``in_progress`` ones, while a human
+    bulk-retries ``failed`` ones, and ``process_webhook_update`` deliberately
+    takes its task lock *after* the supplier call rather than across it — and
+    closing it properly means
     ordering locks across a loop of independent orders, which is a redesign
     of the bulk endpoint rather than a patch. If it ever fires, it is a
     deadlock error on the admin request, safe to retry.
@@ -727,6 +1337,29 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
     order/refund cascade — the supplier call is best-effort, a rejection is
     recorded but doesn't block the local state flip (there's nothing to settle
     once the order is gone).
+
+    **On a merchant order this is an unstated money state, and it says so.**
+    Cancelling records **no** ``money_outcome`` — so M3b's automatic refund
+    never runs — while the deposit stays debited and nothing can move the
+    order afterwards: ``retry_task`` and ``complete_manual_task`` both refuse
+    a ``cancelled`` task. It is also the shape *most* likely to have left our
+    money with us, since a cancel usually precedes any supplier verdict and
+    this function calls the supplier's own ``cancel`` hook.
+
+    Refunding it automatically is deliberately **not** done here: cancelling
+    is a human action taken for a reason this code cannot see, and inferring
+    a refund from it would be the guess :class:`MoneyOutcome` exists to
+    forbid. What is not acceptable is the state being *silent*, so a merchant
+    task's cancellation logs and alerts, and the runbook says what to do.
+
+    **Only when the order is not already square**, though — measured against
+    what it charged, so a partial settlement still alerts.
+    ``cancel_open_tasks_for_order`` cancels ``failed`` tasks too, so the
+    documented support step after a failed merchant order — close it by hand,
+    once the automatic refund has already posted — runs straight through here.
+    An alert saying "the deposit is still debited" about an order that reads
+    ``refunded_usd: "1.07"`` is wrong on the feature's most common path, and
+    an alert that is wrong on the common path is one ops stops reading.
     """
     fulfiller = get_fulfiller(task.supplier)
     try:
@@ -755,6 +1388,45 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
     item.fulfillment_state = "failed"  # see ck_order_items_state — no 'cancelled'
+
+    # See the docstring: a cancelled merchant task leaves a debited deposit
+    # against an order nothing can move again. Two bounded reads on an admin
+    # action — the first runs for every cancelled task, retail included, and
+    # only the second and the alert are merchant-gated.
+    merchant_id = (
+        await db.execute(select(Order.merchant_id).where(Order.id == task.order_id))
+    ).scalar_one()
+    if merchant_id is not None:
+        # **Only when the money is still out.** ``cancel_open_tasks_for_order``
+        # cancels ``failed`` tasks too, so the documented support step for a
+        # failed merchant order — close it by hand after the refund has already
+        # posted — reaches this line on the feature's *happy* path. Alerting
+        # there would say "the deposit is still debited" about an order whose
+        # ``refunded_usd`` reads the full charge, and an alert that is wrong on
+        # the common path is an alert ops learns to close unread. Which would
+        # cost exactly the finding this one exists to make findable.
+        from yupay.modules.merchants import refund as merchant_refund
+
+        # Against the **charge**, not against zero. ``returned <= 0`` was a sum
+        # read as a flag — the shape this milestone has now met twice — and a
+        # one-cent attributed credit would have silenced both the alert and the
+        # log line while the other $1.06 sat parked on a task nothing can move
+        # again, which is the exact state this alert exists to make findable.
+        # One predicate, shared with ``order_status._failure_reason``.
+        if not await merchant_refund.is_settled_in_full(
+            db, merchant_id=merchant_id, order_id=task.order_id
+        ):
+            log.warning(
+                "merchant_task_cancelled",
+                order_id=task.order_id,
+                task_id=task.id,
+                reason=reason,
+            )
+            _dispatch_alert(
+                _alert_merchant_order_cancelled(
+                    task_id=task.id, order_id=task.order_id, reason=reason
+                )
+            )
 
 
 async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
@@ -889,6 +1561,145 @@ async def _alert_fulfillment_error(
         )
 
 
+# ---------- merchant money alerting ----------
+
+#: How long one supplier's "a human must decide" alerts stay quiet after the
+#: first. Same window and same reason as the low-balance one: a supplier
+#: outage parks fifty merchant orders in a minute and every one of them wants
+#: the same person to look at the same inbox. Keyed by supplier **and**
+#: outcome, so "waxpeer kept our money" does not silence "we cannot tell about
+#: g2b" — two different investigations.
+_MERCHANT_MONEY_ALERT_DEDUPE_SECONDS = 15 * 60
+
+
+async def _alert_merchant_needs_a_human(
+    *, task_id: str, order_id: str, supplier: str | None, outcome: MoneyOutcome
+) -> None:
+    """Tell ops a merchant order failed with money we cannot return automatically.
+
+    ``SPENT`` and ``UNKNOWN`` say different things to the person who reads
+    this — one is "go and get our money back", the other is "find out what
+    happened" — so the outcome is in the message and in the dedupe key even
+    though the automatic refund treats them identically.
+
+    Takes plain strings, not the ORM objects: this runs later, on the event
+    loop, after the caller's session has moved on or been rolled back to a
+    savepoint that expired them.
+
+    Never raises: an alerting outage must not fail an order (AGENTS.md §9 —
+    order ids, amounts and supplier slugs are fine to log; nothing here is
+    PII).
+    """
+    from yupay.modules.notifications import api as notifications
+
+    key = f"alert:merchant_money:{supplier or '?'}:{outcome.value}"
+    try:
+        if await _set_redis_dedupe(key, ttl_seconds=_MERCHANT_MONEY_ALERT_DEDUPE_SECONDS):
+            return
+        verdict = (
+            "поставщик оставил деньги себе"
+            if outcome is MoneyOutcome.SPENT
+            else "что с деньгами — выяснить нельзя"
+        )
+        text = (
+            "<b>💸 Заказ реселлера: депозит не вернётся сам</b>\n"
+            f"Поставщик: <code>{html.escape(supplier or '?')}</code> · "
+            f"<code>{html.escape(outcome.value)}</code> — {verdict}\n"
+            f"Заказ: <code>{order_id}</code>\n"
+            f"Задача: <code>{task_id}</code>\n"
+            "<i>Автовозврат не сработал по правилу, а не по ошибке. "
+            "Решение за человеком — см. Fulfilment Inbox и раннбук "
+            "merchant-b2b.</i>"
+        )
+        await notifications.send_admin_alert(text, kind="merchant_money_outcome")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.merchant_money_alert_failed",
+            task_id=task_id,
+            error=str(exc)[:200],
+        )
+
+
+async def _alert_merchant_order_cancelled(*, task_id: str, order_id: str, reason: str) -> None:
+    """Tell ops a cancelled merchant task has left a deposit against nothing.
+
+    Cancelling is a human action and records no money outcome, so nothing
+    refunds and nothing else would ever mention it — while the order becomes
+    unmovable (``retry_task`` and ``complete_manual_task`` both refuse a
+    ``cancelled`` task). Deduped per **order** for an hour, like the failed
+    refund and for the same reason: each one is one reseller's money, and
+    collapsing two would lose the order id an operator needs to settle it.
+
+    Never raises, for the same reason as :func:`_alert_fulfillment_error`.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    try:
+        if await _set_redis_dedupe(
+            f"alert:merchant_cancelled:{order_id}",
+            ttl_seconds=_ERROR_ALERT_DEDUPE_SECONDS,
+        ):
+            return
+        text = (
+            "<b>🚫 Отменена задача по заказу реселлера</b>\n"
+            f"Заказ: <code>{order_id}</code>\n"
+            f"Задача: <code>{task_id}</code>\n"
+            f"Причина: <code>{html.escape(reason)}</code>\n"
+            "<i>Депозит остаётся списанным, автовозврат сюда не приходит, и "
+            "заказ больше нельзя ни повторить, ни закрыть вручную. Реши по "
+            "деньгам сам — раннбук merchant-b2b.</i>"
+        )
+        await notifications.send_admin_alert(text, kind="merchant_order_cancelled")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.merchant_cancel_alert_failed",
+            order_id=order_id,
+            error=str(exc)[:200],
+        )
+
+
+async def _alert_merchant_refund_failed(*, task_id: str, order_id: str | None, error: str) -> None:
+    """Tell ops an automatic deposit refund did not post.
+
+    Deduped **per order** and for an hour, not per supplier: each one of these
+    is one reseller's money sitting where it should not, and collapsing two of
+    them into one message would lose the second order id — the only thing an
+    operator needs to settle it by hand.
+
+    ``order_id`` may be ``None`` when the fault landed before the seam knew
+    which order it was on, and the key then falls back to the **task**. It
+    must not fall back to a constant: a literal ``"?"`` in the key would make
+    every such failure across every reseller one message an hour, which is the
+    opposite of what "one reseller's money is one alert" promises. A task id
+    is always available and is one-to-one with an order in practice.
+
+    Never raises, for the same reason as :func:`_alert_fulfillment_error`.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    try:
+        if await _set_redis_dedupe(
+            f"alert:merchant_refund_failed:{order_id or f'task:{task_id}'}",
+            ttl_seconds=_ERROR_ALERT_DEDUPE_SECONDS,
+        ):
+            return
+        text = (
+            "<b>🛑 Автовозврат депозита не прошёл</b>\n"
+            f"Заказ: <code>{order_id or 'неизвестен — см. задачу'}</code>\n"
+            f"Задача: <code>{task_id}</code>\n"
+            f"<pre>{html.escape(error[:300])}</pre>"
+            "<i>Заказ остаётся возвращаемым: верни депозит вручную "
+            "(раннбук merchant-b2b, «Settling a failed order»).</i>"
+        )
+        await notifications.send_admin_alert(text, kind="merchant_refund_failed")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.merchant_refund_alert_failed",
+            order_id=order_id,
+            error=str(exc)[:200],
+        )
+
+
 # ---------- low-balance alerting ----------
 
 
@@ -971,6 +1782,12 @@ async def process_webhook_update(
     fulfiller's ``check_status`` for the authoritative view and apply the
     same state transitions the synchronous saga would have done.
     """
+    # Unlocked for the supplier round trip. The lock this function needs is
+    # taken below, *after* ``check_status`` answers — holding it across a live
+    # HTTP call (up to ``gengine_request_timeout_seconds``, and two requests on
+    # a paying tick) would park an admin retry or cancel behind the reconcile
+    # sweep for tens of seconds, and widen the AB/BA window ``bulk_retry_tasks``
+    # documents by the same factor.
     task = await _load_task(db, task_id)
     if task.status in ("succeeded", "cancelled"):
         # Nothing to do — terminal-but-good.
@@ -996,6 +1813,22 @@ async def process_webhook_update(
             task_id=task.id,
             supplier=task.supplier,
             error=str(exc),
+        )
+        return task
+
+    # Now take the lock, for the two read-modify-writes below: the
+    # ``extra_metadata`` merge, and the standing-value read inside
+    # ``record_money_outcome``. Re-loading under the lock also re-reads the
+    # status, so a task that terminated while we were talking to the supplier
+    # is caught here rather than overwritten — the same reason ``cancel_task``
+    # re-checks after waiting for its lock.
+    task = await _load_task(db, task_id, for_update=True)
+    if task.status in ("succeeded", "cancelled", "failed"):
+        log.info(
+            "fulfillment.check_status.raced",
+            task_id=task.id,
+            supplier=task.supplier,
+            status=task.status,
         )
         return task
 
@@ -1046,6 +1879,12 @@ async def process_webhook_update(
         task.failed_at = now()
         task.last_error = status.error or "supplier reported failure"
         item.fulfillment_state = "failed"
+        _record_or_warn(task, status.money_outcome, discovered="check_status")
+        # The third and last site that can terminally fail a merchant task.
+        # Inside the branch rather than below it so an ordinary
+        # still-in-progress tick — which is most of them, every 60 s per open
+        # task — does not pay for a task reload it has no use for.
+        await _settle_merchant_deposit(db, task_id=task_id)
     # ``in_progress`` — leave the task untouched; the next poll / webhook
     # will fire again.
 
@@ -1104,6 +1943,13 @@ async def complete_manual_task(
             "task cannot be force-completed in its current state",
             extra={"status": task.status},
         )
+    # The same free-goods loophole as ``retry_task``'s, through the other
+    # button: ``force=True`` accepts any supplier's ``failed`` task and hands
+    # the artifact over without touching the ledger. Checked for both modes —
+    # a ``manual`` task in ``in_progress`` cannot have been refunded, since a
+    # refund only ever follows a failure, so the guard costs one bounded read
+    # and removes the need to reason about that each time the guards move.
+    await _refuse_a_settled_merchant_order(db, task=task)
     if artifact_kind not in _VALID_ARTIFACT_KINDS:
         from yupay.core.errors import ValidationError
 
@@ -1164,6 +2010,12 @@ async def complete_manual_task(
                 # activity feed so it's clear this delivery never passed
                 # through the supplier's fulfilment pipeline.
                 new_meta["force_complete"] = True
+            # A force-complete can land on a task that already failed and
+            # recorded what became of our money. That answer is kept: the
+            # admin delivered the goods some other way, which says nothing
+            # about the supplier spend the failed attempt may have made, and
+            # it is the only trace of it. (Not clearing also keeps an ordinary
+            # completion a no-op on ``extra_metadata``.)
             if new_meta:
                 task.extra_metadata = {**(task.extra_metadata or {}), **new_meta}
             item.fulfillment_state = "delivered"
@@ -1233,6 +2085,11 @@ async def fail_manual_task(
     task.admin_note = admin_note
     task.updated_at = moment
     item.fulfillment_state = "failed"
+    # A manual SKU has no supplier API, so nothing here can read what an
+    # operator did with the money — and this route deliberately leaves the
+    # refund to them (see the docstring). "A human decides" is what UNKNOWN
+    # means, so recording it changes nothing and hides nothing.
+    record_money_outcome(task, _NOBODY_CAN_SAY)
     await _record_attempt(
         db,
         task=task,
@@ -1242,6 +2099,11 @@ async def fail_manual_task(
         error=reason_clean,
     )
     await db.flush()
+    # The fourth terminal site. ``UNKNOWN`` refunds nothing, so this moves no
+    # money today — it is called so the safety does not rest on which constant
+    # this function happens to record, and so a merchant order rejected by
+    # hand says out loud that its deposit is still debited.
+    await _settle_merchant_deposit(db, task_id=task_id)
     return task
 
 

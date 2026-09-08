@@ -1,0 +1,73 @@
+sequenceDiagram
+    autonumber
+    participant W as apps/worker drain
+    participant S as fulfillment.service
+    participant A as supplier adapter
+    participant SEAM as _settle_merchant_deposit
+    participant RF as merchants.refund.refund_order
+    participant L as wallet.service.post
+    participant OPS as Telegram ops alert
+    participant DB as Postgres
+    participant R as Reseller (polling)
+
+    Note over W,S: M3b Task 3. The seam runs at FOUR sites -- this drain,<br/>retry_task, process_webhook_update and fail_manual_task.<br/>_apply_cancel is deliberately not one of them.
+
+    W->>S: drain_pending_tasks (claim FOR UPDATE SKIP LOCKED)
+    rect rgba(200,200,200,0.25)
+        Note over S,DB: one SAVEPOINT per task -- its crash arm records UNKNOWN,<br/>and nothing in this system can ever lower a recorded outcome
+        S->>A: process_task -> fulfil
+        A-->>S: terminal failure + MoneyOutcome (no default: mypy refuses an exit that does not decide)
+        S->>DB: task.status=failed, item.fulfillment_state=failed<br/>record_money_outcome (monotone: RETURNED < UNKNOWN < SPENT, never down)
+    end
+    Note over S,SEAM: SAVEPOINT RELEASED before the seam is called. A refund raising<br/>inside it would roll back the RETURNED it was acting on and leave<br/>a permanent UNKNOWN -- the attempt to refund making it unrefundable.
+
+    S->>SEAM: _settle_merchant_deposit(task_id)
+    SEAM->>DB: flush the CALLER's pending writes (outside the try and the savepoint,<br/>the only statement that is -- a rollback here would discard the failure record)
+    SEAM->>DB: _merchant_of_task -- one indexed read, inside the try, outside the savepoint
+    alt retail order (merchant_id IS NULL)
+        SEAM-->>S: return. One query, no savepoint, no merchants import.<br/>INVENTORY_FAILURE_MONEY_OUTCOME is RETURNED and fires whenever an<br/>inventory route runs dry with no fallback, so this gate does real work
+    end
+
+    rect rgba(200,200,200,0.25)
+        Note over SEAM,OPS: the WHOLE body -- lazy import, three reads, posting, alert --<br/>inside one SAVEPOINT and one except Exception. Propagating would<br/>livelock the queue the storefront shares
+        SEAM->>DB: reload task
+        alt task is no longer failed, or carries no money outcome
+            SEAM-->>S: return
+        end
+        SEAM->>DB: read the order, then the ITEM
+        alt item.fulfillment_state is not failed
+            SEAM-->>S: return -- a low-balance stall keeps the item in_progress, and<br/>money_outcome outlives the attempt that wrote it
+        end
+
+        alt outcome is SPENT or UNKNOWN
+            SEAM->>OPS: merchant_money_outcome -- deposit will not return itself<br/>(deduped per supplier, 15 min). Owner decision: never refund on a guess
+            SEAM-->>S: nothing posted
+        else outcome is RETURNED
+            SEAM->>RF: refund_order(order, reason)
+            RF->>DB: SELECT by key "merchant-order-refund:{order_id}"
+            alt already posted
+                RF-->>SEAM: the existing transaction -- the replay books nothing
+            end
+            RF->>DB: charged_for_order -- the amount comes off the CHARGE'S OWN<br/>ledger transaction, never off order_items.unit_price_usd
+            alt no charge posting
+                RF-->>SEAM: MissingChargeError
+            end
+            RF->>DB: refunded_for_order
+            alt anything already came back
+                RF-->>SEAM: AlreadySettledError -- support settled this by hand
+            end
+            RF->>L: post(kind=merchant_order_refund, D merchant_deposit / C house_payments_received)<br/>reference=(order, order_id), actor=fulfillment
+            RF->>DB: enqueue balance.credited (spec 10) in this same transaction
+            RF-->>SEAM: the refund transaction
+        end
+    end
+    alt anything above raised
+        SEAM->>OPS: merchant_refund_failed + log.error tagged modelled true or false<br/>(RefundError resolved through sys.modules, importing nothing)
+        Note over SEAM: the task keeps its RETURNED, so the order stays refundable by hand
+    end
+
+    W->>DB: COMMIT the batch
+
+    R->>DB: GET /merchant/v1/orders/{merchant_order_id}
+    Note over R,DB: refunded_usd sums the DEBIT legs on merchant_deposit for<br/>transactions referencing this order, so a hand settlement lands<br/>there too. failure_reason splits on that sum against the charge:<br/>fulfillment_failed_refunded only when ALL of it is back.
+    Note over R: order.status does not move, so no order.status_changed webhook fires.<br/>The refund does emit balance.credited: money by push, order state by poll.

@@ -232,9 +232,19 @@ deposit-credits, and the read-only per-merchant deposit ledger at
 the header is the client half of the namespaced ledger key
 (`merchant-credit:{merchant_id}:{client_key}`), so a retry replays the original
 transaction instead of crediting twice. The ledger replays by key **without
-comparing parameters** — the response's `amount` is the replayed transaction's
-(original) amount, so a client that resubmits a key with an amended amount can
-detect the mismatch. The other writes accept an optional `Idempotency-Key` and
+comparing parameters** — the response's `amount` and `order_id` are the
+replayed transaction's (original) ones, so a client that resubmits a key with
+an amended amount or an amended order can detect the mismatch. The optional
+body field `order_id` (M3b) names the order a credit settles; the ledger key is
+deliberately **not** derived from it, because the client key is the replay
+handle and a settlement is already namespaced by order through the runbook's
+`refund-<order-id>` convention. That convention is prose in a document, not an
+invariant — the key is whatever the operator sends — so M3b Task 3 put the
+invariant behind it: an attributed credit that would take the order past what
+it charged answers `409 order_already_settled`. It is what keeps the automatic
+refund and a hand settlement from stacking on one order, and it is checked
+only on a genuinely new key so a retry still replays.
+The other writes accept an optional `Idempotency-Key` and
 replay via the generic `(scope, key)` store, whose scope is **per resource**
 (`merchants.sku_b2b:{sku_id}` and so on) so one reused client key cannot replay
 one SKU's response for another. See
@@ -322,7 +332,23 @@ address at connect time (ADR-0070 decision 2).
 Two event types, the complete v1 list: `order.status_changed`
 (`{merchant_order_id, order_id, status, at}`) and `balance.credited`
 (`{amount_usd, balance_usd}`). Both are exact key sets — a voucher code never
-rides in a body, because the receiver logs bodies wholesale. Four headers, all
+rides in a body, because the receiver logs bodies wholesale.
+
+**`balance.credited` gained a second producer in M3b Task 3** and the event
+itself did not change: M3b's automatic refund of a failed order emits it, the
+same way the hand settlement it replaces already did, with the same two keys.
+That produces the one asymmetry an integrator has to know about — **for a
+failed order the money arrives by push and the order state only by poll.**
+`order.status_changed` does not fire on a fulfilment failure — nor on Task 4's
+stall — because nothing advances `orders.status`; the order sits at
+`fulfilling` with `failure_reason` set, and only
+`GET /merchant/v1/orders/{merchant_order_id}` shows that. A stall moves no
+money either, so unlike a refund it announces nothing at all: the poll is the
+whole mechanism. And because the payload does not name an order — deliberately;
+adding it would be a `/merchant/v2` — a receiver acting on `balance.credited`
+alone knows money came back but not on which order. Reconcile on the order
+read, or on `GET /merchant/v1/transactions`, where the refund row carries
+`order_id` and `merchant_order_id`. Four headers, all
 named in `merchants/signing.py` because they are wire format:
 `X-Yupay-Delivery` (stable across retries, and the receiver's dedupe handle),
 `X-Yupay-Event`, `X-Yupay-Timestamp` (per attempt) and `X-Yupay-Signature` =
@@ -514,10 +540,11 @@ order. Drawn in
 The route's `:path` convertor is **greedy** — it compiles to `.*`, so
 `/merchant/v1/orders/a/b/c/d` matches this handler and answers
 `order_not_found`. Nothing else lives under `/orders/` today — M3a added no
-route here — but M3b's `/orders/{id}/refund` must be registered **above** it or
-Starlette will swallow
-it silently (first full match in declaration order). Noted at the route and in
-the module README's file map.
+route here, and neither did M3b, whose refund is **automatic and has no
+endpoint at all**. The hazard is still live for whatever comes next: any
+future `/orders/{id}/something` must be registered **above** this one or
+Starlette will swallow it silently (first full match in declaration order).
+Noted at the route and in the module README's file map.
 
 An id that could never have been stored — anything outside
 `^[\x21-\x7e]{1,128}$`, the schema `POST /orders` writes through — is refused
@@ -561,8 +588,12 @@ codes). Supplier identity: the delivery artifact goes through
 from `fulfillment/routes.py` into `fulfillment/service.py`** in this task so the
 two surfaces share one list rather than two that drift in the dangerous
 direction (a field added to one and not the other defaults to _visible_ on the
-one that forgot it). And supplier errors: `failure_reason` is a closed
-vocabulary, `fulfillment_failed` or `order_failed`.
+one that forgot it). And supplier errors: `failure_reason` is a
+**controlled** vocabulary, four values today — `fulfillment_failed`,
+`fulfillment_failed_refunded` and `fulfillment_delayed` (both M3b, below) and
+`order_failed` — never a supplier's own words or an operator's note. Controlled
+is not frozen: values are added, never renamed or removed, which is what
+decides how it reaches the schema (below).
 
 `failure_reason` reads the **order item's** `fulfillment_state`, not the
 fulfilment task's, and that inherits a rule rather than inventing one: when a
@@ -570,24 +601,89 @@ supplier refuses for lack of _our_ balance the task goes `failed` but the item
 stays `in_progress` on purpose, so the storefront keeps saying "обработка"
 while an operator tops up and retries. Telling a reseller "failed" there would
 have them refund their end customer for an order we are about to deliver.
-Anything the storefront shows as an error, this shows too — no more, no less.
+Anything the storefront shows as an **error**, this shows as an error too — no
+more, no less.
+
+**M3b Task 4 kept the word and dropped the silence.** Inheriting retail's rule
+was right about not calling a stall a failure and wrong about saying nothing:
+a buyer has a support chat, a reseller has an SLA and a polling loop, and a
+stalled order published `status: "fulfilling", failure_reason: null` — byte
+for byte what an order placed thirty seconds ago publishes, indefinitely. So a
+fourth value, `fulfillment_delayed`, says the delivery has stopped without
+saying it has failed. It is the **only non-terminal value in the vocabulary**,
+which is a contract change in the reading of the whole field: two published
+statements — "treat a non-null `failure_reason` as terminal" and a worked
+polling loop that breaks on `failure_reason != null` — were true before it and
+false after, and both were repaired in the same commit.
+
+The value is **derived, never stored**: a task in `failed` whose order item is
+still open. A stored marker would need clearing at every route out of a stall
+(the top-up retry, a terminal retry, a cancel, a manual delivery, a hand
+closure) and the site that forgot would publish "still coming" about a
+finished order. It never names its cause — that we are short of balance at a
+named supplier is a fact about our supply, and a reseller who could read it
+would learn which of our suppliers is unreliable, exactly as with `SPENT`
+versus `UNKNOWN`. It also pushes nothing: a stall moves no money and no order
+status, so there is no webhook and the poll is the whole mechanism.
 
 `refunded_usd` is summed from the ledger (the debit legs on the merchant's
 `merchant_deposit` for transactions referencing this order), not stored on a
-flag. It reads a **direction, not an intent**, which is deliberate — it does
-not have to know the name M3 gives a refund — so whatever M3 posts against the
-order lands here without a contract change. The README therefore describes it
-as "money that came back on this order" rather than as a refund.
+flag. It reads a **direction, not an intent**, which is deliberate — and the
+design paid off in M3b Task 3: the automatic refund posts a new transaction
+kind, `merchant_order_refund`, and landed on this field with no change to the
+read and none to the published contract. The README therefore describes it as
+"money that came back on this order" rather than as a refund.
 
-It is `"0.00"` for every order today, and the reason is stronger than "refunds
-are unbuilt": **no surface can book a transaction against an order's deposit at
-all.** `POST /admin/merchants/{id}/deposit-credits` — the manual settlement
-support performs for a failed delivery — posts
-`reference=(merchant, merchant_id)`, not `(order, order_id)`, so it moves
-`balance_usd` and appears on `/transactions` while leaving `refunded_usd` at
-zero. `docs/runbooks/merchant-b2b.md` spells out the manual settlement with
-that consequence attached, so an operator does not tell a merchant to look for
-it on the order read.
+Since Task 3 it also drives `failure_reason`. A failed delivery reads
+`fulfillment_failed_refunded` when this sum covers **the whole** of what the
+order charged, and `fulfillment_failed` when it does not — so the field a
+client switches on is derived from the money actually having moved, cannot
+announce a refund that did not post, and cannot call a one-cent partial
+settlement a completed refund. That is **one of the two** values M3b adds to
+the vocabulary — Task 4 adds the non-terminal `fulfillment_delayed`, described
+above — and it is the only one derived from money. Whether a
+supplier kept our money or we cannot tell stays internal, because a reseller
+who could read it off our API would learn which of our suppliers is
+unreliable.
+
+Until M3b `refunded_usd` was `"0.00"` for every order, and the reason was
+stronger than "refunds are unbuilt": **no surface could book a transaction
+against an order's deposit at all.** `POST /admin/merchants/{id}/deposit-credits` — the
+manual settlement support performs for a failed delivery — posted
+`reference=(merchant, merchant_id)` while this field filters on
+`(order, order_id)`, so the credit moved `balance_usd`, appeared on
+`/transactions` with a null `merchant_order_id`, and left `refunded_usd` at
+zero. M3b Task 2 gave that endpoint an optional `order_id`: an attributed
+credit posts `(order, order_id)` — same legs, same kind, only the reference
+moves — and lands here. The order must be the credited merchant's; one that is
+not, one that does not exist and a malformed id all answer a single
+`404 order_not_found`, the same non-oracle discipline `/merchant/v1`'s own
+reads keep. `docs/runbooks/merchant-b2b.md` is written around the attributed
+form, which the admin SPA's deposit-credit screen now produces directly.
+
+**The vocabulary is published in the README and not in the schema, and that is
+a decision rather than an omission** (ADR-0071). `failure_reason` reaches
+`docs/api/openapi.json` as a bare nullable string with no `enum`, because an
+`enum` closes the set in a machine-checkable way at exactly the moment we are
+still adding to it — M3b added two values — so a client generated before this
+milestone would carry a type that excludes something we now send, and a strict
+generated validator would reject a good response. The receiver is code nobody
+but its owner can redeploy (ADR-0069), so that trade runs the wrong way. The
+contract's own rule is the opposite instruction and cannot be expressed in an
+`enum` at all: an unrecognised value is **not** a stop condition. `status` is
+open in the same way and for the same reason.
+
+**M3b also records what the merchant quoted.** `expected_price` reached exactly
+one durable place — the SHA-256 request digest on the `order.paid` event, which
+can answer "same request?" and nothing else — so a pilot disputing a charge
+could not be shown their own number and quote drift was unmeasurable after the
+fact. Migration 0072 adds `order_items.merchant_expected_price_usd`, written on
+merchant lines only and read by no code path. Spec item 3b's _other_ half — a
+stored computed list price — was checked and **not** built: `unit_price_usd`
+already is that number (`merchants.orders.place` passes one value to both the
+order line and the deposit charge), so a second column would be filled from the
+same expression and would make the runbook's regression query compare a value
+with itself.
 
 ### `GET /merchant/v1/transactions` — the deposit ledger
 

@@ -49,6 +49,9 @@
       "noteLabel": "Note",
       "noteHint": "(optional; internal only)",
       "notePlaceholder": "e.g. invoice #14 of Sep 5",
+      "orderLabel": "Order id",
+      "orderHint": "(optional; OUR order id — the UUID from orders.id, not the reseller's merchant_order_id)",
+      "orderPlaceholder": "e.g. 0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34",
       "submit": "Credit",
       "submitBusy": "Crediting…",
       "confirmTitle": "Credit the deposit?",
@@ -58,7 +61,11 @@
       "resultBalance": "Balance after the credit: {balance}",
       "replayMismatch": "Credited {booked} via a previously used key — the entered amount {typed} was NOT applied. Check the history below and submit the form again if a new credit is needed.",
       "amountInvalid": "Amount must be a positive USD number with at most two decimals.",
-      "error": "Failed to credit: {message}"
+      "error": "Failed to credit: {message}",
+      "orderInvalid": "The order id is a UUID from orders.id. This looks like the reseller's merchant_order_id: the server would answer “order not found”, and that is the wrong place to look.",
+      "confirmBodyOrder": "The credit will be booked against order {order}: the amount lands in that order's refunded_usd. The attribution cannot be changed afterwards.",
+      "resultOrder": "Booked against order {order}",
+      "replayOrderMismatch": "The previously used key is booked against order {booked}, not the entered {typed}. An attribution cannot be re-pointed — check the history below."
     },
     "ledger": {
       "title": "Deposit history",

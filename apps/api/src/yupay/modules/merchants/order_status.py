@@ -59,7 +59,8 @@ from yupay.core.errors import NotFoundError
 # that very stack. The same reason ``orders.service`` reaches for
 # ``affiliate.discount`` directly.
 from yupay.modules.fulfillment import service as fulfillment
-from yupay.modules.merchants import deposit
+from yupay.modules.fulfillment import stall as fulfillment_stall
+from yupay.modules.merchants import deposit, refund
 from yupay.modules.merchants.machine_schemas import (
     MerchantDeliveryOut,
     MerchantOrderEventOut,
@@ -68,6 +69,8 @@ from yupay.modules.merchants.machine_schemas import (
 from yupay.modules.orders import service as orders
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
+    from decimal import Decimal
+
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from yupay.modules.merchants.models import Merchant
@@ -75,7 +78,11 @@ if TYPE_CHECKING:  # pragma: no cover -- type hints only
 
 #: RFC 7807 ``code`` for an id that is not this merchant's. Also the answer for
 #: an id that belongs to somebody else — see the module docstring.
-CODE_ORDER_NOT_FOUND: Final = "order_not_found"
+#:
+#: Defined in ``deposit``, which answers the same word when a support credit
+#: names an order that is not this merchant's (M3b Task 2). Two surfaces, one
+#: published code, and no second literal to drift.
+CODE_ORDER_NOT_FOUND: Final = deposit.CODE_ORDER_NOT_FOUND
 
 #: Exactly ``MerchantOrderCreateIn.merchant_order_id``'s pattern and length.
 #: Every stored id was written through that schema, so an id outside this
@@ -114,31 +121,134 @@ TIMELINE_EVENTS: Final[frozenset[str]] = frozenset(
 REASON_ORDER_FAILED: Final = "order_failed"
 REASON_FULFILLMENT_FAILED: Final = "fulfillment_failed"
 
+#: A delivery that failed **and** whose money is already back on the deposit —
+#: all of it.
+#:
+#: M3b Task 3 adds exactly **one** value here, not two, and this is it. The
+#: distinction a reseller needs is "we are refunding you" versus "a human is
+#: deciding", and the second half is what ``fulfillment_failed`` has always
+#: meant — so the new word goes on the new fact and nothing a client switches
+#: on today changes meaning. (Task 4 adds a second value to the *vocabulary*
+#: — :data:`REASON_FULFILLMENT_DELAYED` — but not to this distinction: it is
+#: about a delivery that has not finished, and every value here is about one
+#: that has.)
+#:
+#: What is deliberately *not* in this vocabulary is whether the supplier kept
+#: our money or we cannot tell. That is a fact about **our** supplier
+#: relationship: a reseller who could read it off this field would learn which
+#: of our suppliers is unreliable. It stays on the task, in the admin inbox
+#: and in the ops alert, which is where the person who acts on it looks.
+REASON_FULFILLMENT_REFUNDED: Final = "fulfillment_failed_refunded"
 
-def _failure_reason(order: Order) -> str | None:
+#: **The one value in this vocabulary that is not terminal.** The delivery has
+#: stopped, the order has not: an operator is topping a supplier up and the
+#: goods are still coming. *Keep polling* — do not re-order, do not refund
+#: your end customer.
+#:
+#: M3b Task 4's single addition. Before it, a stall published ``None`` and was
+#: byte-identical to an order placed thirty seconds ago, for ever — retail's
+#: rule, right for a buyer with a support chat and useless to a machine with
+#: an SLA and a polling loop that has no terminal condition.
+#:
+#: What it deliberately does not say is **why**. The cause is that *we* ran
+#: out of balance at a named supplier, which is a fact about our supplier
+#: funding rather than about this order; a reseller who could read it here
+#: would learn which of our suppliers is short of money. Same reason ``SPENT``
+#: and ``UNKNOWN`` are not distinguishable above.
+#:
+#: Because it is not terminal it changes how the whole field reads, and the
+#: module README's contract text carries that: "any non-null value is
+#: terminal" was true until this value existed and is now the one sentence an
+#: integrator must not have copied.
+REASON_FULFILLMENT_DELAYED: Final = "fulfillment_delayed"
+
+
+def _failure_reason(
+    order: Order, *, refunded: Decimal, charged: Decimal | None, stalled: bool
+) -> str | None:
     """Why this order has stopped moving, or ``None`` if it has not.
 
-    Two sources, in order:
+    Three sources, in order:
 
     ``order.status == "failed"`` is support closing a paid-but-undeliverable
     order by hand. The operator's reason is recorded on the timeline event and
     stays there — it is written for us, not for a reseller.
 
-    Otherwise the *item's* ``fulfillment_state``. Reading the item rather than
+    Next the *item's* ``fulfillment_state``. Reading the item rather than
     the fulfilment task is deliberate and inherits a rule ``fulfillment``
     already draws: when a supplier fails us for lack of **our own** balance the
     task goes ``failed`` but the item stays ``in_progress``, so the storefront
     keeps saying "processing" while an operator tops up and retries. Reporting
-    that to a reseller as a failure would have them refund their end customer
+    that to a reseller as a *failure* would have them refund their end customer
     for an order we are about to deliver. Anything the storefront would show as
     an error, this shows too.
 
+    Last ``stalled``, and it is the same state seen from the other side.
+    Inheriting retail's rule was right about the word and wrong about the
+    silence: a reseller has an SLA and a polling loop, so
+    :data:`REASON_FULFILLMENT_DELAYED` says the order has stopped without
+    saying it has failed. It comes last because both values above are
+    *endings* and this one is not: an order support has closed by hand, and
+    one whose delivery has terminally failed, are terminal whatever the task
+    underneath them is still doing. The precedence is the contract — a client
+    that read ``fulfillment_delayed`` off a closed order would go on waiting
+    for it.
+
     Note the asymmetry with ``status``: a supplier failure leaves the order row
     in ``fulfilling`` — nothing advances it — so without this field a stalled
-    order is indistinguishable from a busy one, forever.
+    order is indistinguishable from a busy one, forever. That is true of the
+    delayed value too, which is why it exists.
+
+    A failed delivery then splits on ``refunded``, and it splits on the
+    **ledger** rather than on anything the fulfilment path wrote down. That is
+    what makes the field incapable of lying: it says "your money is back"
+    only when money is actually back, so an automatic refund that raised, an
+    order whose charge could not be found, and a supplier that kept our money
+    all read ``fulfillment_failed`` — "a human is deciding" — without any of
+    those paths having to remember to say so.
+
+    **The comparison is against what the order was charged, not against
+    zero**, because ``refunded`` is a sum and a sum is not a flag. A one-cent
+    attributed credit on a $1.07 order is a partial settlement — a human
+    mid-decision — and reading it as ``fulfillment_failed_refunded`` would
+    tell the reseller what this module's own contract text says that value
+    means: *"we have already put what you paid back … Refund your own
+    customer. Nothing to chase."* They would refund $1.07 against $0.01
+    received. It is also exactly the state that needs a person most, because
+    ``refund.refund_order`` refuses to auto-refund into a partial decision, so
+    that cent blocks the real refund for good.
+
+    ``charged`` comes from the ledger too (``deposit.charged_for_order``), the
+    same authority the refund reads its amount from — not from
+    ``item.unit_price_usd``. The two hold one number today, by construction
+    and not by any constraint (``merchants.orders.place`` passes one value to
+    both), so reading the line would agree with the ledger right up until
+    something edited it. ``None`` — an order with no charge posting at all —
+    can never read as refunded: there is nothing it could be complete
+    against.
+
+    It counts money back **by any route**, which is why a hand settlement
+    reaches it too: whether an operator or the saga returned the money is our
+    business, not the reseller's, and ``refunded_usd`` beside it carries how
+    much.
+
+    ``order_failed`` still wins when support closed the order by hand. A
+    closure is a human already in the loop with the reseller, and the amount
+    is on ``refunded_usd`` either way; layering a fourth combination onto a
+    field a client switches on would buy nothing.
 
     Args:
         order: The order, with its items loaded.
+        refunded: What has come back to the deposit on this order — the same
+            number the response's ``refunded_usd`` carries, passed in rather
+            than re-read so the two cannot disagree.
+        charged: What the order's deposit charge actually took, or ``None`` if
+            it has no charge posting.
+        stalled: Whether a fulfilment task of this order has stopped while the
+            item it was fulfilling is still open —
+            ``fulfillment.stall.order_is_stalled``, computed by the caller so
+            this stays a pure function of facts and the transition table can
+            be tested without a database.
 
     Returns:
         A value from the closed vocabulary above, or ``None``.
@@ -146,8 +256,12 @@ def _failure_reason(order: Order) -> str | None:
     if order.status == "failed":
         return REASON_ORDER_FAILED
     if any(item.fulfillment_state == "failed" for item in order.items):
-        return REASON_FULFILLMENT_FAILED
-    return None
+        # ``refund.settled_in_full``, not a comparison spelled here: the
+        # cancellation alert asks the same question, and two spellings of one
+        # rule is how one of them starts saying "refunded" about a cent.
+        whole = refund.settled_in_full(charged=charged, returned=refunded)
+        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED
+    return REASON_FULFILLMENT_DELAYED if stalled else None
 
 
 async def _delivery(db: AsyncSession, order: Order) -> MerchantDeliveryOut | None:
@@ -209,19 +323,27 @@ async def read(
         raise NotFoundError("no order with that merchant_order_id", code=CODE_ORDER_NOT_FOUND)
 
     item = order.items[0]
+    refunded = await deposit.refunded_for_order(db, merchant_id=merchant.id, order_id=order.id)
+    charged = await deposit.charged_for_order(db, merchant_id=merchant.id, order_id=order.id)
     return MerchantOrderStatusOut(
         merchant_order_id=order.idempotency_key or "",
         order_id=order.id,
         status=order.status,
         sku_id=item.sku_id,
         price_usd=item.unit_price_usd,
-        refunded_usd=await deposit.refunded_for_order(
-            db, merchant_id=merchant.id, order_id=order.id
-        ),
+        refunded_usd=refunded,
         created_at=order.created_at,
         paid_at=order.paid_at,
         delivered_at=order.delivered_at,
-        failure_reason=_failure_reason(order),
+        failure_reason=_failure_reason(
+            order,
+            refunded=refunded,
+            charged=charged,
+            # One indexed read, and only while the order is still open — see
+            # ``order_is_stalled``. A settled order asks the database nothing,
+            # which matters on the endpoint we tell resellers to poll.
+            stalled=await fulfillment_stall.order_is_stalled(db, order=order),
+        ),
         delivery=await _delivery(db, order),
         # ``Order.events`` is eagerly loaded and already ordered
         # ``created_at, id`` by the relationship, so this is a filter and not
@@ -236,7 +358,9 @@ async def read(
 
 __all__ = [
     "CODE_ORDER_NOT_FOUND",
+    "REASON_FULFILLMENT_DELAYED",
     "REASON_FULFILLMENT_FAILED",
+    "REASON_FULFILLMENT_REFUNDED",
     "REASON_ORDER_FAILED",
     "TIMELINE_EVENTS",
     "read",

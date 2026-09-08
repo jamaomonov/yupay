@@ -64,6 +64,7 @@ from yupay.modules.merchants.deposit import (
     credit_deposit,
     deposit_balance,
     list_deposit_transactions,
+    order_reference_of,
 )
 from yupay.modules.merchants.models import (
     Merchant,
@@ -155,6 +156,7 @@ __all__ = [
     "list_merchants_with_balances",
     "merchant_markup_pct",
     "merchant_price",
+    "order_reference_of",
     "place_order",
     "read_order_status",
     "revoke_api_key",

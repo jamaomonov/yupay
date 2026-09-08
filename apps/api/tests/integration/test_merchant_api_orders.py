@@ -709,6 +709,44 @@ async def test_quoting_the_full_two_percent_low_buys_at_our_price_and_takes_no_d
     assert item.unit_price_usd == Decimal("107.00")
 
 
+async def test_the_merchants_own_quote_is_recorded_beside_the_price_we_charged(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Spec item 3b (ADR-0071): what they sent is on the row, not only hashed.
+
+    ``expected_price`` used to reach exactly one durable place — the SHA-256
+    request digest on the ``order.paid`` event, which can answer "same
+    request?" and nothing else. So a pilot disputing a charge could not be
+    shown their own number, and the drift between what merchants quote and
+    what we charge was unmeasurable after the fact.
+
+    The two columns must differ here, or the assertion proves nothing: 105.90
+    is 1.03 % below our 107.00, inside the band, so the order executes at ours
+    and the quote is recorded as theirs.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "200.00")
+    # cost 100, markup 7 → our price is 107.00.
+    sku_id = await _seeded(db_session, cost_usdt=Decimal("100"))
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "quote-1", "sku_id": sku_id, "expected_price": "105.90"},
+    )
+
+    assert r.status_code == 201, r.text
+    item = (
+        await db_session.execute(
+            select(OrderItem).where(OrderItem.order_id == r.json()["order_id"])
+        )
+    ).scalar_one()
+    assert item.unit_price_usd == Decimal("107.00")
+    assert item.merchant_expected_price_usd == Decimal("105.90")
+
+
 async def test_a_price_above_ours_but_inside_the_band_still_charges_ours(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:

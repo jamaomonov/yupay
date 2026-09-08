@@ -19,6 +19,7 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillerNotIntegratedError,
     FulfillResult,
     FulfillStatus,
+    MoneyOutcome,
 )
 from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
@@ -96,6 +97,7 @@ __all__ = [
     "G2bFulfiller",
     "ManualFulfiller",
     "MockFulfiller",
+    "MoneyOutcome",
     "StubFulfiller",
     "WaxpeerFulfiller",
     "available_suppliers",

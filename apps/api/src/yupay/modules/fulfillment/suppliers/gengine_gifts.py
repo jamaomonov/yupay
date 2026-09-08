@@ -28,7 +28,12 @@ from typing import TYPE_CHECKING, Any
 
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
-from yupay.modules.fulfillment.suppliers.base import FulfillerError, FulfillResult, FulfillStatus
+from yupay.modules.fulfillment.suppliers.base import (
+    FulfillerError,
+    FulfillResult,
+    FulfillStatus,
+    MoneyOutcome,
+)
 from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineClient,
     GEngineError,
@@ -66,6 +71,29 @@ _DELIVERY_MESSAGE = (
 )
 
 _PARK_ERROR = "gift order not found at supplier after create timeout — manual review"
+
+#: A refusal on a corrupted order line — read before any call is made.
+_NEVER_ORDERED = MoneyOutcome.RETURNED
+
+#: A gift order is bought and paid in **one call**, so any failure of that call
+#: — or of a poll that could not complete — leaves both answers open. This is
+#: the module's whole design premise (see the docstring): money may already
+#: have moved by the time a response is lost.
+_ONE_CALL_BOTH_BUYS_AND_PAYS = MoneyOutcome.UNKNOWN
+
+
+def _gift_money_outcome(order: GEngineGiftOrder) -> MoneyOutcome:
+    """What a dead gift order means for our money.
+
+    ``is_refunded`` is a real field, and the ``refunded`` status is the same
+    fact said twice; either one means the money came back. A ``canceled``
+    order that carries neither is :attr:`MoneyOutcome.UNKNOWN` — the supplier
+    killed it, and nothing in the response says whether the purchase price
+    followed.
+    """
+    if order.is_refunded or order.status == "refunded":
+        return MoneyOutcome.RETURNED
+    return MoneyOutcome.UNKNOWN
 
 
 async def fulfill_gift(
@@ -110,7 +138,10 @@ async def fulfill_gift(
     region = str(data.get("region") or "").strip()
     package_id_raw = data.get("package_id")
     if not invite_url or not region or package_id_raw is None:
-        raise FulfillerError("gift order line is missing invite_url, package_id, or region")
+        raise FulfillerError(
+            "gift order line is missing invite_url, package_id, or region",
+            money_outcome=_NEVER_ORDERED,
+        )
     # G-Engine's wire `region` is the supplier's 2-letter country code from
     # the package's own price entry, not our zone label (`region` above) —
     # a zone label gets «Price not found». Checkout (Task 4-hotfix) resolves
@@ -121,7 +152,8 @@ async def fulfill_gift(
         package_id = int(package_id_raw)
     except (TypeError, ValueError) as exc:
         raise FulfillerError(
-            f"gift order line package_id must be numeric, got {package_id_raw!r}"
+            f"gift order line package_id must be numeric, got {package_id_raw!r}",
+            money_outcome=_NEVER_ORDERED,
         ) from exc
 
     try:
@@ -144,7 +176,7 @@ async def fulfill_gift(
             invite_url=invite_url, package_id=package_id, region=wire_region
         )
     except GEngineError as exc:
-        raise FulfillerError(str(exc)) from exc
+        raise FulfillerError(str(exc), money_outcome=_ONE_CALL_BOTH_BUYS_AND_PAYS) from exc
     except GEngineUnavailableError as exc:
         # Ambiguous: the create may have landed upstream even though we
         # never saw the response. Parking id-less (rather than raising, which
@@ -159,6 +191,7 @@ async def fulfill_gift(
             artifact=None,
             error=None,
             extra_metadata=_gift_search_metadata(package_id=package_id, invite_url=invite_url),
+            money_outcome=None,
         )
 
     return _gift_created_result(order, package_id=package_id, invite_url=invite_url)
@@ -204,7 +237,11 @@ async def gift_status(client: GEngineClient, *, task: FulfillmentTask) -> Fulfil
             # it as such would park the task failed purely because the
             # supplier was unreachable. The 60s reconcile sweep retries.
             return FulfillStatus(
-                outcome="in_progress", artifact_kind=None, artifact=None, error=None
+                outcome="in_progress",
+                artifact_kind=None,
+                artifact=None,
+                error=None,
+                money_outcome=None,
             )
         if found is not None:
             status = await _poll_gift_order(client, task=task, order_id=found.id)
@@ -216,11 +253,23 @@ async def gift_status(client: GEngineClient, *, task: FulfillmentTask) -> Fulfil
                 # `gift_order_id` lets the next poll skip straight to the
                 # direct id-based lookup instead of re-running the finder.
                 extra_metadata={**status.extra_metadata, "gift_order_id": str(found.id)},
+                money_outcome=status.money_outcome,
             )
 
     if now() - task.created_at > timedelta(minutes=GIFT_ADOPT_WINDOW_MINUTES):
-        return FulfillStatus(outcome="failed", artifact_kind=None, artifact=None, error=_PARK_ERROR)
-    return FulfillStatus(outcome="in_progress", artifact_kind=None, artifact=None, error=None)
+        # The design *believes* the create never landed — by now one would be
+        # findable — but it parks for a human precisely so nobody acts on that
+        # belief before it is confirmed. UNKNOWN is that sentence, typed.
+        return FulfillStatus(
+            outcome="failed",
+            artifact_kind=None,
+            artifact=None,
+            error=_PARK_ERROR,
+            money_outcome=_ONE_CALL_BOTH_BUYS_AND_PAYS,
+        )
+    return FulfillStatus(
+        outcome="in_progress", artifact_kind=None, artifact=None, error=None, money_outcome=None
+    )
 
 
 # ---------- helpers ----------
@@ -240,9 +289,15 @@ async def _poll_gift_order(
     try:
         order = await client.get_gift_order(order_id)
     except GEngineUnavailableError:
-        return FulfillStatus(outcome="in_progress", artifact_kind=None, artifact=None, error=None)
+        return FulfillStatus(
+            outcome="in_progress",
+            artifact_kind=None,
+            artifact=None,
+            error=None,
+            money_outcome=None,
+        )
     except GEngineError as exc:
-        raise FulfillerError(str(exc)) from exc
+        raise FulfillerError(str(exc), money_outcome=_ONE_CALL_BOTH_BUYS_AND_PAYS) from exc
     return _map_gift_order(order, task=task)
 
 
@@ -263,6 +318,7 @@ def _map_gift_order(order: GEngineGiftOrder, *, task: FulfillmentTask) -> Fulfil
             artifact_kind=None,
             artifact=None,
             error=order.error or f"supplier status {order.status}",
+            money_outcome=_gift_money_outcome(order),
         )
     if order.status in GIFT_STATUS_DONE:
         # `app_name` isn't ours to set from this module (`GEngineGiftOrder`
@@ -283,6 +339,7 @@ def _map_gift_order(order: GEngineGiftOrder, *, task: FulfillmentTask) -> Fulfil
                 "message": _DELIVERY_MESSAGE,
             },
             error=None,
+            money_outcome=None,
         )
     return FulfillStatus(
         outcome="in_progress",
@@ -290,6 +347,7 @@ def _map_gift_order(order: GEngineGiftOrder, *, task: FulfillmentTask) -> Fulfil
         artifact=None,
         error=None,
         extra_metadata={"gengine_status": order.status},
+        money_outcome=None,
     )
 
 
@@ -323,6 +381,7 @@ def _gift_created_result(
             **_gift_search_metadata(package_id=package_id, invite_url=invite_url),
             "gengine_status": order.status,
         },
+        money_outcome=None,
     )
 
 

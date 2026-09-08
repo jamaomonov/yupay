@@ -22,7 +22,15 @@ from yupay.modules.fulfillment.suppliers.base import (
 
 
 class ManualFulfiller:
-    """Always returns ``in_progress`` — the human in the loop does the work."""
+    """Always returns ``in_progress`` — the human in the loop does the work.
+
+    It has **no terminal failure of its own**, which is why every result here
+    carries ``money_outcome=None``. A manual task only ever ends badly through
+    the admin ``/fail`` route, and ``fulfillment.service.fail_manual_task``
+    answers the money question there — an operator who bought the goods
+    somewhere by hand is the only one who knows what happened to the money,
+    and that route already leaves the refund to them explicitly.
+    """
 
     supplier = "manual"
 
@@ -45,6 +53,7 @@ class ManualFulfiller:
             artifact=None,
             error=None,
             extra_metadata={"queued_at": now().isoformat()},
+            money_outcome=None,
         )
 
     async def check_status(
@@ -58,6 +67,7 @@ class ManualFulfiller:
             artifact_kind=None,
             artifact=None,
             error=None,
+            money_outcome=None,
         )
 
     async def cancel(
