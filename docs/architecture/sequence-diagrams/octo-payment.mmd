@@ -30,8 +30,8 @@ sequenceDiagram
     PAY->>OCTO_AD: verify_webhook(body)
     OCTO_AD-->>PAY: WebhookEvent(external_event_id="UUID:succeeded", outcome=succeeded)
     PAY->>DB: INSERT payment_webhooks (dedup on provider+external_event_id)
-    PAY->>DB: payment.status=succeeded; order.status=paid (_mark_payment_succeeded)
+    PAY->>DB: payment.status=succeeded, order.status=paid (_mark_payment_succeeded)
     PAY->>FUL: start_for_order(order_id)
     PAY-->>OCTO: 200 {status: processed}
 
-    Note over OCTO,PAY: a replay of the same (UUID:status) → 200 {duplicate}; a bad signature → 422
+    Note over OCTO,PAY: a replay of the same (UUID:status) → 200 {duplicate}, a bad signature → 422

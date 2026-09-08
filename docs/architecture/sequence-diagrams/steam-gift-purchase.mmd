@@ -38,7 +38,7 @@ sequenceDiagram
             API->>Steam: ResolveVanityURL (/id/ only) then GetPlayerSummaries<br/>5s per call, 7s total budget
             Steam-->>API: persona, or nothing
             API-->>Web: {status: found | not_found | unsupported | unavailable}
-            Web->>C: found -> avatar + nickname card; ONLY not_found blocks Buy
+            Web->>C: found -> avatar + nickname card — ONLY not_found blocks Buy
         end
     end
 
@@ -62,7 +62,7 @@ sequenceDiagram
         end
         Web->>C: push /orders/{id}?pay=1 -- the ORDER PAGE, not the acquirer
         Note over Web,C: the order page opens Click/Payme/Uzum itself, once<br/>(docs/product/flows/payment-return.md)
-        C->>API: pays; webhook settles the order (unchanged payments flow)
+        C->>API: pays, webhook settles the order (unchanged payments flow)
         API->>DB: order.status = paid
     end
 

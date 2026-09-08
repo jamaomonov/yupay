@@ -10,7 +10,7 @@ sequenceDiagram
     participant S as G2B / Waxpeer
     participant DB as Postgres
 
-    R->>API: POST {sku_id, player_id, server_id} (signed; body, never a URL)
+    R->>API: POST {sku_id, player_id, server_id} (signed — body, never a URL)
     Note over R,API: player_id is the reseller's END CUSTOMER's -- transit only,<br/>never in a query string, never in a log line (only hash_short)
     API->>API: merchant_auth: HMAC + freshness + merchant-api IP counter (600/60s)
     API->>G: guard_ip("merchant-validate") 120/60s per ADDRESS
@@ -31,7 +31,7 @@ sequenceDiagram
 
     V->>V: product_is_checkable(required_fields)?
     alt no field declares check.provider
-        V-->>R: 200 {status: "unsupported"} -- permanent; order without a check
+        V-->>R: 200 {status: "unsupported"} -- permanent — order without a check
         Note over V,R: NOT "valid" (that would approve nothing on purpose) and<br/>NOT a 404 (that would read as "no such SKU")
     end
 
@@ -39,7 +39,7 @@ sequenceDiagram
     P->>C: GET playercheck:*:<hash>
     alt cache hit
         C-->>R: 200 the stored verdict, unchanged and uncaveated
-        Note over C,R: a cached answer is still our best answer;<br/>a "this was cached" flag would only invite distrust of a good one
+        Note over C,R: a cached answer is still our best answer —<br/>a "this was cached" flag would only invite distrust of a good one
     end
     P->>DB: resolve g2b game_code from sku_supplier_mapping
     alt no active mapping, or two distinct codes

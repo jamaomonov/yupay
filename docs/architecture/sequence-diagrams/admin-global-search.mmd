@@ -21,6 +21,6 @@ sequenceDiagram
     end
     DB-->>API: rows per source
     API-->>Palette: { users: [...], orders: [...],<br/>payments: [...], skus: [...] }
-    Palette-->>Admin: render groups; ↑↓ to navigate, Enter to open
+    Palette-->>Admin: render groups — ↑↓ to navigate, Enter to open
     Admin->>Palette: Enter on "Alice Customer"
     Palette->>Palette: navigate to /customers/{user_id}<br/>(Sprint 1 — until then /users/{user_id})

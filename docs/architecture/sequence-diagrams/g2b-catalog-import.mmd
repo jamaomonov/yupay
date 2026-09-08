@@ -12,7 +12,7 @@ sequenceDiagram
     SPA->>API: GET /catalog?supplier_slug=g2b&kind=game (+ mappings for badges)
     Admin->>SPA: pick game, set margin, select denominations
 
-    Note over SPA: wizard pre-fetched cost/denominations + required_fields; no live G2B call on import
+    Note over SPA: wizard pre-fetched cost/denominations + required_fields — no live G2B call on import
 
     SPA->>API: POST /g2b/import {game_code, new_brand|brand_id, product, margin_percent, denominations}
     API->>CAT: create_brand / get_brand
@@ -29,6 +29,6 @@ sequenceDiagram
     end
 
     Note over API,DB: service flushes only — route owns the transaction
-    API->>DB: COMMIT (atomic; any error rolls the whole import back)
+    API->>DB: COMMIT (atomic — any error rolls the whole import back)
     API-->>SPA: 201 {brand_id, product_id, created_skus, created_mappings, skipped}
     SPA-->>Admin: toast + navigate /brands/:id

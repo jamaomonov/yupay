@@ -25,7 +25,7 @@ sequenceDiagram
         G2B_AD-->>FUL: FulfillResult(in_progress, external_order_id, extra_metadata={player_id_hash})
         FUL->>DB: INSERT fulfillment_attempts(payload={kind: 'game', player_id_hash})
         FUL->>DB: UPDATE task.status='in_progress', external_order_id=?
-        Note over FUL,G2B: never log raw player_id; only its 12-char SHA-256 prefix
+        Note over FUL,G2B: never log raw player_id — only its 12-char SHA-256 prefix
     end
 
     Note over G2B: G2B processes the top-up against the player's in-game account...
@@ -48,7 +48,7 @@ sequenceDiagram
         G2B-->>G2B_AD: 200 {status: FAILED, message}
         G2B_AD-->>FUL: FulfillStatus(failed)
         FUL->>DB: UPDATE task.status='failed'
-        Note over FUL: G2B auto-refunds their balance; YuPay-side refund to customer is a separate admin action via /admin/payments/{id}/refund
+        Note over FUL: G2B auto-refunds their balance — YuPay-side refund to customer is a separate admin action via /admin/payments/{id}/refund
     end
 
     API-->>G2B: 200 {status: processed}

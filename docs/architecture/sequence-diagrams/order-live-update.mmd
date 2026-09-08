@@ -35,7 +35,7 @@ sequenceDiagram
         else logged-in user
             Rt->>Redis: PUBLISH realtime:user:{id} {json}
         end
-        note over Txn: Fulfillment failure is NOT an order failure —<br/>order stays "fulfilling" for admin remediation;<br/>order.failed is never published (no failed modal)
+        note over Txn: Fulfillment failure is NOT an order failure —<br/>order stays "fulfilling" for admin remediation —<br/>order.failed is never published (no failed modal)
     end
 
     %% ─────────────────────────────────────────────

@@ -31,7 +31,7 @@ sequenceDiagram
         note over User,Acquirer: Phase 2 — Off-site payment
         User->>Acquirer: Authorise payment (card / wallet / USDT)
         Acquirer->>API: Webhook POST /webhooks/{provider}<br/>(signature verified before body parse)
-        API->>DB: INSERT payment_webhooks; UPDATE orders status → paid
+        API->>DB: INSERT payment_webhooks, UPDATE orders status → paid
         API->>DB: INSERT order_events(payment.confirmed)
         Acquirer-->>User: Redirect to /orders/{orderId}?email={email}
     end
@@ -58,13 +58,13 @@ sequenceDiagram
                 API->>DB: SELECT deliveries WHERE order_id=?
                 DB-->>API: deliveries (may be empty)
                 API-->>Web: 200 deliveries[]
-                note over Web: refetchInterval active; re-poll in 3-5 s
+                note over Web: refetchInterval active — re-poll in 3-5 s
             else status = delivered
                 Web->>API: GET /api/v1/orders/{orderId}/deliveries
                 API-->>Web: 200 deliveries (artifact: voucher code / key)
-                Web->>User: Show delivery artifact; stop polling
+                Web->>User: Show delivery artifact, stop polling
             else status = refunded OR failed
-                Web->>User: Show terminal error state; stop polling
+                Web->>User: Show terminal error state, stop polling
             end
         end
     end

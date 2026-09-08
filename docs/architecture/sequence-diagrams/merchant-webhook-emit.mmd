@@ -32,7 +32,7 @@ sequenceDiagram
                 W->>DB: ROLLBACK TO SAVEPOINT
                 W->>W: log.error(type + SQLSTATE only, never the driver's<br/>message -- it renders the failing row, url included)
                 W-->>CALLER: None -- the order still commits
-                Note over W,DB: An order is money; a webhook is a courtesy.
+                Note over W,DB: An order is money — a webhook is a courtesy.
             else inserted
                 W-->>CALLER: delivery_id
             end

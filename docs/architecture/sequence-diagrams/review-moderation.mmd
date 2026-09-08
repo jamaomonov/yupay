@@ -27,7 +27,7 @@ sequenceDiagram
     Admin->>API: POST /admin/reviews/{id}/{hide|unhide|remove} + Idempotency-Key
     API->>Svc: admin_set_status(review_id, status)
     Svc->>DB: load review FOR UPDATE
-    Svc->>DB: on published-boundary crossing, bump stats ±1; set status; flush
+    Svc->>DB: on published-boundary crossing, bump stats ±1, set status, flush
     Svc-->>API: Review + report_count
     API-->>Admin: 200 AdminReviewOut
     end

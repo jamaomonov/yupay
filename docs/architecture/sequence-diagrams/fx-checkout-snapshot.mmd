@@ -19,4 +19,3 @@ sequenceDiagram
     end
     Orders->>DB: INSERT orders(..., fx_snapshot_id=snap.id, total_charged=usd*rate)
     Orders-->>Cust: 201 order
-```

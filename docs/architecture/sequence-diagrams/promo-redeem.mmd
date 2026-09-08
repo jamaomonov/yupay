@@ -21,7 +21,7 @@ sequenceDiagram
         SVC->>W: ensure_account(user_wallet), ensure_account(house_promo_expense)
         SVC->>W: post(kind=promo.redeem, D user / C house, key=promo:{id}:{user})
         W->>DB: INSERT wallet_transaction + postings
-        SVC->>DB: INSERT promo_redemptions (SAVEPOINT; UNIQUE(code,user))
+        SVC->>DB: INSERT promo_redemptions (SAVEPOINT, UNIQUE(code,user))
         SVC-->>API: {code, amount, currency}
     end
     API-->>MA: 200 → тост «Начислено X» + рефреш баланса

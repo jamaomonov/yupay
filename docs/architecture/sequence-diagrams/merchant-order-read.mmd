@@ -16,7 +16,7 @@ sequenceDiagram
     API->>S: read(merchant=<from the signature>, merchant_order_id="acme/2026/000417")
 
     S->>O: find_merchant_order(merchant_id, merchant_order_id)
-    Note over S,O: scope is the AUTHENTICATED merchant; no parameter names one
+    Note over S,O: scope is the AUTHENTICATED merchant — no parameter names one
     O->>DB: SELECT orders WHERE idempotency_key = ? AND merchant_id = ?<br/>+ items + events (eager)
     alt no such order, or it belongs to another merchant
         S-->>R: 404 order_not_found -- one identical body for both,<br/>so "not yours" is not an oracle for a competitor's numbering

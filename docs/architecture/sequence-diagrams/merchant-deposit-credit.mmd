@@ -9,7 +9,7 @@ sequenceDiagram
     Admin->>API: amount, note, order_id? + Idempotency-Key: {client_key}
     API->>API: require header (422 without) -- it is the replay handle
     API->>Merchants: credit_deposit(key="merchant-credit:{merchant_id}:{client_key}", actor="admin:{id}", order_id?)
-    Merchants->>DB: SELECT merchants WHERE id (404 if missing; frozen is fine -- freeze never blocks money in)
+    Merchants->>DB: SELECT merchants WHERE id (404 if missing, frozen is fine -- freeze never blocks money in)
     opt order_id given -- settling one failed order
         Merchants->>DB: SELECT orders WHERE id = uuid(order_id) AND merchant_id
         Note over Merchants,DB: not this merchant's, no such order, not a UUID at all:<br/>ONE 404 order_not_found, so the refusal is no oracle
