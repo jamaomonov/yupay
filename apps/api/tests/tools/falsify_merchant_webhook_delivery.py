@@ -1,37 +1,31 @@
 #!/usr/bin/env python
 """Mutation harness for the merchant webhook **delivery drain** (M3a, Task 4).
 
-Same contract as its two siblings: break one property at a time and check the
-named test actually goes red. It covers ``apps/worker``'s consumer loop as well
-as the three ``merchants`` modules, because the webhook queue shares a process
-with every retail order's fulfilment and three of its properties are about that
-sharing. A test that stays green under a mutation is a
-test that would not have noticed the regression, and this file exists because
-one of them already did that here — the first version of the enqueue-order
-test inserted its two rows in id order, so Postgres returned them in physical
-order and the test passed with the ``ORDER BY`` tie-break deleted. It now
-inserts them in the **opposite** order to their ids, and the ``no_id_tiebreak``
-row below is what proves it.
+Break one property at a time and check the named tests actually go red. It
+covers ``apps/worker``'s consumer loop as well as the three ``merchants``
+modules, because the webhook queue shares a process with every retail order's
+fulfilment and three of its properties are about that sharing. A test that
+stays green under a mutation is a test that would not have noticed the
+regression, and this file exists because one of them already did that here —
+the first version of the enqueue-order test inserted its two rows in id order,
+so Postgres returned them in physical order and the test passed with the
+``ORDER BY`` tie-break deleted. It now inserts them in the **opposite** order
+to their ids, and the ``no_id_tiebreak`` row below is what proves it.
 
-Run it::
+The runner, the guarantees it enforces and the rules for running one live in
+:mod:`_falsify`; read that first. Run it::
 
     uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py
     uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py -k retry
+    uv run python apps/api/tests/tools/falsify_merchant_webhook_delivery.py --check-anchors
 
-**Run nothing else against this worktree while this is running.** It edits
-source files in place, so any concurrently running suite imports whatever
-mutation happens to be applied at that moment and fails for reasons that have
-nothing to do with it — a failure whose signature is indistinguishable from a
-real regression (see ``falsify_merchant_webhook_events.py``'s docstring for
-the worked example that cost an afternoon).
+**Every row runs the same four files** — the integration drain, the retry unit
+table, the signing unit tests and the worker's consumer tests — so the exact
+``expect=`` sets below are comparable with each other and can see collateral
+damage. All four together are 138 tests in about seventeen seconds; a narrower
+``tests=`` per row would make the exactness vacuous.
 
-Sources are restored from a copy taken before the edit, in a ``finally``.
-Never ``git checkout`` — several agents share this worktree. pytest runs in its
-own process group, killed as a group in a ``finally``: on SIGINT the group dies
-and the tree comes back byte-identical; on SIGKILL neither runs and the tree is
-left mutated, which is the reason not to ``kill -9`` this script.
-
-## One property is deliberately not falsifiable here, and why
+## Two properties are deliberately not falsifiable here, and why
 
 ``decide_failure``'s ``Delivery.RECEIVED`` branch is **redundant today**: both
 RECEIVED leaves (``ResponseTooLargeError``, ``ContentEncodingNotAllowedError``)
@@ -52,20 +46,10 @@ module docstring instead.
 
 from __future__ import annotations
 
-import argparse
-import contextlib
-import os
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass
-from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
-SRC = REPO / "apps/api/src/yupay"
+from _falsify import REPO, SRC, Mutation, main
+
 LIVE = "apps/api/tests/integration/test_merchant_webhook_delivery.py"
 UNIT = "apps/api/tests/unit/test_merchant_webhook_retry.py"
 SIGN = "apps/api/tests/unit/test_merchant_signing.py"
@@ -79,27 +63,11 @@ RETRY = SRC / "modules/merchants/webhook_retry.py"
 SIGNING = SRC / "modules/merchants/signing.py"
 ERRORS = SRC / "core/outbound_errors.py"
 
-#: ``FAILED apps/.../test_x.py::test_name[param] - AssertionError: …``.
-_FAILED_LINE = re.compile(r"^FAILED\s+\S+?\.py::(?P<name>.+?)(?:\s+-\s.*)?$")
-
-
-@dataclass(frozen=True)
-class Mutation:
-    """One way to break the drain, and the tests that must notice.
-
-    Attributes:
-        name: How the row is reported.
-        breaks: What property this removes, for the report.
-        edits: ``(path, old, new)`` triples. Each must change its file.
-        tests: Test ids or files to run.
-        expect: Test names that must be among the failures.
-    """
-
-    name: str
-    breaks: str
-    edits: tuple[tuple[Path, str, str], ...]
-    tests: tuple[str, ...]
-    expect: tuple[str, ...] = ()
+#: Every row runs the same four files, so the blast radii below are comparable
+#: with each other and an ``expect=`` set can see collateral damage. 138 tests
+#: in about seventeen seconds; broader suites are the commit's gate, not this
+#: file's job.
+TESTS = (LIVE, UNIT, SIGN, WORKER)
 
 
 MUTATIONS: tuple[Mutation, ...] = (
@@ -114,7 +82,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(f"{LIVE}::test_two_events_from_one_transaction_are_delivered_in_enqueue_order",),
+        tests=TESTS,
         expect=("test_two_events_from_one_transaction_are_delivered_in_enqueue_order",),
     ),
     Mutation(
@@ -127,7 +95,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 ".with_for_update(skip_locked=True)",
             ),
         ),
-        tests=(f"{LIVE}::test_a_second_drainer_skips_locked_rows_and_takes_the_rest",),
+        tests=TESTS,
         expect=("test_a_second_drainer_skips_locked_rows_and_takes_the_rest",),
     ),
     # ---- the worker loop. This queue shares a process with every retail
@@ -142,7 +110,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    wakes = (asyncio.Event(),) * len(queues)",
             ),
         ),
-        tests=(f"{WORKER}::test_run_gives_every_queue_its_own_task_and_its_own_wake_event",),
+        tests=TESTS,
         expect=("test_run_gives_every_queue_its_own_task_and_its_own_wake_event",),
     ),
     Mutation(
@@ -155,7 +123,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    crashed = False\n    await stop.wait()",
             ),
         ),
-        tests=(f"{WORKER}::test_run_exits_non_zero_when_a_queue_loop_dies",),
+        tests=TESTS,
         expect=("test_run_exits_non_zero_when_a_queue_loop_dies",),
     ),
     Mutation(
@@ -169,41 +137,65 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    await shutdown.await_stray_tasks(timeout=shutdown.remaining(deadline))",
             ),
         ),
-        tests=(f"{WORKER}::test_shutdown_spends_one_budget_and_not_two",),
+        tests=TESTS,
         expect=("test_shutdown_spends_one_budget_and_not_two",),
     ),
     Mutation(
         name="no_truncation",
         breaks="an over-long response body reaches a length-bounded column",
         edits=((OUTCOME, "    return text[:limit]", "    return text"),),
-        tests=(
-            f"{LIVE}::test_an_oversized_response_and_error_are_truncated_before_they_are_written",
-            f"{LIVE}::test_a_long_outbound_error_message_is_clipped_too",
-        ),
+        tests=TESTS,
         expect=(
-            "test_an_oversized_response_and_error_are_truncated_before_they_are_written",
             "test_a_long_outbound_error_message_is_clipped_too",
+            "test_an_oversized_response_and_error_are_truncated_before_they_are_written",
         ),
+    ),
+    # ---- the claim predicate's three conjuncts, one row each.
+    #
+    # It had one row (``disabled_still_delivered``) for three conjuncts until
+    # 2026-09-09. Nothing enumerates the rows nobody wrote, which is the gap
+    # this harness cannot close on its own: it grades what somebody thought to
+    # break. Counting the conjuncts of a predicate and checking each has a row
+    # is the cheap manual version, and it is what found these two.
+    Mutation(
+        name="claim_ignores_the_status",
+        breaks="a delivered or given-up row is claimed again and POSTed a second time",
+        edits=((DELIVERY, '                MerchantWebhookDelivery.status == "pending",\n', ""),),
+        tests=TESTS,
+        expect=(
+            "test_a_404_is_terminal",
+            "test_a_blocked_address_is_recorded_as_a_policy_refusal_not_a_network_error",
+            "test_the_batch_is_bounded_and_the_drain_reports_what_it_ran",
+        ),
+    ),
+    Mutation(
+        name="claim_ignores_the_backoff",
+        breaks="a row that just failed is retried on the next tick, and the backoff means nothing",
+        edits=(
+            (DELIVERY, "                MerchantWebhookDelivery.next_attempt_at <= now(),\n", ""),
+        ),
+        tests=TESTS,
+        expect=("test_a_row_whose_backoff_has_not_elapsed_is_not_claimed",),
     ),
     Mutation(
         name="disabled_still_delivered",
         breaks="a disabled hook keeps receiving deliveries",
         edits=((DELIVERY, "                MerchantWebhook.disabled_at.is_(None),\n", ""),),
-        tests=(f"{LIVE}::test_a_disabled_hook_stops_the_drain_and_re_enabling_resumes_it",),
+        tests=TESTS,
         expect=("test_a_disabled_hook_stops_the_drain_and_re_enabling_resumes_it",),
     ),
     Mutation(
         name="no_savepoint",
         breaks="a poisoned row takes the whole batch down with it",
         edits=((DELIVERY, "            async with db.begin_nested():", "            if True:"),),
-        tests=(f"{LIVE}::test_a_poisoned_row_is_failed_and_the_rest_of_the_batch_still_lands",),
+        tests=TESTS,
         expect=("test_a_poisoned_row_is_failed_and_the_rest_of_the_batch_still_lands",),
     ),
     Mutation(
         name="no_disabled_skip",
         breaks="rows claimed before an auto-disable are still POSTed after it",
         edits=((DELIVERY, "    if credentials is None:", "    if credentials is None and False:"),),
-        tests=(f"{LIVE}::test_a_sustained_failure_streak_disables_the_hook_and_emails_once",),
+        tests=TESTS,
         expect=("test_a_sustained_failure_streak_disables_the_hook_and_emails_once",),
     ),
     Mutation(
@@ -217,7 +209,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    if hook.failure_streak < threshold:",
             ),
         ),
-        tests=(f"{LIVE}::test_a_sustained_failure_streak_disables_the_hook_and_emails_once",),
+        tests=TESTS,
         expect=("test_a_sustained_failure_streak_disables_the_hook_and_emails_once",),
     ),
     Mutation(
@@ -230,8 +222,29 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "purpose=crypto.PURPOSE_MERCHANT_API_KEY",
             ),
         ),
-        tests=(f"{LIVE}::test_a_delivery_is_signed_with_the_documented_canonical_string",),
-        expect=("test_a_delivery_is_signed_with_the_documented_canonical_string",),
+        tests=TESTS,
+        expect=(
+            "test_a_200_marks_the_row_delivered_and_logs_their_answer",
+            "test_a_404_is_terminal",
+            "test_a_429_honours_their_retry_after",
+            "test_a_500_stays_pending_and_comes_back_later",
+            "test_a_blocked_address_is_recorded_as_a_policy_refusal_not_a_network_error",
+            "test_a_delivery_is_signed_with_the_documented_canonical_string",
+            "test_a_disabled_hook_stops_the_drain_and_re_enabling_resumes_it",
+            "test_a_long_outbound_error_message_is_clipped_too",
+            "test_a_merchant_with_no_operator_is_disabled_without_an_email",
+            "test_a_poisoned_row_is_failed_and_the_rest_of_the_batch_still_lands",
+            "test_a_received_refusal_is_terminal_because_a_retry_would_re_deliver",
+            "test_a_success_resets_the_streak_and_stamps_the_hook",
+            "test_a_sustained_failure_streak_disables_the_hook_and_emails_once",
+            "test_a_transport_failure_retries_and_records_the_type_not_a_status",
+            "test_a_url_the_client_will_not_take_is_refused_before_anything_resolves",
+            "test_an_oversized_response_and_error_are_truncated_before_they_are_written",
+            "test_one_merchants_failures_do_not_stop_anothers_deliveries",
+            "test_the_secret_and_the_signature_never_reach_the_log",
+            "test_the_signature_is_keyed_by_the_secret_decrypted_at_send_time",
+            "test_two_events_from_one_transaction_are_delivered_in_enqueue_order",
+        ),
     ),
     Mutation(
         name="unsigned_delivery_id",
@@ -243,10 +256,13 @@ MUTATIONS: tuple[Mutation, ...] = (
                 'return (f"{timestamp}\\n{event_type}\\n{body_digest(body)}").encode()',
             ),
         ),
-        tests=(SIGN, f"{LIVE}::test_a_delivery_is_signed_with_the_documented_canonical_string"),
+        tests=TESTS,
         expect=(
-            "test_the_delivery_id_is_inside_the_signed_material",
             "test_a_delivery_is_signed_with_the_documented_canonical_string",
+            "test_every_webhook_field_changes_the_signature[change1]",
+            "test_every_webhook_field_is_fixed_width_or_cannot_carry_the_separator",
+            "test_the_delivery_id_is_inside_the_signed_material",
+            "test_the_webhook_canonical_message_is_the_documented_four_fields",
         ),
     ),
     Mutation(
@@ -259,7 +275,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    if delivery.event_type not in EVENT_TYPES and False:",
             ),
         ),
-        tests=(f"{LIVE}::test_an_unknown_event_type_is_refused_rather_than_signed",),
+        tests=TESTS,
         expect=("test_an_unknown_event_type_is_refused_rather_than_signed",),
     ),
     Mutation(
@@ -272,10 +288,12 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(UNIT, f"{LIVE}::test_our_own_broken_attempt_never_touches_the_failure_streak"),
+        tests=TESTS,
         expect=(
-            "test_our_own_bug_never_counts_toward_the_merchants_failure_budget",
+            "test_each_outbound_failure_gets_the_decision_its_taxonomy_implies[error2-terminal-False]",
+            "test_every_leaf_of_the_taxonomy_is_decided_by_what_it_says_about_itself",
             "test_our_own_broken_attempt_never_touches_the_failure_streak",
+            "test_our_own_bug_never_counts_toward_the_merchants_failure_budget",
         ),
     ),
     Mutation(
@@ -298,8 +316,11 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    delivery: ClassVar[Delivery] = Delivery.RECEIVED\n\n\nclass OutboundTimeoutError",
             ),
         ),
-        tests=(UNIT,),
-        expect=("test_a_received_delivery_is_never_retried_whatever_its_family",),
+        tests=TESTS,
+        expect=(
+            "test_a_received_delivery_is_never_retried_whatever_its_family",
+            "test_every_leaf_of_the_taxonomy_is_decided_by_what_it_says_about_itself",
+        ),
     ),
     Mutation(
         name="unfamilied_leaf_blamed_on_the_merchant",
@@ -314,7 +335,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    return _TERMINAL_THEIRS",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_a_leaf_in_neither_family_is_blamed_on_us_not_on_the_merchant",),
     ),
     Mutation(
@@ -327,8 +348,14 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    if candidate.isdigit():",
             ),
         ),
-        tests=(UNIT,),
-        expect=("test_a_non_ascii_digit_header_never_escapes_as_an_exception",),
+        tests=TESTS,
+        expect=(
+            "test_a_non_ascii_digit_header_never_escapes_as_an_exception[\\u0661\\u0662\\u0660]",
+            "test_a_non_ascii_digit_header_never_escapes_as_an_exception[\\u0662]",
+            "test_a_non_ascii_digit_header_never_escapes_as_an_exception[\\xb2]",
+            "test_an_unusable_retry_after_falls_back_to_the_backoff[\\u0661\\u0662\\u0660]",
+            "test_an_unusable_retry_after_falls_back_to_the_backoff[\\xb2]",
+        ),
     ),
     Mutation(
         name="every_4xx_retried",
@@ -340,8 +367,16 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    retryable = status_code >= 400",
             ),
         ),
-        tests=(UNIT, f"{LIVE}::test_a_404_is_terminal"),
-        expect=("test_a_4xx_or_a_redirect_is_terminal", "test_a_404_is_terminal"),
+        tests=TESTS,
+        expect=(
+            "test_a_404_is_terminal",
+            "test_a_4xx_or_a_redirect_is_terminal[400]",
+            "test_a_4xx_or_a_redirect_is_terminal[401]",
+            "test_a_4xx_or_a_redirect_is_terminal[403]",
+            "test_a_4xx_or_a_redirect_is_terminal[404]",
+            "test_a_4xx_or_a_redirect_is_terminal[410]",
+            "test_a_4xx_or_a_redirect_is_terminal[422]",
+        ),
     ),
     Mutation(
         name="retry_after_unclamped",
@@ -353,10 +388,11 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    return seconds",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=(
-            "test_an_enormous_retry_after_is_capped",
+            "test_a_retry_after_in_the_past_is_floored_rather_than_ignored",
             "test_a_retry_after_of_zero_is_floored_so_it_cannot_become_a_hot_loop",
+            "test_an_enormous_retry_after_is_capped",
         ),
     ),
     Mutation(
@@ -369,122 +405,15 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    return 0.0",
             ),
         ),
-        tests=(UNIT, f"{LIVE}::test_a_500_stays_pending_and_comes_back_later"),
+        tests=TESTS,
         expect=(
-            "test_backoff_of_a_first_attempt_is_never_zero",
             "test_a_500_stays_pending_and_comes_back_later",
+            "test_backoff_doubles_from_the_base_and_stops_at_the_cap",
+            "test_backoff_of_a_first_attempt_is_never_zero",
         ),
     ),
 )
 
 
-def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
-    """Apply every edit, insisting each one actually changed its file."""
-    for path, old, new in mutation.edits:
-        if path not in backups:
-            copy = Path(tempfile.mkdtemp(prefix="falsify-")) / path.name
-            shutil.copy2(path, copy)
-            backups[path] = copy
-        source = path.read_text()
-        mutated = source.replace(old, new, 1)
-        if mutated == source:
-            message = (
-                f"{mutation.name}: the edit changed nothing in {path.name}. "
-                "A str.replace that matches nothing is a silent no-op, and a "
-                "harness that reports GREEN from one is worse than no harness."
-            )
-            raise SystemExit(message)
-        path.write_text(mutated)
-
-
-def _restore(backups: dict[Path, Path]) -> None:
-    """Put every mutated file back from its pre-edit copy."""
-    for path, copy in backups.items():
-        shutil.copy2(copy, path)
-        shutil.rmtree(copy.parent, ignore_errors=True)
-
-
-def _run(mutation: Mutation) -> tuple[str, list[str]]:
-    """Run the mutation's tests. Returns a verdict and the failing test names."""
-    command = ["uv", "run", "pytest", *mutation.tests, "-q", "-p", "no:cacheprovider", "--no-cov"]
-    # Own process group, killed as a group in ``finally`` — the shape d12927c
-    # settled on after three pytest children were found alive two hours later,
-    # competing for the Postgres the rest of the suite uses.
-    process = subprocess.Popen(
-        command,
-        cwd=REPO,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    try:
-        stdout, _ = process.communicate(timeout=900)
-    except subprocess.TimeoutExpired:
-        return "TIMED OUT", []
-    finally:
-        if process.poll() is None:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-    failures = [
-        match.group("name") for line in stdout.splitlines() if (match := _FAILED_LINE.match(line))
-    ]
-    if process.returncode == 0:
-        return "UNFALSIFIED — the suite stayed green", []
-    missing = [name for name in mutation.expect if not any(name in f for f in failures)]
-    if missing:
-        return f"failed, but not on {', '.join(missing)}", failures
-    return "failed as expected", failures
-
-
-def main() -> int:
-    """Run every mutation (or those matching ``-k``) and print a table."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-k", dest="pattern", default="", help="substring of the mutation name")
-    parser.add_argument("--list", action="store_true", help="print the mutations and exit")
-    args = parser.parse_args()
-
-    chosen = [m for m in MUTATIONS if args.pattern in m.name]
-    if args.list:
-        for mutation in chosen:
-            print(f"{mutation.name:36} {mutation.breaks}")
-        return 0
-
-    print(
-        "falsify: editing source files in place — do not run any other suite "
-        "against this worktree until it finishes.\n",
-        flush=True,
-    )
-    rows: list[tuple[str, str]] = []
-    for mutation in chosen:
-        backups: dict[Path, Path] = {}
-        try:
-            _apply(mutation, backups)
-            verdict, _failures = _run(mutation)
-        finally:
-            _restore(backups)
-        rows.append((mutation.name, verdict))
-        print(f"{mutation.name:36} {verdict}", flush=True)
-
-    print("\n--- summary ---")
-    # ``TIMED OUT`` belongs in this tuple: a mutation whose pytest hangs past
-    # the timeout proves nothing, and counting it green would let this script
-    # lie about its own result -- which is the thing ``_apply``'s SystemExit
-    # message says is worse than having no harness at all.
-    unfalsified = [
-        name
-        for name, verdict in rows
-        if verdict.startswith(("UNFALSIFIED", "failed, but", "TIMED OUT"))
-    ]
-    for name, verdict in rows:
-        print(f"{name:36} {verdict}")
-    if unfalsified:
-        print(f"\n{len(unfalsified)} mutation(s) not falsified: {', '.join(unfalsified)}")
-        return 1
-    print(f"\nall {len(rows)} mutations falsified")
-    return 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(MUTATIONS, description=__doc__))

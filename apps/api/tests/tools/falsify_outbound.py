@@ -6,87 +6,37 @@ test that fails when it is removed. This script breaks each one in turn and
 checks that the tests it names actually go red — the difference between "the
 suite passes" and "the suite would notice".
 
-Run it::
+The runner, the guarantees it enforces and the rules for running one live in
+:mod:`_falsify`; read that first. Run it::
 
     uv run python apps/api/tests/tools/falsify_outbound.py            # all
     uv run python apps/api/tests/tools/falsify_outbound.py -k redirect
+    uv run python apps/api/tests/tools/falsify_outbound.py --check-anchors
 
 It is committed because a falsification result nobody can re-run is a claim,
 not evidence — and two rows of the first version's table turned out to be
 wrong: one mutation was applied to a file the code had moved out of, and one
-was masked by a second mitigation in front of it. Both were silent. So:
+was masked by a second mitigation in front of it. Both were silent.
 
-- every mutation asserts it **changed the file** before the suite runs, and
-- a mutation whose suite stays green is reported as ``UNFALSIFIED``, loudly.
+**Most rows run all three test files**, so the exact ``expect=`` set can see
+collateral damage; 157 tests in about seven seconds. Two rows deliberately do
+not, and say why at the row: ``size_cap_off`` (with no cap the endless-stream
+test reads until its deadline and eats memory doing it) and ``deadline_off``.
 
-Sources are restored from a copy taken before the edit, in a ``finally``.
-Never ``git checkout`` — several agents share this worktree.
-
-This edits source files in place, so **it is not safe to run beside a test
-suite on the same worktree**: a suite worker that imports a module mid-mutation
-sees the broken code and fails for a reason that looks exactly like a real
-regression. That happened once on this branch — a ``PendingRollbackError``
-matching the signature one of these mutations is built to cause, in a worker
-that imported the module while it was mutated. Run this alone.
-
-Two mutations are expected to **hang** rather than fail (removing a timeout
-means the client waits forever, which is the failure it prevents); those carry
-their own short timeout and a hang counts as the expected failure.
+``deadline_off`` is also the one row expected to **hang** rather than fail:
+removing a deadline means the client waits forever, which is the failure the
+deadline prevents. It carries a short ``timeout`` and ``hang_is_failure=True``.
 """
 
 from __future__ import annotations
 
-import argparse
-import contextlib
-import os
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import tempfile
-from collections.abc import Sequence
-from dataclasses import dataclass, field
-from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
-SRC = REPO / "apps/api/src/yupay"
+from _falsify import SRC, Mutation, main
+
 UNIT = "apps/api/tests/unit/test_outbound_ssrf.py"
 LIVE = "apps/api/tests/integration/test_outbound_ssrf_live.py"
 IMAGE = "apps/api/tests/unit/test_catalog_image_url_safety.py"
-
-
-@dataclass(frozen=True)
-class Mutation:
-    """One way to break the client, and the tests that must notice.
-
-    Attributes:
-        name: How the row is reported.
-        breaks: What safety property this removes, for the report.
-        edits: ``(path, old, new)`` triples. Each must change its file.
-        tests: Test files (optionally ``file::name``) to run.
-        expect: Test names that must be among the failures. Empty means "any
-            failure will do".
-        timeout: Seconds. A mutation that hangs is a mutation that removed a
-            deadline, which counts as failing.
-        hang_is_failure: Whether a timeout counts as the expected failure.
-    """
-
-    name: str
-    breaks: str
-    edits: tuple[tuple[Path, str, str], ...]
-    tests: tuple[str, ...]
-    expect: tuple[str, ...] = ()
-    timeout: int = 900
-    hang_is_failure: bool = False
-    extra_args: Sequence[str] = field(default_factory=tuple)
-
-
-#: ``FAILED apps/.../test_x.py::test_name[param] - AssertionError: …``. Split
-#: on ``::`` and a parametrised IPv6 address (``[fec0::1]``) reports itself as
-#: ``1]`` — which is how the first run of this harness said a mutation "failed,
-#: but not on" a test it had in fact failed on.
-_FAILED_LINE = re.compile(r"^FAILED\s+\S+?\.py::(?P<name>.+?)(?:\s+-\s.*)?$")
 
 OUTBOUND = SRC / "core/outbound.py"
 ADDRESSES = SRC / "core/outbound_addresses.py"
@@ -94,8 +44,20 @@ ERRORS = SRC / "core/outbound_errors.py"
 TARGET = SRC / "core/outbound_target.py"
 IMAGE_SAFETY = SRC / "modules/catalog/image_url_safety.py"
 
+#: The default for a row: all three files, so the blast radii below are
+#: comparable with each other and an ``expect=`` set can see collateral damage.
+#: 157 tests in about seven seconds. Two rows override it and say why.
+TESTS = (UNIT, LIVE, IMAGE)
+
+
 MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
+        # Forty-seven tests, and that is the honest number: this row deletes
+        # the address policy, and every address the policy refuses has a test.
+        # A set this long is not a defect in the row — it is what "the check
+        # refuses nothing" costs — but it does mean adding an address case to
+        # the unit file changes this tuple. Re-record it rather than trimming
+        # it; a trimmed set is a membership assertion wearing an equals sign.
         name="policy_off",
         breaks="the address check refuses nothing",
         edits=(
@@ -105,10 +67,55 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    if False and findings:\n        raise AddressNotAllowedError(",
             ),
         ),
-        tests=(UNIT, LIVE),
+        tests=TESTS,
         expect=(
-            "test_a_loopback_address_is_refused",
+            "test_a_carrier_grade_nat_address_is_refused[100.127.255.254]",
+            "test_a_carrier_grade_nat_address_is_refused[100.64.0.1]",
+            "test_a_link_local_address_is_refused[169.254.0.1]",
+            "test_a_link_local_address_is_refused[169.254.169.254]",
+            "test_a_link_local_address_is_refused[::ffff:169.254.169.254]",
+            "test_a_link_local_address_is_refused[fe80::1]",
+            "test_a_loopback_address_is_refused[127.0.0.1]",
+            "test_a_loopback_address_is_refused[127.1.2.3]",
+            "test_a_loopback_address_is_refused[::1]",
+            "test_a_loopback_address_is_refused[::ffff:127.0.0.1]",
             "test_a_loopback_server_behind_a_public_looking_hostname_is_never_contacted",
+            "test_a_multicast_address_is_refused[224.0.0.1]",
+            "test_a_multicast_address_is_refused[239.255.255.250]",
+            "test_a_multicast_address_is_refused[::ffff:224.0.0.1]",
+            "test_a_multicast_address_is_refused[ff02::1]",
+            "test_a_private_address_is_refused[10.0.0.1]",
+            "test_a_private_address_is_refused[172.16.0.1]",
+            "test_a_private_address_is_refused[172.31.255.254]",
+            "test_a_private_address_is_refused[192.168.1.1]",
+            "test_a_private_address_is_refused[::ffff:10.0.0.1]",
+            "test_a_private_address_is_refused[::ffff:172.16.0.1]",
+            "test_a_private_address_is_refused[::ffff:192.168.1.1]",
+            "test_a_private_answer_listed_first_refuses_the_whole_host",
+            "test_a_refusal_is_logged_without_the_body_either",
+            "test_a_reserved_address_is_refused[240.0.0.1]",
+            "test_a_reserved_address_is_refused[255.255.255.255]",
+            "test_a_reserved_address_is_refused[64:ff9b::7f00:1]",
+            "test_a_reserved_address_is_refused[::ffff:240.0.0.1]",
+            "test_a_scoped_ipv6_answer_keeps_its_family",
+            "test_a_site_local_address_is_refused[fec0::1]",
+            "test_a_site_local_address_is_refused[feff:ffff:ffff:ffff::1]",
+            "test_a_tunnelled_ipv6_address_is_refused[2001:0:4136:e378:8000:63bf:3fff:fdd2]",
+            "test_a_tunnelled_ipv6_address_is_refused[2002:7f00:1::]",
+            "test_a_unique_local_address_is_refused[fc00::1]",
+            "test_a_unique_local_address_is_refused[fd12:3456:789a::1]",
+            "test_an_answer_that_will_not_parse_is_refused[10.0.0.1 ]",
+            "test_an_answer_that_will_not_parse_is_refused[300.1.2.3]",
+            "test_an_answer_that_will_not_parse_is_refused[]",
+            "test_an_answer_that_will_not_parse_is_refused[not-an-address]",
+            "test_obfuscated_notation_is_resolved_rather_than_parsed[0x7f000001]",
+            "test_obfuscated_notation_is_resolved_rather_than_parsed[127.1]",
+            "test_obfuscated_notation_is_resolved_rather_than_parsed[2130706433]",
+            "test_one_private_answer_beside_a_public_one_refuses_the_whole_host",
+            "test_the_this_network_block_is_refused[0.0.0.0]",
+            "test_the_this_network_block_is_refused[0.1.2.3]",
+            "test_the_this_network_block_is_refused[::ffff:0.0.0.0]",
+            "test_the_unspecified_ipv6_address_is_refused",
         ),
     ),
     Mutation(
@@ -122,8 +129,13 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(UNIT, IMAGE),
-        expect=("test_a_site_local_address_is_refused", "test_rejects_ipv6_site_local"),
+        tests=TESTS,
+        expect=(
+            "test_a_site_local_address_is_refused[fec0::1]",
+            "test_a_site_local_address_is_refused[feff:ffff:ffff:ffff::1]",
+            "test_rejects_ipv6_site_local",
+            "test_rejects_ssrf_targets[https://[fec0::1]/x]",
+        ),
     ),
     Mutation(
         name="guard_disarmed",
@@ -131,10 +143,10 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (OUTBOUND, "        if target != pinned:", "        if False and target != pinned:"),
         ),
-        tests=(UNIT, LIVE),
+        tests=TESTS,
         expect=(
-            "test_the_guard_refuses_a_socket_target_that_is_not_the_pinned_address",
             "test_connecting_by_name_instead_of_the_pin_is_refused",
+            "test_the_guard_refuses_a_socket_target_that_is_not_the_pinned_address",
         ),
     ),
     Mutation(
@@ -148,8 +160,23 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
             (OUTBOUND, "        if target != pinned:", "        if False and target != pinned:"),
         ),
-        tests=(LIVE,),
-        expect=("test_the_connection_lands_on_the_address_the_policy_checked",),
+        tests=TESTS,
+        expect=(
+            "test_a_compressed_answer_is_refused_off_a_real_socket",
+            "test_a_delivery_presents_the_hostname_and_returns_what_the_log_needs",
+            "test_a_redirect_is_returned_as_a_result_and_never_followed",
+            "test_a_redirect_to_the_metadata_address_is_an_outcome_not_a_hop",
+            "test_a_response_bigger_than_the_cap_is_refused",
+            "test_a_second_lookup_that_would_answer_differently_is_never_made",
+            "test_a_server_that_never_answers_hits_the_deadline",
+            "test_an_ipv6_answer_is_pinned_with_brackets",
+            "test_an_ipv6_literal_in_the_url_keeps_its_brackets_in_the_host_header",
+            "test_connecting_by_name_instead_of_the_pin_is_refused",
+            "test_our_headers_go_to_the_pinned_host_and_nowhere_else",
+            "test_the_connection_lands_on_the_address_the_policy_checked",
+            "test_the_guard_refuses_a_socket_target_that_is_not_the_pinned_address",
+            "test_the_request_goes_to_the_checked_address_not_the_hostname",
+        ),
     ),
     Mutation(
         name="follow_redirects",
@@ -161,8 +188,17 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "        follow_redirects=True,\n        trust_env=False,",
             ),
         ),
-        tests=(UNIT,),
-        expect=("test_a_redirect_is_returned_as_a_result_and_never_followed",),
+        tests=TESTS,
+        expect=(
+            "test_a_redirect_is_returned_as_a_result_and_never_followed",
+            "test_a_redirect_to_the_metadata_address_is_an_outcome_not_a_hop",
+            "test_every_redirect_status_is_an_outcome[301]",
+            "test_every_redirect_status_is_an_outcome[302]",
+            "test_every_redirect_status_is_an_outcome[303]",
+            "test_every_redirect_status_is_an_outcome[307]",
+            "test_every_redirect_status_is_an_outcome[308]",
+            "test_our_headers_go_to_the_pinned_host_and_nowhere_else",
+        ),
     ),
     Mutation(
         name="size_cap_off",
@@ -176,9 +212,15 @@ MUTATIONS: tuple[Mutation, ...] = (
         ),
         # Not the whole unit file on purpose: with no cap, the endless-stream
         # test reads until its deadline and eats memory doing it.
-        expect=("test_a_response_over_the_byte_cap_is_a_typed_refusal",),
+        expect=(
+            "test_a_response_bigger_than_the_cap_is_refused",
+            "test_a_response_over_the_byte_cap_is_a_typed_refusal",
+        ),
     ),
     Mutation(
+        # The one row with no ``expect``: the expected outcome is the hang, and
+        # a hang has no red set. If this ever reports WRONG BLAST RADIUS the
+        # mutation stopped hanging, which is itself the finding.
         name="deadline_off",
         breaks="the total wall-clock budget stops applying",
         edits=((OUTBOUND, "        async with asyncio.timeout(timeout):", "        if True:"),),
@@ -190,7 +232,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         name="identity_off",
         breaks="the client stops asking for an undecoded body",
         edits=((OUTBOUND, '    out["accept-encoding"] = "identity"', "    pass"),),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_the_client_asks_for_an_undecoded_body",),
     ),
     Mutation(
@@ -203,7 +245,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    async for chunk in response.aiter_bytes():",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_the_body_is_read_off_the_wire_and_never_through_the_decoder",),
     ),
     Mutation(
@@ -221,8 +263,12 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    async for chunk in response.aiter_bytes():",
             ),
         ),
-        tests=(UNIT, LIVE),
-        expect=("test_a_compressed_response_is_refused_and_never_expanded",),
+        tests=TESTS,
+        expect=(
+            "test_a_compressed_answer_is_refused_off_a_real_socket",
+            "test_a_compressed_response_is_refused_and_never_expanded",
+            "test_the_body_is_read_off_the_wire_and_never_through_the_decoder",
+        ),
     ),
     Mutation(
         name="idn_unencoded",
@@ -234,8 +280,12 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    host = (hostname or '').rstrip('.')",
             ),
         ),
-        tests=(UNIT,),
-        expect=("test_an_idn_hostname_is_encoded_rather_than_refused",),
+        tests=TESTS,
+        expect=(
+            "test_a_host_that_will_not_encode_is_a_typed_refusal",
+            "test_a_url_without_a_host_is_refused",
+            "test_an_idn_hostname_is_encoded_rather_than_refused",
+        ),
     ),
     Mutation(
         name="port_zero_coalesced",
@@ -247,7 +297,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    port = raw_port or HTTPS_PORT\n    if False:",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_port_zero_is_refused_rather_than_read_as_443",),
     ),
     Mutation(
@@ -256,7 +306,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (OUTBOUND, "    except (OSError, UnicodeError) as exc:", "    except OSError as exc:"),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_an_over_long_dns_label_is_a_typed_resolution_failure",),
     ),
     Mutation(
@@ -269,7 +319,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    except ZeroDivisionError as exc:\n        # The net that makes",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_an_unexpected_failure_still_comes_out_typed",),
     ),
     Mutation(
@@ -294,7 +344,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "            ) from exc\n        except httpx.HTTPError as exc:",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_a_handshake_timeout_is_a_connection_that_never_came_up",),
     ),
     Mutation(
@@ -307,7 +357,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "        except (httpx.ConnectError, httpx.ConnectTimeout, httpx.HTTPError) as exc:",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=("test_a_broken_exchange_is_told_apart_from_a_connection_that_never_came_up",),
     ),
     Mutation(
@@ -321,10 +371,10 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "class OutboundUnreachableError(OutboundError):",
             ),
         ),
-        tests=(UNIT,),
+        tests=TESTS,
         expect=(
-            "test_every_error_is_in_exactly_one_family",
             "test_every_error_decides_what_it_means_for_a_retry",
+            "test_every_error_is_in_exactly_one_family",
         ),
     ),
     Mutation(
@@ -342,8 +392,11 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    delivery: ClassVar[Delivery] = Delivery.NOT_SENT\n\n\n__all__",
             ),
         ),
-        tests=(UNIT,),
-        expect=("test_delivery_answers_what_a_retry_would_do", "test_a_timeout_is_not_reported"),
+        tests=TESTS,
+        expect=(
+            "test_a_timeout_is_not_reported_as_nothing_sent",
+            "test_delivery_answers_what_a_retry_would_do[OutboundTimeoutError-unknown]",
+        ),
     ),
     Mutation(
         name="host_not_normalised",
@@ -355,8 +408,12 @@ MUTATIONS: tuple[Mutation, ...] = (
                 '        host = (parsed.hostname or "").lower().rstrip(".")',
             ),
         ),
-        tests=(IMAGE,),
-        expect=("test_rejects_the_spellings_node_resolves_to_loopback",),
+        tests=TESTS,
+        expect=(
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://127\\u30020\\u30020\\u30021/x.png]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://\\u24db\\u24de\\u24d2\\u24d0\\u24db\\u24d7\\u24de\\u24e2\\u24e3/x.png]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://\\uff11\\uff12\\uff17.\\uff10.\\uff10.\\uff11/x.png]",
+        ),
     ),
     Mutation(
         name="ipv4_notation_unread",
@@ -368,133 +425,18 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "        return None",
             ),
         ),
-        tests=(IMAGE,),
-        expect=("test_rejects_the_spellings_node_resolves_to_loopback",),
+        tests=TESTS,
+        expect=(
+            "test_rejects_ssrf_targets[https://2130706433/x]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://0/x.png]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://0177.0.0.1/x.png]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://0x7f.1/x.png]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://127.1/x.png]",
+            "test_rejects_the_spellings_node_resolves_to_loopback[https://2130706433/x.png]",
+        ),
     ),
 )
 
 
-def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
-    """Apply every edit, insisting each one actually changed its file."""
-    for path, old, new in mutation.edits:
-        if path not in backups:
-            copy = Path(tempfile.mkdtemp(prefix="falsify-")) / path.name
-            shutil.copy2(path, copy)
-            backups[path] = copy
-        source = path.read_text()
-        mutated = source.replace(old, new)
-        if mutated == source:
-            message = (
-                f"{mutation.name}: the edit changed nothing in {path.name}. "
-                "A str.replace that matches nothing is a silent no-op, and a "
-                "harness that reports GREEN from one is worse than no harness."
-            )
-            raise SystemExit(message)
-        path.write_text(mutated)
-
-
-def _restore(backups: dict[Path, Path]) -> None:
-    for path, copy in backups.items():
-        shutil.copy2(copy, path)
-        shutil.rmtree(copy.parent, ignore_errors=True)
-
-
-def _run(mutation: Mutation) -> tuple[str, list[str]]:
-    """Run the mutation's tests. Returns a verdict and the failing test names."""
-    command = [
-        "uv",
-        "run",
-        "pytest",
-        *mutation.tests,
-        "-q",
-        "-p",
-        "no:cacheprovider",
-        "--no-cov",
-        *mutation.extra_args,
-    ]
-    # Own process group, killed as a group in ``finally``.
-    #
-    # Two mutations here hang on purpose, and ``subprocess.run(timeout=...)``
-    # kills only its direct child — and only if its own ``except`` gets to run.
-    # Kill this harness while a hung pytest is in flight (Ctrl-C, an agent
-    # stopped, a terminal closed) and that pytest is orphaned. Three of them
-    # were found alive after two hours on one occasion, competing for the same
-    # Postgres and Redis the rest of the suite uses, which is exactly the kind
-    # of load that makes unrelated tests flake.
-    process = subprocess.Popen(
-        command,
-        cwd=REPO,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    try:
-        stdout, _ = process.communicate(timeout=mutation.timeout)
-    except subprocess.TimeoutExpired:
-        if mutation.hang_is_failure:
-            return "HUNG (the failure this prevents)", []
-        return "TIMED OUT", []
-    finally:
-        if process.poll() is None:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-    completed = subprocess.CompletedProcess(command, process.returncode, stdout, "")
-    failures = [
-        match.group("name")
-        for line in completed.stdout.splitlines()
-        if (match := _FAILED_LINE.match(line))
-    ]
-    if completed.returncode == 0:
-        return "UNFALSIFIED — the suite stayed green", []
-    missing = [name for name in mutation.expect if not any(name in f for f in failures)]
-    if missing:
-        return f"failed, but not on {', '.join(missing)}", failures
-    return "failed as expected", failures
-
-
-def main() -> int:
-    """Run every mutation (or those matching ``-k``) and print a table."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-k", dest="pattern", default="", help="substring of the mutation name")
-    parser.add_argument("--list", action="store_true", help="print the mutations and exit")
-    args = parser.parse_args()
-
-    chosen = [m for m in MUTATIONS if args.pattern in m.name]
-    if args.list:
-        for mutation in chosen:
-            print(f"{mutation.name:26} {mutation.breaks}")
-        return 0
-
-    print(
-        "falsify: editing source files in place — do not run any other suite "
-        "against this worktree until it finishes.\n",
-        flush=True,
-    )
-    rows: list[tuple[str, str, str]] = []
-    for mutation in chosen:
-        backups: dict[Path, Path] = {}
-        try:
-            _apply(mutation, backups)
-            verdict, failures = _run(mutation)
-        finally:
-            _restore(backups)
-        rows.append((mutation.name, verdict, ", ".join(failures[:3])))
-        print(f"{mutation.name:26} {verdict}", flush=True)
-
-    print("\n--- summary ---")
-    unfalsified = [
-        name for name, verdict, _ in rows if verdict.startswith(("UNFALSIFIED", "failed, but"))
-    ]
-    for name, verdict, shown in rows:
-        print(f"{name:26} {verdict:44} {shown}")
-    if unfalsified:
-        print(f"\n{len(unfalsified)} mutation(s) not falsified: {', '.join(unfalsified)}")
-        return 1
-    print(f"\nall {len(rows)} mutations falsified")
-    return 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(MUTATIONS, description=__doc__))

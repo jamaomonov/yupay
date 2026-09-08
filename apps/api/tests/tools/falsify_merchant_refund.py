@@ -22,26 +22,12 @@ whole order value each, and ``refund_inside_the_savepoint`` is worth every
 future refund on the affected task, because the value it corrupts
 (``money_outcome = unknown``) has no operator path back.
 
-Run it::
+The runner, the guarantees it enforces and the rules for running one live in
+:mod:`_falsify`; read that first. Run it::
 
     uv run python apps/api/tests/tools/falsify_merchant_refund.py
     uv run python apps/api/tests/tools/falsify_merchant_refund.py -k gate
-
-**Run nothing else against this worktree while this is running.** It edits
-source files in place, so any concurrently running suite imports whatever
-mutation happens to be applied at that moment and fails for reasons that have
-nothing to do with it.
-
-``--check-anchors`` applies every edit **in memory** and reports all the stale
-ones at once, in about a second. Run it after any refactor near the seam: the
-real run aborts on the first stale anchor, which is correct and costs a pytest
-round trip per discovery, and five of them accumulated in a single round here.
-
-Sources are restored from a copy taken before the edit, in a ``finally``.
-Never ``git checkout`` — several agents share this worktree. pytest runs in
-its own process group, killed as a group in a ``finally``: on SIGINT the group
-dies and the tree comes back byte-identical; on SIGKILL neither runs and the
-tree is left mutated, which is the reason not to ``kill -9`` this script.
+    uv run python apps/api/tests/tools/falsify_merchant_refund.py --check-anchors
 
 ## Two properties are deliberately not falsifiable here, and one that stopped being one
 
@@ -72,20 +58,10 @@ moves.
 
 from __future__ import annotations
 
-import argparse
-import contextlib
-import os
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass
-from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
-SRC = REPO / "apps/api/src/yupay"
+from _falsify import SRC, Mutation, main
+
 LIVE = "apps/api/tests/integration/test_merchant_auto_refund.py"
 KEYS = "apps/api/tests/unit/test_merchant_refund_keys.py"
 ATTRIB = "apps/api/tests/integration/test_merchant_deposit_attribution.py"
@@ -101,35 +77,6 @@ STATUS = SRC / "modules/merchants/order_status.py"
 SAGA = SRC / "modules/fulfillment/service.py"
 PLACEMENT = SRC / "modules/merchants/orders.py"
 ORDERS = SRC / "modules/orders/service.py"
-
-#: ``FAILED apps/.../test_x.py::test_name[param] - AssertionError: …``.
-_FAILED_LINE = re.compile(r"^FAILED\s+\S+?\.py::(?P<name>.+?)(?:\s+-\s.*)?$")
-
-
-@dataclass(frozen=True)
-class Mutation:
-    """One way to break the refund, and the tests that must notice.
-
-    Attributes:
-        name: How the row is reported.
-        breaks: What property this removes, for the report.
-        edits: ``(path, old, new)`` triples. Each must change its file.
-        tests: Test ids or files to run.
-        expect: The **exact** set of tests this mutation must redden — not a
-            subset. Equality is the point: the first version of this harness
-            asserted only that the named tests were *among* the failures, and
-            a row that reddened nine tests where three were expected passed
-            silently for two review rounds. A blast radius that changes is a
-            row grading something other than what it says, which is the same
-            failure the ``SystemExit`` guard catches for anchors. Fill it in
-            with ``--record``.
-    """
-
-    name: str
-    breaks: str
-    edits: tuple[tuple[Path, str, str], ...]
-    tests: tuple[str, ...]
-    expect: tuple[str, ...] = ()
 
 
 MUTATIONS: tuple[Mutation, ...] = (
@@ -718,160 +665,5 @@ MUTATIONS: tuple[Mutation, ...] = (
 )
 
 
-def _check_anchors(chosen: list[Mutation]) -> int:
-    """Report every stale anchor at once, in seconds, without touching the tree.
-
-    The whole run aborts on the **first** stale anchor — deliberately, because
-    a harness that carries on after one is a harness reporting on a tree it did
-    not mutate. That is right and it is also slow: each discovery costs a
-    pytest run, and five accumulated in one round here while the code moved
-    under them. This finds all five in about a second, and it is the cheapest
-    thing to run after any refactor near the seam.
-
-    Args:
-        chosen: The rows to check.
-
-    Returns:
-        A process exit code: non-zero if any anchor no longer matches.
-    """
-    cache: dict[Path, str] = {}
-    stale: list[str] = []
-    for mutation in chosen:
-        edited: dict[Path, str] = {}
-        for path, old, _new in mutation.edits:
-            source = edited.get(path) or cache.setdefault(path, path.read_text())
-            if old not in source:
-                stale.append(f"{mutation.name:44} {path.name}  {old.splitlines()[0][:60]!r}")
-                continue
-            edited[path] = source.replace(old, _new, 1)
-    for row in stale:
-        print(f"STALE  {row}")
-    print(f"\n{len(stale)} stale anchor(s) across {len(chosen)} rows")
-    return 1 if stale else 0
-
-
-def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
-    """Apply every edit, insisting each one actually changed its file."""
-    for path, old, new in mutation.edits:
-        if path not in backups:
-            copy = Path(tempfile.mkdtemp(prefix="falsify-")) / path.name
-            shutil.copy2(path, copy)
-            backups[path] = copy
-        source = path.read_text()
-        mutated = source.replace(old, new, 1)
-        if mutated == source:
-            message = (
-                f"{mutation.name}: the edit changed nothing in {path.name}. "
-                "A str.replace that matches nothing is a silent no-op, and a "
-                "harness that reports GREEN from one is worse than no harness."
-            )
-            raise SystemExit(message)
-        path.write_text(mutated)
-
-
-def _restore(backups: dict[Path, Path]) -> None:
-    """Put every mutated file back from its pre-edit copy."""
-    for path, copy in backups.items():
-        shutil.copy2(copy, path)
-        shutil.rmtree(copy.parent, ignore_errors=True)
-
-
-def _run(mutation: Mutation) -> tuple[str, list[str]]:
-    """Run the mutation's tests. Returns a verdict and the failing test names."""
-    command = ["uv", "run", "pytest", *mutation.tests, "-q", "-p", "no:cacheprovider", "--no-cov"]
-    process = subprocess.Popen(
-        command,
-        cwd=REPO,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    try:
-        stdout, _ = process.communicate(timeout=900)
-    except subprocess.TimeoutExpired:
-        return "TIMED OUT", []
-    finally:
-        if process.poll() is None:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-    failures = sorted(
-        {match.group("name") for line in stdout.splitlines() if (match := _FAILED_LINE.match(line))}
-    )
-    if process.returncode == 0:
-        return "UNFALSIFIED — the suite stayed green", failures
-    observed, expected = set(failures), set(mutation.expect)
-    if observed == expected:
-        return "failed as expected", failures
-    missing = sorted(expected - observed)
-    extra = sorted(observed - expected)
-    parts = []
-    if missing:
-        parts.append(f"did not red {', '.join(missing)}")
-    if extra:
-        parts.append(f"also red {', '.join(extra)}")
-    return f"WRONG BLAST RADIUS — {'; '.join(parts)}", failures
-
-
-def main() -> int:
-    """Run every mutation (or those matching ``-k``) and print a table."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-k", dest="pattern", default="", help="substring of the mutation name")
-    parser.add_argument("--list", action="store_true", help="print the mutations and exit")
-    parser.add_argument(
-        "--check-anchors",
-        action="store_true",
-        help="apply every edit in memory and report stale anchors, without running pytest",
-    )
-    parser.add_argument(
-        "--record",
-        action="store_true",
-        help="print each row's observed red set as an `expect=` tuple, for pasting back",
-    )
-    args = parser.parse_args()
-
-    chosen = [m for m in MUTATIONS if args.pattern in m.name]
-    if args.list:
-        for mutation in chosen:
-            print(f"{mutation.name:44} {mutation.breaks}")
-        return 0
-    if args.check_anchors:
-        return _check_anchors(chosen)
-
-    print(
-        "falsify: editing source files in place — do not run any other suite "
-        "against this worktree until it finishes.\n",
-        flush=True,
-    )
-    rows: list[tuple[str, str]] = []
-    for mutation in chosen:
-        backups: dict[Path, Path] = {}
-        try:
-            _apply(mutation, backups)
-            verdict, failures = _run(mutation)
-        finally:
-            _restore(backups)
-        rows.append((mutation.name, verdict))
-        print(f"{mutation.name:44} {verdict}", flush=True)
-        if args.record:
-            body = "".join(f'\n            "{name}",' for name in failures)
-            print(f"        # {mutation.name}\n        expect=({body}\n        ),", flush=True)
-
-    print("\n--- summary ---")
-    unfalsified = [
-        name
-        for name, verdict in rows
-        if verdict.startswith(("UNFALSIFIED", "WRONG BLAST RADIUS", "TIMED OUT"))
-    ]
-    for name, verdict in rows:
-        print(f"{name:44} {verdict}")
-    if unfalsified:
-        print(f"\n{len(unfalsified)} mutation(s) not falsified: {', '.join(unfalsified)}")
-        return 1
-    print(f"\nall {len(rows)} mutations falsified")
-    return 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(MUTATIONS, description=__doc__))

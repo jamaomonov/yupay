@@ -6,63 +6,36 @@ only as good as the test that goes red when it is removed. This script breaks
 each one in turn and checks that the named tests actually fail — the
 difference between "the suite passes" and "the suite would notice".
 
-Run it::
+The runner, the guarantees it enforces and the rules for running one live in
+:mod:`_falsify`; read that first. Run it::
 
     uv run python apps/api/tests/tools/falsify_merchant_webhook_events.py
     uv run python apps/api/tests/tools/falsify_merchant_webhook_events.py -k notify
+    uv run python apps/api/tests/tools/falsify_merchant_webhook_events.py --check-anchors
 
 Committed for the reason ``falsify_outbound.py`` is: a falsification result
-nobody can re-run is a claim, not evidence. It inherits that file's two
-lessons — every mutation asserts it **changed the file** before the suite
-runs, and a green suite under a mutation is reported ``UNFALSIFIED``, loudly —
-and it found the same class of problem once during Task 3: the first attempt
-at the ``url``-snapshot mutation was *equivalent to the original code*
-(re-reading the hook's URL at enqueue time yields the same value it already
-had), so it could not have failed. The mutation that does bite is the
-plausible regression on the **config** path — a well-meaning "keep the log
-tidy" UPDATE, which is exactly what joining the log onto ``merchant_webhooks``
-would amount to.
+nobody can re-run is a claim, not evidence. It found the same class of problem
+once during Task 3: the first attempt at the ``url``-snapshot mutation was
+*equivalent to the original code* (re-reading the hook's URL at enqueue time
+yields the same value it already had), so it could not have failed. The
+mutation that does bite is the plausible regression on the **config** path — a
+well-meaning "keep the log tidy" UPDATE, which is exactly what joining the log
+onto ``merchant_webhooks`` would amount to.
 
-**Run nothing else against this worktree while this is running.** It edits
-source files in place, so any concurrently running suite imports whatever
-mutation happens to be applied at that moment and fails for reasons that have
-nothing to do with it. That is not hypothetical: running this alongside an
-``-n auto`` integration pass produced a ``PendingRollbackError`` in
-``test_an_enqueue_that_raises_does_not_roll_back_the_order`` — the exact
-signature the ``no_savepoint`` mutation is designed to cause, in a worker that
-had imported ``webhooks.py`` mid-mutation. The banner below says so on every
-run.
+It also carried the ambiguous anchor that :mod:`_falsify` now refuses. See
+``replay_announced`` below for what that cost.
 
-Sources are restored from a copy taken before the edit, in a ``finally``.
-Never ``git checkout`` — several agents share this worktree. pytest runs in
-its own process group, killed as a group in a ``finally`` (the shape
-``falsify_outbound.py`` took in d12927c).
-
-What that covers, measured rather than assumed: on **SIGINT** — Ctrl-C, an
-agent stopped — the group is killed and the worktree is restored
-byte-identical, verified by hashing the file before, during and after an
-interrupted run (mutated mid-run, hash equal after, zero surviving children,
-no leftover backup directory). On **SIGKILL** nothing in-process runs, so that
-case still leaves a mutated worktree; there is no in-process answer to it, and
-the mitigation is to not ``kill -9`` this script.
+**Every row runs the whole integration file**, not the one test it names, so
+the exact ``expect=`` set can see collateral damage. Fourteen tests in about
+fifteen seconds; a narrower ``tests=`` would make the exactness vacuous.
 """
 
 from __future__ import annotations
 
-import argparse
-import contextlib
-import os
-import re
-import shutil
-import signal
-import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass
-from pathlib import Path
 
-REPO = Path(__file__).resolve().parents[4]
-SRC = REPO / "apps/api/src/yupay"
+from _falsify import SRC, Mutation, main
+
 EVENTS = "apps/api/tests/integration/test_merchant_webhook_events.py"
 
 HOOKS = SRC / "modules/merchants/webhooks.py"
@@ -71,42 +44,20 @@ ADMIN = SRC / "modules/merchants/admin.py"
 ORDERS = SRC / "modules/orders/service.py"
 FULFILMENT = SRC / "modules/fulfillment/service.py"
 
-#: ``FAILED apps/.../test_x.py::test_name[param] - AssertionError: …``.
-_FAILED_LINE = re.compile(r"^FAILED\s+\S+?\.py::(?P<name>.+?)(?:\s+-\s.*)?$")
-
-
-@dataclass(frozen=True)
-class Mutation:
-    """One way to break the producer, and the tests that must notice.
-
-    Attributes:
-        name: How the row is reported.
-        breaks: What property this removes, for the report.
-        edits: ``(path, old, new)`` triples. Each must change its file.
-        tests: Test ids to run.
-        expect: Test names that must be among the failures.
-    """
-
-    name: str
-    breaks: str
-    edits: tuple[tuple[Path, str, str], ...]
-    tests: tuple[str, ...]
-    expect: tuple[str, ...] = ()
-
 
 MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         name="disabled_ignored",
         breaks="a disabled hook still collects rows nobody will deliver",
         edits=((HOOKS, "                MerchantWebhook.disabled_at.is_(None),\n", ""),),
-        tests=(f"{EVENTS}::test_a_disabled_webhook_enqueues_nothing",),
+        tests=(EVENTS,),
         expect=("test_a_disabled_webhook_enqueues_nothing",),
     ),
     Mutation(
         name="no_savepoint",
         breaks="a failed insert poisons the session instead of rolling back alone",
         edits=((HOOKS, "        async with db.begin_nested():\n", "        if True:\n"),),
-        tests=(f"{EVENTS}::test_an_enqueue_that_raises_does_not_roll_back_the_order",),
+        tests=(EVENTS,),
         expect=("test_an_enqueue_that_raises_does_not_roll_back_the_order",),
     ),
     Mutation(
@@ -122,7 +73,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(f"{EVENTS}::test_a_rolled_back_transaction_leaves_no_row_and_fires_no_notify",),
+        tests=(EVENTS,),
         expect=("test_a_rolled_back_transaction_leaves_no_row_and_fires_no_notify",),
     ),
     Mutation(
@@ -135,7 +86,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 'WEBHOOK_QUEUE_CHANNEL: Final = "merchant_webhooks_queue"',
             ),
         ),
-        tests=(f"{EVENTS}::test_the_channel_name_is_the_one_task_four_listens_on",),
+        tests=(EVENTS,),
         expect=("test_the_channel_name_is_the_one_task_four_listens_on",),
     ),
     Mutation(
@@ -148,14 +99,33 @@ MUTATIONS: tuple[Mutation, ...] = (
                 '            "status": order.status,\n            "code": "GIFT-CODE-1234",\n',
             ),
         ),
-        tests=(f"{EVENTS}::test_delivering_the_order_enqueues_delivered_and_never_the_code",),
-        expect=("test_delivering_the_order_enqueues_delivered_and_never_the_code",),
+        tests=(EVENTS,),
+        expect=(
+            "test_a_merchant_order_enqueues_paid_and_fulfilling_with_an_exact_payload",
+            "test_delivering_the_order_enqueues_delivered_and_never_the_code",
+        ),
     ),
     Mutation(
+        # The anchor carries the comment line below it, and must. The bare
+        # ``"    if not replayed:"`` this row used to use is a **substring** of
+        # the eight-space ``if not replayed:`` that M3b's over-settlement guard
+        # added earlier in the same file, so ``str.replace`` landed the mutation
+        # on that branch instead — a branch this test never enters, because it
+        # credits with no ``order_id``. The row then reported a surviving
+        # mutation: a false alarm rather than a quiet pass, which is the only
+        # reason it was not believed. ``--check-anchors`` reports it now.
         name="replay_announced",
         breaks="a replayed credit announces money that did not move",
-        edits=((DEPOSIT, "    if not replayed:\n", "    if True:\n"),),
-        tests=(f"{EVENTS}::test_a_replayed_credit_enqueues_nothing_the_second_time",),
+        edits=(
+            (
+                DEPOSIT,
+                "    if not replayed:\n"
+                "        # In this transaction, with the credit, so a merchant is told about\n",
+                "    if True:\n"
+                "        # In this transaction, with the credit, so a merchant is told about\n",
+            ),
+        ),
+        tests=(EVENTS,),
         expect=("test_a_replayed_credit_enqueues_nothing_the_second_time",),
     ),
     Mutation(
@@ -168,7 +138,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    await _publish_status_changed(db, order)\n",
             ),
         ),
-        tests=(f"{EVENTS}::test_a_retail_delivery_still_publishes_only_order_delivered",),
+        tests=(EVENTS,),
         expect=("test_a_retail_delivery_still_publishes_only_order_delivered",),
     ),
     Mutation(
@@ -181,7 +151,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(f"{EVENTS}::test_delivering_the_order_enqueues_delivered_and_never_the_code",),
+        tests=(EVENTS,),
         expect=("test_delivering_the_order_enqueues_delivered_and_never_the_code",),
     ),
     Mutation(
@@ -190,10 +160,12 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (ORDERS, "    await on_order_status_changed(db, order, publish_realtime=False)\n", ""),
         ),
-        tests=(
-            f"{EVENTS}::test_a_merchant_order_enqueues_paid_and_fulfilling_with_an_exact_payload",
+        tests=(EVENTS,),
+        expect=(
+            "test_a_merchant_order_enqueues_paid_and_fulfilling_with_an_exact_payload",
+            "test_an_enqueue_that_raises_does_not_roll_back_the_order",
+            "test_delivering_the_order_enqueues_delivered_and_never_the_code",
         ),
-        expect=("test_a_merchant_order_enqueues_paid_and_fulfilling_with_an_exact_payload",),
     ),
     # NOT a mutation of ``url=hook.url``: the column is NOT NULL, so an enqueue
     # must write *some* URL, and re-reading the same row at enqueue time yields
@@ -213,123 +185,11 @@ MUTATIONS: tuple[Mutation, ...] = (
                 ".where(MerchantWebhookDelivery.merchant_id == merchant_id).values(url=clean))\n",
             ),
         ),
-        tests=(
-            f"{EVENTS}::"
-            "test_the_url_is_snapshotted_at_enqueue_and_a_later_move_does_not_rewrite_it",
-        ),
+        tests=(EVENTS,),
         expect=("test_the_url_is_snapshotted_at_enqueue_and_a_later_move_does_not_rewrite_it",),
     ),
 )
 
 
-def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
-    """Apply every edit, insisting each one actually changed its file."""
-    for path, old, new in mutation.edits:
-        if path not in backups:
-            copy = Path(tempfile.mkdtemp(prefix="falsify-")) / path.name
-            shutil.copy2(path, copy)
-            backups[path] = copy
-        source = path.read_text()
-        mutated = source.replace(old, new, 1)
-        if mutated == source:
-            message = (
-                f"{mutation.name}: the edit changed nothing in {path.name}. "
-                "A str.replace that matches nothing is a silent no-op, and a "
-                "harness that reports GREEN from one is worse than no harness."
-            )
-            raise SystemExit(message)
-        path.write_text(mutated)
-
-
-def _restore(backups: dict[Path, Path]) -> None:
-    """Put every mutated file back from its pre-edit copy."""
-    for path, copy in backups.items():
-        shutil.copy2(copy, path)
-        shutil.rmtree(copy.parent, ignore_errors=True)
-
-
-def _run(mutation: Mutation) -> tuple[str, list[str]]:
-    """Run the mutation's tests. Returns a verdict and the failing test names."""
-    command = ["uv", "run", "pytest", *mutation.tests, "-q", "-p", "no:cacheprovider", "--no-cov"]
-    # Own process group, killed as a group in ``finally`` — the same shape
-    # ``falsify_outbound.py`` took in d12927c after three of its pytest children
-    # were found alive two hours later, competing for the Postgres and Redis the
-    # rest of the suite uses.
-    #
-    # None of *these* mutations hangs on purpose, so the timeout path is
-    # unlikely. The interrupt path is what matters here and it is worse: under
-    # SIGKILL neither this ``finally`` nor ``_restore``'s runs, so an
-    # interrupted run leaves both an orphaned pytest **and a mutated worktree**.
-    # Killing the group closes the half that is closable.
-    process = subprocess.Popen(
-        command,
-        cwd=REPO,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        start_new_session=True,
-    )
-    try:
-        stdout, _ = process.communicate(timeout=900)
-    except subprocess.TimeoutExpired:
-        return "TIMED OUT", []
-    finally:
-        if process.poll() is None:
-            with contextlib.suppress(ProcessLookupError, PermissionError):
-                os.killpg(process.pid, signal.SIGKILL)
-            process.wait()
-    failures = [
-        match.group("name") for line in stdout.splitlines() if (match := _FAILED_LINE.match(line))
-    ]
-    if process.returncode == 0:
-        return "UNFALSIFIED — the suite stayed green", []
-    missing = [name for name in mutation.expect if not any(name in f for f in failures)]
-    if missing:
-        return f"failed, but not on {', '.join(missing)}", failures
-    return "failed as expected", failures
-
-
-def main() -> int:
-    """Run every mutation (or those matching ``-k``) and print a table."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("-k", dest="pattern", default="", help="substring of the mutation name")
-    parser.add_argument("--list", action="store_true", help="print the mutations and exit")
-    args = parser.parse_args()
-
-    chosen = [m for m in MUTATIONS if args.pattern in m.name]
-    if args.list:
-        for mutation in chosen:
-            print(f"{mutation.name:30} {mutation.breaks}")
-        return 0
-
-    print(
-        "falsify: editing source files in place — do not run any other suite "
-        "against this worktree until it finishes.\n",
-        flush=True,
-    )
-    rows: list[tuple[str, str]] = []
-    for mutation in chosen:
-        backups: dict[Path, Path] = {}
-        try:
-            _apply(mutation, backups)
-            verdict, _failures = _run(mutation)
-        finally:
-            _restore(backups)
-        rows.append((mutation.name, verdict))
-        print(f"{mutation.name:30} {verdict}", flush=True)
-
-    print("\n--- summary ---")
-    unfalsified = [
-        name for name, verdict in rows if verdict.startswith(("UNFALSIFIED", "failed, but"))
-    ]
-    for name, verdict in rows:
-        print(f"{name:30} {verdict}")
-    if unfalsified:
-        print(f"\n{len(unfalsified)} mutation(s) not falsified: {', '.join(unfalsified)}")
-        return 1
-    print(f"\nall {len(rows)} mutations falsified")
-    return 0
-
-
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(MUTATIONS, description=__doc__))

@@ -126,7 +126,11 @@ plugins = ["pydantic.mypy"]
 # trip on duplicate module names.
 explicit_package_bases = true
 namespace_packages = true
-mypy_path = "apps/api/src:apps/worker/src:apps/scheduler/src:apps/bot/src:apps/api:apps/worker:apps/scheduler:apps/bot"
+# `apps/api/tests/tools` is a root of its own because the `falsify_*` harnesses are
+# run as scripts (`uv run python apps/api/tests/tools/falsify_x.py`), which puts that
+# directory on `sys.path` and makes `_falsify` a top-level module. Without the entry
+# mypy cannot resolve the import the five of them share.
+mypy_path = "apps/api/src:apps/worker/src:apps/scheduler/src:apps/bot/src:apps/api:apps/worker:apps/scheduler:apps/bot:apps/api/tests/tools"
 exclude = [
     "^.*/migrations/versions/.*$",
     "^.*/generated/.*$",
