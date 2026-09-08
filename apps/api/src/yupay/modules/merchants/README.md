@@ -505,10 +505,20 @@ nothing (`_is_modelled`), and the handler body has a `try` of its own whose
 fallback formats nothing, because a reporter that needs the failing exception
 to be printable fails on exactly the exception worth reporting.
 
-Retail pays neither. The `merchant_id` gate is one indexed read **ahead of the
-savepoint**, so a storefront task that runs the warehouse dry — the commonest
-terminal failure here, and a `RETURNED` one — costs one query and no
-`SAVEPOINT`/`RELEASE` pair.
+Retail pays neither. The `merchant_id` gate (`_merchant_of_task`) is one
+indexed read **inside the try and ahead of the savepoint**, so a storefront
+task that runs the warehouse dry — the commonest terminal failure here, and a
+`RETURNED` one — costs one query and no `SAVEPOINT`/`RELEASE` pair.
+
+Those two placements are different things, and confusing them is how the gate
+briefly sat outside every catch one commit after the catch was widened for
+exactly that class. Inside the try, a fault there is reported like any other.
+Outside the savepoint, a **transaction-poisoning** fault there is reported and
+_not repaired_ — there is nothing to roll back to, the rest of the batch fails
+behind it, and the worker's rollback-and-retick is what recovers. That is the
+trade the retail fast path buys, and it is cheap because the deterministic half
+is unreachable: `one_or_none()` over a primary-key join, after the flush has
+already run.
 
 **A refunded order may not be re-driven.** `charge_deposit` is idempotent on
 `merchant-order:{order_id}`, so a _second_ charge for one order replays the

@@ -20,7 +20,7 @@ import sys
 from collections.abc import Coroutine, Iterable
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import Row, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -824,30 +824,33 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # terminal failure in this codebase, so "retail is untouched" has to mean
     # round trips and not only behaviour.
     #
-    # It sits outside the savepoint and inside the try, and the two classes of
-    # fault it can meet want opposite things. A **deterministic** one — the
-    # order row gone, so ``one()`` raises ``NoResultFound`` — does not abort
-    # the Postgres transaction, so swallowing it is safe and propagating it
-    # would re-crash the batch every tick. A **transaction-poisoning** one is
-    # a dead session or a dying database: not deterministic, not repaired by a
-    # savepoint we do not hold, and already recovered by the worker's own
-    # rollback-and-retick. Both are reported.
-    row = (
-        await db.execute(
-            select(Order.merchant_id, Order.id)
-            .join(FulfillmentTask, FulfillmentTask.order_id == Order.id)
-            .where(FulfillmentTask.id == task_id)
-        )
-    ).one_or_none()
-    if row is None or row.merchant_id is None:
-        return
-
-    # A plain dict, filled in by the body as soon as it knows. The order id is
-    # what an operator settles by, so the failure path must still have it —
-    # and it cannot be read back off an ORM object here, because the savepoint
-    # rollback expires those. A ``str`` in a ``dict`` survives it.
-    seen: dict[str, str] = {"order_id": row.id}
+    # It is **inside the try and outside the savepoint**, and those are two
+    # different things — a distinction this function got wrong once. Inside the
+    # try, because a fault here must be reported like any other; outside the
+    # savepoint, because opening one for a read that retail never gets past is
+    # the cost Minor 4 removed.
+    #
+    # What that trades, stated rather than implied: a transaction-poisoning
+    # fault here is **reported but not repaired**. There is no savepoint to
+    # roll back to, so the enclosing transaction stays aborted and the rest of
+    # the batch fails behind it — which the worker recovers by rolling back and
+    # re-ticking, and which is not reachable deterministically anyway
+    # (``one_or_none()`` over a primary-key join cannot raise ``MultipleResults``,
+    # and ``_flush_caller_writes`` has just run, so autoflush has nothing left
+    # to fail on). A dying session is the only way in, and a dying session is
+    # not something a savepoint fixes.
+    #
+    # A plain dict carries the order id out to the failure path: an operator
+    # settles by it, and it cannot be read back off an ORM object there,
+    # because a savepoint rollback expires those. A ``str`` in a ``dict``
+    # survives it. It is filled in only once the read has succeeded, which is
+    # why the handler reads it with ``.get``.
+    seen: dict[str, str] = {}
     try:
+        row = await _merchant_of_task(db, task_id)
+        if row is None:
+            return
+        seen["order_id"] = row.id
         # One savepoint over the whole body, not just the posting. Two things
         # need it. A refusal must roll back a half-written posting without
         # touching the failure record above — that was always true — and a
@@ -888,7 +891,7 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
             detail = _crash_detail(exc)
             log.error(  # noqa: TRY400 -- see above: no traceback on this path
                 "merchant_refund.failed",
-                order_id=seen["order_id"],
+                order_id=seen.get("order_id", "?"),
                 task_id=task_id,
                 supplier=seen.get("supplier", "?"),
                 modelled=_is_modelled(exc),
@@ -896,7 +899,7 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
             )
             _dispatch_alert(
                 _alert_merchant_refund_failed(
-                    task_id=task_id, order_id=seen["order_id"], error=detail
+                    task_id=task_id, order_id=seen.get("order_id"), error=detail
                 )
             )
         except Exception:  # noqa: BLE001 -- nothing may escape the reporter; see above
@@ -935,6 +938,32 @@ def _is_modelled(exc: BaseException) -> bool:
     if isinstance(refund_error, type) and issubclass(refund_error, BaseException):
         return isinstance(exc, refund_error | AppError | SQLAlchemyError)
     return isinstance(exc, AppError | SQLAlchemyError)
+
+
+async def _merchant_of_task(db: AsyncSession, task_id: str) -> Row[tuple[str | None, str]] | None:
+    """The task's order, if it belongs to a merchant. One indexed read.
+
+    The gate that keeps retail out of the refund seam, in a function of its own
+    so the seam's own placement is nameable and testable — this read has now
+    been on both sides of the ``try`` and the difference was invisible in a
+    diff.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        task_id: The task that has just terminated.
+
+    Returns:
+        The ``(merchant_id, order_id)`` row for a merchant order, or ``None``
+        for a retail one and for a task whose order has gone.
+    """
+    row = (
+        await db.execute(
+            select(Order.merchant_id, Order.id)
+            .join(FulfillmentTask, FulfillmentTask.order_id == Order.id)
+            .where(FulfillmentTask.id == task_id)
+        )
+    ).one_or_none()
+    return row if row is not None and row.merchant_id is not None else None
 
 
 async def _flush_caller_writes(db: AsyncSession) -> None:

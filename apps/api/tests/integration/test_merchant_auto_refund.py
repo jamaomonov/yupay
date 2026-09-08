@@ -873,6 +873,43 @@ async def test_a_crash_while_reporting_a_crash_still_does_not_stall_the_queue(
     await db_session.commit()
 
 
+async def test_a_fault_in_the_merchant_gate_is_reported_not_fatal(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The gate read is inside the catch, and that is not the same as inside
+    the savepoint.
+
+    Moving it ahead of the savepoint is what keeps a retail task down to one
+    statement. Moving it ahead of the **try** is what silently reopened the
+    livelock one commit after it was closed: a fault there escaped
+    `drain_pending_tasks` with no line and no alert, while the comment above it
+    said it was inside the try and that both fault classes were reported.
+
+    So the two placements get separated here. The read is outside the
+    savepoint — a poisoning fault is reported and not repaired, which the
+    comment now says — and inside the try, which this pins.
+    """
+    await _placed(integration_client, admin_headers, db_session, merchant_order_id="acme-gate")
+
+    async def _boom(_db: AsyncSession, _task_id: str) -> None:
+        raise RuntimeError("the session died mid-gate")
+
+    monkeypatch.setattr(ff_svc, "_merchant_of_task", _boom)
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    # Reported without the order id — the read that would have supplied it is
+    # the one that failed — so the alert falls back to the task, which is what
+    # keeps the per-order dedupe from collapsing to one message an hour.
+    assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
+
+
 async def test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],

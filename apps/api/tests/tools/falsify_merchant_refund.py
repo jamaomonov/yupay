@@ -136,8 +136,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "    if row is None or row.merchant_id is None:",
-                "    if row is None:",
+                "    return row if row is not None and row.merchant_id is not None else None",
+                "    return row",
             ),
         ),
         tests=(LIVE,),
@@ -191,6 +191,33 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=("test_a_failure_to_persist_the_callers_writes_is_not_turned_into_unknown",),
     ),
     Mutation(
+        # `a_seam_read_outside_the_catch` below grades a read **inside** the
+        # try and stayed green while this one was broken. The two placements
+        # are different properties and now have different rows: that one says
+        # the seam's own reads are covered, this one says the gate read is too.
+        # "Ahead of the savepoint" and "ahead of the try" are not the same
+        # move, and a loose instruction to make the first produced the second.
+        name="merchant_gate_outside_the_catch",
+        breaks="a fault in the gate read escapes the drain with no line and no alert",
+        edits=(
+            (
+                SAGA,
+                "    try:\n"
+                "        row = await _merchant_of_task(db, task_id)\n"
+                "        if row is None:\n"
+                "            return\n"
+                '        seen["order_id"] = row.id\n',
+                "    row = await _merchant_of_task(db, task_id)\n"
+                "    if row is None:\n"
+                "        return\n"
+                '    seen["order_id"] = row.id\n'
+                "    try:\n",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_fault_in_the_merchant_gate_is_reported_not_fatal",),
+    ),
+    Mutation(
         # Fix round 1's shape, restored: one of the seam's own reads back
         # outside the try. It propagates with no log line and no alert, and
         # the queue re-crashes on it every tick.
@@ -199,9 +226,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                '    seen: dict[str, str] = {"order_id": row.id}\n    try:',
-                '    seen: dict[str, str] = {"order_id": row.id}\n'
-                "    await _load_task(db, task_id)\n    try:",
+                "    seen: dict[str, str] = {}\n    try:",
+                "    seen: dict[str, str] = {}\n    await _load_task(db, task_id)\n    try:",
             ),
         ),
         tests=(LIVE,),
@@ -310,6 +336,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         tests=(LIVE,),
         expect=(
             "test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down",
+            "test_a_fault_in_the_merchant_gate_is_reported_not_fatal",
             "test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",
             "test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",
             "test_an_unimportable_refund_module_is_reported_not_fatal",
@@ -578,7 +605,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 SAGA,
                 "            _dispatch_alert(\n"
                 "                _alert_merchant_refund_failed(\n"
-                '                    task_id=task_id, order_id=seen["order_id"], error=detail\n'
+                '                    task_id=task_id, order_id=seen.get("order_id"), error=detail\n'
                 "                )\n"
                 "            )\n",
                 "",
@@ -586,6 +613,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         ),
         tests=(LIVE,),
         expect=(
+            "test_a_fault_in_the_merchant_gate_is_reported_not_fatal",
             "test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
             "test_a_refund_failure_leaves_the_task_refundable",
