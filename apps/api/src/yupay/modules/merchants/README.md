@@ -458,17 +458,38 @@ never lets anything move back down, with no operator re-grade path anywhere in
 the system. A refund raising inside that savepoint would roll back the
 `RETURNED` it was acting on and replace it with a permanent "we cannot tell":
 _the attempt to refund would make the order unrefundable._ So the seam runs
-after the savepoint is released, at the three sites that can terminally fail a
-merchant task — the drain, `retry_task`, and `process_webhook_update`. Those
-three are exhaustive because merchant orders are enqueue-only by construction
+after the savepoint is released, at the **four** sites that can terminally
+fail a merchant task — the drain, `retry_task`, `process_webhook_update` and
+`fail_manual_task`. Merchant orders are enqueue-only by construction
 (`orders._enqueue_only`), so no merchant task is ever run by the synchronous
-`start_for_order` path.
+`start_for_order` path, and those four are the rest. The fourth is reachable
+because a B2B-visible `top_up` SKU with **no active `SkuSupplierMapping`** —
+and no sourcing rule — falls through `sourcing._resolve_auto` to
+`supplier:manual`.
 
-A refusal is caught (`RefundError`, `AppError`, `SQLAlchemyError` — modelled
-refusals and the database's own errors, never a bare `except Exception`),
-logged at `error`, alerted, and leaves a task reading `failed` + `RETURNED`. A
-`NameError` from a circular import is deliberately **not** caught: that is
-what `main`'s 64decbd hid for six weeks on this very path.
+**The seam's whole body is inside one savepoint and one `except Exception`** —
+the lazy import, the three reads, the posting and the alert. Propagating is
+what that avoids, and the cost of propagating is not the money but the queue:
+a deterministic fault escapes `drain_pending_tasks`, rolls the batch back,
+returns every row to `pending` and re-crashes next tick, taking the
+**storefront's** fulfilment down with the reseller's. Catching is safe because
+of where it sits: outside the per-task savepoint, so it can never reach the
+crash arm and never write `UNKNOWN`.
+
+Nothing is swallowed, which is the half of the 64decbd rule that actually
+matters. Every exception is logged at `error` with the order id and raises the
+`merchant_refund_failed` alert, and the log line carries
+`modelled=true|false` — `RefundError`/`AppError`/`SQLAlchemyError` against
+anything else — so an ordinary "support already settled this" and an
+`ImportError` from the lazy import are one query apart rather than
+indistinguishable.
+
+Exactly one statement is outside both: the flush of the **caller's** pending
+writes. A savepoint cannot contain it without a rollback discarding the very
+failure record the refund exists to act on, and it introduces no failure that
+was not already there — the caller flushes the same writes a few lines later
+regardless. That statement is also all that the seam's _placement_ still
+protects, and it has its own test.
 
 **A refunded order may not be re-driven.** `charge_deposit` is idempotent on
 `merchant-order:{order_id}`, so a _second_ charge for one order replays the
@@ -516,12 +537,18 @@ is made **loud** instead: `log.warning("merchant_task_cancelled")` plus the
 `_alert_merchant_order_cancelled` ops alert, deduped per order for an hour.
 The runbook says what to do with one.
 
-**Four sites can terminally fail a merchant task**, and the seam is called
-from all four: the worker drain, `retry_task`, `process_webhook_update`, and
-`fail_manual_task` — the last reachable because a B2B-visible SKU with no
-`SkuSourcingRule` routes to `manual`. Its `UNKNOWN` refunds nothing, so the
-call moves no money today; it is there so that the safety does not rest on
-which constant that function happens to record.
+It fires **only when nothing has come back on the order**.
+`cancel_open_tasks_for_order` cancels `failed` tasks too, so the documented
+support step for a failed merchant order — close it by hand, after the
+automatic refund has already posted — runs straight through that line. An
+alert saying "the deposit is still debited" about an order reading
+`refunded_usd: "1.07"` would be wrong on the feature's commonest path, and an
+alert that is wrong on the common path is one nobody reads by the time it is
+right.
+
+`fail_manual_task`'s `UNKNOWN` refunds nothing, so calling the seam there
+moves no money today; it is there so the safety does not rest on which
+constant that function happens to record.
 
 ## Pricing
 

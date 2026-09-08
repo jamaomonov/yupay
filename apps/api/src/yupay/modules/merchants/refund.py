@@ -105,11 +105,17 @@ CODE_DEPOSIT_ALREADY_RETURNED: Final = "deposit_already_returned"
 class RefundError(Exception):
     """No refund was posted, for a reason this module models.
 
-    The base class exists so the caller can catch *this module's* refusals
-    without a bare ``except Exception`` — which on this path is how a
-    six-week-old circular import stayed hidden on ``main`` (64decbd). A
-    ``NameError`` or an ``ImportError`` is not one of these and must not be
-    swallowed as one.
+    Its caller **does** now use a bare ``except Exception`` — the seam has to
+    catch everything or a deterministic fault livelocks the shared fulfilment
+    queue — so this class is no longer what keeps a bug from being swallowed.
+    It is what keeps a bug from being *indistinguishable*: the seam tags its
+    log line ``modelled=true`` for this family (with ``AppError`` and
+    ``SQLAlchemyError``) and ``modelled=false`` for everything else, so an
+    ``ImportError`` from the lazy import — the 64decbd shape — is one query
+    away from an ordinary "support already settled this order".
+
+    That is the discriminator the original rule was really asking for, and it
+    survives the catch that the original wording did not anticipate.
     """
 
 

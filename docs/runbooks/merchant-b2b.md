@@ -839,13 +839,18 @@ Two Telegram alerts, both from the fulfilment saga:
 
 - **«Отменена задача по заказу реселлера»** (`merchant_order_cancelled`) — a
   merchant order's task was cancelled, by an admin or by an order/payment
-  cascade. **No automatic refund reaches this state and none ever will**: a
+  cascade, **and nothing has come back on that order**. That second half is
+  part of the trigger, not a caveat: closing an order the drain already
+  refunded is the ordinary support step and raises nothing, so an alert you
+  do see is one where the deposit is genuinely still out.
+  **No automatic refund reaches this state and none ever will**: a
   cancellation is a decision a person made for a reason this code cannot read,
   and inferring "the supplier gave the money back" from it would be exactly
   the guess the money outcome exists to prevent. What it leaves behind is a
   debited deposit on an order nothing can move again — Retry and
   force-complete both refuse a `cancelled` task. Decide the money yourself and
-  settle it with the procedure above. Deduped per order for an hour.
+  settle it with the procedure above; read `refunded_usd` first anyway, as
+  that procedure says. Deduped per order for an hour.
 
 **Do not click Retry on a refunded order.** It is refused with
 `409 deposit_already_returned`, and the refusal is the point: a second charge

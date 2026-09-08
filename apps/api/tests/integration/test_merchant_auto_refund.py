@@ -286,6 +286,13 @@ async def _seed_sku(db: AsyncSession, *, n: int = 1, route: str = "mock") -> str
     if route == "inventory":
         db.add(SkuSourcingRule(sku_id=sku.id, mode="force_inventory"))
     elif route == "auto":
+        # **No rule at all** — which is the point. ``sourcing._resolve_auto``
+        # then routes a ``top_up`` product with no active
+        # ``SkuSupplierMapping`` to ``supplier:manual``, and that is the real
+        # path by which a merchant order reaches ``fail_manual_task``. Pinning
+        # it with an explicit ``force_supplier="manual"`` rule would test the
+        # seam and quietly stop testing the reachability argument the docs
+        # make for it.
         pass
     else:
         db.add(SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug=route))
@@ -693,6 +700,98 @@ async def test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm(
     assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
 
 
+async def test_a_failure_to_persist_the_callers_writes_is_not_turned_into_unknown(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """What the seam's **placement** still protects, now that it catches all.
+
+    Everything the seam itself does is inside its savepoint and its catch, so
+    moving the call inside ``drain_pending_tasks``' per-task savepoint would
+    change nothing for any of it. One statement is deliberately outside both:
+    the flush of the **caller's** pending writes, which cannot be rolled back
+    into a savepoint without discarding the failure record the refund exists
+    to act on.
+
+    So that is the discriminator. A fault there must reach the caller, not the
+    crash arm — because the crash arm's answer is ``UNKNOWN``, the one verdict
+    nothing can lower again. Move the seam inside the savepoint and this stops
+    raising: the crash arm swallows it and stamps the task permanently
+    unrefundable.
+    """
+    await _placed(integration_client, admin_headers, db_session, merchant_order_id="acme-flush")
+
+    async def _boom(_db: AsyncSession) -> None:
+        raise RuntimeError("the caller's own writes would not persist")
+
+    monkeypatch.setattr(ff_svc, "_flush_caller_writes", _boom)
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+
+    with pytest.raises(RuntimeError, match="would not persist"):
+        await ff_svc.drain_pending_tasks(db_session)
+    await db_session.rollback()
+
+
+async def test_a_fault_in_the_seams_own_reads_is_reported_not_fatal(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The seam's reads and its lazy import are inside the catch, not before it.
+
+    Fix round 1 wrapped only the posting. ``_load_task``, both ``select``s and
+    the ``import ... refund`` all sat **before** that ``try``, so a
+    deterministic fault in any of them — a task whose ``order_item_id`` no
+    longer resolves makes ``scalar_one()`` raise ``NoResultFound`` every time —
+    propagated out of the drain with no log line and no alert, rolled the batch
+    back, and re-crashed on the next tick. The same outage, from a line nobody
+    had looked at, and it takes the **storefront's** queue with it.
+    """
+    _m, _k, _s, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-readfault"
+    )
+    original = ff_svc._load_task
+    poisoned = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+
+    async def _fault(
+        db: AsyncSession, task_id: str, *, for_update: bool = False
+    ) -> FulfillmentTask:
+        # Scoped to the seam: ``process_task`` loads the same task first, and
+        # failing there would test the crash arm instead of this. Keyed on the
+        # **outer** frame, so the fault still lands if the read is ever moved
+        # back out of the body — which is the regression this guards.
+        if task_id == poisoned and _seam_is_running():
+            raise RuntimeError("this row no longer resolves")
+        return await original(db, task_id, for_update=for_update)
+
+    def _seam_is_running() -> bool:
+        import traceback
+
+        return any(f.name == "_settle_merchant_deposit" for f in traceback.extract_stack())
+
+    monkeypatch.setattr(ff_svc, "_load_task", _fault)
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
+    task = await db_session.get(FulfillmentTask, poisoned)
+    assert task is not None
+    await db_session.refresh(task)
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.RETURNED
+
+
 async def test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],
@@ -1062,9 +1161,12 @@ async def test_a_manually_failed_merchant_order_reaches_the_seam(
 ) -> None:
     """``fail_manual_task`` is the fourth terminal site, and it is reachable.
 
-    A B2B-visible SKU with no sourcing rule routes to ``manual``, so an
-    operator rejecting one of those ends a merchant order with the deposit
-    debited. Its ``UNKNOWN`` refunds nothing — that is correct and unchanged —
+    Reachable by the **real** route, which is what this fixture pins: a
+    ``top_up`` product with **no active ``SkuSupplierMapping``** and no
+    sourcing rule at all falls through ``sourcing._resolve_auto`` to
+    ``supplier:manual``. An explicit ``force_supplier="manual"`` rule would
+    exercise the seam and stop exercising the reachability argument, which is
+    the half that could rot. Its ``UNKNOWN`` refunds nothing — that is correct and unchanged —
     but the seam is what makes the parked deposit visible instead of a trap
     that depends on ``UNKNOWN`` never becoming refundable.
     """
@@ -1073,7 +1175,7 @@ async def test_a_manually_failed_merchant_order_reaches_the_seam(
         admin_headers,
         db_session,
         merchant_order_id="acme-manual",
-        route="manual",
+        route="auto",
     )
     assert await ff_svc.drain_pending_tasks(db_session) == 1
     await db_session.commit()
@@ -1129,6 +1231,44 @@ async def test_cancelling_a_merchant_task_says_the_deposit_is_parked(
     assert _merchant_alerts(alerts) == ["_alert_merchant_order_cancelled"]
     assert await _refund_rows(db_session, order_id) == []
     assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
+
+
+async def test_cancelling_an_already_refunded_order_says_nothing(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The feature's happy path ends in a cancellation, and must be quiet.
+
+    ``cancel_open_tasks_for_order`` cancels ``failed`` tasks too, and the
+    documented support step for a failed merchant order is to close it by hand
+    — *after* the automatic refund has already posted. Alerting there would
+    say "the deposit is still debited" about an order whose `refunded_usd`
+    reads the whole charge, on the most common path the feature has. An alert
+    that is wrong on the common path is one nobody reads by the time it
+    matters.
+    """
+    merchant_id, _key, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-cancel-after"
+    )
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+    await ff_svc.drain_pending_tasks(db_session)
+    await db_session.commit()
+    assert len(await _refund_rows(db_session, order_id)) == 1
+    alerts.clear()
+
+    task_id = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await ff_svc.cancel_task(db_session, task_id=task_id)
+    await db_session.commit()
+
+    assert _merchant_alerts(alerts) == []
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING)
 
 
 # ---------- a hand settlement and the automatic one must not stack ----------

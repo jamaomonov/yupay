@@ -1,4 +1,4 @@
-"""The merchant USD deposit ledger — every movement of a reseller's prepaid balance.
+"""The merchant USD deposit ledger — the accounts, the reads, and two of three movements.
 
 The deposit is a **ledger balance, never a column**: ``merchant_deposit`` is
 debit-normal exactly like ``user_wallet``, and every movement goes through
@@ -9,10 +9,16 @@ which no caller may re-derive directions from — lives in this module's README.
 Split out of ``service.py`` (Task 5): accounts, machine credentials and money
 are three responsibilities, and money is the one that has to be readable on
 its own. ``service.py`` keeps the account, ``credentials.py`` the key
-lifecycle, and everything that moves or reads a balance is here — including
-the grouped ledger listing, which M1 first wrote in ``admin.py`` and which
-both the admin surface and ``/merchant/v1/transactions`` now read from one
-place.
+lifecycle, and the accounts, every read of a balance and the two movements a
+person or an order causes are here — including the grouped ledger listing,
+which M1 first wrote in ``admin.py`` and which both the admin surface and
+``/merchant/v1/transactions`` now read from one place.
+
+The **third** movement is not here. M3b Task 3's automatic refund lives in
+``refund.py``: this file was already past AGENTS.md's split point before it,
+and a reviewer of a refund should be able to read it without the machine-API
+listing beside them. The posting table in the module README is authoritative
+for all three.
 
 Reaches into ``wallet.service`` rather than the ``wallet.api`` facade for the
 same reason ``affiliate/ledger.py`` does: the facade imports the wallet

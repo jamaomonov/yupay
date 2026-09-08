@@ -30,7 +30,7 @@ its own process group, killed as a group in a ``finally``: on SIGINT the group
 dies and the tree comes back byte-identical; on SIGKILL neither runs and the
 tree is left mutated, which is the reason not to ``kill -9`` this script.
 
-## Three properties are deliberately not falsifiable here, and why
+## Two properties are deliberately not falsifiable here, and one that stopped being one
 
 **"A frozen merchant is still refunded"** has no code to delete — the refund
 simply never reads ``merchants.status``. Its mutation therefore *adds* the
@@ -43,14 +43,18 @@ is guarded by a Postgres unique index, not by any line in this repo. Removing
 tests and prove nothing about this one; the test earns its place by using two
 real connections rather than by a row here.
 
-**The seam's placement, on its own.** Since fix round 1 the seam catches
-everything ``refund_order`` raises, so moving the call inside
-``drain_pending_tasks``' savepoint changes nothing observable *through*
-``refund_order`` — the two mechanisms compose, which is why
-``refund_inside_the_savepoint`` is compound (its own comment explains it).
-What placement still protects alone is an exception from the seam's **own**
-reads, which sit outside its try deliberately; falsifying that would need a
-fault injected into ``_load_task``, which the whole saga shares.
+**Nothing.** The third absence this file used to declare — the seam's
+placement — is gone, and the way it went is the lesson. Fix round 1 claimed
+placement could not be falsified because it would need a fault in
+``_load_task``, which the whole saga shares. That was wrong twice: a
+**caller-scoped** fault is about ten lines (see
+``test_a_fault_in_the_seams_own_reads_is_reported_not_fatal``), and the
+property placement was protecting had in the meantime moved. Fix round 2 made
+the seam's whole body exception-safe, which left exactly one statement outside
+— the flush of the caller's own writes — and that is now what
+``refund_inside_the_savepoint`` grades. A declared absence is honest only
+while its stated reason is true; re-derive it whenever the code under it
+moves.
 """
 
 from __future__ import annotations
@@ -141,19 +145,15 @@ MUTATIONS: tuple[Mutation, ...] = (
     ),
     # ---- where the seam runs. The expensive one.
     Mutation(
-        # Compound **on purpose**, and the reason is a finding in its own
-        # right: since fix round 1 the two mechanisms compose rather than
-        # overlap. The catch stops an exception reaching the crash arm; the
-        # placement stops the crash arm being reachable at all. So with the
-        # catch present, moving the call inside the savepoint changes nothing
-        # observable *through* ``refund_order``, and with the placement
-        # present, narrowing the catch livelocks the queue instead of writing
-        # ``UNKNOWN``. Only removing **both** can produce the permanent
-        # ``UNKNOWN`` ruling 4 is about — which is what this row proves is
-        # still impossible. The catch alone is falsified separately, by
-        # ``seam_propagates_and_livelocks_the_queue``.
+        # The placement half, **alone**. Fix round 2 made the seam's whole body
+        # exception-safe, so moving the call inside the savepoint no longer
+        # changes anything the seam itself does. One statement is deliberately
+        # left outside both the try and the savepoint — the flush of the
+        # *caller's* writes, which a savepoint cannot contain without
+        # discarding the failure record the refund acts on — and that is the
+        # whole of what placement still protects. Its test is the one below.
         name="refund_inside_the_savepoint",
-        breaks="a crash in the refund is laundered into a permanent UNKNOWN by the crash arm",
+        breaks="a failure to persist the caller's writes is stamped UNKNOWN by the crash arm",
         edits=(
             (
                 SAGA,
@@ -170,15 +170,32 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "        settled.add(order_id)",
                 "            pass\n        settled.add(order_id)",
             ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_failure_to_persist_the_callers_writes_is_not_turned_into_unknown",),
+    ),
+    Mutation(
+        # Fix round 1's shape, restored: one of the seam's own reads back
+        # outside the try. It propagates with no log line and no alert, and
+        # the queue re-crashes on it every tick.
+        name="a_seam_read_outside_the_catch",
+        breaks="a fault in the seam's own reads takes the shared queue down, silently",
+        edits=(
             (
                 SAGA,
-                "    except Exception as exc:  # noqa: BLE001 -- see the docstring:",
-                "    except (merchant_refund.RefundError, AppError, SQLAlchemyError) as exc:"
-                "  # noqa: E501 -- see the docstring:",
+                "    seen: dict[str, str] = {}\n    try:",
+                "    seen: dict[str, str] = {}\n    await _load_task(db, task_id)\n    try:",
             ),
         ),
         tests=(LIVE,),
-        expect=("test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",),
+        expect=("test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",),
+    ),
+    Mutation(
+        name="cancel_alert_on_the_happy_path",
+        breaks="the one alert I3 exists for fires on every settled order, and ops stops reading it",
+        edits=((SAGA, "        if returned <= 0:", "        if True:"),),
+        tests=(LIVE,),
+        expect=("test_cancelling_an_already_refunded_order_says_nothing",),
     ),
     Mutation(
         name="stall_refunded_on_an_earlier_verdict",
@@ -245,10 +262,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "        _dispatch_alert(\n"
-                "            _alert_merchant_order_cancelled("
-                "task_id=task.id, order_id=task.order_id, reason=reason)\n"
-                "        )\n",
+                "            _dispatch_alert(\n"
+                "                _alert_merchant_order_cancelled(\n"
+                "                    task_id=task.id, order_id=task.order_id, reason=reason\n"
+                "                )\n"
+                "            )\n",
                 "",
             ),
         ),

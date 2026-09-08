@@ -760,9 +760,12 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     merchant task is ever run by the synchronous ``start_for_order`` path,
     and those four are the rest.
 
-    The fourth was nearly missed and is reachable: a B2B-visible SKU with no
-    ``SkuSourcingRule`` routes to ``"manual"`` (``sourcing._resolve_auto``),
-    so ``fail_manual_task`` ends real merchant orders. It records ``UNKNOWN``,
+    The fourth was nearly missed and is reachable: a B2B-visible **``top_up``**
+    SKU with no active ``SkuSupplierMapping`` — and no ``SkuSourcingRule`` at
+    all — falls through ``sourcing._resolve_auto`` to ``"supplier:manual"``,
+    so ``fail_manual_task`` ends real merchant orders. (An explicit
+    ``force_supplier`` rule reaches it too; the mapping is the operative
+    absence, and only for ``top_up``.) It records ``UNKNOWN``,
     which refunds nothing — calling the seam there changes no money today. It
     is called anyway, because "safe only because one constant happens to be
     ``UNKNOWN``" is a trap, and the alert earns its place regardless: the
@@ -798,6 +801,107 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
             already be durable in it — see above.
         task_id: The task that has just terminated.
     """
+    # **Outside the try and outside the savepoint below, and the only statement
+    # that is.** It flushes the *caller's* pending writes — the task's failure,
+    # its item, the crash arm's attempt row — not this function's. Containing
+    # it in the savepoint would mean a rollback here discarded the very
+    # failure record the refund exists to act on, which is ruling 4's poison
+    # arriving from the other side; and swallowing it would let the batch
+    # continue on a session that cannot write. It also cannot introduce a
+    # failure that was not already there: without this call the same writes
+    # are flushed a few lines later by the caller anyway. What it buys is that
+    # nothing pending is left for autoflush to drag *into* the savepoint,
+    # where a rollback would take it back out again.
+    await _flush_caller_writes(db)
+    # A plain dict, filled in by the body as soon as it knows. The order id is
+    # what an operator settles by, so the failure path must still have it —
+    # and it cannot be read back off an ORM object here, because the savepoint
+    # rollback expires those. A ``str`` in a ``dict`` survives it.
+    seen: dict[str, str] = {}
+    try:
+        # One savepoint over the whole body, not just the posting. Two things
+        # need it. A refusal must roll back a half-written posting without
+        # touching the failure record above — that was always true — and a
+        # ``SQLAlchemyError`` from any of the three reads below poisons the
+        # enclosing transaction, which this function is *not* the owner of:
+        # it runs outside ``drain_pending_tasks``' per-task savepoint, so
+        # there would be nothing between a swallowed error and the rest of the
+        # batch running on a dead session. ``ROLLBACK TO SAVEPOINT`` clears
+        # the aborted state; catching without one would not.
+        async with db.begin_nested():
+            await _settle_merchant_deposit_inner(db, task_id=task_id, seen=seen)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring: propagating livelocks the whole fulfilment queue, and nothing is swallowed -- every exception is logged at ``error`` and alerted, tagged by whether it was modelled.
+        # No ORM object loaded inside may be read from here: the savepoint
+        # rollback expires the objects it touched, and a lazy refresh under
+        # asyncio raises ``MissingGreenlet``. ``task_id`` is the caller's own
+        # ``str``, which is why the log line is keyed on it and not on a row.
+        #
+        # ``modelled`` is the whole difference between an ordinary refusal —
+        # an order support already settled, a database hiccup — and a bug in
+        # this code. Both leave the deposit for a human; only one of them is
+        # ours to go and fix, and a log line that could not tell them apart is
+        # what "swallowed" would actually mean. The lazy import below is in
+        # scope for it too: an ``ImportError`` there is the exact 64decbd
+        # shape, and it now arrives tagged ``modelled=false`` rather than
+        # taking the queue down without a line.
+        from yupay.modules.merchants.refund import RefundError
+
+        modelled = isinstance(exc, RefundError | AppError | SQLAlchemyError)
+        # ``_crash_detail``, not ``str(exc)`` and not ``log.exception``: a
+        # SQLAlchemy error stringifies as the driver message, then the full
+        # statement, then its **bound parameters** — customer email, delivery
+        # address (AGENTS.md §9). Its first-line-plus-cap rule is what keeps
+        # those out of the log, and a traceback would put them straight back.
+        detail = _crash_detail(exc)
+        order_id = seen.get("order_id", "?")
+        log.error(  # noqa: TRY400 -- see above: no traceback on this path
+            "merchant_refund.failed",
+            order_id=order_id,
+            task_id=task_id,
+            supplier=seen.get("supplier", "?"),
+            modelled=modelled,
+            error=detail,
+        )
+        _dispatch_alert(
+            _alert_merchant_refund_failed(task_id=task_id, order_id=order_id, error=detail)
+        )
+
+
+async def _flush_caller_writes(db: AsyncSession) -> None:
+    """Persist whatever the caller has pending, before the seam's savepoint.
+
+    A named function for one statement, because the boundary it draws is the
+    one thing :func:`_settle_merchant_deposit` deliberately does **not** make
+    exception-safe, and a boundary that cannot be named cannot be tested. See
+    the call site for why it is outside, and
+    ``test_a_failure_to_persist_the_callers_writes_is_not_turned_into_unknown``
+    for the property that depends on it.
+
+    Args:
+        db: Session. The caller owns the transaction.
+    """
+    await db.flush()
+
+
+async def _settle_merchant_deposit_inner(
+    db: AsyncSession, *, task_id: str, seen: dict[str, str]
+) -> None:
+    """The seam's body. Runs inside a savepoint; may raise.
+
+    Split out so :func:`_settle_merchant_deposit` can wrap **all** of it —
+    the lazy import and the three reads included — in one savepoint and one
+    catch. Fix round 1 wrapped only the posting, which left a deterministic
+    fault in any of these reads propagating out of ``drain_pending_tasks``
+    with no log line and no alert: the livelock, arriving from a line nobody
+    had looked at.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        task_id: The task that has just terminated.
+        seen: Filled in with the plain-``str`` facts the caller's failure path
+            needs — an operator settles by order id, and the caller cannot
+            read one off an expired ORM row.
+    """
     task = await _load_task(db, task_id)
     # ``money_outcome_of`` outlives the failure that wrote it (``retry_task``
     # does not clear it), so the pair its docstring requires is checked here:
@@ -813,6 +917,8 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
         return
     order_id = order.id
     supplier = task.supplier
+    seen["order_id"] = order_id
+    seen["supplier"] = supplier or "?"
 
     # The **item**, not just the task, and the rule is inherited rather than
     # invented: a supplier that refuses for lack of *our* balance fails the
@@ -844,46 +950,11 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # (``order_status.py``, for the delivery artifact and its allow-list), so
     # a module-scope import back would close the cycle and break every caller
     # that is not already inside the app. Same discipline, and same reason,
-    # as ``orders.service``'s reach for ``affiliate.discount``.
+    # as ``orders.service``'s reach for ``affiliate.discount``. It sits inside
+    # the caller's try, so an ImportError here is reported rather than fatal.
     from yupay.modules.merchants import refund as merchant_refund
 
-    try:
-        # Its own savepoint: a refusal must roll back the half-written
-        # posting without touching the failure record this is acting on.
-        async with db.begin_nested():
-            txn = await merchant_refund.refund_order(
-                db, order=order, reason=_MERCHANT_REFUND_REASON
-            )
-    except Exception as exc:  # noqa: BLE001 -- see the docstring: propagating livelocks the whole fulfilment queue, and nothing is swallowed -- every exception is logged at ``error`` and alerted, tagged by whether it was modelled.
-        # Neither ``order`` nor ``task`` may be read from here: a savepoint
-        # rollback expires the objects it touched, and a lazy refresh under
-        # asyncio raises ``MissingGreenlet``. Everything below is a plain
-        # ``str`` captured before the savepoint opened.
-        #
-        # ``modelled`` is the whole difference between an ordinary refusal —
-        # an order support already settled, a database hiccup — and a bug in
-        # this code. Both leave the deposit for a human; only one of them is
-        # ours to go and fix, and a log line that could not tell them apart is
-        # what "swallowed" would actually mean.
-        modelled = isinstance(exc, merchant_refund.RefundError | AppError | SQLAlchemyError)
-        # ``_crash_detail``, not ``str(exc)`` and not ``log.exception``: a
-        # SQLAlchemy error stringifies as the driver message, then the full
-        # statement, then its **bound parameters** — customer email, delivery
-        # address (AGENTS.md §9). Its first-line-plus-cap rule is what keeps
-        # those out of the log, and a traceback would put them straight back.
-        detail = _crash_detail(exc)
-        log.error(  # noqa: TRY400 -- see above: no traceback on this path
-            "merchant_refund.failed",
-            order_id=order_id,
-            task_id=task_id,
-            supplier=supplier,
-            modelled=modelled,
-            error=detail,
-        )
-        _dispatch_alert(
-            _alert_merchant_refund_failed(task_id=task_id, order_id=order_id, error=detail)
-        )
-        return
+    txn = await merchant_refund.refund_order(db, order=order, reason=_MERCHANT_REFUND_REASON)
     log.info(
         "merchant_refund.posted",
         order_id=order_id,
@@ -1177,6 +1248,14 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
     a refund from it would be the guess :class:`MoneyOutcome` exists to
     forbid. What is not acceptable is the state being *silent*, so a merchant
     task's cancellation logs and alerts, and the runbook says what to do.
+
+    **Only when nothing has come back on the order**, though.
+    ``cancel_open_tasks_for_order`` cancels ``failed`` tasks too, so the
+    documented support step after a failed merchant order — close it by hand,
+    once the automatic refund has already posted — runs straight through here.
+    An alert saying "the deposit is still debited" about an order that reads
+    ``refunded_usd: "1.07"`` is wrong on the feature's most common path, and
+    an alert that is wrong on the common path is one ops stops reading.
     """
     fulfiller = get_fulfiller(task.supplier)
     try:
@@ -1207,21 +1286,38 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
     item.fulfillment_state = "failed"  # see ck_order_items_state — no 'cancelled'
 
     # See the docstring: a cancelled merchant task leaves a debited deposit
-    # against an order nothing can move again. One bounded read on an admin
-    # action, and only merchant orders pay for it.
+    # against an order nothing can move again. Two bounded reads on an admin
+    # action — the first runs for every cancelled task, retail included, and
+    # only the second and the alert are merchant-gated.
     merchant_id = (
         await db.execute(select(Order.merchant_id).where(Order.id == task.order_id))
     ).scalar_one()
     if merchant_id is not None:
-        log.warning(
-            "merchant_task_cancelled",
-            order_id=task.order_id,
-            task_id=task.id,
-            reason=reason,
+        # **Only when the money is still out.** ``cancel_open_tasks_for_order``
+        # cancels ``failed`` tasks too, so the documented support step for a
+        # failed merchant order — close it by hand after the refund has already
+        # posted — reaches this line on the feature's *happy* path. Alerting
+        # there would say "the deposit is still debited" about an order whose
+        # ``refunded_usd`` reads the full charge, and an alert that is wrong on
+        # the common path is an alert ops learns to close unread. Which would
+        # cost exactly the finding this one exists to make findable.
+        from yupay.modules.merchants import refund as merchant_refund
+
+        returned = await merchant_refund.returned_for_order(
+            db, merchant_id=merchant_id, order_id=task.order_id
         )
-        _dispatch_alert(
-            _alert_merchant_order_cancelled(task_id=task.id, order_id=task.order_id, reason=reason)
-        )
+        if returned <= 0:
+            log.warning(
+                "merchant_task_cancelled",
+                order_id=task.order_id,
+                task_id=task.id,
+                reason=reason,
+            )
+            _dispatch_alert(
+                _alert_merchant_order_cancelled(
+                    task_id=task.id, order_id=task.order_id, reason=reason
+                )
+            )
 
 
 async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
