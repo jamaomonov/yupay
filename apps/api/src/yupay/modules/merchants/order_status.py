@@ -220,9 +220,12 @@ def _failure_reason(
 
     ``charged`` comes from the ledger too (``deposit.charged_for_order``), the
     same authority the refund reads its amount from — not from
-    ``item.unit_price_usd``, which the ±2 % drift rule is allowed to move
-    after the charge. ``None`` — an order with no charge posting at all — can
-    never read as refunded: there is nothing it could be complete against.
+    ``item.unit_price_usd``. The two hold one number today, by construction
+    and not by any constraint (``merchants.orders.place`` passes one value to
+    both), so reading the line would agree with the ledger right up until
+    something edited it. ``None`` — an order with no charge posting at all —
+    can never read as refunded: there is nothing it could be complete
+    against.
 
     It counts money back **by any route**, which is why a hand settlement
     reaches it too: whether an operator or the saga returned the money is our

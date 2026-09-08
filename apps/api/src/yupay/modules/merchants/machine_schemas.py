@@ -470,7 +470,11 @@ class MerchantTransactionOut(BaseModel):
     #: ``amount_usd``.
     kind: str
     amount_usd: UsdAmount
-    #: Set on rows an order caused; ``null`` on a deposit credit.
+    #: Set on every row that names an order, and that is **not** the same
+    #: as "not a credit": since M3b Task 2 a support settlement booked
+    #: against a failed order is a ``merchant_deposit_credit`` carrying one.
+    #: ``null`` means the movement belongs to no order — an ordinary
+    #: prepayment.
     order_id: str | None
     #: The same order's ``merchant_order_id`` — your own reference, so a
     #: statement line reconciles against your books without a second lookup.

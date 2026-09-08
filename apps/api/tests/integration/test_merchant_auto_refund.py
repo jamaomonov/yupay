@@ -11,8 +11,8 @@ it rather than around the happy path:
 * **exactly once**, under a re-driven fulfilment, an admin retry, and two real
   drainers on two connections;
 * **the amount is the charge's**, read off the ledger transaction we posted,
-  not off the order line — the list price is allowed to move between quote and
-  charge and an unpaid order must refund nothing;
+  not off the order line — the two agree only by construction, and an unpaid
+  order must refund nothing;
 * **a refund cannot deliver free goods** — the retry that follows one is
   refused, because ``charge_deposit`` replays its key and would debit nothing
   the second time;
@@ -443,9 +443,12 @@ async def test_the_refund_is_what_we_charged_not_what_the_line_says_now(
 ) -> None:
     """Ruling 5: the ledger is the only authority on what we took.
 
-    The list price is allowed to move between quote and charge (M2's ±2 %
-    rule), so the order line is not the amount. Moving it here is what makes
-    an implementation that reads ``unit_price_usd`` fail.
+    The line and the charge carry one number today, but only by construction:
+    ``merchants.orders.place`` binds ``quote.price_for``'s result once and
+    passes it to both, and no constraint, trigger or test holds them together
+    afterwards. So the line is not the amount, and moving it here — as a
+    migration, a repair script or a hand edit could — is what makes an
+    implementation that reads ``unit_price_usd`` fail.
     """
     merchant_id, _key, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-price-moved"

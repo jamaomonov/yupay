@@ -588,8 +588,12 @@ codes). Supplier identity: the delivery artifact goes through
 from `fulfillment/routes.py` into `fulfillment/service.py`** in this task so the
 two surfaces share one list rather than two that drift in the dangerous
 direction (a field added to one and not the other defaults to _visible_ on the
-one that forgot it). And supplier errors: `failure_reason` is a closed
-vocabulary, `fulfillment_failed` or `order_failed`.
+one that forgot it). And supplier errors: `failure_reason` is a
+**controlled** vocabulary, four values today — `fulfillment_failed`,
+`fulfillment_failed_refunded` and `fulfillment_delayed` (both M3b, below) and
+`order_failed` — never a supplier's own words or an operator's note. Controlled
+is not frozen: values are added, never renamed or removed, which is what
+decides how it reaches the schema (below).
 
 `failure_reason` reads the **order item's** `fulfillment_state`, not the
 fulfilment task's, and that inherits a rule rather than inventing one: when a
@@ -641,6 +645,30 @@ above — and it is the only one derived from money. Whether a
 supplier kept our money or we cannot tell stays internal, because a reseller
 who could read it off our API would learn which of our suppliers is
 unreliable.
+
+**The vocabulary is published in the README and not in the schema, and that is
+a decision rather than an omission** (ADR-0071). `failure_reason` reaches
+`docs/api/openapi.json` as a bare nullable string with no `enum`, because an
+`enum` closes the set in a machine-checkable way at exactly the moment we are
+still adding to it — M3b added two values — so a client generated before this
+milestone would carry a type that excludes something we now send, and a strict
+generated validator would reject a good response. The receiver is code nobody
+but its owner can redeploy (ADR-0069), so that trade runs the wrong way. The
+contract's own rule is the opposite instruction and cannot be expressed in an
+`enum` at all: an unrecognised value is **not** a stop condition. `status` is
+open in the same way and for the same reason.
+
+**M3b also records what the merchant quoted.** `expected_price` reached exactly
+one durable place — the SHA-256 request digest on the `order.paid` event, which
+can answer "same request?" and nothing else — so a pilot disputing a charge
+could not be shown their own number and quote drift was unmeasurable after the
+fact. Migration 0072 adds `order_items.merchant_expected_price_usd`, written on
+merchant lines only and read by no code path. Spec item 3b's _other_ half — a
+stored computed list price — was checked and **not** built: `unit_price_usd`
+already is that number (`merchants.orders.place` passes one value to both the
+order line and the deposit charge), so a second column would be filled from the
+same expression and would make the runbook's regression query compare a value
+with itself.
 
 Until M3b it was `"0.00"` for every order, and the reason was stronger than
 "refunds are unbuilt": **no surface could book a transaction against an

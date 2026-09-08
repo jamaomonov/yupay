@@ -299,6 +299,14 @@ async def place(
         actor=actor,
         idempotency_key=body.merchant_order_id,
         unit_price_usd_override=(price,),
+        # Spec item 3b. ``expected_price`` decides whether the order proceeds
+        # and never what it costs, and until now it survived only inside
+        # ``_request_digest``'s one-way SHA-256 — so a reseller disputing a
+        # charge could be answered with "our records agree with themselves"
+        # and nothing else, and how far merchants quote from our price was
+        # unmeasurable after the fact. Recorded here, beside the price we
+        # charged, and read by no code path. ADR-0071.
+        merchant_expected_price_usd=(body.expected_price,),
     )
     if order.status != "pending_payment":
         # A concurrent request with the same key won the unique index while we

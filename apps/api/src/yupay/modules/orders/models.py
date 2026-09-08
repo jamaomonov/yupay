@@ -205,6 +205,26 @@ class OrderItem(Base):
     # public to the buyer. ``OrderItemOut`` lists its fields explicitly and
     # forbids extras, so the leak has to be written deliberately — do not.
     cost_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # What the merchant said they expected to pay, frozen at order time
+    # (spec item 3b, ADR-0071). **Merchant lines only**: retail has no quote,
+    # so NULL here means "not a merchant order" or "placed before 0072", and
+    # ``orders.merchant_id IS NOT NULL`` is what tells those apart.
+    #
+    # It decides nothing. ``expected_price`` is an accept/reject tolerance and
+    # never a bid (``merchants.pricing.price_to_charge``), so the price charged
+    # is ``unit_price_usd`` whatever this says; this column exists so that a
+    # reseller disputing a charge can be answered from a row, and so the drift
+    # between the two is measurable at all. Before it, ``expected_price``
+    # survived only inside a one-way SHA-256 request digest.
+    #
+    # INTERNAL, like ``cost_usdt`` beside it — but for the opposite reason.
+    # This is the merchant's own number, not ours; publishing it back to them
+    # would be harmless and is simply not in the ``/merchant/v1`` contract, and
+    # adding it to a customer-facing ``*Out`` schema would put one buyer's
+    # figure on another surface. ``OrderItemOut`` lists its fields explicitly.
+    merchant_expected_price_usd: Mapped[Decimal | None] = mapped_column(
+        Numeric(20, 6), nullable=True
+    )
     fulfillment_data: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )

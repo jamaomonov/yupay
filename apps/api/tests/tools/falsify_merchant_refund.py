@@ -391,7 +391,7 @@ MUTATIONS: tuple[Mutation, ...] = (
     # ---- the amount
     Mutation(
         name="amount_from_the_order_line",
-        breaks="the refund follows a list price that moved instead of what we charged",
+        breaks="the refund follows the order line instead of what we charged",
         edits=(
             (
                 DEPOSIT,

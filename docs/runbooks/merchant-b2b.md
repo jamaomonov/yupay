@@ -624,8 +624,11 @@ looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 
-Three very different situations wear the same status, and `failure_reason` on
-`GET /merchant/v1/orders/{merchant_order_id}` is what separates them.
+**Four** very different situations wear the same status, and `failure_reason`
+on `GET /merchant/v1/orders/{merchant_order_id}` is what separates them.
+Nothing ever moves `orders.status` off `fulfilling` for any of them — a
+delivery failure, a stall and a refund are all recorded below the order row —
+so the status tells you only that the order was paid.
 
 **`failure_reason` is `null` — it is genuinely in progress, or the queue is
 stalled.** Nothing is wrong with the order. Check queue depth and the worker
@@ -706,12 +709,31 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yup
 Then either retry the fulfilment (the ordinary admin order tooling, same as a
 retail order) or settle it — next section.
 
+**`failure_reason` is `fulfillment_failed_refunded` — done, and nothing is
+owed.** The fourth case, and what **every** automatic refund leaves behind
+since M3b Task 3: the delivery failed and the whole charge is already on the
+merchant's deposit, posted by the drain within seconds. The order sits in
+`fulfilling` for ever like the others and needs **no action at all** — the
+merchant has been told to refund their own end customer and place a new order
+if they still want the goods. Do not retry it: that is refused
+(`409 deposit_already_returned`) and the refusal is the point.
+
+Closing it by hand raises no alert — the order is square, which is exactly the
+case the cancellation alert is gated against — but it is **not** neutral for
+the merchant: `order_failed` wins over `fulfillment_failed_refunded` in the
+precedence, so a closure rewrites a self-explanatory "your money is back" into
+"support closed this, contact support". Close it only when a person really is
+in the loop with them.
+
 ## Settling a failed order by hand
 
-**Check `refunded_usd` first — most failed orders now settle themselves.**
+**Check `refunded_usd` first — some failed orders now settle themselves.**
 Since M3b Task 3 a supplier failure whose money came back to us posts the
 refund automatically, within seconds of the failure, as a
-`merchant_order_refund` row against the order. This procedure is for the rest:
+`merchant_order_refund` row against the order. Do not assume that is the
+common case: every `g2b` terminal failure is `unknown` and refunds nothing, so
+on the current supplier mix this procedure is still the busier path — see
+"Known gaps" below. It is for the rest:
 a supplier that kept our money (`spent`), one we cannot get an answer out of
 (`unknown` — which today is every `g2b` failure), and an automatic refund that
 could not post. Those raise a Telegram alert of their own; see "When the
@@ -805,6 +827,19 @@ The steps:
    the order's `refunded_usd` — somebody (or the drain) has already settled
    it.
 
+   **Credit the whole charge in one go, or finish the job.** A credit for
+   _part_ of it is accepted — deliberately, so you can settle in stages — and
+   it puts the order in the one state that needs you most. From that moment
+   three things are true. The merchant still reads `fulfillment_failed`, not
+   `..._refunded`, because the label requires the whole amount. The automatic
+   refund is refused for good — `AlreadySettledError`, on "something already
+   came back". And **Retry and force-complete are refused too**: the guard is
+   `deposit_already_returned` and it triggers on _any_ amount, not on a full
+   one. One cent parks the order. The way out is forward, not back: credit the
+   remainder as a second attributed credit under a **new** key — allowed right
+   up to the charge — and the state resolves itself. There is no way to
+   un-credit.
+
    Read the response before you move on. The ledger replays **without
    comparing parameters**, so a key you have used before returns the original
    transaction and books nothing new — and the response's `amount` and
@@ -851,6 +886,9 @@ recorded at the end so a regression is recognisable.
 
 ### Only a supplier that gave our money back refunds automatically
 
+_Why it is built this way, including the gaps below and the one product
+question nobody has answered: [ADR-0071](../decisions/0071-merchant-refunds.md)._
+
 M3b Task 3 posts the refund itself when the failed task's money outcome is
 `returned`. `spent` and `unknown` never do — refunding money we did not get
 back is not a safe failure mode — so those still reach a person through the
@@ -870,7 +908,7 @@ procedure above.
 
 ### When the automatic refund does not fire
 
-Two Telegram alerts, both from the fulfilment saga:
+Three Telegram alerts, all from the fulfilment saga:
 
 - **«Заказ реселлера: депозит не вернётся сам»** (`merchant_money_outcome`) —
   the outcome was `spent` or `unknown`. Working as designed. Settle by hand if
@@ -894,10 +932,13 @@ Two Telegram alerts, both from the fulfilment saga:
 
 - **«Отменена задача по заказу реселлера»** (`merchant_order_cancelled`) — a
   merchant order's task was cancelled, by an admin or by an order/payment
-  cascade, **and nothing has come back on that order**. That second half is
-  part of the trigger, not a caveat: closing an order the drain already
-  refunded is the ordinary support step and raises nothing, so an alert you
-  do see is one where the deposit is genuinely still out.
+  cascade, **and the order is not square against what it charged**
+  (`refund.settled_in_full`, the same test `failure_reason` uses — not "has
+  anything come back"). That second half is part of the trigger, not a caveat:
+  closing an order the drain already refunded in full is the ordinary support
+  step and raises nothing, so an alert you do see is one where money is
+  genuinely still out — including a **partial** settlement, which is not
+  square and therefore still alerts.
   **No automatic refund reaches this state and none ever will**: a
   cancellation is a decision a person made for a reason this code cannot read,
   and inferring "the supplier gave the money back" from it would be exactly
@@ -951,9 +992,41 @@ comment in `orders/models.py`). Merchant orders always populate it.
 Two things the query still cannot see, so a hit is evidence and not a verdict:
 a merchant with a negotiated `markup_adjustment_pp` prices below the computed
 figure legitimately, and `b2b_markup_pct` is read live — a markup edited after
-the order was placed moves the comparison. Nothing records either at order
-time; a stored list price would make this exact rather than approximate, and
-that is filed as an M3 follow-up.
+the order was placed moves the comparison. Neither is recorded at order time
+and **M3b deliberately did not add a stored list price to fix it** (ADR-0071,
+decision 10). The reason is worth knowing before somebody files it again: the
+charge and the line already come from one number —
+`merchants.orders.place` binds `quote.price_for`'s result once and hands it to
+both — so a stored "our price" column would be filled from the same expression
+this query compares against, and substituting it would turn the check into a
+comparison of a value with itself. **What makes this query worth running is
+that it recomputes from independent inputs.** Closing the two blind spots
+properly means recording the markup that was actually applied, which nothing
+does today.
+
+**What M3b did record is the merchant's own quote** (migration 0072), and it
+answers a different question the same section used to leave open — how far
+resellers quote from our prices, which was previously unmeasurable because
+`expected_price` survived only inside a request digest:
+
+```sql
+-- how far merchant quotes sit from what we charged. Not a regression check:
+-- anything inside +/-2% is normal and is charged at our price by design.
+SELECT o.merchant_id,
+       count(*)                                                   AS orders,
+       round(avg(oi.unit_price_usd - oi.merchant_expected_price_usd), 4) AS avg_gap_usd,
+       count(*) FILTER (WHERE oi.merchant_expected_price_usd < oi.unit_price_usd) AS quoted_low
+  FROM orders o
+  JOIN order_items oi ON oi.order_id = o.id
+ WHERE oi.merchant_expected_price_usd IS NOT NULL
+ GROUP BY o.merchant_id
+ ORDER BY orders DESC;
+```
+
+`merchant_expected_price_usd IS NOT NULL` is the whole filter it needs: retail
+lines never carry one, and neither do merchant orders placed before 0072, so
+the sweep is over exactly the rows that can answer. For a single disputed
+charge, read the two columns off that order and quote both to the reseller.
 
 ### Closed in M2: the non-conforming validation bodies
 

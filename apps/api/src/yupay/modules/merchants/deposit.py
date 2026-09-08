@@ -671,8 +671,13 @@ async def charged_for_order(db: AsyncSession, *, merchant_id: str, order_id: str
     posting has — rather than off ``order_items.unit_price_usd`` or the order
     total, because those answer a different question:
 
-    - the list price is allowed to move between quote and charge (M2's ±2 %
-      drift rule), so the line and the debit may legitimately disagree;
+    - the line and the debit carry one number today and nothing enforces
+      that they keep doing so. ``merchants.orders.place`` binds
+      ``quote.price_for``'s result once and hands the same object to
+      ``unit_price_usd_override`` and to this module's charge, so they agree
+      by construction rather than by any constraint, test or trigger. A
+      hand-edited, migrated or data-damaged line must not decide what we pay
+      back — the ledger is where the money actually is;
     - an order that was never charged must refund **nothing**, and a price on
       a line is present whether or not any money followed it.
 
