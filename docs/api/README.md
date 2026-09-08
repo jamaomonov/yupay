@@ -332,7 +332,21 @@ address at connect time (ADR-0070 decision 2).
 Two event types, the complete v1 list: `order.status_changed`
 (`{merchant_order_id, order_id, status, at}`) and `balance.credited`
 (`{amount_usd, balance_usd}`). Both are exact key sets — a voucher code never
-rides in a body, because the receiver logs bodies wholesale. Four headers, all
+rides in a body, because the receiver logs bodies wholesale.
+
+**`balance.credited` gained a second producer in M3b Task 3** and the event
+itself did not change: M3b's automatic refund of a failed order emits it, the
+same way the hand settlement it replaces already did, with the same two keys.
+That produces the one asymmetry an integrator has to know about — **for a
+failed order the money arrives by push and the order state only by poll.**
+`order.status_changed` does not fire on a fulfilment failure, because nothing
+advances `orders.status`; the order sits at `fulfilling` with
+`failure_reason` set, and only `GET /merchant/v1/orders/{merchant_order_id}`
+shows that. And because the payload does not name an order — deliberately;
+adding it would be a `/merchant/v2` — a receiver acting on `balance.credited`
+alone knows money came back but not on which order. Reconcile on the order
+read, or on `GET /merchant/v1/transactions`, where the refund row carries
+`order_id` and `merchant_order_id`. Four headers, all
 named in `merchants/signing.py` because they are wire format:
 `X-Yupay-Delivery` (stable across retries, and the receiver's dedupe handle),
 `X-Yupay-Event`, `X-Yupay-Timestamp` (per attempt) and `X-Yupay-Signature` =
@@ -592,10 +606,11 @@ read and none to the published contract. The README therefore describes it as
 "money that came back on this order" rather than as a refund.
 
 Since Task 3 it also drives `failure_reason`. A failed delivery reads
-`fulfillment_failed_refunded` when this sum is positive and
-`fulfillment_failed` when it is not — so the field a client switches on is
-derived from the money actually having moved, and cannot announce a refund
-that did not post. That is the one value M3b adds to the vocabulary; whether a
+`fulfillment_failed_refunded` when this sum covers **the whole** of what the
+order charged, and `fulfillment_failed` when it does not — so the field a
+client switches on is derived from the money actually having moved, cannot
+announce a refund that did not post, and cannot call a one-cent partial
+settlement a completed refund. That is the one value M3b adds to the vocabulary; whether a
 supplier kept our money or we cannot tell stays internal, because a reseller
 who could read it off our API would learn which of our suppliers is
 unreliable.

@@ -30,7 +30,7 @@ its own process group, killed as a group in a ``finally``: on SIGINT the group
 dies and the tree comes back byte-identical; on SIGKILL neither runs and the
 tree is left mutated, which is the reason not to ``kill -9`` this script.
 
-## Two properties are deliberately not falsifiable here, and why
+## Three properties are deliberately not falsifiable here, and why
 
 **"A frozen merchant is still refunded"** has no code to delete — the refund
 simply never reads ``merchants.status``. Its mutation therefore *adds* the
@@ -42,6 +42,15 @@ is guarded by a Postgres unique index, not by any line in this repo. Removing
 ``wallet.service.post``'s IntegrityError arm would break a hundred unrelated
 tests and prove nothing about this one; the test earns its place by using two
 real connections rather than by a row here.
+
+**The seam's placement, on its own.** Since fix round 1 the seam catches
+everything ``refund_order`` raises, so moving the call inside
+``drain_pending_tasks``' savepoint changes nothing observable *through*
+``refund_order`` — the two mechanisms compose, which is why
+``refund_inside_the_savepoint`` is compound (its own comment explains it).
+What placement still protects alone is an exception from the seam's **own**
+reads, which sit outside its try deliberately; falsifying that would need a
+fault injected into ``_load_task``, which the whole saga shares.
 """
 
 from __future__ import annotations
@@ -132,22 +141,40 @@ MUTATIONS: tuple[Mutation, ...] = (
     ),
     # ---- where the seam runs. The expensive one.
     Mutation(
+        # Compound **on purpose**, and the reason is a finding in its own
+        # right: since fix round 1 the two mechanisms compose rather than
+        # overlap. The catch stops an exception reaching the crash arm; the
+        # placement stops the crash arm being reachable at all. So with the
+        # catch present, moving the call inside the savepoint changes nothing
+        # observable *through* ``refund_order``, and with the placement
+        # present, narrowing the catch livelocks the queue instead of writing
+        # ``UNKNOWN``. Only removing **both** can produce the permanent
+        # ``UNKNOWN`` ruling 4 is about — which is what this row proves is
+        # still impossible. The catch alone is falsified separately, by
+        # ``seam_propagates_and_livelocks_the_queue``.
         name="refund_inside_the_savepoint",
         breaks="a crash in the refund is laundered into a permanent UNKNOWN by the crash arm",
         edits=(
             (
                 SAGA,
-                "            async with db.begin_nested():\n"
-                "                await process_task(db, task_id=task_id)\n",
-                "            async with db.begin_nested():\n"
-                "                await process_task(db, task_id=task_id)\n"
-                "                await _settle_merchant_deposit(db, task_id=task_id)\n",
+                "                failed = (await process_task(db, task_id=task_id)).status"
+                ' == "failed"\n',
+                "                failed = (await process_task(db, task_id=task_id)).status"
+                ' == "failed"\n'
+                "                if failed:\n"
+                "                    await _settle_merchant_deposit(db, task_id=task_id)\n",
             ),
             (
                 SAGA,
-                "        await _settle_merchant_deposit(db, task_id=task_id)\n"
+                "            await _settle_merchant_deposit(db, task_id=task_id)\n"
                 "        settled.add(order_id)",
-                "        settled.add(order_id)",
+                "            pass\n        settled.add(order_id)",
+            ),
+            (
+                SAGA,
+                "    except Exception as exc:  # noqa: BLE001 -- see the docstring:",
+                "    except (merchant_refund.RefundError, AppError, SQLAlchemyError) as exc:"
+                "  # noqa: E501 -- see the docstring:",
             ),
         ),
         tests=(LIVE,),
@@ -169,6 +196,64 @@ MUTATIONS: tuple[Mutation, ...] = (
         ),
         tests=(LIVE,),
         expect=("test_a_low_balance_stall_is_not_refunded_on_an_earlier_verdict",),
+    ),
+    Mutation(
+        name="seam_propagates_and_livelocks_the_queue",
+        breaks="one crashing refund rolls back the batch and re-crashes every tick",
+        edits=(
+            (
+                SAGA,
+                "    except Exception as exc:  # noqa: BLE001 -- see the docstring:",
+                "    except (merchant_refund.RefundError, AppError, SQLAlchemyError) as exc:  # noqa: E501 -- see the docstring:",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=(
+            "test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",
+            "test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down",
+        ),
+    ),
+    Mutation(
+        name="partial_settlement_claims_a_full_refund",
+        breaks="one cent back reads as 'nothing to chase, refund your customer'",
+        edits=(
+            (
+                STATUS,
+                "        whole = charged is not None and refunded >= charged",
+                "        whole = refunded > 0",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_partial_settlement_does_not_claim_the_order_was_refunded",),
+    ),
+    Mutation(
+        name="manual_rejection_skips_the_seam",
+        breaks="the fourth terminal site parks a deposit with nobody told",
+        edits=(
+            (
+                SAGA,
+                "    await _settle_merchant_deposit(db, task_id=task_id)\n    return task",
+                "    return task",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_manually_failed_merchant_order_reaches_the_seam",),
+    ),
+    Mutation(
+        name="cancellation_is_silent",
+        breaks="a cancelled merchant task leaves a debited deposit nobody can find",
+        edits=(
+            (
+                SAGA,
+                "        _dispatch_alert(\n"
+                "            _alert_merchant_order_cancelled("
+                "task_id=task.id, order_id=task.order_id, reason=reason)\n"
+                "        )\n",
+                "",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_cancelling_a_merchant_task_says_the_deposit_is_parked",),
     ),
     # ---- the amount
     Mutation(
@@ -313,7 +398,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 STATUS,
-                "        return REASON_FULFILLMENT_REFUNDED if refunded > 0 else REASON_FULFILLMENT_FAILED",
+                "        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED",
                 "        return REASON_FULFILLMENT_FAILED",
             ),
         ),
@@ -326,7 +411,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 STATUS,
-                "        return REASON_FULFILLMENT_REFUNDED if refunded > 0 else REASON_FULFILLMENT_FAILED",
+                "        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED",
                 "        return REASON_FULFILLMENT_REFUNDED",
             ),
         ),

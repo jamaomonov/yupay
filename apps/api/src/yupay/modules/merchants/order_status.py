@@ -120,7 +120,8 @@ TIMELINE_EVENTS: Final[frozenset[str]] = frozenset(
 REASON_ORDER_FAILED: Final = "order_failed"
 REASON_FULFILLMENT_FAILED: Final = "fulfillment_failed"
 
-#: A delivery that failed **and** whose money is already back on the deposit.
+#: A delivery that failed **and** whose money is already back on the deposit —
+#: all of it.
 #:
 #: M3b Task 3 adds exactly **one** value here, not two, and this is it. The
 #: distinction a reseller needs is "we are refunding you" versus "a human is
@@ -136,7 +137,7 @@ REASON_FULFILLMENT_FAILED: Final = "fulfillment_failed"
 REASON_FULFILLMENT_REFUNDED: Final = "fulfillment_failed_refunded"
 
 
-def _failure_reason(order: Order, *, refunded: Decimal) -> str | None:
+def _failure_reason(order: Order, *, refunded: Decimal, charged: Decimal | None) -> str | None:
     """Why this order has stopped moving, or ``None`` if it has not.
 
     Two sources, in order:
@@ -166,6 +167,23 @@ def _failure_reason(order: Order, *, refunded: Decimal) -> str | None:
     all read ``fulfillment_failed`` — "a human is deciding" — without any of
     those paths having to remember to say so.
 
+    **The comparison is against what the order was charged, not against
+    zero**, because ``refunded`` is a sum and a sum is not a flag. A one-cent
+    attributed credit on a $1.07 order is a partial settlement — a human
+    mid-decision — and reading it as ``fulfillment_failed_refunded`` would
+    tell the reseller what this module's own contract text says that value
+    means: *"we have already put what you paid back … Refund your own
+    customer. Nothing to chase."* They would refund $1.07 against $0.01
+    received. It is also exactly the state that needs a person most, because
+    ``refund.refund_order`` refuses to auto-refund into a partial decision, so
+    that cent blocks the real refund for good.
+
+    ``charged`` comes from the ledger too (``deposit.charged_for_order``), the
+    same authority the refund reads its amount from — not from
+    ``item.unit_price_usd``, which the ±2 % drift rule is allowed to move
+    after the charge. ``None`` — an order with no charge posting at all — can
+    never read as refunded: there is nothing it could be complete against.
+
     It counts money back **by any route**, which is why a hand settlement
     reaches it too: whether an operator or the saga returned the money is our
     business, not the reseller's, and ``refunded_usd`` beside it carries how
@@ -181,6 +199,8 @@ def _failure_reason(order: Order, *, refunded: Decimal) -> str | None:
         refunded: What has come back to the deposit on this order — the same
             number the response's ``refunded_usd`` carries, passed in rather
             than re-read so the two cannot disagree.
+        charged: What the order's deposit charge actually took, or ``None`` if
+            it has no charge posting.
 
     Returns:
         A value from the closed vocabulary above, or ``None``.
@@ -188,7 +208,8 @@ def _failure_reason(order: Order, *, refunded: Decimal) -> str | None:
     if order.status == "failed":
         return REASON_ORDER_FAILED
     if any(item.fulfillment_state == "failed" for item in order.items):
-        return REASON_FULFILLMENT_REFUNDED if refunded > 0 else REASON_FULFILLMENT_FAILED
+        whole = charged is not None and refunded >= charged
+        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED
     return None
 
 
@@ -252,6 +273,7 @@ async def read(
 
     item = order.items[0]
     refunded = await deposit.refunded_for_order(db, merchant_id=merchant.id, order_id=order.id)
+    charged = await deposit.charged_for_order(db, merchant_id=merchant.id, order_id=order.id)
     return MerchantOrderStatusOut(
         merchant_order_id=order.idempotency_key or "",
         order_id=order.id,
@@ -262,7 +284,7 @@ async def read(
         created_at=order.created_at,
         paid_at=order.paid_at,
         delivered_at=order.delivered_at,
-        failure_reason=_failure_reason(order, refunded=refunded),
+        failure_reason=_failure_reason(order, refunded=refunded, charged=charged),
         delivery=await _delivery(db, order),
         # ``Order.events`` is eagerly loaded and already ordered
         # ``created_at, id`` by the relationship, so this is a filter and not

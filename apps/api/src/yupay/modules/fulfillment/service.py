@@ -753,21 +753,45 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     savepoint would therefore roll back the ``RETURNED`` it was acting on and
     replace it with a permanent "we cannot tell": a refundable failure turned
     unrefundable by the attempt to refund it. So this runs **after** the
-    savepoint is released, at each of the three sites that can terminally fail
-    a merchant task — the drain, an admin retry, and the poll/webhook
-    reconciler. Those three are exhaustive because merchant orders are
+    savepoint is released, at each of the **four** sites that can terminally
+    fail a merchant task — the drain, an admin retry, the poll/webhook
+    reconciler, and an operator rejecting a manual task. Merchant orders are
     enqueue-only by construction (``merchants.orders._enqueue_only``), so no
-    merchant task is ever run by the synchronous ``start_for_order`` path.
+    merchant task is ever run by the synchronous ``start_for_order`` path,
+    and those four are the rest.
 
-    A refusal from ``refund_order`` is caught, logged at ``error`` and
-    alerted, leaving a task that still reads ``failed`` + ``RETURNED`` — a
-    human decides, and the failure stays refundable by hand. What is **not**
-    caught is anything outside the modelled refusals and the database's own
-    errors: a ``NameError`` from a circular import on the money path is
-    exactly what ``main``'s 64decbd hid behind a bare ``except Exception``
-    for six weeks, and it must be loud. The cost of that is one drain batch
-    rolled back and re-run, which the supplier idempotency key
-    (``process_task`` passes ``task.id``) makes safe.
+    The fourth was nearly missed and is reachable: a B2B-visible SKU with no
+    ``SkuSourcingRule`` routes to ``"manual"`` (``sourcing._resolve_auto``),
+    so ``fail_manual_task`` ends real merchant orders. It records ``UNKNOWN``,
+    which refunds nothing — calling the seam there changes no money today. It
+    is called anyway, because "safe only because one constant happens to be
+    ``UNKNOWN``" is a trap, and the alert earns its place regardless: the
+    operator who rejects the task is not necessarily the one who settles the
+    deposit.
+
+    ``_apply_cancel`` is deliberately **not** one of these; see its docstring.
+
+    **Everything the refund raises is caught here, and the reason is worth
+    reading before anyone narrows it.** The rule this looks like it breaks is
+    "no bare ``except Exception`` on the money path", which exists because
+    ``main``'s 64decbd hid a circular import behind one for six weeks. That
+    rule forbids *swallowing*, and nothing is swallowed here: every exception
+    is logged at ``error`` with the order id and raises an ops alert, and the
+    log line says whether it was a modelled refusal or a bug, so a
+    ``NameError`` is one Loki query away rather than invisible.
+
+    What propagating would buy is nothing, and what it costs is the queue. A
+    deterministic crash escapes ``drain_pending_tasks``, rolls back the whole
+    batch, returns the task to ``pending``, and is re-run and re-crashed on
+    the next tick — for ever, taking up to ``limit`` other orders' completed
+    work with it each time. That is the **livelock** that function's own
+    docstring names as the entire reason its savepoint exists, and it would
+    be a total fulfilment outage for the storefront as well as for resellers.
+
+    Catching is safe in the only way that matters: this runs **outside** that
+    savepoint, so it cannot reach the crash arm and therefore cannot write
+    ``UNKNOWN``. The task keeps the ``RETURNED`` it earned and stays
+    refundable by hand.
 
     Args:
         db: Session. The caller owns the transaction. The task's failure must
@@ -830,11 +854,18 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
             txn = await merchant_refund.refund_order(
                 db, order=order, reason=_MERCHANT_REFUND_REASON
             )
-    except (merchant_refund.RefundError, AppError, SQLAlchemyError) as exc:
+    except Exception as exc:  # noqa: BLE001 -- see the docstring: propagating livelocks the whole fulfilment queue, and nothing is swallowed -- every exception is logged at ``error`` and alerted, tagged by whether it was modelled.
         # Neither ``order`` nor ``task`` may be read from here: a savepoint
         # rollback expires the objects it touched, and a lazy refresh under
         # asyncio raises ``MissingGreenlet``. Everything below is a plain
         # ``str`` captured before the savepoint opened.
+        #
+        # ``modelled`` is the whole difference between an ordinary refusal —
+        # an order support already settled, a database hiccup — and a bug in
+        # this code. Both leave the deposit for a human; only one of them is
+        # ours to go and fix, and a log line that could not tell them apart is
+        # what "swallowed" would actually mean.
+        modelled = isinstance(exc, merchant_refund.RefundError | AppError | SQLAlchemyError)
         # ``_crash_detail``, not ``str(exc)`` and not ``log.exception``: a
         # SQLAlchemy error stringifies as the driver message, then the full
         # statement, then its **bound parameters** — customer email, delivery
@@ -846,6 +877,7 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
             order_id=order_id,
             task_id=task_id,
             supplier=supplier,
+            modelled=modelled,
             error=detail,
         )
         _dispatch_alert(
@@ -976,9 +1008,16 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     ran = 0
     settled: set[str] = set()
     for task_id, order_id in rows:
+        # Whether the seam below is worth two round trips. Most drained tasks
+        # succeed, and a success has no money question — reading it here,
+        # from the task ``process_task`` already returned, is what keeps the
+        # worker's hot path free of a task reload and an order read per item.
+        # ``process_webhook_update`` draws the same line inside its own
+        # ``failed`` branch.
+        failed = False
         try:
             async with db.begin_nested():
-                await process_task(db, task_id=task_id)
+                failed = (await process_task(db, task_id=task_id)).status == "failed"
         except Exception as exc:  # noqa: BLE001 -- a poisoned task must not stall the queue; FulfillerError/FulfillerNotIntegratedError are already handled INSIDE process_task, so only a genuine unexpected crash reaches here.
             # The SAVEPOINT above already rolled back this task's partial
             # writes and expired the ORM objects it touched — same
@@ -1012,11 +1051,13 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
                 task_id=task_id,
                 error=detail[:200],
             )
-        # Outside the SAVEPOINT above, deliberately: its crash arm answers an
-        # unexpected exception with a permanent ``UNKNOWN``, so a refund that
-        # raised inside it would convert a refundable failure into an
-        # unrefundable one. See ``_settle_merchant_deposit``.
-        await _settle_merchant_deposit(db, task_id=task_id)
+            failed = True
+        if failed:
+            # Outside the SAVEPOINT above, deliberately: its crash arm answers
+            # an unexpected exception with a permanent ``UNKNOWN``, so a refund
+            # that raised inside it would convert a refundable failure into an
+            # unrefundable one. See ``_settle_merchant_deposit``.
+            await _settle_merchant_deposit(db, task_id=task_id)
         settled.add(order_id)
         ran += 1
     for order_id in settled:
@@ -1122,6 +1163,20 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
     order/refund cascade — the supplier call is best-effort, a rejection is
     recorded but doesn't block the local state flip (there's nothing to settle
     once the order is gone).
+
+    **On a merchant order this is an unstated money state, and it says so.**
+    Cancelling records **no** ``money_outcome`` — so M3b's automatic refund
+    never runs — while the deposit stays debited and nothing can move the
+    order afterwards: ``retry_task`` and ``complete_manual_task`` both refuse
+    a ``cancelled`` task. It is also the shape *most* likely to have left our
+    money with us, since a cancel usually precedes any supplier verdict and
+    this function calls the supplier's own ``cancel`` hook.
+
+    Refunding it automatically is deliberately **not** done here: cancelling
+    is a human action taken for a reason this code cannot see, and inferring
+    a refund from it would be the guess :class:`MoneyOutcome` exists to
+    forbid. What is not acceptable is the state being *silent*, so a merchant
+    task's cancellation logs and alerts, and the runbook says what to do.
     """
     fulfiller = get_fulfiller(task.supplier)
     try:
@@ -1150,6 +1205,23 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
         await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
     ).scalar_one()
     item.fulfillment_state = "failed"  # see ck_order_items_state — no 'cancelled'
+
+    # See the docstring: a cancelled merchant task leaves a debited deposit
+    # against an order nothing can move again. One bounded read on an admin
+    # action, and only merchant orders pay for it.
+    merchant_id = (
+        await db.execute(select(Order.merchant_id).where(Order.id == task.order_id))
+    ).scalar_one()
+    if merchant_id is not None:
+        log.warning(
+            "merchant_task_cancelled",
+            order_id=task.order_id,
+            task_id=task.id,
+            reason=reason,
+        )
+        _dispatch_alert(
+            _alert_merchant_order_cancelled(task_id=task.id, order_id=task.order_id, reason=reason)
+        )
 
 
 async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
@@ -1339,6 +1411,44 @@ async def _alert_merchant_needs_a_human(
         log.warning(
             "fulfillment.merchant_money_alert_failed",
             task_id=task_id,
+            error=str(exc)[:200],
+        )
+
+
+async def _alert_merchant_order_cancelled(*, task_id: str, order_id: str, reason: str) -> None:
+    """Tell ops a cancelled merchant task has left a deposit against nothing.
+
+    Cancelling is a human action and records no money outcome, so nothing
+    refunds and nothing else would ever mention it — while the order becomes
+    unmovable (``retry_task`` and ``complete_manual_task`` both refuse a
+    ``cancelled`` task). Deduped per **order** for an hour, like the failed
+    refund and for the same reason: each one is one reseller's money, and
+    collapsing two would lose the order id an operator needs to settle it.
+
+    Never raises, for the same reason as :func:`_alert_fulfillment_error`.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    try:
+        if await _set_redis_dedupe(
+            f"alert:merchant_cancelled:{order_id}",
+            ttl_seconds=_ERROR_ALERT_DEDUPE_SECONDS,
+        ):
+            return
+        text = (
+            "<b>🚫 Отменена задача по заказу реселлера</b>\n"
+            f"Заказ: <code>{order_id}</code>\n"
+            f"Задача: <code>{task_id}</code>\n"
+            f"Причина: <code>{html.escape(reason)}</code>\n"
+            "<i>Депозит остаётся списанным, автовозврат сюда не приходит, и "
+            "заказ больше нельзя ни повторить, ни закрыть вручную. Реши по "
+            "деньгам сам — раннбук merchant-b2b.</i>"
+        )
+        await notifications.send_admin_alert(text, kind="merchant_order_cancelled")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning(
+            "fulfillment.merchant_cancel_alert_failed",
+            order_id=order_id,
             error=str(exc)[:200],
         )
 
@@ -1777,6 +1887,11 @@ async def fail_manual_task(
         error=reason_clean,
     )
     await db.flush()
+    # The fourth terminal site. ``UNKNOWN`` refunds nothing, so this moves no
+    # money today — it is called so the safety does not rest on which constant
+    # this function happens to record, and so a merchant order rejected by
+    # hand says out loud that its deposit is still debited.
+    await _settle_merchant_deposit(db, task_id=task_id)
     return task
 
 

@@ -331,7 +331,9 @@ owned by `owner_type="merchant", owner_id=<merchant_id>, currency="USD"`
 `wallet.service.post`, so idempotency-by-key and all-or-nothing legs are
 inherited from the ledger, not rebuilt here.
 
-It lives in `deposit.py`; the posting table below is authoritative and no
+It lives in `deposit.py` — the accounts, the reads and the two movements an
+operator or an order causes — and, since M3b Task 3, in `refund.py`, which
+owns the third. The posting table below is authoritative for all three and no
 caller may re-derive a direction from it:
 
 | Event                       | Legs                                             | Kind                      |
@@ -500,6 +502,26 @@ still an **unattributed** credit, exactly as before.
 **A frozen merchant is refunded like any other.** Freezing blocks new orders
 and has never blocked money in; an account under review is still owed for
 goods we failed to deliver.
+
+**Cancellation is a money state this does not resolve, and says so.**
+`_apply_cancel` (an admin cancelling a task, or the order/refund cascade)
+records **no** money outcome, so no refund fires — while the deposit stays
+debited and the order becomes unmovable, since `retry_task` and
+`complete_manual_task` both refuse a `cancelled` task. It is also the shape
+most likely to have left our money with us, because a cancel usually precedes
+any supplier verdict. Inferring a refund from it would be exactly the guess
+`MoneyOutcome` exists to forbid — cancelling is a human action taken for a
+reason this code cannot see — so the deposit is left to a human and the state
+is made **loud** instead: `log.warning("merchant_task_cancelled")` plus the
+`_alert_merchant_order_cancelled` ops alert, deduped per order for an hour.
+The runbook says what to do with one.
+
+**Four sites can terminally fail a merchant task**, and the seam is called
+from all four: the worker drain, `retry_task`, `process_webhook_update`, and
+`fail_manual_task` — the last reachable because a B2B-visible SKU with no
+`SkuSourcingRule` routes to `manual`. Its `UNKNOWN` refunds nothing, so the
+call moves no money today; it is there so that the safety does not rest on
+which constant that function happens to record.
 
 ## Pricing
 
@@ -1396,7 +1418,7 @@ or an operator's note: neither is switchable, and both are internal.
 
 | `failure_reason`              | What happened                                                                        | What to do                                                                                                                        |
 | ----------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `fulfillment_failed_refunded` | The delivery failed **and we have already put what you paid back on your deposit.**  | Refund your own customer. Nothing to chase. Do not re-send this `merchant_order_id`; place a **new** order if they still want it. |
+| `fulfillment_failed_refunded` | The delivery failed **and the whole of what you paid is back on your deposit.**      | Refund your own customer. Nothing to chase. Do not re-send this `merchant_order_id`; place a **new** order if they still want it. |
 | `fulfillment_failed`          | The delivery failed and will not retry itself. Your money has **not** come back yet. | Contact support quoting `order_id`. Do not re-order.                                                                              |
 | `order_failed`                | Support closed the order as undeliverable.                                           | Contact support. Read `refunded_usd` for what has come back.                                                                      |
 
@@ -1409,8 +1431,13 @@ about our supplier relationships, not about your order, and `fulfillment_failed`
 covers both.
 
 The value is derived from the ledger, not from a flag: it says
-`fulfillment_failed_refunded` only when money is genuinely back on your
-deposit, whichever route put it there. Read the amount on `refunded_usd`.
+`fulfillment_failed_refunded` only when the money is genuinely back on your
+deposit, whichever route put it there, and only when **all** of it is —
+compared against what the order charged. A **partial** settlement reads
+`fulfillment_failed`, because a partial settlement is a human mid-decision and
+telling you "nothing to chase" against part of your money would have you
+refund your customer in full. Read the amount on `refunded_usd`; it is the
+number, and this field is only ever the summary of it.
 
 Note that `failure_reason` can be set while `status` is still `fulfilling` —
 nothing advances the order row when a delivery fails, so the status alone would
@@ -2128,7 +2155,8 @@ path segment is percent-encoded and **the encoded form is what you sign**
 | Secret encryption at rest                                   | `core/crypto.py` (purpose `yupay:merchants:apikey:v1`)                                                                                                                                                                                                                                                                                                                                                                                  |
 | Credential lifecycle (create / list / revoke)               | `credentials.py`, via the `api` facade                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Request verification + the FastAPI dependency               | `auth.py`                                                                                                                                                                                                                                                                                                                                                                                                                               |
-| The deposit: credit, charge, balance, ledger listing        | `deposit.py` — every movement of a merchant's money                                                                                                                                                                                                                                                                                                                                                                                     |
+| The deposit: credit, charge, balance, ledger listing        | `deposit.py` — the accounts, the reads, and every movement **except** the automatic refund                                                                                                                                                                                                                                                                                                                                              |
+| The automatic refund of a failed order                      | `refund.py` — the posting, its three refusals and the key; fired by `fulfillment.service._settle_merchant_deposit`, never by this module                                                                                                                                                                                                                                                                                                |
 | Admin HTTP surface                                          | `admin_routes.py` (`/admin/merchants`) and `catalog_b2b_routes.py` (`/admin/catalog`), over the shared replay helpers in `route_replay.py`                                                                                                                                                                                                                                                                                              |
 | Machine API routes (`/merchant/v1`)                         | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it.                                                                                                                                                                                               |
 | The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                                                                                                         |

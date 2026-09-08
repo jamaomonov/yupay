@@ -376,9 +376,10 @@ class MerchantOrderStatusOut(BaseModel):
     #: or ``"order_failed"`` — a closed vocabulary, additive only. Never an
     #: operator's or a supplier's own words: those are internal, and a client
     #: cannot switch on prose. The first of those is M3b Task 3's single
-    #: addition and means "the delivery failed **and** your money is already
-    #: back"; whether a supplier kept our money or we cannot tell is
-    #: deliberately not distinguishable here — see the module README.
+    #: addition and means "the delivery failed **and all** of what you paid is
+    #: back" — a *partial* settlement is a human mid-decision and reads
+    #: ``"fulfillment_failed"``. Whether a supplier kept our money or we cannot
+    #: tell is deliberately not distinguishable here — see the module README.
     failure_reason: str | None
     delivery: MerchantDeliveryOut | None
     timeline: list[MerchantOrderEventOut]

@@ -829,10 +829,23 @@ Two Telegram alerts, both from the fulfilment saga:
   procedure above and file the alert text, which names the refusal.
 
   The refusals you can meet: `AlreadySettledError` (somebody credited the
-  order first — nothing is wrong, and nothing further is owed),
+  order first — if that was a **partial** settlement, the order still reads
+  `fulfillment_failed` to the merchant and the rest is yours to finish),
   `MissingChargeError` (the order has no charge posting at all — that cannot
   happen through the code, so treat it as data damage and escalate), and a
-  database error (retry the drain).
+  database error (retry the drain). The alert's log line carries
+  `modelled=true` for those and `modelled=false` for a bug in our own refund
+  code — the second is an engineering ticket, not a settlement.
+
+- **«Отменена задача по заказу реселлера»** (`merchant_order_cancelled`) — a
+  merchant order's task was cancelled, by an admin or by an order/payment
+  cascade. **No automatic refund reaches this state and none ever will**: a
+  cancellation is a decision a person made for a reason this code cannot read,
+  and inferring "the supplier gave the money back" from it would be exactly
+  the guess the money outcome exists to prevent. What it leaves behind is a
+  debited deposit on an order nothing can move again — Retry and
+  force-complete both refuse a `cancelled` task. Decide the money yourself and
+  settle it with the procedure above. Deduped per order for an hour.
 
 **Do not click Retry on a refunded order.** It is refused with
 `409 deposit_already_returned`, and the refusal is the point: a second charge

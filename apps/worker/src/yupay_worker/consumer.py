@@ -252,10 +252,17 @@ async def _drain_until_dry(session_factory: async_sessionmaker[AsyncSession], qu
         except Exception:
             # Outer belt for infra failures (DB down, a deadlock with a
             # concurrent refund cascade, etc.). A poisoned individual row is
-            # already contained inside each drain's own per-row savepoint and
-            # never escapes to reach here. Rolling back loses only this
-            # drainer's uncommitted batch: its rows go back to ``pending`` and
-            # the next tick reclaims them.
+            # contained inside each drain's own per-row savepoint, and the
+            # per-row work *after* that savepoint catches its own exceptions
+            # for the same reason — M3b Task 3's merchant refund runs there,
+            # outside the savepoint deliberately, and a crash escaping it
+            # would roll this batch back and be re-run and re-crashed every
+            # tick (see ``_settle_merchant_deposit``). So a poisoned row
+            # should not reach here; if one does it is a bug in that
+            # containment, not a row we can drop.
+            #
+            # Rolling back loses only this drainer's uncommitted batch: its
+            # rows go back to ``pending`` and the next tick reclaims them.
             log.exception("worker.consumer.drain_failed", queue=queue.name)
             await db.rollback()
 

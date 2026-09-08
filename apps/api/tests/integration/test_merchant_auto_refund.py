@@ -30,9 +30,10 @@ import hashlib
 import hmac
 import json
 import time
-from collections.abc import AsyncIterator, Coroutine
+from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from types import CoroutineType
 from typing import Any
 from urllib.parse import quote, urlencode
 
@@ -108,8 +109,21 @@ async def admin_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
+#: What ``_dispatch_alert`` is actually handed. ``collections.abc.Coroutine``
+#: is the *protocol* and has no ``cr_code``; ``types.CoroutineType`` is the
+#: concrete object an ``async def`` call returns and does. mypy caught the
+#: difference — under ``mypy apps``, which is the command CI runs and the one
+#: this file was first verified without.
+#:
+#: A PEP 695 ``type`` alias, whose right-hand side is evaluated **lazily** —
+#: ``CoroutineType`` is not subscriptable at runtime, and a plain assignment
+#: would be evaluated eagerly and raise. (``from __future__ import
+#: annotations`` defers annotations, not assignments.)
+type Alert = CoroutineType[Any, Any, None]
+
+
 @pytest.fixture
-def alerts(monkeypatch: pytest.MonkeyPatch) -> Any:
+def alerts(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[Alert]]:
     """Capture the ops alerts the saga dispatches, by coroutine name.
 
     ``_dispatch_alert`` schedules on the running loop and the alert itself
@@ -118,14 +132,14 @@ def alerts(monkeypatch: pytest.MonkeyPatch) -> Any:
     captured coroutine is closed at teardown so nothing warns about a
     coroutine that was never awaited.
     """
-    captured: list[Coroutine[Any, Any, None]] = []
+    captured: list[Alert] = []
     monkeypatch.setattr(ff_svc, "_dispatch_alert", captured.append)
     yield captured
     for coro in captured:
         coro.close()
 
 
-def _merchant_alerts(alerts: list[Coroutine[Any, Any, None]]) -> list[str]:
+def _merchant_alerts(alerts: list[Alert]) -> list[str]:
     """Only the alerts this task adds.
 
     Every terminal failure already raises the saga's own
@@ -271,6 +285,8 @@ async def _seed_sku(db: AsyncSession, *, n: int = 1, route: str = "mock") -> str
     await db.flush()
     if route == "inventory":
         db.add(SkuSourcingRule(sku_id=sku.id, mode="force_inventory"))
+    elif route == "auto":
+        pass
     else:
         db.add(SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug=route))
     return sku.id
@@ -284,6 +300,7 @@ async def _placed(
     merchant_order_id: str,
     title: str = "Reseller",
     n: int = 1,
+    route: str = "mock",
 ) -> tuple[str, str, str, str]:
     """A merchant, a key, a funded deposit and one placed (``fulfilling``) order.
 
@@ -294,7 +311,7 @@ async def _placed(
     merchant_id = await _new_merchant(client, headers, title=title)
     key_id, secret = await _new_key(client, headers, merchant_id)
     assert (await _credit(client, headers, merchant_id, FUNDING)).status_code == 201
-    sku_id = await _seed_sku(db, n=n)
+    sku_id = await _seed_sku(db, n=n, route=route)
     await db.commit()
     r = await _post_order(
         client,
@@ -380,7 +397,7 @@ async def test_a_returned_failure_returns_the_charge_to_the_deposit(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """The whole feature: the deposit ends where it started, in one posting."""
     merchant_id, _key, _secret, order_id = await _placed(
@@ -414,7 +431,7 @@ async def test_the_refund_is_what_we_charged_not_what_the_line_says_now(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Ruling 5: the ledger is the only authority on what we took.
 
@@ -446,7 +463,7 @@ async def test_an_order_with_no_charge_refunds_nothing_and_calls_a_human(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Ruling 5's last clause: not an error to swallow.
 
@@ -498,7 +515,7 @@ async def test_a_failure_that_did_not_return_our_money_refunds_nothing(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
     outcome: MoneyOutcome,
 ) -> None:
     """Owner's decision: refunding money we did not get back is not a safe default."""
@@ -538,7 +555,7 @@ async def test_the_refund_is_visible_on_the_order_and_on_the_statement(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Both merchant-facing surfaces, and the one value that separates them."""
     _merchant_id, key_id, secret, order_id = await _placed(
@@ -568,7 +585,7 @@ async def test_a_failed_refund_leaves_the_order_saying_a_human_is_deciding(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """``failure_reason`` is derived from the ledger, so it cannot claim a
     refund that did not post."""
@@ -597,7 +614,7 @@ async def test_a_refund_failure_leaves_the_task_refundable(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """``record_money_outcome`` never moves down the ladder and there is no
     operator re-grade path, so a refund crash that reached the drain's crash
@@ -632,26 +649,93 @@ async def test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
-    """The placement proof for ruling 4.
+    """The placement proof for ruling 4, and the queue's own survival.
 
     ``drain_pending_tasks``' crash arm answers an unexpected exception with
-    ``UNKNOWN`` — the one value that can never be cleared. So the refund must
-    run **outside** the savepoint that arm rolls back: a bug in it has to
-    escape loudly, not be laundered into a permanent verdict about our money.
-    Move the seam inside ``process_task`` and this test stops raising.
+    ``UNKNOWN`` — the one value that can never be cleared. The seam therefore
+    runs **outside** the savepoint that arm rolls back, which is what makes it
+    safe to catch here: a catch at the seam cannot reach that arm, so the
+    outcome survives whatever the refund does.
+
+    Catching is not optional. A deterministic crash that propagated would roll
+    back the batch, return the task to ``pending``, and be re-run and re-crash
+    every tick — the livelock ``drain_pending_tasks``' own docstring names as
+    the entire reason its savepoint exists — taking every other order's
+    completed work with it. Money-safe and a total queue outage.
+
+    So: the drain returns normally, the task still reads ``RETURNED``, nothing
+    was refunded, and an operator was told.
     """
-    await _placed(integration_client, admin_headers, db_session, merchant_order_id="acme-crash")
+    _merchant_id, _key, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-crash"
+    )
 
     async def _boom(*_args: object, **_kwargs: object) -> WalletTransaction:
         raise RuntimeError("an import that circled back")
 
     monkeypatch.setattr(merchant_refund, "refund_order", _boom)
     _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
-    with pytest.raises(RuntimeError, match="circled back"):
-        await ff_svc.drain_pending_tasks(db_session)
-    await db_session.rollback()
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await db_session.refresh(task)
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.RETURNED  # never UNKNOWN
+    assert await _refund_rows(db_session, order_id) == []
+    assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
+
+
+async def test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The other half: one poisoned refund must not stall the queue.
+
+    ``drain_pending_tasks`` is shared with every retail order. A refund that
+    propagated would roll the whole batch back and re-run it next tick — for
+    ever, since the crash is deterministic — so the blast radius of a bug in
+    a merchant refund would be the storefront's fulfilment.
+    """
+    _m, _k, _s, poisoned_order = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-batch-1", n=1
+    )
+    retail = await _retail_order(db_session, tag="batch-healthy")
+    from yupay.core.config import Settings, get_settings
+
+    cfg = Settings(**{**get_settings().model_dump(), "fulfilment_async": True})
+    await ff_svc.start_for_order(db_session, order_id=retail.id, settings=cfg)
+    await db_session.commit()
+
+    async def _boom(*_args: object, **_kwargs: object) -> WalletTransaction:
+        raise RuntimeError("an import that circled back")
+
+    monkeypatch.setattr(merchant_refund, "refund_order", _boom)
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 2
+    await db_session.commit()
+
+    for order_id in (poisoned_order, retail.id):
+        task = (
+            await db_session.execute(
+                select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+            )
+        ).scalar_one()
+        await db_session.refresh(task)
+        # Both claimed, both attempted, neither left ``pending`` for the next
+        # tick to re-run — which is what a propagating refund would produce.
+        assert task.status == "failed"
 
 
 # ---------- idempotency: re-drive, retry, concurrent drain ----------
@@ -662,7 +746,7 @@ async def test_a_re_driven_fulfilment_refunds_once(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """The reconcile sweep and the webhook route both re-enter the seam."""
     merchant_id, _key, _secret, order_id = await _placed(
@@ -687,7 +771,7 @@ async def test_an_admin_retry_after_a_refund_cannot_deliver_free_goods(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Ruling 3, walked end to end.
 
@@ -728,7 +812,7 @@ async def test_a_force_complete_after_a_refund_is_refused_too(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """The same loophole through the other admin button.
 
@@ -769,7 +853,7 @@ async def test_two_drainers_on_two_connections_refund_once(
     db_session: AsyncSession,
     second_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """A real interleave over the ledger's unique index, not two coroutines
     sharing one transaction.
@@ -823,7 +907,7 @@ async def test_the_refund_announces_the_money_by_push(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Ruling 12, answered on both halves.
 
@@ -881,7 +965,7 @@ async def test_a_low_balance_stall_is_not_refunded_on_an_earlier_verdict(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """``money_outcome`` outlives the attempt that wrote it, and the stall
     records none — so a stalled retry arrives here carrying the *previous*
@@ -930,6 +1014,123 @@ async def test_a_low_balance_stall_is_not_refunded_on_an_earlier_verdict(
     assert body["refunded_usd"] == "0.00"
 
 
+async def test_a_partial_settlement_does_not_claim_the_order_was_refunded(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """One cent back is not "we have already put what you paid back".
+
+    The value reads a **sum**, and a sum is not a flag. A $0.01 attributed
+    credit is permitted (the cap only stops going *past* the charge) and it
+    also makes the automatic refund refuse for ever — ``already > 0``. So the
+    order that most needs a human would be the one telling the reseller
+    "nothing to chase, refund your customer", against $0.01 received.
+
+    The refusal is right and stays; the **label** was the lie. Completeness is
+    measured against what the order was charged — the same authority the
+    refund reads its amount from.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-partial"
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
+    ).status_code == 201
+
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+    await ff_svc.drain_pending_tasks(db_session)
+    await db_session.commit()
+
+    assert await _refund_rows(db_session, order_id) == []
+    assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
+    body = (await _read_order(integration_client, key_id, secret, "acme-partial")).json()
+    assert body["refunded_usd"] == "0.01"
+    assert body["failure_reason"] == "fulfillment_failed"
+
+
+# ---------- the other two terminal states ----------
+
+
+async def test_a_manually_failed_merchant_order_reaches_the_seam(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    alerts: list[Alert],
+) -> None:
+    """``fail_manual_task`` is the fourth terminal site, and it is reachable.
+
+    A B2B-visible SKU with no sourcing rule routes to ``manual``, so an
+    operator rejecting one of those ends a merchant order with the deposit
+    debited. Its ``UNKNOWN`` refunds nothing — that is correct and unchanged —
+    but the seam is what makes the parked deposit visible instead of a trap
+    that depends on ``UNKNOWN`` never becoming refundable.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client,
+        admin_headers,
+        db_session,
+        merchant_order_id="acme-manual",
+        route="manual",
+    )
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+    task_id = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+
+    await ff_svc.fail_manual_task(
+        db_session,
+        task_id=task_id,
+        reason="account suspended",
+        admin_note=None,
+        admin_id="admin:1",
+    )
+    await db_session.commit()
+
+    assert _merchant_alerts(alerts) == ["_alert_merchant_needs_a_human"]
+    assert await _refund_rows(db_session, order_id) == []
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
+    body = (await _read_order(integration_client, key_id, secret, "acme-manual")).json()
+    assert body["failure_reason"] == "fulfillment_failed"
+
+
+async def test_cancelling_a_merchant_task_says_the_deposit_is_parked(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    alerts: list[Alert],
+) -> None:
+    """Cancellation is a money state nothing else names.
+
+    ``_apply_cancel`` sets the item ``failed`` and records **no** money
+    outcome, so no refund fires and no alert would — while ``retry_task`` and
+    ``complete_manual_task`` both refuse a ``cancelled`` task afterwards. The
+    deposit is parked against an order nothing can move again. Refunding it
+    automatically is a human's call and out of scope; being able to find it is
+    not optional.
+    """
+    merchant_id, _key, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-cancelled"
+    )
+    task_id = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+
+    await ff_svc.cancel_task(db_session, task_id=task_id)
+    await db_session.commit()
+
+    assert _merchant_alerts(alerts) == ["_alert_merchant_order_cancelled"]
+    assert await _refund_rows(db_session, order_id) == []
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
+
+
 # ---------- a hand settlement and the automatic one must not stack ----------
 
 
@@ -938,7 +1139,7 @@ async def test_an_order_support_already_settled_is_not_refunded_again(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """The two paths live in different key namespaces, so ``post()`` cannot
     dedupe them for us: an operator settling at 10:00 and the drain running at
@@ -966,7 +1167,7 @@ async def test_a_hand_credit_cannot_take_an_order_past_what_it_charged(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """The other order of the same double settlement.
 
@@ -994,7 +1195,7 @@ async def test_the_cap_does_not_break_the_operators_own_retry(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],
     db_session: AsyncSession,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """A settlement retried under its own key still replays, not ``409``.
 
@@ -1026,7 +1227,7 @@ async def test_a_frozen_merchant_is_still_refunded(
     admin_headers: dict[str, str],
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Freezing stops new orders; it does not cancel money we owe for goods we
     failed to deliver."""
@@ -1090,7 +1291,7 @@ async def _retail_order(db: AsyncSession, *, tag: str) -> Order:
 async def test_a_retail_failure_never_reaches_the_refund_at_all(
     db_session: AsyncSession,
     monkeypatch: pytest.MonkeyPatch,
-    alerts: list[Coroutine[Any, Any, None]],
+    alerts: list[Alert],
 ) -> None:
     """Ruling 7. Delete the ``order.merchant_id is not None`` gate and the spy
     below records a call."""
