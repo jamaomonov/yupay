@@ -4755,6 +4755,18 @@
               }
             ],
             "title": "Note"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
           }
         },
         "required": [
@@ -4764,7 +4776,7 @@
         "type": "object"
       },
       "DepositCreditOut": {
-        "description": "Result of a deposit credit.\n\n``amount`` is the amount the returned ledger transaction actually booked \u2014\non an idempotent replay that is the ORIGINAL amount, not the request's.\nThe ledger replays by key without comparing parameters, so this field is\nwhat makes a mismatched replay visible to the admin UI.",
+        "description": "Result of a deposit credit.\n\n``amount`` and ``order_id`` are both read off the returned ledger\ntransaction \u2014 on an idempotent replay those are the ORIGINAL call's, not\nthis request's. The ledger replays by key without comparing parameters, so\nthese two fields are what make a mismatched replay visible to the admin UI\ninstead of silently doing nothing.",
         "properties": {
           "amount": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -4779,6 +4791,17 @@
           "merchant_id": {
             "title": "Merchant Id",
             "type": "string"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Id"
           },
           "transaction_id": {
             "title": "Transaction Id",
@@ -20685,7 +20708,7 @@
     },
     "/api/v1/admin/merchants/{merchant_id}/deposit-credits": {
       "post": {
-        "description": "Book ``D merchant_deposit / C house_payments_received`` on the ledger.\n\nThe ``Idempotency-Key`` header is REQUIRED: it is the client half of the\nnamespaced ledger key, so an admin retry after a timeout replays the\noriginal transaction instead of crediting twice. The ledger replays by\nkey WITHOUT comparing parameters \u2014 a reused key with an amended amount\nreturns the old transaction and books nothing \u2014 so the response's\n``amount`` is the replayed transaction's amount, making the mismatch\nvisible to the admin UI.",
+        "description": "Book ``D merchant_deposit / C house_payments_received`` on the ledger.\n\nThe ``Idempotency-Key`` header is REQUIRED: it is the client half of the\nnamespaced ledger key, so an admin retry after a timeout replays the\noriginal transaction instead of crediting twice. The ledger replays by\nkey WITHOUT comparing parameters \u2014 a reused key with an amended amount or\nan amended ``order_id`` returns the old transaction and books nothing \u2014 so\nthe response's ``amount`` and ``order_id`` are the replayed transaction's,\nmaking the mismatch visible to the admin UI.\n\nAn optional ``order_id`` names the order this credit settles: the amount\nthen shows on that order's ``refunded_usd`` and reconciles on the\nmerchant's own statement, which is how a hand settlement after a failed\ndelivery stops being invisible to the merchant it was paid to. It must be\nan order of **this** merchant's; one that is not answers ``404\norder_not_found``, identically to an id that never existed.",
         "operationId": "credit_deposit_api_v1_admin_merchants__merchant_id__deposit_credits_post",
         "parameters": [
           {

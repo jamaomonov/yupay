@@ -105,6 +105,11 @@ curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-
 unique string that long). A fresh one per logical credit; the same one for
 every retry of that credit.
 
+This is the **prepayment** shape: money in, belonging to no particular order.
+A credit that settles one failed order takes an extra `order_id` field and has
+its own procedure — see "Settling a failed order by hand" below. Do not reach
+for that field here.
+
 **Ordering is not blocked on the deposit** — a merchant with a zero balance
 authenticates, reads `/me` and `/catalog` fine, and only `POST /orders` refuses
 with `409 insufficient_deposit`. So a merchant can be handed a key and start
@@ -646,22 +651,27 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yup
 Then either retry the fulfilment (the ordinary admin order tooling, same as a
 retail order) or settle it — next section.
 
-## There is no merchant refund path: settling a failed order by hand
+## Settling a failed order by hand
 
-**Nothing refunds a merchant order.** `refunded_usd` is `"0.00"` on every order
-and will stay so until M3 posts the row. A failed supplier delivery leaves the
-deposit debited, and support settles it as a **deposit credit**.
+**Nothing refunds a merchant order on its own.** A failed supplier delivery
+leaves the deposit debited, and support settles it as a **deposit credit that
+names the order** — the `order_id` body field on the deposit-credit endpoint
+(M3b). Use it. A credit without it is an ordinary top-up of the balance and is
+invisible on the order it was meant to settle, which is what the merchant will
+be looking at.
 
-Know what that does and does not do, before you tell a merchant what to expect:
+What an attributed credit does, so you can tell a merchant what to expect:
 
-- it moves `balance_usd` on `GET /merchant/v1/me`, and appears on
-  `GET /merchant/v1/transactions` as a `merchant_deposit_credit` row with a
-  positive `amount_usd` and a `null` `merchant_order_id`;
-- it does **not** change the failed order's `refunded_usd`, which stays
-  `"0.00"`. The credit is booked against the merchant, not against the order —
-  no admin surface can reference an order — so the order read will never show
-  it. Say so explicitly when you tell them it is settled, or they will go
-  looking for it in the wrong field.
+- it moves `balance_usd` on `GET /merchant/v1/me`;
+- it appears on `GET /merchant/v1/transactions` as a `merchant_deposit_credit`
+  row with a positive `amount_usd` **and their own `merchant_order_id`**, so
+  the line reconciles against their books;
+- it shows in that order's `refunded_usd` on
+  `GET /merchant/v1/orders/{merchant_order_id}` — the field they will check
+  first, and the one that read `"0.00"` forever before M3b.
+
+It is still a **balance credit**, not a card reversal: money returns to their
+prepaid deposit, never to a bank. Say that plainly.
 
 The steps:
 
@@ -679,31 +689,67 @@ The steps:
    Legal from `paid`, `fulfilling` and `fulfilled` only, and it cancels any
    open fulfilment task. It **moves no money**.
 
-2. **Credit the deposit** for exactly what the order charged — the
-   `unit_price_usd` from the query above, which is also `price_usd` on the
-   merchant's own order read. `order_items.unit_price_usd` is `NUMERIC(20, 6)`
-   so psql prints it as `1.060000`; send `1.06`. (Both are accepted — the
-   amount is validated on significant decimals, and a merchant price is always
-   a whole cent — but the two-decimal form is what the merchant sees and what
-   your `note` should quote.) Use the SPA form, or:
+2. **Credit the deposit, naming the order**, for exactly what the order charged
+   — the `unit_price_usd` from the query above, which is also `price_usd` on
+   the merchant's own order read. `order_items.unit_price_usd` is
+   `NUMERIC(20, 6)` so psql prints it as `1.060000`; send `1.06`. (Both are
+   accepted — the amount is validated on significant decimals, and a merchant
+   price is always a whole cent — but the two-decimal form is what the merchant
+   sees and what your `note` should quote.)
 
    ```bash
    curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-credits" \
      -H "Authorization: Bearer <admin JWT>" \
      -H "Idempotency-Key: refund-<order-id>" \
      -H 'Content-Type: application/json' \
-     -d '{"amount":"1.06","note":"settlement for failed order <order-id> (<merchant_order_id>)"}'
+     -d '{"amount":"1.06","order_id":"<order-id>","note":"settlement for failed order <order-id> (<merchant_order_id>)"}'
    ```
+
+   `order_id` is **our** order id — the `id` column from the query above, the
+   same one the merchant sees as `order_id` on their order read — not their
+   `merchant_order_id`. It must belong to the merchant you are crediting;
+   anything else answers `404 order_not_found`, and so does a typo, so a 404
+   here means "check the two ids against each other", never "that order is
+   somebody else's".
+
+   **This is a curl call, not the SPA.** The admin form has no order field yet,
+   so a settlement booked through it lands unattributed — the pre-M3b
+   behaviour. Use the SPA for ordinary prepayments (step 2 of onboarding),
+   where there is no order to name.
 
    **Key it on the order id**, as above. That is what makes a retry after a
    timeout safe: the ledger replays by key, so the same
    `Idempotency-Key: refund-<order-id>` can never credit the same failed order
-   twice, however many times you run it. Put the `order_id` in the `note` as
-   well — it is the only place the connection is recorded until M3.
+   twice, however many times you run it. The `note` still quotes both ids for
+   the human reading the ledger.
 
-3. **Tell the merchant**, quoting their `merchant_order_id`: the order is
-   closed as `order_failed`, and the amount is back on their deposit balance,
-   visible on `/transactions` — not on the order.
+   Read the response before you move on. The ledger replays **without
+   comparing parameters**, so a key you have used before returns the original
+   transaction and books nothing new — and the response's `amount` and
+   `order_id` are that original transaction's, not what you just sent. If
+   either disagrees with your request, you reused a key: nothing moved.
+
+3. **Verify**, as the merchant will:
+
+   ```bash
+   docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+     "SELECT kind, reference_type, reference_id, actor, created_at
+        FROM wallet_transactions
+       WHERE reference_type = 'order' AND reference_id = '<order-id>'
+       ORDER BY created_at;"
+   ```
+
+   You want two rows: the `merchant_order_charge` and your
+   `merchant_deposit_credit`, both referencing the order. One row means the
+   credit was booked unattributed — it is not lost, it is on the balance, but
+   `refunded_usd` will read `"0.00"`. There is no way to re-point a posted
+   transaction; book the difference as a fresh, attributed credit only if the
+   merchant was under-credited, and otherwise tell them where to find it.
+
+4. **Tell the merchant**, quoting their `merchant_order_id`: the order is
+   closed as `order_failed`, and the amount is back on their deposit balance —
+   visible in `balance_usd`, on `/transactions` against that order, and in the
+   order's own `refunded_usd`.
 
 ## Known gaps before a pilot integrates
 
@@ -713,20 +759,21 @@ knowing before it is paid. Two other gaps — the ±2% drift giveaway, and error
 bodies that did not match the published contract — were closed in M2 and are
 recorded at the end so a regression is recognisable.
 
-### No refund path
+### No automatic refund path
 
-Covered above. `refunded_usd` is `"0.00"` on every order; a failed delivery is
-settled by a manual deposit credit that the order read does not show.
+Covered above. A failed delivery is settled by a **manual** deposit credit.
+Since M3b that credit names the order, so the merchant can see it on
+`refunded_usd` and on their statement — but nothing books it for them.
 
 - **Cost of leaving it:** every failed delivery is a support ticket and a hand
-  transfer, and a merchant reconciling by order rather than by statement cannot
-  see the settlement at all. It scales with order volume, so it is fine for a
-  pilot and not for ten merchants.
-- **Fix:** M3b, which adds the refund posting — the module README's posting
-  table already reserves the row. `refunded_usd` starts telling the truth the
-  moment that row is posted, with no contract change. (M3a shipped the other
-  half of that milestone, the outbound webhook, and it does not help here: no
-  event fires for a fulfilment that fails on its own.)
+  credit. It scales with order volume, so it is fine for a pilot and not for
+  ten merchants. What it no longer costs is reconciliation: a merchant
+  reconciling by order rather than by statement can see the settlement.
+- **Fix:** the rest of M3b, which posts the refund automatically on a failed
+  fulfilment — the module README's posting table reserves the row, and
+  `refunded_usd` already reads it, so that lands with no contract change.
+  (M3a shipped the outbound webhook and it does not help here: no event fires
+  for a fulfilment that fails on its own.)
 
 ### Closed in M2: the ±2% drift giveaway
 

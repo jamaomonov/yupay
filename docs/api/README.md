@@ -232,9 +232,13 @@ deposit-credits, and the read-only per-merchant deposit ledger at
 the header is the client half of the namespaced ledger key
 (`merchant-credit:{merchant_id}:{client_key}`), so a retry replays the original
 transaction instead of crediting twice. The ledger replays by key **without
-comparing parameters** — the response's `amount` is the replayed transaction's
-(original) amount, so a client that resubmits a key with an amended amount can
-detect the mismatch. The other writes accept an optional `Idempotency-Key` and
+comparing parameters** — the response's `amount` and `order_id` are the
+replayed transaction's (original) ones, so a client that resubmits a key with
+an amended amount or an amended order can detect the mismatch. The optional
+body field `order_id` (M3b) names the order a credit settles; the ledger key is
+deliberately **not** derived from it, because the client key is the replay
+handle and a settlement is already namespaced by order through the runbook's
+`refund-<order-id>` convention. The other writes accept an optional `Idempotency-Key` and
 replay via the generic `(scope, key)` store, whose scope is **per resource**
 (`merchants.sku_b2b:{sku_id}` and so on) so one reused client key cannot replay
 one SKU's response for another. See
@@ -575,19 +579,24 @@ Anything the storefront shows as an error, this shows too — no more, no less.
 `refunded_usd` is summed from the ledger (the debit legs on the merchant's
 `merchant_deposit` for transactions referencing this order), not stored on a
 flag. It reads a **direction, not an intent**, which is deliberate — it does
-not have to know the name M3 gives a refund — so whatever M3 posts against the
-order lands here without a contract change. The README therefore describes it
-as "money that came back on this order" rather than as a refund.
+not have to know the name the automatic refund gets — so whatever M3b posts
+against the order lands here without a contract change. The README therefore
+describes it as "money that came back on this order" rather than as a refund.
 
-It is `"0.00"` for every order today, and the reason is stronger than "refunds
-are unbuilt": **no surface can book a transaction against an order's deposit at
-all.** `POST /admin/merchants/{id}/deposit-credits` — the manual settlement
-support performs for a failed delivery — posts
-`reference=(merchant, merchant_id)`, not `(order, order_id)`, so it moves
-`balance_usd` and appears on `/transactions` while leaving `refunded_usd` at
-zero. `docs/runbooks/merchant-b2b.md` spells out the manual settlement with
-that consequence attached, so an operator does not tell a merchant to look for
-it on the order read.
+Until M3b it was `"0.00"` for every order, and the reason was stronger than
+"refunds are unbuilt": **no surface could book a transaction against an
+order's deposit at all.** `POST /admin/merchants/{id}/deposit-credits` — the
+manual settlement support performs for a failed delivery — posted
+`reference=(merchant, merchant_id)` while this field filters on
+`(order, order_id)`, so the credit moved `balance_usd`, appeared on
+`/transactions` with a null `merchant_order_id`, and left `refunded_usd` at
+zero. M3b Task 2 gave that endpoint an optional `order_id`: an attributed
+credit posts `(order, order_id)` — same legs, same kind, only the reference
+moves — and lands here. The order must be the credited merchant's; one that is
+not, one that does not exist and a malformed id all answer a single
+`404 order_not_found`, the same non-oracle discipline `/merchant/v1`'s own
+reads keep. `docs/runbooks/merchant-b2b.md` is written around the attributed
+form, and says plainly that the admin SPA form cannot produce one yet.
 
 ### `GET /merchant/v1/transactions` — the deposit ledger
 

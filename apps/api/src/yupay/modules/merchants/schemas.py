@@ -77,21 +77,37 @@ class DepositCreditIn(BaseModel):
 
     amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
     note: str | None = Field(default=None, max_length=512)
+    #: The order this credit settles, if it settles one — our order id, the
+    #: ``order_id`` the merchant's own order read returns, not their
+    #: ``merchant_order_id``. Optional and additive: omitted, the credit is the
+    #: ordinary prepayment it always was. Given, it must be an order of **this**
+    #: merchant's, and the amount shows up on that order's ``refunded_usd``.
+    #:
+    #: Bounded to the ledger's ``reference_id`` column rather than to 36
+    #: characters, and the shape is checked in ``deposit`` and not here: an id
+    #: that cannot be an order id is an order that is not there, and it answers
+    #: the same 404 as one belonging to somebody else. A 422 for the malformed
+    #: case would put the shape of the id back into the answer.
+    order_id: str | None = Field(default=None, max_length=64)
 
 
 class DepositCreditOut(BaseModel):
     """Result of a deposit credit.
 
-    ``amount`` is the amount the returned ledger transaction actually booked —
-    on an idempotent replay that is the ORIGINAL amount, not the request's.
-    The ledger replays by key without comparing parameters, so this field is
-    what makes a mismatched replay visible to the admin UI.
+    ``amount`` and ``order_id`` are both read off the returned ledger
+    transaction — on an idempotent replay those are the ORIGINAL call's, not
+    this request's. The ledger replays by key without comparing parameters, so
+    these two fields are what make a mismatched replay visible to the admin UI
+    instead of silently doing nothing.
     """
 
     transaction_id: str
     merchant_id: str
     amount: Decimal
     balance: Decimal
+    #: The order this transaction is booked against, or ``null`` for a plain
+    #: prepayment.
+    order_id: str | None = None
 
 
 class MerchantTxnOut(BaseModel):

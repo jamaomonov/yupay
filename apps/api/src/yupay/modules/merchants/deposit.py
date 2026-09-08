@@ -22,19 +22,30 @@ an ImportError for any caller that is not already inside the app.
 Freezing a merchant (``service.set_status``) blocks ORDERS, never money in:
 support can always credit a frozen merchant's deposit, e.g. to settle a
 dispute while the account is under review.
+
+**A movement may name the order it belongs to.** The charge always has (its
+reference is how ``/transactions`` shows a reseller which of their orders spent
+what); since M3b Task 2 a credit may, which is what lets a hand settlement show
+up on the failed order's ``refunded_usd`` instead of only on the balance. Both
+directions spell that reference through one constant,
+:data:`ORDER_REFERENCE_TYPE`, because the writer and the reader disagreeing
+about the word is exactly the defect this milestone came back to fix.
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
+from typing import Final
+from uuid import UUID
 
 from sqlalchemy import case, func, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yupay.core.errors import ConflictError, ValidationError
+from yupay.core.errors import ConflictError, NotFoundError, ValidationError
 from yupay.modules.merchants import webhooks
 from yupay.modules.merchants.service import get_merchant
+from yupay.modules.orders.models import Order
 from yupay.modules.wallet import service as wallet_service
 from yupay.modules.wallet.models import WalletAccount, WalletPosting, WalletTransaction
 
@@ -51,6 +62,115 @@ _CENT = Decimal("0.01")
 #: cannot spell it differently.
 INSUFFICIENT_DEPOSIT_CODE = "insufficient_deposit"
 
+#: ``WalletTransaction.reference_type`` for a movement that belongs to one
+#: order, and the **one** place that word is spelled.
+#:
+#: This constant is the defect M2 left behind, made unrepeatable. Every
+#: movement of a deposit is written by one of the two functions below and read
+#: back by :func:`refunded_for_order` and by ``transactions.build``; while the
+#: writer and the reader each carried their own literal, ``credit_deposit``
+#: could write ``"merchant"`` where the reader filtered ``"order"`` and the
+#: only symptom was a field that answered ``"0.00"`` forever. A mismatch here
+#: is now a NameError, not a silent zero.
+ORDER_REFERENCE_TYPE: Final = "order"
+
+#: ``reference_type`` for a movement that belongs to the merchant at large —
+#: an ordinary prepayment, which settles no particular order.
+MERCHANT_REFERENCE_TYPE: Final = "merchant"
+
+#: RFC 7807 ``code`` for an ``order_id`` this merchant has no order under.
+#: One refusal whether the order belongs to another merchant or never existed
+#: at all — see :func:`_resolve_order_reference`. ``order_status`` re-exports
+#: it as the machine API's published code for the same fact, so the two
+#: order-scoped refusals in this module are one word.
+CODE_ORDER_NOT_FOUND: Final = "order_not_found"
+
+
+def order_reference_of(txn: WalletTransaction) -> str | None:
+    """The order a ledger transaction belongs to, or ``None`` if it names none.
+
+    One reader for the one reference shape, so every surface that answers
+    "which order is this row about?" — the admin credit response and
+    ``transactions.build``'s statement — answers it the same way. Split out
+    when the credit gained a reference: two spellings of this two-line check
+    is how one of them starts disagreeing.
+
+    Args:
+        txn: Any ledger transaction.
+
+    Returns:
+        The order id, or ``None`` for a movement that settles no order.
+    """
+    if txn.reference_type != ORDER_REFERENCE_TYPE:
+        return None
+    return txn.reference_id
+
+
+def _no_such_order() -> NotFoundError:
+    """The single refusal for an ``order_id`` this merchant cannot be credited for.
+
+    **One error object for three causes** — the order belongs to another
+    merchant, the order does not exist, or the id is not a UUID at all — built
+    in one place so the three cannot drift apart into an oracle. The rule is
+    ``/merchant/v1``'s: a distinguishable "not yours" lets a caller walk a
+    competitor's order numbering. Support already has an order lookup and
+    loses nothing by it; what the discipline buys is that this guard stays
+    correct when M4's cabinet reaches the same function from a surface where a
+    merchant, not an operator, chose the id.
+
+    It is a 404 and not a 422 for the reason ``order_status._STORABLE_ID``
+    gives: an id that could not be an order id is an order that is not there,
+    and spelling that as a second status would put the shape of the id back
+    into the answer.
+    """
+    return NotFoundError("no order of this merchant's under that id", code=CODE_ORDER_NOT_FOUND)
+
+
+async def _resolve_order_reference(
+    db: AsyncSession, *, merchant_id: str, order_id: str
+) -> wallet_service.Reference:
+    """Check that ``order_id`` is this merchant's order, and reference it.
+
+    Two things happen here and both are load-bearing.
+
+    **The id is canonicalised before it is compared.** ``orders.id`` is a
+    Postgres ``uuid`` column, so a string that is not a UUID reaches it as a
+    ``DataError`` and comes back a bare 500 — the class of bug
+    ``machine_schemas._canonical_uuid`` was written for, and ``{braced}`` is
+    what ``Guid.ToString("B")`` produces. Canonical form is also what gets
+    **stored**: ``reference_id`` is a ``VARCHAR``, so an undashed or braced
+    spelling would save happily and then match nothing, leaving
+    ``refunded_usd`` at ``"0.00"`` — this task's own defect, re-introduced one
+    layer down.
+
+    **The scope is the merchant.** A credit naming somebody else's order is
+    refused exactly like one naming an order that never existed; see
+    :func:`_no_such_order`.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The merchant being credited — the scope.
+        order_id: The order to attribute the credit to, in any UUID spelling.
+
+    Returns:
+        The ledger reference to post with.
+
+    Raises:
+        NotFoundError: ``order_not_found``.
+    """
+    try:
+        canonical = str(UUID(order_id))
+    except ValueError as exc:
+        raise _no_such_order() from exc
+    found = (
+        await db.execute(
+            select(Order.id).where(Order.id == canonical, Order.merchant_id == merchant_id)
+        )
+    ).scalar_one_or_none()
+    if found is None:
+        raise _no_such_order()
+    return wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=canonical)
+
 
 async def credit_deposit(
     db: AsyncSession,
@@ -60,6 +180,7 @@ async def credit_deposit(
     actor: str,
     idempotency_key: str,
     note: str | None = None,
+    order_id: str | None = None,
 ) -> WalletTransaction:
     """Book a support-credited top-up: ``D merchant_deposit / C house_payments_received``.
 
@@ -68,6 +189,21 @@ async def credit_deposit(
     already guarantees it), so an admin retry after a timeout cannot credit
     twice.
 
+    ``order_id`` names the order this credit settles, and is the whole of M3b
+    Task 2. It changes **only the reference**: the legs, the kind and the
+    ledger key are what they were, because the README's posting table is the
+    contract and a credit does not become a different posting for having
+    gained a subject. What it does change is who can see it —
+    :func:`refunded_for_order` reads the order's ``refunded_usd`` off this
+    reference, and ``transactions.build`` maps it back to the reseller's own
+    ``merchant_order_id``. Before it existed, the manual settlement support
+    performs after a failed delivery moved the balance and appeared nowhere on
+    the order it paid for.
+
+    Omitting it is the ordinary prepayment, unchanged in every observable way:
+    ``Reference(type="merchant", id=merchant_id)``, the same row on
+    ``/transactions`` with a null ``order_id``.
+
     A fresh credit also enqueues ``balance.credited`` (spec §10), in this same
     transaction. A **replay** does not: it books nothing, and announcing money
     that did not move would have a reseller crediting their own end customer
@@ -75,7 +211,15 @@ async def credit_deposit(
     gives its caller no way to tell a replay from a fresh write afterwards; two
     genuinely concurrent credits under one key can therefore both miss it and
     both announce, which is the at-least-once delivery a webhook receiver has
-    to be built for regardless.
+    to be built for regardless. The event's payload is deliberately untouched
+    by ``order_id``: its key set is published as exactly
+    ``{amount_usd, balance_usd}`` and a receiver is entitled to that.
+
+    A replay does not re-point an existing transaction at another order, for
+    the same reason it does not re-book another amount: ``post()`` replays by
+    key **without comparing parameters**, so the returned transaction still
+    carries the first call's reference. The admin response echoes it back for
+    exactly that reason.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -84,17 +228,25 @@ async def credit_deposit(
         actor: Who did it, e.g. ``admin:<id>`` — recorded on the transaction.
         idempotency_key: The caller's key; the replay handle.
         note: Optional free-text reason, kept in the transaction metadata.
+        order_id: The order this credit settles, if it settles one. Must be an
+            order **of this merchant's**.
 
     Returns:
         The ledger transaction (existing one on replay).
 
     Raises:
         ValidationError: If ``amount`` is not positive.
-        NotFoundError: If no merchant with that id exists.
+        NotFoundError: If no merchant with that id exists, or if ``order_id``
+            is not an order of theirs (``order_not_found``).
     """
     if amount <= 0:
         raise ValidationError("deposit credit must be positive", extra={"amount": str(amount)})
     await get_merchant(db, merchant_id)
+    reference = (
+        wallet_service.Reference(type=MERCHANT_REFERENCE_TYPE, id=merchant_id)
+        if order_id is None
+        else await _resolve_order_reference(db, merchant_id=merchant_id, order_id=order_id)
+    )
 
     # Read *before* posting, because ``post()`` answers a replay with the
     # original transaction and gives the caller no way to tell the two apart
@@ -147,7 +299,7 @@ async def credit_deposit(
             ),
         ],
         idempotency_key=idempotency_key,
-        reference=wallet_service.Reference(type="merchant", id=merchant_id),
+        reference=reference,
         actor=actor,
         metadata={"note": note} if note is not None else {},
     )
@@ -259,7 +411,7 @@ async def charge_deposit(
             ),
         ],
         idempotency_key=f"merchant-order:{order_id}",
-        reference=wallet_service.Reference(type="order", id=order_id),
+        reference=wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=order_id),
         actor=f"merchant:{merchant_id}",
     )
 
@@ -381,11 +533,19 @@ async def refunded_for_order(db: AsyncSession, *, merchant_id: str, order_id: st
     reads a direction rather than a transaction kind: it does not have to know
     the name M3 will give a refund.
 
-    Today it always returns zero, because **nothing refunds a merchant order
-    yet** (the module README's posting table marks that row *not implemented*).
-    It is computed rather than hardcoded so the field on
-    ``GET /merchant/v1/orders/{id}`` starts telling the truth the moment M3
-    posts the row, with no change here and no change to the contract.
+    Two things book a debit here. M3b's automatic refund will, when it lands;
+    and since M3b Task 2 a support credit does, whenever the operator names
+    the order it settles (``credit_deposit(order_id=…)``). Until that
+    argument existed this function could only ever answer zero — the only
+    surface that credited a deposit referenced the *merchant* while this read
+    filters on the *order*, so the hand settlement support performs after a
+    failed delivery was invisible on the very order it paid for. That is why
+    both sides now spell the reference through
+    :data:`ORDER_REFERENCE_TYPE`.
+
+    It stays a read of a *direction* rather than of a transaction kind, so
+    whatever M3b's automatic path calls its posting lands here with no change
+    to this function and none to the published contract.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -407,7 +567,7 @@ async def refunded_for_order(db: AsyncSession, *, merchant_id: str, order_id: st
             WalletAccount.kind == "merchant_deposit",
             WalletAccount.currency == DEPOSIT_CURRENCY,
             WalletPosting.direction == normal,
-            WalletTransaction.reference_type == "order",
+            WalletTransaction.reference_type == ORDER_REFERENCE_TYPE,
             WalletTransaction.reference_id == order_id,
         )
     )
@@ -415,11 +575,15 @@ async def refunded_for_order(db: AsyncSession, *, merchant_id: str, order_id: st
 
 
 __all__ = [
+    "CODE_ORDER_NOT_FOUND",
     "DEPOSIT_CURRENCY",
     "INSUFFICIENT_DEPOSIT_CODE",
+    "MERCHANT_REFERENCE_TYPE",
+    "ORDER_REFERENCE_TYPE",
     "charge_deposit",
     "credit_deposit",
     "deposit_balance",
     "list_deposit_transactions",
+    "order_reference_of",
     "refunded_for_order",
 ]

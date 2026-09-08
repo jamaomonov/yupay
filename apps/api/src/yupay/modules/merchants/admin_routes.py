@@ -205,10 +205,17 @@ async def credit_deposit(
     The ``Idempotency-Key`` header is REQUIRED: it is the client half of the
     namespaced ledger key, so an admin retry after a timeout replays the
     original transaction instead of crediting twice. The ledger replays by
-    key WITHOUT comparing parameters — a reused key with an amended amount
-    returns the old transaction and books nothing — so the response's
-    ``amount`` is the replayed transaction's amount, making the mismatch
-    visible to the admin UI.
+    key WITHOUT comparing parameters — a reused key with an amended amount or
+    an amended ``order_id`` returns the old transaction and books nothing — so
+    the response's ``amount`` and ``order_id`` are the replayed transaction's,
+    making the mismatch visible to the admin UI.
+
+    An optional ``order_id`` names the order this credit settles: the amount
+    then shows on that order's ``refunded_usd`` and reconciles on the
+    merchant's own statement, which is how a hand settlement after a failed
+    delivery stops being invisible to the merchant it was paid to. It must be
+    an order of **this** merchant's; one that is not answers ``404
+    order_not_found``, identically to an id that never existed.
     """
     if not idempotency_key or len(idempotency_key) < MIN_IDEMPOTENCY_KEY_LENGTH:
         raise ValidationError(
@@ -228,15 +235,20 @@ async def credit_deposit(
         actor=f"admin:{admin.id}",
         idempotency_key=f"merchant-credit:{merchant_id}:{idempotency_key}",
         note=body.note,
+        order_id=body.order_id,
     )
     balance = await merchants.deposit_balance(db, merchant_id=merchant_id)
     # Both legs carry the same amount; either one is the transaction's amount —
-    # on a replay this is the ORIGINAL amount, not the request's.
+    # on a replay this is the ORIGINAL amount, not the request's. The same
+    # holds for the reference, which is read back through the module's own
+    # reader rather than re-derived from ``body.order_id``: on a replay those
+    # two are exactly the pair that can disagree.
     return DepositCreditOut(
         transaction_id=txn.id,
         merchant_id=merchant_id,
         amount=txn.postings[0].amount,
         balance=balance,
+        order_id=merchants.order_reference_of(txn),
     )
 
 

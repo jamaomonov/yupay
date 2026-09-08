@@ -75,7 +75,11 @@ if TYPE_CHECKING:  # pragma: no cover -- type hints only
 
 #: RFC 7807 ``code`` for an id that is not this merchant's. Also the answer for
 #: an id that belongs to somebody else — see the module docstring.
-CODE_ORDER_NOT_FOUND: Final = "order_not_found"
+#:
+#: Defined in ``deposit``, which answers the same word when a support credit
+#: names an order that is not this merchant's (M3b Task 2). Two surfaces, one
+#: published code, and no second literal to drift.
+CODE_ORDER_NOT_FOUND: Final = deposit.CODE_ORDER_NOT_FOUND
 
 #: Exactly ``MerchantOrderCreateIn.merchant_order_id``'s pattern and length.
 #: Every stored id was written through that schema, so an id outside this

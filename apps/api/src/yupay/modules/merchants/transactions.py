@@ -15,7 +15,11 @@ that is discovered by an invoice.
 
 A bounded second statement maps the page's ``order`` references back to each
 reseller's own ``merchant_order_id`` — one ``IN`` over at most ``limit`` ids,
-never one query per row.
+never one query per row. Which rows carry one is ``deposit.order_reference_of``
+and not a literal here: since M3b Task 2 an order charge is not the only
+movement that names an order — a settlement credit may too — and a second
+spelling of the reference type is what made ``refunded_usd`` read ``"0.00"``
+forever in the first place.
 
 ## Why keyset paging and not OFFSET
 
@@ -76,8 +80,6 @@ from yupay.modules.orders.models import Order
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from yupay.modules.wallet.models import WalletTransaction
-
 #: RFC 7807 ``code`` for a cursor we cannot read. Its own code rather than a
 #: bare 422 because it is the one parameter a client constructs from our own
 #: output: telling them *which* input was wrong is the difference between a
@@ -87,10 +89,6 @@ CODE_INVALID_CURSOR: Final = "invalid_cursor"
 #: Separates the two halves inside the encoded cursor. Not a character that can
 #: appear in either an ISO-8601 timestamp or a UUID, so the split is exact.
 _SEPARATOR: Final = "|"
-
-#: The ledger reference type an order charge carries
-#: (``deposit.charge_deposit`` posts ``Reference(type="order", …)``).
-_ORDER_REFERENCE: Final = "order"
 
 
 def encode_cursor(created_at: datetime, transaction_id: str) -> str:
@@ -202,13 +200,6 @@ async def _merchant_order_ids(
     }
 
 
-def _order_id_of(txn: WalletTransaction) -> str | None:
-    """The order a ledger transaction paid for, if it names one."""
-    if txn.reference_type != _ORDER_REFERENCE:
-        return None
-    return txn.reference_id
-
-
 async def build(
     db: AsyncSession, *, merchant_id: str, limit: int, cursor: str | None = None
 ) -> MerchantTransactionsOut:
@@ -243,15 +234,15 @@ async def build(
     own_ids = await _merchant_order_ids(
         db,
         merchant_id=merchant_id,
-        order_ids={oid for txn, _ in rows if (oid := _order_id_of(txn)) is not None},
+        order_ids={oid for txn, _ in rows if (oid := deposit.order_reference_of(txn)) is not None},
     )
     items = [
         MerchantTransactionOut(
             transaction_id=txn.id,
             kind=txn.kind,
             amount_usd=amount,
-            order_id=_order_id_of(txn),
-            merchant_order_id=own_ids.get(_order_id_of(txn) or ""),
+            order_id=deposit.order_reference_of(txn),
+            merchant_order_id=own_ids.get(deposit.order_reference_of(txn) or ""),
             created_at=txn.created_at,
         )
         for txn, amount in rows
