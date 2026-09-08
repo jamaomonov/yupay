@@ -53,6 +53,12 @@ export interface DepositCreditOut {
    *  the typed amount and warns on a mismatch (money-safety). */
   amount: string;
   balance: string;
+  /** The order the transaction is booked against, or `null` for a plain
+   *  prepayment. Read off the transaction for the same reason `amount` is,
+   *  and it matters more: a posted attribution CANNOT be re-pointed, so a
+   *  replay that ignored the order typed here is unfixable and must be
+   *  shown, not swallowed. */
+  order_id: string | null;
 }
 
 /** One deposit movement (`MerchantTxnOut`); `amount` is the signed delta. */
@@ -100,7 +106,7 @@ export function setMerchantFrozen(
 
 export function creditDeposit(
   merchantId: string,
-  body: { amount: string; note: string | null },
+  body: { amount: string; note: string | null; order_id: string | null },
   idempotencyKey: string,
 ): Promise<DepositCreditOut> {
   return apiPost<DepositCreditOut>(`/api/v1/admin/merchants/${merchantId}/deposit-credits`, body, {
@@ -137,6 +143,36 @@ export function parseUsdAmount(raw: string): string | null {
   if (!/^\d{1,10}(\.\d{1,2})?$/.test(cleaned)) return null;
   if (!/[1-9]/.test(cleaned)) return null; // "0" / "0.00" — not a credit
   return cleaned;
+}
+
+/**
+ * Canonical order id from operator input, or `null` when it is not a UUID.
+ *
+ * Mirrors what the API does with this field (`deposit._resolve_order_reference`
+ * → `str(UUID(value))`): Python's `UUID()` accepts a `urn:uuid:` prefix,
+ * `{braces}`, any casing and dashes anywhere, and normalises all of them to the
+ * one spelling Postgres' `uuid` type takes — so `Guid.ToString("B")` output
+ * pasted out of a ticket is a legal id here too. Validating client-side is not
+ * belt-and-braces: the server answers a **404** for a malformed id, on purpose
+ * and indistinguishably from "not this merchant's order", so an operator who
+ * pasted a `merchant_order_id` would read "no such order" and go looking in the
+ * wrong place.
+ */
+export function parseOrderId(raw: string): string | null {
+  const stripped = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^urn:uuid:/, "")
+    .replace(/^\{|\}$/g, "")
+    .replace(/-/g, "");
+  if (!/^[0-9a-f]{32}$/.test(stripped)) return null;
+  return [
+    stripped.slice(0, 8),
+    stripped.slice(8, 12),
+    stripped.slice(12, 16),
+    stripped.slice(16, 20),
+    stripped.slice(20),
+  ].join("-");
 }
 
 /** Whether two Decimal strings denote the same amount (`"10"` vs `"10.00"`). */

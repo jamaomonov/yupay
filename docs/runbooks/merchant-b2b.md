@@ -106,9 +106,9 @@ unique string that long). A fresh one per logical credit; the same one for
 every retry of that credit.
 
 This is the **prepayment** shape: money in, belonging to no particular order.
-A credit that settles one failed order takes an extra `order_id` field and has
-its own procedure — see "Settling a failed order by hand" below. Do not reach
-for that field here.
+Leave the SPA form's **ID заказа** field (`order_id` on the API) empty. A
+credit that settles one failed order fills it in and has its own procedure —
+see "Settling a failed order by hand" below.
 
 **Ordering is not blocked on the deposit** — a merchant with a zero balance
 authenticates, reads `/me` and `/catalog` fine, and only `POST /orders` refuses
@@ -697,6 +697,14 @@ The steps:
    price is always a whole cent — but the two-decimal form is what the merchant
    sees and what your `note` should quote.)
 
+   **Use the SPA:** the merchant's detail page → the deposit-credit form →
+   the **ID заказа** field. It takes our order id, tells you so under the
+   label, refuses anything that is not a UUID _before_ posting (the API's own
+   refusal for a malformed id is a `404`, which reads as "no such order" and
+   sends you hunting in the wrong place), names the order in the confirm
+   dialog, and echoes back the order the ledger actually booked against. Or,
+   by hand:
+
    ```bash
    curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-credits" \
      -H "Authorization: Bearer <admin JWT>" \
@@ -712,10 +720,10 @@ The steps:
    here means "check the two ids against each other", never "that order is
    somebody else's".
 
-   **This is a curl call, not the SPA.** The admin form has no order field yet,
-   so a settlement booked through it lands unattributed — the pre-M3b
-   behaviour. Use the SPA for ordinary prepayments (step 2 of onboarding),
-   where there is no order to name.
+   Leave the field empty for an ordinary prepayment (step 2 of onboarding):
+   empty means "no order", not "attach it later" — **a posted attribution
+   cannot be re-pointed**, by anyone, ever. That is the one thing to get right
+   before you press the button rather than after.
 
    **Key it on the order id**, as above. That is what makes a retry after a
    timeout safe: the ledger replays by key, so the same
@@ -745,6 +753,10 @@ The steps:
    `refunded_usd` will read `"0.00"`. There is no way to re-point a posted
    transaction; book the difference as a fresh, attributed credit only if the
    merchant was under-credited, and otherwise tell them where to find it.
+
+   The SPA does this half for you at credit time: it prints the order the
+   ledger booked against beside the new balance, and raises a red banner
+   instead of a success toast when what came back is not what you sent.
 
 4. **Tell the merchant**, quoting their `merchant_order_id`: the order is
    closed as `order_failed`, and the amount is back on their deposit balance —

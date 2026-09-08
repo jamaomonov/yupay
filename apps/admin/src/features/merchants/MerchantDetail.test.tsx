@@ -67,10 +67,16 @@ beforeEach(() => {
   );
 });
 
-async function typeAmountAndSubmit(amount: string) {
+async function typeAmountAndSubmit(amount: string, orderId?: string) {
   fireEvent.change(await screen.findByLabelText("Сумма (USD)"), { target: { value: amount } });
+  if (orderId !== undefined) {
+    fireEvent.change(screen.getByLabelText(/ID заказа/), { target: { value: orderId } });
+  }
   fireEvent.click(screen.getByRole("button", { name: "Зачислить" }));
 }
+
+/** A settlement's order id, as an operator pastes it out of `orders.id`. */
+const ORDER = "0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34";
 
 it("shows the balance, the ledger and the credited note", async () => {
   renderPage();
@@ -104,6 +110,7 @@ it("credits the deposit and shows the balance from the response", async () => {
     merchant_id: "m1",
     amount: "10.00",
     balance: "35.00",
+    order_id: null,
   };
   mockedApiPost.mockResolvedValue(result);
   renderPage();
@@ -116,7 +123,7 @@ it("credits the deposit and shows the balance from the response", async () => {
   });
   const [url, body, headers] = mockedApiPost.mock.calls[0] ?? [];
   expect(url).toBe("/api/v1/admin/merchants/m1/deposit-credits");
-  expect(body).toEqual({ amount: "10", note: null });
+  expect(body).toEqual({ amount: "10", note: null, order_id: null });
   expect(headers).toEqual(
     expect.objectContaining({ "Idempotency-Key": expect.any(String) as string }),
   );
@@ -166,7 +173,13 @@ it("ignores a double-click while the credit is in flight", async () => {
   await waitFor(() => {
     expect(mockedApiPost).toHaveBeenCalledTimes(1);
   });
-  resolveCredit({ transaction_id: "t2", merchant_id: "m1", amount: "10.00", balance: "35.00" });
+  resolveCredit({
+    transaction_id: "t2",
+    merchant_id: "m1",
+    amount: "10.00",
+    balance: "35.00",
+    order_id: null,
+  });
   await waitFor(() => {
     expect(screen.getByText("Баланс после зачисления: $35.00")).toBeInTheDocument();
   });
@@ -236,4 +249,86 @@ it("keeps the spinner up instead of flashing «не найден» while the lis
 
   resolveList(LIST);
   expect(await screen.findByRole("heading", { name: "Pilot Reseller" })).toBeInTheDocument();
+});
+
+// ---------- settling one failed order (M3b Task 2) ----------
+
+it("sends the order id so the credit lands on that order's refunded_usd", async () => {
+  const result: DepositCreditOut = {
+    transaction_id: "t2",
+    merchant_id: "m1",
+    amount: "1.07",
+    balance: "26.07",
+    order_id: ORDER,
+  };
+  mockedApiPost.mockResolvedValue(result);
+  renderPage();
+
+  await typeAmountAndSubmit("1.07", ORDER);
+  // The confirm names the order, because attributing is what makes the
+  // credit visible to the merchant and it cannot be changed afterwards.
+  expect(await screen.findByText(new RegExp(ORDER))).toBeInTheDocument();
+  fireEvent.click(await screen.findByRole("button", { name: "Да, зачислить" }));
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+  const [, body] = mockedApiPost.mock.calls[0] ?? [];
+  expect(body).toEqual({ amount: "1.07", note: null, order_id: ORDER });
+
+  // The attribution is echoed back from the RESPONSE, not from what was typed.
+  expect(await screen.findByText(`Привязано к заказу ${ORDER}`)).toBeInTheDocument();
+});
+
+it("canonicalises the order id the way the API does", async () => {
+  mockedApiPost.mockResolvedValue({
+    transaction_id: "t2",
+    merchant_id: "m1",
+    amount: "1.07",
+    balance: "26.07",
+    order_id: ORDER,
+  });
+  renderPage();
+
+  // `Guid.ToString("B")` in .NET, upper-cased, with stray whitespace: all
+  // spellings Python's `UUID()` accepts, and none of them what Postgres does.
+  await typeAmountAndSubmit("1.07", `  {${ORDER.toUpperCase()}}  `);
+  fireEvent.click(await screen.findByRole("button", { name: "Да, зачислить" }));
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+  const [, body] = mockedApiPost.mock.calls[0] ?? [];
+  expect(body).toEqual({ amount: "1.07", note: null, order_id: ORDER });
+});
+
+it("refuses an order id that is not a UUID without posting anything", async () => {
+  renderPage();
+  // A merchant_order_id is the id an operator will reach for by mistake, and
+  // the API would answer 404 — which reads as "no such order", not "wrong id".
+  await typeAmountAndSubmit("1.07", "acme-2026-000417");
+
+  expect(mockedApiPost).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Да, зачислить" })).not.toBeInTheDocument();
+});
+
+it("warns loudly when a replayed key booked the credit against another order", async () => {
+  // The attribution cannot be repaired afterwards — a replay returns the
+  // ORIGINAL transaction and no surface can re-point one.
+  mockedApiPost.mockResolvedValue({
+    transaction_id: "t-old",
+    merchant_id: "m1",
+    amount: "1.07",
+    balance: "26.07",
+    order_id: "0198c000-0000-7000-8000-000000000000",
+  });
+  renderPage();
+
+  await typeAmountAndSubmit("1.07", ORDER);
+  fireEvent.click(await screen.findByRole("button", { name: "Да, зачислить" }));
+
+  const alert = await screen.findByRole("alert");
+  expect(alert.textContent).toContain("0198c000-0000-7000-8000-000000000000");
+  expect(alert.textContent).toContain(ORDER);
+  expect(screen.queryByText(`Привязано к заказу ${ORDER}`)).not.toBeInTheDocument();
 });

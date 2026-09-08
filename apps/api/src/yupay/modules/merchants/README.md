@@ -478,8 +478,10 @@ back through the route stack, same rule as `affiliate.routes`):
   `refund-<order-id>` already namespaces a settlement by order. See "What a
   movement is _about_" above and
   `docs/architecture/sequence-diagrams/merchant-deposit-credit.mmd`.
-  The admin SPA form does not carry the field yet, so an attributed
-  settlement is a curl call — see `docs/runbooks/merchant-b2b.md`.
+  The admin SPA's deposit-credit form carries the field, validates the id
+  the way this endpoint does (so a pasted `merchant_order_id` is caught
+  before it becomes a `404` reading "no such order"), and echoes the booked
+  attribution back — see `docs/runbooks/merchant-b2b.md`.
 - `GET /admin/merchants/{id}/transactions` — the merchant's deposit ledger,
   newest first (`deposit.list_deposit_transactions`, one grouped query —
   shared with `/merchant/v1/transactions` rather than copied). Each row

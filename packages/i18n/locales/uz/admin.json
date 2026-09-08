@@ -49,6 +49,9 @@
       "noteLabel": "Izoh",
       "noteHint": "(ixtiyoriy; faqat ichki)",
       "notePlaceholder": "masalan: 05.09 dagi 14-invoys",
+      "orderLabel": "Buyurtma ID",
+      "orderHint": "(ixtiyoriy; BIZNING buyurtma id — orders.id dagi UUID, resellerning merchant_order_id si emas)",
+      "orderPlaceholder": "masalan: 0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34",
       "submit": "O'tkazish",
       "submitBusy": "O'tkazilmoqda…",
       "confirmTitle": "Depozitga o'tkazilsinmi?",
@@ -58,7 +61,11 @@
       "resultBalance": "O'tkazmadan keyingi balans: {balance}",
       "replayMismatch": "Avval ishlatilgan kalit bo'yicha {booked} o'tkazildi — kiritilgan {typed} summa qo'llanilMAdi. Quyidagi tarixni tekshiring va yangi o'tkazma kerak bo'lsa formani qayta yuboring.",
       "amountInvalid": "Summa — musbat USD son, ko'pi bilan ikki kasr xona.",
-      "error": "O'tkazib bo'lmadi: {message}"
+      "error": "O'tkazib bo'lmadi: {message}",
+      "orderInvalid": "Buyurtma ID — bu orders.id dagi UUID. Resellerning merchant_order_id si kiritilganga o'xshaydi: server «buyurtma topilmadi» deb javob beradi, izlash kerak bo'lgan joy esa boshqa.",
+      "confirmBodyOrder": "O'tkazma {order} buyurtmaga bog'lanadi: summa o'sha buyurtmaning refunded_usd siga tushadi. Bog'lanishni keyin o'zgartirib bo'lmaydi.",
+      "resultOrder": "{order} buyurtmaga bog'landi",
+      "replayOrderMismatch": "Avval ishlatilgan kalit {booked} buyurtmaga bog'langan, kiritilgan {typed} ga emas. Bog'lanishni qayta yo'naltirib bo'lmaydi — quyidagi tarixni tekshiring."
     },
     "ledger": {
       "title": "Depozit tarixi",

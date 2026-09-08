@@ -596,7 +596,7 @@ moves — and lands here. The order must be the credited merchant's; one that is
 not, one that does not exist and a malformed id all answer a single
 `404 order_not_found`, the same non-oracle discipline `/merchant/v1`'s own
 reads keep. `docs/runbooks/merchant-b2b.md` is written around the attributed
-form, and says plainly that the admin SPA form cannot produce one yet.
+form, which the admin SPA's deposit-credit screen now produces directly.
 
 ### `GET /merchant/v1/transactions` — the deposit ledger
 

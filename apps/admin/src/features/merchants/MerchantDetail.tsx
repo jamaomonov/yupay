@@ -9,6 +9,19 @@
  * must never be silent. One key is minted per logical credit attempt
  * (stable across retries of that attempt), and an in-flight ref blocks
  * double-submit.
+ *
+ * The optional `order_id` (M3b Task 2) settles ONE failed order: the amount
+ * then lands in that order's `refunded_usd` and carries the reseller's own
+ * `merchant_order_id` onto their statement, instead of being an anonymous
+ * top-up they cannot tie to anything. It is subject to the same replay rule
+ * as the amount and one more fact besides — **a posted attribution cannot be
+ * re-pointed**, so a replay that ignored it is unfixable, which is why it
+ * shares the mismatch banner rather than a quieter signal.
+ *
+ * The id is validated here before it is sent, because the API's refusal for a
+ * malformed one is a deliberate `404 order_not_found` — the same answer as
+ * "not this merchant's order", so an operator who pasted the reseller's
+ * `merchant_order_id` would read "no such order" and hunt in the wrong place.
  */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -24,6 +37,7 @@ import {
   fetchMerchantTxns,
   fill,
   formatUsd,
+  parseOrderId,
   parseUsdAmount,
   sameAmount,
   setMerchantFrozen,
@@ -47,12 +61,16 @@ import { useToast } from "@/components/Toast";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
+/** What the UI renders where a value is absent — the ledger table's own dash. */
+const EMPTY_VALUE = "—";
+
 export function MerchantDetail() {
   const { id = "" } = useParams();
   const qc = useQueryClient();
   const toast = useToast();
   const amountFieldId = useId();
   const noteFieldId = useId();
+  const orderFieldId = useId();
 
   // There is no single-merchant GET — the list is one grouped query and the
   // detail reuses its cache entry.
@@ -93,10 +111,18 @@ export function MerchantDetail() {
   // ----- deposit credit -----
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
-  /** Canonical amount awaiting confirmation; `null` = no dialog. */
-  const [pendingCredit, setPendingCredit] = useState<string | null>(null);
+  const [orderId, setOrderId] = useState("");
+  /** Canonical amount + order awaiting confirmation; `null` = no dialog. */
+  const [pendingCredit, setPendingCredit] = useState<{
+    amount: string;
+    orderId: string | null;
+  } | null>(null);
   const [lastCredit, setLastCredit] = useState<DepositCreditOut | null>(null);
-  const [mismatch, setMismatch] = useState<{ booked: string; typed: string } | null>(null);
+  /** What the ledger booked vs what was typed, per field it can disagree on. */
+  const [mismatch, setMismatch] = useState<{
+    amount: { booked: string; typed: string } | null;
+    order: { booked: string; typed: string } | null;
+  } | null>(null);
   const creditKeyRef = useRef("");
   // `isPending` re-renders one tick after `mutate` — a same-tick double-click
   // would fire twice. The ref flips synchronously.
@@ -105,7 +131,7 @@ export function MerchantDetail() {
   const creditMutation = useMutation<
     DepositCreditOut,
     ApiError,
-    { amount: string; note: string | null }
+    { amount: string; note: string | null; order_id: string | null }
   >({
     mutationFn: (body) => creditDeposit(id, body, creditKeyRef.current),
     onSettled: () => {
@@ -114,10 +140,18 @@ export function MerchantDetail() {
     onSuccess: (data, vars) => {
       setPendingCredit(null);
       setLastCredit(data);
-      if (!sameAmount(data.amount, vars.amount)) {
-        // Replayed key with an amended amount: the ledger booked the ORIGINAL
-        // transaction and ignored what was typed. Loud banner, no success toast.
-        setMismatch({ booked: data.amount, typed: vars.amount });
+      // A replayed key returns the ORIGINAL transaction and ignores every
+      // parameter of this request. Both things it can silently disagree with
+      // are checked; either one is a loud banner and no success toast.
+      const amountOff = !sameAmount(data.amount, vars.amount);
+      const orderOff = data.order_id !== vars.order_id;
+      if (amountOff || orderOff) {
+        setMismatch({
+          amount: amountOff ? { booked: data.amount, typed: vars.amount } : null,
+          order: orderOff
+            ? { booked: data.order_id ?? EMPTY_VALUE, typed: vars.order_id ?? EMPTY_VALUE }
+            : null,
+        });
       } else {
         setMismatch(null);
         toast.success(
@@ -128,6 +162,7 @@ export function MerchantDetail() {
         );
         setAmount("");
         setNote("");
+        setOrderId("");
       }
       // The response balance is authoritative either way.
       if (merchant) patchList({ ...merchant, deposit_balance: data.balance });
@@ -145,17 +180,29 @@ export function MerchantDetail() {
       toast.error(T.credit.amountInvalid);
       return;
     }
+    // Empty is the ordinary prepayment; anything typed must be a real id
+    // before it is sent, or the 404 will read as "no such order".
+    const typedOrder = orderId.trim();
+    const parsedOrder = typedOrder ? parseOrderId(typedOrder) : null;
+    if (typedOrder && parsedOrder === null) {
+      toast.error(T.credit.orderInvalid);
+      return;
+    }
     // One key per logical attempt (minted here, not in the confirm click):
     // retries of this attempt replay it, the next submit mints a fresh one.
     creditKeyRef.current = `merchant-topup-${crypto.randomUUID()}`;
     setMismatch(null);
-    setPendingCredit(parsed);
+    setPendingCredit({ amount: parsed, orderId: parsedOrder });
   };
 
   const confirmCredit = () => {
     if (pendingCredit === null || creditInFlightRef.current) return;
     creditInFlightRef.current = true;
-    creditMutation.mutate({ amount: pendingCredit, note: note.trim() ? note.trim() : null });
+    creditMutation.mutate({
+      amount: pendingCredit.amount,
+      note: note.trim() ? note.trim() : null,
+      order_id: pendingCredit.orderId,
+    });
   };
 
   const isFrozen = merchant?.status === "frozen";
@@ -256,12 +303,24 @@ export function MerchantDetail() {
       {mismatch && (
         <div
           role="alert"
-          className="mb-5 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] p-4 text-sm font-medium text-[var(--danger-fg)]"
+          className="mb-5 space-y-2 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] p-4 text-sm font-medium text-[var(--danger-fg)]"
         >
-          {fill(T.credit.replayMismatch, {
-            booked: formatUsd(mismatch.booked),
-            typed: formatUsd(mismatch.typed),
-          })}
+          {mismatch.amount && (
+            <p>
+              {fill(T.credit.replayMismatch, {
+                booked: formatUsd(mismatch.amount.booked),
+                typed: formatUsd(mismatch.amount.typed),
+              })}
+            </p>
+          )}
+          {mismatch.order && (
+            <p>
+              {fill(T.credit.replayOrderMismatch, {
+                booked: mismatch.order.booked,
+                typed: mismatch.order.typed,
+              })}
+            </p>
+          )}
         </div>
       )}
 
@@ -298,6 +357,23 @@ export function MerchantDetail() {
               className="mt-1"
             />
           </div>
+          <div className="md:col-span-3">
+            <label
+              htmlFor={orderFieldId}
+              className="text-xs uppercase text-[var(--text-secondary)]"
+            >
+              {T.credit.orderLabel} <span className="normal-case">{T.credit.orderHint}</span>
+            </label>
+            <Input
+              id={orderFieldId}
+              value={orderId}
+              onChange={(e) => {
+                setOrderId(e.target.value);
+              }}
+              placeholder={T.credit.orderPlaceholder}
+              className="mt-1 font-mono"
+            />
+          </div>
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <Button onClick={submitCredit} disabled={creditMutation.isPending}>
@@ -306,6 +382,13 @@ export function MerchantDetail() {
           {lastCredit && (
             <p className="text-sm text-[var(--text-secondary)]">
               {fill(T.credit.resultBalance, { balance: formatUsd(lastCredit.balance) })}
+              {lastCredit.order_id !== null && (
+                // Off the response, not off the form: this is what the ledger
+                // actually booked, and it is the merchant's `refunded_usd`.
+                <span className="ml-2 font-mono">
+                  {fill(T.credit.resultOrder, { order: lastCredit.order_id })}
+                </span>
+              )}
             </p>
           )}
         </div>
@@ -361,9 +444,14 @@ export function MerchantDetail() {
           <p>
             {fill(T.credit.confirmBody, {
               title: merchant.title,
-              amount: formatUsd(pendingCredit),
+              amount: formatUsd(pendingCredit.amount),
             })}
           </p>
+          {pendingCredit.orderId !== null && (
+            <p className="mt-2">
+              {fill(T.credit.confirmBodyOrder, { order: pendingCredit.orderId })}
+            </p>
+          )}
         </ConfirmDialog>
       )}
     </div>
