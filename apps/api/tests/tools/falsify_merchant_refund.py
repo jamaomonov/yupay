@@ -24,6 +24,11 @@ source files in place, so any concurrently running suite imports whatever
 mutation happens to be applied at that moment and fails for reasons that have
 nothing to do with it.
 
+``--check-anchors`` applies every edit **in memory** and reports all the stale
+ones at once, in about a second. Run it after any refactor near the seam: the
+real run aborts on the first stale anchor, which is correct and costs a pytest
+round trip per discovery, and five of them accumulated in a single round here.
+
 Sources are restored from a copy taken before the edit, in a ``finally``.
 Never ``git checkout`` — several agents share this worktree. pytest runs in
 its own process group, killed as a group in a ``finally``: on SIGINT the group
@@ -95,7 +100,14 @@ class Mutation:
         breaks: What property this removes, for the report.
         edits: ``(path, old, new)`` triples. Each must change its file.
         tests: Test ids or files to run.
-        expect: Test names that must be among the failures.
+        expect: The **exact** set of tests this mutation must redden — not a
+            subset. Equality is the point: the first version of this harness
+            asserted only that the named tests were *among* the failures, and
+            a row that reddened nine tests where three were expected passed
+            silently for two review rounds. A blast radius that changes is a
+            row grading something other than what it says, which is the same
+            failure the ``SystemExit`` guard catches for anchors. Fill it in
+            with ``--record``.
     """
 
     name: str
@@ -112,7 +124,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         breaks="money we never got back is refunded on a guess",
         edits=((SAGA, "    if outcome is not MoneyOutcome.RETURNED:", "    if False:"),),
         tests=(LIVE,),
-        expect=("test_a_failure_that_did_not_return_our_money_refunds_nothing",),
+        expect=(
+            "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
+            "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
+            "test_a_manually_failed_merchant_order_reaches_the_seam",
+        ),
     ),
     Mutation(
         name="no_merchant_gate",
@@ -120,8 +136,8 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "    if order.merchant_id is None:\n        return\n    order_id = order.id",
-                "    order_id = order.id",
+                "    if row is None or row.merchant_id is None:",
+                "    if row is None:",
             ),
         ),
         tests=(LIVE,),
@@ -183,17 +199,72 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "    seen: dict[str, str] = {}\n    try:",
-                "    seen: dict[str, str] = {}\n    await _load_task(db, task_id)\n    try:",
+                '    seen: dict[str, str] = {"order_id": row.id}\n    try:',
+                '    seen: dict[str, str] = {"order_id": row.id}\n'
+                "    await _load_task(db, task_id)\n    try:",
             ),
         ),
         tests=(LIVE,),
         expect=("test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",),
     ),
     Mutation(
+        # The one case every document on this path cites as the reason for
+        # catching, and the one fix round 2's catch did not cover.
+        name="handler_imports_what_it_is_reporting_about",
+        breaks="an unimportable refund module escapes from the handler that exists to report it",
+        edits=(
+            (
+                SAGA,
+                '    module = sys.modules.get("yupay.modules.merchants.refund")\n'
+                '    refund_error = getattr(module, "RefundError", None)\n'
+                "    if isinstance(refund_error, type) and issubclass(refund_error, BaseException):\n"
+                "        return isinstance(exc, refund_error | AppError | SQLAlchemyError)\n"
+                "    return isinstance(exc, AppError | SQLAlchemyError)",
+                "    from yupay.modules.merchants.refund import RefundError\n\n"
+                "    return isinstance(exc, RefundError | AppError | SQLAlchemyError)",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_an_unimportable_refund_module_is_reported_not_fatal",),
+    ),
+    Mutation(
+        name="the_reporter_can_take_the_queue_down",
+        breaks="a raise while reporting a failure stalls the drain instead of degrading",
+        edits=(
+            (
+                SAGA,
+                "        except Exception:  # noqa: BLE001 -- nothing may escape the reporter",
+                "        except ValueError:  # noqa: BLE001 -- nothing may escape the reporter",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_crash_while_reporting_a_crash_still_does_not_stall_the_queue",),
+    ),
+    Mutation(
+        name="cancel_gate_reads_a_sum_as_a_flag",
+        breaks="one cent silences the cancellation alert while the rest sits parked",
+        edits=(
+            (
+                SAGA,
+                "        if not await merchant_refund.is_settled_in_full(",
+                "        if not await merchant_refund.returned_for_order(",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_penny_does_not_silence_the_cancellation_alert",),
+    ),
+    Mutation(
         name="cancel_alert_on_the_happy_path",
         breaks="the one alert I3 exists for fires on every settled order, and ops stops reading it",
-        edits=((SAGA, "        if returned <= 0:", "        if True:"),),
+        edits=(
+            (
+                SAGA,
+                "        if not await merchant_refund.is_settled_in_full(\n"
+                "            db, merchant_id=merchant_id, order_id=task.order_id\n"
+                "        ):",
+                "        if True:",
+            ),
+        ),
         tests=(LIVE,),
         expect=("test_cancelling_an_already_refunded_order_says_nothing",),
     ),
@@ -220,14 +291,28 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "    except Exception as exc:  # noqa: BLE001 -- see the docstring:",
-                "    except (merchant_refund.RefundError, AppError, SQLAlchemyError) as exc:  # noqa: E501 -- see the docstring:",
+                "        try:\n            # ``_crash_detail``, not ``str(exc)``",
+                # A **behavioural** narrowing, because a syntactic one cannot
+                # compile here: the lazy import moved into the body, so
+                # ``RefundError`` is not a name in this scope and a module-scope
+                # import would close the very cycle the laziness exists for.
+                # The first attempt at this row named ``merchant_refund``
+                # anyway — it raised ``NameError``, leaving the mutant with **no
+                # catch at all** rather than a narrow one, reddening nine tests
+                # where a real narrowing reds four. The anchor still matched, so
+                # ``SystemExit`` could not see it.
+                "        if not _is_modelled(exc):\n"
+                "            raise\n"
+                "        try:\n"
+                "            # ``_crash_detail``, not ``str(exc)``",
             ),
         ),
         tests=(LIVE,),
         expect=(
-            "test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",
             "test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down",
+            "test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",
+            "test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",
+            "test_an_unimportable_refund_module_is_reported_not_fatal",
         ),
     ),
     Mutation(
@@ -236,7 +321,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 STATUS,
-                "        whole = charged is not None and refunded >= charged",
+                "        whole = refund.settled_in_full(charged=charged, returned=refunded)",
                 "        whole = refunded > 0",
             ),
         ),
@@ -271,7 +356,10 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_cancelling_a_merchant_task_says_the_deposit_is_parked",),
+        expect=(
+            "test_a_penny_does_not_silence_the_cancellation_alert",
+            "test_cancelling_a_merchant_task_says_the_deposit_is_parked",
+        ),
     ),
     # ---- the amount
     Mutation(
@@ -296,7 +384,10 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_the_refund_is_what_we_charged_not_what_the_line_says_now",),
+        expect=(
+            "test_an_order_with_no_charge_refunds_nothing_and_calls_a_human",
+            "test_the_refund_is_what_we_charged_not_what_the_line_says_now",
+        ),
     ),
     # ---- the ledger key
     Mutation(
@@ -311,8 +402,21 @@ MUTATIONS: tuple[Mutation, ...] = (
         ),
         tests=(LIVE, KEYS),
         expect=(
+            "test_a_force_complete_after_a_refund_is_refused_too",
+            "test_a_frozen_merchant_is_still_refunded",
+            "test_a_hand_credit_cannot_take_an_order_past_what_it_charged",
+            "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_re_driven_fulfilment_refunds_once",
             "test_a_returned_failure_returns_the_charge_to_the_deposit",
+            "test_an_admin_retry_after_a_refund_cannot_deliver_free_goods",
+            "test_an_order_support_already_settled_is_not_refunded_again",
+            "test_cancelling_an_already_refunded_order_says_nothing",
+            "test_neither_key_family_can_contain_the_other",
+            "test_the_refund_announces_the_money_by_push",
+            "test_the_refund_is_visible_on_the_order_and_on_the_statement",
+            "test_the_refund_is_what_we_charged_not_what_the_line_says_now",
             "test_the_two_keys_for_one_order_are_different_strings",
+            "test_two_drainers_on_two_connections_refund_once",
         ),
     ),
     Mutation(
@@ -353,7 +457,10 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_an_order_support_already_settled_is_not_refunded_again",),
+        expect=(
+            "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_an_order_support_already_settled_is_not_refunded_again",
+        ),
     ),
     Mutation(
         name="no_over_settlement_cap",
@@ -436,7 +543,10 @@ MUTATIONS: tuple[Mutation, ...] = (
         tests=(LIVE,),
         expect=(
             "test_a_failed_refund_leaves_the_order_saying_a_human_is_deciding",
-            "test_a_failure_that_did_not_return_our_money_refunds_nothing",
+            "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
+            "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
+            "test_a_manually_failed_merchant_order_reaches_the_seam",
+            "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
         ),
     ),
     Mutation(
@@ -454,7 +564,11 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_a_failure_that_did_not_return_our_money_refunds_nothing",),
+        expect=(
+            "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
+            "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
+            "test_a_manually_failed_merchant_order_reaches_the_seam",
+        ),
     ),
     Mutation(
         name="no_alert_when_the_refund_fails",
@@ -462,16 +576,23 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "        _dispatch_alert(\n"
-                "            _alert_merchant_refund_failed(task_id=task_id, order_id=order_id, error=detail)\n"
-                "        )\n",
+                "            _dispatch_alert(\n"
+                "                _alert_merchant_refund_failed(\n"
+                '                    task_id=task_id, order_id=seen["order_id"], error=detail\n'
+                "                )\n"
+                "            )\n",
                 "",
             ),
         ),
         tests=(LIVE,),
         expect=(
+            "test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",
+            "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
             "test_a_refund_failure_leaves_the_task_refundable",
+            "test_an_order_support_already_settled_is_not_refunded_again",
             "test_an_order_with_no_charge_refunds_nothing_and_calls_a_human",
+            "test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",
+            "test_an_unimportable_refund_module_is_reported_not_fatal",
         ),
     ),
     Mutation(
@@ -493,6 +614,38 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=("test_the_refund_announces_the_money_by_push",),
     ),
 )
+
+
+def _check_anchors(chosen: list[Mutation]) -> int:
+    """Report every stale anchor at once, in seconds, without touching the tree.
+
+    The whole run aborts on the **first** stale anchor — deliberately, because
+    a harness that carries on after one is a harness reporting on a tree it did
+    not mutate. That is right and it is also slow: each discovery costs a
+    pytest run, and five accumulated in one round here while the code moved
+    under them. This finds all five in about a second, and it is the cheapest
+    thing to run after any refactor near the seam.
+
+    Args:
+        chosen: The rows to check.
+
+    Returns:
+        A process exit code: non-zero if any anchor no longer matches.
+    """
+    cache: dict[Path, str] = {}
+    stale: list[str] = []
+    for mutation in chosen:
+        edited: dict[Path, str] = {}
+        for path, old, _new in mutation.edits:
+            source = edited.get(path) or cache.setdefault(path, path.read_text())
+            if old not in source:
+                stale.append(f"{mutation.name:44} {path.name}  {old.splitlines()[0][:60]!r}")
+                continue
+            edited[path] = source.replace(old, _new, 1)
+    for row in stale:
+        print(f"STALE  {row}")
+    print(f"\n{len(stale)} stale anchor(s) across {len(chosen)} rows")
+    return 1 if stale else 0
 
 
 def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
@@ -541,15 +694,22 @@ def _run(mutation: Mutation) -> tuple[str, list[str]]:
             with contextlib.suppress(ProcessLookupError, PermissionError):
                 os.killpg(process.pid, signal.SIGKILL)
             process.wait()
-    failures = [
-        match.group("name") for line in stdout.splitlines() if (match := _FAILED_LINE.match(line))
-    ]
+    failures = sorted(
+        {match.group("name") for line in stdout.splitlines() if (match := _FAILED_LINE.match(line))}
+    )
     if process.returncode == 0:
-        return "UNFALSIFIED — the suite stayed green", []
-    missing = [name for name in mutation.expect if not any(name in f for f in failures)]
+        return "UNFALSIFIED — the suite stayed green", failures
+    observed, expected = set(failures), set(mutation.expect)
+    if observed == expected:
+        return "failed as expected", failures
+    missing = sorted(expected - observed)
+    extra = sorted(observed - expected)
+    parts = []
     if missing:
-        return f"failed, but not on {', '.join(missing)}", failures
-    return "failed as expected", failures
+        parts.append(f"did not red {', '.join(missing)}")
+    if extra:
+        parts.append(f"also red {', '.join(extra)}")
+    return f"WRONG BLAST RADIUS — {'; '.join(parts)}", failures
 
 
 def main() -> int:
@@ -557,6 +717,16 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("-k", dest="pattern", default="", help="substring of the mutation name")
     parser.add_argument("--list", action="store_true", help="print the mutations and exit")
+    parser.add_argument(
+        "--check-anchors",
+        action="store_true",
+        help="apply every edit in memory and report stale anchors, without running pytest",
+    )
+    parser.add_argument(
+        "--record",
+        action="store_true",
+        help="print each row's observed red set as an `expect=` tuple, for pasting back",
+    )
     args = parser.parse_args()
 
     chosen = [m for m in MUTATIONS if args.pattern in m.name]
@@ -564,6 +734,8 @@ def main() -> int:
         for mutation in chosen:
             print(f"{mutation.name:44} {mutation.breaks}")
         return 0
+    if args.check_anchors:
+        return _check_anchors(chosen)
 
     print(
         "falsify: editing source files in place — do not run any other suite "
@@ -575,17 +747,20 @@ def main() -> int:
         backups: dict[Path, Path] = {}
         try:
             _apply(mutation, backups)
-            verdict, _failures = _run(mutation)
+            verdict, failures = _run(mutation)
         finally:
             _restore(backups)
         rows.append((mutation.name, verdict))
         print(f"{mutation.name:44} {verdict}", flush=True)
+        if args.record:
+            body = "".join(f'\n            "{name}",' for name in failures)
+            print(f"        # {mutation.name}\n        expect=({body}\n        ),", flush=True)
 
     print("\n--- summary ---")
     unfalsified = [
         name
         for name, verdict in rows
-        if verdict.startswith(("UNFALSIFIED", "failed, but", "TIMED OUT"))
+        if verdict.startswith(("UNFALSIFIED", "WRONG BLAST RADIUS", "TIMED OUT"))
     ]
     for name, verdict in rows:
         print(f"{name:44} {verdict}")

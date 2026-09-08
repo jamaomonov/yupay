@@ -29,6 +29,7 @@ import asyncio
 import hashlib
 import hmac
 import json
+import sys
 import time
 from collections.abc import AsyncIterator, Iterator
 from datetime import UTC, datetime, timedelta
@@ -792,6 +793,86 @@ async def test_a_fault_in_the_seams_own_reads_is_reported_not_fatal(
     assert ff_svc.money_outcome_of(task) is MoneyOutcome.RETURNED
 
 
+async def test_an_unimportable_refund_module_is_reported_not_fatal(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The one case the catch was widened *for*, and the one it did not cover.
+
+    Every document on this path cites the same example to justify catching: a
+    circular import leaving `merchants.refund` unimportable — 64decbd's shape.
+    Fix round 2 caught it in the body and then re-raised it from the handler,
+    which held a lazy `from ...refund import RefundError` of its own. An
+    `except` arm is outside its own `try` by construction, so the second
+    `ImportError` escaped the drain with no line and no alert, and every tick
+    repeated it.
+
+    The classification is import-free now, so this is reported like anything
+    else and the queue keeps moving.
+    """
+    _m, _k, _s, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-noimport"
+    )
+    # Both halves are needed, and the reason is the bug's own mechanics:
+    # ``from yupay.modules.merchants import refund`` only *imports* when the
+    # package has no ``refund`` attribute yet, so poisoning ``sys.modules``
+    # alone changes nothing once anything has imported it. Removing the
+    # attribute forces the import, and the ``None`` in ``sys.modules`` makes
+    # that import fail — which is what a half-initialised cycle looks like.
+    import yupay.modules.merchants as merchants_pkg
+
+    monkeypatch.delattr(merchants_pkg, "refund")
+    monkeypatch.setitem(sys.modules, "yupay.modules.merchants.refund", None)
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
+    assert await _refund_rows(db_session, order_id) == []
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await db_session.refresh(task)
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.RETURNED
+
+
+async def test_a_crash_while_reporting_a_crash_still_does_not_stall_the_queue(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The handler is the last thing between a bug and a queue outage.
+
+    It is outside its own `try` by construction, so anything it does is
+    uncaught unless it is wrapped. It is wrapped, and the fallback deliberately
+    formats nothing — a reporter that needs the failing exception to be
+    printable is a reporter that fails on exactly the exception worth
+    reporting.
+    """
+    await _placed(integration_client, admin_headers, db_session, merchant_order_id="acme-reporter")
+
+    def _boom_detail(_exc: BaseException) -> str:
+        raise RuntimeError("even the reporter is broken")
+
+    async def _refuse(*_args: object, **_kwargs: object) -> WalletTransaction:
+        raise merchant_refund.RefundError("the ledger said no")
+
+    monkeypatch.setattr(merchant_refund, "refund_order", _refuse)
+    monkeypatch.setattr(ff_svc, "_crash_detail", _boom_detail)
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+
 async def test_a_crashing_refund_does_not_take_the_rest_of_the_batch_down(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],
@@ -1269,6 +1350,79 @@ async def test_cancelling_an_already_refunded_order_says_nothing(
 
     assert _merchant_alerts(alerts) == []
     assert await _balance(db_session, merchant_id) == Decimal(FUNDING)
+
+
+async def test_a_penny_does_not_silence_the_cancellation_alert(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    alerts: list[Alert],
+) -> None:
+    """The sum-read-as-a-flag shape, in the second place it appeared.
+
+    `refunded_usd` was fixed one round ago; this gate was still `returned <= 0`,
+    so a $0.01 attributed credit on a $1.07 order silenced both the alert and
+    the log line while $1.06 sat parked on a task nothing can move again —
+    which is the exact state the alert exists to make findable. Both now ask
+    `refund.settled_in_full`, so there is one rule and not two spellings.
+    """
+    merchant_id, _key, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-penny-cancel"
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
+    ).status_code == 201
+
+    task_id = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await ff_svc.cancel_task(db_session, task_id=task_id)
+    await db_session.commit()
+
+    assert _merchant_alerts(alerts) == ["_alert_merchant_order_cancelled"]
+
+
+async def test_a_stall_with_no_prior_verdict_is_left_alone(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """A first-attempt low-balance stall reaches the seam carrying nothing.
+
+    Its sibling above covers the stall that inherits an *earlier* attempt's
+    ``RETURNED``. This is the ordinary case: the task is ``failed``, so the
+    seam runs, and ``money_outcome_of`` answers ``None`` because
+    ``_apply_failure`` returns before recording one. Nothing to refund and
+    nothing to alert about — an operator tops up and retries, and the reseller
+    is deliberately told nothing, because the order is still coming.
+
+    It was the one line of this task's own code that no test reached.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-firststall"
+    )
+    _failing_mock(monkeypatch, None, error="supplier_low_balance")
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await db_session.refresh(task)
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is None
+    assert await _refund_rows(db_session, order_id) == []
+    assert _merchant_alerts(alerts) == []
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
+    body = (await _read_order(integration_client, key_id, secret, "acme-firststall")).json()
+    assert body["failure_reason"] is None
 
 
 # ---------- a hand settlement and the automatic one must not stack ----------

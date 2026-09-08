@@ -54,6 +54,7 @@ of a refund needs to read *without* the machine-API listing beside them.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import select
@@ -72,8 +73,6 @@ from yupay.modules.wallet import service as wallet_service
 from yupay.modules.wallet.models import WalletTransaction
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
-    from decimal import Decimal
-
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from yupay.modules.orders.models import Order
@@ -162,6 +161,47 @@ async def returned_for_order(db: AsyncSession, *, merchant_id: str, order_id: st
         The amount returned; ``Decimal("0")`` when nothing has been.
     """
     return await refunded_for_order(db, merchant_id=merchant_id, order_id=order_id)
+
+
+def settled_in_full(*, charged: Decimal | None, returned: Decimal) -> bool:
+    """Has the whole of what this order charged come back?
+
+    A **pure** function so the two places that ask cannot answer differently:
+    ``order_status._failure_reason``, which has both numbers in hand and must
+    not re-query, and :func:`is_settled_in_full` for callers that do not.
+
+    The comparison is against the charge and never against zero. A sum read as
+    a flag is the defect this milestone has now met twice — a one-cent
+    attributed credit is a human mid-decision, not a completed refund, and
+    treating it as one told a reseller "nothing to chase" and silenced the
+    alert on a parked deposit. An order with no charge posting is never
+    settled: there is nothing for it to be complete against.
+
+    Args:
+        charged: What the order's deposit charge took, or ``None``.
+        returned: What has come back on it, by any route.
+
+    Returns:
+        Whether the order is square.
+    """
+    return charged is not None and returned >= charged
+
+
+async def is_settled_in_full(db: AsyncSession, *, merchant_id: str, order_id: str) -> bool:
+    """:func:`settled_in_full`, reading both numbers off the ledger.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: The owning merchant — the account scope.
+        order_id: The order.
+
+    Returns:
+        Whether the order is square.
+    """
+    return settled_in_full(
+        charged=await charged_for_order(db, merchant_id=merchant_id, order_id=order_id),
+        returned=await refunded_for_order(db, merchant_id=merchant_id, order_id=order_id),
+    )
 
 
 async def refund_order(db: AsyncSession, *, order: Order, reason: str) -> WalletTransaction:
@@ -277,7 +317,9 @@ __all__ = [
     "MissingChargeError",
     "NotAMerchantOrderError",
     "RefundError",
+    "is_settled_in_full",
     "refund_key",
     "refund_order",
     "returned_for_order",
+    "settled_in_full",
 ]

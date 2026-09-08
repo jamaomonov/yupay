@@ -59,7 +59,7 @@ from yupay.core.errors import NotFoundError
 # that very stack. The same reason ``orders.service`` reaches for
 # ``affiliate.discount`` directly.
 from yupay.modules.fulfillment import service as fulfillment
-from yupay.modules.merchants import deposit
+from yupay.modules.merchants import deposit, refund
 from yupay.modules.merchants.machine_schemas import (
     MerchantDeliveryOut,
     MerchantOrderEventOut,
@@ -208,7 +208,10 @@ def _failure_reason(order: Order, *, refunded: Decimal, charged: Decimal | None)
     if order.status == "failed":
         return REASON_ORDER_FAILED
     if any(item.fulfillment_state == "failed" for item in order.items):
-        whole = charged is not None and refunded >= charged
+        # ``refund.settled_in_full``, not a comparison spelled here: the
+        # cancellation alert asks the same question, and two spellings of one
+        # rule is how one of them starts saying "refunded" about a cent.
+        whole = refund.settled_in_full(charged=charged, returned=refunded)
         return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED
     return None
 

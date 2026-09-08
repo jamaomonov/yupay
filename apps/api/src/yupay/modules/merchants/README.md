@@ -484,12 +484,31 @@ anything else — so an ordinary "support already settled this" and an
 `ImportError` from the lazy import are one query apart rather than
 indistinguishable.
 
-Exactly one statement is outside both: the flush of the **caller's** pending
-writes. A savepoint cannot contain it without a rollback discarding the very
-failure record the refund exists to act on, and it introduces no failure that
-was not already there — the caller flushes the same writes a few lines later
-regardless. That statement is also all that the seam's _placement_ still
-protects, and it has its own test.
+**Two** regions are outside both, and both are deliberate.
+
+The first is the flush of the **caller's** pending writes. A savepoint cannot
+contain it without a rollback discarding the very failure record the refund
+exists to act on. It introduces no failure that was not already there — delete
+the call and `_load_task`'s autoflush fires the identical flush one statement
+later — so what the placement buys is not avoiding a failure but making it
+_visible_: outside, it reaches the caller; inside, it would be swallowed. That
+statement is all the seam's _placement_ still protects, and it has its own
+test.
+
+The second is the `except` arm itself, which is outside its own `try` by
+construction. That is not a footnote: the arm used to hold a lazy
+`from ...refund import RefundError`, so on the one input the catch exists for —
+`merchants.refund` unimportable — the body's import raised, control reached the
+handler, and the handler's import raised too, and `ImportError` escaped with no
+line and no alert. The classification now reads `sys.modules` and imports
+nothing (`_is_modelled`), and the handler body has a `try` of its own whose
+fallback formats nothing, because a reporter that needs the failing exception
+to be printable fails on exactly the exception worth reporting.
+
+Retail pays neither. The `merchant_id` gate is one indexed read **ahead of the
+savepoint**, so a storefront task that runs the warehouse dry — the commonest
+terminal failure here, and a `RETURNED` one — costs one query and no
+`SAVEPOINT`/`RELEASE` pair.
 
 **A refunded order may not be re-driven.** `charge_deposit` is idempotent on
 `merchant-order:{order_id}`, so a _second_ charge for one order replays the
