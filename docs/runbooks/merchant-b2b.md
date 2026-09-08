@@ -189,8 +189,11 @@ otherwise:
   payload's `at`;
 - their endpoint has **10 seconds** and must answer `2xx` with **at most 64 KiB**,
   uncompressed — a server that gzips unconditionally fails every delivery;
-- nothing tells them when a fulfilment fails on its own (`paid → fulfilling →`
-  silence); `failure_reason` on the order read is where that lives.
+- nothing tells them when a fulfilment fails **or stalls** on its own
+  (`paid → fulfilling →` silence); `failure_reason` on the order read is where
+  both live — and one of its values, `fulfillment_delayed`, is **not**
+  terminal, so a loop that breaks on "non-null" stops polling an order we are
+  about to deliver. Send them the "Failure reasons" table, not a summary.
 
 Read it back, and note what is missing on purpose:
 
@@ -621,7 +624,7 @@ looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 
-Two very different situations wear the same status, and `failure_reason` on
+Three very different situations wear the same status, and `failure_reason` on
 `GET /merchant/v1/orders/{merchant_order_id}` is what separates them.
 
 **`failure_reason` is `null` — it is genuinely in progress, or the queue is
@@ -629,13 +632,38 @@ stalled.** Nothing is wrong with the order. Check queue depth and the worker
 (`docs/runbooks/fulfillment-queue.md`); a backlog can be entirely merchant
 orders even with the flag off.
 
+**`failure_reason` is `fulfillment_delayed` — the delivery stopped on _our_
+side and the order is still ours to finish.** Since M3b Task 4 this is what a
+low-supplier-balance task publishes: the task is `failed` and in the admin
+inbox, the item is still `in_progress`, and the storefront rule that hides
+this from a retail buyer is unchanged. **This one is yours, not the
+merchant's** — they are told to keep polling and not to refund their end
+customer, so nobody outside is waiting on a reply. Top the supplier up and
+retry the task, or force-complete it if you delivered by hand; either clears
+the value on its own, because it is derived from the task and the item rather
+than stored. Find the supplier and the shortfall on the task, never on the
+order read — the reseller is deliberately not told which supplier we are short
+at:
+
+```bash
+docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
+  "SELECT t.id, t.supplier, t.last_error, t.metadata->>'current_balance' AS balance,
+          t.metadata->>'required' AS required, t.failed_at
+     FROM fulfillment_tasks t
+    WHERE t.status = 'failed' AND t.last_error = 'supplier_low_balance'
+    ORDER BY t.failed_at DESC LIMIT 20;"
+```
+
+The per-supplier ops alert fires on the first such task with a 15-minute Redis
+dedupe, so a 50-order backlog is one message, not fifty.
+
 **`failure_reason` is `fulfillment_failed` — the delivery failed and nothing
 will move the order on its own.** The order row stays `fulfilling` for good,
 because only the item's `fulfillment_state` went `failed`; the status alone
 would say "in progress" indefinitely. **Resolving this needs a human.** The
-merchant is told to treat a non-null `failure_reason` as terminal and to
-contact support quoting `order_id`, so by the time you see it they have already
-stopped waiting.
+merchant is told that this value (and `fulfillment_failed_refunded`, and
+`order_failed`) is terminal and to contact support quoting `order_id`, so by
+the time you see it they have already stopped waiting.
 
 Find the order:
 

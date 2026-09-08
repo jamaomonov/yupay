@@ -1227,7 +1227,10 @@ async def test_a_low_balance_stall_is_not_refunded_on_an_earlier_verdict(
     assert await _refund_rows(db_session, order_id) == []
     assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
     body = (await _read_order(integration_client, key_id, secret, "acme-stall")).json()
-    assert body["failure_reason"] is None  # the storefront-hidden stall
+    # Non-terminal, and it was ``null`` until M3b Task 4 gave the stall a word
+    # of its own. What matters to *this* test is unchanged: it is not one of
+    # the terminal values, so nothing here claims a refund that did not post.
+    assert body["failure_reason"] == "fulfillment_delayed"
     assert body["refunded_usd"] == "0.00"
 
 
@@ -1434,8 +1437,9 @@ async def test_a_stall_with_no_prior_verdict_is_left_alone(
     ``RETURNED``. This is the ordinary case: the task is ``failed``, so the
     seam runs, and ``money_outcome_of`` answers ``None`` because
     ``_apply_failure`` returns before recording one. Nothing to refund and
-    nothing to alert about — an operator tops up and retries, and the reseller
-    is deliberately told nothing, because the order is still coming.
+    nothing to alert about — an operator tops up and retries. Since M3b Task 4
+    the reseller is told the order is **delayed** rather than nothing at all;
+    what is unchanged is that no money moves and no human is paged.
 
     It was the one line of this task's own code that no test reached.
     """
@@ -1459,7 +1463,9 @@ async def test_a_stall_with_no_prior_verdict_is_left_alone(
     assert _merchant_alerts(alerts) == []
     assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
     body = (await _read_order(integration_client, key_id, secret, "acme-firststall")).json()
-    assert body["failure_reason"] is None
+    # M3b Task 4: the reseller is told the order is delayed, not that it
+    # failed — and still not what our balance at the supplier is doing.
+    assert body["failure_reason"] == "fulfillment_delayed"
 
 
 # ---------- a hand settlement and the automatic one must not stack ----------

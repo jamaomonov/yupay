@@ -5,6 +5,7 @@ sequenceDiagram
     participant S as merchants.order_status.read
     participant O as orders.service.find_merchant_order
     participant F as fulfillment.service
+    participant ST as fulfillment.stall.order_is_stalled
     participant L as merchants.deposit.refunded_for_order
     participant DB as Postgres
 
@@ -21,17 +22,26 @@ sequenceDiagram
         S-->>R: 404 order_not_found -- one identical body for both,<br/>so "not yours" is not an oracle for a competitor's numbering
     end
 
-    S->>S: failure_reason: order.status == failed -> "order_failed"<br/>else item.fulfillment_state == failed -> "fulfillment_failed"
-    Note over S: reads the ITEM, not the task: a supplier failure for OUR low<br/>balance leaves the item in_progress on purpose, and a reseller<br/>must not refund their customer for an order we will deliver
+    S->>L: refunded_for_order(merchant_id, order_id) + charged_for_order(...)
+    L->>DB: SUM(legs on merchant_deposit) WHERE reference = (order, id),<br/>one query per direction
+    Note over L: computed, never stored -- which is why M3b's automatic refund<br/>and an operator's attributed settlement both land here with no change<br/>to this read. The same sum picks failure_reason, compared against what<br/>the order was CHARGED and not against zero: complete =&gt;<br/>fulfillment_failed_refunded, a partial settlement =&gt; fulfillment_failed
+
+    S->>ST: order_is_stalled(order)
+    alt every item is delivered / failed / refunded
+        ST-->>S: False -- no query at all, the answer cannot be yes
+    else some item is still open
+        ST->>DB: SELECT 1 FROM fulfillment_tasks JOIN order_items<br/>WHERE order_id = ? AND task.status = 'failed'<br/>AND item.fulfillment_state IN (pending, reserved, in_progress)
+        Note over ST,DB: one indexed read on ix_fulfillment_tasks_order_id (0008). DERIVED,<br/>never stored: every route out of a stall already moves the task or the<br/>item, so there is no marker any site can forget to clear
+        ST-->>S: stalled?
+    end
+
+    S->>S: failure_reason, in this precedence:<br/>order.status == failed -&gt; "order_failed"<br/>else any item failed -&gt; "fulfillment_failed[_refunded]"<br/>else stalled -&gt; "fulfillment_delayed" (NON-TERMINAL)<br/>else null
+    Note over S: the terminal values come FIRST: a closed or failed order is over<br/>whatever its task is still doing. It reads the ITEM, not the task, because<br/>a supplier failure for OUR low balance leaves the item in_progress on<br/>purpose -- a reseller must not refund their customer for an order we will<br/>deliver. What it never says is WHY it is delayed: that we are short of<br/>balance at a named supplier is our supply, not their order
 
     S->>F: list_deliveries_for_order(order_id)
     F->>DB: SELECT deliveries JOIN order_items
     S->>F: buyer_safe_artifact(delivery)
     Note over S,F: the storefront's own allow-list, shared not copied:<br/>the voucher code goes out, the supplier's name and order id do not
-
-    S->>L: refunded_for_order(merchant_id, order_id)
-    L->>DB: SUM(debit legs on merchant_deposit) WHERE reference = (order, id)
-    Note over L: computed, never stored -- which is why M3b's automatic refund<br/>and an operator's attributed settlement both land here with no change<br/>to this read. The same sum picks failure_reason:<br/>&gt;0 =&gt; fulfillment_failed_refunded, else fulfillment_failed
 
     S-->>R: 200 {status, price_usd, refunded_usd, failure_reason,<br/>delivery{artifact_kind, artifact}, timeline[], ...}
     Note over R: THE ONLY place the voucher code is handed over --<br/>M3's webhook will not carry it (a bearer instrument in two log files)

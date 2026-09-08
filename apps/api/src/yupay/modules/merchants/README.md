@@ -141,15 +141,20 @@ read endpoint cannot disagree about the shape of a balance.
   settlement is already legible on `/transactions` and on the order's
   `refunded_usd`. Naming the order in the event would be a `/merchant/v2`.
 
-**No event exists for a fulfilment that fails on its own.** The seam fires
-where `orders.status` moves, and a permanent fulfilment failure moves the
-_task_: the order sits at `fulfilling` with a non-null `failure_reason`, so a
-reseller sees `paid → fulfilling → silence` and a `failed` event only when
-support closes the order by hand (`orders.service.mark_order_failed_admin`,
-which does go through the seam). Adding a task-level event is not a small change — it is a
-third event type and a payload shape — and M3b's stall visibility is where the
-real answer belongs. The integrator contract says this outright rather than
-letting every integrator discover it by building a timeout.
+**No event exists for a fulfilment that fails, or stalls, on its own.** The
+seam fires where `orders.status` moves, and neither moves it: both are
+recorded against the _task_, so the order sits at `fulfilling` with a non-null
+`failure_reason` and a reseller sees `paid → fulfilling → silence`. A `failed`
+event arrives only when support closes the order by hand
+(`orders.service.mark_order_failed_admin`, which does go through the seam).
+
+Adding a task-level event is not a small change — it is a third event type and
+a payload shape — so M3b Task 4 answered it on the **read** instead:
+`failure_reason` now goes non-null for a stall too (`fulfillment_delayed`), so
+a poller has a state to act on rather than a timeout it had to invent. A stall
+is not a state change and pushes nothing; if it ever should, that is a new
+event type and a `/merchant/v2` conversation. The integrator contract says all
+of this outright rather than letting every integrator discover it.
 
 **So M3b Task 3 splits the two halves of a failed order, and an integrator has
 to know which is which: the money arrives by _push_, the order state only by
@@ -1451,7 +1456,7 @@ line as sent. Signing the decoded path is a `401`, not a `404`.
 | `status`         | `paid`, `fulfilling`, `delivered`, `failed`. Those four are what a merchant order reaches today, in that order (`failed` from any of the first three). New values may be added — treat an unknown one as "still in flight".                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | `price_usd`      | What the order charged. Final.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `refunded_usd`   | **Money that came back to your deposit on this order.** Read off the ledger as a direction rather than as a transaction named "refund", so both paths that return money land here with no contract change: since M3b a supplier that failed the order **and gave our money back** is refunded automatically within seconds, and a settlement we make by hand names the order too. It is a **sum**, not a flag — reconcile on the number, and expect `"0.00"` on an order nothing has come back on. It can never exceed `price_usd`: the automatic path refuses an order support already settled, and a hand credit that would take the total past the charge is refused with `order_already_settled`. |
-| `failure_reason` | `null`, or one of the codes below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `failure_reason` | `null`, or one of the codes below. **One of them, `fulfillment_delayed`, is not terminal** — do not treat "non-null" as "stop".                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `delivery`       | `null` until something has actually been delivered, and present as soon as it has — it is the delivery record that decides, not `status`. Normally the two move together. See below.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `timeline`       | The order's lifecycle events, oldest first, `{event, at}`. A merchant order produces `order.created`, `order.paid`, `order.fulfilling`, `order.delivered` and `order.failed`. `order.cancelled` is accepted by the same filter but cannot occur on this channel today — cancelling is legal only before payment, and a merchant order is born paid. More kinds may be added.                                                                                                                                                                                                                                                                                                                          |
 
@@ -1472,21 +1477,39 @@ the redeemable ones, the rest is context".
 **Failure reasons** are a closed set. You will never get a supplier's own words
 or an operator's note: neither is switchable, and both are internal.
 
-| `failure_reason`              | What happened                                                                        | What to do                                                                                                                        |
-| ----------------------------- | ------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
-| `fulfillment_failed_refunded` | The delivery failed **and the whole of what you paid is back on your deposit.**      | Refund your own customer. Nothing to chase. Do not re-send this `merchant_order_id`; place a **new** order if they still want it. |
-| `fulfillment_failed`          | The delivery failed and will not retry itself. Your money has **not** come back yet. | Contact support quoting `order_id`. Do not re-order.                                                                              |
-| `order_failed`                | Support closed the order as undeliverable.                                           | Contact support. Read `refunded_usd` for what has come back.                                                                      |
+**One of the four means "keep waiting", and the other three mean "stop".** That
+is the first thing to get right about this field, because it is not how it
+behaved before M3b: read the `Terminal?` column before the text.
 
-`fulfillment_failed_refunded` is M3b's one addition to this vocabulary, and it
-is exactly one: the distinction you need is "we are refunding you" versus "a
-human is deciding", and `fulfillment_failed` has always meant the second — so
-nothing you switch on today changes meaning. Whether a supplier kept our money
-or we cannot tell is **not** in this field and will not be: that is a fact
-about our supplier relationships, not about your order, and `fulfillment_failed`
-covers both.
+| `failure_reason`              | Terminal? | What happened                                                                                       | What to do                                                                                                                         |
+| ----------------------------- | --------- | --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `fulfillment_delayed`         | **no**    | The delivery has stopped on **our** side and somebody here is fixing it. The order is still coming. | **Keep polling.** Do not re-order, do not refund your end customer, nothing to chase. Escalate on your own SLA, not on this value. |
+| `fulfillment_failed_refunded` | yes       | The delivery failed **and the whole of what you paid is back on your deposit.**                     | Refund your own customer. Nothing to chase. Do not re-send this `merchant_order_id`; place a **new** order if they still want it.  |
+| `fulfillment_failed`          | yes       | The delivery failed and will not retry itself. Your money has **not** come back yet.                | Contact support quoting `order_id`. Do not re-order.                                                                               |
+| `order_failed`                | yes       | Support closed the order as undeliverable.                                                          | Contact support. Read `refunded_usd` for what has come back.                                                                       |
 
-The value is derived from the ledger, not from a flag: it says
+A value you do not recognise is **not** a stop condition: treat it as
+`fulfillment_delayed` — keep polling and raise it with a human. Guessing the
+other way costs you a customer refund on an order that then arrives.
+
+`fulfillment_delayed` is M3b's second and last addition, and it exists because
+its absence was worse than a wrong value. A delivery can stop for a reason that
+is ours to fix in minutes; until M3b that order published `failure_reason:
+null` and `status: "fulfilling"`, which is byte-for-byte what an order placed
+thirty seconds ago publishes. So a polling loop had no terminal condition at
+all, and the only workable strategy was a timeout you had to invent. What the
+value never tells you is **why** — that is a fact about our own supply, not
+about your order — and it carries no timing promise: it says the order has
+stopped, not when it will move.
+
+`fulfillment_failed_refunded` is the other one, and the distinction it draws is
+"we are refunding you" versus "a human is deciding": `fulfillment_failed` has
+always meant the second, so nothing you switch on from before M3b changes
+meaning. Whether a supplier kept our money or we cannot tell is **not** in this
+field and will not be — that is a fact about our supplier relationships, not
+about your order, and `fulfillment_failed` covers both.
+
+The refunded value is derived from the ledger, not from a flag: it says
 `fulfillment_failed_refunded` only when the money is genuinely back on your
 deposit, whichever route put it there, and only when **all** of it is —
 compared against what the order charged. A **partial** settlement reads
@@ -1496,10 +1519,21 @@ refund your customer in full. Read the amount on `refunded_usd`; it is the
 number, and this field is only ever the summary of it.
 
 Note that `failure_reason` can be set while `status` is still `fulfilling` —
-nothing advances the order row when a delivery fails, so the status alone would
-say "in progress" indefinitely, and that is true of a refunded order too. Treat
-a non-null `failure_reason` as terminal for your own purposes even if the
-status has not moved.
+nothing advances the order row when a delivery fails or stalls, so the status
+alone would say "in progress" indefinitely, and that is true of a refunded
+order too. **The stop condition is therefore the field, not the status — but
+it is the field's _value_, not merely its non-nullness.** A loop written as
+`break if failure_reason != null` breaks out on `fulfillment_delayed` and
+stops polling an order we are about to deliver; see the worked loop under
+"Your first order in ten minutes".
+
+**No webhook fires for any of this**, `fulfillment_delayed` included. The
+webhook seam is where `orders.status` moves, and none of these values move it
+— the failure, the stall and the refund are all recorded below the order row.
+An automatic refund does emit `balance.credited`, because it is a deposit
+credit like any other, so for a failed order **the money reaches you by push
+and the order state only by poll**. A stall moves no money and therefore
+announces nothing at all. Poll.
 
 Errors:
 
@@ -1981,12 +2015,15 @@ specifically to stop a later field addition from smuggling one in.
 
 ### What has no webhook at all
 
-- **A fulfilment that fails on its own.** Our order row does not move when a
-  delivery fails — the failure is recorded against the fulfilment task — so you
+- **A fulfilment that fails, or stalls, on its own.** Our order row does not
+  move in either case — both are recorded against the fulfilment task — so you
   see `paid → fulfilling → silence`, and a `failed` event arrives only when
-  support closes the order by hand. Poll anything that has been `fulfilling`
-  longer than you expect, and read `failure_reason`, which goes non-null while
-  the status is still `fulfilling`.
+  support closes the order by hand. Poll the order read: `failure_reason` goes
+  non-null while the status is still `fulfilling`, for a terminal failure
+  (three values) and for a delivery delayed on our side
+  (`fulfillment_delayed`, which is **not** terminal — keep polling). You no
+  longer need a timeout of your own to tell "progressing" from "stuck"; you
+  still want one as a ceiling, because we promise no bound on a delay.
 - **Prices.** There are no price webhooks and never will be; poll `/catalog` and
   watch `updated_at`.
 - **A low balance.** There is no `balance.low`. `balance_usd` rides
@@ -2167,16 +2204,26 @@ request**: same id, same body, no second order.
 while :; do
   yupay GET "/merchant/v1/orders/$ORDER" > order.json
   jq -r '"\(.status)\t\(.failure_reason // "-")"' order.json
-  jq -e '.status == "delivered" or .failure_reason != null' order.json >/dev/null && break
+  jq -e '.status == "delivered"
+         or (.failure_reason != null and .failure_reason != "fulfillment_delayed")' \
+     order.json >/dev/null && break
   sleep 3
 done
 jq -r '.delivery.artifact.code // .delivery.artifact.message // "no artifact"' order.json
 ```
 
-Both stop conditions matter: a failed delivery leaves `status` at `fulfilling`
-for good and only `failure_reason` moves, so a loop watching the status alone
-never exits. Our ids here contain nothing that needs escaping; if yours do, the
-path segment is percent-encoded and **the encoded form is what you sign**
+Both stop conditions matter, and so does the exception carved out of the
+second. A failed delivery leaves `status` at `fulfilling` for good and only
+`failure_reason` moves, so a loop watching the status alone never exits — but
+`fulfillment_delayed` is **not** a failure, so a loop that breaks on any
+non-null `failure_reason` stops polling an order that is still coming and
+leaves your customer unserved with their money taken. Break on the terminal
+values; keep waiting on the delayed one. See "Failure reasons" for the table,
+and put a ceiling of your own on the wait, because we make no promise about
+how long a delay lasts.
+
+Our ids here contain nothing that needs escaping; if yours do, the path segment
+is percent-encoded and **the encoded form is what you sign**
 (`encodeURIComponent`, `urllib.parse.quote(id, safe="")`).
 
 ### 8. Before you point production at this

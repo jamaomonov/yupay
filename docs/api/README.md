@@ -339,10 +339,12 @@ itself did not change: M3b's automatic refund of a failed order emits it, the
 same way the hand settlement it replaces already did, with the same two keys.
 That produces the one asymmetry an integrator has to know about — **for a
 failed order the money arrives by push and the order state only by poll.**
-`order.status_changed` does not fire on a fulfilment failure, because nothing
-advances `orders.status`; the order sits at `fulfilling` with
-`failure_reason` set, and only `GET /merchant/v1/orders/{merchant_order_id}`
-shows that. And because the payload does not name an order — deliberately;
+`order.status_changed` does not fire on a fulfilment failure — nor on Task 4's
+stall — because nothing advances `orders.status`; the order sits at
+`fulfilling` with `failure_reason` set, and only
+`GET /merchant/v1/orders/{merchant_order_id}` shows that. A stall moves no
+money either, so unlike a refund it announces nothing at all: the poll is the
+whole mechanism. And because the payload does not name an order — deliberately;
 adding it would be a `/merchant/v2` — a receiver acting on `balance.credited`
 alone knows money came back but not on which order. Reconcile on the order
 read, or on `GET /merchant/v1/transactions`, where the refund row carries
@@ -595,7 +597,30 @@ supplier refuses for lack of _our_ balance the task goes `failed` but the item
 stays `in_progress` on purpose, so the storefront keeps saying "обработка"
 while an operator tops up and retries. Telling a reseller "failed" there would
 have them refund their end customer for an order we are about to deliver.
-Anything the storefront shows as an error, this shows too — no more, no less.
+Anything the storefront shows as an **error**, this shows as an error too — no
+more, no less.
+
+**M3b Task 4 kept the word and dropped the silence.** Inheriting retail's rule
+was right about not calling a stall a failure and wrong about saying nothing:
+a buyer has a support chat, a reseller has an SLA and a polling loop, and a
+stalled order published `status: "fulfilling", failure_reason: null` — byte
+for byte what an order placed thirty seconds ago publishes, indefinitely. So a
+fourth value, `fulfillment_delayed`, says the delivery has stopped without
+saying it has failed. It is the **only non-terminal value in the vocabulary**,
+which is a contract change in the reading of the whole field: two published
+statements — "treat a non-null `failure_reason` as terminal" and a worked
+polling loop that breaks on `failure_reason != null` — were true before it and
+false after, and both were repaired in the same commit.
+
+The value is **derived, never stored**: a task in `failed` whose order item is
+still open. A stored marker would need clearing at every route out of a stall
+(the top-up retry, a terminal retry, a cancel, a manual delivery, a hand
+closure) and the site that forgot would publish "still coming" about a
+finished order. It never names its cause — that we are short of balance at a
+named supplier is a fact about our supply, and a reseller who could read it
+would learn which of our suppliers is unreliable, exactly as with `SPENT`
+versus `UNKNOWN`. It also pushes nothing: a stall moves no money and no order
+status, so there is no webhook and the poll is the whole mechanism.
 
 `refunded_usd` is summed from the ledger (the debit legs on the merchant's
 `merchant_deposit` for transactions referencing this order), not stored on a
@@ -610,7 +635,9 @@ Since Task 3 it also drives `failure_reason`. A failed delivery reads
 order charged, and `fulfillment_failed` when it does not — so the field a
 client switches on is derived from the money actually having moved, cannot
 announce a refund that did not post, and cannot call a one-cent partial
-settlement a completed refund. That is the one value M3b adds to the vocabulary; whether a
+settlement a completed refund. That is **one of the two** values M3b adds to
+the vocabulary — Task 4 adds the non-terminal `fulfillment_delayed`, described
+above — and it is the only one derived from money. Whether a
 supplier kept our money or we cannot tell stays internal, because a reseller
 who could read it off our API would learn which of our suppliers is
 unreliable.

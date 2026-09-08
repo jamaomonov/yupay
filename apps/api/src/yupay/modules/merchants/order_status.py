@@ -59,6 +59,7 @@ from yupay.core.errors import NotFoundError
 # that very stack. The same reason ``orders.service`` reaches for
 # ``affiliate.discount`` directly.
 from yupay.modules.fulfillment import service as fulfillment
+from yupay.modules.fulfillment import stall as fulfillment_stall
 from yupay.modules.merchants import deposit, refund
 from yupay.modules.merchants.machine_schemas import (
     MerchantDeliveryOut,
@@ -127,7 +128,10 @@ REASON_FULFILLMENT_FAILED: Final = "fulfillment_failed"
 #: distinction a reseller needs is "we are refunding you" versus "a human is
 #: deciding", and the second half is what ``fulfillment_failed`` has always
 #: meant — so the new word goes on the new fact and nothing a client switches
-#: on today changes meaning.
+#: on today changes meaning. (Task 4 adds a second value to the *vocabulary*
+#: — :data:`REASON_FULFILLMENT_DELAYED` — but not to this distinction: it is
+#: about a delivery that has not finished, and every value here is about one
+#: that has.)
 #:
 #: What is deliberately *not* in this vocabulary is whether the supplier kept
 #: our money or we cannot tell. That is a fact about **our** supplier
@@ -136,28 +140,64 @@ REASON_FULFILLMENT_FAILED: Final = "fulfillment_failed"
 #: and in the ops alert, which is where the person who acts on it looks.
 REASON_FULFILLMENT_REFUNDED: Final = "fulfillment_failed_refunded"
 
+#: **The one value in this vocabulary that is not terminal.** The delivery has
+#: stopped, the order has not: an operator is topping a supplier up and the
+#: goods are still coming. *Keep polling* — do not re-order, do not refund
+#: your end customer.
+#:
+#: M3b Task 4's single addition. Before it, a stall published ``None`` and was
+#: byte-identical to an order placed thirty seconds ago, for ever — retail's
+#: rule, right for a buyer with a support chat and useless to a machine with
+#: an SLA and a polling loop that has no terminal condition.
+#:
+#: What it deliberately does not say is **why**. The cause is that *we* ran
+#: out of balance at a named supplier, which is a fact about our supplier
+#: funding rather than about this order; a reseller who could read it here
+#: would learn which of our suppliers is short of money. Same reason ``SPENT``
+#: and ``UNKNOWN`` are not distinguishable above.
+#:
+#: Because it is not terminal it changes how the whole field reads, and the
+#: module README's contract text carries that: "any non-null value is
+#: terminal" was true until this value existed and is now the one sentence an
+#: integrator must not have copied.
+REASON_FULFILLMENT_DELAYED: Final = "fulfillment_delayed"
 
-def _failure_reason(order: Order, *, refunded: Decimal, charged: Decimal | None) -> str | None:
+
+def _failure_reason(
+    order: Order, *, refunded: Decimal, charged: Decimal | None, stalled: bool
+) -> str | None:
     """Why this order has stopped moving, or ``None`` if it has not.
 
-    Two sources, in order:
+    Three sources, in order:
 
     ``order.status == "failed"`` is support closing a paid-but-undeliverable
     order by hand. The operator's reason is recorded on the timeline event and
     stays there — it is written for us, not for a reseller.
 
-    Otherwise the *item's* ``fulfillment_state``. Reading the item rather than
+    Next the *item's* ``fulfillment_state``. Reading the item rather than
     the fulfilment task is deliberate and inherits a rule ``fulfillment``
     already draws: when a supplier fails us for lack of **our own** balance the
     task goes ``failed`` but the item stays ``in_progress``, so the storefront
     keeps saying "processing" while an operator tops up and retries. Reporting
-    that to a reseller as a failure would have them refund their end customer
+    that to a reseller as a *failure* would have them refund their end customer
     for an order we are about to deliver. Anything the storefront would show as
     an error, this shows too.
 
+    Last ``stalled``, and it is the same state seen from the other side.
+    Inheriting retail's rule was right about the word and wrong about the
+    silence: a reseller has an SLA and a polling loop, so
+    :data:`REASON_FULFILLMENT_DELAYED` says the order has stopped without
+    saying it has failed. It comes last because both values above are
+    *endings* and this one is not: an order support has closed by hand, and
+    one whose delivery has terminally failed, are terminal whatever the task
+    underneath them is still doing. The precedence is the contract — a client
+    that read ``fulfillment_delayed`` off a closed order would go on waiting
+    for it.
+
     Note the asymmetry with ``status``: a supplier failure leaves the order row
     in ``fulfilling`` — nothing advances it — so without this field a stalled
-    order is indistinguishable from a busy one, forever.
+    order is indistinguishable from a busy one, forever. That is true of the
+    delayed value too, which is why it exists.
 
     A failed delivery then splits on ``refunded``, and it splits on the
     **ledger** rather than on anything the fulfilment path wrote down. That is
@@ -201,6 +241,11 @@ def _failure_reason(order: Order, *, refunded: Decimal, charged: Decimal | None)
             than re-read so the two cannot disagree.
         charged: What the order's deposit charge actually took, or ``None`` if
             it has no charge posting.
+        stalled: Whether a fulfilment task of this order has stopped while the
+            item it was fulfilling is still open —
+            ``fulfillment.stall.order_is_stalled``, computed by the caller so
+            this stays a pure function of facts and the transition table can
+            be tested without a database.
 
     Returns:
         A value from the closed vocabulary above, or ``None``.
@@ -213,7 +258,7 @@ def _failure_reason(order: Order, *, refunded: Decimal, charged: Decimal | None)
         # rule is how one of them starts saying "refunded" about a cent.
         whole = refund.settled_in_full(charged=charged, returned=refunded)
         return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED
-    return None
+    return REASON_FULFILLMENT_DELAYED if stalled else None
 
 
 async def _delivery(db: AsyncSession, order: Order) -> MerchantDeliveryOut | None:
@@ -287,7 +332,15 @@ async def read(
         created_at=order.created_at,
         paid_at=order.paid_at,
         delivered_at=order.delivered_at,
-        failure_reason=_failure_reason(order, refunded=refunded, charged=charged),
+        failure_reason=_failure_reason(
+            order,
+            refunded=refunded,
+            charged=charged,
+            # One indexed read, and only while the order is still open — see
+            # ``order_is_stalled``. A settled order asks the database nothing,
+            # which matters on the endpoint we tell resellers to poll.
+            stalled=await fulfillment_stall.order_is_stalled(db, order=order),
+        ),
         delivery=await _delivery(db, order),
         # ``Order.events`` is eagerly loaded and already ordered
         # ``created_at, id`` by the relationship, so this is a filter and not
@@ -302,6 +355,7 @@ async def read(
 
 __all__ = [
     "CODE_ORDER_NOT_FOUND",
+    "REASON_FULFILLMENT_DELAYED",
     "REASON_FULFILLMENT_FAILED",
     "REASON_FULFILLMENT_REFUNDED",
     "REASON_ORDER_FAILED",

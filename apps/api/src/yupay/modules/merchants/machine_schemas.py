@@ -372,14 +372,27 @@ class MerchantOrderStatusOut(BaseModel):
     created_at: datetime
     paid_at: datetime | None
     delivered_at: datetime | None
-    #: ``null``, ``"fulfillment_failed_refunded"``, ``"fulfillment_failed"``
-    #: or ``"order_failed"`` — a closed vocabulary, additive only. Never an
-    #: operator's or a supplier's own words: those are internal, and a client
-    #: cannot switch on prose. The first of those is M3b Task 3's single
-    #: addition and means "the delivery failed **and all** of what you paid is
-    #: back" — a *partial* settlement is a human mid-decision and reads
-    #: ``"fulfillment_failed"``. Whether a supplier kept our money or we cannot
-    #: tell is deliberately not distinguishable here — see the module README.
+    #: ``null``, ``"fulfillment_delayed"``, ``"fulfillment_failed_refunded"``,
+    #: ``"fulfillment_failed"`` or ``"order_failed"`` — a closed vocabulary,
+    #: additive only. Never an operator's or a supplier's own words: those are
+    #: internal, and a client cannot switch on prose.
+    #:
+    #: **``"fulfillment_delayed"`` is the one value that is not terminal**
+    #: (M3b Task 4). It means the delivery has stopped but the order has not:
+    #: keep polling, do not re-order, do not refund your end customer. Every
+    #: other non-null value means stop. A loop that breaks on
+    #: ``failure_reason != null`` stops polling an order we are about to
+    #: deliver — see the module README.
+    #:
+    #: ``"fulfillment_failed_refunded"`` is M3b Task 3's addition and means
+    #: "the delivery failed **and all** of what you paid is back"; a *partial*
+    #: settlement is a human mid-decision and reads ``"fulfillment_failed"``.
+    #:
+    #: No value here says **which supplier** or **what went wrong with them**:
+    #: not whether one kept our money versus we cannot tell (both read
+    #: ``"fulfillment_failed"``), and not that a delay is our own balance
+    #: running short. Those are facts about our supplier relationships rather
+    #: than about your order.
     failure_reason: str | None
     delivery: MerchantDeliveryOut | None
     timeline: list[MerchantOrderEventOut]

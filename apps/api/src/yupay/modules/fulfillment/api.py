@@ -36,6 +36,7 @@ from yupay.modules.fulfillment.service import (
     retry_task,
     start_for_order,
 )
+from yupay.modules.fulfillment.stall import UNSETTLED_ITEM_STATES, order_is_stalled
 from yupay.modules.fulfillment.suppliers import (
     Fulfiller,
     FulfillerError,
@@ -50,6 +51,7 @@ from yupay.modules.fulfillment.suppliers import (
 __all__ = [
     "BUYER_SAFE_ARTIFACT_KEYS",
     "MONEY_OUTCOME_KEY",
+    "UNSETTLED_ITEM_STATES",
     "AttemptAdminListOut",
     "AttemptAdminOut",
     "Delivery",
@@ -82,6 +84,7 @@ __all__ = [
     "list_deliveries_for_order",
     "list_tasks_admin",
     "money_outcome_of",
+    "order_is_stalled",
     "process_task",
     "process_webhook_update",
     "retry_task",
