@@ -324,12 +324,18 @@ growing, an `enum` becomes safe and worth adding.
   it fires unless the order is **square against what it charged**, so closing
   an order the drain has already refunded — the ordinary support step, and the
   feature's commonest path — raises nothing, while a one-cent partial still
-  does. **What should happen to that money is a
-  product decision nobody has made.** The shape of an answer: either a
+  does. **The owner decided on 2026-09-09: it stays with a
+  human.** A cancel is a human action taken for a reason this code cannot read,
+  so the money it leaves behind is resolved by a human too — the alert is the
+  mechanism, and no automatic path is added. That is the behaviour already
+  described above, now chosen rather than merely inherited.
+
+  If the position changes, the shape of the answer is unchanged: either a
   cancelling operator is asked for the money outcome at the point of
   cancelling, or the cabinet (M4) grows a "settle this order" action that
   records one. Both are decisions about who is accountable for the judgement,
   not about code.
+
 - **Whether `g2b` really refunds.** Decision 3's `UNKNOWN` half rests on their
   documentation rather than on an observation, which is exactly why it refunds
   nothing; its `RETURNED` half rests on our own control flow and needs no
