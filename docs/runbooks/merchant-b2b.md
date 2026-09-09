@@ -880,9 +880,14 @@ The steps:
    **Use the SPA, and prefer the order page.** Since M3c Task 4 the order's own
    screen carries a **Депозит мерчанта** card — what the order took from the
    deposit, what has come back, and one button that returns the charge. It
-   fills the amount and the order id for you, mints a fresh `Idempotency-Key`,
-   names the merchant, the amount and the order in a confirmation before
-   anything posts, and says that the order will close. It is **hidden** in three cases —
+   fills the amount and the order id for you, mints one `Idempotency-Key` per
+   opened confirmation, names the merchant, the amount and the order before
+   anything posts, and says that the order will close. **If it fails with
+   anything other than "already settled", the dialog stays open on purpose**:
+   press again. That retry carries the _same_ key, so if the first request
+   actually landed the ledger replays it instead of crediting twice — closing
+   the dialog and starting over from the button mints a new key and would post
+   a second credit. It is **hidden** in three cases —
    an order already square (nothing to do), a partly settled one (it posts the
    whole charge, which would be refused), and one whose delivery has not
    terminally failed. The last is a safety rule and not tidiness: settling a

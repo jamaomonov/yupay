@@ -336,3 +336,86 @@ it("turns a 409 into a sentence an operator can act on", async () => {
 
   expect(await screen.findByText(/деньги уже вернули/)).toBeInTheDocument();
 });
+
+it("cannot be double-clicked into two credits", async () => {
+  // `isPending` — and so `ConfirmDialog`'s `busy` — only goes true one render
+  // after `mutate`, so two clicks in the same tick both meet an enabled
+  // button. Two calls would carry two idempotency keys, and two keys are two
+  // postings: they would race `_refuse_over_settlement`'s pre-read, both see
+  // nothing returned, and credit one order's deposit twice. The merchant
+  // page's credit form learned this already; this is the same guard.
+  mockEndpoints(merchantOrder());
+  mockedApiPost.mockImplementation(() => new Promise(() => undefined)); // never settles
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Вернуть на депозит" }));
+  const dialog = await screen.findByRole("dialog");
+  const confirm = within(dialog).getByRole("button", { name: "Да, вернуть" });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+
+  // React Query calls `mutationFn` in a microtask, so both would land here.
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalled();
+  });
+  expect(mockedApiPost).toHaveBeenCalledTimes(1);
+});
+
+it("replays the same key when an operator retries a failed attempt", async () => {
+  // A timeout is the dangerous failure: the request may have landed. So the
+  // dialog stays open and the second press carries the **same**
+  // `Idempotency-Key`, which the ledger replays instead of crediting again.
+  // Minting the key inside the request — or closing the dialog and making the
+  // operator start over — would mint a second key and credit the order twice.
+  mockEndpoints(merchantOrder());
+  mockedApiPost.mockRejectedValueOnce(new Error("Network request failed"));
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Вернуть на депозит" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Да, вернуть" }));
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  // Still open, because the attempt may be recoverable.
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Да, вернуть" }),
+  );
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(2);
+  });
+
+  const first = (mockedApiPost.mock.calls[0]?.[2] as Record<string, string>)["Idempotency-Key"];
+  const second = (mockedApiPost.mock.calls[1]?.[2] as Record<string, string>)["Idempotency-Key"];
+  expect(first).toMatch(/^admin-settle-/);
+  expect(second).toBe(first);
+});
+
+it("mints a fresh key for a genuinely new decision", async () => {
+  // The other half: two separate openings are two decisions, and reusing a key
+  // across them would replay the first credit silently instead of reaching
+  // `order_already_settled`.
+  mockEndpoints(merchantOrder());
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Вернуть на депозит" }));
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Да, вернуть" }),
+  );
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  fireEvent.click(await screen.findByRole("button", { name: "Вернуть на депозит" }));
+  fireEvent.click(
+    within(await screen.findByRole("dialog")).getByRole("button", { name: "Да, вернуть" }),
+  );
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(2);
+  });
+
+  const first = (mockedApiPost.mock.calls[0]?.[2] as Record<string, string>)["Idempotency-Key"];
+  const second = (mockedApiPost.mock.calls[1]?.[2] as Record<string, string>)["Idempotency-Key"];
+  expect(second).not.toBe(first);
+});

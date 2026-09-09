@@ -41,7 +41,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { Coins } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { merchantSettlement, settlementBlock } from "./settlement";
 import type { OrderAdminOut } from "./types";
@@ -72,6 +72,19 @@ export function MerchantDepositCard({ order }: { order: OrderAdminOut }) {
   const toast = useToast();
   const [confirming, setConfirming] = useState(false);
   const [refused, setRefused] = useState(false);
+  // One key per **attempt**, minted when the confirmation opens and held in a
+  // ref, exactly as the merchant page's credit form does. Minting it inside
+  // `mutationFn` would give a second call a second key, and two keys are two
+  // credits: the ledger replays by key, so only a stable one makes a retry a
+  // replay rather than a fresh posting.
+  const keyRef = useRef("");
+  // `isPending` — and therefore `ConfirmDialog`'s `busy` — only goes true one
+  // render after `mutate`, so two clicks in the same tick both get through a
+  // still-enabled button. This ref flips synchronously. Without it the two
+  // requests race `_refuse_over_settlement`'s pre-read, both see nothing
+  // returned, and the deposit is credited twice for one order — which is the
+  // defect that cap exists to prevent, defeated by a double-click.
+  const inFlightRef = useRef(false);
 
   const settlement = merchantSettlement(order);
   const blocked = settlementBlock(order);
@@ -85,28 +98,40 @@ export function MerchantDepositCard({ order }: { order: OrderAdminOut }) {
           order_id: order.id,
           note: fill(T.note, { order: order.id }),
         },
-        // One key per attempt, minted here rather than per render: a retry of
-        // this attempt replays the ledger transaction instead of crediting a
-        // second time, which is the whole reason the header is required.
-        { "Idempotency-Key": `admin-settle-${crypto.randomUUID()}` },
+        // The attempt's own key — see `keyRef`. A retry of this attempt replays
+        // the ledger transaction instead of crediting a second time, which is
+        // the whole reason the header is required.
+        { "Idempotency-Key": keyRef.current },
       ),
+    onSettled: () => {
+      inFlightRef.current = false;
+    },
     onSuccess: (_data, vars) => {
       setConfirming(false);
       setRefused(false);
       toast.success(fill(T.success, { amount: formatUsd(vars.amount) }));
       void qc.invalidateQueries({ queryKey: qk.order(order.id) });
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
-      void qc.invalidateQueries({ queryKey: ["admin", "merchants"] });
+      // Through the helper, not a hand-written tuple (`queryKeys.ts`'s own
+      // rule). It prefix-matches the merchant's ledger listing too, which is
+      // right: this moved the balance *and* added a row to it.
+      void qc.invalidateQueries({ queryKey: qk.merchants() });
     },
     onError: (err) => {
-      setConfirming(false);
       if (isAlreadySettled(err)) {
-        // A sentence, not a 409: the operator's next move is to read the
-        // numbers above and the merchant's ledger, and the raw status says
-        // neither. The banner stays until the next attempt.
+        // A decision, not a failure: the money is already back, so there is
+        // nothing to retry. Close the dialog and say it in a sentence — the
+        // operator's next move is to read the numbers above and the merchant's
+        // ledger, and a raw 409 says neither.
+        setConfirming(false);
         setRefused(true);
         return;
       }
+      // Anything else may be transient (a timeout, a dropped connection), and
+      // the dialog **stays open** so the operator can press again. That press
+      // reuses `keyRef`, so it replays the ledger transaction if the first
+      // request actually landed — the case where closing the dialog and
+      // re-opening it would mint a second key and credit the order twice.
       toast.error(fill(T.error, { message: extractApiMessage(err) }));
     },
   });
@@ -147,6 +172,10 @@ export function MerchantDepositCard({ order }: { order: OrderAdminOut }) {
             variant="danger"
             onClick={() => {
               setRefused(false);
+              // Minted per opened dialog, not per press of the dialog's own
+              // button: a retry after a timeout must replay, a fresh decision
+              // must not.
+              keyRef.current = `admin-settle-${crypto.randomUUID()}`;
               setConfirming(true);
             }}
             disabled={settle.isPending}
@@ -170,6 +199,8 @@ export function MerchantDepositCard({ order }: { order: OrderAdminOut }) {
             setConfirming(false);
           }}
           onConfirm={() => {
+            if (inFlightRef.current) return;
+            inFlightRef.current = true;
             settle.mutate({ merchantId: settlement.merchantId, amount: settlement.amount });
           }}
         >
