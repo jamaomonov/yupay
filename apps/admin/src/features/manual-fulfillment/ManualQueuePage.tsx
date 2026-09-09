@@ -19,7 +19,7 @@ import type {
   TaskAdminOut,
   TaskListOut as FulfillmentTaskListOut,
 } from "@/features/fulfillment/types";
-import type { OrderAdminOut } from "@/features/orders/types";
+import { orderActorOf, orderActorText, type OrderAdminOut } from "@/features/orders/types";
 
 import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
@@ -115,12 +115,10 @@ export function ManualQueuePage() {
       key: "customer",
       header: "Клиент",
       render: (r) => (
-        <span className="text-sm">
-          {r.order
-            ? (r.order.guest_email ??
-              (r.order.user_id ? `user:${r.order.user_id.slice(0, 8)}…` : "—"))
-            : "…"}
-        </span>
+        // Through the orders feature's own three-arm derivation: a merchant
+        // order has both retail columns null, so the old `guest_email ?? …`
+        // chain rendered «—» for the one buyer we can always name.
+        <span className="text-sm">{r.order ? orderActorText(orderActorOf(r.order)) : "…"}</span>
       ),
     },
     {

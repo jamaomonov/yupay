@@ -122,6 +122,12 @@
       "merchant_api": "Merchant API",
       "merchant_panel": "Merchant kabineti",
       "unknown": "—"
+    },
+    "actor": {
+      "user": "Foydalanuvchi",
+      "guest": "Mehmon",
+      "merchant": "Merchant",
+      "none": "—"
     }
   }
 }

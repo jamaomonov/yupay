@@ -14,6 +14,7 @@ import hmac
 import json
 import time
 from collections.abc import AsyncIterator
+from datetime import timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -35,6 +36,8 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.fx.providers.base import FxProvider, Quote
 from yupay.modules.fx.service import FxService
+from yupay.modules.merchants.models import Merchant
+from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet import service as wallet_svc
 from yupay.modules.wallet.service import Leg
@@ -375,6 +378,49 @@ async def test_admin_payments_listing_is_o1(
         integration_client, sql_counter, "/api/v1/admin/payments", headers
     )
     assert with_five == with_one, f"admin payments grew from {with_one} to {with_five} queries"
+
+
+async def test_admin_orders_listing_is_o1(
+    integration_client: AsyncClient, db_session: AsyncSession, sql_counter: dict[str, int]
+) -> None:
+    """Merchant rows on the page must not cost a query each (M3c Task 2).
+
+    The admin listing serves up to 500 rows and, since M3c, carries the
+    reseller's **title** — which lives in another module's table. Reading it
+    per row is the N+1 this file exists to catch, and it would only ever show
+    up on B2B pages, which are the rarer ones to open. Every order below is a
+    *merchant* order for exactly that reason: a page of retail rows asks for
+    no titles at all and would pass a batched and an unbatched implementation
+    alike.
+    """
+    token = await _login_user(integration_client, tg_id=707)
+    await _grant_admin(db_session, tg_id=707)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async def _merchant_order(i: int) -> None:
+        merchant_id = new_id()
+        db_session.add(Merchant(id=merchant_id, title=f"Reseller {i}"))
+        db_session.add(
+            Order(
+                id=new_id(),
+                merchant_id=merchant_id,
+                status="fulfilling",
+                currency="USD",
+                total_usd=Decimal("1.07"),
+                total_charged=Decimal("1.07"),
+                expires_at=now() + timedelta(minutes=10),
+            )
+        )
+        await db_session.commit()
+
+    await _merchant_order(1)
+    await integration_client.get("/api/v1/admin/orders", headers=headers)
+    with_one = await _measure_get(integration_client, sql_counter, "/api/v1/admin/orders", headers)
+
+    for i in range(2, 6):
+        await _merchant_order(i)
+    with_five = await _measure_get(integration_client, sql_counter, "/api/v1/admin/orders", headers)
+    assert with_five == with_one, f"admin orders grew from {with_one} to {with_five} queries"
 
 
 @pytest.fixture

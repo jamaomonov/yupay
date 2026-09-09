@@ -28,7 +28,7 @@ import {
 } from "./types";
 
 import type { TaskAdminOut } from "@/features/fulfillment/types";
-import type { OrderAdminOut } from "@/features/orders/types";
+import { orderActorOf, orderActorText, type OrderAdminOut } from "@/features/orders/types";
 
 import { Field } from "@/components/Field";
 import { useToast } from "@/components/Toast";
@@ -257,9 +257,9 @@ function ContextBlock({
       ? `${display.brand_name} · ${display.denomination ?? display.sku_code}`
       : `${display.product_name || display.product_slug} · ${display.denomination ?? display.sku_code}`
     : (item?.sku_id ?? "—");
-  const customer = order
-    ? (order.guest_email ?? (order.user_id ? `user:${order.user_id}` : "—"))
-    : "…";
+  // Same three-arm derivation the orders screens use — a merchant order has
+  // no `guest_email` and no `user_id`, and used to read «—» here.
+  const customer = order ? orderActorText(orderActorOf(order)) : "…";
   const fulfillmentData = item?.fulfillment_data ?? {};
   const dataEntries = Object.entries(fulfillmentData).filter(([, v]) => v !== null && v !== "");
 

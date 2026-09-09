@@ -1432,6 +1432,45 @@ async def get_order_admin(db: AsyncSession, order_id: str) -> Order:
     return await _load_order(db, order_id)
 
 
+async def merchant_titles_for(db: AsyncSession, orders: Sequence[Order]) -> dict[str, str]:
+    """Titles of the resellers that placed these orders, keyed by merchant id.
+
+    **One query for a whole page, or none at all** (AGENTS.md §10). The admin
+    listing returns up to 500 rows, so a title read per row is the N+1 this
+    module's other reads are eagerly loaded to avoid; a retail-only page asks
+    the database nothing, which is the common case by a wide margin.
+
+    Not an ORM relationship on :class:`~yupay.modules.orders.models.Order`, and
+    that is a deliberate refusal rather than an oversight. ``merchants.models``
+    is imported by nothing outside its own module today, and a mapped
+    relationship would make ``orders.models`` unusable — at mapper-configure
+    time, with an unhelpful error — in any process that had not already
+    imported the merchants package. The read is admin-only and one statement;
+    an import-order hazard in every model consumer is not the price for it.
+
+    The import is function-local for the same reason ``on_order_status_changed``
+    reaches for ``merchants.webhooks`` there: ``merchants`` imports this module
+    (``merchants.orders`` places an order through it), so a module-level import
+    back would close the cycle.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        orders: The page of orders being rendered. Retail rows are ignored.
+
+    Returns:
+        ``{merchant_id: title}`` for every distinct merchant on the page.
+        Missing keys are possible in principle and impossible in practice:
+        ``orders.merchant_id`` is ``ON DELETE RESTRICT``.
+    """
+    ids = {order.merchant_id for order in orders if order.merchant_id is not None}
+    if not ids:
+        return {}
+    from yupay.modules.merchants.models import Merchant
+
+    rows = await db.execute(select(Merchant.id, Merchant.title).where(Merchant.id.in_(ids)))
+    return {merchant_id: title for merchant_id, title in rows.all()}
+
+
 #: Statuses an order may be closed as ``failed`` from: the customer has paid
 #: but the goods never reached them. Deliberately excludes ``pending_payment``
 #: (that is ``cancel_order_admin`` — nothing was charged) and ``delivered``

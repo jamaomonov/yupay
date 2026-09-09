@@ -4,6 +4,7 @@ import { Ban, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
+import { OrderActorRef } from "./OrderActorRef";
 import {
   type OrderAdminListOut,
   type OrderAdminOut,
@@ -22,7 +23,6 @@ import { StatCard } from "@/components/StatCard";
 import { SaveSegmentButton } from "@/features/segments/SaveSegmentButton";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
-import { UserRef } from "@/components/UserRef";
 import { qk } from "@/lib/queryKeys";
 import { useAdminRefs } from "@/lib/useAdminRefs";
 import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
@@ -178,15 +178,14 @@ export function OrdersListPage() {
       render: (o) => (
         <div className="flex flex-col font-mono text-xs">
           <CopyId value={o.id} />
-          {o.user_id ? (
-            <UserRef
-              id={o.user_id}
-              data={refs.user(o.user_id)}
-              className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-            />
-          ) : (
-            <span className="text-[var(--text-secondary)]">{o.guest_email ?? "—"}</span>
-          )}
+          {/* Three arms, not `guest_email ?? "—"`: a merchant order has both
+              retail columns null, so the old cell showed the one class of
+              order whose owner is never in doubt as «—». */}
+          <OrderActorRef
+            order={o}
+            user={o.user_id ? refs.user(o.user_id) : undefined}
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+          />
         </div>
       ),
     },

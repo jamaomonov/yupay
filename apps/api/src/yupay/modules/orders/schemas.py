@@ -220,6 +220,20 @@ class OrderAdminOut(OrderOut):
     # like ``uzum-test@test.local`` seeded during sandbox payment testing — must
     # still render. Email format is enforced at write time (``OrderCreate``).
     guest_email: str | None
+    #: The reseller that placed this order through ``/merchant/v1``, or
+    #: ``None`` for a retail one. The **third** arm of
+    #: ``ck_orders_actor_exclusive``, and the one the admin surface did not
+    #: have until M3c Task 2: a merchant order arrived with both retail arms
+    #: null and was rendered «Гость» — the one class of order whose owner is
+    #: never in doubt, shown as the one class whose owner is anonymous.
+    merchant_id: str | None = None
+    #: That reseller's title, resolved at read time. Carried **beside** the id
+    #: rather than instead of it because they answer different questions: an
+    #: operator recognises "Reseller LLC", and the id is what they paste into
+    #: a ledger query. ``None`` on a retail order, and — in principle — on a
+    #: merchant order whose row vanished, which ``ondelete="RESTRICT"`` on
+    #: ``orders.merchant_id`` makes impossible.
+    merchant_title: str | None = None
     #: Which surface the order came from — ``web`` / ``miniapp`` / ``bot``
     #: (client-declared), ``merchant_api`` (set server-side for a B2B order),
     #: or ``unknown``. ``merchant_panel`` joins the set when M4's cabinet

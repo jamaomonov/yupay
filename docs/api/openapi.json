@@ -7640,6 +7640,28 @@
             "title": "Items",
             "type": "array"
           },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id"
+          },
+          "merchant_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Title"
+          },
           "paid_at": {
             "anyOf": [
               {

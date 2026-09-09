@@ -47,6 +47,8 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     items: [],
     user_id: null,
     guest_email: "buyer@example.com",
+    merchant_id: null,
+    merchant_title: null,
     source: "web",
     events: [],
     ...over,
@@ -146,4 +148,29 @@ it("labels a wallet top-up row instead of an empty item count", async () => {
   // because the query normaliser collapses the NBSP that
   // `Intl.NumberFormat("ru-RU")` actually emits.
   expect(label.textContent).toContain(formatMoney("10000.000000", "UZS"));
+});
+
+it("names the reseller on a merchant order instead of «Гость»", async () => {
+  // The one class of order whose owner is never in doubt used to read as the
+  // one class whose owner is anonymous: both retail arms are null on a B2B
+  // order by construction (`ck_orders_actor_exclusive`), and the cell was
+  // `guest_email ?? "—"`.
+  renderPage([
+    makeOrder({
+      guest_email: null,
+      merchant_id: "0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34",
+      merchant_title: "Reseller LLC",
+      source: "merchant_api",
+    }),
+  ]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText(/Reseller LLC/)).toBeInTheDocument();
+});
+
+it("still shows a guest order's email", async () => {
+  renderPage([makeOrder()]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText("buyer@example.com")).toBeInTheDocument();
 });

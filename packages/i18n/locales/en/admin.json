@@ -122,6 +122,12 @@
       "merchant_api": "Merchant API",
       "merchant_panel": "Merchant cabinet",
       "unknown": "—"
+    },
+    "actor": {
+      "user": "User",
+      "guest": "Guest",
+      "merchant": "Merchant",
+      "none": "—"
     }
   }
 }

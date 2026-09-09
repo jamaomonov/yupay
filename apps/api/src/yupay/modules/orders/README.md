@@ -49,6 +49,21 @@ from yupay.modules.orders.api import (
 | `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role                | Only valid from `pending_payment`.                                                                                                                                   |
 | `POST` | `/api/v1/admin/orders/{id}/fail`   | admin role                | Close a paid-but-undeliverable order. Body `{reason}` (required). Only from `paid`/`fulfilling`/`fulfilled`; cascades open tasks + pending payments. Moves no money. |
 
+### `OrderAdminOut` names all three actors
+
+The admin DTO carries `user_id`, `guest_email` **and** — since M3c Task 2 —
+`merchant_id` with `merchant_title`. The exclusivity is the CHECK's, so a
+reader picks the one arm that is set; until Task 2 the admin had two arms and
+rendered the third as «Гость», which is the opposite of the truth about the one
+channel whose buyer is always named.
+
+`merchant_title` is resolved at read time by `merchant_titles_for`, **one query
+per page** and none at all for a retail-only page. It is deliberately not an
+ORM relationship: `merchants.models` is imported by nothing outside its own
+module, and a mapped relationship would make `orders.models` fail at
+mapper-configure time in any process that had not imported the merchants
+package first.
+
 ## FSM
 
 ```

@@ -6,6 +6,7 @@
  */
 
 import adminRu from "@yupay/i18n/locales/ru/admin.json";
+import { assertNever } from "@yupay/utils";
 
 export type OrderStatus =
   | "pending_payment"
@@ -29,6 +30,9 @@ export type OrderSource = "web" | "miniapp" | "bot" | "merchant_api" | "merchant
 /** Deliberately not a coloured badge: the surface is context, not a state, and
  *  colouring it would compete with the status column beside it. */
 export const SOURCE_LABEL: Record<OrderSource, string> = adminRu.orders.source;
+
+/** Labels for the three actor arms — see {@link orderActorOf}. */
+const ACTOR = adminRu.orders.actor;
 
 export interface OrderItemDisplay {
   brand_slug: string;
@@ -81,6 +85,12 @@ export interface OrderAdminOut {
   items: OrderItemOut[];
   user_id: string | null;
   guest_email: string | null;
+  /** The reseller that placed this order through `/merchant/v1`, or `null` for
+   *  a retail one — the third arm of `ck_orders_actor_exclusive`. */
+  merchant_id: string | null;
+  /** That reseller's title. An operator recognises a name; nobody recognises a
+   *  uuid, which is all a merchant order used to leave behind. */
+  merchant_title: string | null;
   /** Which surface placed the order. `unknown` for anything that did not say —
    *  including every order older than the column. */
   source: OrderSource;
@@ -149,3 +159,58 @@ export const STATUS_TONE: Record<OrderStatus, string> = {
   refunded: "bg-[var(--danger-soft)] text-[var(--danger-fg)]",
   partially_refunded: "bg-[var(--info-soft)] text-[var(--info-fg)]",
 };
+
+/** Who an order belongs to — the three arms of `ck_orders_actor_exclusive`,
+ *  plus the one the CHECK forbids.
+ *
+ *  A discriminated union rather than a chain of `??` fallbacks, because that
+ *  chain is what shipped the bug this replaces: `{guest_email ?? "Гость"}`
+ *  reads a merchant order — both retail arms null by construction — as an
+ *  anonymous buyer. The CHECK says exactly one arm is set, so the display is a
+ *  switch over the arms, and `assertNever` on the default is what makes a
+ *  fourth arm a compile error instead of a silent «Гость».
+ *
+ *  `none` cannot occur: the CHECK counts the set arms and requires the sum to
+ *  be 1. It is here so the union has a total function into it and the switch
+ *  has something honest to render if the database is ever hand-edited. */
+export type OrderActor =
+  | { kind: "user"; userId: string }
+  | { kind: "guest"; email: string }
+  | { kind: "merchant"; merchantId: string; title: string | null }
+  | { kind: "none" };
+
+/** The actor columns any order-shaped DTO must carry to be attributable. */
+export type OrderActorFields = Pick<
+  OrderAdminOut,
+  "user_id" | "guest_email" | "merchant_id" | "merchant_title"
+>;
+
+/** Which arm this order's actor is. The one place the columns are read. */
+export function orderActorOf(order: OrderActorFields): OrderActor {
+  if (order.user_id !== null) return { kind: "user", userId: order.user_id };
+  if (order.guest_email !== null) return { kind: "guest", email: order.guest_email };
+  if (order.merchant_id !== null) {
+    return { kind: "merchant", merchantId: order.merchant_id, title: order.merchant_title };
+  }
+  return { kind: "none" };
+}
+
+/** The actor as one line of plain text, for slots that cannot take a node.
+ *
+ *  A merchant falls back to its id when the title is missing — which the
+ *  `RESTRICT` foreign key makes unreachable — because "Мерчант —" would say
+ *  less than the uuid this whole change exists to replace. */
+export function orderActorText(actor: OrderActor): string {
+  switch (actor.kind) {
+    case "user":
+      return `${ACTOR.user} ${actor.userId.slice(0, 8)}…`;
+    case "guest":
+      return actor.email;
+    case "merchant":
+      return `${ACTOR.merchant} ${actor.title ?? actor.merchantId}`;
+    case "none":
+      return ACTOR.none;
+    default:
+      return assertNever(actor);
+  }
+}

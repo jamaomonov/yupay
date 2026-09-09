@@ -6,6 +6,7 @@ User/guest surface mounted at ``/api/v1/orders``; admin surface mounted at
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated
 
@@ -69,6 +70,36 @@ def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:
     # items → sku, which is all this needs.
     out.charged_usd = order_charged_usd(order)
     _attach_displays(out, order, locale=locale)
+    return out
+
+
+async def _to_admin_orders_out(
+    db: AsyncSession, orders: Sequence[Order], locale: str = "ru"
+) -> list[OrderAdminOut]:
+    """The admin DTO for a page of orders, with everything a query is needed for.
+
+    Sits between the routes and :func:`_to_admin_order_out` because the fields
+    it fills cannot be read off the eagerly-loaded row: the reseller's title
+    lives in another module's table. It is batched **once per page** rather
+    than once per order — the listing serves up to 500 rows — and the detail
+    route reaches it with a one-element list so there is one composition and
+    not two.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        orders: The page, already loaded through ``_order_load_options``.
+        locale: Which translation of the item display to attach.
+
+    Returns:
+        One DTO per order, in the order given.
+    """
+    titles = await svc.merchant_titles_for(db, orders)
+    out: list[OrderAdminOut] = []
+    for order in orders:
+        dto = _to_admin_order_out(order, locale=locale)
+        if order.merchant_id is not None:
+            dto.merchant_title = titles.get(order.merchant_id)
+        out.append(dto)
     return out
 
 
@@ -317,7 +348,7 @@ async def admin_list_orders(
         offset=max(0, offset),
     )
     return OrderAdminListOut(
-        items=[_to_admin_order_out(o) for o in orders],
+        items=await _to_admin_orders_out(db, orders),
         total=total,
     )
 
@@ -329,7 +360,7 @@ async def admin_get_order(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> OrderAdminOut:
     order = await svc.get_order_admin(db, order_id)
-    return _to_admin_order_out(order)
+    return (await _to_admin_orders_out(db, [order]))[0]
 
 
 @admin_router.post("/{order_id}/cancel", response_model=OrderAdminOut)
@@ -341,7 +372,7 @@ async def admin_cancel_order(
     """Admin-initiated cancellation. Only valid from ``pending_payment``."""
     actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
     order = await svc.cancel_order_admin(db, order_id, admin_id=actor_id)
-    return _to_admin_order_out(order)
+    return (await _to_admin_orders_out(db, [order]))[0]
 
 
 @admin_router.get("/{order_id}/deliveries", response_model=DeliveryListOut)
@@ -419,4 +450,4 @@ async def admin_mark_order_failed(
     """
     actor_id = admin.id if admin.id != DEV_ADMIN_ID else "dev_admin"
     order = await svc.mark_order_failed_admin(db, order_id, admin_id=actor_id, reason=body.reason)
-    return _to_admin_order_out(order)
+    return (await _to_admin_orders_out(db, [order]))[0]

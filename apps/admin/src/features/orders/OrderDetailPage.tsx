@@ -22,6 +22,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EvidenceCard } from "./EvidenceCard";
+import { OrderActorRef } from "./OrderActorRef";
 import {
   type EvidencePackOut,
   type OrderAdminOut,
@@ -42,7 +43,6 @@ import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
-import { UserRef } from "@/components/UserRef";
 import { ForceCompleteModal } from "@/features/fulfillment/ForceCompleteModal";
 import {
   STATUS_LABEL as PAYMENT_STATUS_LABEL,
@@ -290,18 +290,15 @@ export function OrderDetailPage() {
           // ticket, so it has to be copyable in one click.
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <CopyId value={order.id} chars={13} label="id" className="text-xs" />
-            {order.user_id ? (
-              <span className="inline-flex items-center gap-1.5">
-                Пользователь{" "}
-                <UserRef
-                  id={order.user_id}
-                  data={refs.user(order.user_id)}
-                  className="text-[var(--text-primary)]"
-                />
-              </span>
-            ) : (
-              <span>{order.guest_email ?? "Гость"}</span>
-            )}
+            {/* Three arms, and the third one is why this is a component: a
+                merchant order has `user_id` and `guest_email` both null, so
+                `guest_email ?? "Гость"` called a named reseller a guest. */}
+            <OrderActorRef
+              order={order}
+              user={order.user_id ? refs.user(order.user_id) : undefined}
+              className="text-[var(--text-primary)]"
+              labelled
+            />
             {/* Where the order came from. Rendered only when it says
                 something: the list needs a placeholder because a column
                 cannot be empty, but «—» in a sentence is noise. A merchant

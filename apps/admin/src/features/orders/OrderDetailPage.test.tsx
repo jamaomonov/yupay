@@ -47,6 +47,8 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     items: [],
     user_id: null,
     guest_email: "buyer@example.com",
+    merchant_id: null,
+    merchant_title: null,
     source: "web",
     events: [HELD_EVENT],
     ...over,
@@ -180,4 +182,47 @@ it("stays silent about a surface the order never recorded", async () => {
   const header = buyer.parentElement!;
   expect(within(header).queryByText("—")).not.toBeInTheDocument();
   expect(within(header).queryByText("Сайт")).not.toBeInTheDocument();
+});
+
+it("names the reseller on a merchant order instead of «Гость»", async () => {
+  // `{order.guest_email ?? "Гость"}` — the header's whole actor line — reads a
+  // B2B order as an anonymous buyer, because both retail arms are null on one.
+  mockEndpoints(
+    makeOrder({
+      guest_email: null,
+      merchant_id: "0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34",
+      merchant_title: "Reseller LLC",
+      source: "merchant_api",
+      events: [],
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByText("Reseller LLC")).toBeInTheDocument();
+  expect(screen.queryByText("Гость")).not.toBeInTheDocument();
+});
+
+it("links a merchant order to the reseller's own page", async () => {
+  // The title answers "who is this"; the link answers "and what is their
+  // deposit doing" — which is the next question on a failed B2B order, and
+  // the page the money lives on.
+  mockEndpoints(
+    makeOrder({
+      guest_email: null,
+      merchant_id: "0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34",
+      merchant_title: "Reseller LLC",
+      events: [],
+    }),
+  );
+  renderPage();
+
+  const link = await screen.findByRole("link", { name: "Reseller LLC" });
+  expect(link).toHaveAttribute("href", "/merchants/0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34");
+});
+
+it("still shows a guest order's email", async () => {
+  mockEndpoints(makeOrder({ events: [] }));
+  renderPage();
+
+  expect(await screen.findByText("buyer@example.com")).toBeInTheDocument();
 });
