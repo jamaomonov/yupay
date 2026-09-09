@@ -552,7 +552,7 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
       // Beside the status, never instead of it: a terminal fulfilment failure
       // does not move `order.status`, so this row said «В работе» on a dead
       // order for ever.
-      value: <OrderStateBadge status={order.status} failureReason={order.failure_reason} />,
+      value: <OrderStateBadge status={order.status} failureReason={order.failure_reason ?? null} />,
     },
     {
       label: "Сумма",

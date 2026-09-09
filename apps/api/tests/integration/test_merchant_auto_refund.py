@@ -374,6 +374,70 @@ async def _placed(
     return merchant_id, key_id, secret, order_id
 
 
+async def _stop_the_delivery(
+    db: AsyncSession, order_id: str, *, outcome: MoneyOutcome = MoneyOutcome.SPENT
+) -> str:
+    """Put the order in the state a terminal supplier failure leaves it in.
+
+    **Every hand-settlement test below needs this now, and that is M3c fix
+    round 1's Critical.** An attributed credit is refused while a fulfilment
+    task is open (``409 order_still_fulfilling``): the drain claims on
+    ``status == 'pending'`` alone and honours no ``deposit_already_returned``,
+    so settling a live order would have let the worker buy the goods for an
+    order whose money had already gone back. Support must stop the delivery
+    first, which is also what the runbook now says.
+
+    Written directly rather than through ``_failing_mock`` plus a drain because
+    these tests are about what happens *after* the failure, and because two of
+    them take no ``monkeypatch``. The failure itself is the other half of this
+    file's subject and is driven properly there.
+
+    Args:
+        db: Session; committed before returning.
+        order_id: The merchant order.
+        outcome: What the supplier did with our money. ``SPENT`` by default —
+            the one that refunds nothing, so the order is simply left for a
+            person. Pass ``RETURNED`` for the state a refund that **failed to
+            post** leaves behind, which is the only one the seam can later meet
+            a hand settlement from.
+
+    Returns:
+        The task's id, for a caller that wants to re-drive the seam.
+    """
+    task = (
+        await db.execute(select(FulfillmentTask).where(FulfillmentTask.order_id == order_id))
+    ).scalar_one()
+    task.status = "failed"
+    ff_svc.record_money_outcome(task, outcome)
+    await db.execute(
+        update(OrderItem).where(OrderItem.order_id == order_id).values(fulfillment_state="failed")
+    )
+    await db.commit()
+    return task.id
+
+
+async def _redrive_the_seam(db: AsyncSession, task_id: str) -> None:
+    """Run the refund seam over an already-failed task again.
+
+    ``process_webhook_update`` is one of the seam's four call sites, so a
+    supplier's late callback re-runs it on a task that has already terminally
+    failed. That is how an automatic refund can still meet an order support
+    settled by hand — the interleave these tests used to build by crediting a
+    **live** order, which fix round 1 refuses.
+
+    It does **not** change the outcome, and an earlier draft of this helper
+    that did was wrong in a way worth recording: ``_CONFIDENCE`` puts
+    ``RETURNED`` at the *bottom* of the ladder and ``record_money_outcome``
+    never moves down it, so ``SPENT`` can never become ``RETURNED``. The state
+    these tests need is a task that failed **with our money back** and whose
+    refund did not post — which is exactly what
+    ``test_a_failed_refund_leaves_the_order_saying_a_human_is_deciding``
+    describes, and what ``_stop_the_delivery(outcome=RETURNED)`` builds.
+    """
+    await ff_svc._settle_merchant_deposit(db, task_id=task_id)
+    await db.commit()
+
+
 def _failing_mock(
     monkeypatch: pytest.MonkeyPatch,
     outcome: MoneyOutcome | None,
@@ -804,12 +868,17 @@ async def test_a_partial_settlement_is_not_closed_by_the_closer_itself(
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-half-closed"
     )
+    # The delivery has to be over before support may touch the money — see
+    # ``_stop_the_delivery``. ``RETURNED`` with nothing posted is the state a
+    # refund that failed leaves behind, and the only one from which the seam
+    # can later meet a hand settlement.
+    task_id = await _stop_the_delivery(db_session, order_id, outcome=MoneyOutcome.RETURNED)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
     ).status_code == 201
-    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
-    await ff_svc.drain_pending_tasks(db_session)
-    await db_session.commit()
+    # A supplier's late callback re-runs the seam — the only way an automatic
+    # refund still meets a hand-settled order.
+    await _redrive_the_seam(db_session, task_id)
     assert await _refund_rows(db_session, order_id) == []
     assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
 
@@ -1497,12 +1566,12 @@ async def test_a_partial_settlement_does_not_claim_the_order_was_refunded(
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-partial"
     )
+    task_id = await _stop_the_delivery(db_session, order_id, outcome=MoneyOutcome.RETURNED)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
     ).status_code == 201
 
-    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
-    await ff_svc.drain_pending_tasks(db_session)
+    await _redrive_the_seam(db_session, task_id)
     await db_session.commit()
 
     assert await _refund_rows(db_session, order_id) == []
@@ -1654,15 +1723,11 @@ async def test_a_penny_does_not_silence_the_cancellation_alert(
     merchant_id, _key, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-penny-cancel"
     )
+    task_id = await _stop_the_delivery(db_session, order_id)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
     ).status_code == 201
 
-    task_id = (
-        await db_session.execute(
-            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
-        )
-    ).scalar_one()
     await ff_svc.cancel_task(db_session, task_id=task_id)
     await db_session.commit()
 
@@ -1730,13 +1795,16 @@ async def test_an_order_support_already_settled_is_not_refunded_again(
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-settled"
     )
+    # Since M3c fix round 1 the settlement cannot come first while the task is
+    # live, so the interleave is built the way it actually happens: the
+    # delivery ends with our money back but the refund does not post, support
+    # settles by hand, and a supplier's late callback re-runs the seam.
+    task_id = await _stop_the_delivery(db_session, order_id, outcome=MoneyOutcome.RETURNED)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
     ).status_code == 201
 
-    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
-    await ff_svc.drain_pending_tasks(db_session)
-    await db_session.commit()
+    await _redrive_the_seam(db_session, task_id)
 
     assert await _refund_rows(db_session, order_id) == []
     assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
@@ -1789,6 +1857,7 @@ async def test_the_cap_does_not_break_the_operators_own_retry(
     merchant_id, _key, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-replay-cap"
     )
+    await _stop_the_delivery(db_session, order_id)
     key = f"settle-{new_id()}"
     first = await _credit(
         integration_client, admin_headers, merchant_id, PRICE, order_id=order_id, key=key

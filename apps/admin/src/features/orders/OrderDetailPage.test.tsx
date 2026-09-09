@@ -419,3 +419,24 @@ it("mints a fresh key for a genuinely new decision", async () => {
   const second = (mockedApiPost.mock.calls[1]?.[2] as Record<string, string>)["Idempotency-Key"];
   expect(second).not.toBe(first);
 });
+
+it("cannot be escaped out of while the credit is in flight", async () => {
+  // `lib/api.ts` sets no client timeout, so a wifi blip hangs the request. Esc
+  // used to close the dialog anyway; the request would later reject, the outer
+  // button re-enable, and the next press mint a **new** key — the double-credit
+  // defect through a different door than the one `8c714515` closed.
+  mockEndpoints(merchantOrder());
+  mockedApiPost.mockImplementation(() => new Promise(() => undefined));
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Вернуть на депозит" }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Да, вернуть" }));
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+
+  fireEvent.keyDown(window, { key: "Escape" });
+
+  expect(screen.getByRole("dialog")).toBeInTheDocument();
+});

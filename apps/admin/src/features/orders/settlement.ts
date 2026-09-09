@@ -85,7 +85,12 @@ const TERMINALLY_STOPPED = new Set(["fulfillment_failed", "order_failed"]);
  * cent. String operations only — a ledger amount never goes through a float.
  */
 export function toWireAmount(raw: string): string | null {
-  const [intRaw = "", fracRaw = ""] = raw.trim().split(".");
+  const parts = raw.trim().split(".");
+  // At most one point. `"1.07.00"` used to destructure to `["1", "07"]` and
+  // return `"1.07"`, silently discarding the tail — unreachable from the API
+  // today, and exactly the shape of a bug that stops being unreachable.
+  if (parts.length > 2) return null;
+  const [intRaw = "", fracRaw = ""] = parts;
   if (!/^\d+$/.test(intRaw)) return null;
   const frac = fracRaw.replace(/0+$/, "");
   if (frac.length > 2 || !/^\d*$/.test(frac)) return null;
@@ -96,13 +101,20 @@ export function toWireAmount(raw: string): string | null {
 
 /** The settlement this order allows, or `null`. See the module docstring. */
 export function merchantSettlement(order: OrderAdminOut): MerchantSettlement | null {
-  if (order.merchant_id === null) return null;
-  if (order.deposit_charged_usd === null) return null;
-  if (Number.parseFloat(order.deposit_returned_usd) !== 0) return null;
-  if (order.failure_reason === null || !TERMINALLY_STOPPED.has(order.failure_reason)) return null;
-  const amount = toWireAmount(order.deposit_charged_usd);
+  // `?? null` on every read: the fields are optional because the API schema
+  // defaults them, so a SPA build newer than the deployed API sees `undefined`
+  // — and `undefined !== null` would wave a settlement through on an order the
+  // server has told us nothing about.
+  const merchantId = order.merchant_id ?? null;
+  const charged = order.deposit_charged_usd ?? null;
+  const reason = order.failure_reason ?? null;
+  if (merchantId === null) return null;
+  if (charged === null) return null;
+  if (Number.parseFloat(order.deposit_returned_usd ?? "0") !== 0) return null;
+  if (reason === null || !TERMINALLY_STOPPED.has(reason)) return null;
+  const amount = toWireAmount(charged);
   if (amount === null) return null;
-  return { merchantId: order.merchant_id, orderId: order.id, amount };
+  return { merchantId, orderId: order.id, amount };
 }
 
 /**
@@ -113,17 +125,17 @@ export function merchantSettlement(order: OrderAdminOut): MerchantSettlement | n
  * business being told about deposits.
  */
 export function settlementBlock(order: OrderAdminOut): SettlementBlock | null {
-  if (order.merchant_id === null) return null;
-  if (order.deposit_charged_usd === null) return "no_charge";
-  const returned = Number.parseFloat(order.deposit_returned_usd);
+  const charged = order.deposit_charged_usd ?? null;
+  const reason = order.failure_reason ?? null;
+  if ((order.merchant_id ?? null) === null) return null;
+  if (charged === null) return "no_charge";
+  const returned = Number.parseFloat(order.deposit_returned_usd ?? "0");
   if (returned === 0) {
-    return order.failure_reason !== null && TERMINALLY_STOPPED.has(order.failure_reason)
-      ? null
-      : "still_open";
+    return reason !== null && TERMINALLY_STOPPED.has(reason) ? null : "still_open";
   }
   // Compared as numbers deliberately: this picks a **sentence**, not an amount.
   // The exact comparison that decides money is the server's, against the
   // ledger (`order_already_settled`), and it is the one that must not be
   // approximated.
-  return returned >= Number.parseFloat(order.deposit_charged_usd) ? "settled" : "partly_settled";
+  return returned >= Number.parseFloat(charged) ? "settled" : "partly_settled";
 }

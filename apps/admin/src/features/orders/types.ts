@@ -122,20 +122,25 @@ export interface OrderAdminOut {
   user_id: string | null;
   guest_email: string | null;
   /** The reseller that placed this order through `/merchant/v1`, or `null` for
-   *  a retail one — the third arm of `ck_orders_actor_exclusive`. */
-  merchant_id: string | null;
+   *  a retail one — the third arm of `ck_orders_actor_exclusive`.
+   *
+   *  Optional because the **API schema defaults it**, not because the field is
+   *  ever meaningfully absent: a SPA build newer than the deployed API would
+   *  otherwise read `undefined` through a `string | null` type and the
+   *  settle card would draw conclusions from it. `?? null` at every read. */
+  merchant_id?: string | null;
   /** That reseller's title. An operator recognises a name; nobody recognises a
    *  uuid, which is all a merchant order used to leave behind. */
-  merchant_title: string | null;
+  merchant_title?: string | null;
   /** What this order took from the merchant's USD deposit, off the ledger.
    *  `null` for every retail order — their money is at an acquirer — and for a
    *  merchant order with no charge posting, which is a damaged row and not a
    *  state. `NUMERIC(20, 6)` on the wire: `"1.070000"`. */
-  deposit_charged_usd: string | null;
+  deposit_charged_usd?: string | null;
   /** What has come back on it, by any route: the drain's automatic refund and
    *  any settlement support booked against the order. `"0"` when nothing has,
    *  and never more than `deposit_charged_usd`. */
-  deposit_returned_usd: string;
+  deposit_returned_usd?: string;
   /** Which surface placed the order. `unknown` for anything that did not say —
    *  including every order older than the column. */
   source: OrderSource;
@@ -146,7 +151,7 @@ export interface OrderAdminOut {
    *  own contract for this field is "additive, and treat an unknown value as
    *  still in flight", so a build older than the API must render nothing
    *  rather than assert. `failureReasonLabel` is where that happens. */
-  failure_reason: string | null;
+  failure_reason?: string | null;
   /** ``catalog`` sale or ``wallet_topup`` 1:1 deposit (ADR-0058). */
   purpose?: string;
   events: OrderEventOut[];
@@ -242,8 +247,12 @@ export type OrderActorFields = Pick<
 export function orderActorOf(order: OrderActorFields): OrderActor {
   if (order.user_id !== null) return { kind: "user", userId: order.user_id };
   if (order.guest_email !== null) return { kind: "guest", email: order.guest_email };
-  if (order.merchant_id !== null) {
-    return { kind: "merchant", merchantId: order.merchant_id, title: order.merchant_title };
+  // `?? null`, not `!== null`: the merchant fields are optional on the wire
+  // (the API schema defaults them), so on a SPA build newer than the deployed
+  // API `undefined` would satisfy `!== null` and render «Мерчант undefined».
+  const merchantId = order.merchant_id ?? null;
+  if (merchantId !== null) {
+    return { kind: "merchant", merchantId, title: order.merchant_title ?? null };
   }
   return { kind: "none" };
 }

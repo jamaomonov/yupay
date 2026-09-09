@@ -634,12 +634,20 @@ Five things about it are worth knowing before anyone widens it:
   wrong, not the alert.
 - **The `failure_reason` a hand settlement leaves is not always
   `fulfillment_failed_refunded`.** That value needs a **failed item**, which is
-  the case the settlement exists for. Settle an order whose delivery never
-  failed — a goodwill decision on one still in flight, which the admin button
-  offers because "unsettled merchant order" is what it gates on — and the
-  reseller reads `order_failed`: nothing about the delivery failed, a person
-  ended it. Both are terminal and both are true; it is the one place the two
-  paths give different words for the same money returned.
+  the case the settlement exists for. Settle an order whose delivery was
+  _cancelled_ instead — nothing coming, but no item `failed` — and the reseller
+  reads `order_failed`: a person ended it, the delivery did not. Both are
+  terminal and both are true; it is the one place the two paths give different
+  words for the same money returned.
+- **A settlement is refused while a fulfilment task is open**
+  (`409 order_still_fulfilling`, naming the tasks). The terminal status this
+  writes is only true if the delivery is over, and the queue does not honour
+  `deposit_already_returned` — `drain_pending_tasks` claims on
+  `status = 'pending'` alone, so an order closed with a live task would have
+  been bought from the supplier afterwards and the reseller would hold the
+  goods and the money. `credit_deposit` takes `FOR UPDATE` on the order's task
+  rows before it decides, so the drain's `SKIP LOCKED` claim skips the order
+  instead of racing it.
 
 The reseller-visible consequences — `order.status_changed` by push, and the
 `order.failed` timeline line — are under
@@ -747,7 +755,7 @@ facade only.
 **The operator reads the reseller's own words (M3c Task 3).** The admin order
 list and detail carry `failure_reason` with exactly the values published under
 `GET /merchant/v1/orders/{merchant_order_id}` below, computed by
-`order_status.failure_reasons` — the batch form of the same `_failure_reason`
+`order_status.order_stop_states` — the batch form of the same `_failure_reason`
 this module already had, over the same `refund.settled_in_full` and the same
 `fulfillment.stall` predicate. It is one function and not two on purpose: the
 operator answering "why has my order stopped" is reading it off the screen

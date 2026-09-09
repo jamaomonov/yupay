@@ -10,7 +10,7 @@
  * the FSM does not.
  *
  * The value is the server's, from the same function `/merchant/v1` publishes
- * (`merchants.order_status.failure_reasons`). The admin does not re-derive it:
+ * (`merchants.order_status.order_stop_states`). The admin does not re-derive it:
  * an operator explaining an order to a reseller must be reading the same word
  * the reseller is.
  *

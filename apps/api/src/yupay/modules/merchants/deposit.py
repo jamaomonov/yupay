@@ -96,6 +96,10 @@ CODE_ORDER_NOT_FOUND: Final = "order_not_found"
 #: charged. See :func:`credit_deposit`.
 CODE_ORDER_ALREADY_SETTLED: Final = "order_already_settled"
 
+#: RFC 7807 ``code`` for a settlement of an order a supplier call is still
+#: coming for. See :func:`_refuse_a_still_fulfilling_order`.
+CODE_ORDER_STILL_FULFILLING: Final = "order_still_fulfilling"
+
 #: Namespace of the ledger key an order charge is keyed by. Spelled once, and
 #: read back by :func:`charge_key` and by ``refund.refund_key``'s disjointness
 #: proof — the refund's key family must be incapable of colliding with this
@@ -163,7 +167,7 @@ def _no_such_order() -> NotFoundError:
 
 async def _resolve_order_reference(
     db: AsyncSession, *, merchant_id: str, order_id: str
-) -> tuple[Order, wallet_service.Reference]:
+) -> wallet_service.Reference:
     """Check that ``order_id`` is this merchant's order, and reference it.
 
     Two things happen here and both are load-bearing.
@@ -188,10 +192,9 @@ async def _resolve_order_reference(
         order_id: The order to attribute the credit to, in any UUID spelling.
 
     Returns:
-        The order row and the ledger reference to post with. The **row**, not
-        just its id, since M3c Task 4: :func:`credit_deposit` closes an order a
-        credit settles in full, and re-reading it a line later would be a
-        second query for something this one already had to touch.
+        The ledger reference to post with. The row itself comes from
+        :func:`_lock_order_for_settlement` a line later, because the decisions
+        taken on it have to be taken under a lock and this read is not one.
 
     Raises:
         NotFoundError: ``order_not_found``.
@@ -202,12 +205,12 @@ async def _resolve_order_reference(
         raise _no_such_order() from exc
     found = (
         await db.execute(
-            select(Order).where(Order.id == canonical, Order.merchant_id == merchant_id)
+            select(Order.id).where(Order.id == canonical, Order.merchant_id == merchant_id)
         )
     ).scalar_one_or_none()
     if found is None:
         raise _no_such_order()
-    return found, wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=canonical)
+    return wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=canonical)
 
 
 async def deposit_account(db: AsyncSession, *, merchant_id: str) -> WalletAccount:
@@ -371,10 +374,17 @@ async def credit_deposit(
     if order_id is None:
         reference = wallet_service.Reference(type=MERCHANT_REFERENCE_TYPE, id=merchant_id)
     else:
-        order, reference = await _resolve_order_reference(
-            db, merchant_id=merchant_id, order_id=order_id
-        )
+        reference = await _resolve_order_reference(db, merchant_id=merchant_id, order_id=order_id)
+        # **Locked before anything is decided, and on every attributed credit
+        # including a replay.** The lock is not a refusal: it is what makes the
+        # refusals below — and the closure at the end — true for the rest of
+        # this transaction instead of true at the instant they were read. A
+        # replay decides nothing but still *closes*, and closing on an unlocked
+        # snapshot is how a settlement overwrites a ``delivered`` a concurrent
+        # ``_try_settle_order`` had just written.
+        order, open_tasks = await _lock_order_for_settlement(db, order_id=reference.id)
         if not replayed:
+            _refuse_a_still_fulfilling_order(order_id=reference.id, open_tasks=open_tasks)
             # ``reference.id``, not the caller's argument: the canonical
             # spelling is what ``refunded_for_order`` matches on, and
             # comparing a braced or undashed id against it would sum nothing
@@ -445,13 +455,22 @@ async def _close_a_settled_order(db: AsyncSession, *, order: Order, actor: str) 
     """End an order this credit has brought to a full settlement (M3c Task 4).
 
     **The owner's ruling, and it is about where the rule lives rather than what
-    it is.** A full settlement ends the order — every way of delivering one is
-    already refused with ``409 deposit_already_returned``, so "in progress" is
-    the same lie M3c Task 6 removed for the automatic refund. Putting the
-    closure in the admin SPA's new settle button would have left the runbook's
-    ``curl`` procedure and M4's cabinet still leaving orders open: the same
+    it is.** A full settlement ends the order, so "in progress" is the same lie
+    M3c Task 6 removed for the automatic refund. Putting the closure in the
+    admin SPA's new settle button would have left the runbook's ``curl``
+    procedure and M4's cabinet still leaving orders open: the same
     inconsistency, only harder to find. At the posting, every caller closes
     identically.
+
+    **What makes the order genuinely over is two guards, not one, and the
+    original wording named only the weaker.** It said "every way of delivering
+    one is already refused", which was true of ``retry_task`` and
+    ``complete_manual_task`` and **false of the drain** — it claims on
+    ``status == 'pending'`` alone. The terminal status was therefore a claim
+    the system could not keep. It is kept now by
+    :func:`_refuse_a_still_fulfilling_order`, which refuses to settle at all
+    while a task is open, under the lock
+    :func:`_lock_order_for_settlement` takes.
 
     **The counter-proposal this was ruled against, stated so it is not silently
     inherited:** compose at the admin service layer — ``credit_deposit`` then
@@ -459,12 +478,22 @@ async def _close_a_settled_order(db: AsyncSession, *, order: Order, actor: str) 
     because it has three uses under one signature (an ordinary prepayment, a
     settlement, one stage of a staged settlement). It loses on two counts.
 
-    *The primitive is already not money-only.* :func:`_refuse_over_settlement`
-    refuses a credit that would take **the order** past what it charged, so an
-    order-level invariant is in this function's contract already, and this is
-    that invariant's other half: refuse above the total, close at it. A reader
-    who accepts the first and rejects the second is drawing a line the code
-    does not have.
+    *The primitive it wants to protect never existed.*
+    :func:`_resolve_order_reference` **reads the ``orders`` table and
+    authorises the row against the merchant** before a leg is posted, and since
+    fix round 1 :func:`_lock_order_for_settlement` takes ``FOR UPDATE`` on that
+    row and on the order's fulfilment tasks. An attributed credit has always
+    been an operation *about an order*; the only question was whether it was
+    allowed to finish being one.
+
+    (An earlier version of this docstring argued instead that
+    :func:`_refuse_over_settlement` already reasons about the order, so this is
+    "the same invariant's other half — refuse above the total, close at it".
+    That is a rhetorical symmetry and not a structural one, and it is recorded
+    as wrong rather than deleted: the cap reads *ledger sums keyed on an order
+    id* and never touches ``orders``, while this writes another aggregate's
+    state machine and emits its domain event. The two are not halves of
+    anything.)
 
     *And a rule enforced at one call site is a rule with a hole.* The three
     uses are not three code paths; they are three answers from one predicate.
@@ -871,6 +900,105 @@ async def charged_for_orders(
     }
 
 
+async def _lock_order_for_settlement(db: AsyncSession, *, order_id: str) -> tuple[Order, list[str]]:
+    """Lock an order and its fulfilment tasks, and say which tasks are open.
+
+    **Tasks first, then the order** — the system-wide lock order
+    (``fulfillment.service._try_settle_order`` states it, and the refund and
+    cancel cascades conform). Taking them the other way round here would be the
+    one site that could deadlock against a drainer.
+
+    Locking the **tasks** is what makes
+    :func:`_refuse_a_still_fulfilling_order` total rather than advisory: the
+    drain claims with ``FOR UPDATE SKIP LOCKED``, so while this transaction
+    lives it *skips* this order instead of waiting, and a task cannot go from
+    ``pending`` to a supplier call between the check and the posting. An
+    unlocked read would be a check-then-act over goods.
+
+    Locking the **order** is what makes the closure at the end of
+    :func:`credit_deposit` safe: ``_try_settle_order`` takes the same row before
+    it writes ``delivered``, so the two serialise instead of one overwriting
+    the other with ``failed`` beside a non-null ``delivered_at``. It also
+    serialises two concurrent attributed credits under different keys, which
+    ``_refuse_over_settlement``'s two SELECTs cannot do on their own.
+
+    Args:
+        db: Session. The caller owns the transaction; the locks live until it
+            ends.
+        order_id: The order, canonically spelled.
+
+    Returns:
+        The freshly re-read order row and the ids of its still-open tasks.
+    """
+    # Lazy, like every other reach from this package into ``fulfillment``:
+    # ``fulfillment.service`` imports ``merchants.refund``, which imports this
+    # module, so a module-level import closes the cycle.
+    from yupay.modules.fulfillment import service as fulfillment
+
+    tasks = await fulfillment.lock_tasks_for_order(db, order_id=order_id)
+    order = (
+        await db.execute(
+            select(Order)
+            .where(Order.id == order_id)
+            .with_for_update()
+            # The row may have been read a moment ago by
+            # ``_resolve_order_reference``; without this the identity map
+            # would serve that pre-lock copy and the lock would buy nothing.
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one()
+    return order, [task.id for task in tasks if task.status in fulfillment.OPEN_TASK_STATUSES]
+
+
+def _refuse_a_still_fulfilling_order(*, order_id: str, open_tasks: list[str]) -> None:
+    """Refuse to settle an order a supplier call is still coming for.
+
+    **The premise this repairs was stated as fact in three documents and was
+    false.** "Every way of delivering a settled order is already refused" was
+    true of :func:`~yupay.modules.fulfillment.service.retry_task` and
+    ``complete_manual_task`` — both carry
+    ``_refuse_a_settled_merchant_order`` — and **not** of the drain, which
+    claims on ``status == 'pending'`` alone. So a settlement could close an
+    order, push ``order.status_changed`` to the reseller, and then have the
+    worker buy the goods and write a ``Delivery`` they can read: goods and
+    money out, with our own API asserting the opposite. The money half of that
+    predates M3c; the terminal status and the push did not, which is what
+    turned a quiet hole into a published lie.
+
+    It refuses rather than cancelling the task on the operator's behalf. A
+    cancel is a decision about a supplier order that may already be in flight —
+    ``fulfillment`` owns it, ``cancel_open_tasks_for_order`` is where it lives,
+    and guessing it from a money endpoint is the class of thing this whole
+    milestone has been narrowing. The message says so, and names the tasks,
+    because a bare ``409`` at 3am is unactionable.
+
+    **What it does not cover.** An order with *no* tasks yet — risk-held, or
+    async fulfilment before the enqueue — passes, and a task created afterwards
+    is not stopped by anything here. That residue is real, is narrower than
+    what this closes, and belongs to whatever decides that an order may still
+    grow work after its money went back.
+
+    Args:
+        order_id: The order, canonically spelled — echoed so an operator can
+            paste it straight into the cancel call.
+        open_tasks: Ids of its tasks in
+            :data:`~yupay.modules.fulfillment.service.OPEN_TASK_STATUSES`.
+
+    Raises:
+        ConflictError: ``order_still_fulfilling``, when any task is open.
+    """
+    if not open_tasks:
+        return
+    raise ConflictError(
+        "this order still has fulfilment work in flight — cancel the task first, "
+        "then settle: crediting now would return the money while the supplier "
+        "call is still coming",
+        code=CODE_ORDER_STILL_FULFILLING,
+        order_id=order_id,
+        open_task_ids=open_tasks,
+    )
+
+
 async def _refuse_over_settlement(
     db: AsyncSession, *, merchant_id: str, order_id: str, amount: Decimal
 ) -> None:
@@ -908,6 +1036,7 @@ __all__ = [
     "CHARGE_KEY_PREFIX",
     "CODE_ORDER_ALREADY_SETTLED",
     "CODE_ORDER_NOT_FOUND",
+    "CODE_ORDER_STILL_FULFILLING",
     "DEPOSIT_CURRENCY",
     "INSUFFICIENT_DEPOSIT_CODE",
     "MERCHANT_REFERENCE_TYPE",

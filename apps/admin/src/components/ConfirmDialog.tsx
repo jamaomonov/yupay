@@ -42,9 +42,23 @@ export function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement | null>(null);
   const titleId = useId();
 
+  // While the action is in flight, **every** way out is closed, not just the
+  // Cancel button. Esc and a backdrop click used to call `onCancel`
+  // unconditionally, which on a money dialog is a real hole rather than a
+  // cosmetic one: `lib/api.ts` sets no client timeout, so a wifi blip leaves
+  // the request hanging, the operator presses Esc, the request later rejects,
+  // and the next attempt mints a **new** idempotency key. If the first one had
+  // landed and not yet committed, both pre-reads see nothing returned and the
+  // deposit is credited twice. Found in M3c fix round 1 on the settle card,
+  // and fixed here because `MerchantDetail`'s credit form has the same door.
+  const dismiss = () => {
+    if (busy) return;
+    onCancel();
+  };
+
   useDialog({
     open: true,
-    onClose: onCancel,
+    onClose: dismiss,
     containerRef: dialogRef,
     // Focus the confirm button, not the backdrop: the operator arrived here
     // deliberately, and Esc/Tab still get them out.
@@ -60,8 +74,8 @@ export function ConfirmDialog({
       aria-labelledby={titleId}
       onClick={(e) => {
         // Backdrop click cancels — safe here because a confirm dialog holds no
-        // typed input worth losing.
-        if (e.target === e.currentTarget) onCancel();
+        // typed input worth losing. Not while `busy`: see `dismiss`.
+        if (e.target === e.currentTarget) dismiss();
       }}
     >
       <div className="w-full max-w-md rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 text-[var(--text-primary)] shadow-[var(--shadow-md)]">
@@ -70,7 +84,7 @@ export function ConfirmDialog({
         </h2>
         {children ? <div className="text-sm text-[var(--text-secondary)]">{children}</div> : null}
         <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onCancel} disabled={busy}>
+          <Button variant="ghost" onClick={dismiss} disabled={busy}>
             {cancelLabel}
           </Button>
           <Button

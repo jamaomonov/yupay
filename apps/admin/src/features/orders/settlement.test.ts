@@ -95,6 +95,8 @@ it("refuses an amount that is not a whole cent rather than rounding it", () => {
   expect(toWireAmount("0.500000")).toBe("0.50");
   expect(toWireAmount("1.005000")).toBeNull();
   expect(toWireAmount("0.000000")).toBeNull();
+  // Two points used to destructure to ["1", "07"] and silently drop the tail.
+  expect(toWireAmount("1.07.00")).toBeNull();
   expect(merchantSettlement(makeOrder({ deposit_charged_usd: "1.005000" }))).toBeNull();
 });
 
@@ -118,4 +120,24 @@ it("offers it on an order support already closed by hand", () => {
   expect(
     merchantSettlement(makeOrder({ status: "failed", failure_reason: "order_failed" })),
   ).not.toBeNull();
+});
+
+it("says nothing about an order from an API too old to describe it", () => {
+  // The five fields are optional because the schema defaults them: a SPA build
+  // newer than the deployed API sees `undefined`, and `undefined !== null`
+  // would have waved a settlement through — or drawn «Часть уже вернули» on an
+  // order nobody has touched. Fails closed and silent.
+  // The keys are **absent**, not `undefined`-valued: `exactOptionalPropertyTypes`
+  // forbids the latter, and a JSON body from an older API omits them anyway.
+  const {
+    merchant_id: _m,
+    merchant_title: _t,
+    failure_reason: _r,
+    deposit_charged_usd: _c,
+    deposit_returned_usd: _d,
+    ...older
+  } = makeOrder();
+
+  expect(merchantSettlement(older)).toBeNull();
+  expect(settlementBlock(older)).toBeNull();
 });

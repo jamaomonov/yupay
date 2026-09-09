@@ -249,7 +249,7 @@ export function OrdersListPage() {
     {
       key: "status",
       header: "Статус",
-      render: (o) => <OrderStateBadge status={o.status} failureReason={o.failure_reason} />,
+      render: (o) => <OrderStateBadge status={o.status} failureReason={o.failure_reason ?? null} />,
       className: "w-44",
       sortAccessor: (o) => o.status,
     },

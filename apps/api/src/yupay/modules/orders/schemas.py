@@ -244,7 +244,7 @@ class OrderAdminOut(OrderOut):
     #: closed vocabulary ``/merchant/v1`` publishes (``order_failed`` /
     #: ``fulfillment_failed`` / ``fulfillment_failed_refunded`` /
     #: ``fulfillment_delayed``), computed by the same function
-    #: (``merchants.order_status.failure_reasons``).
+    #: (``merchants.order_status.order_stop_states``).
     #:
     #: It sits **beside** ``status`` and never replaces it, because the two
     #: answer different questions: a terminal fulfilment failure deliberately

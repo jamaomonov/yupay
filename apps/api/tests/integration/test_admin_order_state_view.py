@@ -9,7 +9,7 @@ ever, which is what an owner hit on the first live B2B failure — and
 did.
 
 So the admin DTO carries the **same** value, from the **same** function
-(``merchants.order_status._failure_reason``, batched by ``failure_reasons``)
+(``merchants.order_status._failure_reason``, batched by ``order_stop_states``)
 and the same stall predicate (``fulfillment.stall``). A second spelling in the
 admin is how the reseller's answer and the operator's answer would start
 disagreeing about one order.

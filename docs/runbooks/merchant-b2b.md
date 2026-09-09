@@ -773,11 +773,10 @@ refused (`409 deposit_already_returned`) and the refusal is the point.
 **`status` is `failed` and `failure_reason` is `order_failed` — also done, and
 it means one of two things.** Either support closed the order by hand with
 money still out (the usual case, and "contact support" is the right thing to
-tell the merchant), or a settlement closed an order whose delivery had **not**
-failed — a goodwill return on an order still in flight, which the admin card's
-button offers because it gates on "unsettled merchant order" and not on
-"failed". Tell them apart with `refunded_usd`: equal to `price_usd` is the
-second, anything less is the first.
+tell the merchant), or a settlement closed an order whose delivery was
+**cancelled** rather than failed — nothing was coming, but no item is `failed`,
+so the refunded value cannot apply. Tell them apart with `refunded_usd`: equal
+to `price_usd` is the second, anything less is the first.
 
 Three things follow from the closure that are worth knowing before you go
 looking for them:
@@ -987,9 +986,13 @@ The steps:
    instead of a success toast when what came back is not what you sent.
 
 3. **Tell the merchant**, quoting their `merchant_order_id`: the order is
-   closed as `order_failed`, and the amount is back on their deposit balance —
-   visible in `balance_usd`, on `/transactions` against that order, and in the
-   order's own `refunded_usd`.
+   closed and the amount is back on their deposit balance — visible in
+   `balance_usd`, on `/transactions` against that order, and in the order's own
+   `refunded_usd`. They read `status: "failed"` with
+   `failure_reason: "fulfillment_failed_refunded"` — **not** `order_failed`,
+   which is what M3c Task 6's precedence change was for; see the paragraph
+   above. `order_failed` is only what a _cancelled_ (rather than failed)
+   delivery leaves behind.
 
 ## Known gaps before a pilot integrates
 

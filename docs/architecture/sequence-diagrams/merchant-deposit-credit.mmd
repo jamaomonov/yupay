@@ -8,13 +8,19 @@ sequenceDiagram
     participant DB as Postgres
 
     Admin->>API: amount, note, order_id? + Idempotency-Key: {client_key}
-    Note over Admin: two SPA surfaces since M3c Task 4: the merchant page's general form<br/>(any amount, any order) and the ORDER page's one-button card, which fills<br/>the charge and the order id and is hidden unless the order is unsettled
+    Note over Admin: two SPA surfaces since M3c Task 4: the merchant page's general form<br/>(any amount, any order) and the ORDER page's one-button card, which fills<br/>the charge and the order id. The card is hidden unless the order is unsettled<br/>AND its delivery has terminally stopped (failure_reason in fulfillment_failed,<br/>order_failed) -- settling a live order is refused by the API below anyway
     API->>API: require header (422 without) -- it is the replay handle
     API->>Merchants: credit_deposit(key="merchant-credit:{merchant_id}:{client_key}", actor="admin:{id}", order_id?)
     Merchants->>DB: SELECT merchants WHERE id (404 if missing, frozen is fine -- freeze never blocks money in)
     opt order_id given -- settling one failed order
         Merchants->>DB: SELECT orders WHERE id = uuid(order_id) AND merchant_id
         Note over Merchants,DB: not this merchant's, no such order, not a UUID at all:<br/>ONE 404 order_not_found, so the refusal is no oracle
+        Merchants->>DB: SELECT fulfillment_tasks WHERE order_id FOR UPDATE, then orders FOR UPDATE
+        Note over Merchants,DB: tasks BEFORE the order -- the system-wide lock order. The drain claims<br/>with SKIP LOCKED, so it skips this order rather than blocking, which is<br/>what makes the next refusal total instead of a check-then-act
+        alt any task pending or in_progress
+            Merchants-->>Admin: 409 order_still_fulfilling {open_task_ids} -- cancel it first
+            Note over Merchants: the terminal status a settlement writes is only true if the<br/>delivery is over, and retry/force-complete are guarded but the QUEUE<br/>is not. Skipped on a replay, like the over-settlement cap
+        end
     end
     Merchants->>Ledger: ensure_account(merchant_deposit) + ensure_account(house_payments_received)
     Merchants->>Ledger: post(kind=merchant_deposit_credit, D merchant_deposit / C house_payments_received)

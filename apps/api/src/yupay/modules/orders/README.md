@@ -74,7 +74,7 @@ only the item's `fulfillment_state` goes `failed`, so an operator may still top
 a supplier up, retry, or deliver by hand. The cost of that rule is that the
 list said «В работе» on a dead order for ever, which is what it now answers.
 
-The value is `merchants.order_status`'s, computed by `failure_reasons` — the
+The value is `merchants.order_status`'s, computed by `order_stop_states` — the
 batch form of the same function `/merchant/v1` publishes, over the same
 `fulfillment.stall` predicate. Not re-derived here: an operator explaining an
 order to a reseller has to be reading the same word the reseller is. Retail

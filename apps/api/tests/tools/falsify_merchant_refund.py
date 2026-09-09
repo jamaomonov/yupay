@@ -1178,9 +1178,9 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 DEPOSIT,
-                "            select(Order).where(Order.id == canonical, "
+                "            select(Order.id).where(Order.id == canonical, "
                 "Order.merchant_id == merchant_id)\n",
-                "            select(Order).where(Order.id == canonical)\n",
+                "            select(Order.id).where(Order.id == canonical)\n",
             ),
         ),
         tests=(ATTRIB,),

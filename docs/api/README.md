@@ -249,8 +249,10 @@ only on a genuinely new key so a retry still replays.
 credit that brings the order to a **full** settlement closes it as
 `status: "failed"`, through the same closer and the same predicate the
 automatic refund uses — because what ends an order is that the money is back,
-not who decided it, and every way of delivering a settled one is already
-refused. The write is a consequence of the money reaching a known total: it is
+not who decided it. For that terminal status to be true the delivery has to be
+over, so an attributed credit is **refused with `409 order_still_fulfilling`
+while any fulfilment task of the order is open**; the refusal names the tasks
+and says to cancel them first. The write is a consequence of the money reaching a known total: it is
 idempotent, it fires only at the total, and it lives at the posting rather than
 in the admin button so the runbook's `curl` and M4's cabinet cannot bypass it.
 The other writes accept an optional `Idempotency-Key` and

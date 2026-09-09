@@ -26,9 +26,11 @@ Four properties carry this file:
 
 **M3c Task 4 adds a fifth, and it is the one that moves order state.** A
 settlement that brings an order to *full* is the end of that order, whoever
-decided it: every way of delivering a settled order is already refused with
-``409 deposit_already_returned``, so leaving it ``fulfilling`` is the same lie
-Task 6 removed for the automatic path. The closure therefore lives at the
+decided it, so leaving it ``fulfilling`` is the same lie Task 6 removed for the
+automatic path. For that to be true the delivery has to be over — the admin
+routes refuse a settled order with ``409 deposit_already_returned`` but **the
+drain never did**, so fix round 1 refuses the settlement itself while a task is
+open (``409 order_still_fulfilling``). The closure therefore lives at the
 posting rather than in the button — the runbook's ``curl`` and M4's cabinet
 reach the same function — and the last section here is what proves it, from
 both directions: a full settlement closes, a partial does not, and finishing a
@@ -41,6 +43,7 @@ import hashlib
 import hmac
 import json
 import time
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -49,7 +52,8 @@ from urllib.parse import quote, urlencode
 import pytest
 from httpx import AsyncClient, Response
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.exc import DBAPIError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import selectinload
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
@@ -61,6 +65,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.merchants.models import MerchantWebhookDelivery
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.service import list_stuck_paid_orders
@@ -308,6 +313,9 @@ async def test_a_credit_naming_an_order_lands_on_that_orders_refunded_usd(
     _merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-1"
     )
+    # The delivery has to have failed before anybody settles it: since M3c fix
+    # round 1 an attributed credit is refused while a task is still open.
+    await _fail_the_line(db_session, order_id)
     before = await _read_order(integration_client, key_id, secret, "acme-1")
     assert before.status_code == 200, before.text
     # The charge is a *credit* leg on a debit-normal account, so it is not
@@ -333,6 +341,7 @@ async def test_a_credit_naming_an_order_reconciles_on_the_statement(
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme/ref/2"
     )
+    await _fail_the_line(db_session, order_id)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
     ).status_code == 201
@@ -353,6 +362,7 @@ async def test_the_credit_response_echoes_the_order_it_was_booked_against(
     merchant_id, _key_id, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-3"
     )
+    await _fail_the_line(db_session, order_id)
     r = await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
     assert r.status_code == 201, r.text
     assert r.json()["order_id"] == order_id
@@ -408,6 +418,7 @@ async def test_naming_an_order_moves_the_reference_and_nothing_else(
     merchant_id, _key_id, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-5"
     )
+    await _fail_the_line(db_session, order_id)
     plain = await _credit(integration_client, admin_headers, merchant_id, PRICE)
     attributed = await _credit(
         integration_client, admin_headers, merchant_id, PRICE, order_id=order_id
@@ -501,6 +512,8 @@ async def test_a_replay_keeps_the_first_attribution(
     )
     assert second.status_code == 201, second.text
     second_order: str = second.json()["order_id"]
+    await _fail_the_line(db_session, first_order)
+    await _fail_the_line(db_session, second_order)
 
     key = f"settle-{new_id()}"
     one = await _credit(
@@ -536,11 +549,60 @@ async def _fail_the_line(db: AsyncSession, order_id: str) -> None:
     file is about is the **settlement**, not how the delivery died: the
     fulfilment side of that is ``test_merchant_auto_refund.py``'s subject and
     has a mock supplier for it. What matters here is the shape an operator
-    meets — the item ``failed``, the order still ``fulfilling``, the money
-    still gone — which is exactly what ``_apply_failure`` writes.
+    meets — the item ``failed``, the **task** ``failed``, the order still
+    ``fulfilling``, the money still gone — which is exactly what
+    ``_apply_failure`` writes.
+
+    **The task half was missing in the first version of this helper and that
+    was the whole of fix round 1's Critical.** Failing only the item left every
+    settlement test crediting an order whose task was still ``pending`` — the
+    one state a settlement must now refuse, because the drain would go on to
+    buy the goods for an order whose money had already gone back. A helper that
+    builds a state the feature forbids is a helper that tests something else.
     """
     await db.execute(
         update(OrderItem).where(OrderItem.order_id == order_id).values(fulfillment_state="failed")
+    )
+    await db.execute(
+        update(FulfillmentTask)
+        .where(FulfillmentTask.order_id == order_id)
+        .values(status="failed", last_error="supplier said no")
+    )
+    await db.commit()
+
+
+@pytest.fixture
+async def second_session(db_engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
+    """A second connection — the worker, racing the operator.
+
+    A lock is not observable from one session: two coroutines sharing a
+    transaction see each other's uncommitted writes and take no locks against
+    each other. Same shape as ``test_merchant_auto_refund``'s.
+    """
+    factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    async with factory() as session:
+        yield session
+
+
+async def _refunded(db: AsyncSession, merchant_id: str, order_id: str) -> Decimal:
+    """What the ledger says has come back on this order."""
+    from yupay.modules.merchants.deposit import refunded_for_order
+
+    return await refunded_for_order(db, merchant_id=merchant_id, order_id=order_id)
+
+
+async def _cancel_the_task(db: AsyncSession, order_id: str) -> None:
+    """Cancel the delivery without failing the line — the other settleable shape.
+
+    ``cancel_open_tasks_for_order`` leaves ``OrderItem.fulfillment_state``
+    alone, so this is an order with nothing coming and **no failed item**: the
+    state a settlement reads as ``order_failed`` rather than
+    ``fulfillment_failed_refunded``.
+    """
+    await db.execute(
+        update(FulfillmentTask)
+        .where(FulfillmentTask.order_id == order_id)
+        .values(status="cancelled")
     )
     await db.commit()
 
@@ -608,6 +670,7 @@ async def test_a_partial_settlement_leaves_the_order_open(
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-partial"
     )
+    await _fail_the_line(db_session, order_id)
 
     assert (
         await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
@@ -633,6 +696,7 @@ async def test_finishing_a_partial_settlement_closes_it(
     merchant_id, _key_id, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-staged"
     )
+    await _fail_the_line(db_session, order_id)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, "0.07", order_id=order_id)
     ).status_code == 201
@@ -661,6 +725,7 @@ async def test_a_second_settlement_is_refused_and_nothing_moves_twice(
     merchant_id, _key_id, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-twice"
     )
+    await _fail_the_line(db_session, order_id)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
     ).status_code == 201
@@ -684,6 +749,7 @@ async def test_a_replay_of_the_settlement_closes_once(
     merchant_id, _key_id, _secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-replay"
     )
+    await _fail_the_line(db_session, order_id)
     key = f"settle-{new_id()}"
     one = await _credit(
         integration_client, admin_headers, merchant_id, PRICE, order_id=order_id, key=key
@@ -722,6 +788,7 @@ async def test_the_settled_order_leaves_the_stuck_order_watchdog(
         title="Other",
         n=2,
     )
+    await _fail_the_line(db_session, settled_id)
     assert (
         await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=settled_id)
     ).status_code == 201
@@ -750,6 +817,7 @@ async def test_the_settlement_announces_the_order_state_by_push(
         json={"url": "https://reseller.example/hooks/yupay"},
     )
     assert hook.status_code == 200, hook.text
+    await _fail_the_line(db_session, order_id)
 
     assert (
         await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
@@ -811,18 +879,23 @@ async def test_settling_an_order_whose_delivery_never_failed_reads_as_a_hand_clo
     """The reason the reseller reads splits on the **item**, not on the credit.
 
     Nearly every attributed credit settles a failed delivery, and that reads
-    ``fulfillment_failed_refunded``. An operator can also settle an order whose
-    line never failed — a goodwill decision on an order still in flight, which
-    the button offers because "unsettled merchant order" is what it gates on.
-    That closes the order too (the money is back and no delivery route survives
-    a settlement), and it reads ``order_failed``: nothing about the *delivery*
-    failed, a person ended it. Pinned rather than left to be discovered,
-    because it is the one place the two paths give a reseller different words
-    for the same amount of money returned.
+    ``fulfillment_failed_refunded``. The other settleable shape is an order
+    whose delivery was **cancelled** rather than failed — nothing is coming,
+    but no item is ``failed`` — and that closes the order too while reading
+    ``order_failed``: a person ended it, the delivery did not. Pinned rather
+    than left to be discovered, because it is the one place the two paths give
+    a reseller different words for the same amount of money returned.
+
+    Note what the setup can no longer be. This used to cancel nothing and
+    settle a **live** order; since fix round 1 that is refused
+    (``order_still_fulfilling``), because the drain would have gone on to buy
+    the goods. Reaching this state now requires stopping the delivery first,
+    which is the point of the refusal.
     """
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-goodwill"
     )
+    await _cancel_the_task(db_session, order_id)
 
     assert (
         await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
@@ -832,3 +905,173 @@ async def test_settling_an_order_whose_delivery_never_failed_reads_as_a_hand_clo
     assert body["status"] == "failed"
     assert body["failure_reason"] == "order_failed"
     assert body["refunded_usd"] == PRICE
+
+
+# ---------- fix round 1: a live delivery blocks the settlement ----------
+
+
+async def test_a_settlement_is_refused_while_the_delivery_is_still_coming(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The Critical, closed: the drain was never guarded, only Retry was.
+
+    Three documents said "every way of delivering a settled order is already
+    refused". ``retry_task`` and ``complete_manual_task`` carry
+    ``_refuse_a_settled_merchant_order``; ``drain_pending_tasks`` claims on
+    ``status == 'pending'`` alone. So a settlement could close the order, push
+    ``order.status_changed`` to the reseller, and then have the worker buy the
+    goods and write a ``Delivery`` they can read — goods and money out, with
+    our own API asserting the opposite.
+
+    The order below is exactly the state every settlement test used to build:
+    placed, task ``pending``, nothing failed.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-live"
+    )
+    open_task = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+
+    refused = await _credit(
+        integration_client, admin_headers, merchant_id, PRICE, order_id=order_id
+    )
+
+    assert refused.status_code == 409, refused.text
+    body = refused.json()
+    assert body["code"] == "order_still_fulfilling"
+    # Named, not implied: a bare 409 at 3am tells an operator nothing to do.
+    assert body["open_task_ids"] == [open_task]
+    assert "cancel the task first" in body["detail"]
+    # And nothing moved: no credit, no closure.
+    row = await _order_row(db_session, order_id)
+    await db_session.refresh(row)
+    assert row.status == "fulfilling"
+    assert await _refunded(db_session, merchant_id, order_id) == Decimal("0")
+
+
+async def test_the_refusal_lifts_once_the_delivery_has_stopped(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The control: the guard is about the task, not about settling at all.
+
+    Without this the refusal could be a blanket "no" and the test above would
+    still pass — which is how a guard becomes an outage.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-lifts"
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+    ).status_code == 409
+
+    await _fail_the_line(db_session, order_id)
+
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+    ).status_code == 201
+    row = await _order_row(db_session, order_id)
+    await db_session.refresh(row)
+    assert row.status == "failed"
+
+
+async def test_an_operators_timeout_retry_is_not_refused_by_the_new_guard(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Skipped on a replay, exactly as the over-settlement cap is.
+
+    A retry under the same key books nothing, so refusing it would answer 409
+    to a credit that already landed and turn the endpoint's idempotency off —
+    the failure ``credit_deposit``'s replay read exists to prevent. Here the
+    task is re-opened between the two calls, so the guard would fire on the
+    second if it ran at all.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-idem"
+    )
+    await _fail_the_line(db_session, order_id)
+    key = f"settle-{new_id()}"
+    first = await _credit(
+        integration_client, admin_headers, merchant_id, PRICE, order_id=order_id, key=key
+    )
+    assert first.status_code == 201, first.text
+
+    # An admin re-drove the task after the settlement — the state the guard
+    # refuses — and then the operator's client retried the original credit.
+    await db_session.execute(
+        update(FulfillmentTask).where(FulfillmentTask.order_id == order_id).values(status="pending")
+    )
+    await db_session.commit()
+
+    replay = await _credit(
+        integration_client, admin_headers, merchant_id, PRICE, order_id=order_id, key=key
+    )
+
+    assert replay.status_code == 201, replay.text
+    assert replay.json()["transaction_id"] == first.json()["transaction_id"]
+
+
+async def test_the_settlement_holds_the_task_so_the_drain_cannot_take_it(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    second_session: AsyncSession,
+) -> None:
+    """What makes the refusal total rather than advisory — over two connections.
+
+    An unlocked read is a check-then-act: the guard looks, sees no open task,
+    and a drainer claims one a millisecond later, between the check and the
+    posting. ``lock_tasks_for_order`` takes ``FOR UPDATE`` on the order's task
+    rows, and ``drain_pending_tasks`` claims with ``FOR UPDATE SKIP LOCKED`` —
+    so while the settlement's transaction lives the drain **skips** this order
+    rather than waiting on it. No deadlock, no window.
+
+    Two real connections, because a lock is invisible from one: two coroutines
+    on one session see each other's uncommitted writes and take no locks
+    against each other at all.
+    """
+    _merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-lock"
+    )
+    task_id = (
+        await db_session.execute(
+            select(FulfillmentTask.id).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+
+    # The settlement's half: hold the lock, uncommitted.
+    from yupay.modules.merchants.deposit import _lock_order_for_settlement
+
+    _order, open_tasks = await _lock_order_for_settlement(db_session, order_id=order_id)
+    assert open_tasks == [task_id]
+
+    # The drain's half, on its own connection, claiming exactly as the worker
+    # does. It must find nothing rather than block.
+    claimed = (
+        (
+            await second_session.execute(
+                select(FulfillmentTask.id)
+                .where(FulfillmentTask.status == "pending")
+                .with_for_update(skip_locked=True)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    assert task_id not in claimed
+
+    # And the **order** row is held too, which is the other half: it serialises
+    # this settlement against `_try_settle_order` (which locks the same row
+    # before writing `delivered`) and against a second concurrent credit.
+    # `NOWAIT` turns "would block" into an error we can assert on instead of
+    # hanging the suite.
+    with pytest.raises(DBAPIError):
+        await second_session.execute(
+            select(Order.id).where(Order.id == order_id).with_for_update(nowait=True)
+        )
+
+    await db_session.rollback()
+    await second_session.rollback()

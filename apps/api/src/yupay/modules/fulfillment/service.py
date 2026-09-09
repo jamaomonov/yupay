@@ -18,7 +18,7 @@ import hashlib
 import html
 import sys
 from collections.abc import Coroutine, Iterable
-from typing import Any
+from typing import Any, Final
 
 from sqlalchemy import Row, func, select, text
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
@@ -321,6 +321,50 @@ async def _existing_tasks_for_order(
     if for_update:
         stmt = stmt.with_for_update().execution_options(populate_existing=True)
     return list((await db.execute(stmt)).scalars().all())
+
+
+#: Task statuses that mean a supplier call for this order is still coming.
+#: ``pending`` is what :func:`drain_pending_tasks` claims and what
+#: :func:`retry_task` writes; ``in_progress`` is a call already out. The three
+#: terminal statuses are absent on purpose — settling the order of a ``failed``
+#: task is the whole point of a hand settlement.
+OPEN_TASK_STATUSES: Final[frozenset[str]] = frozenset({"pending", "in_progress"})
+
+
+async def lock_tasks_for_order(db: AsyncSession, *, order_id: str) -> list[FulfillmentTask]:
+    """Take ``FOR UPDATE`` on every fulfilment task of an order, and return them.
+
+    The public door onto :func:`_existing_tasks_for_order`'s locking variant,
+    for a caller in another module that must decide something about this
+    order's tasks and have the decision **stay true** for the rest of its
+    transaction. Today that is exactly one caller:
+    ``merchants.deposit.credit_deposit``, which refuses an attributed
+    settlement while a task is still open (M3c fix round 1). An unlocked read
+    there is a check-then-act — the drain can claim the task a millisecond
+    later — and the thing being decided is whether a reseller gets goods they
+    have already been refunded for.
+
+    **It works because of ``SKIP LOCKED``, not in spite of it.**
+    ``drain_pending_tasks`` claims with ``FOR UPDATE SKIP LOCKED``, so a row
+    this holds is *skipped* rather than waited on: the drain moves past the
+    order for as long as the settlement's transaction lives, and never blocks.
+
+    **Lock order: tasks before the order row, the system-wide invariant.** Call
+    this *before* touching ``orders``; the ordering inside is
+    ``_existing_tasks_for_order``'s ``created_at, id``, the same the drain's
+    claim query uses, so two sessions queue and never cycle.
+
+    Args:
+        db: Session. The caller owns the transaction, and the locks live until
+            it ends.
+        order_id: The order whose tasks to lock.
+
+    Returns:
+        Every task of the order, oldest first. Empty when the saga has not
+        started — which is not the same as "nothing is coming"; see the
+        caller's own note on that residue.
+    """
+    return await _existing_tasks_for_order(db, order_id, for_update=True)
 
 
 # ---------- audit ----------
@@ -1125,12 +1169,22 @@ async def end_a_refunded_merchant_order(
     **Why the status moves here and nowhere else.** Retail's rule is that a
     terminal fulfilment failure leaves ``order.status`` alone, because an
     operator may still top a supplier up, retry, or deliver by hand — the order
-    is not over. That reason is **false for a refunded order**: both delivery
-    routes, :func:`retry_task` and :func:`complete_manual_task`, already refuse
-    it with ``409 deposit_already_returned``, because delivering it would hand
-    the reseller the goods *and* their money. Every exit was closed while the
-    state said "in progress", and an owner found that at 05:30 on the alert it
-    kept firing.
+    is not over. That reason is **false for a refunded order**: both *admin*
+    delivery routes, :func:`retry_task` and :func:`complete_manual_task`,
+    already refuse it with ``409 deposit_already_returned``, because delivering
+    it would hand the reseller the goods *and* their money. The state said "in
+    progress" about an order support could not move, and an owner found that at
+    05:30 on the alert it kept firing.
+
+    **The drain is the exit those two do not cover, and saying otherwise was a
+    real defect** (M3c fix round 1). ``drain_pending_tasks`` claims on
+    ``status == 'pending'`` alone, so an order closed while a task was still
+    open would have been bought from the supplier afterwards. From *this*
+    caller it cannot happen — the seam runs on a task that has just terminally
+    failed — but the hand settlement could reach it, and
+    ``merchants.deposit._refuse_a_still_fulfilling_order`` is what closes it
+    there. Do not restore the old sentence: "every way of delivering one is
+    already refused" was never true of the queue.
 
     **``failed``, not a new value, and the contract decides it.** The module
     README tells integrators to treat an unknown ``status`` as *still in

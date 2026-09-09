@@ -23,10 +23,25 @@
  *
  * ## Double settlement
  *
- * Impossible from here twice over. `merchantSettlement` hides the button the
- * moment anything has come back, and the server refuses an over-settlement
- * with `order_already_settled` — which this renders as a sentence an operator
- * can act on rather than as a raw 409.
+ * Three mechanisms, and it is worth being precise about which one actually
+ * prevents what — the first draft of this comment claimed "impossible twice
+ * over" from the two that do **not**, and that reasoning is what shipped a
+ * double-credit defect.
+ *
+ * - `merchantSettlement` hiding the button is a **stale DTO** at click time:
+ *   it narrows the affordance, it does not serialise anything.
+ * - The server's `order_already_settled` is a **TOCTOU**: two SELECTs and a
+ *   post, so two concurrent credits under different keys can both pass it.
+ *   (Since M3c fix round 1 they cannot in practice, because `credit_deposit`
+ *   takes `FOR UPDATE` on the order row first — but that is the lock's doing,
+ *   not the cap's.)
+ * - What actually stops a second posting **from here** is the pair below:
+ *   `inFlightRef`, which flips synchronously where `isPending` does not, and
+ *   one `Idempotency-Key` per decision held in `keyRef`, which makes a retry a
+ *   replay. Delete either and one operator's two clicks are two credits.
+ *
+ * A refusal that does reach the operator is rendered as a sentence rather than
+ * a raw 409.
  *
  * ## When it is offered at all
  *
@@ -136,7 +151,7 @@ export function MerchantDepositCard({ order }: { order: OrderAdminOut }) {
     },
   });
 
-  if (order.merchant_id === null) return null;
+  if ((order.merchant_id ?? null) === null) return null;
 
   return (
     <div className="rounded-lg border bg-[var(--bg-surface)] shadow-[var(--shadow-sm)]">
@@ -149,12 +164,14 @@ export function MerchantDepositCard({ order }: { order: OrderAdminOut }) {
           <div className="flex items-baseline justify-between">
             <dt className="text-[var(--text-secondary)]">{T.chargedLabel}</dt>
             <dd className="font-mono font-medium">
-              {order.deposit_charged_usd === null ? "—" : formatUsd(order.deposit_charged_usd)}
+              {order.deposit_charged_usd == null ? "—" : formatUsd(order.deposit_charged_usd)}
             </dd>
           </div>
           <div className="flex items-baseline justify-between">
             <dt className="text-[var(--text-secondary)]">{T.returnedLabel}</dt>
-            <dd className="font-mono font-medium">{formatUsd(order.deposit_returned_usd)}</dd>
+            <dd className="font-mono font-medium">
+              {formatUsd(order.deposit_returned_usd ?? "0")}
+            </dd>
           </div>
         </dl>
 
