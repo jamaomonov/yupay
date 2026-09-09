@@ -1630,17 +1630,41 @@ async def _apply_cancel(db: AsyncSession, *, task: FulfillmentTask, reason: str)
     ``refunded_usd: "1.07"`` is wrong on the feature's most common path, and
     an alert that is wrong on the common path is one ops stops reading.
     """
-    fulfiller = get_fulfiller(task.supplier)
     try:
-        await fulfiller.cancel(db=db, task=task)
+        # The lookup is **inside** the try, and that is the whole fix. It used
+        # to sit above it, so an unknown slug raised before the best-effort
+        # promise this docstring makes could apply — and the promise was made
+        # by a comment while the line above it broke it.
+        #
+        # ``INVENTORY_ROUTE`` is not a supplier at all: it is our own
+        # warehouse, and ``REGISTRY`` holds external integrations only. Asking
+        # for a fulfiller answered ``unknown fulfilment supplier: inventory``,
+        # which 404'd the whole ``mark_order_failed_admin`` cascade — so an
+        # order our own stock had served could never be closed by hand. Found
+        # on production 2026-09-10 by an operator trying to close one.
+        #
+        # A slug that is unknown for any *other* reason — a retired
+        # integration, a typo in a seeded row — gets the same treatment for the
+        # same reason: there is nothing to settle once the order is gone, and
+        # refusing to close it helps nobody.
+        if task.supplier != INVENTORY_ROUTE:
+            await get_fulfiller(task.supplier).cancel(db=db, task=task)
         await _record_attempt(
             db,
             task=task,
             kind="cancel",
             status="ok",
-            payload={"supplier": task.supplier, "reason": reason},
+            payload={
+                "supplier": task.supplier,
+                "reason": reason,
+                **(
+                    {"note": "inventory route — no external supplier to cancel"}
+                    if task.supplier == INVENTORY_ROUTE
+                    else {}
+                ),
+            },
         )
-    except (FulfillerError, FulfillerNotIntegratedError) as exc:
+    except (FulfillerError, FulfillerNotIntegratedError, NotFoundError) as exc:
         await _record_attempt(
             db,
             task=task,

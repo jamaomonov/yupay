@@ -357,3 +357,89 @@ async def test_wallet_payment_without_balance_conflicts(
     )
     assert r.status_code == 409, r.text
     assert "insufficient" in r.json()["detail"]
+
+
+async def test_an_inventory_routed_task_can_be_cancelled(
+    integration_client: AsyncClient, db_session: AsyncSession, _stub_routed_order: tuple[str, str]
+) -> None:
+    """`inventory` is a route, not a supplier, and the cancel path forgot.
+
+    `_apply_cancel` looked the task's `supplier` up in `REGISTRY`, which holds
+    external integrations only. A task our own warehouse served carries
+    `supplier = "inventory"`, so the lookup answered `unknown fulfilment
+    supplier: inventory` and 404'd — **before** the `try` whose docstring
+    promises the supplier call is best-effort and cannot block the local flip.
+    The promise was made by a comment and broken by the line above it.
+
+    Found on production on 2026-09-10 by an operator who could not close a
+    refunded merchant order. Nothing our own stock served could be closed by
+    hand, and that is every voucher SKU we hold.
+    """
+    order_id, token = _stub_routed_order
+    task = await _task_for_order(db_session, order_id)
+    task.supplier = "inventory"
+    await db_session.commit()
+
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task.id}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "cancelled"
+
+    attempts = (
+        (
+            await db_session.execute(
+                select(FulfillmentAttempt).where(
+                    FulfillmentAttempt.task_id == task.id,
+                    FulfillmentAttempt.kind == "cancel",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # Recorded as ``ok``: there was no external supplier to refuse, so calling
+    # this an error would put a false failure in the operator's inbox.
+    assert [a.status for a in attempts] == ["ok"]
+    assert attempts[0].payload["note"].startswith("inventory route")
+
+
+async def test_a_task_whose_supplier_slug_is_unknown_can_still_be_cancelled(
+    integration_client: AsyncClient, db_session: AsyncSession, _stub_routed_order: tuple[str, str]
+) -> None:
+    """A retired integration must not make its old orders uncloseable.
+
+    Same shape as the inventory case and the same fix: the lookup lives inside
+    the `try`, so an unknown slug is recorded and the task still flips. There
+    is nothing to settle with a supplier once the order is gone, and refusing
+    to close the order helps nobody.
+    """
+    order_id, token = _stub_routed_order
+    task = await _task_for_order(db_session, order_id)
+    task.supplier = "a-supplier-we-retired"
+    await db_session.commit()
+
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task.id}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "cancelled"
+
+    errors = (
+        (
+            await db_session.execute(
+                select(FulfillmentAttempt).where(
+                    FulfillmentAttempt.task_id == task.id,
+                    FulfillmentAttempt.kind == "cancel",
+                    FulfillmentAttempt.status == "error",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(errors) == 1
