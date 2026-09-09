@@ -13,6 +13,7 @@ from yupay.modules.fulfillment.suppliers.base import FulfillerError
 from yupay.modules.fulfillment.suppliers.g2b import (
     LOW_BALANCE_ERROR,
     G2bFulfiller,
+    _is_an_unbilled_player_rejection,
     _looks_like_low_balance,
     _stringify_or_none,
 )
@@ -133,6 +134,68 @@ def test_low_balance_heuristic() -> None:
     assert _looks_like_low_balance(G2bError(400, "Not enough balance")) is True
     assert _looks_like_low_balance(G2bError(400, "malformed payload")) is False
     assert _looks_like_low_balance(G2bError(500, "insufficient funds")) is False
+
+
+#: The exact body G2B answered a real game create with on 2026-09-09
+#: (merchant order ``m3b-parkA-1``, HTTP 400). Every match below is measured
+#: against this string, not against a paraphrase of it.
+LIVE_INVALID_PLAYER_BODY = (
+    '{"message":"Invalid player ID. Please check and try again.","success":false}'
+)
+
+
+def test_the_live_invalid_player_body_is_recognised() -> None:
+    """The exact production response of 2026-09-09, and nothing paraphrased."""
+    assert _is_an_unbilled_player_rejection(G2bError(400, LIVE_INVALID_PLAYER_BODY)) is True
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # Their envelope, a different refusal — not the one the owner ruled on.
+        pytest.param(
+            '{"message":"Catalogue item not found.","success":false}',
+            id="another-message",
+        ),
+        # Their envelope, but not a refusal at all.
+        pytest.param(
+            '{"message":"Invalid player ID.","success":true}',
+            id="not-a-refusal",
+        ),
+        # The right words outside their envelope — an HTML error page, a
+        # proxy, anything that is not G2B answering us.
+        pytest.param("Invalid player ID", id="not-their-envelope"),
+        # Valid JSON, but not an object: nothing to read a refusal off.
+        pytest.param('"Invalid player ID. Please check and try again."', id="json-not-an-object"),
+        # Their envelope with a message that is not text at all.
+        pytest.param('{"message":7,"success":false}', id="message-not-a-string"),
+        # The phrase buried mid-message is a different message. We do not
+        # extrapolate from a rejection we have not seen.
+        pytest.param(
+            '{"message":"Order failed: invalid player id","success":false}',
+            id="phrase-buried-mid-message",
+        ),
+        # A message that merely *starts* the same way is not the same
+        # message — the pattern ends on a word boundary for this.
+        pytest.param(
+            '{"message":"Invalid player identifier for this game.","success":false}',
+            id="longer-word-at-the-anchor",
+        ),
+    ],
+)
+def test_only_g2bs_own_invalid_player_shape_is_recognised(body: str) -> None:
+    """The tight twin of ``test_low_balance_heuristic``, and tight on purpose.
+
+    A false positive there costs an admin one glance at the wrong queue. A
+    false positive here posts a merchant refund for goods we may have paid
+    for, so every body below is one we would rather park than guess about.
+    """
+    assert _is_an_unbilled_player_rejection(G2bError(400, body)) is False
+
+
+def test_the_right_words_at_the_wrong_status_are_not_recognised() -> None:
+    """A 5xx says nothing about our balance, whatever the body carries."""
+    assert _is_an_unbilled_player_rejection(G2bError(500, LIVE_INVALID_PLAYER_BODY)) is False
 
 
 def test_stringify_or_none() -> None:

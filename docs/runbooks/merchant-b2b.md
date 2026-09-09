@@ -731,12 +731,14 @@ in the loop with them.
 Since M3b Task 3 a supplier failure whose money came back to us posts the
 refund automatically, within seconds of the failure, as a
 `merchant_order_refund` row against the order. **Do not assume either case is
-the common one — nobody has counted.** Every `g2b` failure from a call that
-went out is `unknown` and refunds nothing, so this procedure is far from dead;
-`g2b` also has four refusals that never reach a call and do auto-refund. See
+the common one — nobody has counted.** Almost every `g2b` failure from a call
+that went out is `unknown` and refunds nothing, so this procedure is far from
+dead; `g2b` also has four refusals that never reach a call and do auto-refund,
+plus one rejection from a call that did (an invalid player id). See
 "Known gaps" below. This procedure is for the rest:
 a supplier that kept our money (`spent`), one we cannot get an answer out of
-(`unknown` — every `g2b` failure from a call that went out, and `gengine`
+(`unknown` — every `g2b` rejection of a call that went out bar the
+invalid-player one, and `gengine`
 after a pay may have landed), and an automatic refund that could not post. Those raise a Telegram alert of their own; see "When the
 automatic refund does not fire" below.
 
@@ -895,12 +897,22 @@ M3b Task 3 posts the refund itself when the failed task's money outcome is
 back is not a safe failure mode — so those still reach a person through the
 procedure above.
 
-- **Cost of leaving it:** every `g2b` failure **from a call that went out** is
-  `unknown`, because their API exposes no refund field and the only evidence
-  is a sentence in their documentation (`fulfillment/README.md`). Its four
-  **pre-call** refusals — no API key, an order line with no `player_id`, a
+- **Cost of leaving it:** almost every `g2b` failure **from a call that went
+  out** is `unknown`, because their API exposes no refund field and the only
+  evidence is a sentence in their documentation (`fulfillment/README.md`). Its
+  four **pre-call** refusals — no API key, an order line with no `player_id`, a
   mapping with no `external_variant_id`, no active mapping — are `returned`
   and do settle themselves, because nothing was ordered.
+- **The one graded rejection (M3c).** A game create G2B answers with its own
+  `HTTP 400 {"message":"Invalid player ID. Please check and try again.","success":false}`
+  is `returned` and refunds the reseller within seconds. That rests on a
+  **fourth** kind of evidence — their error string plus the owner's ruling of
+  2026-09-09 that the balance is not debited for it — and the match is
+  deliberately narrow: the status, their JSON envelope and the shape of the
+  message. **Anything else from that call, including another 400, is still
+  `unknown`**, which is the design and not an oversight. If you see a G2B
+  rejection you believe is also free, it needs a ruling and a line here, not a
+  looser match.
 - **How big is the manual lane? Nobody knows.** Nothing counts merchant
   failures by supplier or by cause. Earlier drafts of this runbook and of
   ADR-0071 said it carried "most" of them; that was never measured and is

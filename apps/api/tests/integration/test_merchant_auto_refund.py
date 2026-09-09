@@ -38,7 +38,9 @@ from types import CoroutineType
 from typing import Any
 from urllib.parse import quote, urlencode
 
+import httpx
 import pytest
+import respx
 from httpx import AsyncClient, Response
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
@@ -57,6 +59,7 @@ from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.suppliers import FulfillResult, MoneyOutcome
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
+from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.merchants import deposit as merchant_deposit
 from yupay.modules.merchants import refund as merchant_refund
 from yupay.modules.merchants.models import MerchantWebhookDelivery
@@ -75,6 +78,17 @@ TXN_PATH = "/merchant/v1/transactions"
 PRICE = "1.07"
 #: What the deposit is funded with before each order.
 FUNDING = "10.00"
+
+#: Where the ``g2b`` route's HTTP goes when a test pins the SKU to it.
+G2B_BASE = "https://g2b.test/v1"
+#: The mapped game. One value, used by the seed and by the respx route.
+G2B_GAME = "pubgm"
+#: The exact body G2B answered a real merchant game create with on 2026-09-09
+#: (order ``m3b-parkA-1``). The owner ruled the same day that they do not
+#: debit our balance for it, which is why this order refunds itself.
+G2B_INVALID_PLAYER_BODY = (
+    '{"message":"Invalid player ID. Please check and try again.","success":false}'
+)
 
 
 # ---------- harness ----------
@@ -239,7 +253,16 @@ async def _seed_sku(db: AsyncSession, *, n: int = 1, route: str = "mock") -> str
     The sourcing rule is what makes the failure reproducible: without it a
     ``top_up`` SKU with no supplier mapping routes to the manual admin queue
     and never reaches a fulfiller at all.
+
+    ``route="g2b"`` additionally needs two things the mock route does not, and
+    both are part of what routing to that adapter *means*, so they are set
+    here rather than at every caller: a product that declares ``player_id``
+    (``validate_fulfillment_data`` **rejects** undeclared keys rather than
+    stripping them) and an active ``SkuSupplierMapping`` (without one the
+    adapter refuses before any call, with ``_NEVER_SENT`` — a different
+    branch than the one under test).
     """
+    is_g2b = route == "g2b"
     category = Category(
         id=new_id(),
         slug=f"cat-{n}-{new_id()[-8:]}",
@@ -263,7 +286,9 @@ async def _seed_sku(db: AsyncSession, *, n: int = 1, route: str = "mock") -> str
         kind="top_up",
         sort_order=n,
         active=True,
-        required_fields=[],
+        required_fields=(
+            [{"key": "player_id", "label": "Player ID", "type": "text"}] if is_g2b else []
+        ),
         translations=[ProductTranslation(locale="ru", name=f"Продукт {n}")],
     )
     sku = Sku(
@@ -297,6 +322,19 @@ async def _seed_sku(db: AsyncSession, *, n: int = 1, route: str = "mock") -> str
         pass
     else:
         db.add(SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug=route))
+    if is_g2b:
+        db.add(
+            SkuSupplierMapping(
+                sku_id=sku.id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id=G2B_GAME,
+                external_variant_id="60",
+                quantity=1,
+                extra={},
+                is_active=True,
+            )
+        )
     return sku.id
 
 
@@ -309,6 +347,7 @@ async def _placed(
     title: str = "Reseller",
     n: int = 1,
     route: str = "mock",
+    fulfillment_data: dict[str, Any] | None = None,
 ) -> tuple[str, str, str, str]:
     """A merchant, a key, a funded deposit and one placed (``fulfilling``) order.
 
@@ -321,12 +360,14 @@ async def _placed(
     assert (await _credit(client, headers, merchant_id, FUNDING)).status_code == 201
     sku_id = await _seed_sku(db, n=n, route=route)
     await db.commit()
-    r = await _post_order(
-        client,
-        key_id,
-        secret,
-        {"merchant_order_id": merchant_order_id, "sku_id": sku_id, "expected_price": PRICE},
-    )
+    payload: dict[str, Any] = {
+        "merchant_order_id": merchant_order_id,
+        "sku_id": sku_id,
+        "expected_price": PRICE,
+    }
+    if fulfillment_data is not None:
+        payload["fulfillment_data"] = fulfillment_data
+    r = await _post_order(client, key_id, secret, payload)
     assert r.status_code == 201, r.text
     order_id: str = r.json()["order_id"]
     return merchant_id, key_id, secret, order_id
@@ -1589,21 +1630,148 @@ async def test_a_frozen_merchant_is_still_refunded(
     assert await _balance(db_session, merchant_id) == Decimal(FUNDING)
 
 
+# ---------- a real supplier rejection we know is free (M3c Task 1) ----------
+
+
+@pytest.fixture
+def _g2b_env(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Point the adapter at a base URL respx owns, and give it a key."""
+    from yupay.core import config as cfg
+
+    monkeypatch.setenv("G2B_API_KEY", "test-key")
+    monkeypatch.setenv("G2B_BASE_URL", G2B_BASE)
+    monkeypatch.setenv("G2B_CALLBACK_URL", "")
+    cfg.get_settings.cache_clear()
+    yield
+    cfg.get_settings.cache_clear()
+
+
+def _g2b_rejects_the_player(body: str = G2B_INVALID_PLAYER_BODY) -> None:
+    """The two calls a game create makes: the balance pre-flight, then create.
+
+    ``respx`` patches httpx's *network* transports, not the ASGI transport the
+    integration client rides, so mounting these does not intercept the
+    requests this test makes into the app.
+    """
+    respx.get(f"{G2B_BASE}/getMe").mock(
+        return_value=httpx.Response(200, json={"username": "u", "balance": 1000})
+    )
+    respx.post(f"{G2B_BASE}/games/{G2B_GAME}/order").mock(
+        return_value=httpx.Response(400, text=body)
+    )
+
+
+@respx.mock
+async def test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    alerts: list[Alert],
+    _g2b_env: None,
+) -> None:
+    """The live 2026-09-09 rejection, through the real adapter, to the money.
+
+    This is the whole of M3c Task 1 in one path: G2B answers the create with
+    the body production actually saw, the adapter grades it ``RETURNED``
+    because the owner ruled that they do not debit us for it, and the seam
+    puts the reseller's deposit back without an operator. Before the ruling
+    this order parked on ``unknown`` and waited for a human.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client,
+        admin_headers,
+        db_session,
+        merchant_order_id="m3c-invalid-player",
+        route="g2b",
+        fulfillment_data={"player_id": "5679523421"},
+    )
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
+    _g2b_rejects_the_player()
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await db_session.refresh(task)
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.RETURNED
+
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING)
+    assert len(await _refund_rows(db_session, order_id)) == 1
+    # No human is called: that is the point of the ruling.
+    assert _merchant_alerts(alerts) == []
+
+    body = (await _read_order(integration_client, key_id, secret, "m3c-invalid-player")).json()
+    assert body["refunded_usd"] == PRICE
+    assert body["failure_reason"] == "fulfillment_failed_refunded"
+
+
+@respx.mock
+async def test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_order(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    alerts: list[Alert],
+    _g2b_env: None,
+) -> None:
+    """The fallback, end to end. Another 400 from the same endpoint is not the
+    shape the owner ruled on, so it keeps answering ``unknown``: nothing is
+    posted and a person is fetched."""
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client,
+        admin_headers,
+        db_session,
+        merchant_order_id="m3c-other-400",
+        route="g2b",
+        fulfillment_data={"player_id": "5679523421"},
+    )
+    _g2b_rejects_the_player('{"message":"Catalogue item not found.","success":false}')
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order_id)
+        )
+    ).scalar_one()
+    await db_session.refresh(task)
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.UNKNOWN
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING) - Decimal(PRICE)
+    assert await _refund_rows(db_session, order_id) == []
+    assert _merchant_alerts(alerts) == ["_alert_merchant_needs_a_human"]
+
+    body = (await _read_order(integration_client, key_id, secret, "m3c-other-400")).json()
+    assert body["refunded_usd"] == "0.00"
+    assert body["failure_reason"] == "fulfillment_failed"
+
+
 # ---------- retail is byte-identical ----------
 
 
-async def _retail_order(db: AsyncSession, *, tag: str) -> Order:
-    """A paid storefront order on a SKU pinned to the empty warehouse.
+async def _retail_order(
+    db: AsyncSession,
+    *,
+    tag: str,
+    route: str = "inventory",
+    fulfillment_data: dict[str, Any] | None = None,
+) -> Order:
+    """A paid storefront order on a SKU pinned to one route.
 
-    ``force_inventory`` + no stock is the most common terminal failure in the
-    codebase, and ``INVENTORY_FAILURE_MONEY_OUTCOME`` is ``RETURNED`` — so it
-    is exactly the shape that would start posting merchant refunds if the
-    ``merchant_id`` gate were dropped.
+    The default — ``force_inventory`` + no stock — is the most common terminal
+    failure in the codebase, and ``INVENTORY_FAILURE_MONEY_OUTCOME`` is
+    ``RETURNED``, so it is exactly the shape that would start posting merchant
+    refunds if the ``merchant_id`` gate were dropped. ``route="g2b"`` buys the
+    same proof for a *supplier* verdict that is ``RETURNED``.
     """
     user_id = new_id()
     db.add(User(id=user_id, email=f"retail-{tag}@example.com", locale="ru", roles=[]))
     await db.flush()
-    sku_id = await _seed_sku(db, n=9, route="inventory")
+    sku_id = await _seed_sku(db, n=9, route=route)
     order = Order(
         id=new_id(),
         user_id=user_id,
@@ -1622,6 +1790,7 @@ async def _retail_order(db: AsyncSession, *, tag: str) -> Order:
             sku_id=sku_id,
             qty=1,
             unit_price_usd=Decimal("1.00"),
+            fulfillment_data=fulfillment_data or {},
         )
     )
     await db.commit()
@@ -1667,6 +1836,54 @@ async def test_a_retail_failure_never_reaches_the_refund_at_all(
     await db_session.refresh(item)
     assert item.fulfillment_state == "failed"
     # And no money moved anywhere: a retail buyer's money is at an acquirer.
+    assert (
+        await db_session.execute(select(func.count()).select_from(WalletTransaction))
+    ).scalar_one() == 0
+
+
+@respx.mock
+async def test_the_same_g2b_rejection_moves_no_money_for_a_retail_order(
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+    _g2b_env: None,
+) -> None:
+    """The outcome is recorded for retail too — it is a fact about the
+    supplier, not about who bought — and nothing follows from it.
+
+    ``RETURNED`` on a storefront order buys a retail buyer nothing here: their
+    money is at an acquirer, and the refund seam never runs because the
+    ``merchant_id`` gate stops it before ``merchants`` is imported at all.
+    """
+    from yupay.core.config import Settings, get_settings
+
+    order = await _retail_order(
+        db_session, tag="g2b", route="g2b", fulfillment_data={"player_id": "5679523421"}
+    )
+    calls: list[str] = []
+
+    async def _spy(db: AsyncSession, *, order: Order, reason: str) -> None:
+        calls.append(order.id)
+
+    monkeypatch.setattr(merchant_refund, "refund_order", _spy)
+    _g2b_rejects_the_player()
+    cfg = Settings(**{**get_settings().model_dump(), "fulfilment_async": True})
+    await ff_svc.start_for_order(db_session, order_id=order.id, settings=cfg)
+    await db_session.commit()
+
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order.id)
+        )
+    ).scalar_one()
+    await db_session.refresh(task)
+    assert task.status == "failed"
+    assert ff_svc.money_outcome_of(task) is MoneyOutcome.RETURNED
+    assert calls == []
+    assert _merchant_alerts(alerts) == []
     assert (
         await db_session.execute(select(func.count()).select_from(WalletTransaction))
     ).scalar_one() == 0

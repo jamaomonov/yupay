@@ -2,6 +2,11 @@
 
 - Status: accepted
 - Date: 2026-09-08
+- Amended: 2026-09-09 — decision 3 gains a **fourth** kind of evidence and
+  `g2b` a third answer, after the first two production orders (M3c Task 1,
+  plan `docs/superpowers/plans/2026-09-09-merchant-b2b-m3c.md`). Decision 2 is
+  unchanged: an unknown outcome still never refunds. What the amendment
+  changes is what counts as unknown.
 - Spec: `docs/superpowers/specs/2026-09-07-merchant-m3-requirements.md` (items 2, 3, 3b)
 - Plan: `docs/superpowers/plans/2026-09-08-merchant-b2b-m3b.md`
 - Predecessors: ADR-0068 (the deposit ledger), ADR-0069 (the machine API whose
@@ -67,43 +72,86 @@ and the two are not tradeable against each other by an engineer changing a
 default.
 
 The cost is stated rather than smoothed over, and stated no further than the
-evidence goes: **every `g2b` failure from a call that actually went out is
-`UNKNOWN`** and therefore reaches a person (decision 3). How big that lane is
-we **do not know** — nothing counts merchant failures by supplier or by cause,
-`g2b` also has four pre-call refusals that auto-refund, and this milestone
-shipped without a single production data point. An earlier draft of this ADR
+evidence goes: **almost every `g2b` failure from a call that actually went out
+is `UNKNOWN`** and therefore reaches a person (decision 3). How big that lane
+is we **do not know** — nothing counts merchant failures by supplier or by
+cause, `g2b` also has four pre-call refusals that auto-refund and, since the
+2026-09-09 amendment, one graded rejection from a call that went out, and this
+milestone shipped without a single production data point. An earlier draft of this ADR
 said the manual lane carries "most" merchant failures; that number was never
 measured and has been withdrawn rather than restated. Counting is the cheap
 thing to do before anyone decides the lane is affordable.
 
-### 3. The three confidences are kept apart, and `g2b` is the weak one
+### 3. The confidences are kept apart, and `g2b` is the weak one
 
-| Adapter     | Evidence                                                                                                            | Mapping                                                                                                                                                                       |
-| ----------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `gengine`   | **A field.** `order.is_refunded` from their API                                                                     | refunded → `RETURNED`; a customer-fault status (`invalid_account`, `invalid_amount`) on a task no pay request has ever gone out for → `RETURNED`; everything else → `UNKNOWN` |
-| `waxpeer`   | **Observed behaviour**, and ADR-0032 states it in writing                                                           | `canceled` → `RETURNED`; `error` and under-delivery → `SPENT`                                                                                                                 |
-| `g2b`       | **A sentence in their documentation** for anything a call reached; **our own control flow** for anything before one | every failure from a call that went out → `UNKNOWN`; four refusals raised **before any call** (`_NEVER_SENT`) → `RETURNED`                                                    |
-| `inventory` | Our own warehouse. No supplier money is involved at all                                                             | `RETURNED` (`INVENTORY_FAILURE_MONEY_OUTCOME`)                                                                                                                                |
+| Adapter     | Evidence                                                                                                                                                                                                                                | Mapping                                                                                                                                                                                                                                                          |
+| ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `gengine`   | **A field.** `order.is_refunded` from their API                                                                                                                                                                                         | refunded → `RETURNED`; a customer-fault status (`invalid_account`, `invalid_amount`) on a task no pay request has ever gone out for → `RETURNED`; everything else → `UNKNOWN`                                                                                    |
+| `waxpeer`   | **Observed behaviour**, and ADR-0032 states it in writing                                                                                                                                                                               | `canceled` → `RETURNED`; `error` and under-delivery → `SPENT`                                                                                                                                                                                                    |
+| `g2b`       | **A sentence in their documentation** for anything a call reached; **their own error string plus the owner's ruling that it is not billed** for one rejection of a call that went out; **our own control flow** for anything before one | one create rejection, G2B's `HTTP 400 {"success": false, "message": "Invalid player ID…"}` (`_REJECTED_UNBILLED`) → `RETURNED`; every other failure from a call that went out → `UNKNOWN`; four refusals raised **before any call** (`_NEVER_SENT`) → `RETURNED` |
+| `inventory` | Our own warehouse. No supplier money is involved at all                                                                                                                                                                                 | `RETURNED` (`INVENTORY_FAILURE_MONEY_OUTCOME`)                                                                                                                                                                                                                   |
 
 Flattening these into one confidence was the available shortcut and it is the
 one that loses money. `waxpeer`'s `SPENT` is a **positive fact** — their
 non-refunding is documented behaviour, not an absence of evidence — and that is
 exactly what separates it from `g2b`'s `UNKNOWN`. `g2b`'s adapter carries a
-note saying which of the three its answer is and naming what would promote it:
-a field, not a softer default. A `RETURNED` we cannot substantiate refunds a
-merchant for goods we paid for.
+note on each constant saying which kind of evidence its answer is and naming
+what would promote it: a field, not a softer default. A `RETURNED` we cannot
+substantiate refunds a merchant for goods we paid for.
 
-**`g2b` is two answers, not one, and the split is where the call happens.**
-`_FAILURE_MONEY_OUTCOME` (`UNKNOWN`) covers every exit from a call that went
-out. `_NEVER_SENT` (`RETURNED`) covers four refusals raised **before** one
-does — no `G2B_API_KEY`, an order line with no `player_id`, a mapping with no
-`external_variant_id`, and no active `SkuSupplierMapping` at all — and those
-rest on **our own control flow**, not on anything G2B says: nothing was
-ordered, so nothing was charged. That is a firmer basis than the `UNKNOWN`
-half, and the same shape as `gengine`'s pre-pay refusals. It is worth stating
-plainly because these auto-refund, and because the last of the four is
-reachable in ordinary operation: deactivating a retiring SKU's mapping between
-an order and its drain refunds that reseller automatically.
+**The 2026-09-09 amendment adds a fourth kind, and it is graded rather than
+folded into one of the three.** `g2b` answers a game create it will not
+perform with its own `HTTP 400 {"message":"Invalid player ID. Please check and
+try again.","success":false}` — the exact body production returned on
+`m3b-parkA-1` — and the owner ruled the same day that our balance is not
+debited for it. That evidence is **their error string plus an owner's
+knowledge of what it costs**. It sits between two of the existing three: below
+a field, because the string is not a statement about money and the vendor
+could reuse it one day for something that _is_ billed; above the documentation
+sentence the rest of the adapter rests on, because we have seen this exact
+response and been told what it costs rather than reading a general promise.
+It is deliberately **not** filed under "our own control flow" — a call did go
+out, and the reason we believe nothing was charged is a person's, not the
+code's.
+
+Because the evidence is a string, the matcher is narrow where its neighbour is
+loose, and the asymmetry is the point.
+`_looks_like_low_balance` is a substring search over four hints, and can
+afford to be: its false positive demotes a hard failure to a retryable stall
+that an admin finds in the same queue anyway. A false positive in
+`_is_an_unbilled_player_rejection` **posts a refund for goods we may have
+bought**, on an order no operator can re-grade afterwards (decision 5), so it
+requires the status, G2B's own JSON envelope with `success: false`, and a
+message whose normalised form _begins_ "invalid player id". Any rejection it
+does not recognise — another 400 included — keeps answering `UNKNOWN`.
+**Falling back to the safe answer is the behaviour, not a gap in it**, and the
+way this decision is lost is by widening the predicate to cover a refusal
+nobody has graded.
+
+**`g2b` is three answers, not one.** Two of the splits are where the call
+happens; the third is inside one branch of it.
+
+- `_NEVER_SENT` (`RETURNED`) covers four refusals raised **before** any call
+  goes out — no `G2B_API_KEY`, an order line with no `player_id`, a mapping
+  with no `external_variant_id`, and no active `SkuSupplierMapping` at all —
+  and those rest on **our own control flow**, not on anything G2B says:
+  nothing was ordered, so nothing was charged. That is a firmer basis than the
+  `UNKNOWN` half, and the same shape as `gengine`'s pre-pay refusals. It is
+  worth stating plainly because these auto-refund, and because the last of the
+  four is reachable in ordinary operation: deactivating a retiring SKU's
+  mapping between an order and its drain refunds that reseller automatically.
+- `_REJECTED_UNBILLED` (`RETURNED`) covers **one** rejection of a call that
+  did go out — the invalid player id above, raised at the game-create site
+  only. The voucher branch never sends a player id, so a body claiming one
+  there would be evidence of nothing, and the predicate is not consulted from
+  it.
+- `_FAILURE_MONEY_OUTCOME` and `_MAY_HAVE_SPENT` (both `UNKNOWN`) cover every
+  other exit from a call that went out.
+
+The count matters because "every `g2b` failure from a call that went out is
+`UNKNOWN`" was corrected across seven documents on 2026-09-08 and is false
+again, in a second way, one day later. The quantifier is the part that keeps
+going stale; prefer naming the arms.
 
 `gengine`'s `invalid_account` was the one **inference** in the table, and it
 was made true rather than re-graded: the adapter now carries a committed
@@ -336,18 +384,25 @@ growing, an `enum` becomes safe and worth adding.
   records one. Both are decisions about who is accountable for the judgement,
   not about code.
 
-- **Whether `g2b` really refunds.** Decision 3's `UNKNOWN` half rests on their
+- **Whether `g2b` really refunds.** Decision 3's `UNKNOWN` arm rests on their
   documentation rather than on an observation, which is exactly why it refunds
-  nothing; its `RETURNED` half rests on our own control flow and needs no
-  supplier claim at all. Either way, nothing in this milestone tested a real
-  supplier refund end to end, and nothing measures how often each arm fires.
+  nothing; its `_NEVER_SENT` arm rests on our own control flow and needs no
+  supplier claim at all. The `_REJECTED_UNBILLED` arm added on 2026-09-09 is
+  the one that is neither: it is a **judgement about a specific error string**,
+  and while the string was observed on production the non-billing behind it
+  was not — nobody has watched a G2B balance across one of these rejections,
+  and nothing in this repo could. It is as good as the ruling, and it stops
+  being true silently if G2B ever starts charging for a refused create. Either
+  way, nothing measures how often each arm fires.
 
 ## Consequences
 
-- **Every `g2b` failure from a call that went out still reaches a person**, and
-  will until `g2b` exposes a refund field. The runbook's known-gaps entry says
-  so with the reason, so that a manual lane reads as designed rather than as
-  broken — and says, equally plainly, that its size is unmeasured.
+- **Almost every `g2b` failure from a call that went out still reaches a
+  person**, and will until `g2b` exposes a refund field. The single exception
+  is the graded invalid-player rejection above. The runbook's known-gaps entry
+  says so with the reason, so that a manual lane reads as designed rather than
+  as broken — and says, equally plainly, that its size is unmeasured, which the
+  exception does not change: nothing counts either arm.
 - **`refunded_usd` is a sum, not a flag, and one cent is now load-bearing.** A
   partial attributed credit — an operator mid-decision — leaves the order
   reading `fulfillment_failed`, refuses the automatic refund

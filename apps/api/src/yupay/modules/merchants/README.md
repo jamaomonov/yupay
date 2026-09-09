@@ -447,10 +447,15 @@ a terminal fulfilment failure on an order with a `merchant_id` whose
 `MoneyOutcome` is `RETURNED`. `SPENT` and `UNKNOWN` post nothing and raise
 `_alert_merchant_needs_a_human` instead — refunding money we did not get back
 is not a safe failure mode, and it is the owner's decision, not a default
-waiting to be optimised. Every `g2b` failure **from a call that went out** is
-`UNKNOWN` (see `fulfillment/README.md`), so that lane is real; how big it is
-nobody has counted, and an earlier version of this sentence claimed "most"
-without a measurement behind it.
+waiting to be optimised. Almost every `g2b` failure **from a call that went
+out** is `UNKNOWN` (see `fulfillment/README.md`), so that lane is real; how big
+it is nobody has counted, and an earlier version of this sentence claimed
+"most" without a measurement behind it. The one exception, added in M3c, is a
+game create G2B refuses with its own `HTTP 400 {"message":"Invalid player
+ID…","success":false}` — the owner ruled on 2026-09-09 that they do not debit
+us for it, so that one refunds itself. It is matched on their exact envelope
+and on nothing looser; a rejection the predicate does not recognise keeps
+answering `UNKNOWN` and keeps fetching a human.
 
 **The amount is the charge's, read off the charge's own ledger transaction**
 (`deposit.charged_for_order`), never off `order_items.unit_price_usd` and

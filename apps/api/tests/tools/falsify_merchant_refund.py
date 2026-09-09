@@ -71,12 +71,17 @@ ATTRIB = "apps/api/tests/integration/test_merchant_deposit_attribution.py"
 PLACE = "apps/api/tests/integration/test_merchant_api_orders.py"
 ACTOR = "apps/api/tests/integration/test_orders_merchant_actor.py"
 
+G2B_UNIT = "apps/api/tests/unit/test_g2b_fulfiller.py"
+#: Where the mappings themselves are graded, adapter by adapter.
+OUTCOME = "apps/api/tests/unit/test_supplier_money_outcome.py"
+
 REFUND = SRC / "modules/merchants/refund.py"
 DEPOSIT = SRC / "modules/merchants/deposit.py"
 STATUS = SRC / "modules/merchants/order_status.py"
 SAGA = SRC / "modules/fulfillment/service.py"
 PLACEMENT = SRC / "modules/merchants/orders.py"
 ORDERS = SRC / "modules/orders/service.py"
+G2B = SRC / "modules/fulfillment/suppliers/g2b.py"
 
 
 MUTATIONS: tuple[Mutation, ...] = (
@@ -89,6 +94,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=(
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
+            "test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_order",
             "test_a_manually_failed_merchant_order_reaches_the_seam",
         ),
     ),
@@ -103,7 +109,10 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_a_retail_failure_never_reaches_the_refund_at_all",),
+        expect=(
+            "test_a_retail_failure_never_reaches_the_refund_at_all",
+            "test_the_same_g2b_rejection_moves_no_money_for_a_retail_order",
+        ),
     ),
     Mutation(
         name="frozen_blocks_the_refund",
@@ -452,6 +461,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=(
             "test_a_force_complete_after_a_refund_is_refused_too",
             "test_a_frozen_merchant_is_still_refunded",
+            "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
             "test_a_hand_credit_cannot_take_an_order_past_what_it_charged",
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
             "test_a_re_driven_fulfilment_refunds_once",
@@ -576,7 +586,10 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_the_refund_is_visible_on_the_order_and_on_the_statement",),
+        expect=(
+            "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
+            "test_the_refund_is_visible_on_the_order_and_on_the_statement",
+        ),
     ),
     Mutation(
         name="failure_reason_claims_a_refund_that_did_not_post",
@@ -593,6 +606,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_failed_refund_leaves_the_order_saying_a_human_is_deciding",
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
+            "test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_order",
             "test_a_manually_failed_merchant_order_reaches_the_seam",
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
         ),
@@ -615,6 +629,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=(
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
+            "test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_order",
             "test_a_manually_failed_merchant_order_reaches_the_seam",
         ),
     ),
@@ -642,6 +657,163 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_an_order_with_no_charge_refunds_nothing_and_calls_a_human",
             "test_an_unexpected_refund_crash_never_reaches_the_unknown_crash_arm",
             "test_an_unimportable_refund_module_is_reported_not_fatal",
+        ),
+    ),
+    # ---- the one supplier rejection we grade as free (M3c Task 1)
+    #
+    # These sit here rather than in a g2b harness of their own because what
+    # they break is a *money* property: the predicate below is the only thing
+    # standing between "G2B refused" and a posted refund, and its false
+    # positive spends our money on a merchant who is not owed it.
+    #
+    # The last five break **one conjunct each**, counted by hand off
+    # ``_is_an_unbilled_player_rejection`` — the cheap manual version of a
+    # generated dropper, and the same method that turned up two missing rows
+    # in the webhook harness. The predicate has seven decisions (status, "is
+    # it JSON", "is it an object", ``success is False``, "is the message
+    # text", the pattern, and the anchor); each has a test, and every row
+    # below reddens a different one of them.
+    Mutation(
+        name="invalid_player_not_graded",
+        breaks="the one rejection we know is free goes back to parking for a human",
+        edits=(
+            (
+                G2B,
+                "                money_outcome=(\n"
+                "                    _REJECTED_UNBILLED if _is_an_unbilled_player_rejection(exc) else _MAY_HAVE_SPENT\n"
+                "                ),\n",
+                "                money_outcome=_MAY_HAVE_SPENT,\n",
+            ),
+        ),
+        tests=(OUTCOME, LIVE),
+        expect=(
+            "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
+            "test_g2b_an_invalid_player_id_is_money_we_never_spent",
+            "test_the_same_g2b_rejection_moves_no_money_for_a_retail_order",
+        ),
+    ),
+    Mutation(
+        name="unbilled_beats_low_balance",
+        breaks="a body claiming both refunds a reseller instead of stalling for a top-up",
+        edits=(
+            (
+                G2B,
+                "            if _looks_like_low_balance(exc):\n"
+                "                return _low_balance_result(\n"
+                "                    mapping=mapping,\n"
+                '                    kind="game",\n',
+                "            if _looks_like_low_balance(exc) and not _is_an_unbilled_player_rejection(\n"
+                "                exc\n"
+                "            ):\n"
+                "                return _low_balance_result(\n"
+                "                    mapping=mapping,\n"
+                '                    kind="game",\n',
+            ),
+        ),
+        tests=(OUTCOME,),
+        expect=("test_g2b_the_low_balance_branch_still_wins_a_body_that_matches_both",),
+    ),
+    Mutation(
+        name="matcher_ignores_the_status",
+        breaks="a 5xx carrying their words is read as a free refusal",
+        edits=(
+            (
+                G2B,
+                "    if exc.status != _INVALID_PLAYER_STATUS:\n        return False\n",
+                "",
+            ),
+        ),
+        tests=(G2B_UNIT,),
+        expect=("test_the_right_words_at_the_wrong_status_are_not_recognised",),
+    ),
+    Mutation(
+        name="matcher_reads_a_non_json_body",
+        breaks="an HTML page or a proxy carrying their words is read as G2B",
+        edits=(
+            (
+                G2B,
+                "    except (json.JSONDecodeError, TypeError):\n"
+                "        # Not their JSON at all — an HTML error page, a proxy, a truncated\n"
+                "        # body. Whatever rejected us, it was not G2B saying this.\n"
+                "        return False\n",
+                "    except (json.JSONDecodeError, TypeError):\n"
+                '        body = {"success": False, "message": exc.body}\n',
+            ),
+        ),
+        tests=(G2B_UNIT,),
+        expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[not-their-envelope]",),
+    ),
+    Mutation(
+        name="matcher_ignores_the_body_shape",
+        breaks="a bare JSON string is asked for a success flag it cannot have",
+        edits=(
+            (
+                G2B,
+                '    if not isinstance(body, dict) or body.get("success") is not False:\n',
+                '    if body.get("success") is not False:\n',
+            ),
+        ),
+        tests=(G2B_UNIT,),
+        expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[json-not-an-object]",),
+    ),
+    Mutation(
+        name="matcher_ignores_the_success_flag",
+        breaks="their envelope saying success is read as their refusal",
+        edits=(
+            (
+                G2B,
+                '    if not isinstance(body, dict) or body.get("success") is not False:\n',
+                "    if not isinstance(body, dict):\n",
+            ),
+        ),
+        tests=(G2B_UNIT,),
+        expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[not-a-refusal]",),
+    ),
+    Mutation(
+        name="matcher_trusts_a_non_string_message",
+        breaks="a message that is not text reaches the pattern and raises",
+        edits=(
+            (
+                G2B,
+                "    if not isinstance(message, str):\n        return False\n",
+                "",
+            ),
+        ),
+        tests=(G2B_UNIT,),
+        expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[message-not-a-string]",),
+    ),
+    Mutation(
+        name="matcher_drops_the_anchor",
+        breaks="the phrase buried in some other rejection is read as this one",
+        # This row is why the pattern carries no ``^``. With both a ``^`` and
+        # ``re.match`` the anchor had two independent guards, so neither this
+        # edit nor dropping the caret could redden anything and the harness
+        # reported UNFALSIFIED twice. Redundant guards are unfalsifiable
+        # guards; the pattern lost its caret and ``match`` kept the job.
+        edits=((G2B, "_INVALID_PLAYER_MESSAGE.match(", "_INVALID_PLAYER_MESSAGE.search("),),
+        tests=(G2B_UNIT,),
+        expect=(
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[phrase-buried-mid-message]",
+        ),
+    ),
+    Mutation(
+        name="matcher_drops_the_word_boundary",
+        breaks="a longer word at the anchor — 'invalid player identifier' — is read as this one",
+        edits=((G2B, 'r"invalid player id\\b"', 'r"invalid player id"'),),
+        tests=(G2B_UNIT,),
+        expect=(
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[longer-word-at-the-anchor]",
+        ),
+    ),
+    Mutation(
+        name="matcher_pattern_matches_anything",
+        breaks="every rejection under their envelope becomes a free one",
+        edits=((G2B, 'r"invalid player id\\b"', 'r""'),),
+        tests=(G2B_UNIT,),
+        expect=(
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[another-message]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[longer-word-at-the-anchor]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[phrase-buried-mid-message]",
         ),
     ),
     Mutation(

@@ -12,10 +12,13 @@ holds two different kinds of test:
   set of leaves: the listed version of this test could not fail, because a
   new adapter would simply not be on the list.
 - **the mappings themselves** — what each adapter answers, and on what
-  evidence. The three do not rest on the same kind of evidence and the tests
-  say which is which: G-Engine reads an ``is_refunded`` field, Waxpeer keys
-  on a status whose refund behaviour it has observed, and G2B has only a line
-  in someone's documentation.
+  evidence. They do not rest on the same kind of evidence and the tests say
+  which is which: G-Engine reads an ``is_refunded`` field, Waxpeer keys on a
+  status whose refund behaviour it has observed, G2B has a line in someone's
+  documentation for almost everything — and, for exactly one rejection, their
+  error string plus the owner's ruling of 2026-09-09 that it is not billed.
+  That fourth kind is the weakest thing here that still pays a merchant out,
+  so its tests are as much about what must **not** match as about what does.
 """
 
 from __future__ import annotations
@@ -30,12 +33,14 @@ from typing import Any, cast, get_args
 import pytest
 from yupay.modules.fulfillment.suppliers import REGISTRY
 from yupay.modules.fulfillment.suppliers.base import (
+    FulfillerError,
     FulfillResult,
     FulfillStatus,
     MoneyOutcome,
 )
-from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+from yupay.modules.fulfillment.suppliers.g2b import LOW_BALANCE_ERROR, G2bFulfiller
 from yupay.modules.fulfillment.suppliers.g2b_client import (
+    G2bError,
     GameOrderCreated,
     VoucherPurchaseResult,
 )
@@ -462,21 +467,27 @@ def test_waxpeers_mapping_is_total_by_construction() -> None:
     assert _money_for(outcome="failed", status="completed", shortfall=1) is MoneyOutcome.SPENT
 
 
-# ---------- G2B: a promise, not an observation ----------
+# ---------- G2B: a promise, plus one rejection the owner graded ----------
 
 
 class _G2bFake:
     def __init__(self, **canned: Any) -> None:
         self._canned = canned
 
+    def _resolve(self, name: str) -> Any:
+        value = self._canned[name]
+        if isinstance(value, Exception):
+            raise value
+        return value
+
     async def get_me(self) -> dict[str, Any]:
         return {"balance": "1000"}
 
     async def purchase_voucher(self, **_kw: Any) -> VoucherPurchaseResult:
-        return cast(VoucherPurchaseResult, self._canned["purchase_voucher"])
+        return cast(VoucherPurchaseResult, self._resolve("purchase_voucher"))
 
     async def create_game_order(self, **_kw: Any) -> GameOrderCreated:
-        return cast(GameOrderCreated, self._canned["create_game_order"])
+        return cast(GameOrderCreated, self._resolve("create_game_order"))
 
 
 def _mapping(kind: str) -> Any:
@@ -500,7 +511,10 @@ async def test_g2b_cannot_do_better_than_unknown() -> None:
     auto-refunds the balance, and that is the whole of the evidence — a
     promise we have never checked against anything we read. ``RETURNED``
     here would spend a merchant's deposit on someone else's paperwork, so
-    the third value exists for exactly this."""
+    the third value exists for exactly this.
+
+    The one rejection M3c graded does not reach this path: it is a *raise*
+    from the game create, not a ``failed`` status on a call that succeeded."""
     f = G2bFulfiller(
         client=cast(
             Any,
@@ -533,6 +547,67 @@ async def test_g2b_a_failed_game_order_is_unknown_for_the_same_reason() -> None:
 
     assert result.outcome == "failed"
     assert result.money_outcome is MoneyOutcome.UNKNOWN
+
+
+#: The exact body G2B answered a real merchant game create with on
+#: 2026-09-09 (order ``m3b-parkA-1``). The owner ruled the same day that G2B
+#: does not debit us for it.
+_LIVE_INVALID_PLAYER_BODY = (
+    '{"message":"Invalid player ID. Please check and try again.","success":false}'
+)
+
+
+async def _game_create_raising(exc: Exception) -> FulfillResult:
+    f = G2bFulfiller(client=cast(Any, _G2bFake(create_game_order=exc)))
+    return await f._fulfill_game(
+        mapping=_mapping("game"), item=_g2b_item(), idempotency_key="k-invalid"
+    )
+
+
+async def test_g2b_an_invalid_player_id_is_money_we_never_spent() -> None:
+    """A fourth kind of evidence, and the weakest that still pays out:
+    G2B's own rejection string, plus the owner's knowledge (2026-09-09) that
+    their balance is not debited for it. Not a field we read, not a promise in
+    a document — an observed refusal we have been told is free."""
+    with pytest.raises(FulfillerError) as caught:
+        await _game_create_raising(G2bError(400, _LIVE_INVALID_PLAYER_BODY))
+
+    assert caught.value.money_outcome is MoneyOutcome.RETURNED
+
+
+@pytest.mark.parametrize(
+    ("status", "body"),
+    [
+        pytest.param(
+            400,
+            '{"message":"Catalogue item not found.","success":false}',
+            id="another-400",
+        ),
+        pytest.param(500, _LIVE_INVALID_PLAYER_BODY, id="a-500"),
+    ],
+)
+async def test_g2b_a_rejection_we_do_not_recognise_is_still_unknown(status: int, body: str) -> None:
+    """The fallback is the design. Only the one shape above is graded; every
+    other refusal from a call that went out keeps answering ``UNKNOWN`` and
+    keeps fetching a human."""
+    with pytest.raises(FulfillerError) as caught:
+        await _game_create_raising(G2bError(status, body))
+
+    assert caught.value.money_outcome is MoneyOutcome.UNKNOWN
+
+
+async def test_g2b_the_low_balance_branch_still_wins_a_body_that_matches_both() -> None:
+    """Order of the two matchers, on a body both would claim. Low balance is
+    checked first and is **not** terminal: the order stays in flight, an admin
+    tops the supplier up, and no money outcome is recorded at all — which is
+    the one answer that leaves every later verdict open."""
+    result = await _game_create_raising(
+        G2bError(400, '{"message":"Invalid player ID. Insufficient balance.","success":false}')
+    )
+
+    assert result.outcome == "failed"
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.money_outcome is None
 
 
 # ---------- the stall is Task 4's, and stays unclassified ----------

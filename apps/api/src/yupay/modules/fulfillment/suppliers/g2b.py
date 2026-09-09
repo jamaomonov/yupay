@@ -23,6 +23,8 @@ PII / secrets policy:
 
 from __future__ import annotations
 
+import json
+import re
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
@@ -49,7 +51,7 @@ from yupay.modules.integrations.service import get_mapping
 LOW_BALANCE_ERROR = "supplier_low_balance"
 
 #: What a terminal G2B failure means for our money — and why it is the weakest
-#: of the three answers in this package.
+#: of the three adapters' answers in this package.
 #:
 #: **No endpoint this adapter calls carries a refund field.** Their
 #: documentation says a FAILED order auto-refunds the balance (see
@@ -66,6 +68,14 @@ LOW_BALANCE_ERROR = "supplier_low_balance"
 #: someone else's paperwork. ``UNKNOWN`` is what the third value is for — no
 #: automatic refund, and a human who can go and look.
 #:
+#: **One narrow exception exists, and it is a different constant.** M3c graded
+#: a single *create* rejection — an invalid player id — as ``RETURNED``, on
+#: the owner's ruling (2026-09-09) that G2B does not debit us for it: see
+#: :data:`_REJECTED_UNBILLED` and :func:`_is_an_unbilled_player_rejection`,
+#: which matches their exact envelope and nothing else. Every failure *this*
+#: constant covers still answers ``UNKNOWN``, and so does every create
+#: rejection that predicate does not recognise.
+#:
 #: **Promoting this is cheaper than it sounds, and does not need G2B's help:
 #: they already publish the evidence and we simply do not fetch it.**
 #: ``docs/g2b-intergation.md`` §7 documents ``GET /v1/games/orders``, whose
@@ -74,8 +84,8 @@ LOW_BALANCE_ERROR = "supplier_low_balance"
 #: (``add_balance`` = "пополнение или возврат", ``charge_balance`` with
 #: ``balance_before`` / ``balance_after``), which is the reconciled balance
 #: history this note used to name as a distant goal. Neither is wired up. A
-#: client method plus a poll would move the single largest ``UNKNOWN`` bucket
-#: in the codebase to a field we read; until one exists, this stays
+#: client method plus a poll would move this adapter's ``UNKNOWN`` bucket —
+#: whose size nobody has counted — to a field we read; until one exists, this stays
 #: ``UNKNOWN``, because what is documented and what we observe are not the
 #: same thing — which is the whole point of this constant.
 _FAILURE_MONEY_OUTCOME = MoneyOutcome.UNKNOWN
@@ -88,8 +98,26 @@ _NEVER_SENT = MoneyOutcome.RETURNED
 #: A refusal from a call that may already have placed (and been billed for) an
 #: order. ``G2bError`` covers every non-retryable status the client gives up
 #: on, so "they refused" and "they charged us and then errored" are not
-#: distinguishable from here.
+#: distinguishable from here — **except** for the one shape below.
 _MAY_HAVE_SPENT = MoneyOutcome.UNKNOWN
+
+#: A create G2B refused **without billing us**, recognised from their own
+#: rejection (see :func:`_is_an_unbilled_player_rejection`). One shape
+#: qualifies: an invalid player id.
+#:
+#: This is a **fourth kind of evidence**, and it is worth naming because the
+#: other three are graded in ADR-0071's decision 3. It is not a field we read
+#: (``gengine``'s ``is_refunded``), not behaviour we have watched and written
+#: down (``waxpeer``), and not our own control flow (:data:`_NEVER_SENT`,
+#: where no call went out at all). It is **their error string, plus the
+#: owner's knowledge that this particular refusal is not billed** — a ruling
+#: made on 2026-09-09 after the shape was observed on production. Weaker than
+#: a field, because the string is not a statement about money and could be
+#: reused for something that *is* billed; stronger than the documentation
+#: sentence :data:`_FAILURE_MONEY_OUTCOME` rests on, because we have seen this
+#: exact response and been told what it costs. What would promote it to a
+#: field is the same read :data:`_FAILURE_MONEY_OUTCOME`'s note names.
+_REJECTED_UNBILLED = MoneyOutcome.RETURNED
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -259,10 +287,13 @@ class G2bFulfiller(Fulfiller):
         # ones. The admin /cancel route already flipped the task locally;
         # we accept that as the only action available.
         #
-        # That "their docs say" is the whole of our evidence about G2B money,
-        # which is why ``_FAILURE_MONEY_OUTCOME`` is UNKNOWN — read its note
-        # before treating a failed G2B order as refunded, and for the two
-        # endpoints that would turn the promise into an observation.
+        # That "their docs say" is the whole of our evidence about G2B money
+        # everywhere but one place: the single *create* rejection the owner
+        # graded by hand in M3c (``_REJECTED_UNBILLED``). Nothing on this path
+        # is covered by it, which is why ``_FAILURE_MONEY_OUTCOME`` is UNKNOWN
+        # — read its note before treating a failed G2B order as refunded, and
+        # for the two endpoints that would turn the promise into an
+        # observation.
         return None
 
     # ---------- voucher branch ----------
@@ -429,9 +460,16 @@ class G2bFulfiller(Fulfiller):
                     required=None,
                     source=f"g2b HTTP {exc.status}",
                 )
+            # One rejection is known to cost us nothing and refunds a
+            # reseller automatically; **everything else falls back to
+            # ``_MAY_HAVE_SPENT``**, which parks the order for a human. That
+            # fallback is the behaviour, not a gap — see
+            # ``_is_an_unbilled_player_rejection`` for why it is narrow.
             raise FulfillerError(
                 f"g2b game order failed: HTTP {exc.status}: {_err_body(exc)}",
-                money_outcome=_MAY_HAVE_SPENT,
+                money_outcome=(
+                    _REJECTED_UNBILLED if _is_an_unbilled_player_rejection(exc) else _MAY_HAVE_SPENT
+                ),
             ) from exc
 
         if created.status == "completed":
@@ -633,11 +671,75 @@ def _looks_like_low_balance(exc: G2bError) -> bool:
     false positive demotes a hard failure to a low-balance retryable
     state, which is the safer mistake (admin sees both kinds in the
     same queue either way).
+
+    Since M3c that mistake has a second, still-safe consequence, stated here
+    so the looseness stays a decision: this branch is checked **first**, so a
+    body that would also match :func:`_is_an_unbilled_player_rejection` stalls
+    instead of auto-refunding a reseller. Withholding a refund is the
+    direction this package errs in everywhere — an order that stalls is still
+    in flight and still settleable by hand.
     """
     body = (exc.body or "").lower()
     if exc.status not in {400, 402, 403, 422}:
         return False
     return any(hint in body for hint in _LOW_BALANCE_HINTS)
+
+
+#: G2B's envelope for the one rejection we know costs us nothing, as observed
+#: on production 2026-09-09::
+#:
+#:     HTTP 400 {"message":"Invalid player ID. Please check and try again.","success":false}
+#:
+#: Anchoring is :meth:`re.Pattern.match`'s, not a ``^`` in the pattern — one
+#: or the other, never both, because two redundant anchors mean no single
+#: mutation can falsify either and the harness reports the row as vacuous
+#: (which is how this line was found). What it buys: the phrase appearing
+#: *inside* a longer sentence is a rejection we have not seen, and this
+#: matcher does not extrapolate to it. ``\b`` earns its keep the same way —
+#: "Invalid player identifier…" is a different message.
+_INVALID_PLAYER_STATUS = 400
+_INVALID_PLAYER_MESSAGE = re.compile(r"invalid player id\b")
+
+
+def _is_an_unbilled_player_rejection(exc: G2bError) -> bool:
+    """Is this the one create refusal G2B makes without debiting our balance?
+
+    **Read this next to** :func:`_looks_like_low_balance`, which is
+    deliberately loose, and understand that the two are opposite on purpose —
+    an unexplained difference between neighbours invites someone to "fix" one
+    of them. Its false positive demotes a hard failure to a retryable stall
+    and an admin sees both kinds in the same queue anyway. **This one's false
+    positive pays a merchant back for goods we may have bought**, on our own
+    money, silently, with no operator path to undo it (ADR-0071 decision 5).
+    So it is as narrow as the evidence: the status *and* their envelope *and*
+    the shape of the message, all three, or the answer is no.
+
+    A rejection this does not recognise is not a gap — the caller keeps
+    answering :data:`_MAY_HAVE_SPENT`, which parks the order and fetches a
+    human. Falling back to the safe answer **is** the design; widening this
+    predicate to cover a refusal nobody has graded is how that design is lost.
+
+    Args:
+        exc: The non-retryable error the client raised for a create call.
+
+    Returns:
+        ``True`` only for a 400 carrying G2B's own ``{"success": false,
+        "message": "Invalid player ID…"}`` body.
+    """
+    if exc.status != _INVALID_PLAYER_STATUS:
+        return False
+    try:
+        body = json.loads(exc.body)
+    except (json.JSONDecodeError, TypeError):
+        # Not their JSON at all — an HTML error page, a proxy, a truncated
+        # body. Whatever rejected us, it was not G2B saying this.
+        return False
+    if not isinstance(body, dict) or body.get("success") is not False:
+        return False
+    message = body.get("message")
+    if not isinstance(message, str):
+        return False
+    return _INVALID_PLAYER_MESSAGE.match(" ".join(message.split()).lower()) is not None
 
 
 def _low_balance_result(
