@@ -25,12 +25,14 @@ from __future__ import annotations
 
 import ast
 import inspect
+import pathlib
 import sys
 from decimal import Decimal
 from types import ModuleType, SimpleNamespace
 from typing import Any, cast, get_args
 
 import pytest
+from yupay.modules import fulfillment as fulfillment_pkg
 from yupay.modules.fulfillment.suppliers import REGISTRY
 from yupay.modules.fulfillment.suppliers.base import (
     FulfillerError,
@@ -107,6 +109,55 @@ def _calls(names: frozenset[str], tree: ast.Module, label: str) -> list[tuple[st
         for node in ast.walk(tree)
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id in names
     ]
+
+
+def _predicate_call_sites(name: str) -> list[str]:
+    """Every call to ``name`` anywhere in ``modules.fulfillment``, as ``file:line``.
+
+    Deliberately wider and looser than :func:`_adapter_calls`, in both the
+    directions that walk cannot see:
+
+    * **the whole package, not the suppliers folder.** The call this pins must
+      not appear in ``service.py`` either — re-grading a parked task by asking
+      an adapter's predicate about a stored ``last_error`` is exactly the
+      operator re-grade ADR-0071 decision 5 says does not exist, and it would
+      arrive as one plausible-looking line in the seam.
+    * **three spellings, not one.** ``_adapter_calls`` matches ``ast.Name``
+      only, so ``g2b._is_an_unbilled_player_rejection(...)`` is invisible to
+      it — and so is ``from .g2b import … as _p`` followed by ``_p(exc)``. A
+      bare name and an attribute are caught by comparing the callee's last
+      component; the alias is caught by reading each file's own
+      ``from … import`` and adding whatever local name it bound. All three were
+      probed before this docstring was written, because the first version of it
+      claimed the alias was covered when it was not.
+
+    The false-positive cost is one unrelated object growing a method of the
+    same name — a name this private and this long.
+    """
+    root = pathlib.Path(fulfillment_pkg.__file__ or "").parent
+    out: list[str] = []
+    for path in sorted(root.rglob("*.py")):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        # Whatever this file calls it: the name itself, plus every local alias
+        # bound to it by an ``from … import name as alias``.
+        local: set[str] = {name}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom):
+                local |= {a.asname or a.name for a in node.names if a.name == name}
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            func = node.func
+            called = (
+                func.id
+                if isinstance(func, ast.Name)
+                else func.attr
+                if isinstance(func, ast.Attribute)
+                else None
+            )
+            if called in local:
+                out.append(f"{path.relative_to(root)}:{node.lineno}")
+    return out
 
 
 def _adapter_calls(names: frozenset[str]) -> list[tuple[str, ast.Call]]:
@@ -631,11 +682,11 @@ def test_the_unbilled_player_rejection_is_consulted_at_exactly_one_site() -> Non
     and pins the call count, because the paragraph forbidding it lives two
     hundred lines from where it would be broken.
     """
-    sites = [where for where, _ in _adapter_calls(frozenset({"_is_an_unbilled_player_rejection"}))]
+    sites = _predicate_call_sites("_is_an_unbilled_player_rejection")
 
     # The file, not the line: a line number churns on every edit above it and
     # says nothing about the rule. One call, in the g2b adapter, is the rule.
-    assert [w.split(":")[0] for w in sites] == ["g2b.py"], (
+    assert [w.split(":")[0] for w in sites] == ["suppliers/g2b.py"], (
         "the unbilled-player predicate is consulted somewhere new. It grades one "
         "rejection of one call — the g2b game create — on the owner's 2026-09-09 "
         f"ruling, which covers nothing else. Sites: {sites}"

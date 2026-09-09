@@ -676,7 +676,8 @@ MUTATIONS: tuple[Mutation, ...] = (
     # equality — prefix, substring, and not checking at all — admit different
     # families of message and one of them is how 77a2efe0 shipped.
     #
-    # **Every row runs both unit files.** Two of them declared only
+    # **Every row that grades the matcher runs both unit files.** Two of
+    # them declared only
     # ``G2B_UNIT`` in the first round while the report claimed they graded
     # cases living in ``OUTCOME``; the runner opens a row's declared files and
     # nothing else, so those cases were graded by nothing at all.

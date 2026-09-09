@@ -1750,7 +1750,7 @@ async def test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_orde
     assert body["failure_reason"] == "fulfillment_failed"
 
 
-# ---------- retail is byte-identical ----------
+# ---------- retail moves no money (its record does change) ----------
 
 
 async def _retail_order(

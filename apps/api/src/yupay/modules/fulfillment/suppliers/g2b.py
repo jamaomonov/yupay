@@ -72,9 +72,8 @@ LOW_BALANCE_ERROR = "supplier_low_balance"
 #: the owner's ruling (2026-09-09) that G2B does not debit us for it: see
 #: :data:`_REJECTED_UNBILLED` and :func:`_is_an_unbilled_player_rejection`,
 #: which matches their exact envelope and their exact message, and nothing
-#: looser. Every failure *this*
-#: constant covers still answers ``UNKNOWN``, and so does every create
-#: rejection that predicate does not recognise.
+#: looser. Every failure *this* constant covers still answers ``UNKNOWN``,
+#: and so does every create rejection that predicate does not recognise.
 #:
 #: **Promoting this is cheaper than it sounds, and does not need G2B's help:
 #: they already publish the evidence and we simply do not fetch it.**
