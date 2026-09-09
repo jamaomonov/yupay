@@ -15,7 +15,8 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from yupay_scheduler.jobs.stuck_orders import _format, _format_amount
+from yupay.core.money import format_amount
+from yupay_scheduler.jobs.stuck_orders import _format
 
 
 def test_the_message_leads_with_the_money_not_the_order_id() -> None:
@@ -59,7 +60,7 @@ def test_order_id_is_truncated_and_escaped() -> None:
 )
 def test_usd_keeps_its_cents(charged: Decimal, expected: str) -> None:
     """«0 USD» is not an imprecise number, it is a false one."""
-    assert _format_amount(charged, "USD") == expected
+    assert format_amount(charged, "USD") == expected
 
 
 @pytest.mark.parametrize(
@@ -76,7 +77,7 @@ def test_uzs_stays_whole_with_a_space_separator(charged: Decimal, expected: str)
     This is the test that fails if a later fix reaches for two decimals
     everywhere: the alert would then print a precision the charge never had.
     """
-    rendered = _format_amount(charged, "UZS")
+    rendered = format_amount(charged, "UZS")
     assert rendered == expected
     assert "." not in rendered, "UZS grew decimals it was never charged at"
     assert "," not in rendered, "the thousands separator must stay a space"
@@ -84,9 +85,31 @@ def test_uzs_stays_whole_with_a_space_separator(charged: Decimal, expected: str)
 
 def test_a_currency_we_have_not_met_yet_gets_minor_units() -> None:
     """Everything except UZS is stored quantized to 0.01 (`_CURRENCY_QUANTUM`)."""
-    assert _format_amount(Decimal("0.240000"), "USDT") == "0.24"
-    assert _format_amount(Decimal("99.900000"), "RUB") == "99.90"
+    assert format_amount(Decimal("0.240000"), "USDT") == "0.24"
+    assert format_amount(Decimal("99.900000"), "RUB") == "99.90"
 
 
 def test_the_amount_reaches_the_alert_body() -> None:
     assert "Сумма: <b>0.24 USD</b>" in _format("abc12345", "0.24", "USD", 75, "fulfilling")
+
+
+def test_money_rendering_matches_the_charge_quantum() -> None:
+    """The set of whole-unit currencies is not a display preference.
+
+    ``orders.service._CURRENCY_QUANTUM`` rounds an order total to its
+    currency's smallest payable unit *before* the order is stored. If the
+    renderer's idea of "whole units" ever drifts from that, an alert prints a
+    precision the charge never had — or hides one it did, which is how
+    «Сумма: 0 USD» reached the owner for a $0.24 order.
+
+    This pins the two together rather than trusting a comment to keep them
+    aligned: the money module's set must be exactly the currencies the order
+    path rounds to whole units.
+    """
+    from decimal import Decimal
+
+    from yupay.core.money import WHOLE_UNIT_CURRENCIES
+    from yupay.modules.orders.service import _CURRENCY_QUANTUM
+
+    whole_in_charge_path = {c for c, q in _CURRENCY_QUANTUM.items() if q == Decimal("1")}
+    assert whole_in_charge_path == WHOLE_UNIT_CURRENCIES

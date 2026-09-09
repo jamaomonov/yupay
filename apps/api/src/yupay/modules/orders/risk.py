@@ -50,6 +50,7 @@ from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
+from yupay.core.money import format_amount
 from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.evidence.models import OrderEvidence
@@ -1006,7 +1007,7 @@ async def hold_for_review(
     with contextlib.suppress(Exception):
         facts = await _fraud_group_facts(db, order)
 
-    charged = f"{order.total_charged:,.0f}".replace(",", " ")
+    charged = format_amount(order.total_charged, order.currency)
     title, what_to_do = HOLD_ALERT_TEXT.get(reason, HOLD_ALERT_TEXT[REASON_LARGE_AMOUNT])
     fact_lines = "".join(f"{k.capitalize()}: {v}\n" for k, v in facts.items())
     paid_line = f"Оплачен: {order.paid_at:%d.%m %H:%M} UTC\n" if order.paid_at else ""
@@ -1068,7 +1069,7 @@ async def _fraud_group_facts(db: AsyncSession, order: Order) -> dict[str, str]:
 
 
 def _fraud_group_text(facts: dict[str, str], order: Order, reason: str) -> str:
-    charged = f"{order.total_charged:,.0f}".replace(",", " ")
+    charged = format_amount(order.total_charged, order.currency)
     lines = [
         "⚠️ <b>Заказ задержан антифродом — нужна проверка</b>",
         f"Сумма: <b>{charged} {order.currency}</b>",
@@ -1124,7 +1125,7 @@ async def _escalate_auto_refund(
 
     from yupay.modules.notifications.alerts import send_admin_alert
 
-    charged = f"{order.total_charged:,.0f}".replace(",", " ")
+    charged = format_amount(order.total_charged, order.currency)
     with contextlib.suppress(Exception):
         await send_admin_alert(
             "<b>⚠️ Автовозврат недоступен — деньги надо вернуть из кабинета эквайера</b>\n"
@@ -1245,7 +1246,7 @@ async def _auto_refund_one(db: AsyncSession, order_id: str, *, hours: int) -> bo
 
     from yupay.modules.notifications.alerts import send_admin_alert
 
-    charged = f"{total_charged:,.0f}".replace(",", " ")
+    charged = format_amount(total_charged, currency)
     with contextlib.suppress(Exception):
         await send_admin_alert(
             "<b>💸 Автовозврат: срок проверки истёк</b>\n"

@@ -20,14 +20,13 @@ from __future__ import annotations
 
 import contextlib
 import html
-from decimal import Decimal
-from typing import Final
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
+from yupay.core.money import format_amount
 from yupay.core.redis import get_redis
 
 # Reach into the services directly rather than through each module's ``api``:
@@ -56,34 +55,10 @@ async def _should_alert(order_id: str, *, repeat_hours: int) -> bool:
     return True
 
 
-#: Currencies charged in whole units. Mirrors ``orders.service._CURRENCY_QUANTUM``,
-#: which rounds a total to its currency's smallest payable unit *before* the
-#: order is stored: UZS to whole so'm (tiyin coins are defunct), everything
-#: else to minor units. Rendering has to match, or the alert prints a
-#: precision the charge never had — or hides one it did.
-_WHOLE_UNIT_CURRENCIES: Final[frozenset[str]] = frozenset({"UZS"})
-
-
-def _format_amount(amount: Decimal, currency: str) -> str:
-    """Render ``amount`` at the precision its currency is actually charged at.
-
-    Written for UZS, where whole sums are right and the space thousands
-    separator earns its place. USD orders arrived with the merchant API and
-    nothing revisited it, so two live alerts on 2026-09-09 said «Сумма: 1 USD»
-    for a $0.64 order and «Сумма: 0 USD» for a $0.24 one. **"0 USD" is not an
-    imprecise number, it is a false one** on a line whose whole job is to say
-    money is at stake.
-
-    Args:
-        amount: The order's ``total_charged``, in ``currency``'s major units.
-        currency: The order's charge currency (e.g. ``"UZS"``, ``"USD"``).
-
-    Returns:
-        The amount with a space thousands separator, and two decimals unless
-        the currency is charged in whole units.
-    """
-    digits = 0 if currency.upper() in _WHOLE_UNIT_CURRENCIES else 2
-    return f"{amount:,.{digits}f}".replace(",", " ")
+# ``format_amount`` lives in ``yupay.core.money`` rather than here: the same
+# ``:,.0f`` idiom was copied into six alert bodies and went wrong in all of
+# them at once, so the fix is one function, not six edits. See that module for
+# why the precision mirrors the charge quantum.
 
 
 def _format(order_id: str, amount: str, currency: str, minutes: int, status: str) -> str:
@@ -119,7 +94,7 @@ async def run_alert_stuck_orders() -> None:
         await send_admin_alert(
             _format(
                 order.id,
-                _format_amount(order.total_charged, order.currency),
+                format_amount(order.total_charged, order.currency),
                 order.currency,
                 waited_minutes,
                 order.status,
