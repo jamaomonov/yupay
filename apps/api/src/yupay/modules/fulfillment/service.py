@@ -1099,22 +1099,31 @@ async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task
 
     **Only on a full settlement**, asked of the ledger through
     ``refund.settled_in_full`` — the same pure predicate ``_failure_reason``
-    and the cancellation alert use, never a second comparison. Note honestly
-    what that guard is worth *today*: ``refund_order`` posts exactly what the
+    and the cancellation alert use, never a second comparison. Note what the
+    guard is worth *through the saga*: ``refund_order`` posts exactly what the
     charge took and refuses any order money has already come back on, so by the
-    time we get here the answer is always yes, and no mutation of this line
-    changes anything the suite can see (the harness declares that as an
-    absence, and names ``no_already_settled_check`` as what actually grades
-    "a partial does not close the order"). It is written anyway because the
-    rule belongs to *this* function rather than to its one caller: the
-    settlement a person books by hand is the obvious second caller, it can be
-    partial, and a partial closed behind an operator mid-decision takes away
-    the retry they were about to use.
+    time the seam gets here the answer is always yes. **Do not read that as
+    "untested".** Calling this function directly reaches it, which is what
+    ``test_a_partial_settlement_is_not_closed_by_the_closer_itself`` does, and
+    the harness row ``close_ignores_a_partial_settlement`` deletes this line and
+    expects that test red. The same holds for ``FAILABLE_STATUSES`` above it
+    (``test_a_delivered_order_is_never_closed_by_a_refund``,
+    ``close_ignores_a_delivered_order``). An earlier draft of both this comment
+    and the harness declared them unfalsifiable; the harness's docstring records
+    why that was wrong, and this comment used to repeat the mistake.
 
-    Both guards above it are defensive in the same way and for the same reason
-    — a merchant order at this seam is always ``fulfilling``, so
-    ``FAILABLE_STATUSES`` never rejects one today either. What they buy is that
-    the function's contract is enforced where the contract is stated.
+    The rule the settlement guard protects is that **money is still owed**, so
+    the order is not over — not that closing would take away a retry. It would
+    not: :func:`_refuse_a_settled_merchant_order` already refuses ``retry_task``
+    and ``complete_manual_task`` on *any* returned amount, so a partially
+    settled order has lost its retry already. It is written here rather than
+    left to the caller because the settlement a person books by hand is the
+    obvious second caller and it is the one that can be partial.
+
+    ``FAILABLE_STATUSES`` is the same shape: a merchant order at this seam is
+    always ``fulfilling``, so it never rejects one *here*, and what it keeps out
+    is a ``delivered`` order — the codes are already handed over and reversing
+    that is a refund, which moves real money and belongs to ``payments``.
 
     Three consequences follow, and each was measured rather than assumed:
 
@@ -1135,18 +1144,30 @@ async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task
     terminal status with nothing on the timeline explaining it would be the odd
     thing.
 
-    **The order row is not locked, and that is the house rule rather than an
-    oversight.** Two entries into the seam for one order — a drain on one
-    replica racing an admin action on another — would each read ``fulfilling``
-    in their own snapshot and each enqueue an ``order.status_changed``, so a
-    receiver could see the transition twice. The money cannot double: that is
-    the ledger's unique index, not this line. Every other status writer in the
-    system has the same shape (``mark_order_failed_admin`` included); the one
-    exception is :func:`_try_settle_order`, which locks because it is the
-    *delivered* transition and its own docstring says so. Locking only here
-    would buy one duplicate courtesy event and make this the second place in
-    the codebase that takes the order row for a failure — worth doing when the
-    duplicate is measured, not before.
+    **The order row is not locked, and one half of what that costs is new.**
+    Neither this function nor ``mark_order_failed_admin`` takes the order row,
+    and both test ``status in FAILABLE_STATUSES`` on their own READ COMMITTED
+    snapshot — so a drain refunding while an operator presses «Отметить
+    проблемным» can have both pass and both write. Two duplicates follow, and
+    they are not the same kind of thing:
+
+    * a duplicate ``order.status_changed`` webhook. **Inherited**, not
+      introduced: delivery is at-least-once by contract and every event carries
+      a signed ``delivery_id`` for the receiver to dedupe on.
+    * a duplicate ``order.failed`` **timeline row**, and this one *is* new.
+      Before M3c Task 6 that kind had exactly one writer, so two lines could
+      not occur; the timeline is contract (``order_status.TIMELINE_EVENTS``),
+      and a reseller reading two endings for one order has no way to tell them
+      apart, because no payload is published.
+
+    Money is safe either way — ``wallet.service.post`` resolves the unique-key
+    violation into a replay — and the fix, if the duplicate is ever observed,
+    is a locked re-read here. It is not taken now because it would make this
+    the second site in the codebase that locks the order row for a *failure*
+    (:func:`_try_settle_order` is the first, and locks for the *delivered*
+    transition, with its own docstring saying why). Recorded rather than fixed,
+    deliberately, so that the next person meeting a doubled timeline finds this
+    paragraph instead of rediscovering it.
 
     Args:
         db: Session. The caller owns the transaction; this runs inside the

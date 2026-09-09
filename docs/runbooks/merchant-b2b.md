@@ -662,18 +662,29 @@ looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 
-**Three** very different situations wear this status, and `failure_reason` on
+**Four** very different situations wear this status, and `failure_reason` on
 `GET /merchant/v1/orders/{merchant_order_id}` is what separates them: in
-progress, delayed on our side, and failed with money still out. A delivery
-failure and a stall are both recorded below the order row, so the status alone
-tells you only that the order was paid.
+progress, delayed on our side, failed with money still out, and **settled in
+full by a person and never closed**. A delivery failure and a stall are both
+recorded below the order row, so the status alone tells you only that the order
+was paid.
 
-**The fourth used to be here and is not any more.** Since M3c Task 6 an order
-whose whole charge came back automatically is closed as `status: "failed"`
-within seconds, with `failure_reason: "fulfillment_failed_refunded"`. It is
-under "A merchant order that closed itself" below, it needs nothing from you,
-and it no longer sits in this list — or in the five-minute stuck-order alert,
-which is what the change was for.
+**What is no longer in this list is the _automatic_ refund.** Since M3c Task 6
+an order whose whole charge came back on its own is closed as
+`status: "failed"` within seconds, with
+`failure_reason: "fulfillment_failed_refunded"`. It is under "A merchant order
+that closed itself" below, it needs nothing from you, and it has left the
+five-minute stuck-order alert, which is what the change was for.
+
+**A settlement _you_ book does not close the order**, and that is the fourth
+case: the same `fulfillment_failed_refunded`, on an order still reading
+`fulfilling`, still `delivered_at IS NULL`, and therefore still in the
+stuck-order alert every five minutes. Nothing is owed and nothing needs
+deciding — it needs **closing** (step 1 of "Settling a failed order by hand"),
+and until somebody does, the alert is right that the order looks undelivered and
+wrong that money is at stake. Tell it apart from the third case by
+`refunded_usd`: equal to `price_usd` is this one, anything less is a person
+mid-decision.
 
 **`failure_reason` is `null` — it is genuinely in progress, or the queue is
 stalled.** Nothing is wrong with the order. Check queue depth and the worker

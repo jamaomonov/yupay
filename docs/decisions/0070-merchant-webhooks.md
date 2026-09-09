@@ -227,11 +227,24 @@ until support sets their URL, and the runbook carries the recipe.
   unclaimed forever if the merchant never comes back, so a hook re-enabled after
   a week delivers a week-old `paid`. M4's cabinet is where "discard the backlog"
   would belong if anyone wants it.
-- **There is no automatic terminal-failure event.** The seam fires where the
-  order's status actually moves, and a permanent fulfilment failure moves the
-  _task_, not the order: a reseller sees `paid → fulfilling → silence`, and only
-  a support-closed order emits `failed`. The contract says so, so that nobody
-  builds a timeout they should not need; M3b's stall visibility is the real fix.
+- **There is no automatic terminal-failure event — _amended 2026-09-09, and one
+  case now has one._** The seam fires where the order's status actually moves,
+  and a permanent fulfilment failure moves the _task_, not the order: a reseller
+  sees `paid → fulfilling → silence`. That was true of **every** failure when
+  this ADR was written and it is now true of every failure except one.
+  [ADR-0071](./0071-merchant-refunds.md) decision 12 closes a merchant order
+  whose whole deposit charge has come back automatically, so that one emits
+  `order.status_changed` with `status: "failed"`, immediately behind the
+  refund's `balance.credited`. `failed` therefore has **two** producers on this
+  channel: a support-closed order, and a fully refunded one.
+
+  The reason the original sentence was stated as contract — _so that nobody
+  builds a timeout they should not need_ — is unchanged and is why the amendment
+  is narrow. A failure whose money stayed out, a **partial** settlement and a
+  stall still push nothing about the order, so an integrator still must not
+  infer an ending from silence; M3b's stall visibility is still the real fix,
+  and `failure_reason` on the order read is still where an ending is confirmed.
+
 - **`response_body` is text a merchant's server wrote**, stored to 2048
   characters and rendered in M4's cabinet. Whoever builds that screen owns the
   escaping.

@@ -35,8 +35,9 @@ sequenceDiagram
         ST-->>S: stalled?
     end
 
-    S->>S: failure_reason, in this precedence:<br/>order.status == failed -> "order_failed"<br/>else any item failed -> "fulfillment_failed[_refunded]"<br/>else stalled -> "fulfillment_delayed" (NON-TERMINAL)<br/>else null
-    Note over S: the terminal values come FIRST: a closed or failed order is over<br/>whatever its task is still doing. It reads the ITEM, not the task, because<br/>a supplier failure for OUR low balance leaves the item in_progress on<br/>purpose -- a reseller must not refund their customer for an order we will<br/>deliver. What it never says is WHY it is delayed: that we are short of<br/>balance at a named supplier is our supply, not their order
+    S->>S: failure_reason, in this precedence:<br/>any item failed AND settled_in_full -> "fulfillment_failed_refunded"<br/>else order.status == failed -> "order_failed"<br/>else any item failed -> "fulfillment_failed"<br/>else stalled -> "fulfillment_delayed" (NON-TERMINAL)<br/>else null
+    Note over S: **The refunded branch is FIRST, and the order is the contract.**<br/>M3c Task 6 made a full refund close the order, so status == failed is now<br/>mostly produced by the refund itself; testing it first (as this diagram<br/>drew until then) collapses every automatic refund into "support closed<br/>this, contact support" and destroys the "your money is back" signal.<br/>Do not restore that order -- test_a_refunded_order_that_reached_failed_<br/>still_reads_refunded exists to stop it
+    Note over S: The terminal values still come before the stall: a closed or failed<br/>order is over whatever its task is still doing. It reads the ITEM, not the<br/>task, because a supplier failure for OUR low balance leaves the item<br/>in_progress on purpose -- a reseller must not refund their customer for an<br/>order we will deliver. What it never says is WHY it is delayed: that we are<br/>short of balance at a named supplier is our supply, not their order
 
     S->>F: list_deliveries_for_order(order_id)
     F->>DB: SELECT deliveries JOIN order_items

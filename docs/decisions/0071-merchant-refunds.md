@@ -525,9 +525,11 @@ note, which the second writer falsifies. No shape, no field, no enum.
   doing real work rather than documenting an impossibility. A retail task pays one indexed
   read here and returns before any savepoint is opened, any `merchants` module
   is imported, or any other row is read.
-- **`fulfillment/service.py` is 2549 lines and `merchants/deposit.py` 770**
-  (measured after M3c Task 6, which added 134 of those lines), both well past
-  AGENTS §6's split point. M3b added a new module (`fulfillment/stall.py`)
+- **`fulfillment/service.py` is 2570 lines and `merchants/deposit.py` 770**
+  (measured at this commit; M3c Task 6 added 131 lines and its fix round 21
+  more, all of them comment — `git show --numstat` for both, because the first
+  version of this line said "134" from memory and this ADR presents itself as
+  measured), both well past AGENTS §6's split point. M3b added a new module (`fulfillment/stall.py`)
   rather than either, and Task 6 did not — its closer belongs beside the seam
   that calls it and shares that seam's savepoint. The split is a scheduled
   item, and the merchant-deposit region of this file is the obvious seam for

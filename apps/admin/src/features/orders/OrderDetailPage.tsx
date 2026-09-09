@@ -54,8 +54,12 @@ import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useAdminRefs } from "@/lib/useAdminRefs";
 
-/** Statuses where "close as failed" is offered — mirrors the server guard
- *  (`orders.service._FAILABLE_STATUSES`): money in, goods not out. */
+/** Statuses where "close as failed" is offered — mirrors the server's own list
+ *  (`orders.service.FAILABLE_STATUSES`): money in, goods not out. Two things
+ *  read it there, not one: the admin close, which 409s outside it, and the
+ *  automatic merchant refund, which closes a fully refunded order silently. So
+ *  a refunded merchant order arrives here already `failed` and the button is
+ *  correctly absent — there is nothing left to close. */
 const FAILABLE = new Set<OrderStatus>(["paid", "fulfilling", "fulfilled"]);
 
 export function OrderDetailPage() {
