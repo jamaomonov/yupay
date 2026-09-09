@@ -70,10 +70,23 @@ class Order(Base):
         nullable=True,
     )
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    # Which surface placed the order. Client-declared (the `X-Yupay-Surface`
-    # header both frontends send) — an operator's "where did this come from",
-    # never an authorisation input. `unknown` covers anything that did not say,
-    # including every order placed before this column existed.
+    # Which surface placed the order. An operator's "where did this come from",
+    # never an authorisation input — nothing is gated on it, on any row.
+    #
+    # `unknown` covers anything that did not say, including every order placed
+    # before this column existed.
+    #
+    # Two provenances, not one, and a reader must not assume the first
+    # describes every row:
+    #   * retail (`web` / `miniapp` / `bot`) is **client-declared** — the
+    #     `X-Yupay-Surface` header the frontends send, normalised against
+    #     `service.ORDER_SOURCES` so an unrecognised value records as
+    #     `unknown` rather than being trusted verbatim;
+    #   * B2B (`merchant_api`, and `merchant_panel` once M4's cabinet ships) is
+    #     set **server-side**, on a path that has already authenticated which
+    #     merchant is calling. Neither is in `ORDER_SOURCES`, so no client can
+    #     declare itself one. That makes the field stronger on those rows, not
+    #     weaker — but still not an authorisation input.
     source: Mapped[str] = mapped_column(
         String(16), nullable=False, server_default=text("'unknown'")
     )
@@ -149,8 +162,12 @@ class Order(Base):
         ),
         CheckConstraint("total_usd >= 0", name="ck_orders_total_usd_nonneg"),
         CheckConstraint("total_charged >= 0", name="ck_orders_total_charged_nonneg"),
+        # Widened by 0073. ``merchant_panel`` is allowed and unreachable: M4's
+        # cabinet claims it, nothing writes it yet, and a second migration for
+        # one string literal would be waste.
         CheckConstraint(
-            "source IN ('web', 'miniapp', 'bot', 'unknown')", name="ck_orders_source_known"
+            "source IN ('web', 'miniapp', 'bot', 'unknown', 'merchant_api', 'merchant_panel')",
+            name="ck_orders_source_known",
         ),
         CheckConstraint("purpose IN ('catalog', 'wallet_topup')", name="ck_orders_purpose_known"),
     )

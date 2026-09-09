@@ -27,6 +27,7 @@ import {
   type OrderAdminOut,
   type OrderEventOut,
   type OrderStatus,
+  SOURCE_LABEL,
   STATUS_LABEL,
   STATUS_TONE,
 } from "./types";
@@ -296,6 +297,16 @@ export function OrderDetailPage() {
               </span>
             ) : (
               <span>{order.guest_email ?? "Гость"}</span>
+            )}
+            {/* Where the order came from. Rendered only when it says
+                something: the list needs a placeholder because a column
+                cannot be empty, but «—» in a sentence is noise. A merchant
+                order is the case this exists for — its surface is the one
+                fact that distinguishes it from a browser sale at a glance. */}
+            {order.source !== "unknown" && (
+              <span className="text-[var(--text-secondary)]">
+                {SOURCE_LABEL[order.source] ?? order.source}
+              </span>
             )}
           </span>
         }

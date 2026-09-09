@@ -65,6 +65,44 @@ this.**
 Admin calls below use `-H "Authorization: Bearer <admin JWT>"` — the same
 admin session the SPA uses.
 
+## Telling a merchant order apart in admin
+
+Since M3c Task 7 the Заказы list and the order page label the surface as
+**«Merchant API»**. Before that every `/merchant/v1` order read «—»: the
+`orders.source` CHECK had no value for the channel, so a machine order — which
+sends no `X-Yupay-Surface` header, having no browser — fell through to
+`unknown`, the same bucket as every order older than the column. The one class
+of order whose origin is not in doubt was the one the list refused to name.
+
+`merchants.orders.place` sets `source = 'merchant_api'` server-side, after the
+signature has said which merchant is calling. That is worth knowing when you
+read the column: for a retail row `source` is a client's own claim about
+itself, and **on these rows it is not**. It still authorises nothing.
+
+To find them by hand:
+
+```sql
+SELECT id, created_at, status FROM orders WHERE source = 'merchant_api';
+```
+
+Two things worth knowing:
+
+- **Older orders were relabelled by 0073, and that is not a guess.**
+  `merchant_id IS NOT NULL` has exactly one writer — `POST /merchant/v1/orders`
+  — so the migration set `source = 'merchant_api'` on every merchant order that
+  was still sitting in `unknown`, and left every other `unknown` row alone
+  (0046's own rule: backfill what the data proves, never what it merely
+  suggests). The practical consequence is that the two queries agree today:
+  `source = 'merchant_api'` and `merchant_id IS NOT NULL` select the same
+  orders. They stop agreeing the day M4's cabinet ships, and `merchant_id` is
+  the one that keeps meaning "a reseller's order" — `source` means "which
+  surface", which is a different question.
+- **`merchant_panel` is allowed by the CHECK and written by nothing.** It is
+  reserved for M4's cabinet and rides 0073 so that milestone needs no migration
+  for one string. A row carrying it before the cabinet ships means something
+  wrote it that should not have — that is a bug to chase, not a surface to
+  interpret.
+
 ## Onboarding a merchant, end to end
 
 Five steps, in this order. Steps 1–2 have SPA screens; steps 3 and 5 do not

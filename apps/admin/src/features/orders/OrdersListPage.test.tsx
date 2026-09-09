@@ -102,6 +102,17 @@ it("says which surface an order came from", async () => {
   expect(within(table).getByText("Сайт")).toBeInTheDocument();
 });
 
+it("names the merchant channel instead of «—»", async () => {
+  // A `/merchant/v1` order used to land in `unknown` — the CHECK had no value
+  // for it — so the one class of order whose origin is not in doubt rendered
+  // as "we have no idea". Migration 0073 + `merchants.orders.place`.
+  renderPage([makeOrder({ source: "merchant_api" })]);
+
+  const rows = await screen.findAllByRole("row");
+  expect(within(rows[1]!).getByText("Merchant API")).toBeInTheDocument();
+  expect(within(rows[1]!).queryByText("—")).not.toBeInTheDocument();
+});
+
 it("does not invent a surface for orders that never recorded one", async () => {
   // Every order older than the column reads `unknown`; claiming "Сайт" there
   // would turn an absence of evidence into a fact an operator might act on.

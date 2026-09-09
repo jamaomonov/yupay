@@ -1,4 +1,11 @@
-/** Mirrors the backend's OrderAdminOut shape. */
+/** Mirrors the backend's OrderAdminOut shape.
+ *
+ *  Strings live in `@yupay/i18n/locales/{ru,en,uz}/admin.json` (parity
+ *  CI-gated); the admin SPA is Russian-only today, so this reads the `ru`
+ *  catalog directly, same as `features/merchants` and `features/catalog/b2b`.
+ */
+
+import adminRu from "@yupay/i18n/locales/ru/admin.json";
 
 export type OrderStatus =
   | "pending_payment"
@@ -12,16 +19,16 @@ export type OrderStatus =
   | "refunded"
   | "partially_refunded";
 
-export type OrderSource = "web" | "miniapp" | "bot" | "unknown";
+/** Every value `orders.source` can hold — `ck_orders_source_known`, migration
+ *  0073. `web` / `miniapp` / `bot` are client-declared (the `X-Yupay-Surface`
+ *  header); `merchant_api` is set server-side when a reseller orders through
+ *  `/merchant/v1`; `merchant_panel` is allowed by the CHECK and written by
+ *  nothing until M4's cabinet ships. */
+export type OrderSource = "web" | "miniapp" | "bot" | "merchant_api" | "merchant_panel" | "unknown";
 
 /** Deliberately not a coloured badge: the surface is context, not a state, and
  *  colouring it would compete with the status column beside it. */
-export const SOURCE_LABEL: Record<OrderSource, string> = {
-  web: "Сайт",
-  miniapp: "Mini App",
-  bot: "Бот",
-  unknown: "—",
-};
+export const SOURCE_LABEL: Record<OrderSource, string> = adminRu.orders.source;
 
 export interface OrderItemDisplay {
   brand_slug: string;

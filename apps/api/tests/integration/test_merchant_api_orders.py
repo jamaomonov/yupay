@@ -747,6 +747,38 @@ async def test_the_merchants_own_quote_is_recorded_beside_the_price_we_charged(
     assert item.merchant_expected_price_usd == Decimal("105.90")
 
 
+async def test_the_order_records_the_merchant_channel_it_came_through(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """``orders.source`` had no value for this channel, so it defaulted to
+    ``unknown`` and the admin list rendered «—» for the one class of order
+    whose origin is not in doubt.
+
+    Retail writes this column from the client's ``X-Yupay-Surface`` header; a
+    machine caller sends no such header. The value is set server-side here,
+    after the signature said which merchant is calling — which is why it is
+    *not* in ``ORDER_SOURCES`` and no client can declare it for itself
+    (``test_orders_routes`` owns that half).
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "200.00")
+    sku_id = await _seeded(db_session, cost_usdt=Decimal("100"))
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "source-1", "sku_id": sku_id, "expected_price": "107.00"},
+    )
+
+    assert r.status_code == 201, r.text
+    order = (
+        await db_session.execute(select(Order).where(Order.id == r.json()["order_id"]))
+    ).scalar_one()
+    assert order.source == "merchant_api"
+
+
 async def test_a_price_above_ours_but_inside_the_band_still_charges_ours(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:

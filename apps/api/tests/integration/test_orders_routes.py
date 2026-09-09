@@ -1166,7 +1166,14 @@ async def test_an_unrecognised_or_absent_surface_records_as_unknown(
     integration_client: AsyncClient, db_session: AsyncSession, _seed_pubg: dict[str, str]
 ) -> None:
     """The header is client-declared, so it is a closed set or nothing —
-    never stored verbatim. And an unreadable header must not refuse a sale."""
+    never stored verbatim. And an unreadable header must not refuse a sale.
+
+    The third case is why the set stayed narrow when migration 0073 widened
+    the column's CHECK: ``merchant_api`` is a legal value in the database and
+    is set server-side by ``merchants.orders.place``, but a storefront request
+    that declared it would dress a retail sale up as a reseller's, on the one
+    column an operator reads to tell them apart.
+    """
     from sqlalchemy import select as sa_select
     from yupay.modules.orders.models import Order
 
@@ -1174,6 +1181,8 @@ async def test_an_unrecognised_or_absent_surface_records_as_unknown(
     for key, header in (
         ("surface-junk-aaaaaaaaaa", {"X-Yupay-Surface": "'; DROP TABLE"}),
         ("surface-absent-aaaaaaaa", {}),
+        ("surface-b2b-aaaaaaaaaa", {"X-Yupay-Surface": "merchant_api"}),
+        ("surface-panel-aaaaaaaa", {"X-Yupay-Surface": "merchant_panel"}),
     ):
         r = await integration_client.post(
             "/api/v1/orders",

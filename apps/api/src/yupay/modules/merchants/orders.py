@@ -307,6 +307,14 @@ async def place(
         # unmeasurable after the fact. Recorded here, beside the price we
         # charged, and read by no code path. ADR-0071.
         merchant_expected_price_usd=(body.expected_price,),
+        # Set here rather than left to default ``unknown``: retail writes this
+        # from the client's ``X-Yupay-Surface`` header, and a machine caller
+        # sends no such header, so every merchant order read as «—» in the
+        # admin — the one class of order whose origin is not in doubt. This
+        # value is not in ``orders.ORDER_SOURCES``, so no client can declare
+        # it for itself; it is only ever written here, after the signature
+        # said which merchant is calling.
+        source=orders.SOURCE_MERCHANT_API,
     )
     if order.status != "pending_payment":
         # A concurrent request with the same key won the unique index while we

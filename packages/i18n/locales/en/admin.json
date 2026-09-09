@@ -113,5 +113,15 @@
         "error": "Failed to apply the markup: {message}"
       }
     }
+  },
+  "orders": {
+    "source": {
+      "web": "Website",
+      "miniapp": "Mini App",
+      "bot": "Bot",
+      "merchant_api": "Merchant API",
+      "merchant_panel": "Merchant cabinet",
+      "unknown": "—"
+    }
   }
 }

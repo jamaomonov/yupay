@@ -220,9 +220,11 @@ class OrderAdminOut(OrderOut):
     # like ``uzum-test@test.local`` seeded during sandbox payment testing — must
     # still render. Email format is enforced at write time (``OrderCreate``).
     guest_email: str | None
-    #: Which surface the order came from (``web`` / ``miniapp`` / ``bot`` /
-    #: ``unknown``). Admin-only: it is operator context, and a customer has no
-    #: use for being told which of our own apps they used.
+    #: Which surface the order came from — ``web`` / ``miniapp`` / ``bot``
+    #: (client-declared), ``merchant_api`` (set server-side for a B2B order),
+    #: or ``unknown``. ``merchant_panel`` joins the set when M4's cabinet
+    #: ships. Admin-only: it is operator context, and a customer has no use
+    #: for being told which of our own apps they used.
     source: str = "unknown"
     events: list[OrderEventOut]
 

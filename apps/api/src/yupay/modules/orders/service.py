@@ -158,11 +158,31 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
 ORDER_EXPIRY_SECONDS = 10 * 60
 
 
-#: Surfaces an order can be placed from. Client-declared via the
-#: ``X-Yupay-Surface`` header; anything we do not recognise (an old client, a
-#: script, a spoof) records as ``unknown`` rather than being trusted verbatim,
-#: so the column stays a closed set the admin can filter on.
+#: Surfaces a **client may declare for itself** via the ``X-Yupay-Surface``
+#: header; anything we do not recognise (an old client, a script, a spoof)
+#: records as ``unknown`` rather than being trusted verbatim, so the column
+#: stays a closed set the admin can filter on.
+#:
+#: The B2B values below are deliberately **not** in here. They are what makes
+#: the widened vocabulary safe: a storefront request that asked for
+#: ``merchant_api`` would otherwise dress a retail sale up as a reseller's, on
+#: the one column an operator reads to tell them apart.
 ORDER_SOURCES: frozenset[str] = frozenset({"web", "miniapp", "bot"})
+
+#: Set server-side by ``merchants.orders.place``, on a path that has already
+#: authenticated which merchant is calling. Unlike a retail source this is not
+#: a claim the client made about itself — which makes ``source`` stronger on
+#: these rows, though still not an authorisation input.
+SOURCE_MERCHANT_API: Final[str] = "merchant_api"
+
+#: Reserved for **M4's reseller cabinet** (spec ``2026-09-06-merchant-b2b-design``
+#: §milestones: "cabinet app: landing, registration + confirmation, all
+#: sections"). Allowed by ``ck_orders_source_known`` since migration 0073 so
+#: the cabinet needs no migration of its own for one string — and unreachable
+#: until then: nothing writes it, and it is not in ``ORDER_SOURCES``, so no
+#: request can declare it. A row carrying it before M4 ships means something
+#: wrote it that should not have.
+SOURCE_MERCHANT_PANEL: Final[str] = "merchant_panel"
 
 
 def normalise_source(raw: str | None) -> str:
@@ -799,7 +819,10 @@ async def create_order(
         settings: Reserved.
         ip_hash: Hashed client address, for the risk trail.
         ua_hash: Hashed user agent, for the risk trail.
-        source: The declared surface.
+        source: Which surface placed the order — the client's declared
+            ``X-Yupay-Surface`` for retail (already normalised by
+            :func:`normalise_source`), or ``SOURCE_MERCHANT_API`` set
+            server-side by ``merchants.orders.place``.
         unit_price_usd_override: **Merchant-only.** One USD unit price per
             line of ``body.items``, in order, replacing the catalog price this
             function would otherwise resolve. It exists because a B2B order is

@@ -157,3 +157,27 @@ it("omits the USD hint when the backend could not value the order", async () => 
   expect(await screen.findByText("Сводка")).toBeInTheDocument();
   expect(screen.queryByText(/≈ \$/)).not.toBeInTheDocument();
 });
+
+it("says a merchant order came through the merchant API", async () => {
+  // The detail page never rendered the surface at all, and a B2B order is
+  // where that costs: nothing else on this header separates a reseller's
+  // order from a browser sale.
+  mockEndpoints(makeOrder({ source: "merchant_api" }));
+  renderPage();
+
+  expect(await screen.findByText("Merchant API")).toBeInTheDocument();
+});
+
+it("stays silent about a surface the order never recorded", async () => {
+  // «—» earns its place in a table column, which cannot be empty. In the
+  // header line it would just be noise — so this is scoped to that line
+  // («—» is a legitimate placeholder elsewhere on the page) and it is what
+  // fails if the label is ever rendered unconditionally.
+  mockEndpoints(makeOrder({ source: "unknown" }));
+  renderPage();
+
+  const buyer = await screen.findByText("buyer@example.com");
+  const header = buyer.parentElement!;
+  expect(within(header).queryByText("—")).not.toBeInTheDocument();
+  expect(within(header).queryByText("Сайт")).not.toBeInTheDocument();
+});

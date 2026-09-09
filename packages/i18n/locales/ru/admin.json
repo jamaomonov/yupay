@@ -113,5 +113,15 @@
         "error": "Не удалось применить наценку: {message}"
       }
     }
+  },
+  "orders": {
+    "source": {
+      "web": "Сайт",
+      "miniapp": "Mini App",
+      "bot": "Бот",
+      "merchant_api": "Merchant API",
+      "merchant_panel": "Кабинет мерчанта",
+      "unknown": "—"
+    }
   }
 }

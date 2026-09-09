@@ -113,5 +113,15 @@
         "error": "Ustamani qo'llab bo'lmadi: {message}"
       }
     }
+  },
+  "orders": {
+    "source": {
+      "web": "Sayt",
+      "miniapp": "Mini App",
+      "bot": "Bot",
+      "merchant_api": "Merchant API",
+      "merchant_panel": "Merchant kabineti",
+      "unknown": "—"
+    }
   }
 }
