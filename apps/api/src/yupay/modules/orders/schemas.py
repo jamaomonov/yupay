@@ -255,6 +255,17 @@ class OrderAdminOut(OrderOut):
     #: refunded value is merchant-shaped (it is measured off the deposit
     #: ledger, which a retail order has no rows in).
     failure_reason: str | None = None
+    #: What this order took from the merchant's USD deposit, off the ledger —
+    #: ``None`` for every retail order (there is no deposit) and for a merchant
+    #: order with no charge posting, which is a bug rather than a state. A
+    #: merchant order has no ``Payment`` row at all, so before M3c Task 4 the
+    #: operator's page said «Платежи (0)» and nothing else about the money.
+    deposit_charged_usd: Decimal | None = None
+    #: What has come back on it, by any route — the drain's automatic refund
+    #: and any settlement support booked against the order. ``0`` when nothing
+    #: has, and never more than ``deposit_charged_usd``: the cap is enforced at
+    #: the posting (``order_already_settled``).
+    deposit_returned_usd: Decimal = Decimal("0")
     events: list[OrderEventOut]
 
 

@@ -57,13 +57,17 @@ moves.
 
 **M3c Task 6 nearly added two more, and the way it did not is the point.**
 
-``_end_a_refunded_merchant_order``'s two guards —
+``end_a_refunded_merchant_order``'s two guards —
 ``orders_svc.FAILABLE_STATUSES`` and ``refund.settled_in_full`` — are
 unreachable **through the saga**: a merchant order at the seam is always
 ``fulfilling``, and ``refund_order`` posts exactly what the charge took *and*
 refuses any order money has already come back on, so a successful posting **is**
 a complete settlement. The first draft of this file therefore declared them as
-absences. That was wrong for the third time on this branch: an untestable guard
+absences. (M3c Task 4 gave the function a **second** caller —
+``deposit.credit_deposit`` — which can reach the settlement guard for real, and
+``settlement_closes_a_partial_too`` grades it from that side. The row below
+still grades it from the saga's, because the two callers reach it for different
+reasons and an edit could break one and not the other.) That was wrong for the third time on this branch: an untestable guard
 is only untestable through the one caller that exists, and calling the function
 directly gives each one a case — a session that raises on first use for the
 delivered order (a unit test, no database), and the real state a person
@@ -965,7 +969,14 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 SAGA,
-                "    await _end_a_refunded_merchant_order(db, order=order, task_id=task_id)\n",
+                "    await end_a_refunded_merchant_order(\n"
+                "        db,\n"
+                "        order=order,\n"
+                '        by="fulfillment",\n'
+                "        reason=_MERCHANT_REFUND_REASON,\n"
+                '        actor="fulfillment",\n'
+                "        task_id=task_id,\n"
+                "    )\n",
                 "",
             ),
         ),
@@ -1039,7 +1050,14 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE,),
-        expect=("test_a_partial_settlement_is_not_closed_by_the_closer_itself",),
+        # Two, since M3c Task 4 gave the guard a second caller: with it gone, a
+        # person's one-cent credit closes the order, and the order read then
+        # answers ``order_failed`` where the reseller was told
+        # ``fulfillment_failed`` — a partial settlement claiming to be an ending.
+        expect=(
+            "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
+        ),
     ),
     Mutation(
         name="closed_order_has_no_timeline_event",
@@ -1059,12 +1077,15 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "            id=new_id(),\n"
                 "            order_id=order.id,\n"
                 '            kind="order.failed",\n'
-                "            # ``by`` is what tells this apart from the admin closure, which\n"
-                '            # writes ``{"by": "admin", "reason": <operator\'s words>}``. Neither\n'
-                "            # payload is published — the merchant timeline carries a kind and a\n"
-                "            # timestamp and nothing else.\n"
-                '            payload={"by": "fulfillment", "reason": _MERCHANT_REFUND_REASON},\n'
-                '            actor="fulfillment",\n'
+                "            # ``by`` is what tells the three writers of this kind apart:\n"
+                "            # ``fulfillment`` (the drain's automatic refund), ``settlement``\n"
+                "            # (a credit a person booked, M3c Task 4) and ``admin``\n"
+                "            # (``mark_order_failed_admin``, which also carries the operator's\n"
+                "            # own words). No payload is published — the merchant timeline\n"
+                "            # carries a kind and a timestamp and nothing else — so this is for\n"
+                "            # the admin audit feed.\n"
+                '            payload={"by": by, "reason": reason},\n'
+                "            actor=actor,\n"
                 "        )\n"
                 "    )\n",
                 "",
@@ -1080,12 +1101,93 @@ MUTATIONS: tuple[Mutation, ...] = (
             (
                 SAGA,
                 "    await _publish_status_changed(db, order)\n"
-                '    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id)',
-                '    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id)',
+                '    log.info("merchant_refund.order_closed", '
+                "order_id=order.id, task_id=task_id, by=by)",
+                '    log.info("merchant_refund.order_closed", '
+                "order_id=order.id, task_id=task_id, by=by)",
             ),
         ),
         tests=(LIVE,),
         expect=("test_the_refund_announces_the_money_by_push",),
+    ),
+    # ---- M3c Task 4: a settlement a person books ends the order too
+    Mutation(
+        name="hand_settlement_leaves_the_order_open",
+        breaks="the state an owner met at 05:30 comes back, on the path a person drives",
+        # The whole ruling, deleted: ``credit_deposit`` books the money and
+        # leaves ``fulfilling`` with ``delivered_at IS NULL``, so the
+        # five-minute stuck-order alert fires for ever about money that is
+        # already back — and the order still reads as deliverable.
+        edits=(
+            (
+                DEPOSIT,
+                "    if order is not None:\n"
+                "        # Deliberately **not** gated on ``replayed``: the closer is idempotent\n"
+                "        # on the order's own status, and an operator's retry after a timeout\n"
+                "        # that credited but crashed before closing is exactly the case that\n"
+                "        # needs the second pass.\n"
+                "        await _close_a_settled_order(db, order=order, actor=actor)\n",
+                "",
+            ),
+        ),
+        tests=(ATTRIB,),
+        expect=(
+            "test_a_full_settlement_closes_the_order",
+            "test_a_replay_of_the_settlement_closes_once",
+            "test_a_second_settlement_is_refused_and_nothing_moves_twice",
+            "test_finishing_a_partial_settlement_closes_it",
+            "test_settling_an_order_whose_delivery_never_failed_reads_as_a_hand_closure",
+            "test_the_settled_order_leaves_the_stuck_order_watchdog",
+            "test_the_settlement_announces_the_order_state_by_push",
+        ),
+    ),
+    Mutation(
+        name="settlement_closes_a_partial_too",
+        breaks="an order a person is halfway through settling is closed behind them",
+        # The same guard ``close_ignores_a_partial_settlement`` grades from the
+        # saga's side, reached from the caller that can actually produce a
+        # partial. Two rows, because the two callers reach it for different
+        # reasons and a future edit could break it for one and not the other.
+        edits=(
+            (
+                SAGA,
+                "    if not await merchant_refund.is_settled_in_full("
+                "db, merchant_id=merchant_id, order_id=order.id):\n"
+                "        return\n",
+                "",
+            ),
+        ),
+        tests=(ATTRIB,),
+        # The staged case reds too, and it is the more interesting half: without
+        # the guard the **first** stage already closes the order, so the second
+        # one finds it outside ``FAILABLE_STATUSES`` and the test that watches
+        # the ending arrive on the last credit sees it arrive on the first.
+        expect=(
+            "test_a_partial_settlement_leaves_the_order_open",
+            "test_finishing_a_partial_settlement_closes_it",
+        ),
+    ),
+    Mutation(
+        name="settlement_reaches_a_retail_order",
+        breaks="an operator's deposit credit closes a storefront order",
+        # Retail is out of reach by **scope**, a layer above the closer:
+        # ``_resolve_order_reference`` matches on ``Order.merchant_id``, so a
+        # storefront order answers the same 404 as an id that never existed.
+        # Deleting that clause lets a credit name one — and the row proves the
+        # refusal is what protects the status, not luck.
+        edits=(
+            (
+                DEPOSIT,
+                "            select(Order).where(Order.id == canonical, "
+                "Order.merchant_id == merchant_id)\n",
+                "            select(Order).where(Order.id == canonical)\n",
+            ),
+        ),
+        tests=(ATTRIB,),
+        expect=(
+            "test_a_retail_order_cannot_be_settled_this_way_at_all",
+            "test_another_merchants_order_is_refused_exactly_like_a_nonexistent_one",
+        ),
     ),
     Mutation(
         name="no_balance_credited_event",

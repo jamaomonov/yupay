@@ -353,3 +353,53 @@ async def test_one_orders_stall_does_not_delay_the_order_beside_it(
         "fulfillment_delayed"
     )
     assert (await _row(integration_client, admin_headers, healthy.id))["failure_reason"] is None
+
+
+# ---------- M3c Task 4: the deposit numbers an operator settles from ----------
+
+
+async def test_a_merchant_order_says_what_its_deposit_did(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A merchant order has no `Payment` row, so «Платежи (0)» was the whole story.
+
+    The money is on the deposit ledger, and until M3c Task 4 the operator's
+    page said nothing about it — which is why the settle affordance was on the
+    merchant's page and the operator was standing somewhere else.
+    """
+    merchant_id = await _merchant(db_session)
+    order = await _order(db_session, item_state="failed", merchant_id=merchant_id)
+    await deposit.credit_deposit(
+        db_session,
+        merchant_id=merchant_id,
+        amount=Decimal("10.00"),
+        actor="test",
+        idempotency_key=f"fund-{new_id()}",
+        order_id=None,
+    )
+    await deposit.charge_deposit(
+        db_session, merchant_id=merchant_id, amount=PRICE, order_id=order.id
+    )
+    await db_session.commit()
+
+    row = await _row(integration_client, admin_headers, order.id)
+
+    assert Decimal(row["deposit_charged_usd"]) == PRICE
+    assert Decimal(row["deposit_returned_usd"]) == Decimal("0")
+
+
+async def test_a_retail_order_has_no_deposit_numbers_at_all(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """`None`, not zero — the button reads it as "there is nothing to settle here".
+
+    A retail order's money is at an acquirer and is reversed through
+    `payments.refund_admin`; a deposit charge of `0` would be a claim that one
+    exists and came to nothing.
+    """
+    order = await _order(db_session, item_state="failed")
+
+    row = await _row(integration_client, admin_headers, order.id)
+
+    assert row["deposit_charged_usd"] is None
+    assert Decimal(row["deposit_returned_usd"]) == Decimal("0")

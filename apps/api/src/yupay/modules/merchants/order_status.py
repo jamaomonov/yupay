@@ -53,6 +53,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from dataclasses import dataclass
 from decimal import Decimal
 from typing import TYPE_CHECKING, Final
 
@@ -296,7 +297,36 @@ def _failure_reason(
     return REASON_FULFILLMENT_DELAYED if stalled else None
 
 
-async def failure_reasons(db: AsyncSession, *, orders: Sequence[Order]) -> dict[str, str | None]:
+@dataclass(frozen=True, slots=True)
+class OrderStopState:
+    """Why an order has stopped, and the deposit numbers that decided it.
+
+    A record rather than a bare value because the two money fields are not a
+    by-product: :func:`order_stop_states` has to read them to answer ``reason``
+    at all, and M3c Task 4's operator needs the same two on screen — what the
+    order took from the deposit and what has come back — beside a button whose
+    whole job is to close the gap. Returning them costs nothing and re-reading
+    them would cost two more queries per page.
+
+    Attributes:
+        reason: The closed vocabulary above, or ``None``.
+        deposit_charged: What this order's deposit charge took, or ``None`` for
+            an order with no charge posting — every retail order, and a
+            merchant order whose ledger row is missing (a bug; see
+            ``deposit.charged_for_order``). ``None`` and ``Decimal("0")`` are
+            different answers and only the first occurs.
+        deposit_returned: What has come back on it, by any route. Zero when
+            nothing has.
+    """
+
+    reason: str | None
+    deposit_charged: Decimal | None
+    deposit_returned: Decimal
+
+
+async def order_stop_states(
+    db: AsyncSession, *, orders: Sequence[Order]
+) -> dict[str, OrderStopState]:
     """:func:`_failure_reason` for a page of orders, keyed by order id.
 
     **The second surface, not a second answer** (M3c Task 3). A terminal
@@ -327,23 +357,29 @@ async def failure_reasons(db: AsyncSession, *, orders: Sequence[Order]) -> dict[
         orders: The page, with their items loaded.
 
     Returns:
-        ``{order_id: reason}`` for **every** order given — the value is
-        ``None`` for one that has not stopped, which is a different fact from
-        an absent key and must not be conflated with one.
+        An :class:`OrderStopState` for **every** order given — a ``reason`` of
+        ``None`` means "has not stopped", which is a different fact from an
+        absent key and must not be conflated with one.
     """
     pairs = [(order.merchant_id, order.id) for order in orders if order.merchant_id is not None]
     stalled = await fulfillment_stall.stalled_order_ids(db, orders=orders)
     charged = await deposit.charged_for_orders(db, pairs=pairs)
     refunded = await deposit.refunded_for_orders(db, pairs=pairs)
-    return {
-        order.id: _failure_reason(
-            order,
-            refunded=refunded.get(order.id, Decimal("0")),
-            charged=charged.get(order.id),
-            stalled=order.id in stalled,
+    states: dict[str, OrderStopState] = {}
+    for order in orders:
+        order_charged = charged.get(order.id)
+        order_refunded = refunded.get(order.id, Decimal("0"))
+        states[order.id] = OrderStopState(
+            reason=_failure_reason(
+                order,
+                refunded=order_refunded,
+                charged=order_charged,
+                stalled=order.id in stalled,
+            ),
+            deposit_charged=order_charged,
+            deposit_returned=order_refunded,
         )
-        for order in orders
-    }
+    return states
 
 
 async def _delivery(db: AsyncSession, order: Order) -> MerchantDeliveryOut | None:
@@ -445,6 +481,7 @@ __all__ = [
     "REASON_FULFILLMENT_REFUNDED",
     "REASON_ORDER_FAILED",
     "TIMELINE_EVENTS",
-    "failure_reasons",
+    "OrderStopState",
+    "order_stop_states",
     "read",
 ]

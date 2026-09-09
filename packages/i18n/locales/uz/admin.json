@@ -134,6 +134,27 @@
       "fulfillment_failed": "Muvaffaqiyatsiz, odam hal qilmoqda",
       "fulfillment_failed_refunded": "Muvaffaqiyatsiz, pul qaytarildi",
       "fulfillment_delayed": "Kechikmoqda"
+    },
+    "settle": {
+      "title": "Merchant depoziti",
+      "chargedLabel": "Yechilgan",
+      "returnedLabel": "Qaytarilgan",
+      "button": "Depozitga qaytarish",
+      "buttonBusy": "Qaytarilmoqda…",
+      "confirmTitle": "Pul depozitga qaytarilsinmi?",
+      "confirmBody": "«{merchant}» depozitiga {order} buyurtma bo'yicha {amount} qaytariladi.",
+      "confirmClosing": "Buyurtma muammoli deb yopiladi: to'liq qaytarilgandan keyin uni berib bo'lmaydi — qayta urinish ham, qo'lda berish ham rad etiladi.",
+      "confirm": "Ha, qaytarilsin",
+      "success": "{amount} qaytarildi. Buyurtma yopildi.",
+      "note": "{order} buyurtma bo'yicha qaytarish, buyurtma sahifasidan",
+      "error": "Qaytarib bo'lmadi: {message}",
+      "alreadySettled": "Bu buyurtma bo'yicha pul allaqachon qaytarilgan — ikkinchi marta mumkin emas. Yuqoridagi «Qaytarilgan»ni va merchant depoziti tarixini ko'ring.",
+      "blocked": {
+        "no_charge": "Bu buyurtma bo'yicha depozitdan yechim yo'q — qaytaradigan narsa yo'q.",
+        "partly_settled": "Bir qismi qaytarilgan. Qolganini merchant sahifasida yakunlang: u yerda summa kiritiladi.",
+        "settled": "To'liq qaytarilgan — buyurtma yopilgan, qiladigan ish yo'q.",
+        "still_open": "Buyurtma hali tugamagan — yetkazib berish butunlay muvaffaqiyatsiz bo'lmaguncha qaytaradigan narsa yo'q."
+      }
     }
   }
 }

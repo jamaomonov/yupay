@@ -792,10 +792,14 @@ async def test_a_partial_settlement_is_not_closed_by_the_closer_itself(
     So this walks the state a person actually produces. The delivery fails with
     our money back, the automatic refund refuses because support had already
     credited a cent (``AlreadySettledError``, which alerts), and settling the
-    rest is now a human's job — which is the case the hand settlement will call
-    this function from. Closing at the halfway mark would take away the retry
-    that operator was about to use and tell the reseller their order is over
-    while $1.06 of it is still owed.
+    rest is now a human's job — and since M3c Task 4 the hand settlement calls
+    this function for real, through ``deposit.credit_deposit``. Closing at the
+    halfway mark would tell the reseller their order is over while $1.06 of it
+    is still owed. It would **not** take away a retry the operator was about to
+    use: ``_refuse_a_settled_merchant_order`` refuses ``retry_task`` and
+    ``complete_manual_task`` on *any* returned amount, so that cent already
+    took it. The rule stands on the money that is still owed and on nothing
+    else.
     """
     merchant_id, key_id, secret, order_id = await _placed(
         integration_client, admin_headers, db_session, merchant_order_id="acme-half-closed"
@@ -810,7 +814,9 @@ async def test_a_partial_settlement_is_not_closed_by_the_closer_itself(
     assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
 
     order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
-    await ff_svc._end_a_refunded_merchant_order(db_session, order=order, task_id="by-hand")
+    await ff_svc.end_a_refunded_merchant_order(
+        db_session, order=order, by="settlement", reason="by-hand", actor="admin:test"
+    )
     await db_session.commit()
 
     await db_session.refresh(order)
@@ -825,7 +831,9 @@ async def test_a_partial_settlement_is_not_closed_by_the_closer_itself(
         await _credit(integration_client, admin_headers, merchant_id, "1.06", order_id=order_id)
     ).status_code == 201
     order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
-    await ff_svc._end_a_refunded_merchant_order(db_session, order=order, task_id="by-hand")
+    await ff_svc.end_a_refunded_merchant_order(
+        db_session, order=order, by="settlement", reason="by-hand", actor="admin:test"
+    )
     await db_session.commit()
 
     await db_session.refresh(order)

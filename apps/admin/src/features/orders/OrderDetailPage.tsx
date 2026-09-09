@@ -22,6 +22,7 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EvidenceCard } from "./EvidenceCard";
+import { MerchantDepositCard } from "./MerchantDepositCard";
 import { OrderActorRef } from "./OrderActorRef";
 import { OrderStateBadge } from "./OrderStateBadge";
 import {
@@ -400,6 +401,11 @@ export function OrderDetailPage() {
 
         {/* ----- right column: payments + fulfillment ----- */}
         <aside className="space-y-6">
+          {/* Above the payments card, and only on a merchant order: a B2B
+              order's money is a deposit charge and never a `Payment`, so the
+              card below it correctly says «Платежи (0)» and this is where the
+              money actually is. */}
+          <MerchantDepositCard order={order} />
           <PaymentsCard
             payments={payments}
             orderId={order.id}

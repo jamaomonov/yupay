@@ -383,9 +383,25 @@ over. **That reason is false for a refunded order.** `retry_task` and
 the reseller the goods _and_ their money). Every exit was closed while the state
 said "in progress", which an owner met at 05:30 on the stuck-order alert.
 
-`_end_a_refunded_merchant_order` therefore sets `order.status = "failed"` in the
+`end_a_refunded_merchant_order` therefore sets `order.status = "failed"` in the
 same savepoint as the posting, writes an `order.failed` event, and routes the
 move through `orders.service.on_order_status_changed`.
+
+**Amended 2026-09-09 (M3c Task 4) — the same is true of a settlement a person
+books, and the closure lives at the posting.** Decision 12 left the hand path
+alone and said so; the consequence list below recorded that an operator's
+credit leaves `status: "fulfilling"` and the five-minute alert firing about
+money already returned. The owner has ruled that what ends an order is that the
+money is back, not who decided it, so `deposit.credit_deposit` now calls the
+same closer under the same `refund.settled_in_full` predicate. **The placement
+is the ruling, not the behaviour:** in the admin SPA's new settle button the
+rule would hold for one surface and not for the runbook's `curl` or M4's
+cabinet — the very inconsistency being removed, only harder to find. The
+counter-proposal (compose at the admin service layer and keep the money
+primitive money-only) is recorded and answered in `_close_a_settled_order`'s
+docstring: the primitive already caps a credit against **that order's** charge,
+so an order-level invariant is already in its contract, and this is its other
+half.
 
 **`failed`, not a new `refunded` value, and the contract decides it.** The
 module README's `status` row instructs clients to treat an unknown value as
@@ -414,7 +430,10 @@ contacting support is the right instruction.
 
 **Only a full settlement**, on `refund.settled_in_full` — the shared predicate,
 never a second comparison. A partial is a human mid-decision with money still
-owed, and closing it behind them removes the retry they were about to use.
+owed. It does **not** rest on "closing it removes the retry they were about to
+use": `_refuse_a_settled_merchant_order` already refuses `retry_task` and
+`complete_manual_task` on _any_ returned amount, so the first cent took that
+retry. The rule stands on the money that is still owed and on nothing else.
 
 Three consequences, all measured rather than assumed:
 
@@ -498,22 +517,27 @@ note, which the second writer falsifies. No shape, no field, no enum.
   settlement too — that loophole predates the automatic refund. Decision 12
   turns that closure into the order's own status, so the state and the
   refusals finally agree.
-- **A settlement booked by hand still does not close the order.** Decision 12
-  fires from inside the automatic refund, so an operator crediting the deposit
-  through `POST /admin/merchants/{id}/deposit-credits` leaves
-  `status: "fulfilling"` and `delivered_at IS NULL` — and therefore leaves the
-  order in `list_stuck_paid_orders` and in the five-minute alert. The runbook's
-  settlement procedure keeps its "close the order" step for exactly that
-  reason, and the step is now load-bearing rather than tidiness. Wiring the
-  close into `credit_deposit` is the obvious follow-up and was left out of M3c
-  Task 6 on scope: it would put an order-state write behind an admin money
-  endpoint, which is a decision, not an extension.
-- **A full refund now reaches a reseller by push twice; everything else is
-  still poll-only.** The refund emits `balance.credited`, because the hand
-  settlement it replaces already did and an automatic path that went silent
-  would have removed a notification — and, since decision 12, an
-  `order.status_changed` carrying `status: "failed"` right behind it, because
-  closing the order goes through the one seam. A failure whose money stayed
+- **A settlement booked by hand closes the order too, since M3c Task 4.**
+  Decision 12 originally fired only from inside the automatic refund, so an
+  operator crediting the deposit through
+  `POST /admin/merchants/{id}/deposit-credits` left `status: "fulfilling"` and
+  `delivered_at IS NULL` — and therefore left the order in
+  `list_stuck_paid_orders` and in the five-minute alert about money that was
+  already back. Task 6 recorded that as a consequence and left the decision
+  ("an order-state write behind an admin money endpoint") to the owner, who
+  ruled for it: what ends an order is that the money is back, not who decided
+  it. `credit_deposit` now calls the same closer under the same predicate.
+  **The runbook's "close the order" step is retired**, not merely optional: a
+  `POST /orders/{id}/fail` after the credit answers
+  `409 cannot mark order failed in current status`, because the order is
+  already `failed`.
+- **A full settlement now reaches a reseller by push twice, by either route;
+  everything else is still poll-only.** The refund emits `balance.credited`,
+  because the hand settlement it replaces already did and an automatic path
+  that went silent would have removed a notification — and, since decision 12,
+  an `order.status_changed` carrying `status: "failed"` right behind it,
+  because closing the order goes through the one seam. Since M3c Task 4 a hand
+  settlement emits the same pair, in the same order, for the same reason. A failure whose money stayed
   out, a partial settlement and a stall move `orders.status` for nobody and
   therefore announce nothing: for those the contract's "poll" still stands, and
   it says which is which.

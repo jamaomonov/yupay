@@ -662,29 +662,21 @@ looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 
-**Four** very different situations wear this status, and `failure_reason` on
+**Three** very different situations wear this status, and `failure_reason` on
 `GET /merchant/v1/orders/{merchant_order_id}` is what separates them: in
-progress, delayed on our side, failed with money still out, and **settled in
-full by a person and never closed**. A delivery failure and a stall are both
-recorded below the order row, so the status alone tells you only that the order
-was paid.
+progress, delayed on our side, and failed with money still out. A delivery
+failure and a stall are both recorded below the order row, so the status alone
+tells you only that the order was paid.
 
-**What is no longer in this list is the _automatic_ refund.** Since M3c Task 6
-an order whose whole charge came back on its own is closed as
+**Two things that used to be in this list are not, and both left by being
+closed.** Since M3c Task 6 an order whose whole charge came back on its own is
 `status: "failed"` within seconds, with
-`failure_reason: "fulfillment_failed_refunded"`. It is under "A merchant order
-that closed itself" below, it needs nothing from you, and it has left the
-five-minute stuck-order alert, which is what the change was for.
-
-**A settlement _you_ book does not close the order**, and that is the fourth
-case: the same `fulfillment_failed_refunded`, on an order still reading
-`fulfilling`, still `delivered_at IS NULL`, and therefore still in the
-stuck-order alert every five minutes. Nothing is owed and nothing needs
-deciding — it needs **closing** (step 1 of "Settling a failed order by hand"),
-and until somebody does, the alert is right that the order looks undelivered and
-wrong that money is at stake. Tell it apart from the third case by
-`refunded_usd`: equal to `price_usd` is this one, anything less is a person
-mid-decision.
+`failure_reason: "fulfillment_failed_refunded"`. Since M3c Task 4 the same is
+true of a settlement **you** book: the credit closes the order in the same
+transaction, so there is no longer a case where money is fully back and the
+order still reads `fulfilling`. Both are under "A merchant order that closed
+itself" below, both need nothing further from you, and both are out of the
+five-minute stuck-order alert, which is what the changes were for.
 
 **`failure_reason` is `null` — it is genuinely in progress, or the queue is
 stalled.** Nothing is wrong with the order. Check queue depth and the worker
@@ -771,10 +763,21 @@ retail order) or settle it — next section.
 done, and nothing is owed.** What **every** automatic refund leaves behind: the
 delivery failed, the whole charge is already back on the merchant's deposit
 (posted by the drain within seconds), and since M3c Task 6 the order is closed
-in the same transaction. It needs **no action at all** — the merchant has been
-told to refund their own end customer and place a new order if they still want
-the goods. Do not retry it: that is refused (`409 deposit_already_returned`)
-and the refusal is the point.
+in the same transaction. **Since M3c Task 4 a settlement you booked yourself
+leaves the same thing**, because the credit closes the order — see "Settling a
+failed order by hand" below, which is now one step and not two. It needs **no
+action at all** — the merchant has been told to refund their own end customer
+and place a new order if they still want the goods. Do not retry it: that is
+refused (`409 deposit_already_returned`) and the refusal is the point.
+
+**`status` is `failed` and `failure_reason` is `order_failed` — also done, and
+it means one of two things.** Either support closed the order by hand with
+money still out (the usual case, and "contact support" is the right thing to
+tell the merchant), or a settlement closed an order whose delivery had **not**
+failed — a goodwill return on an order still in flight, which the admin card's
+button offers because it gates on "unsettled merchant order" and not on
+"failed". Tell them apart with `refunded_usd`: equal to `price_usd` is the
+second, anything less is the first.
 
 Three things follow from the closure that are worth knowing before you go
 looking for them:
@@ -797,7 +800,10 @@ looking for them:
 deliberate: a partial means a person here is mid-decision and the rest is still
 owed, so it keeps `status: "fulfilling"`, `failure_reason:
 "fulfillment_failed"`, and its place in the stuck-order alert until somebody
-finishes it.
+finishes it. Crediting the remainder closes it — which is why the order page's
+own button is **hidden** on a partly settled order: it posts the whole charge
+and would be refused every time. Finish a partial on the merchant's page, where
+you type the amount.
 
 ## Settling a failed order by hand
 
@@ -820,14 +826,16 @@ If the order has already been settled automatically, this procedure will
 refuse you with `409 order_already_settled` rather than double-credit the
 merchant. That is the guard working, not a problem to route around.
 
-**Step 1 below is not optional, and M3c Task 6 did not make it so.** The
-automatic refund closes the order it settles; a settlement _you_ book does not.
-An order you credit without closing keeps `status: "fulfilling"` and
-`delivered_at IS NULL`, so `list_stuck_paid_orders` keeps returning it and the
-five-minute «Оплачен, но не выдан» alert keeps firing about money that is
-already back. Do both steps, in either order — the close is legal from `paid`,
-`fulfilling` and `fulfilled`, and the credit is legal whether or not the order
-is closed.
+**There is no "close the order" step any more, and M3c Task 4 is why.** It used
+to be step 1 and load-bearing: a settlement you booked left
+`status: "fulfilling"` and `delivered_at IS NULL`, so `list_stuck_paid_orders`
+kept returning it and the five-minute «Оплачен, но не выдан» alert kept firing
+about money that was already back. The credit now closes the order itself, in
+the same transaction, on the same rule the automatic refund uses — **only on a
+full settlement**. So: credit, and you are done. A
+`POST /admin/orders/{id}/fail` afterwards answers
+`409 cannot mark order failed in current status`, because the order is already
+`failed`; that refusal is the change working, not a problem.
 
 **What the merchant reads afterwards is `fulfillment_failed_refunded`, not
 `order_failed`.** That is new in M3c Task 6 and it is the better answer: the
@@ -835,7 +843,10 @@ precedence now puts "the whole charge is back" ahead of "support closed this",
 so a fully settled order tells the reseller to refund their own customer and
 stop chasing us. `order_failed` is what they see while anything is still
 owed — nothing back, or only part of it — which is exactly when contacting
-support is the right instruction.
+support is the right instruction. **One exception, and it is not a bug:** the
+refunded value needs a **failed item**, so settling an order whose delivery had
+not failed reads `order_failed` even at a full settlement. That is true — a
+person ended it, nothing about the delivery did.
 
 **For everything else, support settles it as a deposit credit that names the
 order** — the `order_id` body field on the deposit-credit endpoint (M3b). Use
@@ -858,21 +869,7 @@ prepaid deposit, never to a bank. Say that plainly.
 
 The steps:
 
-1. **Close the order** so it stops looking deliverable, with a reason that will
-   be read by us and never by the merchant (they get the closed vocabulary
-   value `order_failed`):
-
-   ```bash
-   curl -X POST "https://api.yupay.uz/api/v1/admin/orders/<order-id>/fail" \
-     -H "Authorization: Bearer <admin JWT>" \
-     -H 'Content-Type: application/json' \
-     -d '{"reason":"supplier could not deliver; deposit credited back 2026-09-07"}'
-   ```
-
-   Legal from `paid`, `fulfilling` and `fulfilled` only, and it cancels any
-   open fulfilment task. It **moves no money**.
-
-2. **Credit the deposit, naming the order**, for exactly what the order charged
+1. **Credit the deposit, naming the order**, for exactly what the order charged
    — the `unit_price_usd` from the query above, which is also `price_usd` on
    the merchant's own order read. `order_items.unit_price_usd` is
    `NUMERIC(20, 6)` so psql prints it as `1.060000`; send `1.06`. (Both are
@@ -880,13 +877,29 @@ The steps:
    price is always a whole cent — but the two-decimal form is what the merchant
    sees and what your `note` should quote.)
 
-   **Use the SPA:** the merchant's detail page → the deposit-credit form →
-   the **ID заказа** field. It takes our order id, tells you so under the
-   label, refuses anything that is not a UUID _before_ posting (the API's own
-   refusal for a malformed id is a `404`, which reads as "no such order" and
-   sends you hunting in the wrong place), names the order in the confirm
-   dialog, and echoes back the order the ledger actually booked against. Or,
-   by hand:
+   **Use the SPA, and prefer the order page.** Since M3c Task 4 the order's own
+   screen carries a **Депозит мерчанта** card — what the order took from the
+   deposit, what has come back, and one button that returns the charge. It
+   fills the amount and the order id for you, mints a fresh `Idempotency-Key`,
+   names the merchant, the amount and the order in a confirmation before
+   anything posts, and says that the order will close. It is **hidden** in three cases —
+   an order already square (nothing to do), a partly settled one (it posts the
+   whole charge, which would be refused), and one whose delivery has not
+   terminally failed. The last is a safety rule and not tidiness: settling a
+   live order returns the money and **stops nothing**, so the drain can still
+   deliver goods the reseller has already been paid back for. Nothing in the
+   API refuses that — it predates the button — so if you ever need to settle a
+   live order, do it on the merchant's page and **cancel the fulfilment task
+   first**. Goodwill beyond the order's price is an unattributed credit, also
+   on the merchant's page.
+
+   **The merchant's page** still has the general form: its detail page → the
+   deposit-credit form → the **ID заказа** field. It takes our order id, tells
+   you so under the label, refuses anything that is not a UUID _before_ posting
+   (the API's own refusal for a malformed id is a `404`, which reads as "no
+   such order" and sends you hunting in the wrong place), names the order in
+   the confirm dialog, and echoes back the order the ledger actually booked
+   against. Or, by hand:
 
    ```bash
    curl -X POST "https://api.yupay.uz/api/v1/admin/merchants/<merchant-id>/deposit-credits" \
@@ -931,8 +944,11 @@ The steps:
    `deposit_already_returned` and it triggers on _any_ amount, not on a full
    one. One cent parks the order. The way out is forward, not back: credit the
    remainder as a second attributed credit under a **new** key — allowed right
-   up to the charge — and the state resolves itself. There is no way to
-   un-credit.
+   up to the charge — and the state resolves itself, the order included: since
+   M3c Task 4 the credit that reaches the full charge is the one that closes
+   it, whichever stage that is. There is no way to un-credit. The order page's
+   button is hidden while a partial is outstanding, so the remainder is typed
+   on the merchant's page.
 
    Read the response before you move on. The ledger replays **without
    comparing parameters**, so a key you have used before returns the original
@@ -940,7 +956,7 @@ The steps:
    `order_id` are that original transaction's, not what you just sent. If
    either disagrees with your request, you reused a key: nothing moved.
 
-3. **Verify**, as the merchant will:
+2. **Verify**, as the merchant will:
 
    ```bash
    docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yupay -c \
@@ -965,7 +981,7 @@ The steps:
    ledger booked against beside the new balance, and raises a red banner
    instead of a success toast when what came back is not what you sent.
 
-4. **Tell the merchant**, quoting their `merchant_order_id`: the order is
+3. **Tell the merchant**, quoting their `merchant_order_id`: the order is
    closed as `order_failed`, and the amount is back on their deposit balance —
    visible in `balance_usd`, on `/transactions` against that order, and in the
    order's own `refunded_usd`.
@@ -1055,13 +1071,13 @@ Three Telegram alerts, all from the fulfilment saga:
   `modelled=true` for those and `modelled=false` for a bug in our own refund
   code — the second is an engineering ticket, not a settlement.
 
-  **`AlreadySettledError` leaves the order open even when your settlement was
-  complete**, and that is a gap rather than a decision. M3c Task 6 closes an
-  order from inside the automatic refund, and this alert means the automatic
-  refund did not post — so the order keeps `status: "fulfilling"` and keeps
-  appearing in the stuck-order alert until somebody closes it. Close it by hand
-  (step 1 of the settlement procedure); the merchant then reads
-  `fulfillment_failed_refunded`, because the money is all back.
+  **`AlreadySettledError` no longer leaves the order open — M3c Task 4 closed
+  that gap.** This alert means the automatic refund did not post because a
+  person's credit got there first; that credit now closes the order itself when
+  it completes the charge, so the order is already `failed` and already out of
+  the stuck-order alert by the time you read this. Nothing to close. If the
+  credit that beat the drain was a **partial**, the order is correctly still
+  open and the remainder is yours to finish.
 
 - **«Отменена задача по заказу реселлера»** (`merchant_order_cancelled`) — a
   merchant order's task was cancelled, by an admin or by an order/payment

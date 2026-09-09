@@ -23,6 +23,16 @@ Four properties carry this file:
 * **an order that is not this merchant's is refused exactly like one that
   never existed** — including an id that is not a UUID at all, which reaches a
   ``uuid`` column and used to be the shape of a 500.
+
+**M3c Task 4 adds a fifth, and it is the one that moves order state.** A
+settlement that brings an order to *full* is the end of that order, whoever
+decided it: every way of delivering a settled order is already refused with
+``409 deposit_already_returned``, so leaving it ``fulfilling`` is the same lie
+Task 6 removed for the automatic path. The closure therefore lives at the
+posting rather than in the button — the runbook's ``curl`` and M4's cabinet
+reach the same function — and the last section here is what proves it, from
+both directions: a full settlement closes, a partial does not, and finishing a
+partial does.
 """
 
 from __future__ import annotations
@@ -31,6 +41,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any
 from urllib.parse import quote, urlencode
@@ -50,6 +61,9 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.merchants.models import MerchantWebhookDelivery
+from yupay.modules.orders.models import Order, OrderEvent, OrderItem
+from yupay.modules.orders.service import list_stuck_paid_orders
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet.models import WalletAccount, WalletTransaction
 
@@ -506,3 +520,315 @@ async def test_a_replay_keeps_the_first_attribution(
     assert (await _read_order(integration_client, key_id, secret, "acme-7")).json()[
         "refunded_usd"
     ] == "0.00"
+
+
+# ---------- M3c Task 4: a full settlement ends the order ----------
+
+
+async def _order_row(db: AsyncSession, order_id: str) -> Order:
+    return (await db.execute(select(Order).where(Order.id == order_id))).scalar_one()
+
+
+async def _fail_the_line(db: AsyncSession, order_id: str) -> None:
+    """Leave the order in the state a terminal supplier failure leaves it in.
+
+    Written directly rather than driven through the saga because what this
+    file is about is the **settlement**, not how the delivery died: the
+    fulfilment side of that is ``test_merchant_auto_refund.py``'s subject and
+    has a mock supplier for it. What matters here is the shape an operator
+    meets — the item ``failed``, the order still ``fulfilling``, the money
+    still gone — which is exactly what ``_apply_failure`` writes.
+    """
+    await db.execute(
+        update(OrderItem).where(OrderItem.order_id == order_id).values(fulfillment_state="failed")
+    )
+    await db.commit()
+
+
+async def _failed_events(db: AsyncSession, order_id: str) -> list[OrderEvent]:
+    return list(
+        (
+            await db.execute(
+                select(OrderEvent)
+                .where(OrderEvent.order_id == order_id, OrderEvent.kind == "order.failed")
+                .order_by(OrderEvent.created_at, OrderEvent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+async def test_a_full_settlement_closes_the_order(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The ruling: what ends an order is that the money is back, not who decided it.
+
+    Task 6 made this true of the drain's automatic refund. The same is true of
+    a settlement a person books: ``retry_task`` and ``complete_manual_task``
+    both refuse a settled order with ``409 deposit_already_returned``, so every
+    exit is closed while the state says "in progress" — and the five-minute
+    stuck-order alert keeps firing about money that is already back.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-settled"
+    )
+    await _fail_the_line(db_session, order_id)
+    before = await _order_row(db_session, order_id)
+    assert before.status == "fulfilling"
+
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+    ).status_code == 201
+
+    after = await _order_row(db_session, order_id)
+    await db_session.refresh(after)
+    assert after.status == "failed"
+
+    body = (await _read_order(integration_client, key_id, secret, "acme-settled")).json()
+    assert body["status"] == "failed"
+    # Not ``order_failed``: the precedence Task 6 fixed puts "your money is
+    # back" ahead of "support closed this", and a hand settlement reaches it
+    # for the same reason the drain does — the ledger, not the caller.
+    assert body["failure_reason"] == "fulfillment_failed_refunded"
+    assert body["refunded_usd"] == PRICE
+
+
+async def test_a_partial_settlement_leaves_the_order_open(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A sum is not a flag, and the reason is that **money is still owed**.
+
+    Not that closing would take away a retry the operator was about to use:
+    ``_refuse_a_settled_merchant_order`` already refuses ``retry_task`` and
+    ``complete_manual_task`` on *any* returned amount, so a partially settled
+    order lost its retry the moment the first cent landed. What is left is the
+    rest of the charge, and that is a person mid-decision.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-partial"
+    )
+
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
+    ).status_code == 201
+
+    row = await _order_row(db_session, order_id)
+    await db_session.refresh(row)
+    assert row.status == "fulfilling"
+    body = (await _read_order(integration_client, key_id, secret, "acme-partial")).json()
+    assert body["status"] == "fulfilling"
+    assert body["refunded_usd"] == "0.01"
+
+
+async def test_finishing_a_partial_settlement_closes_it(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Settling in stages is allowed, so the last stage has to be the one that ends it.
+
+    The runbook tells an operator to credit the remainder under a **new** key,
+    "and the state resolves itself". This is that sentence made true of the
+    order row as well as of ``failure_reason``.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-staged"
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "0.07", order_id=order_id)
+    ).status_code == 201
+    row = await _order_row(db_session, order_id)
+    await db_session.refresh(row)
+    assert row.status == "fulfilling"
+
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "1.00", order_id=order_id)
+    ).status_code == 201
+
+    await db_session.refresh(row)
+    assert row.status == "failed"
+
+
+async def test_a_second_settlement_is_refused_and_nothing_moves_twice(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Double settlement is impossible from every surface, and says so in a code.
+
+    ``order_already_settled`` predates this task; what is new is that the
+    refusal now also protects an order that is already **closed**, so the
+    second press cannot produce a second ``order.failed`` line on a timeline
+    that is published to the reseller.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-twice"
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+    ).status_code == 201
+
+    second = await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+
+    assert second.status_code == 409, second.text
+    assert second.json()["code"] == "order_already_settled"
+    assert len(await _failed_events(db_session, order_id)) == 1
+
+
+async def test_a_replay_of_the_settlement_closes_once(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """An operator's timeout retry replays the credit; it must not re-close.
+
+    The closure is guarded by ``FAILABLE_STATUSES``, which a closed order is
+    already outside — so this is idempotent for the same reason the credit is,
+    and one order still shows one ending.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-replay"
+    )
+    key = f"settle-{new_id()}"
+    one = await _credit(
+        integration_client, admin_headers, merchant_id, PRICE, order_id=order_id, key=key
+    )
+    two = await _credit(
+        integration_client, admin_headers, merchant_id, PRICE, order_id=order_id, key=key
+    )
+
+    assert one.status_code == 201, one.text
+    assert two.status_code == 201, two.text
+    assert two.json()["transaction_id"] == one.json()["transaction_id"]
+    row = await _order_row(db_session, order_id)
+    await db_session.refresh(row)
+    assert row.status == "failed"
+    assert len(await _failed_events(db_session, order_id)) == 1
+
+
+async def test_the_settled_order_leaves_the_stuck_order_watchdog(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The consequence the whole ruling is for, measured rather than assumed.
+
+    ``list_stuck_paid_orders`` selects ``paid``/``fulfilling``/``fulfilled``
+    with ``delivered_at IS NULL``, so a settled-but-open order matched it every
+    five minutes for ever — an alert whose text is "Деньги у нас, товара у
+    клиента нет" about money that is already back. The sibling is the control.
+    """
+    merchant_id, _key_id, _secret, settled_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-quiet-2"
+    )
+    _m2, _k2, _s2, open_id = await _placed(
+        integration_client,
+        admin_headers,
+        db_session,
+        merchant_order_id="beta-loud-2",
+        title="Other",
+        n=2,
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=settled_id)
+    ).status_code == 201
+
+    stuck = [o.id for o in await list_stuck_paid_orders(db_session, older_than_minutes=0)]
+
+    assert settled_id not in stuck
+    assert open_id in stuck
+
+
+async def test_the_settlement_announces_the_order_state_by_push(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Task 6 corrected "money by push, order state by poll" — keep it corrected.
+
+    The hand path already emitted ``balance.credited``; the closure routes
+    through ``orders.service.on_order_status_changed``, the one seam, so
+    ``order.status_changed`` follows it in the same transaction.
+    """
+    merchant_id, _key_id, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-push-2"
+    )
+    hook = await integration_client.put(
+        f"/api/v1/admin/merchants/{merchant_id}/webhook",
+        headers=admin_headers,
+        json={"url": "https://reseller.example/hooks/yupay"},
+    )
+    assert hook.status_code == 200, hook.text
+
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+    ).status_code == 201
+
+    rows = list(
+        (
+            await db_session.execute(
+                select(MerchantWebhookDelivery)
+                .where(MerchantWebhookDelivery.merchant_id == merchant_id)
+                .order_by(MerchantWebhookDelivery.created_at, MerchantWebhookDelivery.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [row.event_type for row in rows] == ["balance.credited", "order.status_changed"]
+    assert rows[1].payload["status"] == "failed"
+    assert rows[1].payload["merchant_order_id"] == "acme-push-2"
+
+
+async def test_a_retail_order_cannot_be_settled_this_way_at_all(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Retail is out of reach of this path by scope, one layer above the closer.
+
+    ``_resolve_order_reference`` matches ``Order.merchant_id == merchant_id``,
+    so a storefront order is refused with the same ``404 order_not_found`` as
+    an id that never existed — it never reaches the money, let alone the
+    status. The row is re-read afterwards because "refused" and "left alone"
+    are two claims.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers, title="Reseller")
+    retail = Order(
+        id=new_id(),
+        status="fulfilling",
+        currency="USD",
+        total_usd=Decimal("1.07"),
+        total_charged=Decimal("1.07"),
+        guest_email="buyer@example.com",
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    db_session.add(retail)
+    await db_session.commit()
+
+    refused = await _credit(
+        integration_client, admin_headers, merchant_id, PRICE, order_id=retail.id
+    )
+
+    assert refused.status_code == 404, refused.text
+    assert refused.json()["code"] == "order_not_found"
+    await db_session.refresh(retail)
+    assert retail.status == "fulfilling"
+
+
+async def test_settling_an_order_whose_delivery_never_failed_reads_as_a_hand_closure(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The reason the reseller reads splits on the **item**, not on the credit.
+
+    Nearly every attributed credit settles a failed delivery, and that reads
+    ``fulfillment_failed_refunded``. An operator can also settle an order whose
+    line never failed — a goodwill decision on an order still in flight, which
+    the button offers because "unsettled merchant order" is what it gates on.
+    That closes the order too (the money is back and no delivery route survives
+    a settlement), and it reads ``order_failed``: nothing about the *delivery*
+    failed, a person ended it. Pinned rather than left to be discovered,
+    because it is the one place the two paths give a reseller different words
+    for the same amount of money returned.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-goodwill"
+    )
+
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, PRICE, order_id=order_id)
+    ).status_code == 201
+
+    body = (await _read_order(integration_client, key_id, secret, "acme-goodwill")).json()
+    assert body["status"] == "failed"
+    assert body["failure_reason"] == "order_failed"
+    assert body["refunded_usd"] == PRICE

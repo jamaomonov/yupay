@@ -15,7 +15,7 @@ than about the contract:
 
 * two sites write ``order.status = "failed"`` — ``orders/service.py``'s
   ``mark_order_failed_admin`` (support closing it by hand) and, since M3c
-  Task 6, ``fulfillment/service.py``'s ``_end_a_refunded_merchant_order``
+  Task 6, ``fulfillment/service.py``'s ``end_a_refunded_merchant_order``
   (a full automatic refund). Both cascade or run *after* the failure has
   landed, and the admin one cancels a ``failed`` task through
   ``cancel_open_tasks_for_order`` before the status write, so closed-and-

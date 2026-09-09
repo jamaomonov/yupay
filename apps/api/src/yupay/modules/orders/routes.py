@@ -105,14 +105,18 @@ async def _to_admin_orders_out(
     titles = await svc.merchant_titles_for(db, orders)
     # The reseller's own answer to "why has this stopped", not a second one:
     # the admin and `/merchant/v1` must not be able to disagree about an order
-    # the operator is about to explain to the merchant reading it.
-    reasons = await merchant_order_status.failure_reasons(db, orders=orders)
+    # the operator is about to explain to the merchant reading it. The two
+    # deposit numbers ride along because that read already had to take them.
+    states = await merchant_order_status.order_stop_states(db, orders=orders)
     out: list[OrderAdminOut] = []
     for order in orders:
         dto = _to_admin_order_out(order, locale=locale)
         if order.merchant_id is not None:
             dto.merchant_title = titles.get(order.merchant_id)
-        dto.failure_reason = reasons[order.id]
+        state = states[order.id]
+        dto.failure_reason = state.reason
+        dto.deposit_charged_usd = state.deposit_charged
+        dto.deposit_returned_usd = state.deposit_returned
         out.append(dto)
     return out
 

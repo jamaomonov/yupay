@@ -163,7 +163,7 @@ def _no_such_order() -> NotFoundError:
 
 async def _resolve_order_reference(
     db: AsyncSession, *, merchant_id: str, order_id: str
-) -> wallet_service.Reference:
+) -> tuple[Order, wallet_service.Reference]:
     """Check that ``order_id`` is this merchant's order, and reference it.
 
     Two things happen here and both are load-bearing.
@@ -188,7 +188,10 @@ async def _resolve_order_reference(
         order_id: The order to attribute the credit to, in any UUID spelling.
 
     Returns:
-        The ledger reference to post with.
+        The order row and the ledger reference to post with. The **row**, not
+        just its id, since M3c Task 4: :func:`credit_deposit` closes an order a
+        credit settles in full, and re-reading it a line later would be a
+        second query for something this one already had to touch.
 
     Raises:
         NotFoundError: ``order_not_found``.
@@ -199,12 +202,12 @@ async def _resolve_order_reference(
         raise _no_such_order() from exc
     found = (
         await db.execute(
-            select(Order.id).where(Order.id == canonical, Order.merchant_id == merchant_id)
+            select(Order).where(Order.id == canonical, Order.merchant_id == merchant_id)
         )
     ).scalar_one_or_none()
     if found is None:
         raise _no_such_order()
-    return wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=canonical)
+    return found, wallet_service.Reference(type=ORDER_REFERENCE_TYPE, id=canonical)
 
 
 async def deposit_account(db: AsyncSession, *, merchant_id: str) -> WalletAccount:
@@ -364,10 +367,13 @@ async def credit_deposit(
         )
     ).scalar_one_or_none() is not None
 
+    order: Order | None = None
     if order_id is None:
         reference = wallet_service.Reference(type=MERCHANT_REFERENCE_TYPE, id=merchant_id)
     else:
-        reference = await _resolve_order_reference(db, merchant_id=merchant_id, order_id=order_id)
+        order, reference = await _resolve_order_reference(
+            db, merchant_id=merchant_id, order_id=order_id
+        )
         if not replayed:
             # ``reference.id``, not the caller's argument: the canonical
             # spelling is what ``refunded_for_order`` matches on, and
@@ -413,7 +419,88 @@ async def credit_deposit(
             amount=amount,
             balance=await deposit_balance(db, merchant_id=merchant_id),
         )
+    if order is not None:
+        # Deliberately **not** gated on ``replayed``: the closer is idempotent
+        # on the order's own status, and an operator's retry after a timeout
+        # that credited but crashed before closing is exactly the case that
+        # needs the second pass.
+        await _close_a_settled_order(db, order=order, actor=actor)
     return txn
+
+
+#: ``OrderEvent.payload["reason"]`` for an order a person's credit closed. A
+#: closed internal label, like the drain's — the row reaches the admin audit
+#: feed, and the operator's own ``note`` is on the ledger transaction where
+#: they wrote it.
+SETTLEMENT_CLOSE_REASON: Final = "settled_by_hand"
+
+#: ``OrderEvent.payload["by"]`` for the same. Not ``admin``, which
+#: ``orders.service.mark_order_failed_admin`` already writes with an operator's
+#: free text beside it: these are two different things a person can do to an
+#: order and telling them apart in the audit feed is the whole point of the key.
+SETTLEMENT_CLOSE_BY: Final = "settlement"
+
+
+async def _close_a_settled_order(db: AsyncSession, *, order: Order, actor: str) -> None:
+    """End an order this credit has brought to a full settlement (M3c Task 4).
+
+    **The owner's ruling, and it is about where the rule lives rather than what
+    it is.** A full settlement ends the order — every way of delivering one is
+    already refused with ``409 deposit_already_returned``, so "in progress" is
+    the same lie M3c Task 6 removed for the automatic refund. Putting the
+    closure in the admin SPA's new settle button would have left the runbook's
+    ``curl`` procedure and M4's cabinet still leaving orders open: the same
+    inconsistency, only harder to find. At the posting, every caller closes
+    identically.
+
+    **The counter-proposal this was ruled against, stated so it is not silently
+    inherited:** compose at the admin service layer — ``credit_deposit`` then
+    the closer, in one transaction — and keep this money primitive money-only,
+    because it has three uses under one signature (an ordinary prepayment, a
+    settlement, one stage of a staged settlement). It loses on two counts.
+
+    *The primitive is already not money-only.* :func:`_refuse_over_settlement`
+    refuses a credit that would take **the order** past what it charged, so an
+    order-level invariant is in this function's contract already, and this is
+    that invariant's other half: refuse above the total, close at it. A reader
+    who accepts the first and rejects the second is drawing a line the code
+    does not have.
+
+    *And a rule enforced at one call site is a rule with a hole.* The three
+    uses are not three code paths; they are three answers from one predicate.
+    A prepayment names no order and never reaches here. A partial is declined
+    by ``refund.settled_in_full`` inside the closer — a person is mid-decision
+    and the rest is still owed. A full settlement closes. One signature, one
+    predicate, no fork.
+
+    What the objection is right about, and what makes it acceptable anyway: a
+    money endpoint now writes order state. The write is a **consequence** of
+    the money reaching a known total rather than an action of its own; it is
+    idempotent, because ``FAILABLE_STATUSES`` excludes an order already closed;
+    it fires only on a full settlement; and the alternative is an
+    inconsistency that depends on which door the operator walked through.
+
+    Imported lazily, for the reason every other reach from this package into
+    ``fulfillment`` is: ``fulfillment.service`` imports ``merchants.refund``,
+    which imports this module, so a module-level import here closes the cycle.
+
+    Args:
+        db: Session. The caller owns the transaction — this runs in the same
+            one as the posting, so an order that ends and money that moved are
+            committed together or not at all.
+        order: The order the credit was attributed to.
+        actor: The credit's own actor (``admin:<id>``), recorded on the
+            timeline event as who ended the order.
+    """
+    from yupay.modules.fulfillment import service as fulfillment
+
+    await fulfillment.end_a_refunded_merchant_order(
+        db,
+        order=order,
+        by=SETTLEMENT_CLOSE_BY,
+        reason=SETTLEMENT_CLOSE_REASON,
+        actor=actor,
+    )
 
 
 async def charge_deposit(

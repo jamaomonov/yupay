@@ -114,8 +114,9 @@ states and do publish a normal `order.status_changed`.
 Two writers move a paid order to `failed`: `mark_order_failed_admin` (support
 closing an undeliverable order by hand, which post-dates this ADR) and, since
 [ADR-0071](./0071-merchant-refunds.md) decision 12,
-`fulfillment.service._end_a_refunded_merchant_order` — a **merchant** order
-whose whole deposit charge has already come back automatically. Neither
+`fulfillment.service.end_a_refunded_merchant_order` — a **merchant** order
+whose whole deposit charge has come back, automatically from the refund seam or
+because a person's settlement completed it (M3c Task 4). Neither
 contradicts the domain rule, which is about a **retail customer** being shown an
 internal remediation state as if it were their own final outcome: the first is a
 human deciding the order is over, and the second is an order that provably is

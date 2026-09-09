@@ -1070,11 +1070,57 @@ async def _settle_merchant_deposit_inner(
     # take the posting with it rather than leave a refunded order still reading
     # "in progress". The caller's ``except`` then alerts and the failure stays
     # refundable by hand, which is the safe direction.
-    await _end_a_refunded_merchant_order(db, order=order, task_id=task_id)
+    await end_a_refunded_merchant_order(
+        db,
+        order=order,
+        by="fulfillment",
+        reason=_MERCHANT_REFUND_REASON,
+        actor="fulfillment",
+        task_id=task_id,
+    )
 
 
-async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task_id: str) -> None:
-    """Close a merchant order whose whole charge has come back (M3c Task 6).
+async def end_a_refunded_merchant_order(
+    db: AsyncSession, *, order: Order, by: str, reason: str, actor: str, task_id: str | None = None
+) -> None:
+    """Close a merchant order whose whole charge has come back (M3c Tasks 6 and 4).
+
+    **Two callers, and the second is why this is public.** Task 6 wrote it for
+    the drain's automatic refund; M3c Task 4 gives it to
+    ``merchants.deposit.credit_deposit``, so a settlement a person books ends
+    the order identically. What ends an order is that the money is back, not
+    who decided it — and until Task 4 a hand settlement left ``fulfilling``,
+    ``delivered_at IS NULL`` and the five-minute stuck-order alert firing about
+    money that was already returned.
+
+    **Why the second caller is the posting and not the button.** The admin SPA
+    grew a settle button on the order page in the same task, and putting the
+    closure there would have left the runbook's ``curl`` procedure and M4's
+    cabinet with the old inconsistency — the very one this closes, only harder
+    to find, because it would then depend on which surface an operator used.
+    At the posting, *every* caller closes identically, including ones nobody
+    has written yet.
+
+    **The reviewer's counter-proposal, and why it loses.** It was to compose at
+    the admin service layer — ``credit_deposit`` then this closer, in one
+    transaction — keeping the money primitive money-only, on the grounds that
+    ``credit_deposit`` has three uses under one signature (a prepayment, a
+    settlement, a stage of one). Two things defeat it. First, the primitive is
+    *already* not money-only: ``_refuse_over_settlement`` refuses a credit that
+    would take **the order** past what it charged, so an order-level invariant
+    is in its contract, and this is the same invariant's other half — the
+    refusal above the total and the closure at the total. Second, a rule
+    enforced at one call site is a rule with a hole; the three uses are not
+    three code paths but three answers from one predicate
+    (``refund.settled_in_full``): a prepayment names no order and never reaches
+    it, a partial is declined by it, a full settlement closes.
+
+    The objection it rests on is real and is not dismissed: **a money endpoint
+    now writes order state.** That is acceptable here because the write is a
+    *consequence* of the money reaching a known total rather than an action of
+    its own, it is idempotent (``FAILABLE_STATUSES`` excludes an order already
+    closed), it fires only on a full settlement, and the alternative is an
+    inconsistency that depends on which door the operator walked through.
 
     **Why the status moves here and nowhere else.** Retail's rule is that a
     terminal fulfilment failure leaves ``order.status`` alone, because an
@@ -1118,7 +1164,8 @@ async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task
     and ``complete_manual_task`` on *any* returned amount, so a partially
     settled order has lost its retry already. It is written here rather than
     left to the caller because the settlement a person books by hand is the
-    obvious second caller and it is the one that can be partial.
+    second caller — since Task 4 an actual one, not an anticipated one — and it
+    is the one that can be partial.
 
     ``FAILABLE_STATUSES`` is the same shape: a merchant order at this seam is
     always ``fulfilling``, so it never rejects one *here*, and what it keeps out
@@ -1170,10 +1217,23 @@ async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task
     paragraph instead of rediscovering it.
 
     Args:
-        db: Session. The caller owns the transaction; this runs inside the
-            seam's savepoint.
-        order: The refunded order, already carrying its ``merchant_id``.
-        task_id: The task that failed — for the log line only.
+        db: Session. The caller owns the transaction — inside the seam's
+            savepoint for the drain, inside the admin request's transaction for
+            the settlement.
+        order: The settled order, already carrying its ``merchant_id``.
+        by: Which writer this is, recorded on the timeline payload:
+            ``fulfillment`` for the drain, ``settlement`` for a credit booked
+            by a person. Neither is published — see above — but the admin audit
+            feed reads them, and ``admin`` is taken by
+            ``mark_order_failed_admin``.
+        reason: The internal label recorded beside ``by``. A closed word, not
+            an operator's or a supplier's own text: this row is readable
+            through the admin audit feed.
+        actor: The ``OrderEvent.actor``: ``fulfillment`` for the drain, the
+            credit's own ``admin:<id>`` for a settlement. It is what answers
+            "who closed this order" a month later.
+        task_id: The task that failed, for the log line only. ``None`` on the
+            hand path, where no task decided anything.
     """
     # Both lazy, for the reason the seam's own import is: ``merchants`` and
     # ``orders.service`` each import this module at module scope, so a
@@ -1201,12 +1261,15 @@ async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task
             id=new_id(),
             order_id=order.id,
             kind="order.failed",
-            # ``by`` is what tells this apart from the admin closure, which
-            # writes ``{"by": "admin", "reason": <operator's words>}``. Neither
-            # payload is published — the merchant timeline carries a kind and a
-            # timestamp and nothing else.
-            payload={"by": "fulfillment", "reason": _MERCHANT_REFUND_REASON},
-            actor="fulfillment",
+            # ``by`` is what tells the three writers of this kind apart:
+            # ``fulfillment`` (the drain's automatic refund), ``settlement``
+            # (a credit a person booked, M3c Task 4) and ``admin``
+            # (``mark_order_failed_admin``, which also carries the operator's
+            # own words). No payload is published — the merchant timeline
+            # carries a kind and a timestamp and nothing else — so this is for
+            # the admin audit feed.
+            payload={"by": by, "reason": reason},
+            actor=actor,
         )
     )
     await db.flush()
@@ -1216,7 +1279,7 @@ async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task
     # ``publish_realtime=False`` would document a suppression that does not
     # exist.
     await _publish_status_changed(db, order)
-    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id)
+    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id, by=by)
 
 
 async def _refuse_a_settled_merchant_order(db: AsyncSession, *, task: FulfillmentTask) -> None:

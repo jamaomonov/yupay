@@ -93,20 +93,27 @@ pending_payment → paid → fulfilling → fulfilled → delivered
 
 Status transitions write an `order.<verb>` event. Illegal transitions return 409.
 
-`failed` has **two** writers, and `FAILABLE_STATUSES` is the one list of states
-either may close from (`paid`/`fulfilling`/`fulfilled` — never `delivered`,
-which is a refund and moves real money):
+`failed` has **three** writers, and `FAILABLE_STATUSES` is the one list of
+states any of them may close from (`paid`/`fulfilling`/`fulfilled` — never
+`delivered`, which is a refund and moves real money):
 
 - `mark_order_failed_admin` — support closing a paid-but-undeliverable order by
   hand, with a required reason;
-- `fulfillment.service._end_a_refunded_merchant_order` — a **merchant** order
-  whose whole deposit charge has come back automatically (M3c Task 6). Retail
-  is untouched: a terminal fulfilment failure still leaves the order row alone,
-  because an operator may still top up, retry or deliver by hand. For a
-  refunded merchant order all three are already refused with `409
-deposit_already_returned`, so the order really is over.
+- `fulfillment.service.end_a_refunded_merchant_order`, from the refund seam —
+  a **merchant** order whose whole deposit charge has come back automatically
+  (M3c Task 6);
+- the same function, from `merchants.deposit.credit_deposit` — a settlement a
+  person books that brings the order to a **full** one (M3c Task 4). What ends
+  an order is that the money is back, not who decided it.
 
-Both go through `on_order_status_changed`.
+Retail is untouched by the last two: a terminal fulfilment failure still leaves
+the order row alone, because an operator may still top up, retry or deliver by
+hand. For a settled merchant order all three of those are already refused with
+`409 deposit_already_returned`, so the order really is over.
+
+All three go through `on_order_status_changed`. The timeline event's
+`payload["by"]` is what tells them apart in the audit feed — `admin`,
+`fulfillment`, `settlement` — and none of it is published to the reseller.
 
 ## Idempotency
 

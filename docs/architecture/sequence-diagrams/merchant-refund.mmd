@@ -6,7 +6,7 @@ sequenceDiagram
     participant SEAM as _settle_merchant_deposit
     participant RF as merchants.refund.refund_order
     participant L as wallet.service.post
-    participant END as _end_a_refunded_merchant_order
+    participant END as end_a_refunded_merchant_order
     participant OPS as Telegram ops alert
     participant DB as Postgres
     participant R as Reseller (polling)

@@ -50,6 +50,8 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     merchant_id: null,
     merchant_title: null,
     failure_reason: null,
+    deposit_charged_usd: null,
+    deposit_returned_usd: "0",
     source: "web",
     events: [],
     ...over,

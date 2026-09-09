@@ -1,19 +1,21 @@
 """The two guards on closing a refunded merchant order (M3c Task 6).
 
-``fulfillment.service._end_a_refunded_merchant_order`` is reached from exactly
-one place — the refund seam, immediately after a posting — and from there both
-of its guards are always satisfied: a merchant order at the seam is
-``fulfilling``, and ``refund_order`` posts the whole charge and refuses any
-order money has already come back on, so a successful posting *is* a complete
-settlement.
+``fulfillment.service.end_a_refunded_merchant_order`` was reached from exactly
+one place when this file was written — the refund seam, immediately after a
+posting — and from there both of its guards are always satisfied: a merchant
+order at the seam is ``fulfilling``, and ``refund_order`` posts the whole
+charge and refuses any order money has already come back on, so a successful
+posting *is* a complete settlement. **M3c Task 4 added the second caller the
+last paragraph below anticipated** (``deposit.credit_deposit``, a settlement a
+person books), which can reach both guards for real — and that makes testing
+them more worth doing, not less: they are now on a path an operator drives.
 
-That makes the guards untestable through the saga and, left there, untested
+Through the saga alone the guards were untestable and, left there, untested
 full stop — which is how defensive code stops being defence and becomes
 decoration. Calling the function directly is what gives each one a case, and it
-is worth doing rather than declaring, because the rules are about money and
-about a delivered order: the hand settlement is the obvious second caller, it
-can be partial, and it can be booked against an order that a later manual
-delivery has since completed.
+was worth doing rather than declaring, because the rules are about money and
+about a delivered order: the hand settlement can be partial, and it can be
+booked against an order that a later manual delivery has since completed.
 
 The partial half needs a ledger and lives with the rest of the money path in
 ``tests/integration/test_merchant_auto_refund.py``; this half needs no database
@@ -58,8 +60,13 @@ async def test_a_delivered_order_is_never_closed_by_a_refund() -> None:
     """
     order = _merchant_order("delivered")
 
-    await ff_svc._end_a_refunded_merchant_order(
-        cast(AsyncSession, _NoDatabase()), order=order, task_id=new_id()
+    await ff_svc.end_a_refunded_merchant_order(
+        cast(AsyncSession, _NoDatabase()),
+        order=order,
+        by="fulfillment",
+        reason="fulfillment_failed",
+        actor="fulfillment",
+        task_id=new_id(),
     )
 
     assert order.status == "delivered"

@@ -244,6 +244,15 @@ invariant behind it: an attributed credit that would take the order past what
 it charged answers `409 order_already_settled`. It is what keeps the automatic
 refund and a hand settlement from stacking on one order, and it is checked
 only on a genuinely new key so a retry still replays.
+
+**Since M3c Task 4 the same endpoint may also end an order.** An attributed
+credit that brings the order to a **full** settlement closes it as
+`status: "failed"`, through the same closer and the same predicate the
+automatic refund uses — because what ends an order is that the money is back,
+not who decided it, and every way of delivering a settled one is already
+refused. The write is a consequence of the money reaching a known total: it is
+idempotent, it fires only at the total, and it lives at the posting rather than
+in the admin button so the runbook's `curl` and M4's cabinet cannot bypass it.
 The other writes accept an optional `Idempotency-Key` and
 replay via the generic `(scope, key)` store, whose scope is **per resource**
 (`merchants.sku_b2b:{sku_id}` and so on) so one reused client key cannot replay
@@ -343,7 +352,9 @@ the order state only by poll" — **stopped being true in M3c Task 6** for the o
 case where the whole charge comes back. Closing such an order (ADR-0071,
 decision 12) moves `orders.status` to `failed`, and that goes through
 `on_order_status_changed` like every other transition, so the reseller gets
-`balance.credited` and then `order.status_changed` in the same transaction. The
+`balance.credited` and then `order.status_changed` in the same transaction.
+M3c Task 4 extends that to a settlement a person books: the same pair, in the
+same order, because the credit now closes the order too. The
 statement still holds for everything else: `order.status_changed` does **not**
 fire for a failure whose money stayed out, for a partial settlement, or for
 Task 4's stall, because none of those advances `orders.status` — the order sits

@@ -149,9 +149,13 @@ non-null `failure_reason` and a reseller sees `paid → fulfilling → silence`.
 A **fully refunded** order does move it (M3c Task 6): every way to deliver it is
 already refused by `deposit_already_returned`, so it is closed as `failed` and
 that goes through the seam like any other transition. A `failed` event therefore
-arrives from two places — `orders.service.mark_order_failed_admin` when support
-closes the order by hand, and `fulfillment.service._end_a_refunded_merchant_order`
-when the automatic refund settles it in full.
+arrives from three places — `orders.service.mark_order_failed_admin` when
+support closes the order by hand, `fulfillment.service.end_a_refunded_merchant_order`
+from the refund seam when the automatic refund settles it in full, and the same
+function from `deposit.credit_deposit` when a settlement a person books brings
+the order to a full one (M3c Task 4). From outside they are one fact — the
+order ended without a delivery — and `failure_reason` is what distinguishes
+them.
 
 Adding a task-level event is not a small change — it is a third event type and
 a payload shape — so M3b Task 4 answered it on the **read** instead:
@@ -579,8 +583,8 @@ an order they closed is a surprise money movement that can also fail on a
 balance no longer covering it, mid-retry. The recovery is the one the contract
 already describes — place a new order.
 
-**A fully refunded order is closed, and its status says so (M3c Task 6).**
-`_end_a_refunded_merchant_order`, in the same savepoint as the posting, sets
+**A fully settled order is closed, and its status says so (M3c Tasks 6 and 4).**
+`end_a_refunded_merchant_order`, in the same savepoint as the posting, sets
 `order.status = "failed"`, writes an `order.failed` event and routes the move
 through `orders.service.on_order_status_changed`. The reason is the paragraph
 above: retail's rule that a terminal fulfilment failure leaves the order row
@@ -589,7 +593,20 @@ and for a refunded order **every one of those is already refused**. The status
 said "in progress" about an order with no way out, which is what an owner found
 at 05:30 on the stuck-order alert.
 
-Four things about it are worth knowing before anyone widens it:
+**Task 4 gives it the second caller, and the placement is the decision.** A
+settlement a person books through `deposit.credit_deposit` closes the order
+identically, because what ends an order is that the money is back and not who
+decided it. It lives at the **posting** rather than in the admin SPA's new
+settle button: put it in the button and the runbook's `curl` procedure and M4's
+cabinet keep leaving orders open — the same inconsistency, only harder to find,
+and dependent on which surface the operator used. The counter-proposal (compose
+at the admin service layer, keep the money primitive money-only) is answered in
+`_close_a_settled_order`'s own docstring rather than only here: the primitive
+already reasons about the order — `_refuse_over_settlement` caps a credit
+against **that order's** charge — so this is the same invariant's other half,
+refuse above the total and close at it.
+
+Five things about it are worth knowing before anyone widens it:
 
 - **`failed`, not a new `refunded` value.** The integrator contract tells
   clients to treat an unknown `status` as _still in flight_, so a value minted
@@ -615,6 +632,14 @@ Four things about it are worth knowing before anyone widens it:
   about an order we no longer hold money for without learning anything about
   merchants. That is why there is no merchant gate on that query: the state was
   wrong, not the alert.
+- **The `failure_reason` a hand settlement leaves is not always
+  `fulfillment_failed_refunded`.** That value needs a **failed item**, which is
+  the case the settlement exists for. Settle an order whose delivery never
+  failed — a goodwill decision on one still in flight, which the admin button
+  offers because "unsettled merchant order" is what it gates on — and the
+  reseller reads `order_failed`: nothing about the delivery failed, a person
+  ended it. Both are terminal and both are true; it is the one place the two
+  paths give different words for the same money returned.
 
 The reseller-visible consequences — `order.status_changed` by push, and the
 `order.failed` timeline line — are under
@@ -768,6 +793,22 @@ back through the route stack, same rule as `affiliate.routes`):
   the way this endpoint does (so a pasted `merchant_order_id` is caught
   before it becomes a `404` reading "no such order"), and echoes the booked
   attribution back — see `docs/runbooks/merchant-b2b.md`.
+  **Since M3c Task 4 the order's own page has a second, narrower door**: a
+  «Депозит мерчанта» card showing what the order charged and what has come
+  back, with one button that returns the charge — no typing, a fresh
+  `Idempotency-Key` per attempt, and a confirmation naming the merchant, the
+  amount and the order first. It is hidden on an order that is square (nothing
+  to do), on a partly settled one (it posts the whole charge, which
+  `order_already_settled` would refuse every time), and on one whose delivery
+  has **not** terminally failed — settling a live order returns the money
+  without stopping the supplier call, so the drain could still deliver goods
+  the reseller has been paid back for. That last gap is the API's and predates
+  the button (the merchant page's form has always allowed it); the button
+  declines to be a one-click way into it. A refusal that does reach it is
+  rendered as a sentence rather than as a raw `409`. And **an attributed
+  credit that brings the order to a full settlement closes it** — the same
+  closer, the same predicate, at the posting rather than in the button, so
+  the runbook's `curl` and M4's cabinet close it too.
 - `GET /admin/merchants/{id}/transactions` — the merchant's deposit ledger,
   newest first (`deposit.list_deposit_transactions`, one grouped query —
   shared with `/merchant/v1/transactions` rather than copied). Each row

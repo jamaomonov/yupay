@@ -4,9 +4,11 @@ sequenceDiagram
     participant API as POST /api/v1/admin/merchants/{id}/deposit-credits
     participant Merchants as merchants service (credit_deposit)
     participant Ledger as wallet.service.post()
+    participant Close as fulfillment.end_a_refunded_merchant_order
     participant DB as Postgres
 
     Admin->>API: amount, note, order_id? + Idempotency-Key: {client_key}
+    Note over Admin: two SPA surfaces since M3c Task 4: the merchant page's general form<br/>(any amount, any order) and the ORDER page's one-button card, which fills<br/>the charge and the order id and is hidden unless the order is unsettled
     API->>API: require header (422 without) -- it is the replay handle
     API->>Merchants: credit_deposit(key="merchant-credit:{merchant_id}:{client_key}", actor="admin:{id}", order_id?)
     Merchants->>DB: SELECT merchants WHERE id (404 if missing, frozen is fine -- freeze never blocks money in)
@@ -28,6 +30,17 @@ sequenceDiagram
     Ledger-->>Merchants: transaction (original on replay)
     API->>Merchants: deposit_balance(merchant_id) -- signed SUM over postings
     Merchants-->>API: balance
+    opt order_id given -- M3c Task 4
+        Merchants->>Close: end_a_refunded_merchant_order(order, by="settlement", actor="admin:{id}")
+        Close->>DB: SUM(charge) and SUM(returned) on this order -- refund.settled_in_full
+        alt fully settled AND status in paid/fulfilling/fulfilled
+            Close->>DB: order.status = "failed" + OrderEvent(order.failed, by=settlement)
+            Close->>DB: on_order_status_changed -> merchant webhook order.status_changed
+            Note over Close,DB: what ends an order is that the money is back, not who decided it.<br/>It lives HERE and not in the button so the runbook's curl and M4's<br/>cabinet cannot bypass it. Not gated on replay: closing is idempotent
+        else partial, or already closed, or delivered
+            Close-->>Merchants: nothing -- money is still owed, or there is nothing left to close
+        end
+    end
     API-->>Admin: 201 {transaction_id, amount + order_id = the transaction's, balance}
     Note over Admin: on a mismatched replay the response's amount and order_id are the<br/>ORIGINAL's, so the UI can compare them with what was submitted and warn
     Note over DB: an attributed credit is a DEBIT leg on merchant_deposit referencing the order,<br/>which is exactly what refunded_usd on the merchant's order read sums

@@ -127,6 +127,15 @@ export interface OrderAdminOut {
   /** That reseller's title. An operator recognises a name; nobody recognises a
    *  uuid, which is all a merchant order used to leave behind. */
   merchant_title: string | null;
+  /** What this order took from the merchant's USD deposit, off the ledger.
+   *  `null` for every retail order — their money is at an acquirer — and for a
+   *  merchant order with no charge posting, which is a damaged row and not a
+   *  state. `NUMERIC(20, 6)` on the wire: `"1.070000"`. */
+  deposit_charged_usd: string | null;
+  /** What has come back on it, by any route: the drain's automatic refund and
+   *  any settlement support booked against the order. `"0"` when nothing has,
+   *  and never more than `deposit_charged_usd`. */
+  deposit_returned_usd: string;
   /** Which surface placed the order. `unknown` for anything that did not say —
    *  including every order older than the column. */
   source: OrderSource;

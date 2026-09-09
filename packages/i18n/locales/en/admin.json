@@ -134,6 +134,27 @@
       "fulfillment_failed": "Failed, a human is deciding",
       "fulfillment_failed_refunded": "Failed, money returned",
       "fulfillment_delayed": "Delayed"
+    },
+    "settle": {
+      "title": "Merchant deposit",
+      "chargedLabel": "Charged",
+      "returnedLabel": "Returned",
+      "button": "Return to deposit",
+      "buttonBusy": "Returning…",
+      "confirmTitle": "Return the money to the deposit?",
+      "confirmBody": "{amount} goes back to «{merchant}»'s deposit for order {order}.",
+      "confirmClosing": "The order will be closed as failed: once the whole charge is back it cannot be delivered — retry and manual delivery both refuse it.",
+      "confirm": "Yes, return it",
+      "success": "Returned {amount}. The order is closed.",
+      "note": "Settlement for order {order}, from the order page",
+      "error": "Could not return it: {message}",
+      "alreadySettled": "This order has already had its money returned — it cannot happen twice. See «Returned» above and the merchant's deposit history.",
+      "blocked": {
+        "no_charge": "This order has no deposit charge — there is nothing to return.",
+        "partly_settled": "Part of it is already back. Finish the rest on the merchant's page, where you type the amount.",
+        "settled": "Fully returned — the order is closed and there is nothing to do.",
+        "still_open": "The order has not ended yet — there is nothing to return until the delivery has terminally failed."
+      }
     }
   }
 }
