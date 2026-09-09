@@ -717,7 +717,22 @@ every other symbol in this module.
 
 Everything support needs to run a pilot merchant by hand (Task 6), all
 admin-gated (`require_admin`), business logic imported through the `api`
-facade only. Two routers — `admin_router` in `admin_routes.py` and
+facade only.
+
+**The operator reads the reseller's own words (M3c Task 3).** The admin order
+list and detail carry `failure_reason` with exactly the values published under
+`GET /merchant/v1/orders/{merchant_order_id}` below, computed by
+`order_status.failure_reasons` — the batch form of the same `_failure_reason`
+this module already had, over the same `refund.settled_in_full` and the same
+`fulfillment.stall` predicate. It is one function and not two on purpose: the
+operator answering "why has my order stopped" is reading it off the screen
+while the reseller reads it off the API, and two spellings would let them
+disagree about one order in front of a customer. It is batched because a list
+endpoint may not ask per row (AGENTS.md §10) — three reads for a page of up to
+500, none of them per order. Retail orders are included and get a real answer;
+only the refunded value is merchant-shaped, because it is measured off the
+deposit ledger, which a retail order has no rows in.
+Two routers — `admin_router` in `admin_routes.py` and
 `catalog_b2b_router` in `catalog_b2b_routes.py`, split apart in M3a Task 2
 when the one file passed §6's split-before-500 line, sharing the replay
 helpers in `route_replay.py` (both mounted by `api/v1` directly from their

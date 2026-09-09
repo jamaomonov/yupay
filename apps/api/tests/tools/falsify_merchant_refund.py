@@ -429,8 +429,14 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
             (
                 DEPOSIT,
-                "    total = (await db.execute(stmt)).scalar_one_or_none()\n"
-                "    return None if total is None else Decimal(total)",
+                # M3c Task 3 made ``charged_for_order`` a one-element call into
+                # ``charged_for_orders`` — the batch is the definition now, so
+                # the admin order list can read it for a whole page without an
+                # N+1. The body being replaced moved with it; the mutation is
+                # unchanged in meaning: read the amount off the order **line**
+                # instead of off the ledger.
+                "    return (await charged_for_orders(db, pairs=[(merchant_id, order_id)]))"
+                ".get(order_id)",
                 "    total = (\n"
                 "        await db.execute(\n"
                 "            select(OrderItem.unit_price_usd).where(OrderItem.order_id == order_id)\n"

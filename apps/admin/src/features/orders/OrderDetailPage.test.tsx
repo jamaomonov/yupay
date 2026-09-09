@@ -49,6 +49,7 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     guest_email: "buyer@example.com",
     merchant_id: null,
     merchant_title: null,
+    failure_reason: null,
     source: "web",
     events: [HELD_EVENT],
     ...over,
@@ -225,4 +226,23 @@ it("still shows a guest order's email", async () => {
   renderPage();
 
   expect(await screen.findByText("buyer@example.com")).toBeInTheDocument();
+});
+
+it("says why a `fulfilling` order has stopped, beside the status", async () => {
+  mockEndpoints(
+    makeOrder({ status: "fulfilling", failure_reason: "fulfillment_failed", events: [] }),
+  );
+  renderPage();
+
+  expect(await screen.findByText("Провалено, решает человек")).toBeInTheDocument();
+  // The status itself is untouched — the FSM is what it is.
+  expect(screen.getAllByText("В работе").length).toBeGreaterThan(0);
+});
+
+it("stays silent on an order that has not stopped", async () => {
+  mockEndpoints(makeOrder({ status: "fulfilling", failure_reason: null, events: [] }));
+  renderPage();
+
+  expect(await screen.findByText("Сводка")).toBeInTheDocument();
+  expect(screen.queryByText(/Провалено|Задерживается|Закрыт вручную/)).not.toBeInTheDocument();
 });

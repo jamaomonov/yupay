@@ -34,10 +34,11 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fx.providers.base import FxProvider, Quote
 from yupay.modules.fx.service import FxService
 from yupay.modules.merchants.models import Merchant
-from yupay.modules.orders.models import Order
+from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet import service as wallet_svc
 from yupay.modules.wallet.service import Leg
@@ -383,15 +384,17 @@ async def test_admin_payments_listing_is_o1(
 async def test_admin_orders_listing_is_o1(
     integration_client: AsyncClient, db_session: AsyncSession, sql_counter: dict[str, int]
 ) -> None:
-    """Merchant rows on the page must not cost a query each (M3c Task 2).
+    """Merchant rows on the page must not cost a query each (M3c Tasks 2-3).
 
-    The admin listing serves up to 500 rows and, since M3c, carries the
-    reseller's **title** — which lives in another module's table. Reading it
-    per row is the N+1 this file exists to catch, and it would only ever show
-    up on B2B pages, which are the rarer ones to open. Every order below is a
-    *merchant* order for exactly that reason: a page of retail rows asks for
-    no titles at all and would pass a batched and an unbatched implementation
-    alike.
+    The admin listing serves up to 500 rows and, since M3c, carries three
+    things that are not on the eagerly-loaded row: the reseller's **title**
+    (another module's table), whether the order is **stalled** (its fulfilment
+    tasks) and what its deposit **charged and returned** (the wallet ledger).
+    Each is the shape of an N+1 that would only ever show up on a B2B page,
+    which is the rarer one to open. Every order below is therefore a *merchant*
+    order with an open line and a failed task: a page of bare retail rows asks
+    for none of the four reads and would pass a batched and an unbatched
+    implementation alike.
     """
     token = await _login_user(integration_client, tg_id=707)
     await _grant_admin(db_session, tg_id=707)
@@ -399,16 +402,33 @@ async def test_admin_orders_listing_is_o1(
 
     async def _merchant_order(i: int) -> None:
         merchant_id = new_id()
-        db_session.add(Merchant(id=merchant_id, title=f"Reseller {i}"))
+        sku_id = _seed_catalog_unit(db_session, 500 + i)
+        order = Order(
+            id=new_id(),
+            merchant_id=merchant_id,
+            status="fulfilling",
+            currency="USD",
+            total_usd=Decimal("1.07"),
+            total_charged=Decimal("1.07"),
+            expires_at=now() + timedelta(minutes=10),
+        )
+        item = OrderItem(
+            id=new_id(),
+            order_id=order.id,
+            sku_id=sku_id,
+            qty=1,
+            unit_price_usd=Decimal("1.07"),
+            fulfillment_state="in_progress",
+        )
+        db_session.add_all([Merchant(id=merchant_id, title=f"Reseller {i}"), order, item])
+        await db_session.flush()
         db_session.add(
-            Order(
+            FulfillmentTask(
                 id=new_id(),
-                merchant_id=merchant_id,
-                status="fulfilling",
-                currency="USD",
-                total_usd=Decimal("1.07"),
-                total_charged=Decimal("1.07"),
-                expires_at=now() + timedelta(minutes=10),
+                order_id=order.id,
+                order_item_id=item.id,
+                supplier="g2b",
+                status="failed",
             )
         )
         await db_session.commit()

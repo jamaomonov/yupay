@@ -128,6 +128,12 @@
       "guest": "Mehmon",
       "merchant": "Merchant",
       "none": "—"
+    },
+    "failureReason": {
+      "order_failed": "Qo'lda yopilgan",
+      "fulfillment_failed": "Muvaffaqiyatsiz, odam hal qilmoqda",
+      "fulfillment_failed_refunded": "Muvaffaqiyatsiz, pul qaytarildi",
+      "fulfillment_delayed": "Kechikmoqda"
     }
   }
 }

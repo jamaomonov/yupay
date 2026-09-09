@@ -80,10 +80,17 @@ async def _to_admin_orders_out(
 
     Sits between the routes and :func:`_to_admin_order_out` because the fields
     it fills cannot be read off the eagerly-loaded row: the reseller's title
-    lives in another module's table. It is batched **once per page** rather
+    lives in another module's table, and the fulfilment state is derived from
+    the tasks and the deposit ledger. Both are batched **once per page** rather
     than once per order — the listing serves up to 500 rows — and the detail
     route reaches it with a one-element list so there is one composition and
     not two.
+
+    ``merchants.order_status`` is imported here rather than at module scope for
+    the reason the delivery route imports ``fulfillment.service`` inside its
+    handler: it pulls in ``fulfillment.service``, which reaches back into this
+    module's own service, and this file is imported while the ``/api/v1`` route
+    stack is still being built.
 
     Args:
         db: Session. The caller owns the transaction.
@@ -93,12 +100,19 @@ async def _to_admin_orders_out(
     Returns:
         One DTO per order, in the order given.
     """
+    from yupay.modules.merchants import order_status as merchant_order_status
+
     titles = await svc.merchant_titles_for(db, orders)
+    # The reseller's own answer to "why has this stopped", not a second one:
+    # the admin and `/merchant/v1` must not be able to disagree about an order
+    # the operator is about to explain to the merchant reading it.
+    reasons = await merchant_order_status.failure_reasons(db, orders=orders)
     out: list[OrderAdminOut] = []
     for order in orders:
         dto = _to_admin_order_out(order, locale=locale)
         if order.merchant_id is not None:
             dto.merchant_title = titles.get(order.merchant_id)
+        dto.failure_reason = reasons[order.id]
         out.append(dto)
     return out
 

@@ -23,6 +23,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { EvidenceCard } from "./EvidenceCard";
 import { OrderActorRef } from "./OrderActorRef";
+import { OrderStateBadge } from "./OrderStateBadge";
 import {
   type EvidencePackOut,
   type OrderAdminOut,
@@ -542,7 +543,10 @@ function SummaryCard({ order }: { order: OrderAdminOut }) {
   const rows: { label: string; value: React.ReactNode }[] = [
     {
       label: "Статус",
-      value: <StatusBadge status={order.status} />,
+      // Beside the status, never instead of it: a terminal fulfilment failure
+      // does not move `order.status`, so this row said «В работе» on a dead
+      // order for ever.
+      value: <OrderStateBadge status={order.status} failureReason={order.failure_reason} />,
     },
     {
       label: "Сумма",

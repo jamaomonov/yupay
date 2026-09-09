@@ -52,6 +52,8 @@ match the value.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
+from decimal import Decimal
 from typing import TYPE_CHECKING, Final
 
 from yupay.core.errors import NotFoundError
@@ -72,8 +74,6 @@ from yupay.modules.merchants.machine_schemas import (
 from yupay.modules.orders import service as orders
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
-    from decimal import Decimal
-
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from yupay.modules.merchants.models import Merchant
@@ -296,6 +296,56 @@ def _failure_reason(
     return REASON_FULFILLMENT_DELAYED if stalled else None
 
 
+async def failure_reasons(db: AsyncSession, *, orders: Sequence[Order]) -> dict[str, str | None]:
+    """:func:`_failure_reason` for a page of orders, keyed by order id.
+
+    **The second surface, not a second answer** (M3c Task 3). A terminal
+    fulfilment failure deliberately leaves ``order.status`` alone — retail's
+    rule, and it stays — so the admin list said «В работе» on a dead order for
+    ever, while ``/merchant/v1`` had grown this exact field for this exact
+    reason. The fix is the admin reading *this* function rather than spelling
+    its own: two spellings of "why has this order stopped" is how the reseller's
+    answer and the operator's answer start disagreeing about one order, and the
+    operator is the one who then explains it to the reseller.
+
+    It is batched because the caller is a **list** endpoint serving up to 500
+    rows and a list endpoint may not ask per row (AGENTS.md §10). Three reads
+    for a whole page, each already a batch of its own
+    (``fulfillment.stall.stalled_order_ids``, ``deposit.charged_for_orders``,
+    ``deposit.refunded_for_orders``), and the stall read skips a page with no
+    open item on it.
+
+    **Retail orders are included and get a real answer.** They have no deposit
+    charge, so ``charged`` is ``None``, so ``settled_in_full`` is false and the
+    refunded value can never be reached for one — the money branch is
+    merchant-only by construction rather than by a gate. What retail does get
+    is the other three, which is the point: the status lies for a storefront
+    order in exactly the same way.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        orders: The page, with their items loaded.
+
+    Returns:
+        ``{order_id: reason}`` for **every** order given — the value is
+        ``None`` for one that has not stopped, which is a different fact from
+        an absent key and must not be conflated with one.
+    """
+    pairs = [(order.merchant_id, order.id) for order in orders if order.merchant_id is not None]
+    stalled = await fulfillment_stall.stalled_order_ids(db, orders=orders)
+    charged = await deposit.charged_for_orders(db, pairs=pairs)
+    refunded = await deposit.refunded_for_orders(db, pairs=pairs)
+    return {
+        order.id: _failure_reason(
+            order,
+            refunded=refunded.get(order.id, Decimal("0")),
+            charged=charged.get(order.id),
+            stalled=order.id in stalled,
+        )
+        for order in orders
+    }
+
+
 async def _delivery(db: AsyncSession, order: Order) -> MerchantDeliveryOut | None:
     """The artifact this order handed over, filtered, or ``None``.
 
@@ -395,5 +445,6 @@ __all__ = [
     "REASON_FULFILLMENT_REFUNDED",
     "REASON_ORDER_FAILED",
     "TIMELINE_EVENTS",
+    "failure_reasons",
     "read",
 ]

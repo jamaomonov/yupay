@@ -48,6 +48,7 @@ ops alert, where the person who acts on it looks.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Final
 
 from sqlalchemy import select
@@ -70,44 +71,76 @@ if TYPE_CHECKING:  # pragma: no cover -- type hints only
 UNSETTLED_ITEM_STATES: Final[frozenset[str]] = frozenset({"pending", "reserved", "in_progress"})
 
 
-async def order_is_stalled(db: AsyncSession, *, order: Order) -> bool:
-    """Has a task of this order stopped while its item is still open?
+async def stalled_order_ids(db: AsyncSession, *, orders: Sequence[Order]) -> set[str]:
+    """Which of these orders have a task stopped over an item that is still open?
 
-    **It pays for the database only when the answer can be yes.** Every item
-    of a delivered or terminally failed order is in a terminal state, so no
-    task of it can be a stalled one, and the read is skipped — which matters
-    because the only caller is the endpoint resellers are told to poll. An
-    open order costs one indexed read on ``ix_fulfillment_tasks_order_id``,
-    over the handful of rows one order can have. No index was added: that one
-    has existed since migration 0008 and is the whole access path.
+    **The predicate, in the one shape both callers use.** M3c Task 3 gave it a
+    second caller — the admin order list, which renders the same fact beside
+    the status an operator reads — and a list endpoint may not ask one question
+    per row (AGENTS.md §10). So the batch is the definition and
+    :func:`order_is_stalled` is the one-element case, rather than two
+    statements that would drift about what "stalled" means.
+
+    **It pays for the database only when the answer can be yes.** Every item of
+    a delivered or terminally failed order is in a terminal state, so no task
+    of it can be a stalled one, and such orders are dropped before the read —
+    which matters on the endpoint resellers are told to poll, and it means a
+    page of settled orders costs nothing at all. The candidates cost one
+    indexed read on ``ix_fulfillment_tasks_order_id``, over the handful of rows
+    an order can have. No index was added: that one has existed since migration
+    0008 and is the whole access path.
 
     The in-memory half is the same condition as the SQL half, and is here
-    rather than at the call site so there is one spelling of it.
+    rather than at either call site so there is one spelling of it.
 
     Args:
         db: Session. The caller owns the transaction.
-        order: The order, **with its items loaded** — they are, on every
-            path that reaches this: ``Order.items`` is ``lazy="selectin"``.
+        orders: The orders to test, **with their items loaded** — they are, on
+            every path that reaches this: ``Order.items`` is ``lazy="selectin"``.
+
+    Returns:
+        The ids of those orders with at least one ``failed`` fulfilment task
+        whose item is still open. Never contains an id that was not asked for.
+    """
+    candidates = [
+        order.id
+        for order in orders
+        if any(item.fulfillment_state in UNSETTLED_ITEM_STATES for item in order.items)
+    ]
+    if not candidates:
+        return set()
+    rows = (
+        await db.execute(
+            select(FulfillmentTask.order_id)
+            .join(OrderItem, OrderItem.id == FulfillmentTask.order_item_id)
+            .where(
+                FulfillmentTask.order_id.in_(candidates),
+                FulfillmentTask.status == "failed",
+                OrderItem.fulfillment_state.in_(UNSETTLED_ITEM_STATES),
+            )
+            .distinct()
+        )
+    ).scalars()
+    return set(rows)
+
+
+async def order_is_stalled(db: AsyncSession, *, order: Order) -> bool:
+    """Has a task of this order stopped while its item is still open?
+
+    A one-element :func:`stalled_order_ids`. It stays a named function because
+    it is what the merchant order read asks, and reading ``order.id in {...}``
+    at that call site would put the batch's shape into a place that only ever
+    has one order.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        order: The order, with its items loaded.
 
     Returns:
         ``True`` when at least one of this order's fulfilment tasks is
         ``failed`` while the item it was fulfilling is still open.
     """
-    if not any(item.fulfillment_state in UNSETTLED_ITEM_STATES for item in order.items):
-        return False
-    row = (
-        await db.execute(
-            select(FulfillmentTask.id)
-            .join(OrderItem, OrderItem.id == FulfillmentTask.order_item_id)
-            .where(
-                FulfillmentTask.order_id == order.id,
-                FulfillmentTask.status == "failed",
-                OrderItem.fulfillment_state.in_(UNSETTLED_ITEM_STATES),
-            )
-            .limit(1)
-        )
-    ).first()
-    return row is not None
+    return order.id in await stalled_order_ids(db, orders=[order])
 
 
-__all__ = ["UNSETTLED_ITEM_STATES", "order_is_stalled"]
+__all__ = ["UNSETTLED_ITEM_STATES", "order_is_stalled", "stalled_order_ids"]

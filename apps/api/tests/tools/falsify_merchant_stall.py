@@ -22,11 +22,24 @@ task did not write and cannot exercise by adding a test.
   is what a test has to pin, and the only way to falsify an ordering is to
   reorder it.
 * **The scoping** — every test here builds its orders in a TRUNCATE-isolated
-  database, so ``FulfillmentTask.order_id == order.id`` could be deleted with
-  the whole integration selection still green (measured: 679 passed, 0
-  failed). ``stall_ignores_the_order`` plus the two-merchant test it reddens
-  are what stop one reseller's stall from publishing ``fulfillment_delayed``
-  on everybody else's healthy orders — this task's own harm, inverted.
+  database, so the clause that scopes the read to *this* order could be
+  deleted with the whole integration selection still green (measured: 679
+  passed, 0 failed). ``stall_ignores_the_order`` plus the two-merchant test it
+  reddens are what stopped one reseller's stall from publishing
+  ``fulfillment_delayed`` on everybody else's healthy orders — this task's own
+  harm, inverted.
+
+  **M3c Task 3 moved that property, and the row had to move with it.** The
+  predicate became a batch (``stalled_order_ids``) so the admin order list
+  could ask it once per page; it now returns a *set of ids* that both callers
+  intersect with the order in hand, so deleting the scoping clause can no
+  longer make anyone answer "delayed" about a healthy order — the harm is
+  structural now, and the two-merchant test went **green** under the mutation.
+  Rather than delete a row that had stopped grading anything, it is re-pointed
+  at ``test_the_batched_predicate_answers_only_about_the_orders_it_was_asked``,
+  which asserts what the clause still guarantees: the function never returns an
+  id nobody asked about. That is what the next caller — "which of this page is
+  stuck?" — would iterate.
 
 **Two rows here exist because they were found vacuous first.**
 ``stall_ignores_the_item_state`` reported ``UNFALSIFIED`` until a two-**line**
@@ -89,6 +102,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_terminal_failure_can_become_a_delay_again",
             "test_a_top_up_and_a_successful_retry_clear_the_stall",
             "test_one_merchants_stall_does_not_delay_another_merchants_order",
+            "test_the_batched_predicate_answers_only_about_the_orders_it_was_asked",
             "test_the_stall_never_says_why_it_stalled",
             "test_the_storefront_cannot_tell_a_stalled_order_from_a_busy_one",
         ),
@@ -186,10 +200,27 @@ MUTATIONS: tuple[Mutation, ...] = (
     # ---- the predicate's two halves
     Mutation(
         name="stall_ignores_the_order",
-        breaks="one reseller's stall publishes fulfillment_delayed on everybody's orders",
-        edits=((STALL, "                FulfillmentTask.order_id == order.id,\n", ""),),
+        breaks="the batch answers about orders nobody asked about",
+        # **What this row grades moved with M3c Task 3, and pretending it did
+        # not would have left it vacuous.** The predicate became a batch
+        # (``stalled_order_ids``, with ``order_is_stalled`` as its one-element
+        # case) so the admin order list could ask it once per page. The batch
+        # returns a *set of ids* and both callers intersect it with the order in
+        # hand — so deleting the scoping clause no longer makes anyone answer
+        # "delayed" about a healthy order, and
+        # ``test_one_merchants_stall_does_not_delay_another_merchants_order``
+        # went green under this mutation. The cross-order harm is now
+        # structural, which is a stronger place for it to live than a WHERE
+        # clause.
+        #
+        # What the clause still guarantees is the function's published promise —
+        # *never contains an id that was not asked for* — which the next caller
+        # (an admin "which of this page is stuck?" view is the obvious one)
+        # would iterate. So the row is re-pointed at the test that asserts that
+        # promise directly, rather than deleted or left reporting UNFALSIFIED.
+        edits=((STALL, "                FulfillmentTask.order_id.in_(candidates),\n", ""),),
         tests=TESTS,
-        expect=("test_one_merchants_stall_does_not_delay_another_merchants_order",),
+        expect=("test_the_batched_predicate_answers_only_about_the_orders_it_was_asked",),
     ),
     Mutation(
         name="stall_ignores_the_task_status",
@@ -201,6 +232,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_terminally_failed_order_is_not_stalled",
             "test_an_order_still_in_flight_is_not_delayed",
             "test_one_merchants_stall_does_not_delay_another_merchants_order",
+            "test_the_batched_predicate_answers_only_about_the_orders_it_was_asked",
         ),
     ),
     Mutation(
@@ -219,11 +251,15 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         name="no_short_circuit",
         breaks="a settled order pays a database round trip on every poll",
+        # Deleting the filter is not an option post-batch — the comprehension
+        # *is* the list the query reads — so the mutation keeps every order as
+        # a candidate instead. Same effect: a page (or a poll) with nothing
+        # open on it now pays for a round trip.
         edits=(
             (
                 STALL,
-                "    if not any(item.fulfillment_state in UNSETTLED_ITEM_STATES "
-                "for item in order.items):\n        return False\n",
+                "        if any(item.fulfillment_state in UNSETTLED_ITEM_STATES "
+                "for item in order.items)\n",
                 "",
             ),
         ),

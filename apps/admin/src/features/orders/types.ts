@@ -34,6 +34,42 @@ export const SOURCE_LABEL: Record<OrderSource, string> = adminRu.orders.source;
 /** Labels for the three actor arms — see {@link orderActorOf}. */
 const ACTOR = adminRu.orders.actor;
 
+/** `OrderAdminOut.failure_reason` — the closed vocabulary `/merchant/v1`
+ *  publishes (`merchants.order_status`), rendered here for the operator who
+ *  has to explain it to the reseller reading the same word.
+ *
+ *  It is **additive on the wire**: the backend says "treat an unknown value as
+ *  still in flight", so a value this union does not know must render as
+ *  nothing rather than as a crash or a blank chip — which is what
+ *  `failureReasonLabel` does. */
+export type OrderFailureReason =
+  | "order_failed"
+  | "fulfillment_failed"
+  | "fulfillment_failed_refunded"
+  | "fulfillment_delayed";
+
+export const FAILURE_REASON_LABEL: Record<OrderFailureReason, string> =
+  adminRu.orders.failureReason;
+
+/** Colour for the suffix, by what the operator has to do about it.
+ *
+ *  Danger is reserved for the one state that is **waiting on a person**;
+ *  a delay is a warning (it clears itself once a supplier is topped up), and
+ *  the two endings are muted because there is nothing left to do. */
+export const FAILURE_REASON_TONE: Record<OrderFailureReason, string> = {
+  order_failed: "text-[var(--text-secondary)]",
+  fulfillment_failed: "text-[var(--danger-fg)]",
+  fulfillment_failed_refunded: "text-[var(--text-secondary)]",
+  fulfillment_delayed: "text-[var(--warning-fg)]",
+};
+
+/** The label for a reason, or `null` when there is nothing to say — including
+ *  for a value added to the server's vocabulary after this build. */
+export function failureReasonLabel(reason: string | null): string | null {
+  if (reason === null) return null;
+  return FAILURE_REASON_LABEL[reason as OrderFailureReason] ?? null;
+}
+
 export interface OrderItemDisplay {
   brand_slug: string;
   brand_name: string;
@@ -94,6 +130,14 @@ export interface OrderAdminOut {
   /** Which surface placed the order. `unknown` for anything that did not say —
    *  including every order older than the column. */
   source: OrderSource;
+  /** Why the order has stopped moving, or `null` if it has not. The same
+   *  closed vocabulary `/merchant/v1` publishes, from the same function.
+   *
+   *  Typed open, like `OrderItemOut.fulfillment_state` beside it: the server's
+   *  own contract for this field is "additive, and treat an unknown value as
+   *  still in flight", so a build older than the API must render nothing
+   *  rather than assert. `failureReasonLabel` is where that happens. */
+  failure_reason: string | null;
   /** ``catalog`` sale or ``wallet_topup`` 1:1 deposit (ADR-0058). */
   purpose?: string;
   events: OrderEventOut[];

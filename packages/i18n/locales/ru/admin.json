@@ -128,6 +128,12 @@
       "guest": "Гость",
       "merchant": "Мерчант",
       "none": "—"
+    },
+    "failureReason": {
+      "order_failed": "Закрыт вручную",
+      "fulfillment_failed": "Провалено, решает человек",
+      "fulfillment_failed_refunded": "Провалено, возвращено",
+      "fulfillment_delayed": "Задерживается"
     }
   }
 }

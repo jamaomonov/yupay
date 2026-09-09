@@ -828,6 +828,53 @@ async def test_one_merchants_stall_does_not_delay_another_merchants_order(
     assert acme["failure_reason"] == "fulfillment_delayed"
 
 
+async def test_the_batched_predicate_answers_only_about_the_orders_it_was_asked(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[object],
+) -> None:
+    """The scoping clause, now that the batch has moved what it protects.
+
+    M3c Task 3 made the predicate a batch (``stalled_order_ids``) so the admin
+    order list could ask it once per page. That changed what deleting
+    ``FulfillmentTask.order_id.in_(candidates)`` costs, and the change is worth
+    stating rather than discovering: the batch returns a **set of ids** and both
+    callers intersect it with the order in hand, so a leak of other orders' ids
+    no longer makes anyone answer "delayed" about a healthy order. The
+    cross-order harm that
+    ``test_one_merchants_stall_does_not_delay_another_merchants_order`` models
+    became structurally unreachable — that test stayed green under the deletion,
+    which is how this one came to exist.
+
+    What the clause still guarantees is the function's own published promise:
+    *never contains an id that was not asked for*. A future caller iterating the
+    returned set — "which of this page is stuck?" is the obvious next use —
+    would otherwise be handed the whole table's stalled orders, including other
+    merchants'. So the property is asserted directly, at the level it now lives
+    at, instead of being left to a row that grades nothing.
+    """
+    _m1, _key_stalled, _secret_stalled, stalled_order = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-scope", n=1
+    )
+    await _drain_into_the_stall(db_session, monkeypatch, stalled_order)
+
+    _m2, _key_ok, _secret_ok, healthy_order = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="beta-scope", n=2
+    )
+    _mock_returns(monkeypatch, _in_progress())
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    healthy = await _reload_order(db_session, healthy_order)
+    assert await ff_stall.stalled_order_ids(db_session, orders=[healthy]) == set()
+
+    # The control: without it this passes on a function that answers nothing.
+    stalled = await _reload_order(db_session, stalled_order)
+    assert await ff_stall.stalled_order_ids(db_session, orders=[stalled]) == {stalled_order}
+
+
 async def test_a_terminally_failed_order_is_not_stalled(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],

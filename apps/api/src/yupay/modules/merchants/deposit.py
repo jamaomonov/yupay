@@ -40,6 +40,7 @@ about the word is exactly the defect this milestone came back to fix.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import ROUND_DOWN, Decimal
 from typing import Final
@@ -644,22 +645,57 @@ async def refunded_for_order(db: AsyncSession, *, merchant_id: str, order_id: st
         The amount returned to the deposit for this order; ``Decimal("0")``
         when nothing has been.
     """
+    return (await refunded_for_orders(db, pairs=[(merchant_id, order_id)])).get(
+        order_id, Decimal("0")
+    )
+
+
+async def refunded_for_orders(
+    db: AsyncSession, *, pairs: Sequence[tuple[str, str]]
+) -> dict[str, Decimal]:
+    """:func:`refunded_for_order` for many orders at once, keyed by order id.
+
+    **The batch is the definition and the single is its one-element case**, for
+    the same reason :func:`refunded_for_order` delegates to nothing and
+    ``refund.returned_for_order`` delegates to it: a second sum over the same
+    postings is a second chance to get a direction backwards, which is the bug
+    this milestone came back to fix. M3c Task 3 needed the fact for a whole
+    admin page and a list endpoint may not ask per row (AGENTS.md §10), so the
+    query grew a set rather than growing a twin.
+
+    The scope is the ``(merchant, order)`` **pair**, not two independent ``IN``
+    lists. A page carries orders of several resellers, and matching the cross
+    product would let one merchant's postings be summed against another's
+    order — which cannot happen through the single-order form and must not
+    become possible by batching it.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        pairs: ``(merchant_id, order_id)`` for each order to sum.
+
+    Returns:
+        ``{order_id: amount}``, with **no key** for an order nothing came back
+        on — callers read it with a ``Decimal("0")`` default, exactly as the
+        single-order form returns zero.
+    """
+    if not pairs:
+        return {}
     normal = wallet_service.NORMAL_SIDE["merchant_deposit"]
     stmt = (
-        select(func.coalesce(func.sum(WalletPosting.amount), Decimal("0")))
+        select(WalletTransaction.reference_id, func.sum(WalletPosting.amount))
         .join(WalletAccount, WalletAccount.id == WalletPosting.account_id)
         .join(WalletTransaction, WalletTransaction.id == WalletPosting.transaction_id)
         .where(
             WalletAccount.owner_type == "merchant",
-            WalletAccount.owner_id == merchant_id,
             WalletAccount.kind == "merchant_deposit",
             WalletAccount.currency == DEPOSIT_CURRENCY,
             WalletPosting.direction == normal,
             WalletTransaction.reference_type == ORDER_REFERENCE_TYPE,
-            WalletTransaction.reference_id == order_id,
+            tuple_(WalletAccount.owner_id, WalletTransaction.reference_id).in_(list(pairs)),
         )
+        .group_by(WalletTransaction.reference_id)
     )
-    return Decimal((await db.execute(stmt)).scalar_one())
+    return {order_id: Decimal(total) for order_id, total in (await db.execute(stmt)).all()}
 
 
 async def charged_for_order(db: AsyncSession, *, merchant_id: str, order_id: str) -> Decimal | None:
@@ -697,23 +733,55 @@ async def charged_for_order(db: AsyncSession, *, merchant_id: str, order_id: str
     Returns:
         The amount charged, or ``None`` if this order has no charge posting.
     """
+    return (await charged_for_orders(db, pairs=[(merchant_id, order_id)])).get(order_id)
+
+
+async def charged_for_orders(
+    db: AsyncSession, *, pairs: Sequence[tuple[str, str]]
+) -> dict[str, Decimal]:
+    """:func:`charged_for_order` for many orders at once, keyed by order id.
+
+    Same bargain as :func:`refunded_for_orders`, and the same pair scoping. The
+    grouping key is the charge's **ledger key**, not the transaction reference,
+    because that is the identity :func:`charged_for_order` reads a charge by;
+    it is mapped back to the order id through :func:`charge_key`'s own prefix
+    rather than by re-deriving the string, so the two cannot disagree about
+    the namespace.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        pairs: ``(merchant_id, order_id)`` for each order to read.
+
+    Returns:
+        ``{order_id: amount}``. An order with **no charge posting** is absent
+        from the mapping, which is how the single-order form's ``None`` — a
+        different answer from ``Decimal("0")``, see its docstring — survives
+        the batch.
+    """
+    if not pairs:
+        return {}
     normal = wallet_service.NORMAL_SIDE["merchant_deposit"]
     stmt = (
-        select(func.sum(WalletPosting.amount))
+        select(WalletTransaction.idempotency_key, func.sum(WalletPosting.amount))
         .join(WalletAccount, WalletAccount.id == WalletPosting.account_id)
         .join(WalletTransaction, WalletTransaction.id == WalletPosting.transaction_id)
         .where(
             WalletAccount.owner_type == "merchant",
-            WalletAccount.owner_id == merchant_id,
             WalletAccount.kind == "merchant_deposit",
             WalletAccount.currency == DEPOSIT_CURRENCY,
             # The non-normal side of a debit-normal account: money leaving.
             WalletPosting.direction != normal,
-            WalletTransaction.idempotency_key == charge_key(order_id),
+            tuple_(WalletAccount.owner_id, WalletTransaction.idempotency_key).in_(
+                [(merchant_id, charge_key(order_id)) for merchant_id, order_id in pairs]
+            ),
         )
+        .group_by(WalletTransaction.idempotency_key)
     )
-    total = (await db.execute(stmt)).scalar_one_or_none()
-    return None if total is None else Decimal(total)
+    return {
+        key[len(CHARGE_KEY_PREFIX) :]: Decimal(total)
+        for key, total in (await db.execute(stmt)).all()
+        if total is not None
+    }
 
 
 async def _refuse_over_settlement(
@@ -760,6 +828,7 @@ __all__ = [
     "charge_deposit",
     "charge_key",
     "charged_for_order",
+    "charged_for_orders",
     "credit_deposit",
     "deposit_account",
     "deposit_balance",
@@ -767,4 +836,5 @@ __all__ = [
     "list_deposit_transactions",
     "order_reference_of",
     "refunded_for_order",
+    "refunded_for_orders",
 ]

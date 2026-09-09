@@ -64,6 +64,23 @@ module, and a mapped relationship would make `orders.models` fail at
 mapper-configure time in any process that had not imported the merchants
 package first.
 
+### `failure_reason` says what `status` may not
+
+Since M3c Task 3 the admin DTO also carries `failure_reason` — `null`, or one
+of `order_failed` / `fulfillment_failed` / `fulfillment_failed_refunded` /
+`fulfillment_delayed`. It sits **beside** `status` and never replaces it,
+because a terminal fulfilment failure deliberately does not move the order row:
+only the item's `fulfillment_state` goes `failed`, so an operator may still top
+a supplier up, retry, or deliver by hand. The cost of that rule is that the
+list said «В работе» on a dead order for ever, which is what it now answers.
+
+The value is `merchants.order_status`'s, computed by `failure_reasons` — the
+batch form of the same function `/merchant/v1` publishes, over the same
+`fulfillment.stall` predicate. Not re-derived here: an operator explaining an
+order to a reseller has to be reading the same word the reseller is. Retail
+orders get a real value too; only `fulfillment_failed_refunded` is
+merchant-shaped, because it is measured off the deposit ledger.
+
 ## FSM
 
 ```

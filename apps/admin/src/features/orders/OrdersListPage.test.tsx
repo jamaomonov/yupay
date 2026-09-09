@@ -49,6 +49,7 @@ function makeOrder(over: Partial<OrderAdminOut> = {}): OrderAdminOut {
     guest_email: "buyer@example.com",
     merchant_id: null,
     merchant_title: null,
+    failure_reason: null,
     source: "web",
     events: [],
     ...over,
@@ -173,4 +174,40 @@ it("still shows a guest order's email", async () => {
 
   const row = await findDataRow();
   expect(within(row).getByText("buyer@example.com")).toBeInTheDocument();
+});
+
+it.each([
+  ["fulfillment_failed", "Провалено, решает человек"],
+  ["fulfillment_failed_refunded", "Провалено, возвращено"],
+  ["fulfillment_delayed", "Задерживается"],
+  ["order_failed", "Закрыт вручную"],
+])("says %s beside the status, not instead of it", async (reason, label) => {
+  // A terminal fulfilment failure deliberately leaves `order.status` alone, so
+  // the list said «В работе» on a dead order for ever. The status stays — the
+  // FSM is not being lied about — and the reason is rendered next to it.
+  renderPage([makeOrder({ status: "fulfilling", failure_reason: reason })]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText("В работе")).toBeInTheDocument();
+  expect(within(row).getByText(label)).toBeInTheDocument();
+});
+
+it("stays silent on a healthy in-flight order", async () => {
+  // Without this the annotation becomes a decoration on every row and stops
+  // meaning anything on the one row it was written for.
+  renderPage([makeOrder({ status: "fulfilling", failure_reason: null })]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText("В работе")).toBeInTheDocument();
+  expect(within(row).queryByText(/Провалено|Задерживается|Закрыт/)).not.toBeInTheDocument();
+});
+
+it("renders nothing for a reason this build has never heard of", async () => {
+  // The server's own contract for the field is additive — "treat an unknown
+  // value as still in flight" — so a deploy skew must not paint a blank chip.
+  renderPage([makeOrder({ status: "fulfilling", failure_reason: "something_new" })]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText("В работе")).toBeInTheDocument();
+  expect(within(row).queryByText("something_new")).not.toBeInTheDocument();
 });

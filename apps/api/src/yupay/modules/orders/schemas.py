@@ -240,6 +240,21 @@ class OrderAdminOut(OrderOut):
     #: ships. Admin-only: it is operator context, and a customer has no use
     #: for being told which of our own apps they used.
     source: str = "unknown"
+    #: Why this order has stopped moving, or ``None`` if it has not — the same
+    #: closed vocabulary ``/merchant/v1`` publishes (``order_failed`` /
+    #: ``fulfillment_failed`` / ``fulfillment_failed_refunded`` /
+    #: ``fulfillment_delayed``), computed by the same function
+    #: (``merchants.order_status.failure_reasons``).
+    #:
+    #: It sits **beside** ``status`` and never replaces it, because the two
+    #: answer different questions: a terminal fulfilment failure deliberately
+    #: leaves ``status`` at ``fulfilling`` — an operator may still top a
+    #: supplier up, retry, or deliver by hand — so the list said «В работе» on
+    #: a dead order for ever. Retail orders get a real value too: the status
+    #: lies for a storefront order in exactly the same way, and only the
+    #: refunded value is merchant-shaped (it is measured off the deposit
+    #: ledger, which a retail order has no rows in).
+    failure_reason: str | None = None
     events: list[OrderEventOut]
 
 

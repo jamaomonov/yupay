@@ -5,16 +5,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import { OrderActorRef } from "./OrderActorRef";
+import { OrderStateBadge } from "./OrderStateBadge";
 import {
   type OrderAdminListOut,
   type OrderAdminOut,
   type OrderStatus,
   SOURCE_LABEL,
-  STATUS_LABEL,
-  STATUS_TONE,
 } from "./types";
 
-import { Badge } from "@/components/Badge";
 import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -251,8 +249,8 @@ export function OrdersListPage() {
     {
       key: "status",
       header: "Статус",
-      render: (o) => <StatusBadge status={o.status} />,
-      className: "w-40",
+      render: (o) => <OrderStateBadge status={o.status} failureReason={o.failure_reason} />,
+      className: "w-44",
       sortAccessor: (o) => o.status,
     },
     {
@@ -440,14 +438,6 @@ export function OrdersListPage() {
         onPageChange={setOffset}
       />
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: OrderStatus }) {
-  return (
-    <Badge tone={STATUS_TONE[status]} dot>
-      {STATUS_LABEL[status]}
-    </Badge>
   );
 }
 
