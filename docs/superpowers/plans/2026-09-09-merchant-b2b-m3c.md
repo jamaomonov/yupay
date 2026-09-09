@@ -151,14 +151,124 @@ page. The operator is standing where the button is not.
 
 ---
 
+### Task 5: the stuck-order alert says a number that is not the amount
+
+`apps/scheduler/src/yupay_scheduler/jobs/stuck_orders.py:90` formats the money as
+`f"{order.total_charged:,.0f}"` — **zero decimal places**. Reproduced:
+`0.64 -> "1"`, `0.24 -> "0"`, `1.50 -> "2"`.
+
+The format was written for UZS, where whole sums are right and the thousands
+separator earns its place. USD orders arrived with M2 and nothing revisited it.
+**"0 USD" on a money alert is worse than an imprecise number**: it reads as
+"nothing at stake" on the one line whose whole job is to say the opposite.
+
+**Rules:**
+
+- Format by the order's currency, not by one hard-coded shape. UZS keeps whole
+  units and the space separator; USD gets two decimals.
+- The alert is Telegram HTML — keep the escaping.
+- A test per currency, and one that fails if the decimals come back.
+
+- [ ] commit `fix(scheduler): the stuck-order alert rounded 0.24 USD to "0"`
+
+---
+
+### Task 6: a refunded merchant order is over, and its status should say so
+
+**The owner's ruling (2026-09-09), and the reasoning behind it is theirs:** an
+order that has been automatically refunded sits at `status: "fulfilling"`
+forever, and that is a lie. The reason the status is deliberately left alone on
+a fulfilment failure — _an operator may still top up, retry, or deliver by
+hand_ — is **false for a refunded order**: `retry_task` and
+`complete_manual_task` both refuse it with `409 deposit_already_returned`,
+because delivering it would hand the merchant the goods and their money. Every
+exit is closed while the state says "in progress".
+
+**Use `failed`, not `refunded`, and the contract is why.** The module README's
+`status` row says: _"New values may be added — treat an unknown one as still in
+flight."_ A client written today would therefore read a new `refunded` as **not
+terminal** and poll forever, never settling with its own customer — strictly
+worse for existing integrators than doing nothing. `failed` is already in the
+published vocabulary, already documented as reachable "from any of the first
+three", and already terminal. The money detail is carried by
+`failure_reason: fulfillment_failed_refunded` and `refunded_usd`, which exist.
+
+**The interaction that must not be missed.** `order_status._failure_reason`
+tests `order.status == "failed"` **first** and returns `REASON_ORDER_FAILED`.
+So setting the status naively collapses the reason to `order_failed` — "support
+closed this by hand" — and destroys the "your money is back" signal in the same
+commit that adds the status. The precedence has to be adjusted so a fully
+settled order still reads `fulfillment_failed_refunded`.
+
+**Rules:**
+
+- **Only on a full settlement** (`refund.settled_in_full`, the same pure
+  predicate the cancellation alert uses). A partial is a human mid-decision and
+  the order is not over.
+- **Only in the merchant arm.** The refund seam is already gated on
+  `merchant_id`; retail must be byte-identical and the proof must fail if the
+  gate is removed.
+- Three consequences, all of which should be **verified rather than assumed**:
+  the admin list shows a terminal status; `list_stuck_paid_orders` stops
+  matching (its `STUCK_STATUSES` is `paid`/`fulfilling`/`fulfilled`), which is
+  what silences the 05:30 alert **without** a gate; and the status move fires
+  `order.status_changed`, so a webhook subscriber learns about the refund by
+  push instead of by poll. Say in the README that this is now true — it
+  currently says the opposite for this case.
+- **Enumerate the siblings anyway.** M3b gated one alert and did not look for
+  the others, which is why an owner found this one at 05:30 instead of a
+  review. Name every job or query that reasons about "paid but not delivered"
+  and say, for each, whether this change fixes it, whether it still needs
+  something, or why it does not apply. A partial retail refund leaves
+  `payment.status = "partially_refunded"` — check whether the order still nags,
+  and report it either way rather than guessing.
+
+- [ ] **Step 1: failing tests** — a fully refunded merchant order reaches
+      `failed` and still reads `fulfillment_failed_refunded`; a partial does
+      not move the status; retail is unchanged; the stuck-order query no longer
+      returns it; the webhook fires.
+- [ ] **Step 2-4:** FAIL → implement → pass, red observed per test.
+- [ ] **Step 5: commit** `feat(api/merchants): a refunded order is over, and says so`
+
+---
+
+### Task 7: an order says where it came from
+
+`orders.source` is `CHECK (source IN ('web','miniapp','bot','unknown'))`, so a
+merchant order lands in `unknown` and the admin list shows «—».
+
+**Rules:**
+
+- Migration widens the vocabulary to include `merchant_api` **and**
+  `merchant_panel` — the cabinet is M4 and a second migration for one string is
+  waste, but the panel value must be unreachable until something sets it.
+- `merchants.orders.place` sets `merchant_api`. The panel value stays unused,
+  with a comment saying which milestone claims it.
+- The admin list and detail render it; three locales.
+- The column is client-declared for retail (`X-Yupay-Surface`) and an
+  **operator's "where did this come from", never an authorisation input** — the
+  existing comment on the column says so and stays true: the merchant value is
+  set server-side, which is stronger, not weaker.
+
+- [ ] commit `feat(api/merchants): a merchant order records the surface it came from`
+
+---
+
 ## Self-review notes
 
 - Ordering: 1 is the money rule and stands alone; 2 → 3 → 4 are the operator's
   page, in the order a person meets them (who is this, what happened, what do I
   do).
-- Out of scope: moving `order.status` for a terminal fulfilment failure. That is
-  a contract change for `/merchant/v1` **and** a retail behaviour change, and
-  Task 3 removes the reason anyone wanted it. If it is still wanted afterwards,
-  it needs its own decision.
+- **Task 6 reverses this plan's own out-of-scope note, on the owner's
+  reasoning.** It originally said moving `order.status` was a contract change
+  and a retail behaviour change, and that Task 3 removed the reason anyone
+  wanted it. The owner asked the obvious question — _why is a refunded order
+  still "in progress"?_ — and the note does not survive it: the justification
+  for leaving the status alone is that an operator may still deliver, and for a
+  refunded order every delivery path is **already refused** by
+  `deposit_already_returned`. The narrow case is not the broad change the note
+  declined. The contract risk is real and is answered by using `failed`, a value
+  already published as terminal, instead of a new one the README tells clients
+  to treat as still in flight.
 - Also out of scope: M4's cabinet, and the Sentry gap the deploy exposed
   (`SENTRY_DSN` is unset on prod, so there is no error reporting at all).
