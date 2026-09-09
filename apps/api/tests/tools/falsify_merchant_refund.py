@@ -616,7 +616,19 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(LIVE, ATTRIB),
-        expect=("test_the_cap_does_not_break_the_operators_own_retry",),
+        # Re-recorded 2026-09-10 from an observed ``--record`` run, not by
+        # hand. The anchor never moved; the blast radius did, because the
+        # M3c fix round added two tests to a file this row already runs.
+        # Both extra reds are correct consequences of the mutation: with
+        # the cap running on replays, a replayed settlement raises
+        # ``order_already_settled`` and never reaches the closer, and an
+        # operator's timeout retry is refused. ``--check-anchors`` cannot
+        # see this class -- only the exact set can.
+        expect=(
+            "test_a_replay_of_the_settlement_closes_once",
+            "test_an_operators_timeout_retry_is_not_refused_by_the_new_guard",
+            "test_the_cap_does_not_break_the_operators_own_retry",
+        ),
     ),
     # ---- the free-goods loophole, both doors
     Mutation(
