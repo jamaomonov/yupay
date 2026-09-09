@@ -6828,7 +6828,7 @@
         "type": "object"
       },
       "MerchantOrderEventOut": {
-        "description": "One entry of an order's timeline.\n\n``event`` only \u2014 no payload. An ``order_events`` payload carries internal\nvalues (``order.paid``'s is a fingerprint of the reseller's own request,\n``order.failed``'s is an operator's free-text note), and none of them is\nworth a field on a third-party contract.",
+        "description": "One entry of an order's timeline.\n\n``event`` only \u2014 no payload. An ``order_events`` payload carries internal\nvalues (``order.paid``'s is a fingerprint of the reseller's own request;\n``order.failed``'s is an operator's free-text note when support closed the\norder by hand, and an internal label when the automatic refund closed it \u2014\nM3c Task 6), and none of them is worth a field on a third-party contract.",
         "properties": {
           "at": {
             "format": "date-time",

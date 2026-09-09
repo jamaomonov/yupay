@@ -82,8 +82,7 @@ never observe another user's events.
 `fulfilling` while fulfillment works internally; if a supplier errors or our
 internal balance is empty, the order **stays at `fulfilling`** — only an
 internal task/attempt row reflects the failure — while an admin resolves it
-(top up + retry, or deliver manually). The order only ever leaves `fulfilling`
-by reaching `delivered`. Consequently:
+(top up + retry, or deliver manually). Consequently:
 
 - `order.failed` is defined in the wire contract (for forward-compatibility)
   but is **never emitted** by any publish call site in this codebase.
@@ -93,6 +92,17 @@ by reaching `delivered`. Consequently:
 - Terminal-but-not-fulfillment outcomes the customer _does_ see —
   `cancelled`, `expired` — still publish a normal `order.status_changed` and
   surface on the order-status page, same as before this feature existed.
+
+**"The order only ever leaves `fulfilling` by reaching `delivered`" used to
+stand here and no longer does.** Two writers move a paid order to `failed`:
+`orders.service.mark_order_failed_admin` (support closing an undeliverable order
+by hand) and, since M3c Task 6, `fulfillment.service` closing a **merchant**
+order whose whole deposit charge has already been refunded automatically
+(ADR-0071 decision 12). Neither reaches this module: the first is a deliberate
+human decision, the second is a merchant order — `user_id IS NULL` by the actor
+CHECK — so `publish_order_event` no-ops for it, and both go to the merchant
+webhook instead. The rule above is about a **retail** buyer being shown an
+internal remediation state as their own final outcome, and it is unchanged.
 
 ## Publishers (call sites)
 

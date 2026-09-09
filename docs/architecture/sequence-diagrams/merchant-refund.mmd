@@ -6,6 +6,7 @@ sequenceDiagram
     participant SEAM as _settle_merchant_deposit
     participant RF as merchants.refund.refund_order
     participant L as wallet.service.post
+    participant END as _end_a_refunded_merchant_order
     participant OPS as Telegram ops alert
     participant DB as Postgres
     participant R as Reseller (polling)
@@ -59,6 +60,11 @@ sequenceDiagram
             RF->>L: post(kind=merchant_order_refund, D merchant_deposit / C house_payments_received)<br/>reference=(order, order_id), actor=fulfillment
             RF->>DB: enqueue balance.credited (spec 10) in this same transaction
             RF-->>SEAM: the refund transaction
+            SEAM->>END: the order is over -- close it (M3c Task 6)
+            END->>DB: settled_in_full? (the shared predicate; a partial is a human mid-decision)
+            END->>DB: order.status=failed, updated_at, order_events(order.failed)
+            END->>DB: on_order_status_changed -> enqueue order.status_changed<br/>failed, NOT a new "refunded": the README tells clients to treat an<br/>unknown status as still in flight, so a fresh value is polled for ever
+            Note over END,DB: inside the SAME savepoint as the posting -- money back and order<br/>ended are one fact. list_stuck_paid_orders stops matching here,<br/>because STUCK_STATUSES is paid/fulfilling/fulfilled
         end
     end
     alt anything above raised
@@ -69,5 +75,5 @@ sequenceDiagram
     W->>DB: COMMIT the batch
 
     R->>DB: GET /merchant/v1/orders/{merchant_order_id}
-    Note over R,DB: refunded_usd sums the DEBIT legs on merchant_deposit for<br/>transactions referencing this order, so a hand settlement lands<br/>there too. failure_reason splits on that sum against the charge:<br/>fulfillment_failed_refunded only when ALL of it is back.
-    Note over R: order.status does not move, so no order.status_changed webhook fires.<br/>The refund does emit balance.credited: money by push, order state by poll.
+    Note over R,DB: refunded_usd sums the DEBIT legs on merchant_deposit for<br/>transactions referencing this order, so a hand settlement lands<br/>there too. failure_reason splits on that sum against the charge:<br/>fulfillment_failed_refunded only when ALL of it is back -- and that<br/>branch is tested BEFORE order.status == failed, or the terminal<br/>status above would collapse every refund to order_failed.
+    Note over R: A FULL refund pushes twice: balance.credited, then order.status_changed<br/>(status failed). A partial, and a failure whose money stayed out, move no<br/>order row and announce nothing -- for those the poll is still the mechanism.

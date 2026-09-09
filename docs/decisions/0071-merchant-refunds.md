@@ -371,6 +371,69 @@ plainly what the schema publishes, so the two agree instead of overlapping.
 This is revisitable, and the condition is nameable: once the vocabulary stops
 growing, an `enum` becomes safe and worth adding.
 
+### 12. A **fully refunded** order is closed as `failed` — and `failed` is why it works (M3c Task 6)
+
+Until M3c an automatic refund moved the ledger and left `orders.status` at
+`fulfilling` for ever. That inherits retail's rule — a terminal fulfilment
+failure does not advance the order row — and the rule has a reason: an operator
+may still top a supplier up, retry, or deliver by hand, so the order is not
+over. **That reason is false for a refunded order.** `retry_task` and
+`complete_manual_task` both refuse it with `409 deposit_already_returned`
+(decision 7's key makes the second charge a replay, so delivering would hand
+the reseller the goods _and_ their money). Every exit was closed while the state
+said "in progress", which an owner met at 05:30 on the stuck-order alert.
+
+`_end_a_refunded_merchant_order` therefore sets `order.status = "failed"` in the
+same savepoint as the posting, writes an `order.failed` event, and routes the
+move through `orders.service.on_order_status_changed`.
+
+**`failed`, not a new `refunded` value, and the contract decides it.** The
+module README's `status` row instructs clients to treat an unknown value as
+_still in flight_. A `refunded` minted today would therefore be polled for ever
+by everyone already integrated and their end customers never settled — strictly
+worse for them than leaving the status alone. `failed` is already published as
+terminal and already documented as reachable "from any of the first three". The
+money detail is carried by `fulfillment_failed_refunded` and `refunded_usd`,
+which already exist. This is the same trade decision 11 makes for
+`failure_reason` seen from the other side: **the vocabulary an integrator
+switches on may grow, but only where the growth is safe to not recognise.**
+`failure_reason`'s is (an unknown value means "keep polling"); `status`'s is
+not (an unknown value means "keep polling" too, which for a terminal state is
+exactly wrong). So one may gain values freely and the other may not.
+
+**The precedence in `order_status._failure_reason` had to move in the same
+commit.** That function tested `order.status == "failed"` first and answered
+`order_failed` — "support closed this by hand", which was the only way to reach
+that status. Setting the status without touching the order would have collapsed
+**every** automatic refund to `order_failed`, telling a reseller to contact
+support about money already on their deposit: the commit that added the terminal
+status would have destroyed the refund signal it was meant to pair with. The
+refunded branch now runs first; `order_failed` still wins wherever money is
+outstanding — nothing back, or only part of it — which is exactly when
+contacting support is the right instruction.
+
+**Only a full settlement**, on `refund.settled_in_full` — the shared predicate,
+never a second comparison. A partial is a human mid-decision with money still
+owed, and closing it behind them removes the retry they were about to use.
+
+Three consequences, all measured rather than assumed:
+
+- the admin list renders «Проблемный» in the danger tone instead of «В работе»;
+- `orders.service.list_stuck_paid_orders` stops matching, because its
+  `STUCK_STATUSES` is `paid`/`fulfilling`/`fulfilled`. **This is what silences
+  the alert, and it needed no merchant-shaped exception in that query** — the
+  plan's first idea was to gate the job on `merchant_id`, and the state was
+  wrong rather than the alert;
+- the move fires `order.status_changed`, so a subscriber learns about the
+  refund by **push**, immediately after the `balance.credited`. M3b's own
+  answer — "money by push, order state by poll" — was true only while the
+  order row never moved, and the README now says so.
+
+No migration and no new value anywhere a client switches on. `openapi.json`
+moves by exactly one `description` string — `MerchantOrderEventOut`'s class
+docstring claimed `order.failed`'s payload is always an operator's free-text
+note, which the second writer falsifies. No shape, no field, no enum.
+
 ## What this does not decide
 
 - **Cancellation leaves a debited deposit that no automatic path resolves.**
@@ -382,9 +445,10 @@ growing, an `enum` becomes safe and worth adding.
   it would be the guess decision 2 forbids: cancelling is a human action taken
   for a reason this code cannot read. Three review rounds made the state loud
   (`log.warning` plus a per-order alert, deduped hourly) and correctly gated:
-  it fires unless the order is **square against what it charged**, so closing
-  an order the drain has already refunded — the ordinary support step, and the
-  feature's commonest path — raises nothing, while a one-cent partial still
+  it fires unless the order is **square against what it charged**, so tidying
+  the dead task off an order the drain has already refunded — the feature's
+  commonest housekeeping, and, before decision 12 closed these orders itself,
+  the ordinary support step — raises nothing, while a one-cent partial still
   does. **The owner decided on 2026-09-09: it stays with a
   human.** A cancel is a human action taken for a reason this code cannot read,
   so the money it leaves behind is resolved by a human too — the alert is the
@@ -431,12 +495,28 @@ growing, an `enum` becomes safe and worth adding.
   on the order, so a second charge replays and debits nothing: refund, then
   Retry, and the reseller has the goods _and_ the money. Both buttons refuse
   with `409 deposit_already_returned`, and the refusal catches a **hand**
-  settlement too — that loophole predates the automatic refund.
-- **Money reaches a reseller by push; order state only by poll.** The refund
-  emits `balance.credited`, because the hand settlement it replaces already
-  did and an automatic path that went silent would have removed a notification.
-  No `order.status_changed` fires for a failure, a stall or a refund, because
-  none of them moves `orders.status`. The contract says so.
+  settlement too — that loophole predates the automatic refund. Decision 12
+  turns that closure into the order's own status, so the state and the
+  refusals finally agree.
+- **A settlement booked by hand still does not close the order.** Decision 12
+  fires from inside the automatic refund, so an operator crediting the deposit
+  through `POST /admin/merchants/{id}/deposit-credits` leaves
+  `status: "fulfilling"` and `delivered_at IS NULL` — and therefore leaves the
+  order in `list_stuck_paid_orders` and in the five-minute alert. The runbook's
+  settlement procedure keeps its "close the order" step for exactly that
+  reason, and the step is now load-bearing rather than tidiness. Wiring the
+  close into `credit_deposit` is the obvious follow-up and was left out of M3c
+  Task 6 on scope: it would put an order-state write behind an admin money
+  endpoint, which is a decision, not an extension.
+- **A full refund now reaches a reseller by push twice; everything else is
+  still poll-only.** The refund emits `balance.credited`, because the hand
+  settlement it replaces already did and an automatic path that went silent
+  would have removed a notification — and, since decision 12, an
+  `order.status_changed` carrying `status: "failed"` right behind it, because
+  closing the order goes through the one seam. A failure whose money stayed
+  out, a partial settlement and a stall move `orders.status` for nobody and
+  therefore announce nothing: for those the contract's "poll" still stands, and
+  it says which is which.
 - **Retail is untouched and pays one indexed read to stay that way.**
   `INVENTORY_FAILURE_MONEY_OUTCOME` is `RETURNED` and fires whenever an
   inventory route runs dry with nothing to fall back to (`service.py`'s
@@ -445,9 +525,13 @@ growing, an `enum` becomes safe and worth adding.
   doing real work rather than documenting an impossibility. A retail task pays one indexed
   read here and returns before any savepoint is opened, any `merchants` module
   is imported, or any other row is read.
-- **`fulfillment/service.py` is 2415 lines and `merchants/deposit.py` 770**
-  (measured at this commit), both well past AGENTS §6's split point. M3b added a new module
-  (`fulfillment/stall.py`) rather than either. The split is a scheduled item.
+- **`fulfillment/service.py` is 2549 lines and `merchants/deposit.py` 770**
+  (measured after M3c Task 6, which added 134 of those lines), both well past
+  AGENTS §6's split point. M3b added a new module (`fulfillment/stall.py`)
+  rather than either, and Task 6 did not — its closer belongs beside the seam
+  that calls it and shares that seam's savepoint. The split is a scheduled
+  item, and the merchant-deposit region of this file is the obvious seam for
+  it.
 - **The two mutation harnesses this milestone produced carry mechanisms the
   other three do not** — an exact-set `expect` per row and `--check-anchors`.
   Both were proven by constructing the failures they catch, and both are worth

@@ -313,9 +313,10 @@ class MerchantOrderEventOut(BaseModel):
     """One entry of an order's timeline.
 
     ``event`` only — no payload. An ``order_events`` payload carries internal
-    values (``order.paid``'s is a fingerprint of the reseller's own request,
-    ``order.failed``'s is an operator's free-text note), and none of them is
-    worth a field on a third-party contract.
+    values (``order.paid``'s is a fingerprint of the reseller's own request;
+    ``order.failed``'s is an operator's free-text note when support closed the
+    order by hand, and an internal label when the automatic refund closed it —
+    M3c Task 6), and none of them is worth a field on a third-party contract.
     """
 
     #: One of the ``order.*`` kinds listed in the module README. Kinds outside
@@ -358,6 +359,13 @@ class MerchantOrderStatusOut(BaseModel):
     #: Our id for the order. Quote it to support; key your own records on
     #: ``merchant_order_id``, which is yours and which we cannot change.
     order_id: str
+    #: ``paid`` → ``fulfilling`` → ``delivered``, or ``failed``. ``failed``
+    #: arrives two ways: support closing an undeliverable order by hand, and —
+    #: since M3c Task 6 — a delivery failure whose **whole** charge is already
+    #: back on the deposit, which closes itself within seconds. Read
+    #: ``failure_reason`` to tell them apart. New values may be added; treat one
+    #: you do not know as still in flight, which is why the refund reuses
+    #: ``failed`` instead of minting ``refunded``.
     status: str
     sku_id: str
     #: What this order charged. Final — see ``POST /merchant/v1/orders``.

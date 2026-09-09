@@ -1409,12 +1409,19 @@ async def get_order_admin(db: AsyncSession, order_id: str) -> Order:
     return await _load_order(db, order_id)
 
 
-#: Statuses a support agent may close as ``failed`` by hand: the customer has
-#: paid but the goods never reached them. Deliberately excludes
-#: ``pending_payment`` (that is ``cancel_order_admin`` — nothing was charged)
-#: and ``delivered`` (the customer holds the goods; reversing that is a refund,
-#: which moves real money through ``payments.refund_admin``).
-_FAILABLE_STATUSES: Final[frozenset[str]] = frozenset({"paid", "fulfilling", "fulfilled"})
+#: Statuses an order may be closed as ``failed`` from: the customer has paid
+#: but the goods never reached them. Deliberately excludes ``pending_payment``
+#: (that is ``cancel_order_admin`` — nothing was charged) and ``delivered``
+#: (the customer holds the goods; reversing that is a refund, which moves real
+#: money through ``payments.refund_admin``).
+#:
+#: Public because it has two callers and one meaning. Besides
+#: :func:`mark_order_failed_admin`, ``fulfillment.service`` reads it before an
+#: automatic merchant refund closes the order it has just settled (M3c Task 6),
+#: and "which states is a paid-but-undeliverable order closable from" is one
+#: question: a second spelling of it in another module is how the two would
+#: start disagreeing about ``delivered``.
+FAILABLE_STATUSES: Final[frozenset[str]] = frozenset({"paid", "fulfilling", "fulfilled"})
 
 
 async def mark_order_failed_admin(
@@ -1449,10 +1456,10 @@ async def mark_order_failed_admin(
         ConflictError: Order is not in a status this action may close.
     """
     order = await _load_order(db, order_id)
-    if order.status not in _FAILABLE_STATUSES:
+    if order.status not in FAILABLE_STATUSES:
         raise ConflictError(
             "cannot mark order failed in current status",
-            extra={"status": order.status, "allowed": sorted(_FAILABLE_STATUSES)},
+            extra={"status": order.status, "allowed": sorted(FAILABLE_STATUSES)},
         )
 
     # Fulfilment cascade FIRST, before any write to the order row (the status
@@ -1636,6 +1643,7 @@ async def expire_stale_orders(db: AsyncSession, *, batch_limit: int = 500) -> in
 
 
 __all__ = [
+    "FAILABLE_STATUSES",
     "ORDER_EXPIRY_SECONDS",
     "Actor",
     "build_item_display",

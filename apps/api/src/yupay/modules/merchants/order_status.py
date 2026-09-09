@@ -36,8 +36,11 @@ match the value.
 ## What is deliberately not here
 
 - **Event payloads.** ``order.paid``'s payload holds the replay fingerprint of
-  the reseller's request; ``order.failed``'s holds an operator's free-text
-  note. The timeline carries a kind and a timestamp, nothing else.
+  the reseller's request; ``order.failed``'s holds either an operator's
+  free-text note or, when the automatic refund closed the order (M3c Task 6),
+  an internal label. The timeline carries a kind and a timestamp, nothing else,
+  so a reseller cannot tell the two apart here — ``failure_reason`` is what
+  distinguishes them, and it is derived from the ledger.
 - **A supplier's name, id or error.** The delivery artifact is filtered through
   ``fulfillment.buyer_safe_artifact`` — the same allow-list the storefront
   uses, shared rather than copied — and ``failure_reason`` is a closed
@@ -168,13 +171,27 @@ def _failure_reason(
 ) -> str | None:
     """Why this order has stopped moving, or ``None`` if it has not.
 
-    Three sources, in order:
+    Four branches, in order, and **the first of them is the one M3c Task 6
+    moved**.
 
-    ``order.status == "failed"`` is support closing a paid-but-undeliverable
-    order by hand. The operator's reason is recorded on the timeline event and
-    stays there — it is written for us, not for a reseller.
+    A **failed item whose money is all back** answers
+    :data:`REASON_FULFILLMENT_REFUNDED` before anything else looks at
+    ``order.status``. Until Task 6 the status branch came first and that was
+    right, because a refund left ``order.status`` at ``fulfilling`` for ever,
+    so ``failed`` could only mean "support closed this by hand". Task 6 makes a
+    full automatic refund close the order — every way out of it is already
+    refused by ``deposit_already_returned``, so "in progress" was a lie — and
+    that puts ``status == "failed"`` on the *common* path. Leaving the old
+    order would have collapsed every automatic refund to ``order_failed``,
+    telling a reseller to contact support about money that is already on their
+    deposit, in the same commit that added the terminal status.
 
-    Next the *item's* ``fulfillment_state``. Reading the item rather than
+    ``order.status == "failed"`` is therefore now "closed, and something is
+    still owed": support closing a paid-but-undeliverable order by hand, or a
+    part-settled one. The operator's reason is recorded on the timeline event
+    and stays there — it is written for us, not for a reseller.
+
+    Next the *item's* ``fulfillment_state`` alone. Reading the item rather than
     the fulfilment task is deliberate and inherits a rule ``fulfillment``
     already draws: when a supplier fails us for lack of **our own** balance the
     task goes ``failed`` but the item stays ``in_progress``, so the storefront
@@ -194,18 +211,23 @@ def _failure_reason(
     that read ``fulfillment_delayed`` off a closed order would go on waiting
     for it.
 
-    Note the asymmetry with ``status``: a supplier failure leaves the order row
-    in ``fulfilling`` — nothing advances it — so without this field a stalled
-    order is indistinguishable from a busy one, forever. That is true of the
-    delayed value too, which is why it exists.
+    Note the asymmetry with ``status``, and note where M3c Task 6 narrowed it:
+    a supplier failure whose money did **not** come back leaves the order row in
+    ``fulfilling`` — nothing advances it — so without this field it is
+    indistinguishable from a busy one, forever. Same for a stall, which is why
+    the delayed value exists. The one case that does advance the row is a
+    **full** automatic refund, and that is a consequence of this function
+    rather than an input to it: the closer asks the ledger, not this field.
 
-    A failed delivery then splits on ``refunded``, and it splits on the
+    A failed delivery splits on ``refunded``, and it splits on the
     **ledger** rather than on anything the fulfilment path wrote down. That is
     what makes the field incapable of lying: it says "your money is back"
     only when money is actually back, so an automatic refund that raised, an
     order whose charge could not be found, and a supplier that kept our money
     all read ``fulfillment_failed`` — "a human is deciding" — without any of
-    those paths having to remember to say so.
+    those paths having to remember to say so. The status the refund sets is not
+    consulted for that: it is a *consequence* of the ledger reading square, and
+    reading it back here would make the two able to disagree.
 
     **The comparison is against what the order was charged, not against
     zero**, because ``refunded`` is a sum and a sum is not a flag. A one-cent
@@ -232,10 +254,11 @@ def _failure_reason(
     business, not the reseller's, and ``refunded_usd`` beside it carries how
     much.
 
-    ``order_failed`` still wins when support closed the order by hand. A
-    closure is a human already in the loop with the reseller, and the amount
-    is on ``refunded_usd`` either way; layering a fourth combination onto a
-    field a client switches on would buy nothing.
+    ``order_failed`` still wins on a closure with money outstanding — none
+    back, or only part of it. A closure is a human already in the loop with the
+    reseller, and "contact support" is the right instruction while anything is
+    owed. It stops winning only where there is nothing left to be in the loop
+    about, which is exactly what ``settled_in_full`` measures.
 
     Args:
         order: The order, with its items loaded.
@@ -253,14 +276,23 @@ def _failure_reason(
     Returns:
         A value from the closed vocabulary above, or ``None``.
     """
+    failed_item = any(item.fulfillment_state == "failed" for item in order.items)
+    # ``refund.settled_in_full``, not a comparison spelled here: the
+    # cancellation alert and the refund seam ask the same question, and two
+    # spellings of one rule is how one of them starts saying "refunded" about
+    # a cent.
+    #
+    # **Ahead of the status branch, and the order is the contract.** See the
+    # docstring: since M3c Task 6 a full refund closes the order, so this shape
+    # is what every automatic refund leaves behind. Swap these two and the
+    # "your money is back" signal disappears from the path that produces it
+    # most.
+    if failed_item and refund.settled_in_full(charged=charged, returned=refunded):
+        return REASON_FULFILLMENT_REFUNDED
     if order.status == "failed":
         return REASON_ORDER_FAILED
-    if any(item.fulfillment_state == "failed" for item in order.items):
-        # ``refund.settled_in_full``, not a comparison spelled here: the
-        # cancellation alert asks the same question, and two spellings of one
-        # rule is how one of them starts saying "refunded" about a cent.
-        whole = refund.settled_in_full(charged=charged, returned=refunded)
-        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED
+    if failed_item:
+        return REASON_FULFILLMENT_FAILED
     return REASON_FULFILLMENT_DELAYED if stalled else None
 
 

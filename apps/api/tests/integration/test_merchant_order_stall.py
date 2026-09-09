@@ -572,7 +572,11 @@ async def test_a_retry_that_fails_with_our_money_back_reads_as_refunded(
     body = (await _read(integration_client, key_id, secret, "acme-thenrefund")).json()
     assert body["failure_reason"] == "fulfillment_failed_refunded"
     assert body["refunded_usd"] == PRICE
-    assert body["status"] == "fulfilling"
+    # M3c Task 6: ``retry_task`` is one of the four sites that reach the refund
+    # seam, so a stall that ends in a full refund closes the order here too.
+    # The value read back is still the refunded one and not ``order_failed``,
+    # which is the precedence that had to be corrected in the same commit.
+    assert body["status"] == "failed"
 
 
 async def test_a_retry_that_fails_without_our_money_reads_as_a_human_deciding(

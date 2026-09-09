@@ -337,18 +337,27 @@ rides in a body, because the receiver logs bodies wholesale.
 **`balance.credited` gained a second producer in M3b Task 3** and the event
 itself did not change: M3b's automatic refund of a failed order emits it, the
 same way the hand settlement it replaces already did, with the same two keys.
-That produces the one asymmetry an integrator has to know about — **for a
-failed order the money arrives by push and the order state only by poll.**
-`order.status_changed` does not fire on a fulfilment failure — nor on Task 4's
-stall — because nothing advances `orders.status`; the order sits at
-`fulfilling` with `failure_reason` set, and only
-`GET /merchant/v1/orders/{merchant_order_id}` shows that. A stall moves no
-money either, so unlike a refund it announces nothing at all: the poll is the
-whole mechanism. And because the payload does not name an order — deliberately;
-adding it would be a `/merchant/v2` — a receiver acting on `balance.credited`
-alone knows money came back but not on which order. Reconcile on the order
-read, or on `GET /merchant/v1/transactions`, where the refund row carries
-`order_id` and `merchant_order_id`. Four headers, all
+
+M3b's own summary of that — "for a failed order the money arrives by push and
+the order state only by poll" — **stopped being true in M3c Task 6** for the one
+case where the whole charge comes back. Closing such an order (ADR-0071,
+decision 12) moves `orders.status` to `failed`, and that goes through
+`on_order_status_changed` like every other transition, so the reseller gets
+`balance.credited` and then `order.status_changed` in the same transaction. The
+statement still holds for everything else: `order.status_changed` does **not**
+fire for a failure whose money stayed out, for a partial settlement, or for
+Task 4's stall, because none of those advances `orders.status` — the order sits
+at `fulfilling` with `failure_reason` set, and only
+`GET /merchant/v1/orders/{merchant_order_id}` shows that. A stall moves no money
+either, so unlike a refund it announces nothing at all: the poll is the whole
+mechanism.
+
+Neither body carries `failure_reason`, and `balance.credited` deliberately does
+not name an order — adding it would be a `/merchant/v2` — so a receiver acting
+on either event alone knows that money came back, or that an order ended, and
+not why. Reconcile on the order read, or on
+`GET /merchant/v1/transactions`, where the refund row carries `order_id` and
+`merchant_order_id`. Four headers, all
 named in `merchants/signing.py` because they are wire format:
 `X-Yupay-Delivery` (stable across retries, and the receiver's dedupe handle),
 `X-Yupay-Event`, `X-Yupay-Timestamp` (per attempt) and `X-Yupay-Signature` =

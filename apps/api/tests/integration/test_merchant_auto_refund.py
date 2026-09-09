@@ -64,6 +64,7 @@ from yupay.modules.merchants import deposit as merchant_deposit
 from yupay.modules.merchants import refund as merchant_refund
 from yupay.modules.merchants.models import MerchantWebhookDelivery
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.orders.service import list_stuck_paid_orders
 from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet.models import WalletTransaction
@@ -620,8 +621,11 @@ async def test_the_refund_is_visible_on_the_order_and_on_the_statement(
     body = (await _read_order(integration_client, key_id, secret, "acme/seen/1")).json()
     assert body["refunded_usd"] == PRICE
     assert body["failure_reason"] == "fulfillment_failed_refunded"
-    # Ruling 12: the order row does not move, so the reseller polls for state.
-    assert body["status"] == "fulfilling"
+    # M3c Task 6: the order row moves too. It used to sit at ``fulfilling`` for
+    # ever, which was a lie — ``retry_task`` and ``complete_manual_task``
+    # already refuse a refunded order, so every way out of it was closed while
+    # the status said "in progress".
+    assert body["status"] == "failed"
 
     row = next(
         r
@@ -656,6 +660,179 @@ async def test_a_failed_refund_leaves_the_order_saying_a_human_is_deciding(
     body = (await _read_order(integration_client, key_id, secret, "acme-norefund")).json()
     assert body["failure_reason"] == "fulfillment_failed"
     assert body["refunded_usd"] == "0.00"
+    # And the status does not move either: M3c Task 6 closes an order because
+    # the money is back, never because the delivery failed. This one is exactly
+    # the case an operator can still settle, retry or deliver by hand.
+    assert body["status"] == "fulfilling"
+
+
+# ---------- M3c Task 6: a refunded order is over, and its status says so ----------
+
+
+async def test_a_fully_refunded_merchant_order_is_over_and_says_so(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The whole of Task 6: ``failed``, and still ``fulfillment_failed_refunded``.
+
+    The order used to sit at ``fulfilling`` for ever, which is a lie an owner
+    caught the first night the feature ran: ``retry_task`` and
+    ``complete_manual_task`` both refuse a refunded order with
+    ``409 deposit_already_returned``, so **every** way out of it was already
+    closed while the state said "in progress".
+
+    ``failed`` and not a new ``refunded`` value, and the contract is why: the
+    module README tells clients to treat an unknown ``status`` as *still in
+    flight*, so a value invented today would be polled for ever by anyone
+    already integrated. ``failed`` is published, documented as reachable "from
+    any of the first three", and terminal.
+
+    The second assertion is the one this task could most easily have broken.
+    ``_failure_reason`` used to test ``status == "failed"`` first and answer
+    ``order_failed``, so setting the status naively would have destroyed the
+    "your money is back" signal in the same commit that added the status.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-over"
+    )
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    await db_session.refresh(order)
+    assert order.status == "failed"
+    # Nothing was delivered and nothing pretends otherwise: ``delivered_at``
+    # is what the delivery record and the watchdog both read.
+    assert order.delivered_at is None
+    assert await _balance(db_session, merchant_id) == Decimal(FUNDING)
+
+    body = (await _read_order(integration_client, key_id, secret, "acme-over")).json()
+    assert body["status"] == "failed"
+    assert body["failure_reason"] == "fulfillment_failed_refunded"
+    assert body["refunded_usd"] == PRICE
+    # The timeline gains ``order.failed`` — an event kind already in
+    # ``TIMELINE_EVENTS`` and already documented for this channel, so no new
+    # kind appears and no client sees a word it does not know. A terminal
+    # status with no event explaining it would be the odd thing.
+    assert [e["event"] for e in body["timeline"]] == [
+        "order.created",
+        "order.paid",
+        "order.fulfilling",
+        "order.failed",
+    ]
+
+
+async def test_a_refunded_merchant_order_leaves_the_stuck_order_watchdog(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """What actually silences the 05:30 alert — and it is not a gate.
+
+    ``list_stuck_paid_orders`` selects ``status IN (paid, fulfilling,
+    fulfilled)`` with ``delivered_at IS NULL``, so a refunded order used to
+    match it every five minutes for ever: money we no longer hold, on an alert
+    whose whole text is "Деньги у нас, товара у клиента нет". The plan's first
+    idea was to teach that query about merchants; moving the status makes the
+    query right about this order without knowing anything about merchants at
+    all.
+
+    The sibling in the same run is the control: a failure whose money did
+    **not** come back is still stuck, still ours to settle, and still shouted
+    about.
+    """
+    _m1, _k1, _s1, refunded_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-quiet"
+    )
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    # Placed and drained after the first, so which order the drain claims
+    # first cannot decide which outcome each one got.
+    _m2, _k2, _s2, parked_id = await _placed(
+        integration_client,
+        admin_headers,
+        db_session,
+        merchant_order_id="acme-loud",
+        title="Other",
+    )
+    _failing_mock(monkeypatch, MoneyOutcome.SPENT)
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    # ``older_than_minutes=0``: both were paid a moment ago, and the age cut is
+    # not what this test is about.
+    stuck = [o.id for o in await list_stuck_paid_orders(db_session, older_than_minutes=0)]
+    assert refunded_id not in stuck
+    assert parked_id in stuck
+
+
+async def test_a_partial_settlement_is_not_closed_by_the_closer_itself(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The ``settled_in_full`` guard, reached directly — the saga cannot.
+
+    From the seam this guard is always satisfied: ``refund_order`` posts the
+    whole charge and refuses any order money has already come back on, so a
+    successful posting *is* a complete settlement and a partial never gets past
+    it. That would leave the rule untested, and an untested guard on the money
+    path is decoration rather than defence.
+
+    So this walks the state a person actually produces. The delivery fails with
+    our money back, the automatic refund refuses because support had already
+    credited a cent (``AlreadySettledError``, which alerts), and settling the
+    rest is now a human's job — which is the case the hand settlement will call
+    this function from. Closing at the halfway mark would take away the retry
+    that operator was about to use and tell the reseller their order is over
+    while $1.06 of it is still owed.
+    """
+    merchant_id, key_id, secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-half-closed"
+    )
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "0.01", order_id=order_id)
+    ).status_code == 201
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+    await ff_svc.drain_pending_tasks(db_session)
+    await db_session.commit()
+    assert await _refund_rows(db_session, order_id) == []
+    assert _merchant_alerts(alerts) == ["_alert_merchant_refund_failed"]
+
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    await ff_svc._end_a_refunded_merchant_order(db_session, order=order, task_id="by-hand")
+    await db_session.commit()
+
+    await db_session.refresh(order)
+    assert order.status == "fulfilling"
+    body = (await _read_order(integration_client, key_id, secret, "acme-half-closed")).json()
+    assert body["status"] == "fulfilling"
+    assert body["failure_reason"] == "fulfillment_failed"
+
+    # Finish the settlement and the same call does close it, so the guard is
+    # about the **amount** and not about the caller.
+    assert (
+        await _credit(integration_client, admin_headers, merchant_id, "1.06", order_id=order_id)
+    ).status_code == 201
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    await ff_svc._end_a_refunded_merchant_order(db_session, order=order, task_id="by-hand")
+    await db_session.commit()
+
+    await db_session.refresh(order)
+    assert order.status == "failed"
+    body = (await _read_order(integration_client, key_id, secret, "acme-half-closed")).json()
+    assert body["failure_reason"] == "fulfillment_failed_refunded"
+    assert body["refunded_usd"] == PRICE
 
 
 # ---------- ruling 4: a refund that fails must not poison the outcome ----------
@@ -1170,13 +1347,22 @@ async def test_the_refund_announces_the_money_by_push(
     monkeypatch: pytest.MonkeyPatch,
     alerts: list[Alert],
 ) -> None:
-    """Ruling 12, answered on both halves.
+    """Ruling 12, re-answered by M3c Task 6 — **both** events now fire.
 
-    ``order.status_changed`` does **not** fire — a terminal fulfilment failure
-    moves the task, not ``orders.status``, so the order sits at ``fulfilling``
-    and the seam is never reached. ``balance.credited`` does, because the hand
-    settlement this replaces already emits it and an automatic path that went
-    silent would remove a notification integrators get today.
+    M3b's answer was "money by push, order state by poll": a terminal
+    fulfilment failure moved the task and not ``orders.status``, so
+    ``on_order_status_changed`` was never reached. Task 6 closes a fully
+    refunded order, which goes through that one seam like every other status
+    move, so a subscriber learns about the refund by push instead of by poll.
+    ``balance.credited`` still fires for its own reason: the hand settlement
+    this replaces already emitted it, and an automatic path that went silent
+    would remove a notification integrators get today.
+
+    **The order of the two is asserted, not incidental.** Both rows'
+    ``created_at`` default to ``CURRENT_TIMESTAMP``, which is the *transaction*
+    clock, so they tie there and the uuid7 id breaks it in insert order — the
+    money first, then the order state. A reseller acting on
+    ``order.status_changed`` therefore already has the credit.
 
     The key set is asserted exactly, in this file's own suite because the
     refund is its producer; see ``test_merchant_webhook_events.py`` for why
@@ -1202,8 +1388,11 @@ async def test_the_refund_announces_the_money_by_push(
         .scalars()
         .all()
     )
-    assert [row.event_type for row in rows] == ["balance.credited"]
+    assert [row.event_type for row in rows] == ["balance.credited", "order.status_changed"]
     assert rows[0].payload == {"amount_usd": PRICE, "balance_usd": FUNDING}
+    assert rows[1].payload["merchant_order_id"] == "acme-push"
+    assert rows[1].payload["order_id"] == order_id
+    assert rows[1].payload["status"] == "failed"
 
     # A replay books nothing, so it announces nothing — the rule
     # ``credit_deposit`` already follows, and the reason it exists: a reseller
@@ -1218,7 +1407,7 @@ async def test_the_refund_announces_the_money_by_push(
             .where(MerchantWebhookDelivery.merchant_id == merchant_id)
         )
     ).scalar_one()
-    assert again == 1
+    assert again == 2  # the two above, and nothing from the replay
 
 
 async def test_a_low_balance_stall_is_not_refunded_on_an_earlier_verdict(
@@ -1313,6 +1502,10 @@ async def test_a_partial_settlement_does_not_claim_the_order_was_refunded(
     body = (await _read_order(integration_client, key_id, secret, "acme-partial")).json()
     assert body["refunded_usd"] == "0.01"
     assert body["failure_reason"] == "fulfillment_failed"
+    # M3c Task 6 asks the same predicate before it closes the order, so a
+    # partial leaves it open. A human is mid-decision and the remaining $1.06
+    # is still theirs to settle, retry or deliver against.
+    assert body["status"] == "fulfilling"
 
 
 # ---------- the other two terminal states ----------
@@ -1708,6 +1901,7 @@ async def test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end(
     body = (await _read_order(integration_client, key_id, secret, "m3c-invalid-player")).json()
     assert body["refunded_usd"] == PRICE
     assert body["failure_reason"] == "fulfillment_failed_refunded"
+    assert body["status"] == "failed"
 
 
 @respx.mock
@@ -1748,6 +1942,7 @@ async def test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_orde
     body = (await _read_order(integration_client, key_id, secret, "m3c-other-400")).json()
     assert body["refunded_usd"] == "0.00"
     assert body["failure_reason"] == "fulfillment_failed"
+    assert body["status"] == "fulfilling"
 
 
 # ---------- retail moves no money (its record does change) ----------
@@ -1839,6 +2034,14 @@ async def test_a_retail_failure_never_reaches_the_refund_at_all(
     assert (
         await db_session.execute(select(func.count()).select_from(WalletTransaction))
     ).scalar_one() == 0
+    # M3c Task 6 closes a **refunded** order, and retail's rule that a terminal
+    # fulfilment failure leaves the status alone is unchanged. Two independent
+    # things keep it that way — the merchant gate above, and the fact that a
+    # retail order has no deposit charge for a settlement to be complete
+    # against — so no single mutation reddens this line; see the harness
+    # docstring's declared absence.
+    await db_session.refresh(order)
+    assert order.status == "fulfilling"
 
 
 @respx.mock
@@ -1892,3 +2095,5 @@ async def test_the_same_g2b_rejection_moves_no_money_for_a_retail_order(
     assert (
         await db_session.execute(select(func.count()).select_from(WalletTransaction))
     ).scalar_one() == 0
+    await db_session.refresh(order)
+    assert order.status == "fulfilling"

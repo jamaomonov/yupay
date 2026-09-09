@@ -1065,6 +1065,137 @@ async def _settle_merchant_deposit_inner(
         supplier=supplier,
         transaction_id=txn.id,
     )
+    # Inside the same savepoint as the posting, deliberately: the money going
+    # back and the order ending are one fact, and a fault while closing it must
+    # take the posting with it rather than leave a refunded order still reading
+    # "in progress". The caller's ``except`` then alerts and the failure stays
+    # refundable by hand, which is the safe direction.
+    await _end_a_refunded_merchant_order(db, order=order, task_id=task_id)
+
+
+async def _end_a_refunded_merchant_order(db: AsyncSession, *, order: Order, task_id: str) -> None:
+    """Close a merchant order whose whole charge has come back (M3c Task 6).
+
+    **Why the status moves here and nowhere else.** Retail's rule is that a
+    terminal fulfilment failure leaves ``order.status`` alone, because an
+    operator may still top a supplier up, retry, or deliver by hand — the order
+    is not over. That reason is **false for a refunded order**: both delivery
+    routes, :func:`retry_task` and :func:`complete_manual_task`, already refuse
+    it with ``409 deposit_already_returned``, because delivering it would hand
+    the reseller the goods *and* their money. Every exit was closed while the
+    state said "in progress", and an owner found that at 05:30 on the alert it
+    kept firing.
+
+    **``failed``, not a new value, and the contract decides it.** The module
+    README tells integrators to treat an unknown ``status`` as *still in
+    flight*, so a ``refunded`` invented today would be polled for ever by
+    everyone already integrated and their end customers never settled — worse
+    than doing nothing. ``failed`` is published, documented as reachable "from
+    any of the first three", and terminal. What the money did is carried by
+    ``failure_reason: fulfillment_failed_refunded`` and ``refunded_usd``, which
+    already exist — and ``order_status._failure_reason`` had to have its
+    precedence corrected in the same commit, or the status this sets would have
+    collapsed that reason to ``order_failed``.
+
+    **Only on a full settlement**, asked of the ledger through
+    ``refund.settled_in_full`` — the same pure predicate ``_failure_reason``
+    and the cancellation alert use, never a second comparison. Note honestly
+    what that guard is worth *today*: ``refund_order`` posts exactly what the
+    charge took and refuses any order money has already come back on, so by the
+    time we get here the answer is always yes, and no mutation of this line
+    changes anything the suite can see (the harness declares that as an
+    absence, and names ``no_already_settled_check`` as what actually grades
+    "a partial does not close the order"). It is written anyway because the
+    rule belongs to *this* function rather than to its one caller: the
+    settlement a person books by hand is the obvious second caller, it can be
+    partial, and a partial closed behind an operator mid-decision takes away
+    the retry they were about to use.
+
+    Both guards above it are defensive in the same way and for the same reason
+    — a merchant order at this seam is always ``fulfilling``, so
+    ``FAILABLE_STATUSES`` never rejects one today either. What they buy is that
+    the function's contract is enforced where the contract is stated.
+
+    Three consequences follow, and each was measured rather than assumed:
+
+    * the admin list stops rendering «В работе» and shows «Проблемный» in the
+      danger tone, which is what an operator needed;
+    * ``orders.service.list_stuck_paid_orders`` stops matching it — its
+      ``STUCK_STATUSES`` is ``paid``/``fulfilling``/``fulfilled`` — so the
+      five-minute watchdog goes quiet **without** learning anything about
+      merchants;
+    * the move goes through ``on_order_status_changed``, the one seam, so
+      ``order.status_changed`` fires and a webhook subscriber learns about the
+      refund by **push**. The README said the opposite for this case and says
+      this now.
+
+    The ``OrderEvent`` is ``order.failed`` — a kind already in
+    ``order_status.TIMELINE_EVENTS`` and already published for this channel, so
+    a reseller's timeline gains a line and not a word it does not know. A
+    terminal status with nothing on the timeline explaining it would be the odd
+    thing.
+
+    **The order row is not locked, and that is the house rule rather than an
+    oversight.** Two entries into the seam for one order — a drain on one
+    replica racing an admin action on another — would each read ``fulfilling``
+    in their own snapshot and each enqueue an ``order.status_changed``, so a
+    receiver could see the transition twice. The money cannot double: that is
+    the ledger's unique index, not this line. Every other status writer in the
+    system has the same shape (``mark_order_failed_admin`` included); the one
+    exception is :func:`_try_settle_order`, which locks because it is the
+    *delivered* transition and its own docstring says so. Locking only here
+    would buy one duplicate courtesy event and make this the second place in
+    the codebase that takes the order row for a failure — worth doing when the
+    duplicate is measured, not before.
+
+    Args:
+        db: Session. The caller owns the transaction; this runs inside the
+            seam's savepoint.
+        order: The refunded order, already carrying its ``merchant_id``.
+        task_id: The task that failed — for the log line only.
+    """
+    # Both lazy, for the reason the seam's own import is: ``merchants`` and
+    # ``orders.service`` each import this module at module scope, so a
+    # module-level import either way closes the cycle. They sit inside the
+    # seam's ``try``, so an ``ImportError`` here is reported rather than fatal.
+    from yupay.modules.merchants import refund as merchant_refund
+    from yupay.modules.orders import service as orders_svc
+
+    merchant_id = order.merchant_id
+    if merchant_id is None:  # pragma: no cover -- refund_order raises first
+        return
+    # ``orders.service``'s own list, shared rather than respelled: "which
+    # statuses may a paid-but-undeliverable order be closed from" is one
+    # question, and ``delivered`` must stay out of it on both sides.
+    if order.status not in orders_svc.FAILABLE_STATUSES:
+        return
+    if not await merchant_refund.is_settled_in_full(db, merchant_id=merchant_id, order_id=order.id):
+        return
+
+    moment = now()
+    order.status = "failed"
+    order.updated_at = moment
+    db.add(
+        OrderEvent(
+            id=new_id(),
+            order_id=order.id,
+            kind="order.failed",
+            # ``by`` is what tells this apart from the admin closure, which
+            # writes ``{"by": "admin", "reason": <operator's words>}``. Neither
+            # payload is published — the merchant timeline carries a kind and a
+            # timestamp and nothing else.
+            payload={"by": "fulfillment", "reason": _MERCHANT_REFUND_REASON},
+            actor="fulfillment",
+        )
+    )
+    await db.flush()
+    # The full seam, realtime nudge included. It is a no-op for a merchant
+    # order by construction (``publish_order_event`` returns for a NULL
+    # ``user_id``, which the actor CHECK guarantees here), so passing
+    # ``publish_realtime=False`` would document a suppression that does not
+    # exist.
+    await _publish_status_changed(db, order)
+    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id)
 
 
 async def _refuse_a_settled_merchant_order(db: AsyncSession, *, task: FulfillmentTask) -> None:

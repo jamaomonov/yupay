@@ -624,11 +624,18 @@ looking for a change in reseller behaviour.
 
 ## A merchant order stuck in `fulfilling`
 
-**Four** very different situations wear the same status, and `failure_reason`
-on `GET /merchant/v1/orders/{merchant_order_id}` is what separates them.
-Nothing ever moves `orders.status` off `fulfilling` for any of them — a
-delivery failure, a stall and a refund are all recorded below the order row —
-so the status tells you only that the order was paid.
+**Three** very different situations wear this status, and `failure_reason` on
+`GET /merchant/v1/orders/{merchant_order_id}` is what separates them: in
+progress, delayed on our side, and failed with money still out. A delivery
+failure and a stall are both recorded below the order row, so the status alone
+tells you only that the order was paid.
+
+**The fourth used to be here and is not any more.** Since M3c Task 6 an order
+whose whole charge came back automatically is closed as `status: "failed"`
+within seconds, with `failure_reason: "fulfillment_failed_refunded"`. It is
+under "A merchant order that closed itself" below, it needs nothing from you,
+and it no longer sits in this list — or in the five-minute stuck-order alert,
+which is what the change was for.
 
 **`failure_reason` is `null` — it is genuinely in progress, or the queue is
 stalled.** Nothing is wrong with the order. Check queue depth and the worker
@@ -709,21 +716,39 @@ docker compose -f docker-compose.prod.yml exec postgres psql -U yupay_app -d yup
 Then either retry the fulfilment (the ordinary admin order tooling, same as a
 retail order) or settle it — next section.
 
-**`failure_reason` is `fulfillment_failed_refunded` — done, and nothing is
-owed.** The fourth case, and what **every** automatic refund leaves behind
-since M3b Task 3: the delivery failed and the whole charge is already on the
-merchant's deposit, posted by the drain within seconds. The order sits in
-`fulfilling` for ever like the others and needs **no action at all** — the
-merchant has been told to refund their own end customer and place a new order
-if they still want the goods. Do not retry it: that is refused
-(`409 deposit_already_returned`) and the refusal is the point.
+## A merchant order that closed itself
 
-Closing it by hand raises no alert — the order is square, which is exactly the
-case the cancellation alert is gated against — but it is **not** neutral for
-the merchant: `order_failed` wins over `fulfillment_failed_refunded` in the
-precedence, so a closure rewrites a self-explanatory "your money is back" into
-"support closed this, contact support". Close it only when a person really is
-in the loop with them.
+**`status` is `failed` and `failure_reason` is `fulfillment_failed_refunded` —
+done, and nothing is owed.** What **every** automatic refund leaves behind: the
+delivery failed, the whole charge is already back on the merchant's deposit
+(posted by the drain within seconds), and since M3c Task 6 the order is closed
+in the same transaction. It needs **no action at all** — the merchant has been
+told to refund their own end customer and place a new order if they still want
+the goods. Do not retry it: that is refused (`409 deposit_already_returned`)
+and the refusal is the point.
+
+Three things follow from the closure that are worth knowing before you go
+looking for them:
+
+- **It is out of the stuck-order alert**, because `list_stuck_paid_orders`
+  selects `paid`/`fulfilling`/`fulfilled`. That is the whole reason the status
+  moves; there is no merchant-shaped exception anywhere in that query.
+- **There is nothing left to close by hand**, and trying answers
+  `409 cannot mark order failed in current status` — the order is already
+  `failed`. In the SPA the "Отметить проблемным" button is simply not offered.
+  If you need the fulfilment task tidied out of the inbox, cancel the **task**;
+  that raises no alert on a square order.
+- **The merchant was told by push**, not only by poll: the close emits
+  `order.status_changed` with `status: "failed"` right after the
+  `balance.credited` for the refund. Neither body carries `failure_reason`, so
+  a reseller asking "why?" is reading the order endpoint, and the answer there
+  is `fulfillment_failed_refunded`.
+
+**A partial settlement does _not_ close the order**, and that asymmetry is
+deliberate: a partial means a person here is mid-decision and the rest is still
+owed, so it keeps `status: "fulfilling"`, `failure_reason:
+"fulfillment_failed"`, and its place in the stuck-order alert until somebody
+finishes it.
 
 ## Settling a failed order by hand
 
@@ -745,6 +770,23 @@ automatic refund does not fire" below.
 If the order has already been settled automatically, this procedure will
 refuse you with `409 order_already_settled` rather than double-credit the
 merchant. That is the guard working, not a problem to route around.
+
+**Step 1 below is not optional, and M3c Task 6 did not make it so.** The
+automatic refund closes the order it settles; a settlement _you_ book does not.
+An order you credit without closing keeps `status: "fulfilling"` and
+`delivered_at IS NULL`, so `list_stuck_paid_orders` keeps returning it and the
+five-minute «Оплачен, но не выдан» alert keeps firing about money that is
+already back. Do both steps, in either order — the close is legal from `paid`,
+`fulfilling` and `fulfilled`, and the credit is legal whether or not the order
+is closed.
+
+**What the merchant reads afterwards is `fulfillment_failed_refunded`, not
+`order_failed`.** That is new in M3c Task 6 and it is the better answer: the
+precedence now puts "the whole charge is back" ahead of "support closed this",
+so a fully settled order tells the reseller to refund their own customer and
+stop chasing us. `order_failed` is what they see while anything is still
+owed — nothing back, or only part of it — which is exactly when contacting
+support is the right instruction.
 
 **For everything else, support settles it as a deposit credit that names the
 order** — the `order_id` body field on the deposit-credit endpoint (M3b). Use
@@ -964,15 +1006,23 @@ Three Telegram alerts, all from the fulfilment saga:
   `modelled=true` for those and `modelled=false` for a bug in our own refund
   code — the second is an engineering ticket, not a settlement.
 
+  **`AlreadySettledError` leaves the order open even when your settlement was
+  complete**, and that is a gap rather than a decision. M3c Task 6 closes an
+  order from inside the automatic refund, and this alert means the automatic
+  refund did not post — so the order keeps `status: "fulfilling"` and keeps
+  appearing in the stuck-order alert until somebody closes it. Close it by hand
+  (step 1 of the settlement procedure); the merchant then reads
+  `fulfillment_failed_refunded`, because the money is all back.
+
 - **«Отменена задача по заказу реселлера»** (`merchant_order_cancelled`) — a
   merchant order's task was cancelled, by an admin or by an order/payment
   cascade, **and the order is not square against what it charged**
   (`refund.settled_in_full`, the same test `failure_reason` uses — not "has
   anything come back"). That second half is part of the trigger, not a caveat:
-  closing an order the drain already refunded in full is the ordinary support
-  step and raises nothing, so an alert you do see is one where money is
-  genuinely still out — including a **partial** settlement, which is not
-  square and therefore still alerts.
+  tidying the dead task off an order the drain already refunded in full is
+  ordinary housekeeping and raises nothing, so an alert you do see is one where
+  money is genuinely still out — including a **partial** settlement, which is
+  not square and therefore still alerts.
   **No automatic refund reaches this state and none ever will**: a
   cancellation is a decision a person made for a reason this code cannot read,
   and inferring "the supplier gave the money back" from it would be exactly

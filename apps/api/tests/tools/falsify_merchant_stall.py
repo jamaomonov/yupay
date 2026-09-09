@@ -152,10 +152,16 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=TESTS,
+        # Two rows, not three, and the id suffixes moved: M3c Task 6 added rows
+        # to the table (renumbering the parametrize ids) **and** put the
+        # refunded branch ahead of the status one, so ``stalled and refunded``
+        # is now decided before either injected stall check can see it. That
+        # row is graded by ``falsify_merchant_refund``'s three
+        # ``order_status`` rows instead, which now open this file for exactly
+        # that reason.
         expect=(
-            "test_the_failure_reason_table[stalled and closed-failed-in_progress-True-refunded9-order_failed]",
-            "test_the_failure_reason_table[stalled and failed-fulfilling-failed-True-refunded10-fulfillment_failed]",
-            "test_the_failure_reason_table[stalled and refunded-fulfilling-failed-True-refunded11-fulfillment_failed_refunded]",
+            "test_the_failure_reason_table[stalled and closed-failed-in_progress-True-refunded11-order_failed]",
+            "test_the_failure_reason_table[stalled and failed-fulfilling-failed-True-refunded12-fulfillment_failed]",
         ),
     ),
     Mutation(
@@ -172,9 +178,9 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=TESTS,
+        # One row, not two — same reason as the sibling above.
         expect=(
-            "test_the_failure_reason_table[stalled and failed-fulfilling-failed-True-refunded10-fulfillment_failed]",
-            "test_the_failure_reason_table[stalled and refunded-fulfilling-failed-True-refunded11-fulfillment_failed_refunded]",
+            "test_the_failure_reason_table[stalled and failed-fulfilling-failed-True-refunded12-fulfillment_failed]",
         ),
     ),
     # ---- the predicate's two halves

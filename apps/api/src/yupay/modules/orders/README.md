@@ -61,6 +61,21 @@ pending_payment → paid → fulfilling → fulfilled → delivered
 
 Status transitions write an `order.<verb>` event. Illegal transitions return 409.
 
+`failed` has **two** writers, and `FAILABLE_STATUSES` is the one list of states
+either may close from (`paid`/`fulfilling`/`fulfilled` — never `delivered`,
+which is a refund and moves real money):
+
+- `mark_order_failed_admin` — support closing a paid-but-undeliverable order by
+  hand, with a required reason;
+- `fulfillment.service._end_a_refunded_merchant_order` — a **merchant** order
+  whose whole deposit charge has come back automatically (M3c Task 6). Retail
+  is untouched: a terminal fulfilment failure still leaves the order row alone,
+  because an operator may still top up, retry or deliver by hand. For a
+  refunded merchant order all three are already refused with `409
+deposit_already_returned`, so the order really is over.
+
+Both go through `on_order_status_changed`.
+
 ## Idempotency
 
 `POST /orders` requires `Idempotency-Key: <≥16 chars>`. The unique

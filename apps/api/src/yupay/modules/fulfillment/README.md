@@ -138,6 +138,18 @@ None`; при живом фолбэке задача уходит к поста�
   низкому балансу поставщика позиция остаётся `in_progress`, а
   `money_outcome` переживает попытку — иначе повтор, упавший в стойло, вернул
   бы деньги за заказ, который мы вот-вот доставим.
+- **И заказ закрывается (M3c Task 6).** Если после проводки списание вернулось
+  **целиком** (`merchants.refund.settled_in_full`, тот же предикат, что у
+  `failure_reason` и у алерта отмены), `_end_a_refunded_merchant_order` в том
+  же сейвпойнте ставит `order.status = "failed"`, пишет событие `order.failed`
+  и проводит переход через `orders.service.on_order_status_changed`. Правило
+  розницы — «терминальный провал выдачи не двигает строку заказа» — держится
+  на том, что оператор ещё может пополнить, повторить или выдать руками; для
+  возвращённого заказа все три уже запрещены (`409
+deposit_already_returned`), так что «в работе» было ложью. Частичное
+  возмещение заказ не закрывает: там человек посреди решения. Розницы это не
+  касается дважды — гейт `merchant_id` и отсутствие депозитного списания,
+  против которого возмещение могло бы быть полным.
 - **Четыре терминальных места**, и сид зовётся из всех: `drain_pending_tasks`,
   `retry_task`, `process_webhook_update` и `fail_manual_task` (последнее
   достижимо: B2B-видимый `top_up`-SKU без активного `SkuSupplierMapping` и без
@@ -323,10 +335,15 @@ HTTP-вызов оказывался бы внутри открытой тран
 stateDiagram-v2
     paid --> fulfilling : start_for_order
     fulfilling --> delivered : все tasks succeeded → in-app delivery
-    fulfilling --> failed   : (вне скелета — retries не реализованы)
+    fulfilling --> failed   : mark_order_failed_admin (руками)
+    fulfilling --> failed   : полный автовозврат депозита реселлера (M3c Task 6)
     fulfilling --> refunded : полный refund → cancel_open_tasks_for_order
     paid --> refunded : полный refund
 ```
+
+Обе стрелки в `failed` идут через `on_order_status_changed`. Вторая —
+только для заказов реселлера и только когда депозит возвращён целиком;
+розничный терминальный провал выдачи строку заказа по-прежнему не двигает.
 
 `order.delivered_at` ставится одновременно с `order.fulfilled_at`. Скелет не
 разделяет «fulfilled» (артефакт сформирован) и «delivered» (юзер получил) — пока

@@ -54,6 +54,31 @@ the seam's whole body exception-safe, which left exactly one statement outside
 ``refund_inside_the_savepoint`` grades. A declared absence is honest only
 while its stated reason is true; re-derive it whenever the code under it
 moves.
+
+**M3c Task 6 nearly added two more, and the way it did not is the point.**
+
+``_end_a_refunded_merchant_order``'s two guards —
+``orders_svc.FAILABLE_STATUSES`` and ``refund.settled_in_full`` — are
+unreachable **through the saga**: a merchant order at the seam is always
+``fulfilling``, and ``refund_order`` posts exactly what the charge took *and*
+refuses any order money has already come back on, so a successful posting **is**
+a complete settlement. The first draft of this file therefore declared them as
+absences. That was wrong for the third time on this branch: an untestable guard
+is only untestable through the one caller that exists, and calling the function
+directly gives each one a case — a session that raises on first use for the
+delivered order (a unit test, no database), and the real state a person
+produces for the partial (an order the drain could not refund because support
+had credited a cent). Both rows below grade a real property now, and both
+properties are about money or about goods already handed over.
+
+**"Retail's order row is untouched" is the one absence that survives**, and the
+reason is that retail is protected twice over. ``no_merchant_gate`` deletes the
+``merchant_id`` gate, and the retail tests red — but on the refund *call*, not
+on the status, because a retail order has no deposit charge for a settlement to
+be complete against, so ``close_ignores_a_partial_settlement``'s guard still
+holds. Removing that guard instead leaves the ``merchant_id`` gate holding. The
+status assertions are in the two retail tests as pins; the property is falsified
+only by removing both, which is not a mutation this runner models.
 """
 
 from __future__ import annotations
@@ -64,6 +89,16 @@ from _falsify import SRC, Mutation, main
 
 LIVE = "apps/api/tests/integration/test_merchant_auto_refund.py"
 KEYS = "apps/api/tests/unit/test_merchant_refund_keys.py"
+#: M3c Task 6 closes a fully refunded order, and ``retry_task`` is one of the
+#: four seam sites — so the stall file's "a retry that fails with our money
+#: back" walks the new status too and has to be opened by the rows that move it.
+STALL = "apps/api/tests/integration/test_merchant_order_stall.py"
+#: The ``failure_reason`` transition table. The precedence Task 6 had to fix
+#: lives here and nowhere else, so a row that reorders it must open this file.
+REASONS = "apps/api/tests/unit/test_merchant_failure_reason.py"
+#: The two guards on the closer that the saga cannot reach — see the row
+#: comments, and the file's own docstring for why they are called directly.
+CLOSE = "apps/api/tests/unit/test_merchant_order_close.py"
 ATTRIB = "apps/api/tests/integration/test_merchant_deposit_attribution.py"
 #: Task 5's quote record. Not a refund, but the same money record: what a
 #: reseller quoted is what a charge dispute is settled from, and it is written
@@ -74,6 +109,11 @@ ACTOR = "apps/api/tests/integration/test_orders_merchant_actor.py"
 G2B_UNIT = "apps/api/tests/unit/test_g2b_fulfiller.py"
 #: Where the mappings themselves are graded, adapter by adapter.
 OUTCOME = "apps/api/tests/unit/test_supplier_money_outcome.py"
+
+#: ``order_status._failure_reason``'s first branch, which M3c Task 6 moved
+#: ahead of the status test. Three rows below re-spell the same line, so it is
+#: named once — an anchor written three times is three chances to be stale.
+GUARD = "    if failed_item and refund.settled_in_full(charged=charged, returned=refunded):"
 
 REFUND = SRC / "modules/merchants/refund.py"
 DEPOSIT = SRC / "modules/merchants/deposit.py"
@@ -96,6 +136,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[unknown]",
             "test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_order",
             "test_a_manually_failed_merchant_order_reaches_the_seam",
+            "test_a_refunded_merchant_order_leaves_the_stuck_order_watchdog",
         ),
     ),
     Mutation(
@@ -316,15 +357,32 @@ MUTATIONS: tuple[Mutation, ...] = (
     Mutation(
         name="partial_settlement_claims_a_full_refund",
         breaks="one cent back reads as 'nothing to chase, refund your customer'",
+        # Re-anchored by M3c Task 6, which moved this branch ahead of the
+        # status one and dropped the ``whole`` local. The mutation is the same
+        # defect: a sum read as a flag.
         edits=(
             (
                 STATUS,
-                "        whole = refund.settled_in_full(charged=charged, returned=refunded)",
-                "        whole = refunded > 0",
+                GUARD,
+                "    if failed_item and refunded > 0:",
             ),
         ),
-        tests=(LIVE,),
-        expect=("test_a_partial_settlement_does_not_claim_the_order_was_refunded",),
+        # ``REASONS`` as well as ``LIVE``, and the reason is a lesson rather
+        # than tidiness. The transition table's *money* rows — the partial, the
+        # complete, and the two that combine either with a closure — can only be
+        # constructed in the unit file, and this branch is what decides all of
+        # them. M3c Task 6 moved the branch and two stall rows quietly stopped
+        # grading ``stalled and refunded``; opening the table here is what stops
+        # a row of it from being graded by nothing at all.
+        tests=(LIVE, REASONS),
+        expect=(
+            "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
+            "test_a_refunded_order_that_reached_failed_still_reads_refunded",
+            "test_a_stall_is_never_reported_for_an_order_with_no_charge_on_file",
+            "test_the_failure_reason_table[closed by hand, part back-failed-failed-False-refunded8-order_failed]",
+            "test_the_failure_reason_table[failed, part back-fulfilling-failed-False-refunded5-fulfillment_failed]",
+        ),
     ),
     Mutation(
         name="manual_rejection_skips_the_seam",
@@ -461,10 +519,13 @@ MUTATIONS: tuple[Mutation, ...] = (
         expect=(
             "test_a_force_complete_after_a_refund_is_refused_too",
             "test_a_frozen_merchant_is_still_refunded",
+            "test_a_fully_refunded_merchant_order_is_over_and_says_so",
             "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
             "test_a_hand_credit_cannot_take_an_order_past_what_it_charged",
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
             "test_a_re_driven_fulfilment_refunds_once",
+            "test_a_refunded_merchant_order_leaves_the_stuck_order_watchdog",
             "test_a_returned_failure_returns_the_charge_to_the_deposit",
             "test_an_admin_retry_after_a_refund_cannot_deliver_free_goods",
             "test_an_order_support_already_settled_is_not_refunded_again",
@@ -517,6 +578,7 @@ MUTATIONS: tuple[Mutation, ...] = (
         tests=(LIVE,),
         expect=(
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
             "test_an_order_support_already_settled_is_not_refunded_again",
         ),
     ),
@@ -581,13 +643,19 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 STATUS,
-                "        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED",
-                "        return REASON_FULFILLMENT_FAILED",
+                GUARD + "\n        return REASON_FULFILLMENT_REFUNDED\n",
+                "    if False:\n        return REASON_FULFILLMENT_REFUNDED\n",
             ),
         ),
-        tests=(LIVE,),
+        tests=(LIVE, REASONS),
         expect=(
+            "test_a_fully_refunded_merchant_order_is_over_and_says_so",
             "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
+            "test_a_refunded_order_that_reached_failed_still_reads_refunded",
+            "test_the_failure_reason_table[failed, all back-fulfilling-failed-False-refunded6-fulfillment_failed_refunded]",
+            "test_the_failure_reason_table[refunded, then closed-failed-failed-False-refunded10-fulfillment_failed_refunded]",
+            "test_the_failure_reason_table[stalled and refunded-fulfilling-failed-True-refunded13-fulfillment_failed_refunded]",
             "test_the_refund_is_visible_on_the_order_and_on_the_statement",
         ),
     ),
@@ -597,11 +665,11 @@ MUTATIONS: tuple[Mutation, ...] = (
         edits=(
             (
                 STATUS,
-                "        return REASON_FULFILLMENT_REFUNDED if whole else REASON_FULFILLMENT_FAILED",
-                "        return REASON_FULFILLMENT_REFUNDED",
+                GUARD,
+                "    if failed_item:",
             ),
         ),
-        tests=(LIVE,),
+        tests=(LIVE, REASONS),
         expect=(
             "test_a_failed_refund_leaves_the_order_saying_a_human_is_deciding",
             "test_a_failure_that_did_not_return_our_money_refunds_nothing[spent]",
@@ -609,6 +677,14 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_g2b_rejection_we_do_not_recognise_still_parks_the_merchant_order",
             "test_a_manually_failed_merchant_order_reaches_the_seam",
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
+            "test_a_refunded_order_that_reached_failed_still_reads_refunded",
+            "test_a_stall_is_never_reported_for_an_order_with_no_charge_on_file",
+            "test_the_failure_reason_table[closed by hand, part back-failed-failed-False-refunded8-order_failed]",
+            "test_the_failure_reason_table[closed by hand-failed-failed-False-refunded7-order_failed]",
+            "test_the_failure_reason_table[failed, money out-fulfilling-failed-False-refunded4-fulfillment_failed]",
+            "test_the_failure_reason_table[failed, part back-fulfilling-failed-False-refunded5-fulfillment_failed]",
+            "test_the_failure_reason_table[stalled and failed-fulfilling-failed-True-refunded12-fulfillment_failed]",
         ),
     ),
     Mutation(
@@ -652,6 +728,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_fault_in_the_merchant_gate_is_reported_not_fatal",
             "test_a_fault_in_the_seams_own_reads_is_reported_not_fatal",
             "test_a_partial_settlement_does_not_claim_the_order_was_refunded",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
             "test_a_refund_failure_leaves_the_task_refundable",
             "test_an_order_support_already_settled_is_not_refunded_again",
             "test_an_order_with_no_charge_refunds_nothing_and_calls_a_human",
@@ -874,6 +951,135 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_only_g2bs_own_invalid_player_shape_is_recognised[reworded-suffix]",
             "test_only_g2bs_own_invalid_player_shape_is_recognised[shortened-variant]",
         ),
+    ),
+    # ---- M3c Task 6: the order is over, and its status says so
+    Mutation(
+        name="refunded_order_stays_in_flight",
+        breaks="a refunded order keeps reading 'in progress' with every exit already closed",
+        edits=(
+            (
+                SAGA,
+                "    await _end_a_refunded_merchant_order(db, order=order, task_id=task_id)\n",
+                "",
+            ),
+        ),
+        tests=(LIVE, STALL),
+        expect=(
+            "test_a_fully_refunded_merchant_order_is_over_and_says_so",
+            "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
+            "test_a_refunded_merchant_order_leaves_the_stuck_order_watchdog",
+            "test_a_retry_that_fails_with_our_money_back_reads_as_refunded",
+            "test_the_refund_announces_the_money_by_push",
+            "test_the_refund_is_visible_on_the_order_and_on_the_statement",
+        ),
+    ),
+    Mutation(
+        name="order_failed_outranks_the_refund",
+        breaks="every automatic refund collapses to 'support closed this by hand'",
+        # The precedence trap, restored. This is what a naive Task 6 shipped:
+        # the status branch first, so the terminal status it adds destroys the
+        # ``fulfillment_failed_refunded`` signal it was meant to pair with.
+        edits=(
+            (
+                STATUS,
+                "    if failed_item and refund.settled_in_full(charged=charged, returned=refunded):\n"
+                "        return REASON_FULFILLMENT_REFUNDED\n"
+                '    if order.status == "failed":\n'
+                "        return REASON_ORDER_FAILED\n",
+                '    if order.status == "failed":\n'
+                "        return REASON_ORDER_FAILED\n"
+                "    if failed_item and refund.settled_in_full(charged=charged, returned=refunded):\n"
+                "        return REASON_FULFILLMENT_REFUNDED\n",
+            ),
+        ),
+        tests=(REASONS, LIVE, STALL),
+        expect=(
+            "test_a_fully_refunded_merchant_order_is_over_and_says_so",
+            "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
+            "test_a_partial_settlement_is_not_closed_by_the_closer_itself",
+            "test_a_refunded_order_that_reached_failed_still_reads_refunded",
+            "test_a_retry_that_fails_with_our_money_back_reads_as_refunded",
+            "test_the_failure_reason_table[refunded, then closed-failed-failed-False-refunded10-fulfillment_failed_refunded]",
+            "test_the_refund_is_visible_on_the_order_and_on_the_statement",
+        ),
+    ),
+    Mutation(
+        name="close_ignores_a_delivered_order",
+        breaks="an order whose codes are already handed over is written off as failed",
+        edits=(
+            (
+                SAGA,
+                "    if order.status not in orders_svc.FAILABLE_STATUSES:\n        return\n",
+                "",
+            ),
+        ),
+        # A unit file, because the saga cannot reach this guard: a merchant
+        # order at the seam is always ``fulfilling``. The closer is called
+        # directly there, with a session that raises on first use, so the
+        # assertion is "it returned before asking the ledger anything".
+        tests=(CLOSE,),
+        expect=("test_a_delivered_order_is_never_closed_by_a_refund",),
+    ),
+    Mutation(
+        name="close_ignores_a_partial_settlement",
+        breaks="an order a person is halfway through settling is closed behind them",
+        edits=(
+            (
+                SAGA,
+                "    if not await merchant_refund.is_settled_in_full("
+                "db, merchant_id=merchant_id, order_id=order.id):\n"
+                "        return\n",
+                "",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_partial_settlement_is_not_closed_by_the_closer_itself",),
+    ),
+    Mutation(
+        name="closed_order_has_no_timeline_event",
+        breaks="a terminal status appears with nothing on the timeline explaining it",
+        # The **whole** ``db.add(...)`` call, closing paren included. The first
+        # version of this row anchored on the opening lines only and left the
+        # trailing ``)`` dangling, so the mutant did not parse: pytest exited
+        # non-zero with no FAILED line, and the runner read an empty red set as
+        # "failed as expected". A row that grades a SyntaxError grades nothing,
+        # and it is the same class as M3b's ``seam_propagates`` NameError —
+        # a mutation must compile or it is not the mutation you wrote.
+        edits=(
+            (
+                SAGA,
+                "    db.add(\n"
+                "        OrderEvent(\n"
+                "            id=new_id(),\n"
+                "            order_id=order.id,\n"
+                '            kind="order.failed",\n'
+                "            # ``by`` is what tells this apart from the admin closure, which\n"
+                '            # writes ``{"by": "admin", "reason": <operator\'s words>}``. Neither\n'
+                "            # payload is published — the merchant timeline carries a kind and a\n"
+                "            # timestamp and nothing else.\n"
+                '            payload={"by": "fulfillment", "reason": _MERCHANT_REFUND_REASON},\n'
+                '            actor="fulfillment",\n'
+                "        )\n"
+                "    )\n",
+                "",
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_a_fully_refunded_merchant_order_is_over_and_says_so",),
+    ),
+    Mutation(
+        name="closing_skips_the_status_seam",
+        breaks="the refund stops reaching a subscriber by push and goes back to poll-only",
+        edits=(
+            (
+                SAGA,
+                "    await _publish_status_changed(db, order)\n"
+                '    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id)',
+                '    log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id)',
+            ),
+        ),
+        tests=(LIVE,),
+        expect=("test_the_refund_announces_the_money_by_push",),
     ),
     Mutation(
         name="no_balance_credited_event",

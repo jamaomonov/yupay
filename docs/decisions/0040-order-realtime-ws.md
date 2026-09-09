@@ -109,6 +109,21 @@ exhaustive-switch `never` guard so a future variant can't silently fall
 through unhandled). `cancelled`/`expired` are real customer-visible terminal
 states and do publish a normal `order.status_changed`.
 
+**Amended 2026-09-09 — "the order only ever leaves `fulfilling` by reaching
+`delivered`" is no longer literally true, and the rule above is unchanged.**
+Two writers move a paid order to `failed`: `mark_order_failed_admin` (support
+closing an undeliverable order by hand, which post-dates this ADR) and, since
+[ADR-0071](./0071-merchant-refunds.md) decision 12,
+`fulfillment.service._end_a_refunded_merchant_order` — a **merchant** order
+whose whole deposit charge has already come back automatically. Neither
+contradicts the domain rule, which is about a **retail customer** being shown an
+internal remediation state as if it were their own final outcome: the first is a
+human deciding the order is over, and the second is an order that provably is
+(both delivery routes already refuse it with `409 deposit_already_returned`, so
+there is nothing an admin is "actively fixing"). A retail fulfilment failure
+still leaves the order at `fulfilling`, `order.failed` is still emitted by no
+call site, and both frontends still route it as a no-op.
+
 ### Positive consequences
 
 - Order-status page updates in near real time for logged-in users; the

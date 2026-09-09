@@ -81,6 +81,22 @@ which had no task row to find.
 - **No customer-facing change.** ADR-0040's rule stands: a paid order does not
   flip to a customer-visible failure. This is an ops watchdog, not a status.
 
+### Amended 2026-09-09 (M3c Task 6): one shape leaves this query by moving
+
+A **merchant** order whose whole deposit charge is refunded automatically is now
+closed as `failed` by the fulfilment seam ([ADR-0071](./0071-merchant-refunds.md),
+decision 12), so it stops matching `STUCK_STATUSES` and this watchdog stops
+alerting about it. That is the intended reading of this ADR, not an exception to
+it: the money is back, so there is nothing an operator can do and nothing worth
+shouting about — the same reason `refunded` is already excluded.
+
+The query was **not** changed. An earlier plan proposed gating the job on
+`merchant_id`; the state was wrong rather than the alert, and a watchdog that
+knows about resellers would have been a second place to keep that knowledge
+correct. ADR-0040's rule is intact for retail and for any merchant order whose
+money did not come back: those still leave the order at `fulfilling` and still
+appear here.
+
 ## Negative consequences
 
 - A supplier outage affecting many orders produces one alert per order. At
