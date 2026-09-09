@@ -18,7 +18,7 @@ On your laptop:
 - [ ] You have a Telegram bot token from `@BotFather`.
 - [ ] You have an `age` keypair for backup encryption (`age-keygen -o ~/yupay-backup.key`).
       Public line goes to the server; **private line stays on your laptop**.
-- [ ] (Optional) Sentry project + DSN.
+- [x] Sentry project + DSN — done 2026-09-09 (`yupay-backend`, errors only). See §10; the `worker`/`scheduler`/`bot` half is still unwired.
 
 On the VPS provider's panel:
 
@@ -275,18 +275,61 @@ rclone ls r2:yupay-backups/$(date -u +%Y-%m-%d)/
 
 ---
 
-## 10. (Optional) Sentry & log shipping
+## 10. Sentry & log shipping
 
-If you set `SENTRY_DSN` in `api.env`, `_init_sentry` in
-`apps/api/src/yupay/bootstrap.py` activates the SDK on next restart.
-Trigger a test error:
+**Live on prod since 2026-09-09.** `SENTRY_DSN` and
+`SENTRY_TRACES_SAMPLE_RATE=0` are set in `api.env`; project `yupay-backend`,
+errors only — tracing is off in the project _and_ at the rate, so nothing but
+exceptions is sent. `_init_sentry` (`apps/api/src/yupay/bootstrap.py`)
+activates the SDK on the next restart of whatever reads that file.
+
+**Only `api` initialises it.** `worker`, `scheduler` and `bot` load the same
+`api.env` and therefore hold the DSN, but none of them calls `_init_sentry`, so
+a crash in the fulfilment drain, the refund seam or the webhook delivery still
+goes only to the container log. That is the half of the system where money
+moves, and wiring it is a code change, not a config one.
+
+**The smoke test has to initialise the SDK.** This section used to say
+otherwise, and what it said does not work — a bare interpreter never called
+`_init_sentry`, so the event goes nowhere and the reader concludes Sentry is
+broken:
 
 ```bash
+# WRONG: reports nothing, no matter how healthy Sentry is
 docker compose -f docker-compose.prod.yml exec api \
   python -c "raise RuntimeError('sentry-smoke-test')"
 ```
 
-It should appear in the Sentry UI within a minute.
+Write a small script that calls the app's own init, copy it into the container
+and run it, so the real flags apply. It must call `_init_sentry(get_settings())`
+first, then `sentry_sdk.capture_exception(...)` inside an `except`, then
+`sentry_sdk.flush(timeout=15)` — without the flush the process exits before the
+event is sent. Delete the script afterwards; if the container refuses, re-run
+the `rm` with `--user root`.
+
+### The `vars` check — done, and what it proved
+
+AGENTS.md §9 requires that a secret living in a stack frame never reaches a
+third-party SaaS. Two switches cover different halves and **both** are set in
+`_init_sentry`: `send_default_pii=False` (request bodies, headers, cookies,
+user identity) and `include_local_variables=False` (**stack-frame locals**,
+which default to `True`).
+
+Verified on prod 2026-09-09 with event `80e82e4423c347828473bf82fe00352c`: a
+deliberate exception raised in a frame holding a secret-shaped local. The event
+JSON carries **no `vars` key** on that frame — `vars` is the only channel for
+runtime local values, so the strip works.
+
+One thing that check also showed, and it is not a leak: the canary string was
+still visible in the frame's `pre_context`, because the probe wrote it as a
+**source literal** and Sentry ships five lines of source around every frame it
+can read. A real secret is never a literal — it arrives from env or the
+database at runtime and lives only in `vars`, which is stripped. The lesson is
+about the probe, not the protection: build the canary at runtime if you repeat
+this. And note the corollary — **fragments of this private repo's source do
+reach Sentry**, which is expected (it is also what linking the repository for
+suspect-commits does) and is fine only because no secret is hard-coded;
+`gitleaks` in pre-commit is what keeps that true.
 
 Loki + Promtail are already collecting container logs; check Grafana
 → Explore → Loki and try `{container=~"yupay-prod-.*"}`.
