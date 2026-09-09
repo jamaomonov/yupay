@@ -157,14 +157,18 @@ def test_the_live_invalid_player_body_is_recognised() -> None:
             '{"message":"Catalogue item not found.","success":false}',
             id="another-message",
         ),
-        # Their envelope, but not a refusal at all.
+        # Their envelope, but not a refusal at all. **The message is the
+        # observed one verbatim**, so this row differs from the accepted body
+        # in `success` and in nothing else — otherwise the flag is not what
+        # the test is grading, which is how the harness found it vacuous.
         pytest.param(
-            '{"message":"Invalid player ID.","success":true}',
+            '{"message":"Invalid player ID. Please check and try again.","success":true}',
             id="not-a-refusal",
         ),
-        # The right words outside their envelope — an HTML error page, a
-        # proxy, anything that is not G2B answering us.
-        pytest.param("Invalid player ID", id="not-their-envelope"),
+        # The exact message outside their envelope — an HTML error page, a
+        # proxy, anything that is not G2B answering us in JSON. Same
+        # discipline: only the envelope differs.
+        pytest.param("Invalid player ID. Please check and try again.", id="not-their-envelope"),
         # Valid JSON, but not an object: nothing to read a refusal off.
         pytest.param('"Invalid player ID. Please check and try again."', id="json-not-an-object"),
         # Their envelope with a message that is not text at all.
@@ -176,10 +180,32 @@ def test_the_live_invalid_player_body_is_recognised() -> None:
             id="phrase-buried-mid-message",
         ),
         # A message that merely *starts* the same way is not the same
-        # message — the pattern ends on a word boundary for this.
+        # message.
         pytest.param(
             '{"message":"Invalid player identifier for this game.","success":false}',
             id="longer-word-at-the-anchor",
+        ),
+        # **The expensive one.** A rejection that opens with the words we know
+        # and then says something we have never been told about. An earlier
+        # version of this matcher anchored at the start and returned True
+        # here, which would have refunded a refusal G2B billed us for.
+        pytest.param(
+            '{"message":"Invalid player ID; the order was created and charged","success":false}',
+            id="reworded-suffix",
+        ),
+        # Its mirror: the words we know, prefixed. Also a message we have
+        # never seen, so also a park.
+        pytest.param(
+            '{"message":"Rejected. Invalid player ID. Please check and try again.",'
+            '"success":false}',
+            id="prefix-before-the-phrase",
+        ),
+        # And the shortened variant. Equality is deliberately brittle: G2B
+        # rewording this at all sends the order back to the manual lane it
+        # was in before M3c, which is the cheap direction to fail in.
+        pytest.param(
+            '{"message":"Invalid player ID.","success":false}',
+            id="shortened-variant",
         ),
     ],
 )

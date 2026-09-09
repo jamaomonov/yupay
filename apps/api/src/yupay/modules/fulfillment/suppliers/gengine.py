@@ -132,7 +132,10 @@ def _recharge_money_outcome(order: GEngineOrder, *, pay_may_have_landed: bool) -
     - a ``_CUSTOMER_FAULT`` status on a task **no pay request has ever gone out
       for**. Their flow puts verification strictly before payment, but that
       ordering is their documentation, and a mapping that trusted it would rest
-      on exactly the evidence this package refuses to act on for G2B. So the
+      on exactly the evidence this package refuses to act on for G2B — **a
+      vendor's document**, still refused there. M3c's single G2B exception is
+      not a counter-example: it rests on an observed error string plus the
+      owner's ruling that it is not billed, never on a document. So the
       claim is not inferred, it is **checked**, and checked across the whole
       task rather than one call: ``pay_may_have_landed`` is this invocation's
       own pay request OR :data:`PAY_REQUESTED_KEY` left on the task by an

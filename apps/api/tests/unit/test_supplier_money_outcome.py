@@ -601,13 +601,45 @@ async def test_g2b_the_low_balance_branch_still_wins_a_body_that_matches_both() 
     checked first and is **not** terminal: the order stays in flight, an admin
     tops the supplier up, and no money outcome is recorded at all — which is
     the one answer that leaves every later verdict open."""
+    # Both matchers must actually accept this body, or the test grades
+    # nothing. ``_looks_like_low_balance`` searches the **whole** body for its
+    # hints, so the extra field carries "balance" while the message stays the
+    # observed string byte-for-byte — which is what whole-message equality
+    # requires. (A body reading "Invalid player ID. Insufficient balance."
+    # would satisfy only the loose matcher, and this test would pass while
+    # proving no precedence at all.)
     result = await _game_create_raising(
-        G2bError(400, '{"message":"Invalid player ID. Insufficient balance.","success":false}')
+        G2bError(
+            400,
+            '{"message":"Invalid player ID. Please check and try again.",'
+            '"success":false,"balance":"0.00"}',
+        )
     )
 
     assert result.outcome == "failed"
     assert result.error == LOW_BALANCE_ERROR
     assert result.money_outcome is None
+
+
+def test_the_unbilled_player_rejection_is_consulted_at_exactly_one_site() -> None:
+    """The owner's ruling covers a **game create**, and nothing else.
+
+    The voucher branch never sends a player id, so a voucher rejection
+    carrying that message would be evidence of nothing — and copying the
+    ternary onto ``_fulfill_voucher``'s raise is a two-line edit that no other
+    test would notice. This walks every adapter module the registry reaches
+    and pins the call count, because the paragraph forbidding it lives two
+    hundred lines from where it would be broken.
+    """
+    sites = [where for where, _ in _adapter_calls(frozenset({"_is_an_unbilled_player_rejection"}))]
+
+    # The file, not the line: a line number churns on every edit above it and
+    # says nothing about the rule. One call, in the g2b adapter, is the rule.
+    assert [w.split(":")[0] for w in sites] == ["g2b.py"], (
+        "the unbilled-player predicate is consulted somewhere new. It grades one "
+        "rejection of one call — the g2b game create — on the owner's 2026-09-09 "
+        f"ruling, which covers nothing else. Sites: {sites}"
+    )
 
 
 # ---------- the stall is Task 4's, and stays unclassified ----------

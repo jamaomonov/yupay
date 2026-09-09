@@ -24,7 +24,6 @@ PII / secrets policy:
 from __future__ import annotations
 
 import json
-import re
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
@@ -72,7 +71,8 @@ LOW_BALANCE_ERROR = "supplier_low_balance"
 #: a single *create* rejection — an invalid player id — as ``RETURNED``, on
 #: the owner's ruling (2026-09-09) that G2B does not debit us for it: see
 #: :data:`_REJECTED_UNBILLED` and :func:`_is_an_unbilled_player_rejection`,
-#: which matches their exact envelope and nothing else. Every failure *this*
+#: which matches their exact envelope and their exact message, and nothing
+#: looser. Every failure *this*
 #: constant covers still answers ``UNKNOWN``, and so does every create
 #: rejection that predicate does not recognise.
 #:
@@ -690,15 +690,21 @@ def _looks_like_low_balance(exc: G2bError) -> bool:
 #:
 #:     HTTP 400 {"message":"Invalid player ID. Please check and try again.","success":false}
 #:
-#: Anchoring is :meth:`re.Pattern.match`'s, not a ``^`` in the pattern — one
-#: or the other, never both, because two redundant anchors mean no single
-#: mutation can falsify either and the harness reports the row as vacuous
-#: (which is how this line was found). What it buys: the phrase appearing
-#: *inside* a longer sentence is a rejection we have not seen, and this
-#: matcher does not extrapolate to it. ``\b`` earns its keep the same way —
-#: "Invalid player identifier…" is a different message.
+#: The message is compared **whole**, normalised, not matched as a prefix.
+#: An earlier version anchored a pattern at the start, which accepted any
+#: message *beginning* with the phrase — including
+#: ``"Invalid player ID; the order was created and charged"``, which is a
+#: refusal we have been **billed** for, wearing the words of one we have not.
+#: That is the single shape in which a future G2B string could turn this into
+#: a refund of money we spent, so the tolerance is for **formatting** (case,
+#: collapsed whitespace) and never for wording.
+#:
+#: The cost is stated rather than hidden: if G2B rewords this message at all,
+#: the match stops, the order parks, and an operator settles it by hand —
+#: which is exactly the behaviour that existed before M3c. Losing the
+#: automatic refund is the cheap failure; refunding a billed refusal is not.
 _INVALID_PLAYER_STATUS = 400
-_INVALID_PLAYER_MESSAGE = re.compile(r"invalid player id\b")
+_INVALID_PLAYER_MESSAGE = "invalid player id. please check and try again."
 
 
 def _is_an_unbilled_player_rejection(exc: G2bError) -> bool:
@@ -711,8 +717,9 @@ def _is_an_unbilled_player_rejection(exc: G2bError) -> bool:
     and an admin sees both kinds in the same queue anyway. **This one's false
     positive pays a merchant back for goods we may have bought**, on our own
     money, silently, with no operator path to undo it (ADR-0071 decision 5).
-    So it is as narrow as the evidence: the status *and* their envelope *and*
-    the shape of the message, all three, or the answer is no.
+    So it is as narrow as the evidence: the status, their envelope, and the
+    **whole** message — the owner's ruling covers *this* rejection, and we
+    know nothing about a variant of it.
 
     A rejection this does not recognise is not a gap — the caller keeps
     answering :data:`_MAY_HAVE_SPENT`, which parks the order and fetches a
@@ -724,7 +731,8 @@ def _is_an_unbilled_player_rejection(exc: G2bError) -> bool:
 
     Returns:
         ``True`` only for a 400 carrying G2B's own ``{"success": false,
-        "message": "Invalid player ID…"}`` body.
+        "message": ...}`` body whose message, normalised, is exactly
+        :data:`_INVALID_PLAYER_MESSAGE`.
     """
     if exc.status != _INVALID_PLAYER_STATUS:
         return False
@@ -739,7 +747,7 @@ def _is_an_unbilled_player_rejection(exc: G2bError) -> bool:
     message = body.get("message")
     if not isinstance(message, str):
         return False
-    return _INVALID_PLAYER_MESSAGE.match(" ".join(message.split()).lower()) is not None
+    return " ".join(message.split()).lower() == _INVALID_PLAYER_MESSAGE
 
 
 def _low_balance_result(

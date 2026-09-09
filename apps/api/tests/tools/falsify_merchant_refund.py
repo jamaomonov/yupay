@@ -666,13 +666,20 @@ MUTATIONS: tuple[Mutation, ...] = (
     # standing between "G2B refused" and a posted refund, and its false
     # positive spends our money on a merchant who is not owed it.
     #
-    # The last five break **one conjunct each**, counted by hand off
+    # The last six break **one way of being wrong each**, counted by hand off
     # ``_is_an_unbilled_player_rejection`` — the cheap manual version of a
     # generated dropper, and the same method that turned up two missing rows
-    # in the webhook harness. The predicate has seven decisions (status, "is
-    # it JSON", "is it an object", ``success is False``, "is the message
-    # text", the pattern, and the anchor); each has a test, and every row
-    # below reddens a different one of them.
+    # in the webhook harness. The predicate has six decisions (status, "is it
+    # JSON", "is it an object", ``success is False``, "is the message text",
+    # and whether the **whole** normalised message equals the observed one);
+    # the last of those has three rows, because the three ways to loosen an
+    # equality — prefix, substring, and not checking at all — admit different
+    # families of message and one of them is how 77a2efe0 shipped.
+    #
+    # **Every row runs both unit files.** Two of them declared only
+    # ``G2B_UNIT`` in the first round while the report claimed they graded
+    # cases living in ``OUTCOME``; the runner opens a row's declared files and
+    # nothing else, so those cases were graded by nothing at all.
     Mutation(
         name="invalid_player_not_graded",
         breaks="the one rejection we know is free goes back to parking for a human",
@@ -690,6 +697,7 @@ MUTATIONS: tuple[Mutation, ...] = (
             "test_a_g2b_invalid_player_id_refunds_the_merchant_end_to_end",
             "test_g2b_an_invalid_player_id_is_money_we_never_spent",
             "test_the_same_g2b_rejection_moves_no_money_for_a_retail_order",
+            "test_the_unbilled_player_rejection_is_consulted_at_exactly_one_site",
         ),
     ),
     Mutation(
@@ -711,7 +719,32 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(OUTCOME,),
-        expect=("test_g2b_the_low_balance_branch_still_wins_a_body_that_matches_both",),
+        expect=(
+            "test_g2b_the_low_balance_branch_still_wins_a_body_that_matches_both",
+            "test_the_unbilled_player_rejection_is_consulted_at_exactly_one_site",
+        ),
+    ),
+    Mutation(
+        name="predicate_copied_onto_the_voucher_raise",
+        breaks="the ruling for a game create is applied to a voucher purchase",
+        # The concrete way the single-call-site rule dies: a two-line copy
+        # onto the sibling raise. The voucher branch never sends a player id,
+        # so a voucher body carrying that message is evidence of nothing.
+        edits=(
+            (
+                G2B,
+                '                f"g2b purchase failed: HTTP {exc.status}: {_err_body(exc)}",\n'
+                "                money_outcome=_MAY_HAVE_SPENT,\n",
+                '                f"g2b purchase failed: HTTP {exc.status}: {_err_body(exc)}",\n'
+                "                money_outcome=(\n"
+                "                    _REJECTED_UNBILLED\n"
+                "                    if _is_an_unbilled_player_rejection(exc)\n"
+                "                    else _MAY_HAVE_SPENT\n"
+                "                ),\n",
+            ),
+        ),
+        tests=(OUTCOME,),
+        expect=("test_the_unbilled_player_rejection_is_consulted_at_exactly_one_site",),
     ),
     Mutation(
         name="matcher_ignores_the_status",
@@ -723,8 +756,11 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(G2B_UNIT,),
-        expect=("test_the_right_words_at_the_wrong_status_are_not_recognised",),
+        tests=(G2B_UNIT, OUTCOME),
+        expect=(
+            "test_g2b_a_rejection_we_do_not_recognise_is_still_unknown[a-500]",
+            "test_the_right_words_at_the_wrong_status_are_not_recognised",
+        ),
     ),
     Mutation(
         name="matcher_reads_a_non_json_body",
@@ -740,7 +776,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 '        body = {"success": False, "message": exc.body}\n',
             ),
         ),
-        tests=(G2B_UNIT,),
+        tests=(G2B_UNIT, OUTCOME),
         expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[not-their-envelope]",),
     ),
     Mutation(
@@ -753,7 +789,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 '    if body.get("success") is not False:\n',
             ),
         ),
-        tests=(G2B_UNIT,),
+        tests=(G2B_UNIT, OUTCOME),
         expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[json-not-an-object]",),
     ),
     Mutation(
@@ -766,7 +802,7 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "    if not isinstance(body, dict):\n",
             ),
         ),
-        tests=(G2B_UNIT,),
+        tests=(G2B_UNIT, OUTCOME),
         expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[not-a-refusal]",),
     ),
     Mutation(
@@ -779,41 +815,63 @@ MUTATIONS: tuple[Mutation, ...] = (
                 "",
             ),
         ),
-        tests=(G2B_UNIT,),
+        tests=(G2B_UNIT, OUTCOME),
         expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[message-not-a-string]",),
     ),
     Mutation(
-        name="matcher_drops_the_anchor",
-        breaks="the phrase buried in some other rejection is read as this one",
-        # This row is why the pattern carries no ``^``. With both a ``^`` and
-        # ``re.match`` the anchor had two independent guards, so neither this
-        # edit nor dropping the caret could redden anything and the harness
-        # reported UNFALSIFIED twice. Redundant guards are unfalsifiable
-        # guards; the pattern lost its caret and ``match`` kept the job.
-        edits=((G2B, "_INVALID_PLAYER_MESSAGE.match(", "_INVALID_PLAYER_MESSAGE.search("),),
-        tests=(G2B_UNIT,),
-        expect=(
-            "test_only_g2bs_own_invalid_player_shape_is_recognised[phrase-buried-mid-message]",
+        name="matcher_matches_a_prefix",
+        breaks="a rejection that only *opens* with their words is read as this one",
+        # This restores exactly what 77a2efe0 shipped (an anchored pattern
+        # consumed by ``re.match``), and the review found it by probing
+        # ``"Invalid player ID; the order was created and charged"`` — a
+        # refusal we were **billed** for, wearing the words of one we were
+        # not. The row exists so the regression cannot come back quietly.
+        edits=(
+            (
+                G2B,
+                '    return " ".join(message.split()).lower() == _INVALID_PLAYER_MESSAGE\n',
+                '    return " ".join(message.split()).lower().startswith("invalid player id")\n',
+            ),
         ),
-    ),
-    Mutation(
-        name="matcher_drops_the_word_boundary",
-        breaks="a longer word at the anchor — 'invalid player identifier' — is read as this one",
-        edits=((G2B, 'r"invalid player id\\b"', 'r"invalid player id"'),),
-        tests=(G2B_UNIT,),
+        tests=(G2B_UNIT, OUTCOME),
         expect=(
             "test_only_g2bs_own_invalid_player_shape_is_recognised[longer-word-at-the-anchor]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[reworded-suffix]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[shortened-variant]",
         ),
     ),
     Mutation(
-        name="matcher_pattern_matches_anything",
+        name="matcher_matches_a_substring",
+        breaks="their words buried inside a longer rejection are read as this one",
+        edits=(
+            (
+                G2B,
+                '    return " ".join(message.split()).lower() == _INVALID_PLAYER_MESSAGE\n',
+                '    return _INVALID_PLAYER_MESSAGE in " ".join(message.split()).lower()\n',
+            ),
+        ),
+        tests=(G2B_UNIT, OUTCOME),
+        expect=("test_only_g2bs_own_invalid_player_shape_is_recognised[prefix-before-the-phrase]",),
+    ),
+    Mutation(
+        name="matcher_ignores_the_message",
         breaks="every rejection under their envelope becomes a free one",
-        edits=((G2B, 'r"invalid player id\\b"', 'r""'),),
-        tests=(G2B_UNIT,),
+        edits=(
+            (
+                G2B,
+                '    return " ".join(message.split()).lower() == _INVALID_PLAYER_MESSAGE\n',
+                "    return True\n",
+            ),
+        ),
+        tests=(G2B_UNIT, OUTCOME),
         expect=(
+            "test_g2b_a_rejection_we_do_not_recognise_is_still_unknown[another-400]",
             "test_only_g2bs_own_invalid_player_shape_is_recognised[another-message]",
             "test_only_g2bs_own_invalid_player_shape_is_recognised[longer-word-at-the-anchor]",
             "test_only_g2bs_own_invalid_player_shape_is_recognised[phrase-buried-mid-message]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[prefix-before-the-phrase]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[reworded-suffix]",
+            "test_only_g2bs_own_invalid_player_shape_is_recognised[shortened-variant]",
         ),
     ),
     Mutation(

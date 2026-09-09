@@ -121,12 +121,25 @@ afford to be: its false positive demotes a hard failure to a retryable stall
 that an admin finds in the same queue anyway. A false positive in
 `_is_an_unbilled_player_rejection` **posts a refund for goods we may have
 bought**, on an order no operator can re-grade afterwards (decision 5), so it
-requires the status, G2B's own JSON envelope with `success: false`, and a
-message whose normalised form _begins_ "invalid player id". Any rejection it
-does not recognise — another 400 included — keeps answering `UNKNOWN`.
-**Falling back to the safe answer is the behaviour, not a gap in it**, and the
-way this decision is lost is by widening the predicate to cover a refusal
-nobody has graded.
+requires the status, G2B's own JSON envelope with `success: false`, and the
+**whole** normalised message equal to the one observed. Any rejection it does
+not recognise — another 400 included, and a reworded version of this one
+included — keeps answering `UNKNOWN`. **Falling back to the safe answer is the
+behaviour, not a gap in it**, and the way this decision is lost is by widening
+the predicate to cover a refusal nobody has graded.
+
+That the comparison is on the **whole** message and not on a prefix is the one
+thing here that was got wrong and then fixed. The first implementation
+anchored a pattern at the start, which accepted any message _beginning_ with
+the phrase — including `"Invalid player ID; the order was created and
+charged"`, a refusal we would have been **billed** for, wearing the words of
+one we were not. An unbounded suffix is the single shape in which a future
+supplier string can turn this decision into a refund of money we spent, which
+is precisely the mistake the grading exists to prevent. The price of equality
+is brittleness, and it is the right price: if G2B rewords the message, the
+match stops and these orders park exactly as they did before this amendment.
+Losing an automatic refund is recoverable by hand; refunding a billed refusal
+is not.
 
 **`g2b` is three answers, not one.** Two of the splits are where the call
 happens; the third is inside one branch of it.

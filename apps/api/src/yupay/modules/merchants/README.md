@@ -454,8 +454,18 @@ it is nobody has counted, and an earlier version of this sentence claimed
 game create G2B refuses with its own `HTTP 400 {"message":"Invalid player
 ID…","success":false}` — the owner ruled on 2026-09-09 that they do not debit
 us for it, so that one refunds itself. It is matched on their exact envelope
-and on nothing looser; a rejection the predicate does not recognise keeps
-answering `UNKNOWN` and keeps fetching a human.
+and on the **whole** message (case-folded, whitespace-collapsed) and on
+nothing looser — a reworded variant is a rejection we have not been told
+about, and it keeps answering `UNKNOWN` and keeps fetching a human.
+
+**What that changes for the reseller, which is not obvious from the field:**
+before M3c the order parked, so a corrected player id could be delivered on
+the _same_ order by an operator Retry. Now the deposit is back within seconds
+and the order is closed to re-driving — Retry and Force-complete both answer
+`409 deposit_already_returned` (see "A refunded order may not be
+re-driven" below). The reseller places a **new** order with a new
+`merchant_order_id`; `refunded_usd` and `fulfillment_failed_refunded` are what
+tell them so.
 
 **The amount is the charge's, read off the charge's own ledger transaction**
 (`deposit.charged_for_order`), never off `order_items.unit_price_usd` and

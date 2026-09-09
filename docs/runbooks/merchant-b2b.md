@@ -889,8 +889,9 @@ recorded at the end so a regression is recognisable.
 
 ### Only a supplier that gave our money back refunds automatically
 
-_Why it is built this way, including the gaps below and the one product
-question nobody has answered: [ADR-0071](../decisions/0071-merchant-refunds.md)._
+_Why it is built this way, including the gaps below and the product question
+the owner settled on 2026-09-09 (a cancelled order's debited deposit stays
+with a human): [ADR-0071](../decisions/0071-merchant-refunds.md)._
 
 M3b Task 3 posts the refund itself when the failed task's money outcome is
 `returned`. `spent` and `unknown` never do — refunding money we did not get
@@ -908,11 +909,25 @@ procedure above.
   is `returned` and refunds the reseller within seconds. That rests on a
   **fourth** kind of evidence — their error string plus the owner's ruling of
   2026-09-09 that the balance is not debited for it — and the match is
-  deliberately narrow: the status, their JSON envelope and the shape of the
-  message. **Anything else from that call, including another 400, is still
-  `unknown`**, which is the design and not an oversight. If you see a G2B
-  rejection you believe is also free, it needs a ruling and a line here, not a
-  looser match.
+  deliberately narrow: the status, their JSON envelope, and the **whole**
+  message compared after case-folding and whitespace collapse. **Anything else
+  from that call, including another 400 and including a reworded version of
+  this one, is still `unknown`**, which is the design and not an oversight. If
+  G2B rewords the message, these orders go back to parking — the manual lane
+  they were in before M3c, which is the cheap way for this to fail. If you see
+  a G2B rejection you believe is also free, it needs a ruling and a line here,
+  not a looser match.
+- **Tell the reseller to place a NEW order.** This is the operator-facing
+  change and it is the opposite of what the old behaviour allowed. Before M3c
+  the order parked on `unknown`, so once the reseller supplied a corrected
+  player id an operator could **Retry** the task and deliver the same order.
+  Now the deposit is returned within seconds, and a refunded order can never
+  be re-driven: both Retry and Force-complete answer
+  `409 deposit_already_returned`, because `charge_deposit` is idempotent on
+  the order and a second charge would debit nothing (goods and money both).
+  So the recovery is a new `merchant_order_id`, not a repair of this one. The
+  merchant sees `refunded_usd` equal to what they were charged and
+  `failure_reason: fulfillment_failed_refunded`, which says exactly that.
 - **How big is the manual lane? Nobody knows.** Nothing counts merchant
   failures by supplier or by cause. Earlier drafts of this runbook and of
   ADR-0071 said it carried "most" of them; that was never measured and is

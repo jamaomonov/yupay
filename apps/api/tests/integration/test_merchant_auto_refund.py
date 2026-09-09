@@ -1848,12 +1848,17 @@ async def test_the_same_g2b_rejection_moves_no_money_for_a_retail_order(
     alerts: list[Alert],
     _g2b_env: None,
 ) -> None:
-    """The outcome is recorded for retail too — it is a fact about the
-    supplier, not about who bought — and nothing follows from it.
+    """The outcome is recorded for retail too, and nothing follows from it.
 
-    ``RETURNED`` on a storefront order buys a retail buyer nothing here: their
-    money is at an acquirer, and the refund seam never runs because the
-    ``merchant_id`` gate stops it before ``merchants`` is imported at all.
+    **Not "byte-identical": the record changed.** A retail g2b invalid-player
+    failure now writes ``money_outcome=returned`` where it wrote ``unknown``,
+    because that is a fact about the supplier and not about who bought. What
+    is unchanged is every consequence — the refund seam is gated on
+    ``merchant_id`` and stops before ``merchants`` is imported at all, and a
+    retail buyer's money is at an acquirer where this ledger cannot reach it.
+
+    The gate is proven rather than asserted: the ``no_merchant_gate`` harness
+    row deletes it and reddens **this** test, not only its inventory sibling.
     """
     from yupay.core.config import Settings, get_settings
 
