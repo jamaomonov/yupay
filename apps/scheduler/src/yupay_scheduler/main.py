@@ -9,7 +9,9 @@ import asyncio
 import signal
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from yupay.core.config import get_settings
 from yupay.core.logging import configure_logging, get_logger
+from yupay.core.observability import init_sentry
 
 # Touch every module's models so SQLAlchemy's metadata has the full graph
 # resolved before any query runs. Without this, cross-table FKs (e.g.
@@ -92,6 +94,7 @@ def build_scheduler() -> AsyncIOScheduler:
 
 async def run() -> None:
     """Start the scheduler and block until SIGINT/SIGTERM."""
+    init_sentry(get_settings(), integrations="none")
     scheduler = build_scheduler()
     scheduler.start()
     log.info("scheduler.started")

@@ -22,6 +22,7 @@ from sqlalchemy import text
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import configure_logging, get_logger
+from yupay.core.observability import init_sentry
 
 from yupay_bot.i18n import (
     miniapp_button_label,
@@ -117,6 +118,7 @@ def build_dispatcher(settings: Settings) -> Dispatcher:
 async def run() -> None:
     """Start long-polling against the configured bot token."""
     settings = get_settings()
+    init_sentry(settings, integrations="none")
     if not settings.telegram_bot_token:
         log.warning("bot.no_token; sleeping")
         await asyncio.sleep(3600)

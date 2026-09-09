@@ -31,6 +31,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.db import dispose_engine
 from yupay.core.errors import AppError, app_error_handler, problem_json_validation_handler
 from yupay.core.logging import configure_logging, get_logger
+from yupay.core.observability import init_sentry
 from yupay.core.redis import close_redis
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 
@@ -158,42 +159,6 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
         limiter.exempt(endpoint)  # type: ignore[no-untyped-call]
 
 
-def _init_sentry(settings: Settings) -> None:
-    """Initialise Sentry if a DSN is configured.
-
-    Kept inline (not eager-imported) so dev environments without a DSN
-    don't drag in the ~2 MB SDK + integrations. ``traces_sample_rate``
-    comes from settings — usual prod default is ``0.1`` (10% transactions
-    captured for tracing).
-    """
-    if not settings.sentry_dsn:
-        return
-    import sentry_sdk
-    from sentry_sdk.integrations.fastapi import FastApiIntegration
-    from sentry_sdk.integrations.starlette import StarletteIntegration
-
-    sentry_sdk.init(
-        dsn=settings.sentry_dsn,
-        environment=settings.environment,
-        release=settings.service_name,
-        traces_sample_rate=settings.sentry_traces_sample_rate,
-        # TWO switches, and each covers a different half. ``send_default_pii``
-        # governs request bodies, headers, cookies and user identity;
-        # ``include_local_variables`` governs the **stack-frame locals**
-        # attached to every exception event and defaults to ``True``. With
-        # only the first set, any 500 raised while a secret is a live local —
-        # a freshly minted merchant API key or webhook signing secret, both of
-        # which exist in the clear in exactly one frame — ships that secret to
-        # a third-party SaaS. AGENTS.md §9.
-        send_default_pii=False,
-        include_local_variables=False,
-        integrations=[
-            FastApiIntegration(transaction_style="endpoint"),
-            StarletteIntegration(transaction_style="endpoint"),
-        ],
-    )
-
-
 if TYPE_CHECKING:
     from collections.abc import AsyncIterator
 
@@ -281,7 +246,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     """Build a fresh FastAPI app with all routers, middleware, and exception handlers."""
     settings = get_settings()
-    _init_sentry(settings)
+    init_sentry(settings)
     # NOTE: FastAPI 0.115+ serialises responses directly via Pydantic — no custom
     # response class needed. Explicit `ORJSONResponse` is deprecated.
     app = FastAPI(

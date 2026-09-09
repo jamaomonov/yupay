@@ -59,6 +59,7 @@ import yupay.api.v1  # noqa: F401  isort: skip
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import get_engine
 from yupay.core.logging import configure_logging, get_logger
+from yupay.core.observability import init_sentry
 from yupay.modules.fulfillment.api import drain_pending_tasks
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL, drain_pending_deliveries
@@ -362,6 +363,10 @@ async def run() -> int:
         path stopped.
     """
     cfg = get_settings()
+    # The drain, the refund seam and the webhook delivery all run here, so
+    # this is the half of the system where an unreported crash costs money.
+    # No ASGI integrations: nothing here serves a request.
+    init_sentry(cfg, integrations="none")
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
