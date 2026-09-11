@@ -17,7 +17,10 @@ text); aggregates feed the storefront and Google rich snippets.
   kinds. A repeat submit returns `409 already_reviewed`.
 - **Rating is immutable** after create (aggregates / SEO snapshot stay put).
   **Body** may be replaced via `PATCH /reviews/{id}` for 15 minutes
-  (`amend_window_closed` after that). No user delete. Admins
+  (`amend_window_closed` after that). Clients send that PATCH from an
+  explicit Submit (one draft: chips toggle labels in the same textarea as
+  free text). Catch-up dialogs snapshot `pending-ask` so the follow-up is
+  not unmounted when the query goes null after the rating POST. No user delete. Admins
   `hide`/`unhide`/`remove`; users `report`.
 - **Post-moderation:** a review is `published` on creation. Only `published`
   reviews count toward stats and appear in public lists. A review crossing

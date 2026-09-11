@@ -15,9 +15,10 @@ sequenceDiagram
         Svc->>DB: bump brand_rating_stats
         API-->>Client: 201 ReviewOut
         opt Optional chips / comment within 15 min
-            Buyer->>Client: Tap a chip or blur the textarea
+            Buyer->>Client: Toggle chips and/or type, then Submit
             Client->>API: PATCH /reviews/{id} {body} + Idempotency-Key
             API-->>Client: 200 ReviewOut (rating unchanged)
+            Client-->>Buyer: Thank-you (rating already saved; body now too)
         end
     else Buyer left to check the game, comes back later
         Note over Client,API: GET /reviews/pending-ask is 2h–14d, catalog only

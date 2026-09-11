@@ -13,7 +13,7 @@ import {
   isReviewAskDismissed,
   parseReviewLaunchParam,
 } from "@/lib/review-ask";
-import { getPendingAsk } from "@/lib/reviews";
+import { getPendingAsk, type PendingAsk } from "@/lib/reviews";
 import { getWebApp } from "@/lib/telegram";
 import { useOrderDeliveredDialog } from "@/store/useOrderDeliveredDialog";
 import { useOverlay } from "@/store/useOverlay";
@@ -27,6 +27,9 @@ function launchedIntoReview(): boolean {
 /**
  * Next-session catch-up: after the buyer left to check the game, ask on the
  * next calm screen (home / history). Server-gated to 2h–14d old deliveries.
+ *
+ * Snapshot the pending row: the query goes null after POST /reviews, and
+ * unmounting here would drop the comment step.
  */
 export function CatchUpReviewDialog() {
   const { t } = useT();
@@ -34,6 +37,8 @@ export function CatchUpReviewDialog() {
   const [path] = useLocation();
   const liveDelivery = useOrderDeliveredDialog((s) => s.orderId);
   const [dismissed, setDismissed] = useState(false);
+  const [held, setHeld] = useState<PendingAsk | null>(null);
+  const [rated, setRated] = useState(false);
   const calm =
     Boolean(me.data) && liveDelivery === null && catchUpAllowedOn(path) && !launchedIntoReview();
 
@@ -43,7 +48,11 @@ export function CatchUpReviewDialog() {
     enabled: calm,
   });
 
-  const ask = pending.data ?? null;
+  useEffect(() => {
+    if (pending.data && held === null) setHeld(pending.data);
+  }, [pending.data, held]);
+
+  const ask = held ?? pending.data ?? null;
   const openOverlay = useOverlay((s) => s.open);
   const closeOverlay = useOverlay((s) => s.close);
   const visible = calm && !dismissed && ask !== null && !isReviewAskDismissed(ask.order_id);
@@ -54,7 +63,7 @@ export function CatchUpReviewDialog() {
     return closeOverlay;
   }, [visible, openOverlay, closeOverlay]);
 
-  if (!visible || ask === null) return null;
+  if (!visible) return null;
 
   const orderId = ask.order_id;
   function close() {
@@ -64,17 +73,32 @@ export function CatchUpReviewDialog() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
-      <button aria-label="close" className="absolute inset-0 bg-black/60" onClick={close} />
+      {rated ? (
+        <div className="absolute inset-0 bg-black/60" />
+      ) : (
+        <button aria-label="close" className="absolute inset-0 bg-black/60" onClick={close} />
+      )}
       <div className="relative w-full rounded-t-2xl bg-[hsl(var(--card))] p-5">
         <div className="mb-3 flex justify-end">
           <button type="button" aria-label="close" onClick={close} className="text-white/50">
             <X size={20} />
           </button>
         </div>
-        <RateAsk orderId={ask.order_id} brandSlug={ask.brand_slug} brandName={ask.brand_name} />
-        <button type="button" onClick={close} className="mt-3 w-full py-2 text-sm text-white/50">
-          {t("reviews.later")}
-        </button>
+        <RateAsk
+          orderId={ask.order_id}
+          brandSlug={ask.brand_slug}
+          brandName={ask.brand_name}
+          onRated={() => {
+            setHeld(ask);
+            setRated(true);
+          }}
+          onFinished={close}
+        />
+        {!rated && (
+          <button type="button" onClick={close} className="mt-3 w-full py-2 text-sm text-white/50">
+            {t("reviews.later")}
+          </button>
+        )}
       </div>
     </div>
   );

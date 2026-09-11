@@ -196,8 +196,12 @@ same ask, at the moment they actually return.
    POST (Bearer or Guest), for **15 minutes** after `created_at`. Rating
    stays frozen (aggregates and the SEO snapshot do not move). After the
    window: `403` with `code=amend_window_closed`. Idempotency-Key required.
-   Chips are written as localized labels joined into `body` with `. `; no
-   tags column.
+   The client owns one draft: chips toggle their label in the textarea
+   (joined with `. `); free text is the same field. **PATCH runs only from
+   an explicit Submit** — not on chip tap or blur — so a catch-up dialog
+   that refetches `pending-ask` (now null) cannot unmount the form before
+   the comment is sent. Custom text and chips never live in two parallel
+   states that later get concatenated.
 3. **`GET /reviews/pending-ask`** (Bearer only) returns the newest delivered
    catalog order that has no review, with `delivered_at` between **2 hours
    and 14 days** ago, or `null`. Merchant and `wallet_topup` orders are

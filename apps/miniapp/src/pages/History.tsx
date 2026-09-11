@@ -209,6 +209,7 @@ function OrdersTab() {
     orderId: string;
     name: string;
   } | null>(null);
+  const [reviewRated, setReviewRated] = useState(false);
   const openOverlay = useOverlay((s) => s.open);
   const closeOverlay = useOverlay((s) => s.close);
   useEffect(() => {
@@ -232,7 +233,7 @@ function OrdersTab() {
             aria-label="close"
             className="absolute inset-0 bg-black/60"
             onClick={() => {
-              setReviewFor(null);
+              if (!reviewRated) setReviewFor(null);
             }}
           />
           <div className="relative w-full rounded-t-2xl bg-[hsl(var(--card))] p-5">
@@ -240,6 +241,13 @@ function OrdersTab() {
               orderId={reviewFor.orderId}
               brandSlug={reviewFor.slug}
               brandName={reviewFor.name}
+              onRated={() => {
+                setReviewRated(true);
+              }}
+              onFinished={() => {
+                setReviewFor(null);
+                setReviewRated(false);
+              }}
             />
           </div>
         </div>
@@ -373,8 +381,10 @@ function OrdersTab() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (tx.gameSlug)
+                          if (tx.gameSlug) {
+                            setReviewRated(false);
                             setReviewFor({ slug: tx.gameSlug, orderId: tx.id, name: tx.title });
+                          }
                         }}
                         className="text-primary ml-3 mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold"
                         data-testid={`history-rate-${tx.id}`}

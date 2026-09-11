@@ -103,6 +103,7 @@ export function OrderDeliveredModal() {
 
         {canRate && orderId !== null && brandSlug !== null && (
           <ReviewAsk
+            key={orderId}
             variant="bare"
             className="border-border/60 mt-5 border-t pt-5"
             orderId={orderId}

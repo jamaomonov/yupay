@@ -128,7 +128,7 @@ test("submits the rating on a star tap", async () => {
 
   fireEvent.click(screen.getByRole("button", { name: "5" }));
 
-  expect(await screen.findByText("web.brandReviews.thanks")).toBeInTheDocument();
+  expect(await screen.findByText("web.brandReviews.thanksRating")).toBeInTheDocument();
   expect(mockSubmitReview).toHaveBeenCalledWith({
     order_id: ORDER_ID,
     brand_slug: "steam",

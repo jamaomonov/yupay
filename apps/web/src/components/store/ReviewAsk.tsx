@@ -19,6 +19,8 @@ export function ReviewAsk({
   guestEmail,
   variant = "card",
   className,
+  onRated,
+  onFinished,
 }: {
   orderId: string;
   brandSlug: string;
@@ -26,6 +28,10 @@ export function ReviewAsk({
   guestEmail?: string | undefined;
   variant?: "card" | "bare";
   className?: string | undefined;
+  /** Fired after the rating POST succeeds — catch-up keeps the dialog open. */
+  onRated?: (() => void) | undefined;
+  /** Fired from the follow-up "Done" button after comment submit or skip. */
+  onFinished?: (() => void) | undefined;
 }) {
   const qc = useQueryClient();
   const [state, setState] = useState<"idle" | "sending" | "done" | "already" | "error">("idle");
@@ -43,6 +49,7 @@ export function ReviewAsk({
       setReviewId(review.id);
       setRated(rating);
       setState("done");
+      onRated?.();
       void qc.invalidateQueries({ queryKey: ["my-reviews"] });
       void qc.invalidateQueries({ queryKey: ["review-pending-ask"] });
     } catch (err) {
@@ -50,9 +57,15 @@ export function ReviewAsk({
     }
   }
 
-  function handleAmend(body: string) {
+  async function handleAmend(body: string) {
     if (!reviewId) return;
-    void amendReview(reviewId, body, guest);
+    try {
+      await amendReview(reviewId, body, guest);
+      setState("done");
+    } catch (err) {
+      setState("error");
+      throw err;
+    }
   }
 
   if (state === "already") {
@@ -66,11 +79,12 @@ export function ReviewAsk({
       brandName={brandName}
       submitting={state === "sending"}
       showError={state === "error"}
-      rated={state === "done" ? rated : undefined}
+      rated={rated >= 1 ? rated : undefined}
       onSubmit={(rating) => {
         void handleSubmit(rating);
       }}
       onAmend={handleAmend}
+      onFinished={onFinished}
     />
   );
 }

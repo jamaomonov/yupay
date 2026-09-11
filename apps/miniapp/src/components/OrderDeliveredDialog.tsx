@@ -38,6 +38,7 @@ export function OrderDeliveredDialog() {
         </DialogHeader>
         {orderId && brandSlug && (
           <RateAsk
+            key={orderId}
             orderId={orderId}
             brandSlug={brandSlug}
             brandName={display?.brand_name ?? null}
