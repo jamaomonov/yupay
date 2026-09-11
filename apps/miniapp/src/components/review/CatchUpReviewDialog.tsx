@@ -20,10 +20,7 @@ import { useOverlay } from "@/store/useOverlay";
 
 function launchedIntoReview(): boolean {
   return (
-    parseReviewLaunchParam(
-      window.location.search,
-      getWebApp()?.initDataUnsafe.start_param,
-    ) !== null
+    parseReviewLaunchParam(window.location.search, getWebApp()?.initDataUnsafe.start_param) !== null
   );
 }
 
@@ -38,10 +35,7 @@ export function CatchUpReviewDialog() {
   const liveDelivery = useOrderDeliveredDialog((s) => s.orderId);
   const [dismissed, setDismissed] = useState(false);
   const calm =
-    Boolean(me.data) &&
-    liveDelivery === null &&
-    catchUpAllowedOn(path) &&
-    !launchedIntoReview();
+    Boolean(me.data) && liveDelivery === null && catchUpAllowedOn(path) && !launchedIntoReview();
 
   const pending = useQuery({
     queryKey: ["review-pending-ask"],
@@ -52,11 +46,7 @@ export function CatchUpReviewDialog() {
   const ask = pending.data ?? null;
   const openOverlay = useOverlay((s) => s.open);
   const closeOverlay = useOverlay((s) => s.close);
-  const visible =
-    calm &&
-    !dismissed &&
-    ask !== null &&
-    !isReviewAskDismissed(ask.order_id);
+  const visible = calm && !dismissed && ask !== null && !isReviewAskDismissed(ask.order_id);
 
   useEffect(() => {
     if (!visible) return;
@@ -81,11 +71,7 @@ export function CatchUpReviewDialog() {
             <X size={20} />
           </button>
         </div>
-        <RateAsk
-          orderId={ask.order_id}
-          brandSlug={ask.brand_slug}
-          brandName={ask.brand_name}
-        />
+        <RateAsk orderId={ask.order_id} brandSlug={ask.brand_slug} brandName={ask.brand_name} />
         <button type="button" onClick={close} className="mt-3 w-full py-2 text-sm text-white/50">
           {t("reviews.later")}
         </button>

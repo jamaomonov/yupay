@@ -33,11 +33,6 @@ export function WriteReviewPanel({
   if (!user || !orderId) return null;
 
   return (
-    <ReviewAsk
-      className="mt-8"
-      orderId={orderId}
-      brandSlug={brandSlug}
-      brandName={brandName}
-    />
+    <ReviewAsk className="mt-8" orderId={orderId} brandSlug={brandSlug} brandName={brandName} />
   );
 }

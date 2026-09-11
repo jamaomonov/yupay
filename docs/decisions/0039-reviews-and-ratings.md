@@ -183,9 +183,9 @@ view itself when `?order=` is present rather than trusting the hash.
 
 Buyers tap a star while the delivery dialog is still on screen, then leave
 to check the game. They rarely come back the same session, so a form that
-asks for a comment *before* POST loses the rating. A delayed Telegram/email
+asks for a comment _before_ POST loses the rating. A delayed Telegram/email
 nudge would be a new notification job and a second ping on top of "order
-delivered". Catch-up on the *next Mini App (or logged-in web) open* is the
+delivered". Catch-up on the _next Mini App (or logged-in web) open_ is the
 same ask, at the moment they actually return.
 
 ### Decision

@@ -381,7 +381,6 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             {t("supportCta")}
           </a>
         )}
-
       </div>
     </div>
   );

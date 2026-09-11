@@ -30,9 +30,7 @@ async def test_send_message_forwards_reply_markup() -> None:
         return_value=httpx.Response(200, json={"ok": True})
     )
     markup = {"inline_keyboard": [[{"text": "Оценить заказ", "web_app": {"url": "https://x"}}]]}
-    ok = await tg.send_message(
-        bot_token=BOT_TOKEN, chat_id=CHAT_ID, text="hi", reply_markup=markup
-    )
+    ok = await tg.send_message(bot_token=BOT_TOKEN, chat_id=CHAT_ID, text="hi", reply_markup=markup)
     assert ok is True
     sent = route.calls.last.request
     assert sent.content is not None
