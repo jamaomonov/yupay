@@ -19,6 +19,14 @@ class ReviewCreateIn(BaseModel):
     body: str | None = Field(default=None, max_length=_BODY_MAX)
 
 
+class ReviewAmendIn(BaseModel):
+    """Body-only follow-up after a one-tap rating. Rating is not accepted."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    body: str = Field(..., min_length=1, max_length=_BODY_MAX)
+
+
 class ReviewOut(BaseModel):
     """A published review as shown on the public brand page.
 
@@ -119,15 +127,26 @@ class ReviewEligibilityOut(BaseModel):
     already_reviewed: bool
 
 
+class ReviewPendingAskOut(BaseModel):
+    """The order the next-session catch-up prompt should ask about, or none."""
+
+    order_id: str
+    brand_slug: str
+    brand_name: str
+    delivered_at: datetime
+
+
 __all__ = [
     "AdminReviewListOut",
     "AdminReviewOut",
     "OwnReviewListOut",
     "OwnReviewOut",
+    "ReviewAmendIn",
     "ReviewCreateIn",
     "ReviewEligibilityOut",
     "ReviewListOut",
     "ReviewOut",
+    "ReviewPendingAskOut",
     "ReviewReportIn",
     "ReviewStatsOut",
 ]

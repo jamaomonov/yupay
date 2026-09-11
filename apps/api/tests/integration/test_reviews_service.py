@@ -470,3 +470,106 @@ async def test_public_list_includes_guest_review_as_anonymous(db_session: AsyncS
     assert len(items) == 1
     assert items[0].author_name is None
     assert items[0].body == "great"
+
+
+async def test_amend_replaces_body_inside_the_window(db_session: AsyncSession) -> None:
+    from yupay.modules.reviews.amend import amend_review_body
+
+    user = await _make_user(db_session, display_name="Ann")
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    review = await svc.create_review(
+        db_session,
+        user_id=user.id,
+        guest_email=None,
+        order_id=order.id,
+        brand_slug="steam",
+        rating=5,
+        body=None,
+        locale="ru",
+    )
+    updated = await amend_review_body(
+        db_session,
+        review_id=review.id,
+        user_id=user.id,
+        guest_email=None,
+        body="быстро",
+    )
+    assert updated.body == "быстро"
+    assert updated.rating == 5
+
+
+async def test_amend_rejects_after_the_window(db_session: AsyncSession) -> None:
+    from yupay.modules.reviews.amend import amend_review_body
+
+    user = await _make_user(db_session, display_name="Ann")
+    brand, sku = await _seed_brand(db_session, "steam")
+    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    review = await svc.create_review(
+        db_session,
+        user_id=user.id,
+        guest_email=None,
+        order_id=order.id,
+        brand_slug="steam",
+        rating=5,
+        body=None,
+        locale="ru",
+    )
+    review.created_at = now() - timedelta(minutes=16)
+    await db_session.flush()
+    with pytest.raises(ForbiddenError) as exc:
+        await amend_review_body(
+            db_session,
+            review_id=review.id,
+            user_id=user.id,
+            guest_email=None,
+            body="поздно",
+        )
+    assert exc.value.extra.get("code") == "amend_window_closed"
+
+
+async def test_pending_ask_skips_a_fresh_delivery(db_session: AsyncSession) -> None:
+    from yupay.modules.reviews.pending import pending_ask
+
+    user = await _make_user(db_session, display_name="Ann")
+    _brand, sku = await _seed_brand(db_session, "pubg")
+    await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    row = await pending_ask(db_session, user_id=user.id, locale="ru")
+    assert row is None
+
+
+async def test_pending_ask_returns_an_aged_unreviewed_order(db_session: AsyncSession) -> None:
+    from yupay.modules.reviews.pending import pending_ask
+
+    user = await _make_user(db_session, display_name="Ann")
+    _brand, sku = await _seed_brand(db_session, "pubg")
+    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    order.delivered_at = now() - timedelta(hours=3)
+    await db_session.flush()
+    row = await pending_ask(db_session, user_id=user.id, locale="ru")
+    assert row is not None
+    assert row.order_id == order.id
+    assert row.brand_slug == "pubg"
+    assert row.brand_name == "Pubg"
+
+
+async def test_pending_ask_skips_already_reviewed(db_session: AsyncSession) -> None:
+    from yupay.modules.reviews.pending import pending_ask
+
+    user = await _make_user(db_session, display_name="Ann")
+    _brand, sku = await _seed_brand(db_session, "pubg")
+    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    order.delivered_at = now() - timedelta(hours=3)
+    await db_session.flush()
+    await svc.create_review(
+        db_session,
+        user_id=user.id,
+        guest_email=None,
+        order_id=order.id,
+        brand_slug="pubg",
+        rating=5,
+        body=None,
+        locale="ru",
+    )
+    row = await pending_ask(db_session, user_id=user.id, locale="ru")
+    assert row is None

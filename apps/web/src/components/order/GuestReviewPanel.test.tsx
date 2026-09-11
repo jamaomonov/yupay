@@ -12,6 +12,8 @@ import * as reviews from "@/lib/reviews";
 const messages = {
   web: {
     brandReviews: {
+      askTitle: "Как прошла выдача?",
+      askHint: "Нажмите звёзды",
       formTitle: "Ваш отзыв",
       ratingLabel: "Оценка",
       commentLabel: "Комментарий",
@@ -43,7 +45,7 @@ it("renders the form when eligible and not yet reviewed", async () => {
     already_reviewed: false,
   });
   wrap(<GuestReviewPanel orderId="o1" email="g@x.com" />);
-  await waitFor(() => expect(screen.getByText("Ваш отзыв")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByText("Как прошла выдача?")).toBeInTheDocument());
 });
 
 it("renders nothing when already reviewed", async () => {

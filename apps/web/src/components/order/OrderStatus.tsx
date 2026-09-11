@@ -18,6 +18,8 @@ import { OrderStatusSkeleton } from "./OrderStatusSkeleton";
 import { OrderSummary } from "./OrderSummary";
 import { StatusBlock } from "./StatusBlock";
 
+import { ReviewAsk } from "@/components/store/ReviewAsk";
+
 import type { OrderOut } from "@/lib/orders-types";
 
 import { useAuth } from "@/lib/auth";
@@ -84,7 +86,6 @@ interface DeliveryListOut {
 
 export function OrderStatus({ orderId, email }: { orderId: string; email?: string }) {
   const t = useTranslations("web.orders");
-  const tr = useTranslations("web.brandReviews");
   const locale = useLocale();
   const { user } = useAuth();
   // A guest is identified by the `?email=` query param and has no session. If
@@ -305,6 +306,22 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             ),
           )}
 
+        {canRate && brandSlug && (
+          <ReviewAsk
+            orderId={order.data.id}
+            brandSlug={brandSlug}
+            brandName={order.data.items[0]?.display?.brand_name ?? null}
+          />
+        )}
+
+        {status === "delivered" && !user && email && brandSlug && (
+          <GuestReviewPanel
+            orderId={order.data.id}
+            email={email}
+            brandName={order.data.items[0]?.display?.brand_name ?? null}
+          />
+        )}
+
         {/* Never on a pure top-up: the money is already on the account and
             `ArtifactReceipt` only ever renders real deliverables (code / key /
             pin / serial — a top-up's login is deliberately excluded there), so
@@ -365,18 +382,6 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
           </a>
         )}
 
-        {canRate && brandSlug && (
-          <Link
-            href={pathFor(locale, `/store/${brandSlug}?order=${order.data.id}#reviews`)}
-            className={buttonStyles({ size: "sm" })}
-          >
-            {tr("writeCta")}
-          </Link>
-        )}
-
-        {status === "delivered" && !user && email && brandSlug && (
-          <GuestReviewPanel orderId={order.data.id} email={email} />
-        )}
       </div>
     </div>
   );

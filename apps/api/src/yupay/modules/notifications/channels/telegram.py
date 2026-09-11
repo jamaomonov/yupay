@@ -85,19 +85,23 @@ async def send_message(
     text: str,
     parse_mode: str = "HTML",
     disable_web_page_preview: bool = True,
+    reply_markup: dict[str, Any] | None = None,
 ) -> bool:
     """Send a single message via the Telegram Bot API.
 
     Returns ``True`` on success, ``False`` on any failure (network, 4xx, 5xx).
     Never raises — callers are background tasks that must not crash the loop.
+    ``reply_markup`` is forwarded as-is (inline keyboard / web_app button).
     """
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-    payload = {
+    payload: dict[str, Any] = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": parse_mode,
         "disable_web_page_preview": disable_web_page_preview,
     }
+    if reply_markup is not None:
+        payload["reply_markup"] = reply_markup
     try:
         resp = await _get_client().post(url, json=payload)
     except httpx.HTTPError as exc:

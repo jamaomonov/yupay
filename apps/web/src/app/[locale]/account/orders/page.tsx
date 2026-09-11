@@ -1,7 +1,6 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Star } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { use } from "react";
@@ -11,6 +10,7 @@ import type { OrderListOut } from "@/lib/orders-types";
 import { GuestOrdersList } from "@/components/order/GuestOrdersList";
 import { OrderCard } from "@/components/order/OrderCard";
 import { OrderListSkeleton } from "@/components/order/OrderCardSkeleton";
+import { ReviewAsk } from "@/components/store/ReviewAsk";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
@@ -26,7 +26,6 @@ const HIDDEN_STATUSES = new Set(["pending_payment", "expired"]);
 export default function OrdersPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = use(params);
   const t = useTranslations("web.orders");
-  const tr = useTranslations("web.brandReviews");
   const { user, isLoading: authLoading } = useAuth();
 
   const orders = useQuery({
@@ -88,25 +87,23 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
 
       {items.length > 0 && (
         <ul className="space-y-3">
-          {items.map((o) => (
-            <li key={o.id}>
-              <OrderCard order={o} locale={locale} href={pathFor(locale, `/orders/${o.id}`)} />
-              {o.status === "delivered" &&
-                !reviewedOrders.has(o.id) &&
-                o.items[0]?.display?.brand_slug && (
-                  <Link
-                    href={pathFor(
-                      locale,
-                      `/store/${o.items[0].display.brand_slug}?order=${o.id}#reviews`,
-                    )}
-                    className="text-primary ml-4 mt-1.5 inline-flex items-center gap-1 text-xs font-semibold"
-                  >
-                    <Star size={12} />
-                    {tr("writeCta")}
-                  </Link>
+          {items.map((o) => {
+            const slug = o.items[0]?.display?.brand_slug;
+            return (
+              <li key={o.id}>
+                <OrderCard order={o} locale={locale} href={pathFor(locale, `/orders/${o.id}`)} />
+                {o.status === "delivered" && !reviewedOrders.has(o.id) && slug && (
+                  <ReviewAsk
+                    className="mt-2"
+                    variant="bare"
+                    orderId={o.id}
+                    brandSlug={slug}
+                    brandName={o.items[0]?.display?.brand_name ?? null}
+                  />
                 )}
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
       )}
     </main>

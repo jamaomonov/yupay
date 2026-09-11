@@ -25,6 +25,24 @@ async def test_send_message_success_returns_true() -> None:
 
 
 @respx.mock
+async def test_send_message_forwards_reply_markup() -> None:
+    route = respx.post(f"{_BASE}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+    markup = {"inline_keyboard": [[{"text": "Оценить заказ", "web_app": {"url": "https://x"}}]]}
+    ok = await tg.send_message(
+        bot_token=BOT_TOKEN, chat_id=CHAT_ID, text="hi", reply_markup=markup
+    )
+    assert ok is True
+    sent = route.calls.last.request
+    assert sent.content is not None
+    import json
+
+    payload = json.loads(sent.content.decode())
+    assert payload["reply_markup"] == markup
+
+
+@respx.mock
 async def test_send_message_rejected_does_not_log_chat_id(monkeypatch: pytest.MonkeyPatch) -> None:
     respx.post(f"{_BASE}/sendMessage").mock(
         return_value=httpx.Response(403, text="Forbidden: bot was blocked by the user")

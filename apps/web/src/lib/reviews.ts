@@ -91,6 +91,31 @@ export async function submitReview(
   });
 }
 
+export async function amendReview(
+  reviewId: string,
+  body: string,
+  opts: { guestEmail?: string } = {},
+): Promise<Review> {
+  const extra = opts.guestEmail ? await guestHeaders(opts.guestEmail) : {};
+  return apiFetch<Review>(`/reviews/${encodeURIComponent(reviewId)}`, {
+    method: "PATCH",
+    body: { body },
+    anonymous: Boolean(opts.guestEmail),
+    headers: { "Idempotency-Key": crypto.randomUUID(), ...extra },
+  });
+}
+
+export interface PendingAsk {
+  order_id: string;
+  brand_slug: string;
+  brand_name: string;
+  delivered_at: string;
+}
+
+export function getPendingAsk(): Promise<PendingAsk | null> {
+  return apiFetch<PendingAsk | null>("/reviews/pending-ask");
+}
+
 /** Eligibility to review an order (delivered + not already reviewed) for its
  *  brand. Pass `guestEmail` to check as a guest (mints a guest token and
  *  authenticates with `Guest <token>` + `X-Guest-Email` instead of Bearer). */

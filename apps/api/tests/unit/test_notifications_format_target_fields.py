@@ -8,7 +8,7 @@ non-constant field key when it isn't a known label) must come out escaped.
 
 from __future__ import annotations
 
-from yupay.modules.notifications.service import _format_target_fields
+from yupay.modules.notifications.service import _format_target_fields, review_webapp_markup
 
 
 def test_format_target_fields_escapes_html_in_value() -> None:
@@ -30,3 +30,12 @@ def test_format_target_fields_escapes_html_in_unknown_label_key() -> None:
 def test_format_target_fields_known_label_renders_in_russian() -> None:
     result = _format_target_fields({"player_id": "123"})
     assert result == "ID игрока: <code>123</code>"
+
+
+def test_review_webapp_markup_pins_the_order_on_the_miniapp_url() -> None:
+    order_id = "11111111-1111-1111-1111-111111111111"
+    markup = review_webapp_markup(order_id)
+    assert markup is not None
+    button = markup["inline_keyboard"][0][0]
+    assert button["text"] == "Оценить заказ"
+    assert f"review={order_id}" in button["web_app"]["url"]

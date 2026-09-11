@@ -402,3 +402,68 @@ async def test_the_queue_can_be_narrowed_to_one_brand(
     assert ids["other"] not in got
     # The total describes the brand, not the page it was sliced from.
     assert r.json()["total"] == 1
+
+
+async def test_patch_review_adds_the_comment(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await _make_user(db_session, display_name="Ann")
+    brand, sku = await _seed_brand(db_session, "pubg-amend")
+    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    await db_session.commit()
+    created = await integration_client.post(
+        "/api/v1/reviews",
+        headers={"Authorization": f"Bearer {_token(user.id)}", "Idempotency-Key": _KEY},
+        json={"order_id": order.id, "brand_slug": brand.slug, "rating": 5},
+    )
+    assert created.status_code == 201, created.text
+    review_id = created.json()["id"]
+
+    patched = await integration_client.patch(
+        f"/api/v1/reviews/{review_id}",
+        headers={
+            "Authorization": f"Bearer {_token(user.id)}",
+            "Idempotency-Key": "amend-abcdef01234567",
+        },
+        json={"body": "быстро"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["body"] == "быстро"
+    assert patched.json()["rating"] == 5
+
+
+async def test_pending_ask_route_returns_the_aged_order(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from datetime import timedelta
+
+    from yupay.core.clock import now
+
+    user = await _make_user(db_session, display_name="Ann")
+    brand, sku = await _seed_brand(db_session, "pubg-ask")
+    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+    order.delivered_at = now() - timedelta(hours=3)
+    await db_session.commit()
+
+    r = await integration_client.get(
+        "/api/v1/reviews/pending-ask",
+        headers={"Authorization": f"Bearer {_token(user.id)}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["order_id"] == order.id
+    assert body["brand_slug"] == brand.slug
+    assert body["brand_name"] == "Pubg-Ask"
+
+
+async def test_pending_ask_route_is_null_when_nothing_is_due(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    user = await _make_user(db_session, display_name="Ann")
+    await db_session.commit()
+    r = await integration_client.get(
+        "/api/v1/reviews/pending-ask",
+        headers={"Authorization": f"Bearer {_token(user.id)}"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() is None

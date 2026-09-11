@@ -10944,6 +10944,23 @@
         "title": "RevenuePoint",
         "type": "object"
       },
+      "ReviewAmendIn": {
+        "additionalProperties": false,
+        "description": "Body-only follow-up after a one-tap rating. Rating is not accepted.",
+        "properties": {
+          "body": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Body",
+            "type": "string"
+          }
+        },
+        "required": [
+          "body"
+        ],
+        "title": "ReviewAmendIn",
+        "type": "object"
+      },
       "ReviewCreateIn": {
         "additionalProperties": false,
         "properties": {
@@ -11093,6 +11110,36 @@
           "created_at"
         ],
         "title": "ReviewOut",
+        "type": "object"
+      },
+      "ReviewPendingAskOut": {
+        "description": "The order the next-session catch-up prompt should ask about, or none.",
+        "properties": {
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "brand_slug": {
+            "title": "Brand Slug",
+            "type": "string"
+          },
+          "delivered_at": {
+            "format": "date-time",
+            "title": "Delivered At",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order_id",
+          "brand_slug",
+          "brand_name",
+          "delivered_at"
+        ],
+        "title": "ReviewPendingAskOut",
         "type": "object"
       },
       "ReviewReportIn": {
@@ -27764,6 +27811,133 @@
           }
         },
         "summary": "The caller's own reviews",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/pending-ask": {
+      "get": {
+        "description": "The catch-up prompt's input: one catalog order, or null.\n\nUser-only (Mini App has no guests). A 2-hour floor keeps this off the\nsame session as delivery \u2014 the buyer left to check the game.",
+        "operationId": "pending_ask_route_api_v1_reviews_pending_ask_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/ReviewPendingAskOut"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Response Pending Ask Route Api V1 Reviews Pending Ask Get"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unreviewed delivered order old enough to ask about on next session",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/{review_id}": {
+      "patch": {
+        "description": "Body-only follow-up after a one-tap rating. Rating cannot change.\n\nThe same actor resolution as ``POST /reviews`` (Bearer or Guest). The\nwindow is 15 minutes from ``created_at``; after that the review is frozen\nagain. Idempotency-Key required like every other write.",
+        "operationId": "amend_review_route_api_v1_reviews__review_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "review_id",
+            "required": true,
+            "schema": {
+              "title": "Review Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewAmendIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add or replace the comment on a review just submitted (15-minute window)",
         "tags": [
           "reviews"
         ]

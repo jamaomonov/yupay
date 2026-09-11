@@ -15,8 +15,10 @@ text); aggregates feed the storefront and Google rich snippets.
 - **Cardinality:** one review per `(order_id, brand_id)` (UNIQUE) — an order
   has exactly one buyer identity (user XOR guest), so this covers both actor
   kinds. A repeat submit returns `409 already_reviewed`.
-- **Immutable:** no user edit or delete. Admins `hide`/`unhide`/`remove`; users
-  `report`.
+- **Rating is immutable** after create (aggregates / SEO snapshot stay put).
+  **Body** may be replaced via `PATCH /reviews/{id}` for 15 minutes
+  (`amend_window_closed` after that). No user delete. Admins
+  `hide`/`unhide`/`remove`; users `report`.
 - **Post-moderation:** a review is `published` on creation. Only `published`
   reviews count toward stats and appear in public lists. A review crossing
   `_REPORT_AUTO_HIDE_THRESHOLD` (default 3) distinct reports is auto-hidden.
@@ -44,11 +46,15 @@ text); aggregates feed the storefront and Google rich snippets.
 ## Endpoints
 
 Public: `GET /reviews/brands/{slug}` (list + aggregate), `POST /reviews`
-(buyer — Bearer **or** `Guest <jwt>` + `X-Guest-Email` — Idempotency-Key),
+(buyer — Bearer **or** `Guest <jwt>` + `X-Guest-Email` — Idempotency-Key;
+rating-only is enough — `body` is optional), `PATCH /reviews/{id}` (same
+actor; `{body}` only; 15-minute window; Idempotency-Key),
 `GET /reviews/eligibility?order_id=` (same actor resolution; returns
 `{brand_slug, delivered, already_reviewed}` so the caller can gate a CTA/form
-without a failed POST), `GET /reviews/mine` (user-only), `POST
-/reviews/{id}/report` (user-only — a guest cannot report).
+without a failed POST), `GET /reviews/pending-ask` (user-only; one
+2h–14d-old unreviewed catalog delivery or `null` — next-session catch-up),
+`GET /reviews/mine` (user-only), `POST /reviews/{id}/report` (user-only — a
+guest cannot report).
 Admin: `GET /admin/reviews` (queue), `POST /admin/reviews/{id}/{hide,unhide,remove}`.
 
 ## Notes

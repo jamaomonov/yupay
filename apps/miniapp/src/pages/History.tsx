@@ -13,20 +13,21 @@ import {
   Undo2,
   Wallet as WalletIcon,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 
 import type { Locale } from "@yupay/i18n";
 
-import { ReviewsSheet } from "@/components/ReviewsSheet";
-import { BOT_LINK } from "@/lib/bot-link";
+import { RateAsk } from "@/components/review/RateAsk";
 import { SafeImage } from "@/components/ui/safe-image";
 import { useMe } from "@/lib/auth";
+import { BOT_LINK } from "@/lib/bot-link";
 import { useT, useLocale, type MessageKey } from "@/lib/i18n";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
 import { getMyReviews } from "@/lib/reviews";
 import { hrefForGameSlug } from "@/lib/routes";
 import { useDocumentTitle } from "@/lib/use-document-title";
+import { useOverlay } from "@/store/useOverlay";
 import {
   summarizeForUser,
   txKindLabelKey,
@@ -195,7 +196,7 @@ function OrdersTab() {
   const orders = ordersQuery.data ?? [];
   const allRows: HistoryRow[] = orders.map(orderToHistoryRow);
   // Hide the "Оценить" CTA on orders the user has already reviewed. Shares the
-  // ["my-reviews"] query key with OrderSuccess, which ReviewsSheet invalidates
+  // ["my-reviews"] query key with OrderSuccess, which RateAsk invalidates
   // on submit, so a fresh review makes the button disappear here too.
   const myReviews = useQuery({ queryKey: ["my-reviews"], queryFn: () => getMyReviews() });
   const reviewedOrderIds = useMemo(
@@ -203,7 +204,18 @@ function OrdersTab() {
     [myReviews.data],
   );
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [reviewFor, setReviewFor] = useState<{ slug: string; orderId: string } | null>(null);
+  const [reviewFor, setReviewFor] = useState<{
+    slug: string;
+    orderId: string;
+    name: string;
+  } | null>(null);
+  const openOverlay = useOverlay((s) => s.open);
+  const closeOverlay = useOverlay((s) => s.close);
+  useEffect(() => {
+    if (!reviewFor) return;
+    openOverlay();
+    return closeOverlay;
+  }, [reviewFor, openOverlay, closeOverlay]);
   const rows = statusFilter === "all" ? allRows : allRows.filter((r) => r.status === statusFilter);
 
   const grouped = rows.reduce<Record<string, HistoryRow[]>>((acc, tx) => {
@@ -215,13 +227,22 @@ function OrdersTab() {
   return (
     <div className="space-y-5" role="tabpanel">
       {reviewFor && (
-        <ReviewsSheet
-          brandSlug={reviewFor.slug}
-          formOrderId={reviewFor.orderId}
-          onClose={() => {
-            setReviewFor(null);
-          }}
-        />
+        <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
+          <button
+            aria-label="close"
+            className="absolute inset-0 bg-black/60"
+            onClick={() => {
+              setReviewFor(null);
+            }}
+          />
+          <div className="relative w-full rounded-t-2xl bg-[hsl(var(--card))] p-5">
+            <RateAsk
+              orderId={reviewFor.orderId}
+              brandSlug={reviewFor.slug}
+              brandName={reviewFor.name}
+            />
+          </div>
+        </div>
       )}
       {ordersQuery.isLoading && (
         <div className="py-10 text-center text-sm text-white/40">{t("common.loading")}</div>
@@ -352,7 +373,8 @@ function OrdersTab() {
                         onClick={(e) => {
                           e.preventDefault();
                           e.stopPropagation();
-                          if (tx.gameSlug) setReviewFor({ slug: tx.gameSlug, orderId: tx.id });
+                          if (tx.gameSlug)
+                            setReviewFor({ slug: tx.gameSlug, orderId: tx.id, name: tx.title });
                         }}
                         className="text-primary ml-3 mt-1.5 inline-flex items-center gap-1 text-[11px] font-semibold"
                         data-testid={`history-rate-${tx.id}`}

@@ -31,6 +31,7 @@ export interface TelegramWebApp {
   initData: string; // raw query string, signed; never trust initDataUnsafe.
   initDataUnsafe: {
     user?: TelegramUser;
+    start_param?: string;
     auth_date?: number;
     hash?: string;
   };

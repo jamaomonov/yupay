@@ -1,4 +1,4 @@
-import { apiGet, apiPost, newIdempotencyKey } from "./api";
+import { apiGet, apiPatch, apiPost, newIdempotencyKey } from "./api";
 
 export interface Review {
   id: string;
@@ -41,6 +41,26 @@ export function submitReview(body: {
   return apiPost<Review>("/api/v1/reviews", body, {
     idempotencyKey: newIdempotencyKey("review"),
   });
+}
+
+export function amendReview(reviewId: string, body: string): Promise<Review> {
+  return apiPatch<Review>(
+    `/api/v1/reviews/${encodeURIComponent(reviewId)}`,
+    { body },
+    { idempotencyKey: newIdempotencyKey("review-amend") },
+  );
+}
+
+export interface PendingAsk {
+  order_id: string;
+  brand_slug: string;
+  brand_name: string;
+  delivered_at: string;
+}
+
+export async function getPendingAsk(): Promise<PendingAsk | null> {
+  const row = await apiGet<PendingAsk | null>("/api/v1/reviews/pending-ask");
+  return row;
 }
 
 export function getMyReviews(): Promise<{ items: OwnReview[] }> {

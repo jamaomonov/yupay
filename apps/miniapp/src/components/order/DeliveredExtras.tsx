@@ -1,4 +1,4 @@
-import { Home, Share2, Star } from "lucide-react";
+import { Home, Share2 } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ActionButton } from "./ActionButton";
@@ -14,24 +14,15 @@ import {
 /**
  * Post-delivery offers: pin the app, brag about the top-up.
  *
- * Deliberately only on a delivered order — asking someone to install a
- * shortcut before they know the purchase worked is noise. Each affordance
- * hides itself unless the client actually supports it, so on older Telegram
- * versions this section simply isn't there.
- *
- * Extracted out of `OrderSuccess.tsx` (2026-09-03 review) purely to keep
- * that file near the repo's TS file-length budget — no behaviour change.
+ * Rating lives next to the receipt (`RateAsk`), not here — a secondary tile
+ * among pin/share is the wrong job at this moment.
  */
 export function DeliveredExtras({
   brandName,
   imageUrl,
-  canRate,
-  onRate,
 }: {
   brandName: string | null;
   imageUrl: string | null;
-  canRate: boolean;
-  onRate: () => void;
 }) {
   const { t } = useT();
   const [canPin, setCanPin] = useState(false);
@@ -40,8 +31,6 @@ export function DeliveredExtras({
   useEffect(() => {
     let alive = true;
     void getHomeScreenStatus().then((status) => {
-      // "missed" = supported and not installed yet. "added" / "unsupported" /
-      // null all mean there's nothing worth offering.
       if (alive) setCanPin(status === "missed");
     });
     return () => {
@@ -49,7 +38,7 @@ export function DeliveredExtras({
     };
   }, []);
 
-  if (!canPin && !canShare && !canRate) return null;
+  if (!canPin && !canShare) return null;
 
   return (
     <div className="grid grid-cols-2 gap-3 px-4 pt-1">
@@ -75,14 +64,6 @@ export function DeliveredExtras({
                 : t("success.shareStoryTextGeneric"),
             });
           }}
-        />
-      )}
-      {canRate && (
-        <ActionButton
-          icon={<Star size={15} />}
-          label={t("reviews.rateCta")}
-          variant="secondary"
-          onClick={onRate}
         />
       )}
     </div>

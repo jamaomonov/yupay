@@ -173,8 +173,11 @@ export const apiPost = <T>(
   body: unknown,
   opts: Omit<RequestOptions, "method" | "body"> = {},
 ) => api<T>(path, { ...opts, method: "POST", body: JSON.stringify(body) });
-export const apiPatch = <T>(path: string, body: unknown) =>
-  api<T>(path, { method: "PATCH", body: JSON.stringify(body) });
+export const apiPatch = <T>(
+  path: string,
+  body: unknown,
+  opts: Omit<RequestOptions, "method" | "body"> = {},
+) => api<T>(path, { ...opts, method: "PATCH", body: JSON.stringify(body) });
 export const apiDelete = (path: string) => api<void>(path, { method: "DELETE" });
 
 /** Generate a random idempotency key suitable for the backend's >=16 char rule. */

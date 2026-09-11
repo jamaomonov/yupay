@@ -20,8 +20,6 @@ vi.mock("next-intl", () => ({
 }));
 
 const mockApiFetch = vi.fn<(path: string) => Promise<OrderOut>>();
-// `ApiError` is kept real — the modal branches on `err instanceof ApiError` to
-// tell "already reviewed" (409) from a transient failure.
 vi.mock("@/lib/client", async (importOriginal) => ({
   ...(await importOriginal<typeof ClientModule>()),
   apiFetch: (path: string) => mockApiFetch(path),
@@ -32,6 +30,8 @@ const mockSubmitReview = vi.fn<(body: Record<string, unknown>) => Promise<Review
 vi.mock("@/lib/reviews", () => ({
   getMyReviews: () => mockGetMyReviews(),
   submitReview: (body: Record<string, unknown>) => mockSubmitReview(body),
+  amendReview: vi.fn(),
+  getPendingAsk: () => Promise.resolve(null),
 }));
 
 const ORDER_ID = "order-abc-123";
@@ -84,18 +84,14 @@ function renderModal() {
   return render(<OrderDeliveredModal />, { wrapper });
 }
 
-/** Opens the modal on a delivered, not-yet-reviewed order and waits for it. */
 async function openWithForm() {
   mockApiFetch.mockResolvedValue(makeOrder("steam"));
   mockGetMyReviews.mockResolvedValue({ items: [] });
   useOrderDeliveredModal.setState({ orderId: ORDER_ID });
   renderModal();
-  return screen.findByText("web.brandReviews.formTitle");
+  return screen.findByText("web.brandReviews.askTitleNamed");
 }
 
-// Reset in `beforeEach` only (not `afterEach`): a store update after the test
-// body returns, while the component is still mounted, re-renders it outside
-// React Testing Library's `act()`-wrapped cleanup/unmount.
 beforeEach(() => {
   mockApiFetch.mockReset();
   mockGetMyReviews.mockReset();
@@ -115,42 +111,40 @@ test("renders nothing when the store is closed", () => {
 test("collects the review in the modal instead of linking to the brand page", async () => {
   await openWithForm();
 
-  expect(screen.getByRole("button", { name: "web.brandReviews.submit" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "5" })).toBeInTheDocument();
   expect(screen.queryByRole("link")).not.toBeInTheDocument();
   expect(mockApiFetch).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
 });
 
-test("submits the rating and comment for the delivered order", async () => {
+test("submits the rating on a star tap", async () => {
   mockSubmitReview.mockResolvedValue({
     id: "rev-1",
     rating: 5,
-    body: "быстро",
+    body: null,
     author_name: null,
     created_at: "2026-07-28T00:00:00Z",
   });
   await openWithForm();
 
   fireEvent.click(screen.getByRole("button", { name: "5" }));
-  fireEvent.change(screen.getByRole("textbox"), { target: { value: "быстро" } });
-  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
 
   expect(await screen.findByText("web.brandReviews.thanks")).toBeInTheDocument();
   expect(mockSubmitReview).toHaveBeenCalledWith({
     order_id: ORDER_ID,
     brand_slug: "steam",
     rating: 5,
-    body: "быстро",
   });
 });
 
-test("reports an order rated elsewhere in the meantime (409)", async () => {
+test("hides the form when a concurrent submit already rated the order (409)", async () => {
   mockSubmitReview.mockRejectedValue(new ApiError(409, "/reviews"));
   await openWithForm();
 
   fireEvent.click(screen.getByRole("button", { name: "4" }));
-  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
 
-  expect(await screen.findByText("web.brandReviews.alreadyReviewed")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(screen.queryByText("web.brandReviews.askTitleNamed")).not.toBeInTheDocument();
+  });
 });
 
 test("hides the review form when the order is already reviewed", async () => {
@@ -163,11 +157,8 @@ test("hides the review form when the order is already reviewed", async () => {
   renderModal();
 
   await screen.findByRole("dialog");
-  // The dialog can render before `my-reviews` settles, and the form only ever
-  // disappears as that answer lands — so retry instead of asserting on the
-  // first paint.
   await waitFor(() => {
-    expect(screen.queryByText("web.brandReviews.formTitle")).not.toBeInTheDocument();
+    expect(screen.queryByText("web.brandReviews.askTitleNamed")).not.toBeInTheDocument();
   });
   expect(
     screen.getByRole("heading", { name: "web.orderResult.deliveredTitle" }),

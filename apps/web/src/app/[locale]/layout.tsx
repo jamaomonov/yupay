@@ -11,6 +11,7 @@ import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { JsonLd } from "@/components/JsonLd";
+import { CatchUpReviewModal } from "@/components/order/CatchUpReviewModal";
 import { OrderDeliveredModal } from "@/components/order/OrderDeliveredModal";
 import { SkipLink } from "@/components/SkipLink";
 import { SupportFab } from "@/components/SupportFab";
@@ -179,6 +180,7 @@ export default async function LocaleLayout({
             <Footer locale={locale} />
             <LoginModal locale={locale} />
             <OrderDeliveredModal />
+            <CatchUpReviewModal />
             <SupportFab />
           </Providers>
         </NextIntlClientProvider>

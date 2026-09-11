@@ -27,7 +27,7 @@ import { SkeletonView } from "@/components/order/SkeletonView";
 import { StatusCard, stageFor } from "@/components/order/StatusCard";
 import { Summary } from "@/components/order/Summary";
 import { WalletFundingStatus } from "@/components/order/WalletFundingStatus";
-import { ReviewsSheet } from "@/components/ReviewsSheet";
+import { RateAsk } from "@/components/review/RateAsk";
 import { useMe } from "@/lib/auth";
 import { useT } from "@/lib/i18n";
 import { useActivePayment, useDeliveries, useOrder } from "@/lib/orders";
@@ -113,7 +113,6 @@ export default function OrderSuccess() {
     queryFn: () => getMyReviews(),
     enabled: Boolean(me.data) && order?.status === "delivered",
   });
-  const [reviewOpen, setReviewOpen] = useState(false);
 
   // Lookup the in-flight payment intent for a still-unpaid order so we can
   // surface a «Оплатить» button that jumps straight to the acquirer's hosted
@@ -268,24 +267,20 @@ export default function OrderSuccess() {
         </Link>
       </div>
 
+      {isDelivered && canRate && rateBrandSlug && (
+        <div className="px-4">
+          <RateAsk
+            orderId={order.id}
+            brandSlug={rateBrandSlug}
+            brandName={order.items[0]?.display?.brand_name ?? null}
+          />
+        </div>
+      )}
+
       {isDelivered && (
         <DeliveredExtras
           brandName={order.items[0]?.display?.brand_name ?? null}
           imageUrl={order.items[0]?.display?.image_url ?? null}
-          canRate={canRate}
-          onRate={() => {
-            setReviewOpen(true);
-          }}
-        />
-      )}
-
-      {reviewOpen && rateBrandSlug && (
-        <ReviewsSheet
-          brandSlug={rateBrandSlug}
-          formOrderId={order.id}
-          onClose={() => {
-            setReviewOpen(false);
-          }}
         />
       )}
     </motion.div>

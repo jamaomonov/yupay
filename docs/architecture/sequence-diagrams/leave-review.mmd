@@ -1,27 +1,32 @@
 sequenceDiagram
     autonumber
     actor Buyer
-    participant Web as Web / Mini App
+    participant Client as Web / Mini App
+    participant TG as Telegram
     participant API as reviews.routes
     participant Svc as reviews.service
     participant DB as Postgres
 
-    Buyer->>Web: Tap "Rate your purchase" (from order history)
-    Web->>API: POST /reviews {order_id, brand_slug, rating, body} + Idempotency-Key
-    API->>Svc: create_review(user_id, order_id, brand_slug, rating, body)
-    Svc->>DB: resolve brand_id from slug
-    Svc->>DB: load order (owner? delivered? contains brand?)
-    alt not owner / not delivered / brand not in order
-        Svc-->>API: ForbiddenError (403)
-    else eligible
-        Svc->>DB: INSERT review (published) [UNIQUE user+order+brand]
-        alt already reviewed
-            DB-->>Svc: IntegrityError
-            Svc-->>API: ConflictError 409 already_reviewed
-        else new
-            Svc->>DB: SELECT brand_rating_stats FOR UPDATE
-            Svc->>DB: bump count / sum / avg / histogram
-            Svc-->>API: Review
-            API-->>Web: 201 ReviewOut
+    alt Live delivery (same session)
+        Buyer->>Client: Tap a star on the delivered dialog
+        Client->>API: POST /reviews {order_id, brand_slug, rating} + Idempotency-Key
+        API->>Svc: create_review(...)
+        Svc->>DB: INSERT review (published, body null)
+        Svc->>DB: bump brand_rating_stats
+        API-->>Client: 201 ReviewOut
+        opt Optional chips / comment within 15 min
+            Buyer->>Client: Tap a chip or blur the textarea
+            Client->>API: PATCH /reviews/{id} {body} + Idempotency-Key
+            API-->>Client: 200 ReviewOut (rating unchanged)
         end
+    else Buyer left to check the game, comes back later
+        Note over Client,API: GET /reviews/pending-ask is 2h–14d, catalog only
+        Buyer->>Client: Open Mini App / logged-in web (home or history)
+        Client->>API: GET /reviews/pending-ask
+        API-->>Client: {order_id, brand_slug, brand_name} or null
+        Buyer->>Client: Tap a star (same POST as live)
+    else Telegram delivery message
+        TG-->>Buyer: "Заказ выдан" + web_app "Оценить заказ"
+        Buyer->>Client: Launch /?review={order_id}
+        Client->>Client: navigate /order/{id} → RateAsk
     end

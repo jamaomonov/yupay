@@ -13,7 +13,9 @@ from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGT
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user, resolve_request_actor
 from yupay.modules.reviews import service as svc
+from yupay.modules.reviews.amend import amend_review_body
 from yupay.modules.reviews.models import BrandRatingStats, Review
+from yupay.modules.reviews.pending import pending_ask
 from yupay.modules.reviews.schemas import (
     AdminBrandReviewStatsListOut,
     AdminBrandReviewStatsOut,
@@ -21,10 +23,12 @@ from yupay.modules.reviews.schemas import (
     AdminReviewOut,
     OwnReviewListOut,
     OwnReviewOut,
+    ReviewAmendIn,
     ReviewCreateIn,
     ReviewEligibilityOut,
     ReviewListOut,
     ReviewOut,
+    ReviewPendingAskOut,
     ReviewReportIn,
     ReviewStatsOut,
 )
@@ -147,6 +151,67 @@ async def list_own_reviews(
 ) -> OwnReviewListOut:
     reviews = await svc.list_own(db, user_id=user.id)
     return OwnReviewListOut(items=[OwnReviewOut.model_validate(r) for r in reviews])
+
+
+@router.get(
+    "/pending-ask",
+    response_model=ReviewPendingAskOut | None,
+    summary="Unreviewed delivered order old enough to ask about on next session",
+)
+async def pending_ask_route(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    user: Annotated[User, Depends(current_user)],
+) -> ReviewPendingAskOut | None:
+    """The catch-up prompt's input: one catalog order, or null.
+
+    User-only (Mini App has no guests). A 2-hour floor keeps this off the
+    same session as delivery — the buyer left to check the game.
+    """
+    row = await pending_ask(db, user_id=user.id, locale=user.locale)
+    if row is None:
+        return None
+    return ReviewPendingAskOut(
+        order_id=row.order_id,
+        brand_slug=row.brand_slug,
+        brand_name=row.brand_name,
+        delivered_at=row.delivered_at,
+    )
+
+
+@router.patch(
+    "/{review_id}",
+    response_model=ReviewOut,
+    summary="Add or replace the comment on a review just submitted (15-minute window)",
+)
+async def amend_review_route(
+    review_id: str,
+    body: ReviewAmendIn,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> ReviewOut:
+    """Body-only follow-up after a one-tap rating. Rating cannot change.
+
+    The same actor resolution as ``POST /reviews`` (Bearer or Guest). The
+    window is 15 minutes from ``created_at``; after that the review is frozen
+    again. Idempotency-Key required like every other write.
+    """
+    _require_idempotency_key(idempotency_key)
+    actor = await resolve_request_actor(request, db)
+    review = await amend_review_body(
+        db,
+        review_id=review_id,
+        user_id=actor.user_id,
+        guest_email=actor.guest_email,
+        body=body.body,
+    )
+    return ReviewOut(
+        id=review.id,
+        rating=review.rating,
+        body=review.body,
+        author_name=actor.user.display_name if actor.user else None,
+        created_at=review.created_at,
+    )
 
 
 @router.post(

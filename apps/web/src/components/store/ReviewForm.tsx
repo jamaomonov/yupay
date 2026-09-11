@@ -4,101 +4,132 @@ import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
 
-import { buttonStyles } from "@/lib/button";
+const POSITIVE_TAGS = ["tagFast", "tagAsExpected", "tagAgain"] as const;
+const NEGATIVE_TAGS = ["tagSlow", "tagWrongAccount", "tagExpensive", "tagSupport"] as const;
+
+type TagKey = (typeof POSITIVE_TAGS)[number] | (typeof NEGATIVE_TAGS)[number];
 
 export interface ReviewFormProps {
-  /** Called with the chosen rating (1–5) and the trimmed comment body when the
-   *  form is submitted. Never invoked while `rating < 1` — the submit button
-   *  is disabled and the form intercepts submit in that case too. */
-  onSubmit: (rating: number, body: string) => void;
-  /** True while the parent's submit request is in flight. Disables the submit
-   *  button and swaps its label to the "submitting" translation. */
+  /** Called with the chosen rating (1–5) the moment a star is tapped. */
+  onSubmit: (rating: number) => void;
+  /** Called with the composed comment (chips + extra text) after a rating. */
+  onAmend?: ((body: string) => void) | undefined;
   submitting: boolean;
-  /** True to show the inline error line below the textarea (the parent's last
-   *  submit attempt failed with a non-409 error). */
   showError: boolean;
-  /** Extra classes merged onto the outer `<form>` — callers differ only in
-   *  their top margin (e.g. `mt-6` vs `mt-8`). */
-  className?: string;
-  /** `card` (default) frames the form as its own panel inside a page section.
-   *  `bare` drops the frame for a host that already is one — the delivered
-   *  modal, where a bordered card inside a bordered card reads as a mistake. */
+  className?: string | undefined;
   variant?: "card" | "bare";
+  brandName?: string | null | undefined;
+  /** Set after a successful rating POST — switches the form into follow-up. */
+  rated?: number | undefined;
 }
 
 /**
- * Presentational star-rating + comment form shared by GuestReviewPanel and
- * WriteReviewPanel. Owns only the input state (rating/hover/body); the
- * idle|sending|done|already|error orchestration, auth/eligibility gating, and
- * the actual submit call stay in the parent, which drives this component via
- * `submitting`/`showError` and receives the result through `onSubmit`.
+ * One-tap star rating, then optional chips + comment. Owns input state; the
+ * parent owns idle|sending|done|already|error and the actual HTTP calls.
  */
 export function ReviewForm({
   onSubmit,
+  onAmend,
   submitting,
   showError,
   className,
   variant = "card",
+  brandName,
+  rated,
 }: ReviewFormProps) {
   const t = useTranslations("web.brandReviews");
-  const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
-  const [body, setBody] = useState("");
+  const [picked, setPicked] = useState<Set<TagKey>>(new Set());
+  const [extra, setExtra] = useState("");
 
-  function handleSubmit(e: React.SyntheticEvent) {
-    e.preventDefault();
-    if (rating < 1) return;
-    onSubmit(rating, body.trim());
+  const title = brandName ? t("askTitleNamed", { brand: brandName }) : t("askTitle");
+  const frame = variant === "card" ? "border-border bg-card rounded-2xl border p-5" : "";
+  const tags: readonly TagKey[] = (rated ?? 0) >= 4 ? POSITIVE_TAGS : NEGATIVE_TAGS;
+
+  function pushAmend(nextTags: Set<TagKey>, nextExtra: string) {
+    if (!onAmend) return;
+    const labels = [...nextTags].map((k) => t(k));
+    const body = [...labels, nextExtra.trim()].filter(Boolean).join(". ");
+    if (body) onAmend(body);
   }
 
-  const active = hover || rating;
-  const frame = variant === "card" ? "border-border bg-card rounded-2xl border p-5" : "";
-  return (
-    <form onSubmit={handleSubmit} className={`${frame} ${className ?? ""}`}>
-      <p className="text-sm font-semibold">{t("formTitle")}</p>
-      <div className="mt-3">
-        <div className="text-tx-mute mb-1.5 text-xs">{t("ratingLabel")}</div>
-        <div className="flex gap-1">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button
-              key={n}
-              type="button"
-              aria-label={String(n)}
-              onClick={() => {
-                setRating(n);
-              }}
-              onMouseEnter={() => {
-                setHover(n);
-              }}
-              onMouseLeave={() => {
-                setHover(0);
-              }}
-              className="p-0.5"
-            >
-              <Star size={26} className={n <= active ? "fill-gold text-gold" : "text-white/25"} />
-            </button>
-          ))}
+  if (rated !== undefined && rated >= 1) {
+    return (
+      <div className={`${frame} ${className ?? ""}`}>
+        <p className="text-primary text-sm font-semibold">{t("thanks")}</p>
+        <p className="text-tx-mute mt-1 text-xs">{t("followUp")}</p>
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {tags.map((key) => {
+            const on = picked.has(key);
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => {
+                  const next = new Set(picked);
+                  if (on) next.delete(key);
+                  else next.add(key);
+                  setPicked(next);
+                  pushAmend(next, extra);
+                }}
+                className={
+                  on
+                    ? "bg-primary text-primary-foreground rounded-full px-2.5 py-1 text-xs font-semibold"
+                    : "border-border text-tx-mute rounded-full border px-2.5 py-1 text-xs"
+                }
+              >
+                {t(key)}
+              </button>
+            );
+          })}
         </div>
+        <label className="mt-3 block">
+          <span className="sr-only">{t("commentLabel")}</span>
+          <textarea
+            value={extra}
+            onChange={(ev) => {
+              setExtra(ev.target.value.slice(0, 2000));
+            }}
+            onBlur={() => {
+              pushAmend(picked, extra);
+            }}
+            rows={2}
+            className="border-border bg-background focus-visible:border-primary w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
+          />
+        </label>
+        {showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
       </div>
-      <label className="mt-4 block">
-        <span className="text-tx-mute mb-1.5 block text-xs">{t("commentLabel")}</span>
-        <textarea
-          value={body}
-          onChange={(ev) => {
-            setBody(ev.target.value.slice(0, 2000));
-          }}
-          rows={3}
-          className="border-border bg-background focus-visible:border-primary w-full resize-none rounded-xl border px-3 py-2 text-sm outline-none"
-        />
-      </label>
+    );
+  }
+
+  const active = hover;
+  return (
+    <div className={`${frame} ${className ?? ""}`}>
+      <p className="text-sm font-semibold">{title}</p>
+      <p className="text-tx-mute mt-1 text-xs">{t("askHint")}</p>
+      <div className="mt-3 flex gap-1">
+        {[1, 2, 3, 4, 5].map((n) => (
+          <button
+            key={n}
+            type="button"
+            aria-label={String(n)}
+            disabled={submitting}
+            onClick={() => {
+              onSubmit(n);
+            }}
+            onMouseEnter={() => {
+              setHover(n);
+            }}
+            onMouseLeave={() => {
+              setHover(0);
+            }}
+            className="p-0.5 disabled:opacity-50"
+          >
+            <Star size={26} className={n <= active ? "fill-gold text-gold" : "text-white/25"} />
+          </button>
+        ))}
+      </div>
       {showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
-      <button
-        type="submit"
-        disabled={rating < 1 || submitting}
-        className={buttonStyles({ size: "sm", className: "mt-4 disabled:opacity-50" })}
-      >
-        {submitting ? t("submitting") : t("submit")}
-      </button>
-    </form>
+    </div>
   );
 }

@@ -176,3 +176,48 @@ view itself when `?order=` is present rather than trusting the hash.
 - Negative: the modal no longer doubles as a route to the brand page, so a
   buyer who wanted to read other reviews navigates there themselves —
   accepted, that was never what the CTA promised.
+
+## Amendment: one-tap rating, 15-minute body amend, next-session catch-up (2026-09-11)
+
+### Context
+
+Buyers tap a star while the delivery dialog is still on screen, then leave
+to check the game. They rarely come back the same session, so a form that
+asks for a comment *before* POST loses the rating. A delayed Telegram/email
+nudge would be a new notification job and a second ping on top of "order
+delivered". Catch-up on the *next Mini App (or logged-in web) open* is the
+same ask, at the moment they actually return.
+
+### Decision
+
+1. **Tap a star = `POST /reviews` immediately** (rating only). Optional chips
+   and a textarea follow; they are not required to persist the score.
+2. **`PATCH /reviews/{id}`** accepts `{body}` only, from the same actor as
+   POST (Bearer or Guest), for **15 minutes** after `created_at`. Rating
+   stays frozen (aggregates and the SEO snapshot do not move). After the
+   window: `403` with `code=amend_window_closed`. Idempotency-Key required.
+   Chips are written as localized labels joined into `body` with `. `; no
+   tags column.
+3. **`GET /reviews/pending-ask`** (Bearer only) returns the newest delivered
+   catalog order that has no review, with `delivered_at` between **2 hours
+   and 14 days** ago, or `null`. Merchant and `wallet_topup` orders are
+   excluded. Clients show this on calm screens (web: logged-in layout minus
+   checkout/that order page; Mini App: `/` and `/history`) and never over
+   the live delivery dialog. Dismiss is local (`localStorage`), not a server
+   send log — no new table.
+4. **No delayed Telegram/email job.** The existing "Заказ выдан" Telegram
+   message gains one `web_app` button, URL `{telegram_miniapp_url}/?review={order_id}`.
+   The Mini App reads `?review=` (or `start_param` `review_<uuid>`) and
+   opens `/order/{id}`.
+
+### Consequences
+
+- Positive: the rating survives the "I went to check UC" gap; the next-open
+  prompt is the natural time to ask "how did it go?"; no extra outbound
+  ping and no migration.
+- Negative: a 2-hour floor misses a same-evening return under two hours
+  (the live dialog already asked); a local dismiss means another device
+  may ask again — accepted, that is one extra prompt, not a second review
+  row (`UNIQUE (order_id, brand_id)`).
+- The original "immutable" rule now means **rating is immutable**; body may
+  change once, briefly.

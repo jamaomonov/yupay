@@ -88,7 +88,12 @@ Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gat
 Public: `GET /reviews/brands/{slug}` (published reviews + aggregate, keyset
 `cursor`), `POST /reviews` (body `{order_id, brand_slug, rating, body?}`;
 **requires `Idempotency-Key`**; a repeat for the same `(order, brand)` returns
-`409 already_reviewed` — the client treats that as "already submitted"),
+`409 already_reviewed` — the client treats that as "already submitted";
+clients POST on the star tap, `body` optional), `PATCH /reviews/{id}`
+(`{body}` only, same actor as POST, **Idempotency-Key**, 15-minute window
+then `403 amend_window_closed`; rating cannot change),
+`GET /reviews/pending-ask` (Bearer; newest unreviewed catalog delivery aged
+2h–14d, or `null` — next-session catch-up, not a delayed Telegram ping),
 `GET /reviews/mine`, `POST /reviews/{id}/report` (auth, Idempotency-Key).
 Admin: `GET /admin/reviews?status=&reported=` + `POST /admin/reviews/{id}/{hide,unhide,remove}`
 (each requires `Idempotency-Key`; the actions are naturally idempotent). Catalog

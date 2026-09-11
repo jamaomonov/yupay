@@ -474,7 +474,7 @@ export default async function BrandPage({
             {/* useSearchParams() inside WriteReviewPanel needs a Suspense
                 boundary or `next build`'s static export of this page bails out. */}
             <Suspense fallback={null}>
-              <WriteReviewPanel brandSlug={brand.slug} />
+              <WriteReviewPanel brandSlug={brand.slug} brandName={brand.name} />
             </Suspense>
             {reviews.items.length > 0 && (
               <ul className="mt-8 flex flex-col gap-6">

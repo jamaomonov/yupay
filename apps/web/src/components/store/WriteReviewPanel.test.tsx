@@ -46,7 +46,7 @@ test("scrolls the reviews section into view when the visitor came to rate an ord
 
   wrap(<WriteReviewPanel brandSlug="steam" />);
 
-  expect(screen.getByText("web.brandReviews.formTitle")).toBeInTheDocument();
+  expect(screen.getByText("web.brandReviews.askTitle")).toBeInTheDocument();
   await waitFor(() => {
     expect(scrollIntoView).toHaveBeenCalled();
   });

@@ -7,12 +7,14 @@ import { BootstrapGate } from "@/components/BootstrapGate";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Shell } from "@/components/layout/Shell";
 import { OrderDeliveredDialog } from "@/components/OrderDeliveredDialog";
+import { CatchUpReviewDialog } from "@/components/review/CatchUpReviewDialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useOrderSocket } from "@/hooks/useOrderSocket";
 import { I18nProvider, useT } from "@/lib/i18n";
-import { showSettingsButton, watchTelegramActivity } from "@/lib/telegram";
+import { parseReviewLaunchParam } from "@/lib/review-ask";
+import { getWebApp, showSettingsButton, watchTelegramActivity } from "@/lib/telegram";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
 import CS2SkinMarket from "@/pages/CS2SkinMarket";
 import History from "@/pages/History";
@@ -67,6 +69,22 @@ function RealtimeUpdates() {
 }
 
 /**
+ * Telegram "Оценить заказ" opens the Mini App with ``?review=<orderId>`` (or
+ * a ``start_param``). Land on that order so the inline RateAsk is waiting.
+ */
+function ReviewLaunchGate() {
+  const [, navigate] = useLocation();
+  useEffect(() => {
+    const id = parseReviewLaunchParam(
+      window.location.search,
+      getWebApp()?.initDataUnsafe.start_param,
+    );
+    if (id) navigate(`/order/${id}`);
+  }, [navigate]);
+  return null;
+}
+
+/**
  * Native Settings entry (client ⋮ menu) → our settings route, and background
  * work paused while the app is minimised.
  *
@@ -98,6 +116,8 @@ function Router() {
   useTelegramIntegration();
   return (
     <Shell>
+      <ReviewLaunchGate />
+      <CatchUpReviewDialog />
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/cs2-market" component={CS2SkinMarket} />

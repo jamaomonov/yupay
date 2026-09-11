@@ -44,6 +44,23 @@ log = get_logger("yupay.notifications.service")
 _MAX_INLINE_CODES: Final[int] = 5
 
 
+def review_webapp_markup(order_id: str) -> dict[str, Any] | None:
+    """Inline keyboard opening the Mini App on the order's review ask.
+
+    ``None`` when the Mini App URL is unset (dev without the surface). The
+    ``review=`` query is read by the Mini App on launch. Button copy matches
+    the rest of this module: Telegram delivery messages are Russian.
+    """
+    base = get_settings().telegram_miniapp_url.rstrip("/")
+    if not base:
+        return None
+    return {
+        "inline_keyboard": [
+            [{"text": "Оценить заказ", "web_app": {"url": f"{base}/?review={order_id}"}}]
+        ]
+    }
+
+
 async def _resolve_chat_id(
     db: AsyncSession, *, user_id: str | None
 ) -> tuple[int, str | None] | None:
@@ -425,7 +442,12 @@ async def notify_order_delivered(order_id: str) -> bool:
     if truncated > 0:
         body += f"\n\n<i>… и ещё {truncated}. Открой приложение, чтобы увидеть все.</i>"
 
-    return await tg.send_message(bot_token=token, chat_id=chat_id, text=body)
+    return await tg.send_message(
+        bot_token=token,
+        chat_id=chat_id,
+        text=body,
+        reply_markup=review_webapp_markup(order_id),
+    )
 
 
 async def resend_guest_delivery_email(order_id: str, email: str) -> None:
@@ -573,6 +595,7 @@ __all__ = [
     "notify_order_delivered",
     "notify_order_failed",
     "notify_order_paid",
+    "review_webapp_markup",
     "schedule",
     "schedule_after_commit",
 ]

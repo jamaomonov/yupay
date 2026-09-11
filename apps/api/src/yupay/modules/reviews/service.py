@@ -1,7 +1,8 @@
 """Business logic for brand reviews, moderation, and denormalized rating stats.
 
-Reviews are anchored to a delivered order (proof of purchase) and are immutable
-once posted. Only ``published`` reviews count toward :class:`BrandRatingStats`,
+Reviews are anchored to a delivered order (proof of purchase). The rating is
+immutable once posted; the comment may be amended for 15 minutes so a one-tap
+star can land first. See ``reviews.amend``. Only ``published`` reviews count toward :class:`BrandRatingStats`,
 which is bumped transactionally on every status change so the storefront can read
 aggregates cheaply. See docs/decisions/0039-reviews-and-ratings.md.
 """
