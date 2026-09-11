@@ -14,6 +14,11 @@ export interface SteamLinkOut {
   avatar_url: string | null;
 }
 
+export interface UserWalletBalanceOut {
+  currency: string;
+  balance: string;
+}
+
 export interface UserAdminOut {
   id: string;
   email: string | null;
@@ -32,9 +37,20 @@ export interface UserAdminOut {
   banned_by: string | null;
   telegram_link: TelegramLinkOut | null;
   steam_link: SteamLinkOut | null;
+  wallet_balances: UserWalletBalanceOut[];
 }
 
 export interface UserAdminListOut {
   items: UserAdminOut[];
   total: number;
+  /** Global user_wallet liability, not filtered by the current search. */
+  wallet_totals: UserWalletBalanceOut[];
 }
+
+export type UserAdminSort =
+  | "created_desc"
+  | "created_asc"
+  | "wallet_desc"
+  | "wallet_asc"
+  | "name_asc"
+  | "name_desc";

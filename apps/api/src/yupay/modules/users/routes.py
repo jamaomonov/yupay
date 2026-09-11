@@ -11,9 +11,10 @@ gate). This file exposes:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -26,8 +27,10 @@ from yupay.modules.users.schemas import (
     UpdateMeIn,
     UserAdminListOut,
     UserAdminOut,
+    UserAdminSort,
     UserOut,
     UserRolesIn,
+    UserWalletBalanceOut,
 )
 
 router = APIRouter(prefix="/users", tags=["users"])
@@ -59,6 +62,16 @@ async def update_me_route(
     return UserOut.model_validate(updated)
 
 
+def _wallet_out(pairs: list[tuple[str, Decimal]]) -> list[UserWalletBalanceOut]:
+    return [UserWalletBalanceOut(currency=currency, balance=amount) for currency, amount in pairs]
+
+
+def _admin_user_out(user: User, wallets: list[tuple[str, Decimal]] | None = None) -> UserAdminOut:
+    return UserAdminOut.model_validate(user).model_copy(
+        update={"wallet_balances": _wallet_out(wallets or [])}
+    )
+
+
 @admin_router.get(
     "",
     response_model=UserAdminListOut,
@@ -68,18 +81,29 @@ async def admin_list_users(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     search: str | None = None,
+    sort: Annotated[UserAdminSort, Query()] = "created_desc",
     limit: int = 50,
     offset: int = 0,
 ) -> UserAdminListOut:
-    """Paged user listing. ``search`` matches display_name / email / tg_username
-    / tg_user_id (when the term is a digit)."""
+    """Paged user listing.
+
+    ``search`` matches display_name / email / tg_username / tg_user_id (when
+    the term is a digit). ``sort`` is server-side because the list is paged.
+    ``wallet_totals`` is the global ``user_wallet`` liability — not filtered
+    by the current search.
+    """
     capped_limit = max(1, min(limit, 200))
-    rows, total = await svc.list_users_admin(
-        db, search=search, limit=capped_limit, offset=max(0, offset)
+    page = await svc.list_users_admin(
+        db,
+        search=search,
+        sort=sort,
+        limit=capped_limit,
+        offset=max(0, offset),
     )
     return UserAdminListOut(
-        items=[UserAdminOut.model_validate(u) for u in rows],
-        total=total,
+        items=[_admin_user_out(u, page.wallets.get(u.id, [])) for u in page.users],
+        total=page.total,
+        wallet_totals=_wallet_out(page.totals),
     )
 
 

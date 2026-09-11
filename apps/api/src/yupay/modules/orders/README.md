@@ -39,15 +39,15 @@ from yupay.modules.orders.api import (
 
 ## HTTP surface
 
-| Method | Path                               | Auth                      | Purpose                                                                                                                                                              |
-| ------ | ---------------------------------- | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST` | `/api/v1/orders`                   | Bearer or Guest           | Create order. Requires `Idempotency-Key` (≥16 chars).                                                                                                                |
-| `GET`  | `/api/v1/orders/{id}`              | Bearer or Guest+`?email=` | Owner-only detail. 404 on mismatch.                                                                                                                                  |
-| `GET`  | `/api/v1/orders`                   | Bearer                    | List my orders (DESC, capped at 50).                                                                                                                                 |
-| `GET`  | `/api/v1/admin/orders`             | admin role                | All orders, optional `status` filter.                                                                                                                                |
-| `GET`  | `/api/v1/admin/orders/{id}`        | admin role                | Detail with full event log.                                                                                                                                          |
-| `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role                | Only valid from `pending_payment`.                                                                                                                                   |
-| `POST` | `/api/v1/admin/orders/{id}/fail`   | admin role                | Close a paid-but-undeliverable order. Body `{reason}` (required). Only from `paid`/`fulfilling`/`fulfilled`; cascades open tasks + pending payments. Moves no money. |
+| Method | Path                               | Auth                      | Purpose                                                                                                                                                                                                 |
+| ------ | ---------------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST` | `/api/v1/orders`                   | Bearer or Guest           | Create order. Requires `Idempotency-Key` (≥16 chars).                                                                                                                                                   |
+| `GET`  | `/api/v1/orders/{id}`              | Bearer or Guest+`?email=` | Owner-only detail. 404 on mismatch.                                                                                                                                                                     |
+| `GET`  | `/api/v1/orders`                   | Bearer                    | List my orders (DESC, capped at 50).                                                                                                                                                                    |
+| `GET`  | `/api/v1/admin/orders`             | admin role                | All orders. `status_filter`, `since`/`until`, `q`. `q` (≥3 chars) matches order id (full or prefix), owner user id, guest email, the owner's name/email, catalog brand/product name, or merchant title. |
+| `GET`  | `/api/v1/admin/orders/{id}`        | admin role                | Detail with full event log.                                                                                                                                                                             |
+| `POST` | `/api/v1/admin/orders/{id}/cancel` | admin role                | Only valid from `pending_payment`.                                                                                                                                                                      |
+| `POST` | `/api/v1/admin/orders/{id}/fail`   | admin role                | Close a paid-but-undeliverable order. Body `{reason}` (required). Only from `paid`/`fulfilling`/`fulfilled`; cascades open tasks + pending payments. Moves no money.                                    |
 
 ### `OrderAdminOut` names all three actors
 

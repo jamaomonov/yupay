@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import uuid
 from collections.abc import Iterable, Sequence
-from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any, Final
 
-from sqlalchemy import Text, cast, false, func, or_, select, update
+from sqlalchemy import false, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from sqlalchemy.sql.elements import ColumnElement
 
 from yupay.core.clock import now
 from yupay.core.config import Settings
@@ -34,6 +31,7 @@ from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.catalog.unit_sku import assert_qty_allowed, is_unit_sku
 from yupay.modules.fx.models import FxSnapshot
 from yupay.modules.gifts import checkout as gifts_checkout
+from yupay.modules.orders.admin_search import admin_search_clause as _admin_search_clause
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.orders.schemas import OrderCreate, OrderItemDisplay, OrderItemIn
 from yupay.modules.orders.scope import IS_SALE
@@ -1352,38 +1350,6 @@ async def list_stuck_paid_orders(db: AsyncSession, *, older_than_minutes: int) -
     return list((await db.execute(stmt)).unique().scalars().all())
 
 
-def _admin_search_clause(q: str) -> ColumnElement[bool] | None:
-    """Build the ``q`` predicate for the admin order list, or None if unusable.
-
-    Every branch is index-backed, because this table grows by thousands of rows
-    a day and support searches it all day long:
-
-    - a full UUID hits the ``orders`` primary key or ``ix_orders_user_created``;
-    - anything else is treated as an id fragment and matched as a prefix, which
-      is what ``ix_orders_id_prefix`` (``id::text text_pattern_ops``) exists for
-      — it is the shape an operator produces by copying the truncated id shown
-      in the table;
-    - a string containing ``@`` is matched as an email substring via the
-      ``ix_orders_guest_email_trgm`` trigram index, so a partial address from a
-      support ticket still finds the order.
-
-    Shorter than three characters is rejected rather than run: a one-character
-    prefix matches a sixteenth of the table and is never what someone meant.
-    """
-    term = q.strip()
-    if len(term) < 3:
-        return None
-    with suppress(ValueError):
-        canonical = str(uuid.UUID(term))
-        return or_(Order.id == canonical, Order.user_id == canonical)
-    if "@" in term:
-        # Spelled to match ``ix_orders_guest_email_trgm`` exactly: an expression
-        # index is only used by a predicate of the same shape, so ``ILIKE`` on
-        # the CITEXT column would quietly fall back to a sequential scan.
-        return func.lower(cast(Order.guest_email, Text)).like(f"%{term.lower()}%")
-    return cast(Order.id, Text).like(f"{term.lower()}%")
-
-
 async def list_orders_admin(
     db: AsyncSession,
     *,
@@ -1398,7 +1364,8 @@ async def list_orders_admin(
 
     ``since``/``until`` filter on ``Order.created_at`` (inclusive on both
     ends), mirroring the audit feed's date-range convention. ``q`` searches
-    order id, owner id and guest email — see ``_admin_search_clause``.
+    order id, owner id, guest email, the owner's name/email, catalog
+    brand/product names and merchant title — see ``admin_search_clause``.
     """
     base = select(Order).options(*_order_load_options(), selectinload(Order.events))
     count_stmt = select(func.count()).select_from(Order)

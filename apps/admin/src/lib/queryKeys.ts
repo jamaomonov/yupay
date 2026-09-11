@@ -35,8 +35,20 @@ export const qk = {
   order: (id: string) => ["admin", "orders", id] as const,
 
   // users
-  users: (filters: { search?: string | null; limit?: number; offset?: number }) =>
-    ["admin", "users", filters.search ?? null, filters.limit ?? 50, filters.offset ?? 0] as const,
+  users: (filters: {
+    search?: string | null;
+    sort?: string | null;
+    limit?: number;
+    offset?: number;
+  }) =>
+    [
+      "admin",
+      "users",
+      filters.search ?? null,
+      filters.sort ?? "created_desc",
+      filters.limit ?? 50,
+      filters.offset ?? 0,
+    ] as const,
   user: (id: string) => ["admin", "users", id] as const,
 
   // fx

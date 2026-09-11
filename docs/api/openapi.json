@@ -13438,6 +13438,13 @@
           "total": {
             "title": "Total",
             "type": "integer"
+          },
+          "wallet_totals": {
+            "items": {
+              "$ref": "#/components/schemas/UserWalletBalanceOut"
+            },
+            "title": "Wallet Totals",
+            "type": "array"
           }
         },
         "required": [
@@ -13579,6 +13586,13 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "wallet_balances": {
+            "items": {
+              "$ref": "#/components/schemas/UserWalletBalanceOut"
+            },
+            "title": "Wallet Balances",
+            "type": "array"
           }
         },
         "required": [
@@ -13735,6 +13749,26 @@
           }
         },
         "title": "UserRolesIn",
+        "type": "object"
+      },
+      "UserWalletBalanceOut": {
+        "description": "One ``user_wallet`` balance, in the account's own currency.\n\n``balance`` is major units as a Decimal, same wire shape as Customer 360.",
+        "properties": {
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "balance"
+        ],
+        "title": "UserWalletBalanceOut",
         "type": "object"
       },
       "ValidationError": {
@@ -21402,7 +21436,7 @@
     },
     "/api/v1/admin/orders": {
       "get": {
-        "description": "Admin order list with optional status filter and created-at date range.\n\n``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601\nquery params (matching the audit feed's convention \u2014 see\n``modules/audit/routes.py``). ``q`` matches an order id (full or prefix),\nan owner's user id, or a guest email; it filters in the database so a\nresult on page 7 is still findable from page 1, and ``total`` describes\nthe search rather than the page.",
+        "description": "Admin order list with optional status filter and created-at date range.\n\n``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601\nquery params (matching the audit feed's convention \u2014 see\n``modules/audit/routes.py``). ``q`` matches an order id (full or prefix),\nan owner's user id, a guest email, the owner's name/email, a catalog\nbrand or product name, or a merchant title; it filters in the database so\na result on page 7 is still findable from page 1, and ``total`` describes\nthe search rather than the page.",
         "operationId": "admin_list_orders_api_v1_admin_orders_get",
         "parameters": [
           {
@@ -23969,7 +24003,7 @@
     },
     "/api/v1/admin/users": {
       "get": {
-        "description": "Paged user listing. ``search`` matches display_name / email / tg_username\n/ tg_user_id (when the term is a digit).",
+        "description": "Paged user listing.\n\n``search`` matches display_name / email / tg_username / tg_user_id (when\nthe term is a digit). ``sort`` is server-side because the list is paged.\n``wallet_totals`` is the global ``user_wallet`` liability \u2014 not filtered\nby the current search.",
         "operationId": "admin_list_users_api_v1_admin_users_get",
         "parameters": [
           {
@@ -23986,6 +24020,24 @@
                 }
               ],
               "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "created_desc",
+              "enum": [
+                "created_desc",
+                "created_asc",
+                "wallet_desc",
+                "wallet_asc",
+                "name_asc",
+                "name_desc"
+              ],
+              "title": "Sort",
+              "type": "string"
             }
           },
           {

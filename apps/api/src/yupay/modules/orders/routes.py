@@ -352,8 +352,9 @@ async def admin_list_orders(
     ``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601
     query params (matching the audit feed's convention — see
     ``modules/audit/routes.py``). ``q`` matches an order id (full or prefix),
-    an owner's user id, or a guest email; it filters in the database so a
-    result on page 7 is still findable from page 1, and ``total`` describes
+    an owner's user id, a guest email, the owner's name/email, a catalog
+    brand or product name, or a merchant title; it filters in the database so
+    a result on page 7 is still findable from page 1, and ``total`` describes
     the search rather than the page.
     """
     orders, total = await svc.list_orders_admin(

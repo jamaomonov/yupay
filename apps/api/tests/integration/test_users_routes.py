@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import time
+from decimal import Decimal
 from typing import Any
 from urllib.parse import urlencode
 
@@ -14,6 +15,8 @@ from httpx import AsyncClient
 from sqlalchemy import select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.modules.users.models import TelegramLink, User
+from yupay.modules.wallet import service as wallet_svc
+from yupay.modules.wallet.service import Leg
 
 pytestmark = pytest.mark.asyncio
 
@@ -137,6 +140,97 @@ async def test_admin_list_users_coerces_malformed_roles_to_empty_list(
     body = r.json()
     by_id = {item["id"]: item for item in body["items"]}
     assert by_id[_decode_user_id(other_token)]["roles"] == []
+
+
+async def test_admin_list_users_includes_wallet_balances_and_global_totals(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The directory must show how much customer money we hold, and each
+    row's ``user_wallet``, without an N+1 of ``balance()``."""
+    rich_token = await _login(integration_client, tg_id=9001)
+    poor_token = await _login(integration_client, tg_id=9002)
+    admin_token = await _login(integration_client, tg_id=9003)
+    await _grant_admin(db_session, tg_id=9003)
+    rich_id = _decode_user_id(rich_token)
+    poor_id = _decode_user_id(poor_token)
+
+    await _credit_user_wallet(db_session, user_id=rich_id, amount=Decimal("25"), key="rich")
+    await _credit_user_wallet(db_session, user_id=poor_id, amount=Decimal("5"), key="poor")
+    await db_session.commit()
+
+    r = await integration_client.get(
+        "/api/v1/admin/users?sort=wallet_desc",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    totals = {row["currency"]: Decimal(row["balance"]) for row in body["wallet_totals"]}
+    assert totals["USD"] == Decimal("30")
+
+    by_id = {item["id"]: item for item in body["items"]}
+    rich_wallets = {w["currency"]: Decimal(w["balance"]) for w in by_id[rich_id]["wallet_balances"]}
+    poor_wallets = {w["currency"]: Decimal(w["balance"]) for w in by_id[poor_id]["wallet_balances"]}
+    assert rich_wallets["USD"] == Decimal("25")
+    assert poor_wallets["USD"] == Decimal("5")
+
+    ordered_ids = [item["id"] for item in body["items"] if item["id"] in {rich_id, poor_id}]
+    assert ordered_ids == [rich_id, poor_id]
+
+    asc = await integration_client.get(
+        "/api/v1/admin/users?sort=wallet_asc",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    assert asc.status_code == 200, asc.text
+    asc_ids = [item["id"] for item in asc.json()["items"] if item["id"] in {rich_id, poor_id}]
+    assert asc_ids == [poor_id, rich_id]
+
+
+async def test_admin_list_users_sorts_by_created_at(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    first_token = await _login(integration_client, tg_id=9101)
+    second_token = await _login(integration_client, tg_id=9102)
+    admin_token = await _login(integration_client, tg_id=9103)
+    await _grant_admin(db_session, tg_id=9103)
+    first_id = _decode_user_id(first_token)
+    second_id = _decode_user_id(second_token)
+
+    newest = await integration_client.get(
+        "/api/v1/admin/users?sort=created_desc",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    newest_ids = [
+        item["id"] for item in newest.json()["items"] if item["id"] in {first_id, second_id}
+    ]
+    assert newest_ids == [second_id, first_id]
+
+    oldest = await integration_client.get(
+        "/api/v1/admin/users?sort=created_asc",
+        headers={"Authorization": f"Bearer {admin_token}"},
+    )
+    oldest_ids = [
+        item["id"] for item in oldest.json()["items"] if item["id"] in {first_id, second_id}
+    ]
+    assert oldest_ids == [first_id, second_id]
+
+
+async def _credit_user_wallet(db: AsyncSession, *, user_id: str, amount: Decimal, key: str) -> None:
+    user_acc = await wallet_svc.ensure_account(
+        db, owner_type="user", owner_id=user_id, kind="user_wallet", currency="USD"
+    )
+    house_acc = await wallet_svc.ensure_account(
+        db, owner_type="house", owner_id="house", kind="house_promo_expense", currency="USD"
+    )
+    await wallet_svc.post(
+        db,
+        kind="admin.adjust",
+        legs=[
+            Leg(account_id=user_acc.id, direction="D", amount=amount, currency="USD"),
+            Leg(account_id=house_acc.id, direction="C", amount=amount, currency="USD"),
+        ],
+        idempotency_key=f"admin-users-wallet-{key}",
+        actor="test",
+    )
 
 
 def _decode_user_id(access_token: str) -> str:

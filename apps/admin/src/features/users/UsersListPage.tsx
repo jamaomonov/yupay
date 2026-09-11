@@ -1,19 +1,30 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Ban, ChevronLeft, ChevronRight, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import type { UserAdminListOut, UserAdminOut } from "./types";
+import type { UserAdminListOut, UserAdminOut, UserAdminSort } from "./types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/States";
 import { apiGet } from "@/lib/api";
+import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 const PAGE_SIZE = 50;
+
+const SORT_OPTIONS: { value: UserAdminSort; label: string }[] = [
+  { value: "created_desc", label: "Сначала новые" },
+  { value: "created_asc", label: "Сначала старые" },
+  { value: "wallet_desc", label: "Баланс: по убыванию" },
+  { value: "wallet_asc", label: "Баланс: по возрастанию" },
+  { value: "name_asc", label: "Имя: А → Я" },
+  { value: "name_desc", label: "Имя: Я → А" },
+];
 
 /**
  * Users list — opening a row jumps straight to Customer 360 (`/customers/:id`),
@@ -28,23 +39,22 @@ export function UsersListPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [offset, setOffset] = useState(0);
+  const [sort, setSort] = useState<UserAdminSort>("created_desc");
   // Tiny debounce so the table doesn't fire a request on every keystroke.
   const debounced = useDebouncedValue(search, 250);
 
-  // Back to page one when the *search* changes — an offset into the previous
-  // result set means nothing against a different one. Keyed on the debounced
-  // value, so it fires when that value actually changes and not, as the local
-  // hook this replaced did, on every render: paging forward re-rendered, which
-  // re-armed its timer, which reset the offset a quarter-second later.
+  // Back to page one when the *search* or sort changes — an offset into the
+  // previous result set means nothing against a different one.
   useEffect(() => {
     setOffset(0);
-  }, [debounced]);
+  }, [debounced, sort]);
 
   const usersQuery = useQuery<UserAdminListOut>({
-    queryKey: qk.users({ search: debounced || null, limit: PAGE_SIZE, offset }),
+    queryKey: qk.users({ search: debounced || null, sort, limit: PAGE_SIZE, offset }),
     queryFn: () => {
       const params = new URLSearchParams();
       if (debounced) params.set("search", debounced);
+      params.set("sort", sort);
       params.set("limit", String(PAGE_SIZE));
       params.set("offset", String(offset));
       return apiGet<UserAdminListOut>(`/api/v1/admin/users?${params.toString()}`);
@@ -53,6 +63,7 @@ export function UsersListPage() {
 
   const rows = usersQuery.data?.items ?? [];
   const total = usersQuery.data?.total ?? 0;
+  const walletTotals = usersQuery.data?.wallet_totals ?? [];
   const showingFrom = rows.length === 0 ? 0 : offset + 1;
   const showingTo = offset + rows.length;
 
@@ -81,7 +92,7 @@ export function UsersListPage() {
           )}
           <div className="min-w-0">
             <div className="truncate font-medium">
-              {u.display_name || u.email || u.id.slice(0, 8)}
+              {u.display_name ?? u.email ?? u.id.slice(0, 8)}
             </div>
             <div className="truncate text-xs text-[var(--text-secondary)]">
               {u.email ?? `id ${u.id.slice(0, 8)}…`}
@@ -153,6 +164,21 @@ export function UsersListPage() {
       className: "w-20",
     },
     {
+      key: "wallet",
+      header: "Баланс",
+      render: (u) =>
+        u.wallet_balances.length === 0 ? (
+          <span className="text-xs text-[var(--text-secondary)]">—</span>
+        ) : (
+          <div className="flex flex-col items-end gap-0.5 text-xs tabular-nums">
+            {u.wallet_balances.map((w) => (
+              <span key={w.currency}>{formatMoney(w.balance, w.currency)}</span>
+            ))}
+          </div>
+        ),
+      className: "w-36 text-right",
+    },
+    {
       key: "created",
       header: "Зарег.",
       render: (u) =>
@@ -169,11 +195,30 @@ export function UsersListPage() {
     <div>
       <PageHeader
         title="Пользователи"
-        description={`Всего: ${total}. Поиск по имени, email, Telegram username/tg_id или Steam нику/steamid.`}
+        description={`Всего: ${String(total)}. Поиск по имени, email, Telegram username/tg_id или Steam нику/steamid. Сумма на кошельках — все user_wallet, не фильтр.`}
       />
 
-      <section className="mb-4">
-        <div className="relative max-w-md">
+      <section className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+        <StatCard
+          label="На кошельках (все)"
+          value={
+            walletTotals.length === 0 ? (
+              "—"
+            ) : (
+              <div className="flex flex-col gap-1">
+                {walletTotals.map((w) => (
+                  <span key={w.currency}>{formatMoney(w.balance, w.currency)}</span>
+                ))}
+              </div>
+            )
+          }
+          accent
+        />
+        <StatCard label="Пользователей" value={total} />
+      </section>
+
+      <section className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={search}
@@ -184,6 +229,21 @@ export function UsersListPage() {
             className="pl-9"
           />
         </div>
+        <Select
+          aria-label="Сортировка"
+          value={sort}
+          onChange={(e) => {
+            const next = SORT_OPTIONS.find((o) => o.value === e.target.value)?.value;
+            if (next !== undefined) setSort(next);
+          }}
+          containerClassName="w-full sm:w-56"
+        >
+          {SORT_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </Select>
       </section>
 
       {usersQuery.isError ? (

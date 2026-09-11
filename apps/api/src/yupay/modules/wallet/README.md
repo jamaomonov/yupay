@@ -65,6 +65,11 @@ GET  /api/v1/wallet/transactions      — моя история (default 50, max
 POST /api/v1/wallet/topup             — 1:1 пополнение через эквайринг (ADR-0058)
 POST /api/v1/admin/wallet/adjust      — ручная корректировка (signed amount, reason, idempotency_key)
 GET  /api/v1/admin/wallet/{user_id}   — все счета пользователя + история
+
+`GET /admin/users` (users module) reads `user_wallet` through
+`wallet.balances`: one query for the page's per-user balances, one for the
+global liability totals, and a subquery for `sort=wallet_*` (USD-equivalent
+via latest `fx_rates`). It never calls `balance()` per row.
 ```
 
 `POST /admin/wallet/adjust` посылает две ноги: `D user_<kind>` + `C house_promo_expense`. Отрицательный `amount` — клавбэк (направления меняются).

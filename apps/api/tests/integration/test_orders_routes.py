@@ -1127,6 +1127,103 @@ async def test_admin_orders_search_is_server_side(
     assert empty.json()["total"] == 0
 
 
+async def test_admin_orders_search_matches_product_user_and_merchant(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_pubg: dict[str, str],
+) -> None:
+    """Support searches the catalog name, the buyer's name/email, and the
+    reseller title — not only order id / guest email."""
+    from datetime import timedelta
+
+    from yupay.core.clock import now
+    from yupay.modules.merchants.models import Merchant
+
+    user_token = await _login_user(integration_client, tg_id=83)
+    admin_token = await _login_user(integration_client, tg_id=84)
+    await _grant_admin(db_session, tg_id=84)
+    admin_h = {"Authorization": f"Bearer {admin_token}"}
+
+    from sqlalchemy import select as sa_select
+
+    user_id = (
+        await db_session.execute(
+            sa_select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == 83)
+        )
+    ).scalar_one()
+    await db_session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(display_name="Ivan Petrov", email="ivan.petrov@example.com")
+    )
+    await db_session.commit()
+
+    create = await integration_client.post(
+        "/api/v1/orders",
+        headers={
+            "Authorization": f"Bearer {user_token}",
+            "Idempotency-Key": "admin-search-catalog-aaaaaa",
+        },
+        json={
+            "currency": "USD",
+            "items": [
+                {
+                    "sku_id": _seed_pubg["sku_id"],
+                    "qty": 1,
+                    "fulfillment_data": {"player_id": "909090", "server": "as"},
+                }
+            ],
+        },
+    )
+    assert create.status_code == 201, create.text
+    catalog_id = create.json()["id"]
+
+    merchant_id = new_id()
+    merchant_order_id = new_id()
+    db_session.add_all(
+        [
+            Merchant(id=merchant_id, title="Acme Resellers"),
+            Order(
+                id=merchant_order_id,
+                merchant_id=merchant_id,
+                status="pending_payment",
+                currency="USD",
+                total_usd=Decimal("1.00"),
+                total_charged=Decimal("1.00"),
+                expires_at=now() + timedelta(minutes=10),
+            ),
+            OrderItem(
+                id=new_id(),
+                order_id=merchant_order_id,
+                sku_id=_seed_pubg["sku_id"],
+                qty=1,
+                unit_price_usd=Decimal("1.00"),
+                fulfillment_state="pending",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    by_brand = await integration_client.get("/api/v1/admin/orders?q=PUBG", headers=admin_h)
+    assert by_brand.status_code == 200, by_brand.text
+    brand_ids = {o["id"] for o in by_brand.json()["items"]}
+    assert catalog_id in brand_ids
+    assert merchant_order_id in brand_ids
+
+    by_name = await integration_client.get("/api/v1/admin/orders?q=Ivan", headers=admin_h)
+    assert [o["id"] for o in by_name.json()["items"]] == [catalog_id]
+
+    by_email = await integration_client.get(
+        "/api/v1/admin/orders?q=ivan.petrov@example.com", headers=admin_h
+    )
+    assert [o["id"] for o in by_email.json()["items"]] == [catalog_id]
+
+    by_merchant = await integration_client.get("/api/v1/admin/orders?q=Acme", headers=admin_h)
+    assert [o["id"] for o in by_merchant.json()["items"]] == [merchant_order_id]
+
+
 async def test_order_records_the_surface_that_placed_it(
     integration_client: AsyncClient, db_session: AsyncSession, _seed_pubg: dict[str, str]
 ) -> None:

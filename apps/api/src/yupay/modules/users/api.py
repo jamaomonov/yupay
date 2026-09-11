@@ -12,10 +12,13 @@ from yupay.modules.users.schemas import (
     UpdateMeIn,
     UserAdminListOut,
     UserAdminOut,
+    UserAdminSort,
     UserOut,
     UserRolesIn,
+    UserWalletBalanceOut,
 )
 from yupay.modules.users.service import (
+    AdminUserListPage,
     ban_user,
     get_user_admin,
     get_user_by_id,
@@ -29,14 +32,17 @@ from yupay.modules.users.service import (
 )
 
 __all__ = [
+    "AdminUserListPage",
     "BanUserIn",
     "DisplayCurrencyLiteral",
     "TelegramLinkOut",
     "UpdateMeIn",
     "UserAdminListOut",
     "UserAdminOut",
+    "UserAdminSort",
     "UserOut",
     "UserRolesIn",
+    "UserWalletBalanceOut",
     "admin_router",
     "ban_user",
     "get_user_admin",

@@ -443,6 +443,59 @@ async def test_admin_orders_listing_is_o1(
     assert with_five == with_one, f"admin orders grew from {with_one} to {with_five} queries"
 
 
+async def test_admin_users_listing_is_o1(
+    integration_client: AsyncClient, db_session: AsyncSession, sql_counter: dict[str, int]
+) -> None:
+    """Wallet balances and liability totals are batched, not per row."""
+    token = await _login_user(integration_client, tg_id=708)
+    await _grant_admin(db_session, tg_id=708)
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async def _customer_with_wallet(tg_id: int, amount: Decimal) -> None:
+        await _login_user(integration_client, tg_id=tg_id)
+        user_id = (
+            await db_session.execute(
+                select(User.id)
+                .join(TelegramLink, TelegramLink.user_id == User.id)
+                .where(TelegramLink.tg_user_id == tg_id)
+            )
+        ).scalar_one()
+        user_acc = await wallet_svc.ensure_account(
+            db_session, owner_type="user", owner_id=user_id, kind="user_wallet", currency="USD"
+        )
+        house_acc = await wallet_svc.ensure_account(
+            db_session,
+            owner_type="house",
+            owner_id="house",
+            kind="house_promo_expense",
+            currency="USD",
+        )
+        await wallet_svc.post(
+            db_session,
+            kind="admin.adjust",
+            legs=[
+                Leg(account_id=user_acc.id, direction="D", amount=amount, currency="USD"),
+                Leg(account_id=house_acc.id, direction="C", amount=amount, currency="USD"),
+            ],
+            idempotency_key=f"qc-admin-users-{tg_id}",
+            actor="test",
+        )
+        await db_session.commit()
+
+    await _customer_with_wallet(801, Decimal("3"))
+    await integration_client.get("/api/v1/admin/users?sort=wallet_desc", headers=headers)
+    with_one = await _measure_get(
+        integration_client, sql_counter, "/api/v1/admin/users?sort=wallet_desc", headers
+    )
+
+    for i in range(2, 6):
+        await _customer_with_wallet(801 + i, Decimal(i))
+    with_five = await _measure_get(
+        integration_client, sql_counter, "/api/v1/admin/users?sort=wallet_desc", headers
+    )
+    assert with_five == with_one, f"admin users grew from {with_one} to {with_five} queries"
+
+
 @pytest.fixture
 async def sql_log(db_engine) -> AsyncIterator[list[str]]:
     """Every statement the app issues, verbatim. `sql_counter` only counts, and

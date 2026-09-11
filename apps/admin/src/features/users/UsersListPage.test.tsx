@@ -36,10 +36,10 @@ const PAGE_SIZE = 50;
 function makeUser(i: number): UserAdminOut {
   return {
     id: `01a004c3-0000-0000-0000-${String(i).padStart(12, "0")}`,
-    email: `user${i}@example.com`,
+    email: `user${String(i)}@example.com`,
     locale: "ru",
     display_currency: "UZS",
-    display_name: `User ${i}`,
+    display_name: `User ${String(i)}`,
     photo_url: null,
     roles: [],
     created_at: "2026-08-15T13:26:00Z",
@@ -50,6 +50,7 @@ function makeUser(i: number): UserAdminOut {
     banned_by: null,
     telegram_link: null,
     steam_link: null,
+    wallet_balances: [],
   };
 }
 
@@ -60,8 +61,9 @@ function renderPage() {
     const payload: UserAdminListOut = {
       items: Array.from({ length: PAGE_SIZE }, (_, i) => makeUser(offset + i)),
       total: PAGE_SIZE * 2,
+      wallet_totals: [{ currency: "USD", balance: "10.00" }],
     };
-    return Promise.resolve(payload) as ReturnType<typeof apiGet>;
+    return Promise.resolve(payload);
   });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -106,7 +108,7 @@ it("stays on the second page after the debounce window elapses", async () => {
   });
 
   expect(lastOffset()).toBe(PAGE_SIZE);
-  expect(await screen.findByText(`51–100 из ${PAGE_SIZE * 2}`)).toBeInTheDocument();
+  expect(await screen.findByText(`51–100 из ${String(PAGE_SIZE * 2)}`)).toBeInTheDocument();
 });
 
 it("returns to the first page when the search changes", async () => {

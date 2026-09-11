@@ -80,3 +80,48 @@ def test_short_terms_are_refused_before_they_reach_the_database() -> None:
     assert order_search_clause("ab") is None
     assert payment_search_clause("x") is None
     assert user_search_clause("ab", tg_id=None) is None
+
+
+# ---------- admin order list (`orders.admin_search`) ----------
+
+
+def test_admin_order_list_search_refuses_short_terms() -> None:
+    from yupay.modules.orders.admin_search import admin_search_clause
+
+    assert admin_search_clause("ab") is None
+
+
+def test_admin_order_list_search_has_no_ilike() -> None:
+    from yupay.modules.orders.admin_search import admin_search_clause
+
+    sql = _sql(admin_search_clause("pubg"))
+    assert "ilike" not in sql
+    assert "~~*" not in sql
+
+
+def test_admin_order_list_search_keeps_the_id_prefix_indexable() -> None:
+    from yupay.modules.orders.admin_search import admin_search_clause
+
+    sql = _sql(admin_search_clause("019f6b61"))
+    assert "like '019f6b61%'" in sql, sql
+
+
+def test_admin_order_list_search_matches_catalog_user_and_merchant() -> None:
+    from yupay.modules.orders.admin_search import admin_search_clause
+
+    sql = _sql(admin_search_clause("pubg"))
+    assert "product_translations" in sql
+    assert "brand_translations" in sql
+    assert "users" in sql
+    assert "merchants" in sql
+    assert "like '%pubg%'" in sql
+
+
+def test_admin_order_list_email_search_hits_guest_and_user() -> None:
+    from yupay.modules.orders.admin_search import admin_search_clause
+
+    sql = _sql(admin_search_clause("Someone@Example.com"))
+    assert "lower" in sql
+    assert "someone@example.com" in sql
+    assert "guest_email" in sql
+    assert "users" in sql

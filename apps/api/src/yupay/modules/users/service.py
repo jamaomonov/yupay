@@ -6,7 +6,10 @@ here directly.
 
 from __future__ import annotations
 
-from sqlalchemy import func, or_, select
+from dataclasses import dataclass
+from decimal import Decimal
+
+from sqlalchemy import Select, String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -15,6 +18,12 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.auth.telegram import TelegramUser
 from yupay.modules.users.models import SteamLink, TelegramLink, User
+from yupay.modules.users.schemas import UserAdminSort
+from yupay.modules.wallet.balances import (
+    balances_for_users,
+    user_wallet_totals,
+    user_wallet_usd_sort_subquery,
+)
 
 
 async def get_user_by_id(session: AsyncSession, user_id: str) -> User | None:
@@ -134,15 +143,31 @@ async def upsert_user_by_steam(
     return user
 
 
+@dataclass(frozen=True)
+class AdminUserListPage:
+    """One page of the admin user directory, plus global wallet liability."""
+
+    users: list[User]
+    total: int
+    wallets: dict[str, list[tuple[str, Decimal]]]
+    totals: list[tuple[str, Decimal]]
+
+
 async def list_users_admin(
     session: AsyncSession,
     *,
     search: str | None = None,
+    sort: UserAdminSort = "created_desc",
     limit: int = 50,
     offset: int = 0,
-) -> tuple[list[User], int]:
-    """Admin listing with optional substring search across display_name, email,
-    Telegram username/id and Steam persona/id."""
+) -> AdminUserListPage:
+    """Admin listing with optional substring search and server-side sort.
+
+    Search matches display_name / email / Telegram username/id / Steam
+    persona/id. ``wallet_*`` sorts convert non-USD ``user_wallet`` balances
+    through the latest ``fx_rates`` row so mixed-currency pages have one
+    order; the cell still shows native amounts.
+    """
     base = select(User).options(selectinload(User.telegram_link), selectinload(User.steam_link))
     count_stmt = select(func.count()).select_from(User)
     if search and search.strip():
@@ -173,14 +198,39 @@ async def list_users_admin(
         base = base.where(or_(*join_clauses))
         count_stmt = count_stmt.where(or_(*join_clauses))
 
-    items = list(
-        (await session.execute(base.order_by(User.created_at.desc()).limit(limit).offset(offset)))
-        .unique()
-        .scalars()
-        .all()
-    )
+    base = _apply_user_list_sort(base, sort)
+    items = list((await session.execute(base.limit(limit).offset(offset))).unique().scalars().all())
     total = int((await session.execute(count_stmt)).scalar_one() or 0)
-    return items, total
+    wallets = await balances_for_users(session, [u.id for u in items])
+    totals = await user_wallet_totals(session)
+    return AdminUserListPage(users=items, total=total, wallets=wallets, totals=totals)
+
+
+def _apply_user_list_sort(base: Select[tuple[User]], sort: UserAdminSort) -> Select[tuple[User]]:
+    """Attach ORDER BY. ``created_at`` alone is not stable under OFFSET
+    (every row a single request writes shares one transaction timestamp);
+    ``id`` is the tiebreak, same shape as migration 0055 on orders."""
+    if sort in ("wallet_desc", "wallet_asc"):
+        wallet = user_wallet_usd_sort_subquery()
+        joined = base.outerjoin(wallet, wallet.c.owner_id == cast(User.id, String))
+        usd_eq = func.coalesce(wallet.c.usd_eq, 0)
+        order_expr = usd_eq.desc() if sort == "wallet_desc" else usd_eq.asc()
+        return joined.order_by(order_expr, User.created_at.desc(), User.id.desc())
+    if sort == "created_asc":
+        return base.order_by(User.created_at.asc(), User.id.asc())
+    if sort == "name_asc":
+        return base.order_by(
+            func.lower(User.display_name).asc().nulls_last(),
+            User.created_at.desc(),
+            User.id.desc(),
+        )
+    if sort == "name_desc":
+        return base.order_by(
+            func.lower(User.display_name).desc().nulls_last(),
+            User.created_at.desc(),
+            User.id.desc(),
+        )
+    return base.order_by(User.created_at.desc(), User.id.desc())
 
 
 async def get_user_admin(session: AsyncSession, user_id: str) -> User:
@@ -341,6 +391,7 @@ async def update_me(
 
 
 __all__ = [
+    "AdminUserListPage",
     "get_user_admin",
     "get_user_by_id",
     "get_user_by_telegram_id",

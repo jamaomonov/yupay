@@ -3,9 +3,21 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+# Sort keys for ``GET /admin/users``. Wallet sorts convert non-USD balances
+# through the latest ``fx_rates`` row (USD/USDT 1:1); created is the default.
+UserAdminSort = Literal[
+    "created_desc",
+    "created_asc",
+    "wallet_desc",
+    "wallet_asc",
+    "name_asc",
+    "name_desc",
+]
 
 # Keep in sync with the ``DISPLAY_CURRENCIES`` constant in
 # ``apps/miniapp/src/lib/currency.ts``. Limited to what we can actually FX
@@ -86,6 +98,18 @@ class SteamLinkOut(BaseModel):
     avatar_url: str | None
 
 
+class UserWalletBalanceOut(BaseModel):
+    """One ``user_wallet`` balance, in the account's own currency.
+
+    ``balance`` is major units as a Decimal, same wire shape as Customer 360.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    currency: str
+    balance: Decimal
+
+
 class UserAdminOut(BaseModel):
     """Admin-side user record with telegram and lifecycle fields."""
 
@@ -106,6 +130,10 @@ class UserAdminOut(BaseModel):
     banned_by: str | None = None
     telegram_link: TelegramLinkOut | None
     steam_link: SteamLinkOut | None = None
+    #: Spendable ``user_wallet`` balances. Empty when the user has no account
+    #: or a zeroed one. Populated on the list; other admin user endpoints
+    #: leave it as ``[]`` (Customer 360 carries the full ledger).
+    wallet_balances: list[UserWalletBalanceOut] = Field(default_factory=list)
 
     _coerce_roles = field_validator("roles", mode="before")(_coerce_roles)
 
@@ -115,6 +143,9 @@ class UserAdminListOut(BaseModel):
 
     items: list[UserAdminOut]
     total: int
+    #: Global ``user_wallet`` liability, one bucket per currency. Independent
+    #: of ``search`` / pagination — this is "how much customer money we hold".
+    wallet_totals: list[UserWalletBalanceOut] = Field(default_factory=list)
 
 
 class BanUserIn(BaseModel):
@@ -147,6 +178,8 @@ __all__ = [
     "UpdateMeIn",
     "UserAdminListOut",
     "UserAdminOut",
+    "UserAdminSort",
     "UserOut",
     "UserRolesIn",
+    "UserWalletBalanceOut",
 ]

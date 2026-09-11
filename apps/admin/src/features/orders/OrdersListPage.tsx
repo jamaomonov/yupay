@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
 import { Ban, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { OrderActorRef } from "./OrderActorRef";
 import { OrderStateBadge } from "./OrderStateBadge";
@@ -262,7 +262,7 @@ export function OrdersListPage() {
             o.source === "unknown" ? "text-[var(--text-secondary)]" : "text-[var(--text-primary)]"
           }
         >
-          {SOURCE_LABEL[o.source] ?? o.source}
+          {SOURCE_LABEL[o.source]}
         </span>
       ),
       className: "w-28",
@@ -338,15 +338,15 @@ export function OrdersListPage() {
         <StatCard label="Доставлено (на странице)" value={counters.delivered ?? 0} />
       </section>
 
-      <section className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <div className="relative md:col-span-2">
+      <section className="mb-5 flex flex-col gap-3">
+        <div className="relative w-full">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
             value={draft}
             onChange={(e) => {
               setDraft(e.target.value);
             }}
-            placeholder="Поиск по всей базе: order_id / user_id / email…"
+            placeholder="Заказ, товар, бренд, имя, email, мерчант…"
             aria-label="Поиск заказов"
             className="pl-9"
           />
@@ -356,6 +356,9 @@ export function OrdersListPage() {
             </p>
           )}
         </div>
+      </section>
+
+      <section className="mb-5 flex flex-wrap items-center gap-3">
         <Select
           aria-label="Фильтр по статусу заказа"
           value={status}
@@ -370,9 +373,6 @@ export function OrdersListPage() {
             </option>
           ))}
         </Select>
-      </section>
-
-      <section className="mb-5 flex flex-wrap items-center gap-3">
         <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           Создан с
           <input
