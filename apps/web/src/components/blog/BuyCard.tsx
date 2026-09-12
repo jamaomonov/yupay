@@ -10,18 +10,14 @@ import type { BrandDetail } from "@/lib/catalog";
 
 export function buyFromPrice(brand: BrandDetail, locale: string): string | null {
   const prices = (brand.products ?? [])
-    .map((p) => (p.starting_display_price ? Math.round(Number(p.starting_display_price.amount)) : null))
+    .map((p) =>
+      p.starting_display_price ? Math.round(Number(p.starting_display_price.amount)) : null,
+    )
     .filter((n): n is number => n !== null && Number.isFinite(n));
   return prices.length > 0 ? formatUzs(locale, Math.min(...prices)) : null;
 }
 
-export async function BuyCard({
-  brand,
-  locale,
-}: {
-  brand: BrandDetail;
-  locale: string;
-}) {
+export async function BuyCard({ brand, locale }: { brand: BrandDetail; locale: string }) {
   const t = await getTranslations("web.blog");
   const from = buyFromPrice(brand, locale);
   const img = brand.hero_image_url ?? brand.logo_url;

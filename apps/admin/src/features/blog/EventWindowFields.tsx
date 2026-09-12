@@ -20,11 +20,16 @@ const PHASE_LABEL = {
 
 export function EventWindowFields({ start, end, onStart, onEnd }: Props) {
   const phase = eventPhase(start, end);
-  const chip = phase === "live" || phase === "upcoming" || phase === "ended" ? PHASE_LABEL[phase]() : null;
+  const chip =
+    phase === "live" || phase === "upcoming" || phase === "ended" ? PHASE_LABEL[phase]() : null;
 
   return (
     <>
-      <Field label={T.form.eventStart} hint={T.form.eventHint} error={phase === "invalid" ? T.form.eventNeedWindow : undefined}>
+      <Field
+        label={T.form.eventStart}
+        hint={T.form.eventHint}
+        error={phase === "invalid" ? T.form.eventNeedWindow : undefined}
+      >
         {({ inputProps }) => (
           <Input
             {...inputProps}

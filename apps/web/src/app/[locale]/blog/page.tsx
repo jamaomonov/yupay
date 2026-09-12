@@ -64,8 +64,12 @@ export default async function BlogIndexPage({
 
   return (
     <main id="main-content" className="mx-auto max-w-[1200px] px-6 pb-20 pt-28 sm:px-10">
-      <h1 className="font-display text-3xl font-bold tracking-[-0.03em] sm:text-4xl">{t("title")}</h1>
-      <p className="text-tx-mute mt-3 max-w-[640px] text-[16px] leading-relaxed">{t("description")}</p>
+      <h1 className="font-display text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
+        {t("title")}
+      </h1>
+      <p className="text-tx-mute mt-3 max-w-[640px] text-[16px] leading-relaxed">
+        {t("description")}
+      </p>
       {page.items.length === 0 ? (
         <div className="mt-10 flex max-w-[480px] flex-col gap-4">
           <p className="text-tx-mute">{t("empty")}</p>

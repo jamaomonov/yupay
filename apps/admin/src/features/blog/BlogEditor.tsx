@@ -30,7 +30,10 @@ function stringAttr(attrs: Record<string, unknown>, key: string): string {
 
 const CdnImage = Image.extend({
   renderHTML({ HTMLAttributes }: { HTMLAttributes: Record<string, unknown> }) {
-    return ["img", { src: stringAttr(HTMLAttributes, "src"), alt: stringAttr(HTMLAttributes, "alt") }];
+    return [
+      "img",
+      { src: stringAttr(HTMLAttributes, "src"), alt: stringAttr(HTMLAttributes, "alt") },
+    ];
   },
 });
 

@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 
 interface Value {
   blogSlugs: Record<string, string> | null;

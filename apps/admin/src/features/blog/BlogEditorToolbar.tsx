@@ -88,9 +88,15 @@ export function BlogEditorToolbar({ editor, disabled }: Props) {
     if (!alt.trim()) return;
     try {
       const src = await uploadRasterMedia("blog_image", file);
-      editor.chain().focus().setImage({ src, alt: alt.trim().slice(0, 200) }).run();
+      editor
+        .chain()
+        .focus()
+        .setImage({ src, alt: alt.trim().slice(0, 200) })
+        .run();
     } catch (exc) {
-      window.alert(exc instanceof Error ? exc.message : T.form.error.replace("{message}", "upload"));
+      window.alert(
+        exc instanceof Error ? exc.message : T.form.error.replace("{message}", "upload"),
+      );
     }
   }
 
@@ -176,7 +182,12 @@ export function BlogEditorToolbar({ editor, disabled }: Props) {
       >
         <Code className="size-4" />
       </ToolButton>
-      <ToolButton label={T.form.tools.link} active={editor.isActive("link")} disabled={disabled} onClick={setLink}>
+      <ToolButton
+        label={T.form.tools.link}
+        active={editor.isActive("link")}
+        disabled={disabled}
+        onClick={setLink}
+      >
         <LinkIcon className="size-4" />
       </ToolButton>
       <ToolButton

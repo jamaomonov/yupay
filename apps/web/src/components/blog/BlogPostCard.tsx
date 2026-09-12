@@ -53,12 +53,16 @@ export async function BlogPostCard({
           <span className="text-primary">{kindLabel}</span>
           {chip === "live" ? <span className="text-primary">{t("live")}</span> : null}
           {chip === "ended" ? <span className="text-tx-dim">{t("ended")}</span> : null}
-          {showPin && post.pin_on_brand ? <span className="text-tx-mute">{t("pinned")}</span> : null}
+          {showPin && post.pin_on_brand ? (
+            <span className="text-tx-mute">{t("pinned")}</span>
+          ) : null}
         </div>
-        <h2 className="font-display text-lg font-semibold tracking-[-0.02em] group-hover:text-primary">
+        <h2 className="font-display group-hover:text-primary text-lg font-semibold tracking-[-0.02em]">
           {post.title}
         </h2>
-        {post.excerpt ? <p className="text-tx-mute line-clamp-3 text-sm leading-relaxed">{post.excerpt}</p> : null}
+        {post.excerpt ? (
+          <p className="text-tx-mute line-clamp-3 text-sm leading-relaxed">{post.excerpt}</p>
+        ) : null}
         <div className="mt-auto flex items-center justify-between gap-3">
           <time className="text-tx-dim font-mono text-[11px]" dateTime={post.updated_at}>
             {formatDay(locale, post.updated_at)}

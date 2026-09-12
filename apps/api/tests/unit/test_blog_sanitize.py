@@ -74,7 +74,7 @@ def test_strips_tiptap_table_attributes() -> None:
     html = (
         '<table style="min-width: 25px"><colgroup><col style="width: 100px"></colgroup>'
         '<thead><tr><th colspan="1" rowspan="1">Регион</th></tr></thead>'
-        "<tbody><tr><td colspan=\"1\">Узбекистан</td></tr></tbody></table>"
+        '<tbody><tr><td colspan="1">Узбекистан</td></tr></tbody></table>'
     )
     cleaned = sanitize_body(html, media_base_url=_CDN)
     assert cleaned == (

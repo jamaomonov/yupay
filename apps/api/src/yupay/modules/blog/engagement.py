@@ -96,7 +96,7 @@ async def record_view(
         .values(post_id=post.id, reader_hash=reader_hash)
         .on_conflict_do_nothing(index_elements=["post_id", "reader_hash"])
     )
-    if result.rowcount:
+    if result.rowcount:  # type: ignore[attr-defined]
         post.view_count = post.view_count + 1
         await db.flush()
     return await snapshot(db, post=post, reader_hash=reader_hash)
@@ -113,7 +113,7 @@ async def set_like(
             .values(post_id=post.id, reader_hash=reader_hash)
             .on_conflict_do_nothing(index_elements=["post_id", "reader_hash"])
         )
-        if result.rowcount:
+        if result.rowcount:  # type: ignore[attr-defined]
             post.like_count = post.like_count + 1
             await db.flush()
     else:
@@ -123,7 +123,7 @@ async def set_like(
                 BlogPostLike.reader_hash == reader_hash,
             )
         )
-        if result.rowcount:
+        if result.rowcount:  # type: ignore[attr-defined]
             post.like_count = max(0, post.like_count - 1)
             await db.flush()
     return await snapshot(db, post=post, reader_hash=reader_hash)

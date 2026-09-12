@@ -7,13 +7,13 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { AccountMenu } from "./auth/AccountMenu";
-import { useBlogLocaleSlugs } from "@/components/LocaleAlternates";
 
+import { useBlogLocaleSlugs } from "@/components/LocaleAlternates";
 import { type AppLocale } from "@/i18n/routing";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
-import { hrefForLocale, navSectionActive } from "@/lib/locale-href";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
+import { hrefForLocale, navSectionActive } from "@/lib/locale-href";
 import { pathFor } from "@/lib/seo";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
@@ -30,7 +30,7 @@ const LOCALES: { code: AppLocale; label: string }[] = [
  */
 export function MobileNav() {
   const t = useTranslations("web.nav");
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   const tShow = useTranslations("web.showcase");
   const router = useRouter();
   const pathname = usePathname();
@@ -78,10 +78,15 @@ export function MobileNav() {
     }`;
 
   return (
-    <div className="flex items-center gap-2 md:hidden">
-      <Link href={storeHref} className={buttonStyles({ size: "sm", className: "px-3.5" })}>
-        {t("buy")}
-      </Link>
+    <div className="flex min-w-0 items-center gap-2 md:hidden">
+      {/* Signed-in phones show the balance chip instead: Купить + amount +
+          burger will not fit a 390px bar, and the chip is the same control
+          desktop already uses for that corner. */}
+      {!user && !isLoading ? (
+        <Link href={storeHref} className={buttonStyles({ size: "sm", className: "px-3.5" })}>
+          {t("buy")}
+        </Link>
+      ) : null}
       <AccountMenu locale={current} />
       <button
         type="button"
@@ -136,9 +141,8 @@ export function MobileNav() {
               >
                 {t("support")}
               </a>
-              {/* The header's balance chip is desktop-only, so on a phone this
-                  is the only way to the wallet. Signed-in customers only —
-                  a guest has no balance to look at. */}
+              {/* Signed-in customers already see the amount in the header
+                  chip; this row is the same destination without repeating it. */}
               {user && (
                 <Link
                   href={pathFor(current, "/account/wallet")}

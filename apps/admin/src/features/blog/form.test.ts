@@ -24,9 +24,9 @@ describe("packFaqs", () => {
   });
 
   it("rejects a half-filled pair", () => {
-    expect(
-      packFaqs([{ locale: "ru", sort_order: 0, question: "Где ID?", answer: "" }]),
-    ).toBe("incomplete");
+    expect(packFaqs([{ locale: "ru", sort_order: 0, question: "Где ID?", answer: "" }])).toBe(
+      "incomplete",
+    );
   });
 });
 

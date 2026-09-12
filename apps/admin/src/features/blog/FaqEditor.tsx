@@ -12,9 +12,7 @@ interface Props {
 }
 
 function visibleFor(items: FaqDraft[], locale: Locale): FaqDraft[] {
-  return items
-    .filter((row) => row.locale === locale)
-    .sort((a, b) => a.sort_order - b.sort_order);
+  return items.filter((row) => row.locale === locale).sort((a, b) => a.sort_order - b.sort_order);
 }
 
 export function FaqEditor({ locale, items, onChange }: Props) {
@@ -91,7 +89,11 @@ export function FaqEditor({ locale, items, onChange }: Props) {
               className="mt-1"
               value={row.question}
               onChange={(e) => {
-                replace(visible.map((item, i) => (i === index ? { ...item, question: e.target.value } : item)));
+                replace(
+                  visible.map((item, i) =>
+                    i === index ? { ...item, question: e.target.value } : item,
+                  ),
+                );
               }}
             />
           </label>
@@ -101,7 +103,11 @@ export function FaqEditor({ locale, items, onChange }: Props) {
               className="mt-1 min-h-16 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
               value={row.answer}
               onChange={(e) => {
-                replace(visible.map((item, i) => (i === index ? { ...item, answer: e.target.value } : item)));
+                replace(
+                  visible.map((item, i) =>
+                    i === index ? { ...item, answer: e.target.value } : item,
+                  ),
+                );
               }}
             />
           </label>
@@ -111,10 +117,7 @@ export function FaqEditor({ locale, items, onChange }: Props) {
         type="button"
         variant="ghost"
         onClick={() => {
-          replace([
-            ...visible,
-            { locale, sort_order: visible.length, question: "", answer: "" },
-          ]);
+          replace([...visible, { locale, sort_order: visible.length, question: "", answer: "" }]);
         }}
       >
         <Plus className="size-4" />

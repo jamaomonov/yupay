@@ -72,7 +72,7 @@ export function AccountMenu({ locale }: Props) {
   // Matches the signed-in pill's resting width so the row does not jump when
   // auth resolves. (Guests get a narrower control; that swap is one shift,
   // not the three this used to produce.)
-  if (isLoading) return <div className="h-11 w-[92px] lg:w-[164px]" aria-hidden />;
+  if (isLoading) return <div className="h-11 w-[148px]" aria-hidden />;
 
   if (!user) {
     // Guests have no account, but their orders are remembered in this browser's
@@ -113,10 +113,10 @@ export function AccountMenu({ locale }: Props) {
 
   return (
     <div ref={wrapRef} className="relative">
-      {/* Balance and avatar in one control. Two pills side by side competed for
-          the same corner and the balance one never fit on a phone; merged, the
-          amount rides in and the avatar stays the thing you aim at. One
-          destination — the menu — so a single tap is never ambiguous. */}
+      {/* Balance and avatar in one control. Two pills side by side competed
+          for the same corner; merged, the amount rides next to the avatar on
+          every breakpoint. One destination — the menu — so a tap is never
+          ambiguous. */}
       <button
         type="button"
         onClick={() => {
@@ -125,12 +125,11 @@ export function AccountMenu({ locale }: Props) {
         aria-haspopup="true"
         aria-expanded={open}
         aria-label={balance === null ? t("menu") : `${t("wallet")}: ${balanceLabel}, ${t("menu")}`}
-        className="border-border bg-muted hover:bg-card-2 flex h-11 items-center gap-2 overflow-hidden rounded-full border pl-3 pr-1 transition"
+        className="border-border bg-muted hover:bg-card-2 flex h-11 max-w-full items-center gap-1.5 overflow-hidden rounded-full border pl-2.5 pr-1 transition sm:gap-2 sm:pl-3"
       >
-        {/* The amount is the one part of this row that may yield: below `lg`
-            the bar is already full, and letting it push made the logo condense
-            rather than the pill wrap. */}
-        <span className="hidden shrink items-center gap-2 lg:flex">
+        {/* Same lockup as desktop: mark + amount + avatar. The amount may
+            shrink so a long figure does not shove the burger off a 320px bar. */}
+        <span className="flex min-w-0 shrink items-center gap-1.5 sm:gap-2">
           <WalletMark size={15} className="text-tx-mute shrink-0" />
           {balance === null ? (
             // A fixed slot, not nothing: the pill was born at 54px and grew to
@@ -138,7 +137,7 @@ export function AccountMenu({ locale }: Props) {
             // after first paint — under a finger already on its way down.
             <span className="bg-card-2 h-4 w-[72px] animate-pulse rounded" aria-hidden />
           ) : (
-            <span className="text-foreground whitespace-nowrap text-sm font-bold tabular-nums">
+            <span className="text-foreground truncate text-xs font-bold tabular-nums sm:text-sm">
               {balanceLabel}
             </span>
           )}

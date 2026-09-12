@@ -10,7 +10,7 @@ from that thread; the rest is engineering that follows the repo contract
 
 The storefront already has money pages (`/store/{brand}`), a thin programmatic
 `/store/{brand}/how-to`, per-brand FAQs with `FAQPage` JSON-LD, a sitemap, and
-`/llms.txt`. Those capture *transactional* and *short how-to* queries. They do
+`/llms.txt`. Those capture _transactional_ and _short how-to_ queries. They do
 not capture:
 
 - informational queries («как пополнить Mobile Legends в Узбекистане» as a
@@ -38,26 +38,26 @@ catalogue and not an auto-generated SKU farm.
 
 ## 3. Naming and surfaces
 
-| Thing | Name |
-| ----- | ---- |
-| Domain module | `modules/blog/` |
-| Public storefront | `apps/web` — `/{locale}/blog`, `/{locale}/blog/{slug}` |
+| Thing                      | Name                                                               |
+| -------------------------- | ------------------------------------------------------------------ |
+| Domain module              | `modules/blog/`                                                    |
+| Public storefront          | `apps/web` — `/{locale}/blog`, `/{locale}/blog/{slug}`             |
 | Brand hub (optional index) | `/{locale}/blog?brand={slug}` — query, not a second URL tree in v1 |
-| Admin SPA | `apps/admin/src/features/blog/` |
-| Public API | `/api/v1/blog/*` (anonymous, cacheable) |
-| Admin API | `/api/v1/admin/blog/*` |
+| Admin SPA                  | `apps/admin/src/features/blog/`                                    |
+| Public API                 | `/api/v1/blog/*` (anonymous, cacheable)                            |
+| Admin API                  | `/api/v1/admin/blog/*`                                             |
 
 Checked: no existing `/blog` route. `broadcasts` is Telegram-only and stays
 that way — different allowlist, different audience.
 
 ## 4. How it sits next to what we already have
 
-| Page | Job | Blog must not replace |
-| ---- | --- | --------------------- |
-| `/store/{brand}` | Buy. SKUs, checkout, reviews | Prices, forms, player-check |
-| `/store/{brand}/how-to` | Short steps from catalogue `instructions` | Auto how-to; keep it |
-| Brand FAQ | 4–8 short Qs, `FAQPage` on the money page | Long-form FAQ lives *in* an article |
-| `/blog/{slug}` | Editorial: guide **or** news/update/event | Checkout itself |
+| Page                    | Job                                       | Blog must not replace               |
+| ----------------------- | ----------------------------------------- | ----------------------------------- |
+| `/store/{brand}`        | Buy. SKUs, checkout, reviews              | Prices, forms, player-check         |
+| `/store/{brand}/how-to` | Short steps from catalogue `instructions` | Auto how-to; keep it                |
+| Brand FAQ               | 4–8 short Qs, `FAQPage` on the money page | Long-form FAQ lives _in_ an article |
+| `/blog/{slug}`          | Editorial: guide **or** news/update/event | Checkout itself                     |
 
 Every post has **exactly one primary brand** (`primary_brand_id`, required)
 _(owner)_. Optional extra brands (e.g. Steam + steam-gifts) are a join table.
@@ -69,12 +69,12 @@ published posts. The how-to page is unchanged.
 
 ## 5. Article kinds _(owner)_
 
-| `kind` | Reader intent | Example |
-| ------ | ------------- | ------- |
-| `guide` | how / where / how much | Как пополнить MLBB в Узбекистане |
-| `news` | what happened | Новый сезон, коллаб |
-| `update` | what a patch changes (especially for donators) | Что изменится в пропуске |
-| `event` | what is happening *now* | x2 UC до воскресенья |
+| `kind`   | Reader intent                                  | Example                          |
+| -------- | ---------------------------------------------- | -------------------------------- |
+| `guide`  | how / where / how much                         | Как пополнить MLBB в Узбекистане |
+| `news`   | what happened                                  | Новый сезон, коллаб              |
+| `update` | what a patch changes (especially for donators) | Что изменится в пропуске         |
+| `event`  | what is happening _now_                        | x2 UC до воскресенья             |
 
 `event` carries `event_starts_at` / `event_ends_at` (UTC). While `now` is
 inside the window the public index sorts the post above ordinary news and the
@@ -111,19 +111,19 @@ apps/web    app/[locale]/blog  ──anon GET──▶  /api/v1/blog/*
 
 ### 7.1 `blog_posts`
 
-| Column | Notes |
-| ------ | ----- |
-| `id` | UUID string, `yupay.core.ids` |
-| `kind` | `guide` \| `news` \| `update` \| `event` + CHECK |
-| `status` | `draft` \| `scheduled` \| `published` \| `archived` + CHECK |
-| `primary_brand_id` | FK `brands.id` ON DELETE RESTRICT (do not cascade-wipe journalism) |
-| `show_buy_card` | bool, default true |
-| `pin_on_brand` | bool, default false. Service cap: **at most 2** published pins per brand |
-| `cover_image_url` | nullable text, must be our CDN when set |
+| Column                              | Notes                                                                                     |
+| ----------------------------------- | ----------------------------------------------------------------------------------------- |
+| `id`                                | UUID string, `yupay.core.ids`                                                             |
+| `kind`                              | `guide` \| `news` \| `update` \| `event` + CHECK                                          |
+| `status`                            | `draft` \| `scheduled` \| `published` \| `archived` + CHECK                               |
+| `primary_brand_id`                  | FK `brands.id` ON DELETE RESTRICT (do not cascade-wipe journalism)                        |
+| `show_buy_card`                     | bool, default true                                                                        |
+| `pin_on_brand`                      | bool, default false. Service cap: **at most 2** published pins per brand                  |
+| `cover_image_url`                   | nullable text, must be our CDN when set                                                   |
 | `event_starts_at` / `event_ends_at` | timestamptz, nullable; required together when `kind=event` (service, not a brittle CHECK) |
-| `published_at` | set on first transition to `published`; left in place on archive |
-| `scheduled_for` | timestamptz, used when `status=scheduled` (M2 scheduler; column exists in M1) |
-| `created_at` / `updated_at` | timestamptz |
+| `published_at`                      | set on first transition to `published`; left in place on archive                          |
+| `scheduled_for`                     | timestamptz, used when `status=scheduled` (M2 scheduler; column exists in M1)             |
+| `created_at` / `updated_at`         | timestamptz                                                                               |
 
 Indexes: `(status, published_at DESC)` for the public feed;
 `(primary_brand_id, status, published_at DESC)` for the brand block;
@@ -135,14 +135,14 @@ One row per locale that has copy. **No cross-locale fallback** (same rule as
 brand highlights: a missing `uz` row is omitted from `uz`, not filled with
 `ru`).
 
-| Column | Notes |
-| ------ | ----- |
-| `post_id` + `locale` | PK, locale in `ru` \| `en` \| `uz` |
-| `slug` | kebab `[a-z0-9-]{3,96}`, **UNIQUE(locale, slug)** — ru `/blog/kak-popolnit-mlbb`, en `/en/blog/how-to-top-up-mlbb` |
-| `title` | the page H1. Not repeated as an `<h1>` in the body |
-| `excerpt` | ≤ 280 chars, used as meta description fallback and card blurb |
-| `body_html` | sanitized HTML (see §8) |
-| `seo_title` / `seo_description` | optional overrides |
+| Column                          | Notes                                                                                                              |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `post_id` + `locale`            | PK, locale in `ru` \| `en` \| `uz`                                                                                 |
+| `slug`                          | kebab `[a-z0-9-]{3,96}`, **UNIQUE(locale, slug)** — ru `/blog/kak-popolnit-mlbb`, en `/en/blog/how-to-top-up-mlbb` |
+| `title`                         | the page H1. Not repeated as an `<h1>` in the body                                                                 |
+| `excerpt`                       | ≤ 280 chars, used as meta description fallback and card blurb                                                      |
+| `body_html`                     | sanitized HTML (see §8)                                                                                            |
+| `seo_title` / `seo_description` | optional overrides                                                                                                 |
 
 A post may be `published` with only `ru` filled — `en`/`uz` 404 until those
 rows exist. Chrome (nav, chips, empty states) still ships all three locales
@@ -184,7 +184,7 @@ Tags: `p`, `h2`, `h3`, `ul`, `ol`, `li`, `a`, `img`, `blockquote`, `strong`,
 
 M1 admin can ship a `<textarea>` plus a sanitized preview. M3 replaces it
 with TipTap (toolbar: H2/H3, lists, link, image upload, table, quote) and
-optional «карточка бренда» / «FAQ» inserts that are *not* raw HTML — they
+optional «карточка бренда» / «FAQ» inserts that are _not_ raw HTML — they
 are flags/rows (`show_buy_card`, `blog_post_faqs`).
 
 ### 8.2 Images
@@ -197,17 +197,17 @@ inline `<img>`.
 
 Anonymous, rate-limited like other public GETs. No Idempotency-Key (reads).
 
-| Endpoint | Notes |
-| -------- | ----- |
-| `GET /blog` | `locale`, optional `brand` (slug), `kind`, `cursor`. Published + locale row only. Events in-window first, then `published_at` desc |
-| `GET /blog/{slug}` | locale from `Accept-Language` / `?locale=` like catalogue. 404 if unpublished or locale missing |
-| `GET /blog/by-brand/{brandSlug}` | latest N + pins, for the brand page block |
-| `POST /blog/{slug}/view` | anonymous unique view; sets `yp_blog_reader`; Idempotency-Key |
-| `POST /blog/{slug}/like` | anonymous like; same cookie; Idempotency-Key |
-| `DELETE /blog/{slug}/like` | unlike; no-op if never liked |
+| Endpoint                         | Notes                                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /blog`                      | `locale`, optional `brand` (slug), `kind`, `cursor`. Published + locale row only. Events in-window first, then `published_at` desc |
+| `GET /blog/{slug}`               | locale from `Accept-Language` / `?locale=` like catalogue. 404 if unpublished or locale missing                                    |
+| `GET /blog/by-brand/{brandSlug}` | latest N + pins, for the brand page block                                                                                          |
+| `POST /blog/{slug}/view`         | anonymous unique view; sets `yp_blog_reader`; Idempotency-Key                                                                      |
+| `POST /blog/{slug}/like`         | anonymous like; same cookie; Idempotency-Key                                                                                       |
+| `DELETE /blog/{slug}/like`       | unlike; no-op if never liked                                                                                                       |
 
-List items carry: slug, kind, title, excerpt, cover, published_at, updated_at,
-primary brand `{slug, name}`, `event_*`, `pin_on_brand`, `like_count`,
+List items carry: slug, kind, title, excerpt, cover, published*at, updated_at,
+primary brand `{slug, name}`, `event*\*`, `pin_on_brand`, `like_count`,
 `view_count`. Detail adds `body_html`, faqs, related brand slugs,
 `show_buy_card`. **Never** a draft. Views/likes are cookie-hashed, not IP
 (ADR-0073).
@@ -247,7 +247,7 @@ cabinet's light-theme requirement here.
 
 - Unique H1 = `title`. Meta from `seo_*` or `excerpt`.
 - `alternates` / `hreflang` / `x-default` via existing `alternates(locale, path)`
-  — only for locales that *have* a translation row.
+  — only for locales that _have_ a translation row.
 - JSON-LD (escaped with `serializeJsonLd`):
   - `guide` → `Article` + optional `HowTo` if the body has a numbered list we
     can split (same idea as `/how-to`);
@@ -278,25 +278,25 @@ No new money path. Bounded Prometheus labels if we add a counter:
 
 ## 15. Rollout
 
-| Phase | Delivers |
-| ----- | -------- |
+| Phase  | Delivers                                                                    |
+| ------ | --------------------------------------------------------------------------- |
 | **M1** | Module + migration; sanitize; admin CRUD (textarea); public GET; tests; ADR |
 | **M2** | Web index + article; header link; brand block; sitemap; `llms.txt`; JSON-LD |
-| **M3** | TipTap editor; `blog_image` uploads; FAQ editor; event/pin/schedule UX |
+| **M3** | TipTap editor; `blog_image` uploads; FAQ editor; event/pin/schedule UX      |
 
 M1 is sellable to an admin who pastes HTML. M2 is what Google and readers
 see. M3 is what makes weekly news viable for a human operator.
 
 ## 16. Resolved-question log
 
-| Question | Decision |
-| -------- | -------- |
-| Domain | Same host, `/blog`, not `blog.yupay.uz` _(owner / SEO)_ |
-| Linked to brands | Required primary brand _(owner)_ |
-| Kinds | guide, news, update, event _(owner)_ |
-| Editor | Allowlisted HTML; TipTap in M3, not raw tags _(engineering)_ |
-| H1 | Title field only _(SEO)_ |
-| Locales | Per-translation slugs; no ru→uz bleed _(ADR-0006 + catalogue lesson)_ |
-| Mini App | Out of v1 |
-| Prices in HTML | Forbidden; live buy card |
-| Official scrapers | Out of v1 |
+| Question          | Decision                                                              |
+| ----------------- | --------------------------------------------------------------------- |
+| Domain            | Same host, `/blog`, not `blog.yupay.uz` _(owner / SEO)_               |
+| Linked to brands  | Required primary brand _(owner)_                                      |
+| Kinds             | guide, news, update, event _(owner)_                                  |
+| Editor            | Allowlisted HTML; TipTap in M3, not raw tags _(engineering)_          |
+| H1                | Title field only _(SEO)_                                              |
+| Locales           | Per-translation slugs; no ru→uz bleed _(ADR-0006 + catalogue lesson)_ |
+| Mini App          | Out of v1                                                             |
+| Prices in HTML    | Forbidden; live buy card                                              |
+| Official scrapers | Out of v1                                                             |

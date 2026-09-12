@@ -107,7 +107,9 @@ function tableBlock(html: string): string {
   const line = (row: string[]): string => `| ${pad(row).join(" | ")} |`;
   const [head, ...body] = parsed;
   const header = head ?? [];
-  const sep = `| ${pad(header).map(() => "---").join(" | ")} |`;
+  const sep = `| ${pad(header)
+    .map(() => "---")
+    .join(" | ")} |`;
   return [line(header), sep, ...body.map(line)].join("\n");
 }
 
@@ -119,15 +121,33 @@ export function htmlToMarkdown(html: string): string {
     fences.push(`\`\`\`\n${code}\n\`\`\``);
     return `\n\n%%FENCE${String(fences.length - 1)}%%\n\n`;
   });
-  s = s.replace(/<table\b[^>]*>([\s\S]*?)<\/table>/gi, (_m, inner: string) => `\n\n${tableBlock(inner)}\n\n`);
-  s = s.replace(/<ul\b[^>]*>([\s\S]*?)<\/ul>/gi, (_m, inner: string) => `\n\n${listBlock(inner, false)}\n\n`);
-  s = s.replace(/<ol\b[^>]*>([\s\S]*?)<\/ol>/gi, (_m, inner: string) => `\n\n${listBlock(inner, true)}\n\n`);
+  s = s.replace(
+    /<table\b[^>]*>([\s\S]*?)<\/table>/gi,
+    (_m, inner: string) => `\n\n${tableBlock(inner)}\n\n`,
+  );
+  s = s.replace(
+    /<ul\b[^>]*>([\s\S]*?)<\/ul>/gi,
+    (_m, inner: string) => `\n\n${listBlock(inner, false)}\n\n`,
+  );
+  s = s.replace(
+    /<ol\b[^>]*>([\s\S]*?)<\/ol>/gi,
+    (_m, inner: string) => `\n\n${listBlock(inner, true)}\n\n`,
+  );
   s = s.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_m, inner: string) => {
-    const text = inline(inner).split("\n").map((line) => `> ${line}`.trimEnd()).join("\n");
+    const text = inline(inner)
+      .split("\n")
+      .map((line) => `> ${line}`.trimEnd())
+      .join("\n");
     return `\n\n${text}\n\n`;
   });
-  s = s.replace(/<h2\b[^>]*>([\s\S]*?)<\/h2>/gi, (_m, inner: string) => `\n\n## ${inline(inner)}\n\n`);
-  s = s.replace(/<h3\b[^>]*>([\s\S]*?)<\/h3>/gi, (_m, inner: string) => `\n\n### ${inline(inner)}\n\n`);
+  s = s.replace(
+    /<h2\b[^>]*>([\s\S]*?)<\/h2>/gi,
+    (_m, inner: string) => `\n\n## ${inline(inner)}\n\n`,
+  );
+  s = s.replace(
+    /<h3\b[^>]*>([\s\S]*?)<\/h3>/gi,
+    (_m, inner: string) => `\n\n### ${inline(inner)}\n\n`,
+  );
   s = s.replace(/<p\b[^>]*>([\s\S]*?)<\/p>/gi, (_m, inner: string) => `\n\n${inline(inner)}\n\n`);
   s = s.replace(/<hr\s*\/?>/gi, "\n\n---\n\n");
   s = s.replace(/<thead\b[^>]*>|<\/thead>|<tbody\b[^>]*>|<\/tbody>/gi, "");

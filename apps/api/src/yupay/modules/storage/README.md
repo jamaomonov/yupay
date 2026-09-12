@@ -8,7 +8,7 @@ Issue short-lived presigned PUT URLs so the admin SPA can upload images
 (and, for broadcasts, one video/GIF/document) directly to a Cloudflare
 R2 bucket. Returns the public URL the admin should persist into the
 relevant DB column (`brands.logo_url`, `brands.hero_image_url`,
-`products.image_url`, `skus.image_url`, a blog cover / inline ``<img>``,
+`products.image_url`, `skus.image_url`, a blog cover / inline `<img>`,
 or the broadcast's media column).
 
 This module **does not** stream bytes — uploads bypass FastAPI entirely.
@@ -49,10 +49,10 @@ types have a known file extension. This is deliberate: `MEDIA_ALLOWED_MIME`
 had to grow to cover broadcast attachments, but image kinds must not
 silently start accepting a video just because the global list did.
 
-| `kind`                                                                | Allowed Content-Types                                     | Size cap                                   |
-| --------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------------------------ |
-| `brand_logo`, `brand_hero`, `product_image`, `sku_image`, `blog_image` | `image/png`, `image/jpeg`, `image/webp` (no SVG)          | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`)            |
-| `broadcast_media`                                                     | those three, plus `image/gif`, `video/mp4`, `application/pdf` | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
+| `kind`                                                                 | Allowed Content-Types                                         | Size cap                                   |
+| ---------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
+| `brand_logo`, `brand_hero`, `product_image`, `sku_image`, `blog_image` | `image/png`, `image/jpeg`, `image/webp` (no SVG)              | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`)            |
+| `broadcast_media`                                                      | those three, plus `image/gif`, `video/mp4`, `application/pdf` | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
 
 ## Upload workflow
 

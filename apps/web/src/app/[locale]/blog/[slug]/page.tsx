@@ -116,7 +116,10 @@ export default async function BlogArticlePage({
         ])}
       />
 
-      <nav aria-label={tn("breadcrumbLabel")} className="text-tx-mute mb-6 flex flex-wrap items-center gap-1 text-sm">
+      <nav
+        aria-label={tn("breadcrumbLabel")}
+        className="text-tx-mute mb-6 flex flex-wrap items-center gap-1 text-sm"
+      >
         <Link href={pathFor(locale, "/blog")} className="hover:text-foreground">
           {tn("blog")}
         </Link>
@@ -133,7 +136,10 @@ export default async function BlogArticlePage({
         <article className="mx-auto max-w-[720px]">
           <div className="flex flex-wrap items-center gap-2 font-mono text-[11px] uppercase tracking-[0.06em]">
             <span className="text-primary">{t(KIND_KEY[post.kind])}</span>
-            <Link href={storeHref} className="text-tx-mute hover:text-foreground normal-case tracking-normal">
+            <Link
+              href={storeHref}
+              className="text-tx-mute hover:text-foreground normal-case tracking-normal"
+            >
               {post.primary_brand.name}
             </Link>
             {chip === "live" ? <span className="text-primary">{t("live")}</span> : null}
@@ -143,7 +149,9 @@ export default async function BlogArticlePage({
             {post.title}
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-3">
-            <p className="text-tx-dim font-mono text-[12px]">{t("published", { date: published })}</p>
+            <p className="text-tx-dim font-mono text-[12px]">
+              {t("published", { date: published })}
+            </p>
             <LiveEngagementStats />
           </div>
           {post.cover_image_url ? (
@@ -173,9 +181,14 @@ export default async function BlogArticlePage({
                   >
                     <summary className="flex cursor-pointer list-none items-center justify-between py-3 text-[15px] font-semibold">
                       {item.question}
-                      <ChevronRight size={16} className="text-tx-dim shrink-0 transition group-open:rotate-90" />
+                      <ChevronRight
+                        size={16}
+                        className="text-tx-dim shrink-0 transition group-open:rotate-90"
+                      />
                     </summary>
-                    <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">{item.answer}</p>
+                    <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">
+                      {item.answer}
+                    </p>
                   </details>
                 ))}
               </div>

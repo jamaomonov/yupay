@@ -56,7 +56,9 @@ _COLGROUP = re.compile(r"</?colgroup\b[^>]*>|<col\b[^>]*/?>", re.IGNORECASE)
 def _normalize_tiptap_tables(html: str) -> str:
     """Drop TipTap table chrome; keep the tags the allowlist already names."""
     without_cols = _COLGROUP.sub("", html)
-    return _TABLE_OPEN.sub(lambda match: f"<{match.group(1).lower()}{match.group(2)}>", without_cols)
+    return _TABLE_OPEN.sub(
+        lambda match: f"<{match.group(1).lower()}{match.group(2)}>", without_cols
+    )
 
 
 class _ArticleHtmlValidator(HTMLParser):

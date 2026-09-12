@@ -32,7 +32,9 @@ export function PostsListPage() {
         <span>
           <span className="font-medium">{p.translations[0]?.title ?? p.id.slice(0, 8)}</span>
           {p.pin_on_brand ? (
-            <span className="ml-2 text-xs uppercase text-[var(--text-secondary)]">{T.list.pinned}</span>
+            <span className="ml-2 text-xs uppercase text-[var(--text-secondary)]">
+              {T.list.pinned}
+            </span>
           ) : null}
         </span>
       ),

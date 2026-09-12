@@ -21,7 +21,7 @@ vi.mock("./blog", () => ({
             excerpt: "По ID, без пароля.",
             cover_image_url: "https://cdn.yupay.uz/blog/x.webp",
             body_html:
-              "<h2>Перед покупкой</h2><p>Нужен <strong>ID</strong> и <a href=\"/store/mobile-legends\">карточка</a>.</p>" +
+              '<h2>Перед покупкой</h2><p>Нужен <strong>ID</strong> и <a href="/store/mobile-legends">карточка</a>.</p>' +
               "<ol><li>Откройте игру</li><li>Оплатите</li></ol>" +
               "<pre><code>POST /check</code></pre>",
             faqs: [{ question: "Нужен пароль?", answer: "Нет." }],
@@ -36,7 +36,7 @@ import { blogIndexMarkdown, blogPostMarkdown, htmlToMarkdown } from "./blog-mark
 
 test("htmlToMarkdown keeps headings, links, lists and fences", () => {
   const md = htmlToMarkdown(
-    "<h2>Шаг</h2><p>Нужен <strong>ID</strong> на <a href=\"/store/mlbb\">странице</a>.</p>" +
+    '<h2>Шаг</h2><p>Нужен <strong>ID</strong> на <a href="/store/mlbb">странице</a>.</p>' +
       "<ul><li>Один</li><li>Два</li></ul>" +
       "<blockquote><p>Цены в тексте не пишем.</p></blockquote>" +
       "<pre><code>echo 1</code></pre>",
@@ -62,7 +62,9 @@ test("htmlToMarkdown renders a table", () => {
 test("blog index lists published posts as absolute links", async () => {
   const out = await blogIndexMarkdown("ru");
   expect(out).toContain("# Блог YuPay");
-  expect(out).toContain("[Как пополнить MLBB](https://yupay.uz/blog/kak-popolnit): По ID, без пароля.");
+  expect(out).toContain(
+    "[Как пополнить MLBB](https://yupay.uz/blog/kak-popolnit): По ID, без пароля.",
+  );
 });
 
 test("blog post markdown 404s a missing slug and renders a known one", async () => {

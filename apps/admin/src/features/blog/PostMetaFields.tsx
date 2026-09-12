@@ -117,7 +117,12 @@ export function PostMetaFields({
         <PinField checked={pin} otherPins={otherPins} onChange={onPin} />
       </div>
       {kind === "event" ? (
-        <EventWindowFields start={eventStart} end={eventEnd} onStart={onEventStart} onEnd={onEventEnd} />
+        <EventWindowFields
+          start={eventStart}
+          end={eventEnd}
+          onStart={onEventStart}
+          onEnd={onEventEnd}
+        />
       ) : null}
       {canSchedule ? (
         <Field label={T.form.scheduleAt}>

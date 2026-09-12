@@ -13,3 +13,5 @@ docs/api/openapi.json
 # 20+ false positives bury a real one in `prettier --check .` (which is exactly
 # how an unformatted README reached CI).
 .superpowers/
+.agents/
+.claude/
