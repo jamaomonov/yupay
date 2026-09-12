@@ -37,7 +37,8 @@ sanitize, admin CRUD and public GET. M2 is the storefront
 The admin editor uses TipTap (`@tiptap/*` in `apps/admin`) so operators wrap
 a selection instead of typing tags; cover and inline images use the existing
 R2 presign with `kind=blog_image` (png/jpeg/webp, same 5 MB cap as
-`brand_hero`). FAQ editor UX remains later.
+`brand_hero`). FAQ pairs, the two-pin cap warning, the event window chip
+and schedule live on the same form.
 
 Publish stamps `published_at` once; archive keeps it. A brand may pin at most
 two published posts. Event dates are a service rule, not a CHECK. Slug

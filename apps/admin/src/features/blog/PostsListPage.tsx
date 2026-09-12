@@ -29,19 +29,30 @@ export function PostsListPage() {
       key: "title",
       header: T.list.columns.title,
       render: (p) => (
-        <span className="font-medium">{p.translations[0]?.title ?? p.id.slice(0, 8)}</span>
+        <span>
+          <span className="font-medium">{p.translations[0]?.title ?? p.id.slice(0, 8)}</span>
+          {p.pin_on_brand ? (
+            <span className="ml-2 text-xs uppercase text-[var(--text-secondary)]">{T.list.pinned}</span>
+          ) : null}
+        </span>
       ),
     },
     {
       key: "kind",
       header: T.list.columns.kind,
-      render: (p) => T.kind[p.kind],
+      render: (p) =>
+        p.kind === "event" && p.event_ends_at
+          ? `${T.kind.event} · ${fmtDate(p.event_ends_at)}`
+          : T.kind[p.kind],
       className: "w-32",
     },
     {
       key: "status",
       header: T.list.columns.status,
-      render: (p) => T.status[p.status],
+      render: (p) =>
+        p.status === "scheduled" && p.scheduled_for
+          ? `${T.status.scheduled} · ${fmtDate(p.scheduled_for)}`
+          : T.status[p.status],
       className: "w-36",
     },
     {

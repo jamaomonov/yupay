@@ -29,6 +29,9 @@ allowlist.
 - `blog_post_translations` — slug unique per locale, title, excerpt, body.
 - `blog_post_brands` — extra related brands.
 - `blog_post_faqs` — Q/A that must match visible FAQ (GEO / `FAQPage`).
+  The admin form edits them per locale on the same page as the body.
+  A PATCH replaces FAQ and translation rows after a flush so unique
+  `(locale, sort_order)` / `(locale, slug)` do not 409 on a no-op save.
 
 ## Public surface (`api.py`)
 

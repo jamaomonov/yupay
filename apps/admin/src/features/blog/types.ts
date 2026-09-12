@@ -37,7 +37,14 @@ export interface AdminPost {
   updated_at: string;
   translations: Translation[];
   related_brand_ids: string[];
-  faqs: { locale: Locale; sort_order: number; question: string; answer: string }[];
+  faqs: Faq[];
+}
+
+export interface Faq {
+  locale: Locale;
+  sort_order: number;
+  question: string;
+  answer: string;
 }
 
 export interface AdminPostList {
@@ -54,6 +61,7 @@ export interface PostWriteBody {
   event_starts_at: string | null;
   event_ends_at: string | null;
   translations: Translation[];
+  faqs: Faq[];
 }
 
 export function idemHeaders(): HeadersInit {

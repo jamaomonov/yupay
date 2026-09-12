@@ -155,11 +155,13 @@ async def update_post(db: AsyncSession, post_id: str, body: PostUpdate) -> BlogP
     if post.status == "published" and post.pin_on_brand:
         await _ensure_pin_cap(db, post.primary_brand_id, excluding_id=post.id)
     if body.translations is not None:
+        post.translations.clear()
+        await db.flush()
         post.translations = _translations(body.translations, allow_empty=True)
     if body.related_brand_ids is not None:
         post.extra_brands = await _extra_brands(db, post.primary_brand_id, body.related_brand_ids)
     if body.faqs is not None:
-        post.faqs = _faqs(body.faqs)
+        await _replace_faqs(db, post, body.faqs)
     post.updated_at = now()
     await _flush_slug(db)
     log.info("blog.post_updated", post_id=post.id, kind=post.kind, status=post.status)
@@ -259,6 +261,13 @@ def _translations(rows: list[TranslationIn], *, allow_empty: bool) -> list[BlogP
             )
         )
     return out
+
+
+async def _replace_faqs(db: AsyncSession, post: BlogPost, rows: list[FaqIn]) -> None:
+    """Swap FAQ rows. New ids + the same sort_order would 409 without a flush."""
+    post.faqs.clear()
+    await db.flush()
+    post.faqs = _faqs(rows)
 
 
 def _faqs(rows: list[FaqIn]) -> list[BlogPostFaq]:

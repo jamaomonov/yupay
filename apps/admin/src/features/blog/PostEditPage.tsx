@@ -1,15 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input, Select } from "@yupay/ui";
+import { Button } from "@yupay/ui";
 import { useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import { FaqEditor } from "./FaqEditor";
+import { eventPhase, otherPublishedPins, packFaqs, type FaqDraft } from "./form";
 import { PostLocaleFields } from "./PostLocaleFields";
+import { PostMetaFields } from "./PostMetaFields";
 import {
   idemHeaders,
-  KINDS,
   LOCALES,
   T,
   type AdminPost,
+  type AdminPostList,
   type Locale,
   type PostKind,
   type PostWriteBody,
@@ -18,8 +21,6 @@ import {
 
 import type { Brand } from "@/features/catalog/types";
 
-import { Field } from "@/components/Field";
-import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { useToast } from "@/components/Toast";
@@ -57,15 +58,21 @@ export function PostEditPage() {
   const [pin, setPin] = useState(false);
   const [eventStart, setEventStart] = useState("");
   const [eventEnd, setEventEnd] = useState("");
+  const [scheduleAt, setScheduleAt] = useState("");
   const [locale, setLocale] = useState<Locale>("ru");
   const [translations, setTranslations] = useState<Translation[]>(
     LOCALES.map((loc) => emptyTranslation(loc)),
   );
+  const [faqs, setFaqs] = useState<FaqDraft[]>([]);
   const [status, setStatus] = useState<AdminPost["status"]>("draft");
 
   const brandsQ = useQuery({
     queryKey: qk.brands(),
     queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
+  });
+  const listQ = useQuery({
+    queryKey: qk.blogPosts(),
+    queryFn: () => apiGet<AdminPostList>("/api/v1/admin/blog/posts"),
   });
   const postQ = useQuery({
     queryKey: qk.blogPost(id ?? ""),
@@ -83,7 +90,9 @@ export function PostEditPage() {
     setPin(post.pin_on_brand);
     setEventStart(post.event_starts_at ?? "");
     setEventEnd(post.event_ends_at ?? "");
+    setScheduleAt(post.scheduled_for ?? "");
     setStatus(post.status);
+    setFaqs(post.faqs);
     setTranslations(
       LOCALES.map(
         (loc) => post.translations.find((row) => row.locale === loc) ?? emptyTranslation(loc),
@@ -92,6 +101,7 @@ export function PostEditPage() {
   }, [postQ.data]);
 
   const current = translations.find((row) => row.locale === locale) ?? emptyTranslation(locale);
+  const otherPins = otherPublishedPins(listQ.data?.items ?? [], brandId, isNew ? undefined : id);
 
   function patchTranslation(patch: Partial<Translation>): void {
     setTranslations((rows) =>
@@ -109,6 +119,18 @@ export function PostEditPage() {
       toast.error(T.form.needTranslation);
       return null;
     }
+    if (kind === "event") {
+      const phase = eventPhase(eventStart, eventEnd);
+      if (phase === "missing" || phase === "invalid") {
+        toast.error(T.form.eventNeedWindow);
+        return null;
+      }
+    }
+    const packed = packFaqs(faqs);
+    if (packed === "incomplete") {
+      toast.error(T.form.faqIncomplete);
+      return null;
+    }
     return {
       kind,
       primary_brand_id: brandId,
@@ -118,6 +140,7 @@ export function PostEditPage() {
       event_starts_at: kind === "event" && eventStart ? eventStart : null,
       event_ends_at: kind === "event" && eventEnd ? eventEnd : null,
       translations: rows,
+      faqs: packed,
     };
   }
 
@@ -144,11 +167,32 @@ export function PostEditPage() {
 
   const publish = useMutation({
     mutationFn: async () => {
-      const saved = isNew || save.isPending ? await save.mutateAsync() : { id };
+      const saved = await save.mutateAsync();
       return apiPost<AdminPost>(`/api/v1/admin/blog/posts/${saved.id}/publish`, {}, idemHeaders());
     },
     onSuccess: (post) => {
       toast.success(T.form.published);
+      setStatus(post.status);
+      void qc.invalidateQueries({ queryKey: qk.blogPosts() });
+      void qc.invalidateQueries({ queryKey: qk.blogPost(post.id) });
+    },
+    onError: (err) => toast.error(T.form.error.replace("{message}", extractApiMessage(err))),
+  });
+
+  const schedule = useMutation({
+    mutationFn: async () => {
+      if (!scheduleAt || Date.parse(scheduleAt) <= Date.now()) {
+        throw new Error(T.form.needSchedule);
+      }
+      const saved = await save.mutateAsync();
+      return apiPost<AdminPost>(
+        `/api/v1/admin/blog/posts/${saved.id}/schedule`,
+        { scheduled_for: scheduleAt },
+        idemHeaders(),
+      );
+    },
+    onSuccess: (post) => {
+      toast.success(T.form.scheduled);
       setStatus(post.status);
       void qc.invalidateQueries({ queryKey: qk.blogPosts() });
       void qc.invalidateQueries({ queryKey: qk.blogPost(post.id) });
@@ -168,6 +212,8 @@ export function PostEditPage() {
   });
 
   if (!isNew && postQ.isLoading) return <Spinner label="…" />;
+
+  const canSchedule = status === "draft" || status === "scheduled";
 
   return (
     <div className="space-y-6">
@@ -195,6 +241,17 @@ export function PostEditPage() {
             >
               {T.form.publish}
             </Button>
+            {canSchedule ? (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  schedule.mutate();
+                }}
+                disabled={schedule.isPending}
+              >
+                {T.form.schedule}
+              </Button>
+            ) : null}
             {!isNew && status !== "archived" ? (
               <Button
                 variant="ghost"
@@ -210,108 +267,27 @@ export function PostEditPage() {
         }
       />
 
-      <div className="grid gap-4 md:grid-cols-2">
-        <Field label={T.form.kind}>
-          {({ inputProps }) => (
-            <Select
-              {...inputProps}
-              value={kind}
-              onChange={(e) => {
-                const next = KINDS.find((k) => k === e.target.value);
-                if (next !== undefined) setKind(next);
-              }}
-            >
-              {KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {T.kind[k]}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-        <Field label={T.form.brand}>
-          {({ inputProps }) => (
-            <Select
-              {...inputProps}
-              value={brandId}
-              onChange={(e) => {
-                setBrandId(e.target.value);
-              }}
-            >
-              <option value="">{T.form.needBrand}</option>
-              {(brandsQ.data ?? []).map((b) => (
-                <option key={b.id} value={b.id}>
-                  {b.translations.find((t) => t.locale === "ru")?.name ?? b.slug}
-                </option>
-              ))}
-            </Select>
-          )}
-        </Field>
-        <Field label={T.form.cover}>
-          {({ inputProps }) => (
-            <div id={inputProps.id}>
-              <ImageUploader
-                value={cover || null}
-                onChange={(url) => {
-                  setCover(url);
-                }}
-                kind="blog_image"
-                hint={T.form.coverHint}
-              />
-            </div>
-          )}
-        </Field>
-        <div className="flex items-end gap-4 pb-2">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={buyCard}
-              onChange={(e) => {
-                setBuyCard(e.target.checked);
-              }}
-            />
-            {T.form.buyCard}
-          </label>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={pin}
-              onChange={(e) => {
-                setPin(e.target.checked);
-              }}
-            />
-            {T.form.pin}
-          </label>
-        </div>
-        {kind === "event" ? (
-          <>
-            <Field label={T.form.eventStart}>
-              {({ inputProps }) => (
-                <Input
-                  {...inputProps}
-                  type="datetime-local"
-                  value={eventStart.slice(0, 16)}
-                  onChange={(e) => {
-                    setEventStart(e.target.value ? new Date(e.target.value).toISOString() : "");
-                  }}
-                />
-              )}
-            </Field>
-            <Field label={T.form.eventEnd}>
-              {({ inputProps }) => (
-                <Input
-                  {...inputProps}
-                  type="datetime-local"
-                  value={eventEnd.slice(0, 16)}
-                  onChange={(e) => {
-                    setEventEnd(e.target.value ? new Date(e.target.value).toISOString() : "");
-                  }}
-                />
-              )}
-            </Field>
-          </>
-        ) : null}
-      </div>
+      <PostMetaFields
+        kind={kind}
+        brandId={brandId}
+        cover={cover}
+        buyCard={buyCard}
+        pin={pin}
+        otherPins={otherPins}
+        eventStart={eventStart}
+        eventEnd={eventEnd}
+        scheduleAt={scheduleAt}
+        canSchedule={canSchedule}
+        brands={brandsQ.data ?? []}
+        onKind={setKind}
+        onBrandId={setBrandId}
+        onCover={setCover}
+        onBuyCard={setBuyCard}
+        onPin={setPin}
+        onEventStart={setEventStart}
+        onEventEnd={setEventEnd}
+        onScheduleAt={setScheduleAt}
+      />
 
       <PostLocaleFields
         locale={locale}
@@ -319,6 +295,7 @@ export function PostEditPage() {
         onLocale={setLocale}
         onPatch={patchTranslation}
       />
+      <FaqEditor locale={locale} items={faqs} onChange={setFaqs} />
     </div>
   );
 }

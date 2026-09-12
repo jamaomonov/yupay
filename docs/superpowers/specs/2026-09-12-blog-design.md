@@ -277,7 +277,7 @@ No new money path. Bounded Prometheus labels if we add a counter:
 | ----- | -------- |
 | **M1** | Module + migration; sanitize; admin CRUD (textarea); public GET; tests; ADR |
 | **M2** | Web index + article; header link; brand block; sitemap; `llms.txt`; JSON-LD |
-| **M3** | TipTap editor; `blog_image` uploads; FAQ editor; event/pin UX polish |
+| **M3** | TipTap editor; `blog_image` uploads; FAQ editor; event/pin/schedule UX |
 
 M1 is sellable to an admin who pastes HTML. M2 is what Google and readers
 see. M3 is what makes weekly news viable for a human operator.

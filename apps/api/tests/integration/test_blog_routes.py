@@ -139,6 +139,58 @@ async def test_create_publish_and_public_get(
     assert "draft" not in body
 
 
+async def test_patch_replaces_faqs_without_unique_conflict(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    brand = await _seed_brand(db_session)
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts",
+        headers=admin_headers,
+        json={
+            **_draft_payload(brand.id),
+            "faqs": [
+                {
+                    "locale": "ru",
+                    "sort_order": 0,
+                    "question": "Нужен пароль?",
+                    "answer": "Нет, только ID.",
+                }
+            ],
+        },
+    )
+    assert created.status_code == 201, created.text
+    post_id = created.json()["id"]
+    patched = await integration_client.patch(
+        f"/api/v1/admin/blog/posts/{post_id}",
+        headers={**admin_headers, "Idempotency-Key": "blog-idempotency-faq-2"},
+        json={
+            "faqs": [
+                {
+                    "locale": "ru",
+                    "sort_order": 0,
+                    "question": "Нужен пароль?",
+                    "answer": "Нет, только ID.",
+                },
+                {
+                    "locale": "ru",
+                    "sort_order": 1,
+                    "question": "Где цена?",
+                    "answer": "На карточке бренда.",
+                },
+            ]
+        },
+    )
+    assert patched.status_code == 200, patched.text
+    assert [row["question"] for row in patched.json()["faqs"]] == ["Нужен пароль?", "Где цена?"]
+    same_slug = await integration_client.patch(
+        f"/api/v1/admin/blog/posts/{post_id}",
+        headers={**admin_headers, "Idempotency-Key": "blog-idempotency-tr-2"},
+        json={"translations": _draft_payload(brand.id)["translations"]},
+    )
+    assert same_slug.status_code == 200, same_slug.text
+    assert same_slug.json()["translations"][0]["slug"] == "kak-popolnit-mlbb"
+
+
 async def test_public_get_404_for_draft(
     integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
 ) -> None:
