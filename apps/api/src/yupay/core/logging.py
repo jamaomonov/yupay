@@ -83,6 +83,10 @@ REDACTED_KEYS = frozenset(
         "secret",
         "signature",
         "key",
+        # Anonymous blog likes/views (ADR-0073). The raw cookie is never
+        # stored; the hash is. Neither belongs in a log line.
+        "yp_blog_reader",
+        "reader_hash",
     },
 )
 

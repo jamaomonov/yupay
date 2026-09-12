@@ -5023,6 +5023,30 @@
         "title": "DepositCreditOut",
         "type": "object"
       },
+      "EngagementOut": {
+        "description": "Fresh like/view counts after a guest records a view or toggles a like.",
+        "properties": {
+          "like_count": {
+            "title": "Like Count",
+            "type": "integer"
+          },
+          "liked": {
+            "title": "Liked",
+            "type": "boolean"
+          },
+          "view_count": {
+            "title": "View Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "liked",
+          "like_count",
+          "view_count"
+        ],
+        "title": "EngagementOut",
+        "type": "object"
+      },
       "EvidencePackOut": {
         "description": "What gets handed to the acquirer when a transaction is disputed.\n\nShaped for that use: the capture, plus the order's full timeline, so the\nanswer to \"when was this delivered and to whom\" is one request rather than\nan admin stitching screens together against a 5-day clock.",
         "properties": {
@@ -9511,6 +9535,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "like_count": {
+            "default": 0,
+            "title": "Like Count",
+            "type": "integer"
+          },
           "locale_slugs": {
             "additionalProperties": {
               "type": "string"
@@ -9582,6 +9611,11 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "view_count": {
+            "default": 0,
+            "title": "View Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -9662,6 +9696,11 @@
             "title": "Kind",
             "type": "string"
           },
+          "like_count": {
+            "default": 0,
+            "title": "Like Count",
+            "type": "integer"
+          },
           "pin_on_brand": {
             "title": "Pin On Brand",
             "type": "boolean"
@@ -9693,6 +9732,11 @@
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
+          },
+          "view_count": {
+            "default": 0,
+            "title": "View Count",
+            "type": "integer"
           }
         },
         "required": [
@@ -27970,6 +28014,328 @@
           }
         },
         "summary": "Get one published post",
+        "tags": [
+          "blog"
+        ]
+      }
+    },
+    "/api/v1/blog/{slug}/like": {
+      "delete": {
+        "description": "Anonymous. Unlike without a prior like is a no-op.",
+        "operationId": "unlike_post_api_v1_blog__slug__like_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ru|en|uz)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "yp_blog_reader",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Yp Blog Reader"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngagementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Unlike a published post",
+        "tags": [
+          "blog"
+        ]
+      },
+      "post": {
+        "description": "Anonymous. Guests get a reader cookie. Repeat like is a no-op.",
+        "operationId": "like_post_api_v1_blog__slug__like_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ru|en|uz)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "yp_blog_reader",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Yp Blog Reader"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngagementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Like a published post",
+        "tags": [
+          "blog"
+        ]
+      }
+    },
+    "/api/v1/blog/{slug}/view": {
+      "post": {
+        "description": "Anonymous. First view per reader cookie increments; repeats do not.",
+        "operationId": "record_view_api_v1_blog__slug__view_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ru|en|uz)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          },
+          {
+            "in": "cookie",
+            "name": "yp_blog_reader",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Yp Blog Reader"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngagementOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Record a unique view",
         "tags": [
           "blog"
         ]

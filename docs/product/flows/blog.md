@@ -19,6 +19,9 @@ sequenceDiagram
         Cat-->>Web: name, art, starting_display_price
     end
     Web-->>R: article, JSON-LD, live buy card
+    R->>Web: like / share (optional, no login)
+    Web->>API: POST /blog/{slug}/view then POST|DELETE /blog/{slug}/like
+    API-->>Web: liked + counts (yp_blog_reader cookie)
 ```
 
 Drafts and missing locales are 404. Archive keeps `published_at` so an

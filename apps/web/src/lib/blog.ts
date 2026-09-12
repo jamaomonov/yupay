@@ -32,6 +32,8 @@ export interface BlogListItem {
   event_starts_at: string | null;
   event_ends_at: string | null;
   pin_on_brand: boolean;
+  like_count: number;
+  view_count: number;
 }
 
 export interface BlogPostDetail extends BlogListItem {

@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { EngagementStats } from "./EngagementStats";
 import { eventChip, type BlogListItem, type PostKind } from "@/lib/blog";
 import { isOptimizable } from "@/lib/image";
 import { pathFor } from "@/lib/seo";
@@ -56,9 +57,12 @@ export async function BlogPostCard({
           {post.title}
         </h2>
         {post.excerpt ? <p className="text-tx-mute line-clamp-3 text-sm leading-relaxed">{post.excerpt}</p> : null}
-        <time className="text-tx-dim mt-auto font-mono text-[11px]" dateTime={post.updated_at}>
-          {formatDay(locale, post.updated_at)}
-        </time>
+        <div className="mt-auto flex items-center justify-between gap-3">
+          <time className="text-tx-dim font-mono text-[11px]" dateTime={post.updated_at}>
+            {formatDay(locale, post.updated_at)}
+          </time>
+          <EngagementStats likes={post.like_count} views={post.view_count} />
+        </div>
       </div>
     </Link>
   );

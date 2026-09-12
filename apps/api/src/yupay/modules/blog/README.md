@@ -25,7 +25,10 @@ allowlist.
 
 ## Tables
 
-- `blog_posts` — kind, status, primary brand, pin, event window, cover.
+- `blog_posts` — kind, status, primary brand, pin, event window, cover,
+  denormalized `like_count` / `view_count`.
+- `blog_post_likes` / `blog_post_views` — unique `(post_id, reader_hash)`
+  from the `yp_blog_reader` cookie (ADR-0073). Not IP.
 - `blog_post_translations` — slug unique per locale, title, excerpt, body.
 - `blog_post_brands` — extra related brands.
 - `blog_post_faqs` — Q/A that must match visible FAQ (GEO / `FAQPage`).
@@ -36,8 +39,9 @@ allowlist.
 ## Public surface (`api.py`)
 
 Re-exports models plus `router` (`/blog`) and `admin_router` (`/admin/blog`).
-Public GETs are anonymous and cacheable. Admin mutations require
-`Idempotency-Key` (≥16 chars) and the `admin` role.
+Public GETs are anonymous and cacheable. Guest `POST /blog/{slug}/view`
+and `POST`/`DELETE /blog/{slug}/like` take `Idempotency-Key` (≥16).
+Admin mutations require the key and the `admin` role.
 
 ## How to publish without breaking SEO
 

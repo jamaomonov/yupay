@@ -849,6 +849,11 @@
     "buyCta": "Toʻldirish",
     "from": "dan",
     "faqs": "Savollar",
+    "like": "Yoqdi",
+    "share": "Ulashish",
+    "copied": "Havola nusxalandi",
+    "viewsAria": "Ko‘rishlar: {count}",
+    "likesAria": "Yoqdi: {count}",
     "kind": {
       "guide": "Qoʻllanma",
       "news": "Yangilik",

@@ -849,6 +849,11 @@
     "buyCta": "Top up",
     "from": "from",
     "faqs": "Questions",
+    "like": "Like",
+    "share": "Share",
+    "copied": "Link copied",
+    "viewsAria": "Views: {count}",
+    "likesAria": "Likes: {count}",
     "kind": {
       "guide": "Guide",
       "news": "News",

@@ -214,7 +214,9 @@ yupay/
   for repo-committed encrypted secrets.
 - Webhook endpoints (Stripe, PayPal, suppliers, Telegram) **must** verify signatures **before**
   parsing the body. Raw-body middleware required.
-- **Never log PII**: email, phone, full card data, Telegram user ID, IP. Use the structured
+- **Never log PII**: email, phone, full card data, Telegram user ID, IP. Also never
+  log the blog reader cookie (`yp_blog_reader`) or its stored `reader_hash` — likes
+  and views are cookie-hashed, not IP (ADR-0073). Use the structured
   logger's redactor. Order IDs and amounts are OK to log. "IP" means **an address we
   observed a person arriving from** — a customer's, a cabinet operator's, an admin's.
   The carve-out is the mirror image: **an address a third party published to us as a

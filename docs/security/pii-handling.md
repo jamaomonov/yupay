@@ -15,6 +15,7 @@
 | Voucher codes (issued)         | Inventory / supplier         | `inventory_codes.code_ciphertext`, `deliveries.payload_ciphertext` | **Yes, column-level (libsodium)**; dedup `code_hash` is HMAC-SHA256 keyed off an HKDF-derived key, not bare SHA-256 (ADR-0038)                          |
 | Payment provider metadata      | Webhooks                     | `payment_webhooks.payload jsonb`                                   | Provider's own redaction policy; we never store PAN. Masked by key (card/pan/cvv/secret/signature/…) before the admin audit feed displays it (ADR-0038) |
 | Masked card data (Octo)        | Octo webhook callback        | `payment_webhooks.payload jsonb` (admin-only)                      | Already masked by Octo (`maskedPan`, `rrn`); full PAN never sent                                                                                        |
+| Blog reader cookie             | First public like or view    | Not stored raw. `blog_post_likes.reader_hash` / `blog_post_views.reader_hash` (SHA-256) | HttpOnly cookie `yp_blog_reader`; hash only at rest. Not IP (ADR-0073)                                                                                  |
 
 **Guest email in transit.** Guest order/deliveries lookups (`GET /orders/{id}`,
 `GET /orders/{id}/deliveries`) send the guest's email as an `X-Guest-Email` header,
@@ -90,6 +91,7 @@ surface, and is cleared when the suspension is lifted (ADR-0045).
 - Telegram IDs, including `chat_id` (a private-chat id is itself a Telegram user id)
 - Voucher codes
 - Auth tokens (access / refresh / guest)
+- Blog reader cookie (`yp_blog_reader`) and its stored `reader_hash`
 - Provider API keys and acquirer secrets (`octo_secret`, `octo_signature_key`, bearer tokens)
 - Card data — masked card fields stay in the admin-only webhook audit row, never in app logs
 
@@ -121,6 +123,8 @@ us, in JSON. Implemented in the `users` module.
 - Logs: 14 days hot, 90 days cold (R2).
 - Webhook payloads: 1 year, then archived to cold storage.
 - Auth sessions: 30 days TTL on the refresh token; access JWTs are stateless and expire in 15 min.
+- Blog likes/views: retained with the post, keyed only by `reader_hash`. The
+  cookie itself lives 400 days; clearing it is how a guest resets identity.
 - Reviews: a review is authored by a `user_id` and shown publicly only as the
   user's `display_name` (or an anonymous label when null) — **never the email**.
   The review `body` is user-controlled free text and is never logged. Reviews are

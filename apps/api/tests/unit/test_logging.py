@@ -30,6 +30,12 @@ def test_redacted_keys_includes_chat_id() -> None:
     assert "chat_id" in REDACTED_KEYS
 
 
+def test_redacted_keys_includes_blog_reader_identity() -> None:
+    """Anonymous likes/views are a cookie hash, not an IP (ADR-0073)."""
+    assert "yp_blog_reader" in REDACTED_KEYS
+    assert "reader_hash" in REDACTED_KEYS
+
+
 def test_redact_pii_masks_chat_id_event() -> None:
     event = _redact_pii(None, "warning", {"event": "telegram.send.rejected", "chat_id": 123456789})
     assert event["chat_id"] == "<redacted>"

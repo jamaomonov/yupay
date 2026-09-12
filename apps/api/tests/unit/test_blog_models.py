@@ -10,7 +10,9 @@ from yupay.modules.blog.models import (
     BlogPost,
     BlogPostBrand,
     BlogPostFaq,
+    BlogPostLike,
     BlogPostTranslation,
+    BlogPostView,
 )
 
 
@@ -40,3 +42,12 @@ def test_faq_sort_is_unique_per_post_locale() -> None:
     names = {c.name for c in BlogPostFaq.__table__.constraints}  # type: ignore[attr-defined]
     assert "uq_blog_post_faqs_post_locale_sort" in names
     assert "ck_blog_post_faqs_locale_known" in names
+
+
+def test_like_and_view_are_per_reader() -> None:
+    assert BlogPostLike.__tablename__ == "blog_post_likes"
+    assert {col.name for col in BlogPostLike.__table__.primary_key} == {"post_id", "reader_hash"}
+    assert BlogPostView.__tablename__ == "blog_post_views"
+    assert {col.name for col in BlogPostView.__table__.primary_key} == {"post_id", "reader_hash"}
+    assert "like_count" in BlogPost.__table__.c
+    assert "view_count" in BlogPost.__table__.c

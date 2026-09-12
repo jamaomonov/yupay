@@ -45,6 +45,8 @@ class PostListItemOut(BaseModel):
     event_starts_at: datetime | None
     event_ends_at: datetime | None
     pin_on_brand: bool
+    like_count: int = 0
+    view_count: int = 0
 
 
 class PostDetailOut(PostListItemOut):
@@ -57,6 +59,14 @@ class PostDetailOut(PostListItemOut):
     related_brand_slugs: list[str]
     faqs: list[FaqOut]
     locale_slugs: dict[str, str]
+
+
+class EngagementOut(BaseModel):
+    """Fresh like/view counts after a guest records a view or toggles a like."""
+
+    liked: bool
+    like_count: int
+    view_count: int
 
 
 class PostListOut(BaseModel):
@@ -75,6 +85,7 @@ class BrandBlockOut(BaseModel):
 __all__ = [
     "BrandBlockOut",
     "BrandRefOut",
+    "EngagementOut",
     "FaqOut",
     "Locale",
     "PostDetailOut",

@@ -13,3 +13,11 @@ sequenceDiagram
         Catalog-->>Web: BrandDetail
     end
     Web-->>Reader: HTML + JSON-LD + live Offer on the card
+    Reader->>Web: article mount (no login)
+    Web->>Blog: POST /api/v1/blog/{slug}/view
+    Blog-->>Web: counts + yp_blog_reader cookie
+    opt like / unlike
+        Reader->>Web: like button
+        Web->>Blog: POST|DELETE /api/v1/blog/{slug}/like
+        Blog-->>Web: liked + counts
+    end

@@ -136,6 +136,8 @@ async def test_create_publish_and_public_get(
     assert body["primary_brand"]["slug"] == "mlbb"
     assert body["id"] == post_id
     assert body["locale_slugs"] == {"ru": "kak-popolnit-mlbb"}
+    assert body["like_count"] == 0
+    assert body["view_count"] == 0
     assert "draft" not in body
 
 
@@ -366,3 +368,55 @@ async def test_admin_list_translations_are_not_n_plus_1(
     assert listed.status_code == 200, listed.text
     assert listed.json()["total"] == 3
     assert translation_queries == 1
+
+
+async def test_guest_can_view_and_like_without_auth(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    brand = await _seed_brand(db_session)
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts",
+        headers=admin_headers,
+        json=_draft_payload(brand.id),
+    )
+    await integration_client.post(
+        f"/api/v1/admin/blog/posts/{created.json()['id']}/publish",
+        headers={**admin_headers, "Idempotency-Key": "blog-idempotency-02"},
+    )
+    viewed = await integration_client.post(
+        "/api/v1/blog/kak-popolnit-mlbb/view?locale=ru",
+        headers={"Idempotency-Key": "blog-view-guest-01"},
+    )
+    assert viewed.status_code == 200, viewed.text
+    assert viewed.json()["view_count"] == 1
+    assert viewed.json()["liked"] is False
+    assert "yp_blog_reader" in viewed.cookies
+
+    again = await integration_client.post(
+        "/api/v1/blog/kak-popolnit-mlbb/view?locale=ru",
+        headers={"Idempotency-Key": "blog-view-guest-02"},
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["view_count"] == 1
+
+    liked = await integration_client.post(
+        "/api/v1/blog/kak-popolnit-mlbb/like?locale=ru",
+        headers={"Idempotency-Key": "blog-like-guest-01"},
+    )
+    assert liked.status_code == 200, liked.text
+    assert liked.json()["liked"] is True
+    assert liked.json()["like_count"] == 1
+
+    replay = await integration_client.post(
+        "/api/v1/blog/kak-popolnit-mlbb/like?locale=ru",
+        headers={"Idempotency-Key": "blog-like-guest-01"},
+    )
+    assert replay.json()["like_count"] == 1
+
+    unliked = await integration_client.delete(
+        "/api/v1/blog/kak-popolnit-mlbb/like?locale=ru",
+        headers={"Idempotency-Key": "blog-unlike-guest-01"},
+    )
+    assert unliked.status_code == 200, unliked.text
+    assert unliked.json()["liked"] is False
+    assert unliked.json()["like_count"] == 0

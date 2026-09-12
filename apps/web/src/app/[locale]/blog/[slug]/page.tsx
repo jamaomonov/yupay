@@ -7,8 +7,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import type { Metadata } from "next";
 
+import { ArticleActions } from "@/components/blog/ArticleActions";
 import { ArticleBody } from "@/components/blog/ArticleBody";
 import { BuyCard } from "@/components/blog/BuyCard";
+import { EngagementStats } from "@/components/blog/EngagementStats";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { eventChip, getPublishedBlogEntries, getPublishedPost, type PostKind } from "@/lib/blog";
@@ -123,7 +125,10 @@ export default async function BlogArticlePage({
         <h1 className="font-display mt-3 text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
           {post.title}
         </h1>
-        <p className="text-tx-dim mt-3 font-mono text-[12px]">{t("updated", { date: updated })}</p>
+        <div className="mt-3 flex flex-wrap items-center gap-3">
+          <p className="text-tx-dim font-mono text-[12px]">{t("updated", { date: updated })}</p>
+          <EngagementStats likes={post.like_count} views={post.view_count} />
+        </div>
         {post.cover_image_url ? (
           <div className="bg-card-2 relative mt-6 aspect-video overflow-hidden rounded-2xl">
             <Image
@@ -159,6 +164,12 @@ export default async function BlogArticlePage({
             </div>
           </section>
         ) : null}
+        <ArticleActions
+          slug={post.slug}
+          locale={locale}
+          title={post.title}
+          initialLikes={post.like_count}
+        />
         {post.show_buy_card ? <BuyCard brandSlug={post.primary_brand.slug} locale={locale} /> : null}
       </article>
     </main>

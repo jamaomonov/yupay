@@ -86,6 +86,8 @@ class BlogPost(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
+    like_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
+    view_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
 
     translations: Mapped[list[BlogPostTranslation]] = relationship(
         back_populates="post",
@@ -176,3 +178,37 @@ class BlogPostFaq(Base):
     answer: Mapped[str] = mapped_column(Text, nullable=False)
 
     post: Mapped[BlogPost] = relationship(back_populates="faqs")
+
+
+class BlogPostLike(Base):
+    """One like from one anonymous reader. ``reader_hash`` is SHA-256 of a cookie."""
+
+    __tablename__ = "blog_post_likes"
+    __table_args__ = (PrimaryKeyConstraint("post_id", "reader_hash", name="pk_blog_post_likes"),)
+
+    post_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("blog_posts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reader_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+class BlogPostView(Base):
+    """First view from one anonymous reader. Repeat views do not increment."""
+
+    __tablename__ = "blog_post_views"
+    __table_args__ = (PrimaryKeyConstraint("post_id", "reader_hash", name="pk_blog_post_views"),)
+
+    post_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("blog_posts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reader_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )

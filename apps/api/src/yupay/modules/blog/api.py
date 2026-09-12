@@ -5,7 +5,9 @@ from yupay.modules.blog.models import (
     BlogPost,
     BlogPostBrand,
     BlogPostFaq,
+    BlogPostLike,
     BlogPostTranslation,
+    BlogPostView,
 )
 from yupay.modules.blog.routes import router
 
@@ -13,7 +15,9 @@ __all__ = [
     "BlogPost",
     "BlogPostBrand",
     "BlogPostFaq",
+    "BlogPostLike",
     "BlogPostTranslation",
+    "BlogPostView",
     "admin_router",
     "router",
 ]

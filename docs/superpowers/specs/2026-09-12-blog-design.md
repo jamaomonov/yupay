@@ -202,10 +202,15 @@ Anonymous, rate-limited like other public GETs. No Idempotency-Key (reads).
 | `GET /blog` | `locale`, optional `brand` (slug), `kind`, `cursor`. Published + locale row only. Events in-window first, then `published_at` desc |
 | `GET /blog/{slug}` | locale from `Accept-Language` / `?locale=` like catalogue. 404 if unpublished or locale missing |
 | `GET /blog/by-brand/{brandSlug}` | latest N + pins, for the brand page block |
+| `POST /blog/{slug}/view` | anonymous unique view; sets `yp_blog_reader`; Idempotency-Key |
+| `POST /blog/{slug}/like` | anonymous like; same cookie; Idempotency-Key |
+| `DELETE /blog/{slug}/like` | unlike; no-op if never liked |
 
 List items carry: slug, kind, title, excerpt, cover, published_at, updated_at,
-primary brand `{slug, name}`, `event_*`, `pin_on_brand`. Detail adds
-`body_html`, faqs, related brand slugs, `show_buy_card`. **Never** a draft.
+primary brand `{slug, name}`, `event_*`, `pin_on_brand`, `like_count`,
+`view_count`. Detail adds `body_html`, faqs, related brand slugs,
+`show_buy_card`. **Never** a draft. Views/likes are cookie-hashed, not IP
+(ADR-0073).
 
 ## 10. Admin contract
 

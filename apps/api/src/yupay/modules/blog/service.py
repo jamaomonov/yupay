@@ -85,6 +85,8 @@ def _to_item(
         event_starts_at=post.event_starts_at,
         event_ends_at=post.event_ends_at,
         pin_on_brand=post.pin_on_brand,
+        like_count=post.like_count,
+        view_count=post.view_count,
     )
 
 

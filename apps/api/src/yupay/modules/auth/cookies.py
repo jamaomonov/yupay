@@ -90,9 +90,12 @@ def clear_refresh_cookie(
     )
 
 
+cookie_domain = _cookie_domain
+
 __all__ = [
     "PARTNER_REFRESH_COOKIE_NAME",
     "REFRESH_COOKIE_NAME",
     "clear_refresh_cookie",
+    "cookie_domain",
     "set_refresh_cookie",
 ]
