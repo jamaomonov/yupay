@@ -1,6 +1,5 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { Menu, Send, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -13,7 +12,7 @@ import { type AppLocale } from "@/i18n/routing";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
-import { formatUzs, pathFor } from "@/lib/seo";
+import { pathFor } from "@/lib/seo";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
   { code: "ru", label: "Русский" },
@@ -100,6 +99,9 @@ export function MobileNav() {
             <nav className="flex flex-col">
               <Link href={pathFor(current, "/store")} onClick={close} className={linkClass}>
                 {t("store")}
+              </Link>
+              <Link href={pathFor(current, "/blog")} onClick={close} className={linkClass}>
+                {t("blog")}
               </Link>
               <a href={`${pathFor(current)}#how`} onClick={close} className={linkClass}>
                 {t("how")}

@@ -105,6 +105,22 @@ export function alternates(locale: string, path = "") {
   return { canonical: localeUrl(locale, path), languages };
 }
 
+/** hreflang only for locales that have a blog translation row. */
+export function blogAlternates(locale: string, localeSlugs: Record<string, string>) {
+  const languages: Record<string, string> = {};
+  for (const [loc, slug] of Object.entries(localeSlugs)) {
+    if (!slug) continue;
+    languages[loc] = localeUrl(loc, `/blog/${slug}`);
+  }
+  const ruSlug = localeSlugs.ru;
+  if (ruSlug) languages["x-default"] = localeUrl("ru", `/blog/${ruSlug}`);
+  const currentSlug = localeSlugs[locale];
+  return {
+    canonical: currentSlug ? localeUrl(locale, `/blog/${currentSlug}`) : localeUrl(locale, "/blog"),
+    languages,
+  };
+}
+
 export function ogLocale(locale: string) {
   return {
     locale: OG_LOCALE[locale] ?? "ru_RU",

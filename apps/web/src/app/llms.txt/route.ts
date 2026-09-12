@@ -1,3 +1,4 @@
+import { listPublishedPosts } from "@/lib/blog";
 import { getBrands } from "@/lib/catalog";
 import { firstNonEmpty, SITE } from "@/lib/seo";
 
@@ -22,6 +23,7 @@ export async function GET(): Promise<Response> {
   // Never let a catalog hiccup 500 the file — an index without the brand list
   // is still a valid, useful llms.txt.
   const brands = await getBrands("ru").catch(() => []);
+  const posts = await listPublishedPosts("ru").catch(() => ({ items: [], next_cursor: null }));
 
   const lines = [
     "# YuPay",
@@ -34,8 +36,12 @@ export async function GET(): Promise<Response> {
       return `- [${b.name}](${SITE}/store/${b.slug})${desc ? `: ${oneLine(desc)}` : ""}`;
     }),
     "",
+    "## Гайды и новости",
+    ...posts.items.slice(0, 20).map((p) => `- [${p.title}](${SITE}/blog/${p.slug})`),
+    "",
     "## Ключевые страницы",
     `- [Каталог](${SITE}/store): все бренды, категории и цены в сумах`,
+    `- [Блог](${SITE}/blog): гайды и новости по брендам каталога`,
     "",
     "## Правовое",
     `- [Все документы](${SITE}/legal)`,

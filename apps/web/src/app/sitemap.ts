@@ -2,6 +2,7 @@ import { LOCALES } from "@yupay/i18n";
 
 import type { MetadataRoute } from "next";
 
+import { getPublishedBlogEntries } from "@/lib/blog";
 import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
 import { LEGAL_DOCS } from "@/lib/legal";
 import { localeUrl } from "@/lib/seo";
@@ -121,6 +122,42 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       });
     }
   }
+
+  const blog = await getPublishedBlogEntries();
+  const byPost = new Map<string, typeof blog>();
+  for (const row of blog) {
+    const group = byPost.get(row.id) ?? [];
+    group.push(row);
+    byPost.set(row.id, group);
+  }
+  for (const group of byPost.values()) {
+    const languages = Object.fromEntries(
+      group.map((row) => [row.locale, localeUrl(row.locale, `/blog/${row.slug}`)]),
+    );
+    const ru = group.find((row) => row.locale === "ru");
+    if (ru) languages["x-default"] = localeUrl("ru", `/blog/${ru.slug}`);
+    for (const row of group) {
+      const stamp = new Date(row.updated_at);
+      stamp.setUTCHours(0, 0, 0, 0);
+      entries.push({
+        url: localeUrl(row.locale, `/blog/${row.slug}`),
+        lastModified: stamp,
+        changeFrequency: "weekly",
+        priority: 0.7,
+        alternates: { languages },
+      });
+    }
+  }
+
+  entries.push(
+    ...LOCALES.map((locale) => ({
+      url: localeUrl(locale, "/blog"),
+      lastModified,
+      changeFrequency: "daily" as const,
+      priority: 0.7,
+      alternates: { languages: languagesFor("/blog") },
+    })),
+  );
 
   return entries;
 }

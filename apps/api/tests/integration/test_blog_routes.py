@@ -134,6 +134,8 @@ async def test_create_publish_and_public_get(
     assert body["title"] == "Как пополнить MLBB"
     assert body["body_html"] == "<p>ok</p>"
     assert body["primary_brand"]["slug"] == "mlbb"
+    assert body["id"] == post_id
+    assert body["locale_slugs"] == {"ru": "kak-popolnit-mlbb"}
     assert "draft" not in body
 
 

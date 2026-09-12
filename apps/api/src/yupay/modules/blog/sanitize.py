@@ -9,6 +9,7 @@ the storefront as HTML.
 
 from __future__ import annotations
 
+import re
 from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
@@ -42,6 +43,20 @@ ALLOWED_TAGS: frozenset[str] = frozenset(
 VOID_TAGS: frozenset[str] = frozenset({"br", "hr", "img"})
 _ANCHOR_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 _BODY_MAX_CHARS = 100_000
+# TipTap's table pack always writes style/colspan/colwidth. Those are not
+# XSS, but they trip the fail-closed attr rule. Strip them (and the
+# ``colgroup`` it wraps around a resizable table) so a round-trip save works.
+_TABLE_OPEN = re.compile(
+    r"<(table|thead|tbody|tr|th|td)(?:\s[^>]*)?(/?)>",
+    re.IGNORECASE,
+)
+_COLGROUP = re.compile(r"</?colgroup\b[^>]*>|<col\b[^>]*/?>", re.IGNORECASE)
+
+
+def _normalize_tiptap_tables(html: str) -> str:
+    """Drop TipTap table chrome; keep the tags the allowlist already names."""
+    without_cols = _COLGROUP.sub("", html)
+    return _TABLE_OPEN.sub(lambda match: f"<{match.group(1).lower()}{match.group(2)}>", without_cols)
 
 
 class _ArticleHtmlValidator(HTMLParser):
@@ -125,7 +140,12 @@ class _ArticleHtmlValidator(HTMLParser):
 
 
 def sanitize_body(html: str, *, media_base_url: str, allow_empty: bool = True) -> str:
-    """Validate ``html`` and return it unchanged when it is safe to persist.
+    """Validate ``html`` and return the persistable form.
+
+    Table tags are rewritten first: TipTap always serializes ``style`` /
+    ``colspan`` / ``colgroup``, which the allowlist does not keep. Every
+    other tag is still fail-closed — extra attributes raise, they are not
+    stripped.
 
     Args:
         html: admin-authored article HTML.
@@ -148,10 +168,11 @@ def sanitize_body(html: str, *, media_base_url: str, allow_empty: bool = True) -
         raise ValidationError(
             "HTML comments, declarations, and processing instructions are not allowed"
         )
+    normalized = _normalize_tiptap_tables(html)
     validator = _ArticleHtmlValidator(media_base_url=media_base_url)
-    validator.feed(html)
+    validator.feed(normalized)
     validator.finish()
-    return html
+    return normalized
 
 
 def assert_hosted_media(url: str, *, media_base_url: str, subject: str = "url") -> str:

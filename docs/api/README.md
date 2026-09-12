@@ -31,7 +31,8 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 
 Anonymous public reads under `/api/v1/blog` (list, `/{slug}`, `/by-brand/{brandSlug}`).
 Only `status=published` translations are returned; a missing locale is 404, not a
-`ru` fallback. Admin writes live at `/api/v1/admin/blog/posts` and require the
+`ru` fallback. List/detail items carry `id`; detail also carries `locale_slugs`
+so the storefront can emit hreflang only for locales that have a row. Admin writes live at `/api/v1/admin/blog/posts` and require the
 `admin` role plus `Idempotency-Key`. Bodies are persisted only after the HTML
 allowlist in `modules/blog/sanitize.py`. Cover and inline images upload through
 the existing `POST /admin/media/presign-upload` with `kind=blog_image` (png/jpeg/webp,

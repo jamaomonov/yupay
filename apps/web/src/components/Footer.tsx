@@ -72,6 +72,7 @@ export async function Footer({ locale }: { locale: string }) {
 
           <FooterCol title={t("productTitle")}>
             <FooterLink href={pathFor(locale, "/store")}>{nav("store")}</FooterLink>
+            <FooterLink href={pathFor(locale, "/blog")}>{nav("blog")}</FooterLink>
             <FooterLink href={pathFor(locale, "/store")}>{t("prices")}</FooterLink>
             <FooterLink href={`${pathFor(locale)}#how`}>{nav("how")}</FooterLink>
             {/* Its own domain, so `external` — otherwise Next would treat it as

@@ -20,6 +20,7 @@
   },
   "nav": {
     "store": "Catalog",
+    "blog": "Blog",
     "how": "How it works",
     "support": "Help",
     "login": "Sign in",
@@ -835,5 +836,24 @@
     "body": "If you paid, the order appears in your list within a minute. If you cancelled, nothing was charged — try again.",
     "toOrders": "My orders",
     "toWallet": "Wallet"
+  },
+  "blog": {
+    "title": "Blog",
+    "description": "Guides and news about the games we sell.",
+    "empty": "No published posts yet.",
+    "updated": "Updated {date}",
+    "live": "Now",
+    "ended": "Event ended",
+    "pinned": "Pinned",
+    "brandBlockTitle": "New on {name}",
+    "buyCta": "Top up",
+    "from": "from",
+    "faqs": "Questions",
+    "kind": {
+      "guide": "Guide",
+      "news": "News",
+      "update": "Update",
+      "event": "Event"
+    }
   }
 }

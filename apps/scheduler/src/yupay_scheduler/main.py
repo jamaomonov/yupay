@@ -18,6 +18,7 @@ from yupay.core.observability import init_sentry
 # ``orders.user_id → users.id``) raise ``NoReferencedTableError`` because
 # the dependent ``users.models`` module never got imported.
 from yupay.modules.auth import models as _auth_models  # noqa: F401
+from yupay.modules.blog import models as _blog_models  # noqa: F401
 from yupay.modules.broadcasts import models as _broadcasts_models  # noqa: F401
 from yupay.modules.catalog import models as _catalog_models  # noqa: F401
 from yupay.modules.click import models as _click_models  # noqa: F401
@@ -37,6 +38,7 @@ from yupay.modules.wallet import models as _wallet_models  # noqa: F401
 
 from yupay_scheduler.jobs import (
     affiliate_accrual,
+    blog_publish_due,
     broadcast_dispatch,
     catalog_watch,
     click_timeout,
@@ -70,6 +72,7 @@ def build_scheduler() -> AsyncIOScheduler:
     """
     scheduler = AsyncIOScheduler(timezone="UTC")
     affiliate_accrual.register(scheduler)
+    blog_publish_due.register(scheduler)
     broadcast_dispatch.register(scheduler)
     catalog_watch.register(scheduler)
     click_timeout.register(scheduler)

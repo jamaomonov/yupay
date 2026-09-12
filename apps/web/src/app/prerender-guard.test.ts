@@ -30,6 +30,8 @@ describe("store routes stay prerenderable", () => {
     "[locale]/store/loading.tsx",
     "[locale]/store/[brandSlug]/loading.tsx",
     "[locale]/store/[brandSlug]/how-to/loading.tsx",
+    "[locale]/blog/loading.tsx",
+    "[locale]/blog/[slug]/loading.tsx",
   ];
 
   test.each(forbidden)("no %s", (rel) => {

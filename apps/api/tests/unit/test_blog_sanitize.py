@@ -70,6 +70,26 @@ def test_rejects_event_handler() -> None:
         sanitize_body('<p onclick="x">x</p>', media_base_url=_CDN)
 
 
+def test_strips_tiptap_table_attributes() -> None:
+    html = (
+        '<table style="min-width: 25px"><colgroup><col style="width: 100px"></colgroup>'
+        '<thead><tr><th colspan="1" rowspan="1">Регион</th></tr></thead>'
+        "<tbody><tr><td colspan=\"1\">Узбекистан</td></tr></tbody></table>"
+    )
+    cleaned = sanitize_body(html, media_base_url=_CDN)
+    assert cleaned == (
+        "<table><thead><tr><th>Регион</th></tr></thead>"
+        "<tbody><tr><td>Узбекистан</td></tr></tbody></table>"
+    )
+
+
+def test_strips_event_handler_on_table_tag() -> None:
+    assert (
+        sanitize_body('<table onclick="x"><tr><td>a</td></tr></table>', media_base_url=_CDN)
+        == "<table><tr><td>a</td></tr></table>"
+    )
+
+
 def test_rejects_attribute_on_paragraph() -> None:
     with pytest.raises(ValidationError, match="attributes"):
         sanitize_body('<p class="lead">x</p>', media_base_url=_CDN)

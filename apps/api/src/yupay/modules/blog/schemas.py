@@ -33,6 +33,7 @@ class FaqOut(BaseModel):
 class PostListItemOut(BaseModel):
     """One card on the public index or brand block. Never a draft."""
 
+    id: str
     slug: str
     kind: PostKind
     title: str
@@ -50,9 +51,12 @@ class PostDetailOut(PostListItemOut):
     """A published translation, ready for the storefront article (M2)."""
 
     body_html: str
+    seo_title: str | None = None
+    seo_description: str | None = None
     show_buy_card: bool
     related_brand_slugs: list[str]
     faqs: list[FaqOut]
+    locale_slugs: dict[str, str]
 
 
 class PostListOut(BaseModel):

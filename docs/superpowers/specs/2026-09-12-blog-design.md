@@ -177,6 +177,10 @@ Tags: `p`, `h2`, `h3`, `ul`, `ol`, `li`, `a`, `img`, `blockquote`, `strong`,
 - `img[src, alt]`: `src` must be our public media host (`cdn.yupay.uz` /
   settings). `alt` required, ≤ 200 chars. SVG refused (ADR-0018 / storage
   already refuses SVG for logos — same stored-XSS reason).
+- Table tags (`table`, `thead`, `tbody`, `tr`, `th`, `td`) persist with
+  no attributes. TipTap always writes `style` / `colspan` / `colgroup`;
+  `sanitize` strips those and drops `colgroup`/`col` before the rest of
+  the allowlist runs. Attributes on every other tag still reject.
 
 M1 admin can ship a `<textarea>` plus a sanitized preview. M3 replaces it
 with TipTap (toolbar: H2/H3, lists, link, image upload, table, quote) and

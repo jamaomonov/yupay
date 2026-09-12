@@ -9497,6 +9497,10 @@
             "title": "Faqs",
             "type": "array"
           },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "guide",
@@ -9506,6 +9510,13 @@
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "locale_slugs": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Locale Slugs",
+            "type": "object"
           },
           "pin_on_brand": {
             "title": "Pin On Brand",
@@ -9533,6 +9544,28 @@
             "title": "Related Brand Slugs",
             "type": "array"
           },
+          "seo_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
           "show_buy_card": {
             "title": "Show Buy Card",
             "type": "boolean"
@@ -9552,6 +9585,7 @@
           }
         },
         "required": [
+          "id",
           "slug",
           "kind",
           "title",
@@ -9566,7 +9600,8 @@
           "body_html",
           "show_buy_card",
           "related_brand_slugs",
-          "faqs"
+          "faqs",
+          "locale_slugs"
         ],
         "title": "PostDetailOut",
         "type": "object"
@@ -9613,6 +9648,10 @@
             "title": "Excerpt",
             "type": "string"
           },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
           "kind": {
             "enum": [
               "guide",
@@ -9657,6 +9696,7 @@
           }
         },
         "required": [
+          "id",
           "slug",
           "kind",
           "title",

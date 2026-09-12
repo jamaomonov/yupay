@@ -20,6 +20,7 @@
   },
   "nav": {
     "store": "Katalog",
+    "blog": "Blog",
     "how": "Qanday ishlaydi",
     "support": "Yordam",
     "login": "Kirish",
@@ -835,5 +836,24 @@
     "body": "Agar toʻlagan boʻlsangiz, buyurtma bir daqiqada roʻyxatda paydo boʻladi. Bekor qilgan boʻlsangiz, hech narsa yechilmadi — qaytadan urinib koʻring.",
     "toOrders": "Buyurtmalarim",
     "toWallet": "Hamyon"
+  },
+  "blog": {
+    "title": "Blog",
+    "description": "Sotadigan oʻyinlarimiz boʻyicha qoʻllanmalar va yangiliklar.",
+    "empty": "Hali chop etilgan materiallar yoʻq.",
+    "updated": "Yangilangan {date}",
+    "live": "Hozir",
+    "ended": "Tadbir tugadi",
+    "pinned": "Qadalgan",
+    "brandBlockTitle": "{name} boʻyicha yangi",
+    "buyCta": "Toʻldirish",
+    "from": "dan",
+    "faqs": "Savollar",
+    "kind": {
+      "guide": "Qoʻllanma",
+      "news": "Yangilik",
+      "update": "Yangilanish",
+      "event": "Tadbir"
+    }
   }
 }

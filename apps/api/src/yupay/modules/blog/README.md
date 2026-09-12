@@ -15,12 +15,13 @@ allowlist.
 - `body_html` is persisted only after `sanitize`. No `<h1>`
   in the body — the title field is the page H1. The admin editor is TipTap
   and emits only the allowlist; cover and inline images upload as
-  `kind=blog_image` to R2.
+  `kind=blog_image` to R2. Table tags are rewritten to drop TipTap's
+  `style` / `colspan` / `colgroup` so a round-trip save does not 422.
 - `status=published` is what the public GET serves. Archive keeps
   `published_at` so an indexed URL can explain why it vanished later;
   v1 does not hard-delete.
 - At most two published `pin_on_brand` posts per primary brand (service).
-- Prices never live in HTML. The buy card (M2) reads the live catalogue.
+- Prices never live in HTML. The storefront buy card reads the live catalogue.
 
 ## Tables
 

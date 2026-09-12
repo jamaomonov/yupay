@@ -34,6 +34,12 @@ export async function Header({ locale }: { locale: string }) {
           >
             {t("store")}
           </Link>
+          <Link
+            href={pathFor(locale, "/blog")}
+            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
+          >
+            {t("blog")}
+          </Link>
           <a
             href={`${pathFor(locale)}#how`}
             className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"

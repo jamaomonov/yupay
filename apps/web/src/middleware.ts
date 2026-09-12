@@ -15,7 +15,12 @@ const DEFAULT_PREFIX = new RegExp(`^/${routing.defaultLocale}(?=/|$)`);
 function supportsMarkdown(pathname: string): boolean {
   const p = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";
   return (
-    p === "/" || p === "/store" || /^\/store\/[^/]+$/.test(p) || /^\/store\/[^/]+\/how-to$/.test(p)
+    p === "/" ||
+    p === "/store" ||
+    p === "/blog" ||
+    /^\/store\/[^/]+$/.test(p) ||
+    /^\/store\/[^/]+\/how-to$/.test(p) ||
+    /^\/blog\/[^/]+$/.test(p)
   );
 }
 

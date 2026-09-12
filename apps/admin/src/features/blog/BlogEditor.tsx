@@ -40,6 +40,33 @@ const HrefOnlyLink = Link.extend({
   },
 });
 
+// TipTap's table pack always serializes ``style`` / ``colspan`` / ``colwidth``.
+// Sanitize rejects those, so a post with a table cannot be saved after a
+// round-trip unless we emit the allowlisted tags with no attributes.
+const BareTable = Table.extend({
+  renderHTML() {
+    return ["table", ["tbody", 0]];
+  },
+});
+
+const BareTableRow = TableRow.extend({
+  renderHTML() {
+    return ["tr", 0];
+  },
+});
+
+const BareTableHeader = TableHeader.extend({
+  renderHTML() {
+    return ["th", 0];
+  },
+});
+
+const BareTableCell = TableCell.extend({
+  renderHTML() {
+    return ["td", 0];
+  },
+});
+
 function isAllowedHref(href: string): boolean {
   return (
     href.startsWith("https://") ||
@@ -63,10 +90,10 @@ export function BlogEditor({ value, onChange, disabled }: Props) {
         validate: isAllowedHref,
       }),
       CdnImage.configure({ allowBase64: false }),
-      Table.configure({ resizable: false }),
-      TableRow,
-      TableHeader,
-      TableCell,
+      BareTable.configure({ resizable: false }),
+      BareTableRow,
+      BareTableHeader,
+      BareTableCell,
       Placeholder.configure({ placeholder: T.form.editorPlaceholder }),
     ],
     content: value,

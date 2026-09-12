@@ -1,0 +1,15 @@
+sequenceDiagram
+    autonumber
+    actor Reader
+    participant Web as apps/web
+    participant Blog as blog.routes
+    participant Catalog as catalog
+
+    Reader->>Web: GET /{locale}/blog/{slug}
+    Web->>Blog: GET /api/v1/blog/{slug}
+    Blog-->>Web: PostDetailOut (published only)
+    opt show_buy_card
+        Web->>Catalog: GET /catalog/brands/{primary}
+        Catalog-->>Web: BrandDetail
+    end
+    Web-->>Reader: HTML + JSON-LD + live Offer on the card

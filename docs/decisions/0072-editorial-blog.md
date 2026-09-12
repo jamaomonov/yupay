@@ -32,10 +32,11 @@ stored-XSS farm.
 ## Decision outcome
 
 **Chosen option:** Option 1. Content lives in this monolith. M1 ships schema,
-sanitize, admin CRUD and public GET. M2 is the storefront. The admin editor
-uses TipTap (`@tiptap/*` in `apps/admin`) so operators wrap a selection
-instead of typing tags; cover and inline images use the existing R2
-presign with `kind=blog_image` (png/jpeg/webp, same 5 MB cap as
+sanitize, admin CRUD and public GET. M2 is the storefront
+(`/{locale}/blog`, brand block, sitemap, `/llms.txt`, scheduled publish).
+The admin editor uses TipTap (`@tiptap/*` in `apps/admin`) so operators wrap
+a selection instead of typing tags; cover and inline images use the existing
+R2 presign with `kind=blog_image` (png/jpeg/webp, same 5 MB cap as
 `brand_hero`). FAQ editor UX remains later.
 
 Publish stamps `published_at` once; archive keeps it. A brand may pin at most
@@ -52,7 +53,8 @@ changes after publish are refused by process (archive + new slug).
 
 - TipTap is an admin-only dependency; the public storefront still receives
   sanitized HTML, not editor JSON
-- Scheduler for `scheduled` → `published` is deferred to M2
+- Scheduler flips `scheduled` → `published` via `admin_service.publish_post`
+  (same pin-cap and sanitize as the admin button)
 
 ## Validation
 

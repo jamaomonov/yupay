@@ -250,3 +250,56 @@
 .anim-float-slow {
   animation: float-y 9s ease-in-out infinite;
 }
+
+/* Sanitized blog HTML. Links stay lime, not a second blue. */
+.article-body :where(h2) {
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-display);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 1.75rem 0 0.75rem;
+}
+.article-body :where(h3) {
+  color: hsl(var(--foreground));
+  font-family: var(--app-font-display);
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 1.4rem 0 0.5rem;
+}
+.article-body :where(p, ul, ol, blockquote, pre, table) {
+  margin: 0.85rem 0;
+}
+.article-body :where(a) {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.article-body :where(img) {
+  border-radius: 1.25rem;
+  height: auto;
+  max-width: 100%;
+}
+.article-body :where(blockquote) {
+  border-left: 2px solid hsl(var(--primary));
+  padding-left: 1rem;
+}
+.article-body :where(ul) {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.article-body :where(ol) {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.article-body :where(pre, code) {
+  font-family: var(--app-font-mono);
+}
+.article-body :where(table) {
+  width: 100%;
+  border-collapse: collapse;
+}
+.article-body :where(th, td) {
+  border: 1px solid hsl(var(--border));
+  padding: 0.4rem 0.6rem;
+}

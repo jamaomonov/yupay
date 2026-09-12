@@ -73,6 +73,7 @@ def _to_item(
     brand_name: str,
 ) -> PostListItemOut:
     return PostListItemOut(
+        id=post.id,
         slug=translation.slug,
         kind=_as_kind(post.kind),
         title=translation.title,
@@ -182,12 +183,16 @@ async def get_published_by_slug(db: AsyncSession, *, slug: str, locale: Locale) 
     item = _to_item(
         post, tr, brand_row.slug, brand_tr.name if brand_tr is not None else brand_row.slug
     )
+    locale_slugs = {row.locale: row.slug for row in post.translations}
     return PostDetailOut(
         **item.model_dump(),
         body_html=tr.body_html,
+        seo_title=tr.seo_title,
+        seo_description=tr.seo_description,
         show_buy_card=post.show_buy_card,
         related_brand_slugs=related_slugs,
         faqs=faqs,
+        locale_slugs=locale_slugs,
     )
 
 

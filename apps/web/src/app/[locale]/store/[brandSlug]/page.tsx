@@ -10,6 +10,7 @@ import { HighlightChips } from "./HighlightChips";
 
 import type { Metadata } from "next";
 
+import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
 import { JsonLd } from "@/components/JsonLd";
 import { AboutText } from "@/components/store/AboutText";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
@@ -466,6 +467,8 @@ export default async function BrandPage({
             <p className="text-tx-mute">{t("empty")}</p>
           )}
         </div>
+
+        <BrandBlogBlock brandSlug={brand.slug} brandName={brand.name} locale={locale} />
 
         <section id="reviews" className="mt-16 scroll-mt-[88px]">
           <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t2("title")}</h2>

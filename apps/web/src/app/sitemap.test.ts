@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import sitemap, { revalidate } from "./sitemap";
 
+import { getPublishedBlogEntries } from "@/lib/blog";
 import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
 
 /**
@@ -13,11 +14,17 @@ import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
  * map still listed neither, because the map is generated and the pages are not.
  */
 
+vi.mock("@/lib/blog", () => ({
+  getPublishedBlogEntries: vi.fn(),
+}));
+
 vi.mock("@/lib/catalog", () => ({
   getBrandSlugs: vi.fn(),
   getBrandDetail: vi.fn(),
   getProductDetail: vi.fn(),
 }));
+
+const mockedBlog = vi.mocked(getPublishedBlogEntries);
 
 const mockedSlugs = vi.mocked(getBrandSlugs);
 const mockedBrand = vi.mocked(getBrandDetail);
@@ -30,6 +37,8 @@ beforeEach(() => {
   mockedBrand.mockResolvedValue(null);
   mockedProduct.mockReset();
   mockedProduct.mockResolvedValue(null);
+  mockedBlog.mockReset();
+  mockedBlog.mockResolvedValue([]);
 });
 
 describe("sitemap", () => {
@@ -80,6 +89,28 @@ describe("sitemap", () => {
     }
     // One value shared by every entry, not one per URL.
     expect(new Set(stamps.map((s) => (s as Date).getTime())).size).toBe(1);
+  });
+
+  it("lists published blog translations and the index", async () => {
+    mockedBlog.mockResolvedValue([
+      {
+        id: "p1",
+        locale: "ru",
+        slug: "kak-popolnit",
+        updated_at: "2026-09-11T15:04:05.000Z",
+      },
+      {
+        id: "p1",
+        locale: "en",
+        slug: "how-to-top-up",
+        updated_at: "2026-09-11T15:04:05.000Z",
+      },
+    ]);
+    const urls = (await sitemap()).map((e) => e.url);
+    expect(urls).toContain("https://yupay.uz/blog/kak-popolnit");
+    expect(urls).toContain("https://yupay.uz/en/blog/how-to-top-up");
+    expect(urls).toContain("https://yupay.uz/blog");
+    expect(urls).toContain("https://yupay.uz/en/blog");
   });
 
   it("gives each entry hreflang alternates for all three locales", async () => {
