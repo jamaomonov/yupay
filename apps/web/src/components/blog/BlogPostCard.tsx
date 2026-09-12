@@ -21,9 +21,11 @@ function formatDay(locale: string, iso: string): string {
 export async function BlogPostCard({
   post,
   locale,
+  showPin = false,
 }: {
   post: BlogListItem;
   locale: string;
+  showPin?: boolean;
 }) {
   const t = await getTranslations("web.blog");
   const chip = eventChip(post);
@@ -38,7 +40,7 @@ export async function BlogPostCard({
         {post.cover_image_url ? (
           <Image
             src={post.cover_image_url}
-            alt=""
+            alt={post.title}
             fill
             unoptimized={!isOptimizable(post.cover_image_url)}
             sizes="(max-width: 768px) 100vw, 360px"
@@ -51,7 +53,7 @@ export async function BlogPostCard({
           <span className="text-primary">{kindLabel}</span>
           {chip === "live" ? <span className="text-primary">{t("live")}</span> : null}
           {chip === "ended" ? <span className="text-tx-dim">{t("ended")}</span> : null}
-          {post.pin_on_brand ? <span className="text-tx-mute">{t("pinned")}</span> : null}
+          {showPin && post.pin_on_brand ? <span className="text-tx-mute">{t("pinned")}</span> : null}
         </div>
         <h2 className="font-display text-lg font-semibold tracking-[-0.02em] group-hover:text-primary">
           {post.title}

@@ -7,10 +7,12 @@ import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { AccountMenu } from "./auth/AccountMenu";
+import { useBlogLocaleSlugs } from "@/components/LocaleAlternates";
 
 import { type AppLocale } from "@/i18n/routing";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
+import { hrefForLocale, navSectionActive } from "@/lib/locale-href";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 import { pathFor } from "@/lib/seo";
 
@@ -33,6 +35,7 @@ export function MobileNav() {
   const router = useRouter();
   const pathname = usePathname();
   const current = useLocale() as AppLocale;
+  const blogSlugs = useBlogLocaleSlugs();
   const [open, setOpen] = useState(false);
 
   // Lock body scroll while the sheet is open.
@@ -62,15 +65,23 @@ export function MobileNav() {
   const pickLocale = (next: AppLocale) => {
     close();
     if (next === current) return;
-    const stripped = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";
-    router.push(`/${next}${stripped === "/" ? "" : stripped}`);
+    router.push(hrefForLocale(next, pathname, blogSlugs));
   };
 
-  const linkClass =
-    "border-border/60 text-foreground border-b py-3.5 text-[15px] font-semibold transition active:text-primary";
+  const storeHref = pathFor(current, "/store");
+  const blogHref = pathFor(current, "/blog");
+  const sheetLinkClass =
+    "border-border/60 border-b py-3.5 text-[15px] font-semibold text-foreground transition active:text-primary";
+  const linkClass = (href: string) =>
+    `border-border/60 border-b py-3.5 text-[15px] font-semibold transition active:text-primary ${
+      navSectionActive(pathname, href) ? "text-primary" : "text-foreground"
+    }`;
 
   return (
     <div className="flex items-center gap-2 md:hidden">
+      <Link href={storeHref} className={buttonStyles({ size: "sm", className: "px-3.5" })}>
+        {t("buy")}
+      </Link>
       <AccountMenu locale={current} />
       <button
         type="button"
@@ -97,13 +108,23 @@ export function MobileNav() {
         >
           <div className="mx-auto max-w-[1200px] px-6 py-5">
             <nav className="flex flex-col">
-              <Link href={pathFor(current, "/store")} onClick={close} className={linkClass}>
+              <Link
+                href={storeHref}
+                onClick={close}
+                aria-current={navSectionActive(pathname, storeHref) ? "page" : undefined}
+                className={linkClass(storeHref)}
+              >
                 {t("store")}
               </Link>
-              <Link href={pathFor(current, "/blog")} onClick={close} className={linkClass}>
+              <Link
+                href={blogHref}
+                onClick={close}
+                aria-current={navSectionActive(pathname, blogHref) ? "page" : undefined}
+                className={linkClass(blogHref)}
+              >
                 {t("blog")}
               </Link>
-              <a href={`${pathFor(current)}#how`} onClick={close} className={linkClass}>
+              <a href={`${pathFor(current)}#how`} onClick={close} className={sheetLinkClass}>
                 {t("how")}
               </a>
               <a
@@ -111,7 +132,7 @@ export function MobileNav() {
                 target="_blank"
                 rel="noreferrer noopener"
                 onClick={close}
-                className={linkClass}
+                className={sheetLinkClass}
               >
                 {t("support")}
               </a>
@@ -122,7 +143,7 @@ export function MobileNav() {
                 <Link
                   href={pathFor(current, "/account/wallet")}
                   onClick={close}
-                  className={linkClass}
+                  className={sheetLinkClass}
                 >
                   {/* No amount here: `AccountMenu` carries it now, and the
                       sheet opens below that header — both would be on screen

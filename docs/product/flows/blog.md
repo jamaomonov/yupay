@@ -28,8 +28,11 @@ sequenceDiagram
     API-->>Web: liked + counts (yp_blog_reader cookie)
 ```
 
-Drafts and missing locales are 404. Archive keeps `published_at` so an
-indexed URL can still be explained later; v1 does not hard-delete.
+Drafts and missing locales are 404. The language switcher will not keep a
+slug that has no row — it lands on `/{locale}/blog`. An empty locale index
+points at the catalogue (and at the Russian blog when the locale is not
+`ru`). Archive keeps `published_at` so an indexed URL can still be explained
+later; v1 does not hard-delete.
 
 Agents that send `Accept: text/markdown` on `/blog` and `/blog/{slug}`
 get the same article as Markdown (`Content-Type: text/markdown`,

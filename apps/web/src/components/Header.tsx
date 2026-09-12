@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import { AccountMenu } from "./auth/AccountMenu";
 import { LocaleSwitcher } from "./LocaleSwitcher";
 import { MobileNav } from "./MobileNav";
+import { PrimaryNav } from "./PrimaryNav";
 import { Wordmark } from "./Wordmark";
 
 import { buttonStyles } from "@/lib/button";
@@ -27,34 +28,14 @@ export async function Header({ locale }: { locale: string }) {
           <Wordmark />
         </Link>
 
-        <nav aria-label={t("primaryLabel")} className="hidden items-center gap-8 md:flex">
-          <Link
-            href={pathFor(locale, "/store")}
-            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
-          >
-            {t("store")}
-          </Link>
-          <Link
-            href={pathFor(locale, "/blog")}
-            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
-          >
-            {t("blog")}
-          </Link>
-          <a
-            href={`${pathFor(locale)}#how`}
-            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
-          >
-            {t("how")}
-          </a>
-          <a
-            href="https://t.me/yupay_support"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-tx-mute hover:text-foreground whitespace-nowrap text-sm font-medium transition"
-          >
-            {t("support")}
-          </a>
-        </nav>
+        <PrimaryNav
+          locale={locale}
+          label={t("primaryLabel")}
+          store={t("store")}
+          blog={t("blog")}
+          how={t("how")}
+          support={t("support")}
+        />
 
         {/* Desktop controls */}
         <div className="hidden items-center gap-2.5 md:flex">

@@ -295,11 +295,23 @@
 .article-body :where(pre, code) {
   font-family: var(--app-font-mono);
 }
+.article-body :where(pre) {
+  overflow-x: auto;
+  border-radius: 0.75rem;
+  background: hsl(var(--card-2));
+  padding: 0.75rem 1rem;
+}
 .article-body :where(table) {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
   border-collapse: collapse;
 }
 .article-body :where(th, td) {
   border: 1px solid hsl(var(--border));
   padding: 0.4rem 0.6rem;
+}
+.article-body :where(th, td) p {
+  margin: 0;
 }
