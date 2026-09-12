@@ -22,9 +22,20 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 - Errors are RFC 7807 `problem+json` with stable `type` URIs — with the
   exceptions listed under "Validation errors" at the end of this file.
 - All write endpoints accept an `Idempotency-Key` header (>=16 chars). Enforced today on
-  `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund` —
+  `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund`, and
+  every `/admin/blog` mutation —
   **missing/short key → 422**; a repeated key replays the original result.
 - Money is `{ "amount": "12345.678", "currency": "USD" }` — strings to preserve precision.
+
+## Editorial blog
+
+Anonymous public reads under `/api/v1/blog` (list, `/{slug}`, `/by-brand/{brandSlug}`).
+Only `status=published` translations are returned; a missing locale is 404, not a
+`ru` fallback. Admin writes live at `/api/v1/admin/blog/posts` and require the
+`admin` role plus `Idempotency-Key`. Bodies are persisted only after the HTML
+allowlist in `modules/blog/sanitize.py`. Cover and inline images upload through
+the existing `POST /admin/media/presign-upload` with `kind=blog_image` (png/jpeg/webp,
+same 5 MB cap as `brand_hero`); `img src` must stay on `r2_public_base_url`. See ADR-0072.
 
 ## Content-managed brand SEO copy
 

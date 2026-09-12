@@ -156,5 +156,78 @@
         "still_open": "Buyurtma hali tugamagan — yetkazib berish butunlay muvaffaqiyatsiz bo'lmaguncha qaytaradigan narsa yo'q."
       }
     }
+  },
+  "blog": {
+    "nav": "Blog",
+    "list": {
+      "title": "Blog",
+      "description": "Katalog brendiga bog'langan qo'llanmalar va yangiliklar.",
+      "create": "Yangi post",
+      "empty": "Hali postlar yo'q.",
+      "loadError": "Postlarni yuklab bo'lmadi.",
+      "columns": {
+        "title": "Sarlavha",
+        "kind": "Turi",
+        "status": "Holat",
+        "updated": "Yangilangan"
+      }
+    },
+    "kind": {
+      "guide": "Qo'llanma",
+      "news": "Yangilik",
+      "update": "Yangilanish",
+      "event": "Tadbir"
+    },
+    "status": {
+      "draft": "Qoralama",
+      "scheduled": "Rejalashtirilgan",
+      "published": "Chop etilgan",
+      "archived": "Arxivda"
+    },
+    "form": {
+      "newTitle": "Yangi post",
+      "editTitle": "Postni tahrirlash",
+      "kind": "Turi",
+      "brand": "Brend",
+      "cover": "Muqova",
+      "coverHint": "PNG / JPEG / WebP, 5 MB gacha. cdn.yupay.uz ga yuklanadi.",
+      "editorPlaceholder": "Matn yozing, keyin belgilab sarlavha, ro'yxat yoki havola qo'llang.",
+      "linkPrompt": "Havola (https://… yoki /store/…)",
+      "imageAltPrompt": "Rasmning qisqa tavsifi (majburiy)",
+      "tools": {
+        "h2": "Sarlavha H2",
+        "h3": "Sarlavha H3",
+        "bold": "Qalin",
+        "italic": "Kursiv",
+        "ul": "Belgilangan ro'yxat",
+        "ol": "Raqamli ro'yxat",
+        "quote": "Iqtibos",
+        "code": "Kod bloki",
+        "link": "Havola",
+        "hr": "Chiziq",
+        "table": "Jadval",
+        "image": "Matnga rasm"
+      },
+      "buyCard": "Sotib olish kartasi",
+      "pin": "Brendda mahkamlash",
+      "eventStart": "Tadbir boshlanishi",
+      "eventEnd": "Tadbir tugashi",
+      "title": "Sarlavha (H1)",
+      "slug": "Slug",
+      "excerpt": "Qisqa matn",
+      "seoTitle": "SEO title",
+      "seoDescription": "SEO description",
+      "body": "Maqola matni",
+      "preview": "Ko'rish",
+      "save": "Saqlash",
+      "publish": "Chop etish",
+      "archive": "Arxivga",
+      "saved": "Saqlandi.",
+      "published": "Chop etildi.",
+      "archived": "Arxivda.",
+      "error": "Saqlab bo'lmadi: {message}",
+      "needTranslation": "Kamida bitta tilda sarlavha va slug kerak.",
+      "needBrand": "Brendni tanlang."
+    }
   }
 }

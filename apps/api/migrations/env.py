@@ -20,6 +20,7 @@ from yupay.core.db import metadata
 from yupay.core import idempotency as _idempotency_models  # noqa: F401
 from yupay.modules.affiliate import models as _affiliate_models  # noqa: F401
 from yupay.modules.auth import models as _auth_models  # noqa: F401
+from yupay.modules.blog import models as _blog_models  # noqa: F401
 from yupay.modules.catalog import models as _catalog_models  # noqa: F401
 from yupay.modules.fulfillment import models as _fulfillment_models  # noqa: F401
 from yupay.modules.fx import models as _fx_models  # noqa: F401

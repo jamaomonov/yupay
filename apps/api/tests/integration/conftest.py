@@ -154,6 +154,7 @@ async def db_engine():
                     "merchant_webhook_deliveries, merchant_webhooks, "
                     "merchant_api_keys, merchant_users, merchants, "
                     "sku_prices, skus, product_translations, products, "
+                    "blog_post_faqs, blog_post_brands, blog_post_translations, blog_posts, "
                     "brand_translations, brands, "
                     "category_translations, categories, "
                     "fx_snapshots, fx_rates, "

@@ -31,7 +31,14 @@ from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.storage.client import get_s3_client
 
-MediaKind = Literal["brand_logo", "brand_hero", "product_image", "sku_image", "broadcast_media"]
+MediaKind = Literal[
+    "brand_logo",
+    "brand_hero",
+    "product_image",
+    "sku_image",
+    "broadcast_media",
+    "blog_image",
+]
 MEDIA_KINDS: tuple[MediaKind, ...] = get_args(MediaKind)
 
 _MIME_TO_EXT: dict[str, str] = {
@@ -49,7 +56,7 @@ _MIME_TO_EXT: dict[str, str] = {
 _IMAGE_MIME: frozenset[str] = frozenset({"image/png", "image/jpeg", "image/webp"})
 
 # Per-kind MIME allowlist. Broadcasts attach video/GIF/document in
-# addition to a plain photo; the four image-only kinds must NOT widen
+# addition to a plain photo; the raster image-only kinds must NOT widen
 # just because those types exist in ``settings.media_allowed_mime`` now
 # — an admin picking a brand logo should still be refused an .mp4.
 _KIND_ALLOWED_MIME: dict[str, set[str]] = {
@@ -57,6 +64,7 @@ _KIND_ALLOWED_MIME: dict[str, set[str]] = {
     "brand_hero": set(_IMAGE_MIME),
     "product_image": set(_IMAGE_MIME),
     "sku_image": set(_IMAGE_MIME),
+    "blog_image": set(_IMAGE_MIME),
     "broadcast_media": set(_IMAGE_MIME) | {"image/gif", "video/mp4", "application/pdf"},
 }
 

@@ -179,6 +179,9 @@ export const qk = {
   // promo
   promoCodes: () => ["admin", "promo"] as const,
 
+  blogPosts: () => ["admin", "blog", "posts"] as const,
+  blogPost: (id: string) => ["admin", "blog", "posts", id] as const,
+
   // broadcasts
   broadcasts: (filters?: { status?: string | null }) =>
     ["admin", "broadcasts", filters?.status ?? null] as const,

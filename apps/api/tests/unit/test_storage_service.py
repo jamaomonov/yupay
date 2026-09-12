@@ -79,7 +79,7 @@ def test_presign_happy_path_returns_keys_and_urls(mock_s3: MagicMock) -> None:
 
 
 def test_presign_each_kind_has_matching_prefix(mock_s3: MagicMock) -> None:
-    for kind in ("brand_logo", "brand_hero", "product_image", "sku_image"):
+    for kind in ("brand_logo", "brand_hero", "product_image", "sku_image", "blog_image"):
         r = svc.presign_upload(kind=kind, content_type="image/webp", size_bytes=1024)
         assert r.key.startswith(f"{kind}/"), r.key
         assert r.key.endswith(".webp")
@@ -100,7 +100,14 @@ def test_presign_each_allowed_mime_has_an_extension(mock_s3: MagicMock) -> None:
 
 def test_presign_rejects_svg_for_every_kind(mock_s3: MagicMock) -> None:
     """SVG (scriptable, served from the public CDN) must be refused everywhere."""
-    for kind in ("brand_logo", "brand_hero", "product_image", "sku_image", "broadcast_media"):
+    for kind in (
+        "brand_logo",
+        "brand_hero",
+        "product_image",
+        "sku_image",
+        "broadcast_media",
+        "blog_image",
+    ):
         with pytest.raises(ValidationError, match="not allowed"):
             svc.presign_upload(kind=kind, content_type="image/svg+xml", size_bytes=1024)
 

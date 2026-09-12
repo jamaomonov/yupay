@@ -16,18 +16,9 @@
 
 import { useCallback, useId, useState } from "react";
 
-import { apiPost } from "@/lib/api";
+import { type RasterMediaKind, uploadRasterMedia } from "@/lib/uploadMedia";
 
-export type MediaKind = "brand_logo" | "brand_hero" | "product_image" | "sku_image";
-
-interface PresignOut {
-  upload_url: string;
-  public_url: string;
-  key: string;
-  content_type: string;
-  expires_in: number;
-  max_bytes: number;
-}
+export type MediaKind = RasterMediaKind;
 
 interface Props {
   value: string | null | undefined;
@@ -58,7 +49,7 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
     async (file: File) => {
       setError(null);
       if (!ACCEPT_LIST.includes(file.type)) {
-        setError("Только PNG / JPEG / WebP / SVG.");
+        setError("Только PNG / JPEG / WebP.");
         return;
       }
       if (file.size > MAX_BYTES) {
@@ -67,20 +58,7 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
       }
       setBusy(true);
       try {
-        const presign = await apiPost<PresignOut>("/api/v1/admin/media/presign-upload", {
-          kind,
-          content_type: file.type,
-          size_bytes: file.size,
-        });
-        const putRes = await fetch(presign.upload_url, {
-          method: "PUT",
-          headers: { "Content-Type": file.type },
-          body: file,
-        });
-        if (!putRes.ok) {
-          throw new Error(`R2 upload failed: ${putRes.status.toString()} ${putRes.statusText}`);
-        }
-        onChange(presign.public_url);
+        onChange(await uploadRasterMedia(kind, file));
       } catch (exc) {
         setError(exc instanceof Error ? exc.message : "Ошибка загрузки");
       } finally {
@@ -122,7 +100,7 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
               onClick={() => {
                 onChange("");
               }}
-              disabled={disabled || busy}
+              disabled={disabled === true || busy}
             >
               Удалить ссылку
             </button>
@@ -163,7 +141,7 @@ export function ImageUploader({ value, onChange, kind, hint, disabled }: Props) 
           {busy ? "Загрузка..." : "Перетащи или нажми, чтобы загрузить"}
         </p>
         <p className="mt-1 text-xs text-[var(--text-secondary)]">
-          {hint ?? `PNG / JPEG / WebP / SVG, до ${(MAX_BYTES / 1024 / 1024).toString()} MB`}
+          {hint ?? `PNG / JPEG / WebP, до ${(MAX_BYTES / 1024 / 1024).toString()} MB`}
         </p>
       </label>
       {error && <p className="text-xs text-[var(--danger-fg)]">{error}</p>}

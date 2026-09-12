@@ -17,6 +17,8 @@ from yupay.modules.affiliate.routes import admin_router as affiliate_admin_route
 from yupay.modules.affiliate.routes import router as affiliate_router
 from yupay.modules.audit.api import admin_router as audit_admin_router
 from yupay.modules.auth.api import router as auth_router
+from yupay.modules.blog.api import admin_router as blog_admin_router
+from yupay.modules.blog.api import router as blog_router
 from yupay.modules.broadcasts.api import admin_router as broadcasts_admin_router
 from yupay.modules.catalog.admin_routes import router as catalog_admin_router
 from yupay.modules.catalog.api import router as catalog_router
@@ -65,6 +67,8 @@ router = APIRouter()
 router.include_router(auth_router)
 router.include_router(admin_admin_router)
 router.include_router(audit_admin_router)
+router.include_router(blog_router)
+router.include_router(blog_admin_router)
 router.include_router(broadcasts_admin_router)
 router.include_router(catalog_router)
 router.include_router(catalog_admin_router)

@@ -196,7 +196,7 @@
           },
           "translations": {
             "items": {
-              "$ref": "#/components/schemas/TranslationIn"
+              "$ref": "#/components/schemas/TranslationIn-Output"
             },
             "title": "Translations",
             "type": "array"
@@ -828,6 +828,179 @@
         "title": "AdminPayoutOut",
         "type": "object"
       },
+      "AdminPostListOut": {
+        "description": "Offset page used by the SPA list.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminPostOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AdminPostListOut",
+        "type": "object"
+      },
+      "AdminPostOut": {
+        "description": "Full admin view of a post, including drafts.",
+        "properties": {
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Ends At"
+          },
+          "event_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Starts At"
+          },
+          "faqs": {
+            "items": {
+              "$ref": "#/components/schemas/yupay__modules__blog__schemas__FaqOut"
+            },
+            "title": "Faqs",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "guide",
+              "news",
+              "update",
+              "event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pin_on_brand": {
+            "title": "Pin On Brand",
+            "type": "boolean"
+          },
+          "primary_brand_id": {
+            "title": "Primary Brand Id",
+            "type": "string"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "related_brand_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Brand Ids",
+            "type": "array"
+          },
+          "scheduled_for": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scheduled For"
+          },
+          "show_buy_card": {
+            "title": "Show Buy Card",
+            "type": "boolean"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "scheduled",
+              "published",
+              "archived"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "translations": {
+            "items": {
+              "$ref": "#/components/schemas/TranslationOut"
+            },
+            "title": "Translations",
+            "type": "array"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "status",
+          "primary_brand_id",
+          "show_buy_card",
+          "pin_on_brand",
+          "cover_image_url",
+          "event_starts_at",
+          "event_ends_at",
+          "published_at",
+          "scheduled_for",
+          "created_at",
+          "updated_at",
+          "translations",
+          "related_brand_ids",
+          "faqs"
+        ],
+        "title": "AdminPostOut",
+        "type": "object"
+      },
       "AdminProductOut": {
         "description": "Admin-side product view.",
         "properties": {
@@ -890,7 +1063,7 @@
           },
           "translations": {
             "items": {
-              "$ref": "#/components/schemas/TranslationIn"
+              "$ref": "#/components/schemas/TranslationIn-Output"
             },
             "title": "Translations",
             "type": "array"
@@ -2054,6 +2227,20 @@
         "title": "BrandB2bPatchIn",
         "type": "object"
       },
+      "BrandBlockOut": {
+        "description": "Pins plus latest published posts for ``/store/{brand}`` (M2).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PostListItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "title": "BrandBlockOut",
+        "type": "object"
+      },
       "BrandCreate": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/catalog/brands``.",
@@ -2120,7 +2307,7 @@
           },
           "translations": {
             "items": {
-              "$ref": "#/components/schemas/TranslationIn"
+              "$ref": "#/components/schemas/yupay__modules__catalog__admin_schemas__TranslationIn"
             },
             "minItems": 1,
             "title": "Translations",
@@ -2166,7 +2353,7 @@
           },
           "faqs": {
             "items": {
-              "$ref": "#/components/schemas/FaqOut"
+              "$ref": "#/components/schemas/yupay__modules__catalog__schemas__FaqOut"
             },
             "title": "Faqs",
             "type": "array"
@@ -2399,6 +2586,25 @@
         "title": "BrandRatingOut",
         "type": "object"
       },
+      "BrandRefOut": {
+        "description": "The primary catalogue brand the post converts toward.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "name"
+        ],
+        "title": "BrandRefOut",
+        "type": "object"
+      },
       "BrandRevenueOut": {
         "properties": {
           "margin_usd": {
@@ -2533,7 +2739,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/TranslationIn"
+                  "$ref": "#/components/schemas/yupay__modules__catalog__admin_schemas__TranslationIn"
                 },
                 "type": "array"
               },
@@ -4926,28 +5132,45 @@
         "title": "FaqCreate",
         "type": "object"
       },
-      "FaqOut": {
-        "description": "A localised FAQ entry shown on the brand page.",
+      "FaqIn": {
+        "additionalProperties": false,
+        "description": "Plain-text Q/A. No HTML \u2014 the body allowlist does not apply here.",
         "properties": {
           "answer": {
+            "maxLength": 2000,
+            "minLength": 1,
             "title": "Answer",
             "type": "string"
           },
-          "id": {
-            "title": "Id",
+          "locale": {
+            "enum": [
+              "ru",
+              "en",
+              "uz"
+            ],
+            "title": "Locale",
             "type": "string"
           },
           "question": {
+            "maxLength": 280,
+            "minLength": 1,
             "title": "Question",
             "type": "string"
+          },
+          "sort_order": {
+            "default": 0,
+            "maximum": 99.0,
+            "minimum": 0.0,
+            "title": "Sort Order",
+            "type": "integer"
           }
         },
         "required": [
-          "id",
+          "locale",
           "question",
           "answer"
         ],
-        "title": "FaqOut",
+        "title": "FaqIn",
         "type": "object"
       },
       "FaqTranslationIn": {
@@ -9126,6 +9349,492 @@
         "title": "PlayerCheckOut",
         "type": "object"
       },
+      "PostCreate": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/blog/posts``.",
+        "properties": {
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "event_ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Ends At"
+          },
+          "event_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Starts At"
+          },
+          "faqs": {
+            "items": {
+              "$ref": "#/components/schemas/FaqIn"
+            },
+            "title": "Faqs",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "guide",
+              "news",
+              "update",
+              "event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pin_on_brand": {
+            "default": false,
+            "title": "Pin On Brand",
+            "type": "boolean"
+          },
+          "primary_brand_id": {
+            "title": "Primary Brand Id",
+            "type": "string"
+          },
+          "related_brand_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Brand Ids",
+            "type": "array"
+          },
+          "show_buy_card": {
+            "default": true,
+            "title": "Show Buy Card",
+            "type": "boolean"
+          },
+          "translations": {
+            "items": {
+              "$ref": "#/components/schemas/yupay__modules__blog__admin_schemas__TranslationIn"
+            },
+            "minItems": 1,
+            "title": "Translations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "primary_brand_id",
+          "translations"
+        ],
+        "title": "PostCreate",
+        "type": "object"
+      },
+      "PostDetailOut": {
+        "description": "A published translation, ready for the storefront article (M2).",
+        "properties": {
+          "body_html": {
+            "title": "Body Html",
+            "type": "string"
+          },
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "event_ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Ends At"
+          },
+          "event_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Starts At"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "faqs": {
+            "items": {
+              "$ref": "#/components/schemas/yupay__modules__blog__schemas__FaqOut"
+            },
+            "title": "Faqs",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "guide",
+              "news",
+              "update",
+              "event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pin_on_brand": {
+            "title": "Pin On Brand",
+            "type": "boolean"
+          },
+          "primary_brand": {
+            "$ref": "#/components/schemas/BrandRefOut"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "related_brand_slugs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Brand Slugs",
+            "type": "array"
+          },
+          "show_buy_card": {
+            "title": "Show Buy Card",
+            "type": "boolean"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "kind",
+          "title",
+          "excerpt",
+          "cover_image_url",
+          "published_at",
+          "updated_at",
+          "primary_brand",
+          "event_starts_at",
+          "event_ends_at",
+          "pin_on_brand",
+          "body_html",
+          "show_buy_card",
+          "related_brand_slugs",
+          "faqs"
+        ],
+        "title": "PostDetailOut",
+        "type": "object"
+      },
+      "PostListItemOut": {
+        "description": "One card on the public index or brand block. Never a draft.",
+        "properties": {
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "event_ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Ends At"
+          },
+          "event_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Starts At"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "guide",
+              "news",
+              "update",
+              "event"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "pin_on_brand": {
+            "title": "Pin On Brand",
+            "type": "boolean"
+          },
+          "primary_brand": {
+            "$ref": "#/components/schemas/BrandRefOut"
+          },
+          "published_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Published At"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "slug",
+          "kind",
+          "title",
+          "excerpt",
+          "cover_image_url",
+          "published_at",
+          "updated_at",
+          "primary_brand",
+          "event_starts_at",
+          "event_ends_at",
+          "pin_on_brand"
+        ],
+        "title": "PostListItemOut",
+        "type": "object"
+      },
+      "PostListOut": {
+        "description": "A keyset page of :class:`PostListItemOut`.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PostListItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PostListOut",
+        "type": "object"
+      },
+      "PostUpdate": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /admin/blog/posts/{id}``. Omitted fields stay as-is.",
+        "properties": {
+          "cover_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cover Image Url"
+          },
+          "event_ends_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Ends At"
+          },
+          "event_starts_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Starts At"
+          },
+          "faqs": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FaqIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Faqs"
+          },
+          "kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "guide",
+                  "news",
+                  "update",
+                  "event"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Kind"
+          },
+          "pin_on_brand": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pin On Brand"
+          },
+          "primary_brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Brand Id"
+          },
+          "related_brand_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Related Brand Ids"
+          },
+          "show_buy_card": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Show Buy Card"
+          },
+          "translations": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/yupay__modules__blog__admin_schemas__TranslationIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Translations"
+          }
+        },
+        "title": "PostUpdate",
+        "type": "object"
+      },
       "PostingOut": {
         "properties": {
           "account_id": {
@@ -9182,13 +9891,14 @@
             "type": "string"
           },
           "kind": {
-            "description": "One of brand_logo, brand_hero, product_image, sku_image, broadcast_media.",
+            "description": "One of brand_logo, brand_hero, product_image, sku_image, broadcast_media, blog_image.",
             "enum": [
               "brand_logo",
               "brand_hero",
               "product_image",
               "sku_image",
-              "broadcast_media"
+              "broadcast_media",
+              "blog_image"
             ],
             "title": "Kind",
             "type": "string"
@@ -9582,7 +10292,7 @@
           },
           "translations": {
             "items": {
-              "$ref": "#/components/schemas/TranslationIn"
+              "$ref": "#/components/schemas/yupay__modules__catalog__admin_schemas__TranslationIn"
             },
             "minItems": 1,
             "title": "Translations",
@@ -9938,7 +10648,7 @@
             "anyOf": [
               {
                 "items": {
-                  "$ref": "#/components/schemas/TranslationIn"
+                  "$ref": "#/components/schemas/yupay__modules__catalog__admin_schemas__TranslationIn"
                 },
                 "type": "array"
               },
@@ -11266,22 +11976,6 @@
           "created_at"
         ],
         "title": "SavedSegmentOut",
-        "type": "object"
-      },
-      "ScheduleIn": {
-        "additionalProperties": false,
-        "description": "Body of admin's ``POST /admin/broadcasts/{id}/schedule``.",
-        "properties": {
-          "scheduled_at": {
-            "format": "date-time",
-            "title": "Scheduled At",
-            "type": "string"
-          }
-        },
-        "required": [
-          "scheduled_at"
-        ],
-        "title": "ScheduleIn",
         "type": "object"
       },
       "SearchHit": {
@@ -13251,7 +13945,7 @@
         "title": "TransactionOut",
         "type": "object"
       },
-      "TranslationIn": {
+      "TranslationIn-Output": {
         "additionalProperties": false,
         "description": "One ``locale`` of a translation. Used for categories, brands, and products.",
         "properties": {
@@ -13318,6 +14012,69 @@
           "name"
         ],
         "title": "TranslationIn",
+        "type": "object"
+      },
+      "TranslationOut": {
+        "description": "Admin view of one locale row, including the sanitized body.",
+        "properties": {
+          "body_html": {
+            "title": "Body Html",
+            "type": "string"
+          },
+          "excerpt": {
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "ru",
+              "en",
+              "uz"
+            ],
+            "title": "Locale",
+            "type": "string"
+          },
+          "seo_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "slug",
+          "title",
+          "excerpt",
+          "body_html",
+          "seo_title",
+          "seo_description"
+        ],
+        "title": "TranslationOut",
         "type": "object"
       },
       "UpdateCodeIn": {
@@ -14288,6 +15045,236 @@
           "expires_in"
         ],
         "title": "TokensOut",
+        "type": "object"
+      },
+      "yupay__modules__blog__admin_schemas__ScheduleIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/blog/posts/{id}/schedule``.",
+        "properties": {
+          "scheduled_for": {
+            "format": "date-time",
+            "title": "Scheduled For",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduled_for"
+        ],
+        "title": "ScheduleIn",
+        "type": "object"
+      },
+      "yupay__modules__blog__admin_schemas__TranslationIn": {
+        "additionalProperties": false,
+        "description": "One locale's copy. Upserted as a full array on PATCH (catalogue style).",
+        "properties": {
+          "body_html": {
+            "default": "",
+            "maxLength": 100000,
+            "title": "Body Html",
+            "type": "string"
+          },
+          "excerpt": {
+            "default": "",
+            "maxLength": 280,
+            "title": "Excerpt",
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "ru",
+              "en",
+              "uz"
+            ],
+            "title": "Locale",
+            "type": "string"
+          },
+          "seo_description": {
+            "anyOf": [
+              {
+                "maxLength": 320,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Description"
+          },
+          "seo_title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seo Title"
+          },
+          "slug": {
+            "maxLength": 96,
+            "minLength": 3,
+            "pattern": "^[a-z0-9][a-z0-9-]{1,94}[a-z0-9]$",
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "locale",
+          "slug",
+          "title"
+        ],
+        "title": "TranslationIn",
+        "type": "object"
+      },
+      "yupay__modules__blog__schemas__FaqOut": {
+        "description": "A visible Q/A pair. Must match the on-page FAQ (GEO / ``FAQPage``).",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "locale": {
+            "enum": [
+              "ru",
+              "en",
+              "uz"
+            ],
+            "title": "Locale",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "sort_order": {
+            "title": "Sort Order",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "locale",
+          "sort_order",
+          "question",
+          "answer"
+        ],
+        "title": "FaqOut",
+        "type": "object"
+      },
+      "yupay__modules__broadcasts__schemas__ScheduleIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/broadcasts/{id}/schedule``.",
+        "properties": {
+          "scheduled_at": {
+            "format": "date-time",
+            "title": "Scheduled At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scheduled_at"
+        ],
+        "title": "ScheduleIn",
+        "type": "object"
+      },
+      "yupay__modules__catalog__admin_schemas__TranslationIn": {
+        "additionalProperties": false,
+        "description": "One ``locale`` of a translation. Used for categories, brands, and products.",
+        "properties": {
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "highlights": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Highlights",
+            "type": "array"
+          },
+          "instructions": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Instructions"
+          },
+          "locale": {
+            "enum": [
+              "ru",
+              "en",
+              "uz"
+            ],
+            "title": "Locale",
+            "type": "string"
+          },
+          "name": {
+            "maxLength": 255,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "short_description": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Short Description"
+          }
+        },
+        "required": [
+          "locale",
+          "name"
+        ],
+        "title": "TranslationIn",
+        "type": "object"
+      },
+      "yupay__modules__catalog__schemas__FaqOut": {
+        "description": "A localised FAQ entry shown on the brand page.",
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "question",
+          "answer"
+        ],
+        "title": "FaqOut",
         "type": "object"
       },
       "yupay__modules__evidence__schemas__OrderEventOut": {
@@ -15571,6 +16558,542 @@
         ]
       }
     },
+    "/api/v1/admin/blog/posts": {
+      "get": {
+        "operationId": "admin_list_posts_api_v1_admin_blog_posts_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "draft",
+                    "scheduled",
+                    "published",
+                    "archived"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List posts",
+        "tags": [
+          "admin:blog"
+        ]
+      },
+      "post": {
+        "operationId": "admin_create_post_api_v1_admin_blog_posts_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create a draft",
+        "tags": [
+          "admin:blog"
+        ]
+      }
+    },
+    "/api/v1/admin/blog/posts/{post_id}": {
+      "get": {
+        "operationId": "admin_get_post_api_v1_admin_blog_posts__post_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one post",
+        "tags": [
+          "admin:blog"
+        ]
+      },
+      "patch": {
+        "operationId": "admin_update_post_api_v1_admin_blog_posts__post_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PostUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit a post",
+        "tags": [
+          "admin:blog"
+        ]
+      }
+    },
+    "/api/v1/admin/blog/posts/{post_id}/archive": {
+      "post": {
+        "operationId": "admin_archive_post_api_v1_admin_blog_posts__post_id__archive_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Archive",
+        "tags": [
+          "admin:blog"
+        ]
+      }
+    },
+    "/api/v1/admin/blog/posts/{post_id}/publish": {
+      "post": {
+        "operationId": "admin_publish_post_api_v1_admin_blog_posts__post_id__publish_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Publish",
+        "tags": [
+          "admin:blog"
+        ]
+      }
+    },
+    "/api/v1/admin/blog/posts/{post_id}/schedule": {
+      "post": {
+        "operationId": "admin_schedule_post_api_v1_admin_blog_posts__post_id__schedule_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "post_id",
+            "required": true,
+            "schema": {
+              "title": "Post Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/yupay__modules__blog__admin_schemas__ScheduleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminPostOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Schedule",
+        "tags": [
+          "admin:blog"
+        ]
+      }
+    },
     "/api/v1/admin/broadcasts": {
       "get": {
         "operationId": "admin_list_broadcasts_api_v1_admin_broadcasts_get",
@@ -16236,7 +17759,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ScheduleIn"
+                "$ref": "#/components/schemas/yupay__modules__broadcasts__schemas__ScheduleIn"
               }
             }
           },
@@ -26113,6 +27636,302 @@
         "summary": "Confirm an email address from a signed token and open a session",
         "tags": [
           "auth"
+        ]
+      }
+    },
+    "/api/v1/blog": {
+      "get": {
+        "description": "Published translations only. Live events sort above ordinary news.",
+        "operationId": "list_posts_api_v1_blog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "brand",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "guide",
+                    "news",
+                    "update",
+                    "event"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "maximum": 50,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ru|en|uz)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List published posts",
+        "tags": [
+          "blog"
+        ]
+      }
+    },
+    "/api/v1/blog/by-brand/{brand_slug}": {
+      "get": {
+        "operationId": "list_by_brand_api_v1_blog_by_brand__brand_slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_slug",
+            "required": true,
+            "schema": {
+              "title": "Brand Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 6,
+              "maximum": 20,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ru|en|uz)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandBlockOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pins and latest posts for a brand page",
+        "tags": [
+          "blog"
+        ]
+      }
+    },
+    "/api/v1/blog/{slug}": {
+      "get": {
+        "description": "404 when the post is unpublished or the locale row is missing.",
+        "operationId": "get_post_api_v1_blog__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "locale",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ru|en|uz)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Locale"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PostDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get one published post",
+        "tags": [
+          "blog"
         ]
       }
     },

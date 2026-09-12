@@ -24,6 +24,7 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  Newspaper,
   Package,
   Plug,
   Power,
@@ -85,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/brands", label: "Бренды", icon: Tag },
       { to: "/products", label: "Продукты", icon: Package },
       { to: "/skus", label: "SKU", icon: Boxes },
+      { to: "/blog", label: adminRu.blog.nav, icon: Newspaper },
     ],
   },
   {

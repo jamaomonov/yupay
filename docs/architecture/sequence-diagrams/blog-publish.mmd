@@ -1,0 +1,29 @@
+sequenceDiagram
+    autonumber
+    actor Admin
+    participant SPA as apps/admin
+    participant API as blog.admin_routes
+    participant Svc as blog.service
+    participant San as blog.sanitize
+    participant DB as Postgres
+    actor Reader
+    participant Web as apps/web
+
+    Admin->>SPA: Save draft (title, body, brand, locales)
+    SPA->>API: PATCH /admin/blog/posts/{id} + Idempotency-Key
+    API->>San: allowlist body_html (no h1, CDN imgs only)
+    San-->>API: cleaned HTML or ValidationError
+    API->>Svc: upsert post + translations
+    Svc->>DB: INSERT/UPDATE blog_posts, blog_post_translations
+    API-->>SPA: 200 BlogPostOut
+
+    Admin->>SPA: Publish
+    SPA->>API: POST /admin/blog/posts/{id}/publish
+    Svc->>DB: status=published, published_at=now (once)
+    API-->>SPA: 200
+
+    Reader->>Web: GET /{locale}/blog/{slug}
+    Web->>API: GET /blog/{slug}
+    API->>DB: published + locale row
+    API-->>Web: 200 or 404
+    Web-->>Reader: article + live brand buy card
