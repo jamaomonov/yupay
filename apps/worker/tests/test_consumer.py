@@ -365,22 +365,28 @@ async def test_an_empty_queue_costs_one_query_and_returns() -> None:
     assert calls == 1
 
 
-def test_the_two_queues_are_the_two_channels_their_producers_notify() -> None:
+def test_the_queues_are_the_channels_their_producers_notify() -> None:
     """A channel spelled twice is a queue nobody drains and no test fails, so
-    both names come from the modules that emit them."""
+    the names come from the modules that emit them."""
+    from yupay.modules.blog.api import INDEXNOW_QUEUE_CHANNEL
     from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL
 
     channels = [queue.channel for queue in _queues(get_settings())]
-    assert channels == ["fulfillment_queue", WEBHOOK_QUEUE_CHANNEL]
+    assert channels == [
+        "fulfillment_queue",
+        WEBHOOK_QUEUE_CHANNEL,
+        INDEXNOW_QUEUE_CHANNEL,
+    ]
 
 
 def test_each_queue_gets_its_own_concurrency_dial() -> None:
     """One dial for both would mean tuning a hung supplier call and a hung
-    merchant endpoint with the same number."""
+    merchant endpoint with the same number. IndexNow is one host we chose."""
     cfg = get_settings()
-    tasks, hooks = _queues(cfg)
+    tasks, hooks, indexnow = _queues(cfg)
     assert tasks.concurrency == cfg.fulfilment_concurrency
     assert hooks.concurrency == cfg.merchant_webhook_concurrency
+    assert indexnow.concurrency == 1
 
 
 # ---------- what run() actually builds, and what happens when a loop dies ----------

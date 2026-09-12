@@ -21,7 +21,12 @@ Google does not support IndexNow; this speeds recrawl on **Bing and Yandex**.
 
 - Ownership key file: `apps/web/public/<key>.txt` (served at
   `https://yupay.uz/<key>.txt`, body = the key). Current key committed there.
-- Ping after a deploy that changed content:
+- **Blog publish / archive** enqueue `blog_indexnow_pings` in the same
+  transaction (ADR-0074). `apps/worker` POSTs the article + `/blog` URLs
+  only when `ENVIRONMENT=prod`. A failed ping does not unpublish the post;
+  the row stays `failed` and the fallback below still works. Dev and CI
+  mark the row `skipped` so localhost is never submitted.
+- Ping after a deploy that changed catalogue or other HTML:
   ```bash
   make indexnow          # submits every sitemap URL
   # or a subset:
@@ -31,7 +36,8 @@ Google does not support IndexNow; this speeds recrawl on **Bing and Yandex**.
   web deploy), then POSTs the URL list to `api.indexnow.org`.
 - To rotate the key: generate a new one (`openssl rand -hex 16`), rename the
   `public/*.txt` file to `<newkey>.txt` with that content, update
-  `scripts/indexnow.mjs`'s default `KEY`, deploy, then `make indexnow`.
+  `scripts/indexnow.mjs`'s default `KEY` **and**
+  `blog/indexnow.py`'s `INDEXNOW_KEY`, deploy, then `make indexnow`.
 
 ## When pages aren't (fully) indexed on Google
 

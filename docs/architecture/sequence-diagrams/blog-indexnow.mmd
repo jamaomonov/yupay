@@ -1,0 +1,20 @@
+sequenceDiagram
+    autonumber
+    actor A as Admin
+    participant API as blog.admin_service
+    participant DB as Postgres
+    participant W as apps/worker
+    participant IN as api.indexnow.org
+
+    A->>API: publish / archive
+    API->>DB: status + blog_indexnow_pings (same txn)
+    API->>DB: pg_notify blog_indexnow_queue
+    API-->>A: 200 (IndexNow not awaited)
+    DB-->>W: NOTIFY
+    alt ENVIRONMENT=prod
+        W->>IN: POST urlList (yupay.uz article + /blog)
+        IN-->>W: 200 / 202
+        W->>DB: status=done
+    else
+        W->>DB: status=skipped
+    end

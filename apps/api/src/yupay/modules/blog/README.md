@@ -3,7 +3,8 @@
 Editorial posts bound to a catalogue brand: guides, news, updates and
 time-bounded events. The storefront (M2) renders them for SEO and as a
 path onto `/store/{brand}`; this module owns the rows and the HTML
-allowlist.
+allowlist. Storefront `/blog` and `/blog/{slug}` also content-negotiate
+`Accept: text/markdown` (same rewrite as home and `/store`).
 
 **Spec:** `docs/superpowers/specs/2026-09-12-blog-design.md`
 
@@ -31,6 +32,8 @@ allowlist.
   from the `yp_blog_reader` cookie (ADR-0073). Not IP.
 - `blog_post_translations` — slug unique per locale, title, excerpt, body.
 - `blog_post_brands` — extra related brands.
+- `blog_indexnow_pings` — outbox for Bing/Yandex IndexNow on publish/archive
+  (ADR-0074). The worker POSTs only in prod; a miss does not unpublish.
 - `blog_post_faqs` — Q/A that must match visible FAQ (GEO / `FAQPage`).
   The admin form edits them per locale on the same page as the body.
   A PATCH replaces FAQ and translation rows after a flush so unique
@@ -45,6 +48,8 @@ Admin mutations require the key and the `admin` role.
 
 ## How to publish without breaking SEO
 
+- Publish and archive enqueue IndexNow for every translation URL plus the
+  locale `/blog` index. Google ignores IndexNow; Yandex/Bing do not.
 - Do not change a published slug. Archive the old post and create a new
   slug if the URL must move.
 - Publish only when every shipped locale has a non-empty sanitized body.

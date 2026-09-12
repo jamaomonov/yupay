@@ -7,6 +7,7 @@ routes that filter on ``status`` / ``locale`` / ``slug``.
 from __future__ import annotations
 
 from yupay.modules.blog.models import (
+    BlogIndexNowPing,
     BlogPost,
     BlogPostBrand,
     BlogPostFaq,
@@ -51,3 +52,10 @@ def test_like_and_view_are_per_reader() -> None:
     assert {col.name for col in BlogPostView.__table__.primary_key} == {"post_id", "reader_hash"}
     assert "like_count" in BlogPost.__table__.c
     assert "view_count" in BlogPost.__table__.c
+
+
+def test_indexnow_ping_constraints() -> None:
+    assert BlogIndexNowPing.__tablename__ == "blog_indexnow_pings"
+    names = {c.name for c in BlogIndexNowPing.__table__.constraints}  # type: ignore[attr-defined]
+    assert "ck_blog_indexnow_pings_reason_known" in names
+    assert "ck_blog_indexnow_pings_status_known" in names

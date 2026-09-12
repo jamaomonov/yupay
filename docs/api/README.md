@@ -39,6 +39,9 @@ so the storefront can emit hreflang only for locales that have a row. Admin writ
 allowlist in `modules/blog/sanitize.py`. Cover and inline images upload through
 the existing `POST /admin/media/presign-upload` with `kind=blog_image` (png/jpeg/webp,
 same 5 MB cap as `brand_hero`); `img src` must stay on `r2_public_base_url`. See ADR-0072.
+Storefront `/blog` and `/blog/{slug}` content-negotiate `Accept: text/markdown`
+the same way as home and `/store` (`Vary: Accept`). Publish and archive enqueue
+IndexNow for Bing/Yandex (ADR-0074); the worker POSTs only in prod.
 
 ## Content-managed brand SEO copy
 

@@ -10,6 +10,8 @@ on one loop:
   outgoing merchant webhooks (M3a). Concurrency:
   `merchant_webhook_concurrency` (default 2). Its own dial because what hangs
   here is a **third party's** server, not a supplier we chose.
+- **`blog_indexnow_pings`** on `LISTEN blog_indexnow_queue` — IndexNow after
+  a blog publish or archive (ADR-0074). Concurrency 1.
 
 **Each queue runs in its own asyncio task**, with its own loop. Not tidiness:
 `asyncio.gather` returns with its slowest member, so draining both queues in

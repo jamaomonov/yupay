@@ -54,6 +54,7 @@ export async function GET(): Promise<Response> {
     "## Заметки",
     "- Языки: русский (ru, основной), английский (en), узбекский (uz) — у каждой страницы есть hreflang-альтернативы.",
     "- Данные о товарах и ценах — в разметке schema.org (Product, Offer, AggregateRating, FAQPage) на страницах брендов.",
+    "- Каталог, бренд, /blog и /blog/{slug} отдают Markdown при `Accept: text/markdown`.",
     "",
   ];
 

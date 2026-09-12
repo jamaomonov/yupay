@@ -22,6 +22,7 @@ from yupay.modules.blog.admin_schemas import (
     TranslationIn,
     TranslationOut,
 )
+from yupay.modules.blog.indexnow import enqueue as enqueue_indexnow
 from yupay.modules.blog.models import BlogPost, BlogPostBrand, BlogPostFaq, BlogPostTranslation
 from yupay.modules.blog.sanitize import assert_hosted_media, sanitize_body
 from yupay.modules.blog.schemas import FaqOut, PostStatus
@@ -189,6 +190,7 @@ async def publish_post(db: AsyncSession, post_id: str) -> BlogPost:
     post.status = "published"
     post.updated_at = now()
     await db.flush()
+    await enqueue_indexnow(db, post, reason="published")
     log.info("blog.post_published", post_id=post.id, kind=post.kind, status=post.status)
     return post
 
@@ -201,6 +203,7 @@ async def archive_post(db: AsyncSession, post_id: str) -> BlogPost:
     post.status = "archived"
     post.updated_at = now()
     await db.flush()
+    await enqueue_indexnow(db, post, reason="archived")
     log.info("blog.post_archived", post_id=post.id, kind=post.kind, status=post.status)
     return post
 

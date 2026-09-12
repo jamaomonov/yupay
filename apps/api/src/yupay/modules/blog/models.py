@@ -22,7 +22,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import ARRAY, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from yupay.core.db import Base
@@ -212,3 +212,38 @@ class BlogPostView(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
+
+
+class BlogIndexNowPing(Base):
+    """One IndexNow batch for a publish or archive. The worker drains these."""
+
+    __tablename__ = "blog_indexnow_pings"
+    __table_args__ = (
+        CheckConstraint("reason IN ('published', 'archived')", name="reason_known"),
+        CheckConstraint(
+            "status IN ('pending', 'done', 'skipped', 'failed')",
+            name="status_known",
+        ),
+        Index(
+            "ix_blog_indexnow_pings_pending",
+            "created_at",
+            postgresql_where=text("status = 'pending'"),
+        ),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    post_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("blog_posts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    reason: Mapped[str] = mapped_column(String(16), nullable=False)
+    urls: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'pending'")
+    )
+    last_error: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

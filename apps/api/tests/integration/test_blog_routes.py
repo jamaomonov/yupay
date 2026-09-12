@@ -10,11 +10,15 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import urlencode
 
+import httpx
 import pytest
+import respx
 from httpx import AsyncClient
-from sqlalchemy import event, update
+from sqlalchemy import event, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
+from yupay.modules.blog.indexnow import INDEXNOW_ENDPOINT, drain_pending_pings
+from yupay.modules.blog.models import BlogIndexNowPing
 from yupay.modules.catalog.models import Brand, BrandTranslation, Category, CategoryTranslation
 from yupay.modules.users.models import TelegramLink, User
 
@@ -420,3 +424,80 @@ async def test_guest_can_view_and_like_without_auth(
     assert unliked.status_code == 200, unliked.text
     assert unliked.json()["liked"] is False
     assert unliked.json()["like_count"] == 0
+
+
+async def test_publish_and_archive_enqueue_indexnow(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    brand = await _seed_brand(db_session, slug="indexnow-mlbb")
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-create"},
+        json=_draft_payload(brand.id, slug="kak-popolnit-indexnow"),
+    )
+    post_id = created.json()["id"]
+    published = await integration_client.post(
+        f"/api/v1/admin/blog/posts/{post_id}/publish",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-pub"},
+    )
+    assert published.status_code == 200, published.text
+    rows = list((await db_session.execute(select(BlogIndexNowPing))).scalars())
+    assert len(rows) == 1
+    assert rows[0].reason == "published"
+    assert rows[0].status == "pending"
+    assert "https://yupay.uz/blog/kak-popolnit-indexnow" in rows[0].urls
+    assert "https://yupay.uz/blog" in rows[0].urls
+
+    archived = await integration_client.post(
+        f"/api/v1/admin/blog/posts/{post_id}/archive",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-arch"},
+    )
+    assert archived.status_code == 200, archived.text
+    rows = list(
+        (
+            await db_session.execute(select(BlogIndexNowPing).order_by(BlogIndexNowPing.created_at))
+        ).scalars()
+    )
+    assert [row.reason for row in rows] == ["published", "archived"]
+
+
+async def test_indexnow_drain_skips_outside_prod(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    brand = await _seed_brand(db_session, slug="indexnow-skip")
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-skip-c"},
+        json=_draft_payload(brand.id, slug="indexnow-skip"),
+    )
+    await integration_client.post(
+        f"/api/v1/admin/blog/posts/{created.json()['id']}/publish",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-skip-p"},
+    )
+    n = await drain_pending_pings(db_session)
+    assert n == 1
+    ping = (await db_session.execute(select(BlogIndexNowPing))).scalar_one()
+    assert ping.status == "skipped"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_indexnow_drain_posts_when_live(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    respx.post(INDEXNOW_ENDPOINT).mock(return_value=httpx.Response(202))
+    brand = await _seed_brand(db_session, slug="indexnow-live")
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-live-c"},
+        json=_draft_payload(brand.id, slug="indexnow-live"),
+    )
+    await integration_client.post(
+        f"/api/v1/admin/blog/posts/{created.json()['id']}/publish",
+        headers={**admin_headers, "Idempotency-Key": "blog-indexnow-live-p"},
+    )
+    n = await drain_pending_pings(db_session, live=True)
+    assert n == 1
+    ping = (await db_session.execute(select(BlogIndexNowPing))).scalar_one()
+    assert ping.status == "done"
+    assert ping.last_error is None

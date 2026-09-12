@@ -10,7 +10,8 @@ const DEFAULT_PREFIX = new RegExp(`^/${routing.defaultLocale}(?=/|$)`);
 
 /**
  * Pages we can serve as Markdown for agents (after stripping an optional
- * locale prefix): the home page, the store index, and any single brand page.
+ * locale prefix): home, store index, a brand page, its how-to, blog index,
+ * and a published blog slug.
  */
 function supportsMarkdown(pathname: string): boolean {
   const p = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";

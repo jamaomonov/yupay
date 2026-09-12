@@ -1,12 +1,14 @@
 import { LOCALES } from "@yupay/i18n";
 
+import { blogIndexMarkdown, blogPostMarkdown } from "@/lib/blog-markdown";
 import { brandMarkdown, homeMarkdown, howToMarkdown, storeMarkdown } from "@/lib/markdown";
 
 /**
  * Markdown content-negotiation endpoint. The middleware rewrites supported
  * pages here when the request carries `Accept: text/markdown` (home, /store,
- * /store/<brand>), so browsers keep HTML while agents get Markdown. The path
- * arrives as /md[/<locale>]/<rest> — we peel the optional locale and dispatch.
+ * /store/<brand>, /blog, /blog/<slug>), so browsers keep HTML while agents
+ * get Markdown. The path arrives as /md[/<locale>]/<rest> — we peel the
+ * optional locale and dispatch.
  */
 export const revalidate = 300;
 
@@ -51,6 +53,11 @@ export async function GET(
     rest.length === 3 && rest[0] === "store" && rest[2] === "how-to" ? rest[1] : undefined;
   if (guide !== undefined) {
     const body = await howToMarkdown(locale, guide);
+    return body ? md(body) : md("# 404\n\nСтраница не найдена.\n", 404);
+  }
+  if (rest.length === 1 && rest[0] === "blog") return md(await blogIndexMarkdown(locale));
+  if (rest.length === 2 && rest[0] === "blog" && rest[1] !== undefined) {
+    const body = await blogPostMarkdown(locale, rest[1]);
     return body ? md(body) : md("# 404\n\nСтраница не найдена.\n", 404);
   }
   return md("# 404\n\nСтраница не найдена.\n", 404);

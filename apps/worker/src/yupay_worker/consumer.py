@@ -1,7 +1,7 @@
 """The worker: drain the Postgres-native queues.
 
-Two of them now, and the second is why almost everything here is
-parameterised by a :class:`Queue` rather than hardcoded:
+Three of them, which is why almost everything here is parameterised by a
+:class:`Queue` rather than hardcoded:
 
 - ``fulfillment_tasks`` / ``fulfillment_queue`` — the fulfilment work every
   retail order flows through (ADR-0064).
@@ -10,6 +10,9 @@ parameterised by a :class:`Queue` rather than hardcoded:
   is the reason it has its own concurrency dial and its own LISTEN connection
   rather than sharing the fulfilment one: a hung supplier call and a hung
   merchant endpoint are different failures and should be tuned apart.
+- ``blog_indexnow_pings`` / ``blog_indexnow_queue`` — Bing/Yandex IndexNow
+  after a blog publish or archive (ADR-0074). Concurrency 1: one endpoint
+  we chose, and the volume is editorial events, not checkout.
 
 Each queue runs in its **own task**, on its own loop, so a slow queue delays
 only itself. That is not tidiness: ``asyncio.gather`` returns with its slowest
@@ -60,6 +63,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.db import get_engine
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.observability import init_sentry
+from yupay.modules.blog.api import INDEXNOW_QUEUE_CHANNEL, drain_pending_pings
 from yupay.modules.fulfillment.api import drain_pending_tasks
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 from yupay.modules.merchants.api import WEBHOOK_QUEUE_CHANNEL, drain_pending_deliveries
@@ -100,6 +104,7 @@ def _queues(cfg: Settings) -> tuple[Queue, ...]:
     """The queues this process drains, in the order a wake drains them.
 
     Fulfilment first: it is the money path, and a webhook is a courtesy.
+    IndexNow last: a missed recrawl is not a missed order.
     """
     return (
         Queue(
@@ -113,6 +118,12 @@ def _queues(cfg: Settings) -> tuple[Queue, ...]:
             channel=WEBHOOK_QUEUE_CHANNEL,
             drain=drain_pending_deliveries,
             concurrency=cfg.merchant_webhook_concurrency,
+        ),
+        Queue(
+            name="blog_indexnow",
+            channel=INDEXNOW_QUEUE_CHANNEL,
+            drain=drain_pending_pings,
+            concurrency=1,
         ),
     )
 
