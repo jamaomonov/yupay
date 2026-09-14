@@ -1292,6 +1292,13 @@ export function PurchasePanel({
   const queryClient = useQueryClient();
 
   const emailOk = EMAIL_RE.test(email);
+  // A signed-in buyer may leave this blank — 68% of accounts sign in through
+  // Telegram or Steam and have no address on file, so `email` seeds to "".
+  // What they may not do is pay with something half-typed in it: the server
+  // validates `delivery_email` as an address, and an invalid one fails the
+  // whole order with a 422 that reads to the buyer as "order not created".
+  // Blank is a choice (no mail); malformed is a mistake, and the button says so.
+  const deliveryEmailOk = user === null ? emailOk : email === "" || emailOk;
   const fieldsOk = fields.every((f) => !f.required || (form[f.key]?.trim() ?? "") !== "");
   // A checkable field (`f.check`) with something typed that the check has not
   // cleared — never pressed, came back not-found, or answered about an id or a
@@ -1328,7 +1335,7 @@ export function PurchasePanel({
   // Logged-in users don't need to supply an email — the account email is used server-side.
   const canPay =
     Boolean(selSku) &&
-    (user !== null || emailOk) &&
+    deliveryEmailOk &&
     fieldsOk &&
     fieldsVerified &&
     selectedMethodActive &&
@@ -1364,7 +1371,7 @@ export function PurchasePanel({
                         })
                       : selSkuUnit && qtyErr === "precision"
                         ? t("amountWhole")
-                        : !user && !emailOk
+                        : !deliveryEmailOk
                           ? t("payHintEmail")
                           : !fieldsOk
                             ? t("payHintFields")
@@ -1466,7 +1473,11 @@ export function PurchasePanel({
         // `guest_email` is the guest's identity on the order and cannot be
         // set for a signed-in buyer; `delivery_email` is where their mail
         // goes. Sending neither is what left them without their codes.
-        ...(isLoggedIn ? { delivery_email: email } : { guest_email: email }),
+        // Only when there is one. An absent key means "mail it nowhere"; an
+        // empty string is not an address and the server rejects the order over
+        // it — which is how a buyer with no address on file got
+        // "order not created" instead of a sale.
+        ...(isLoggedIn ? (email ? { delivery_email: email } : {}) : { guest_email: email }),
         ...(hints ? { client_hints: hints } : {}),
         // The server resolves this again for itself — the preview above was
         // for display only, so a code that went stale in between yields an

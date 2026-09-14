@@ -76,6 +76,40 @@ class OrderCreate(BaseModel):
     #: response's ``discount_charged`` says what actually happened.
     affiliate_code: str | None = Field(default=None, max_length=32)
 
+    @field_validator("delivery_email", mode="before")
+    @classmethod
+    def _blank_is_absent(cls, value: object) -> object:
+        """Read a blank string as "no address given", not as a malformed one.
+
+        A client that has nothing to put here should omit the key, and ours now
+        does. This exists for the ones that cannot: a browser holding a cached
+        bundle keeps sending what it was built to send, so a fix that lives only
+        in the new JavaScript leaves every already-loaded page failing until the
+        cache turns over.
+
+        And the failure it caused was the expensive kind. ``delivery_email`` is
+        a convenience — where to mail codes the buyer can already read in the
+        app — but an empty one failed ``EmailStr`` and took the **whole order**
+        down with a 422 that reached the buyer as "order not created". 410 of
+        606 accounts on prod have no address on file, because Telegram and Steam
+        hand us none, so the field seeded blank and checkout refused the sale.
+        Web checkout was failing about two orders in five.
+
+        Same trade ``affiliate_code`` makes three lines up, for the same reason:
+        losing a sale over an optional field is the worse outcome. A blank
+        becomes ``None``; anything non-blank is still validated as an address,
+        because a typo is a mistake worth reporting rather than discarding.
+
+        **Only this field.** ``guest_email`` is a guest's identity and their
+        claim on the order, not a convenience — blanking it would trade a clear
+        "that is not an address" for a confusing "actor must be exactly one of",
+        and there is no sale to save either way, because a guest without an
+        address cannot be sent anything at all.
+        """
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
 
 class OrderItemDisplay(BaseModel):
     """What the customer/admin should see for this line.
