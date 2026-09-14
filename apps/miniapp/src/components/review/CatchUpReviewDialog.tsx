@@ -73,11 +73,11 @@ export function CatchUpReviewDialog() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-end" role="dialog" aria-modal="true">
-      {rated ? (
-        <div className="absolute inset-0 bg-black/60" />
-      ) : (
-        <button aria-label="close" className="absolute inset-0 bg-black/60" onClick={close} />
-      )}
+      {/* Inert. It used to close the prompt, which wrote a dismissal that never
+          expired — a full-screen tap target whose mis-tap ended the only
+          conversation we get with someone who left without rating. The X above
+          and «Позже» below both close it, and both are deliberate. */}
+      <div className="absolute inset-0 bg-black/60" />
       <div className="relative w-full rounded-t-2xl bg-[hsl(var(--card))] p-5">
         <div className="mb-3 flex justify-end">
           <button type="button" aria-label="close" onClick={close} className="text-white/50">

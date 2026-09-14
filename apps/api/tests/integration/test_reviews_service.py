@@ -499,31 +499,92 @@ async def test_amend_replaces_body_inside_the_window(db_session: AsyncSession) -
     assert updated.rating == 5
 
 
-async def test_amend_rejects_after_the_window(db_session: AsyncSession) -> None:
-    from yupay.modules.reviews.amend import amend_review_body
-
-    user = await _make_user(db_session, display_name="Ann")
-    brand, sku = await _seed_brand(db_session, "steam")
-    order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+async def _aged_review(
+    db: AsyncSession, *, body: str | None, age: timedelta, slug: str
+) -> tuple[str, str]:
+    """A review of the given age and body. Returns ``(review_id, user_id)``."""
+    user = await _make_user(db, display_name="Ann")
+    _brand, sku = await _seed_brand(db, slug)
+    order = await _make_order(db, user_id=user.id, sku_id=sku.id)
     review = await svc.create_review(
-        db_session,
+        db,
         user_id=user.id,
         guest_email=None,
         order_id=order.id,
-        brand_slug="steam",
+        brand_slug=slug,
         rating=5,
-        body=None,
+        body=body,
         locale="ru",
     )
-    review.created_at = now() - timedelta(minutes=16)
-    await db_session.flush()
+    review.created_at = now() - age
+    await db.flush()
+    return review.id, user.id
+
+
+async def test_amend_rejects_replacing_a_written_body_after_the_short_window(
+    db_session: AsyncSession,
+) -> None:
+    """Text already on the public page stays put once the window closes.
+
+    This is the case the 15 minutes was always for, and it is unchanged.
+    """
+    from yupay.modules.reviews.amend import amend_review_body
+
+    review_id, user_id = await _aged_review(
+        db_session, body="всё ок", age=timedelta(minutes=16), slug="steam"
+    )
     with pytest.raises(ForbiddenError) as exc:
         await amend_review_body(
             db_session,
-            review_id=review.id,
-            user_id=user.id,
+            review_id=review_id,
+            user_id=user_id,
             guest_email=None,
-            body="поздно",
+            body="передумал",
+        )
+    assert exc.value.extra.get("code") == "amend_window_closed"
+
+
+async def test_a_star_only_review_can_still_be_written_on_days_later(
+    db_session: AsyncSession,
+) -> None:
+    """The point of the second window.
+
+    Somebody tapped five stars on Monday and comes back on Wednesday to say
+    why. There is no sentence being retracted — the review had none — and the
+    rating does not move, so nothing a short window protects is at stake.
+    Production had 27 star-only reviews and one edit ever; this is the
+    difference between those two numbers.
+    """
+    from yupay.modules.reviews.amend import amend_review_body
+
+    review_id, user_id = await _aged_review(
+        db_session, body=None, age=timedelta(days=3), slug="roblox"
+    )
+    updated = await amend_review_body(
+        db_session,
+        review_id=review_id,
+        user_id=user_id,
+        guest_email=None,
+        body="пришло за минуту",
+    )
+    assert updated.body == "пришло за минуту"
+    assert updated.rating == 5
+
+
+async def test_the_fill_window_does_eventually_close(db_session: AsyncSession) -> None:
+    """Not unbounded: it ends where we stop asking about the order at all."""
+    from yupay.modules.reviews.amend import amend_review_body
+
+    review_id, user_id = await _aged_review(
+        db_session, body=None, age=timedelta(days=15), slug="telegram-stars"
+    )
+    with pytest.raises(ForbiddenError) as exc:
+        await amend_review_body(
+            db_session,
+            review_id=review_id,
+            user_id=user_id,
+            guest_email=None,
+            body="через две недели",
         )
     assert exc.value.extra.get("code") == "amend_window_closed"
 

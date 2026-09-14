@@ -65,8 +65,11 @@ export function OrderDeliveredModal() {
 
   const display = order.data.items[0]?.display;
   const brandSlug = display?.brand_slug ?? null;
-  const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === orderId);
-  const canRate = brandSlug !== null && !alreadyReviewed;
+  const ownReview = (myReviews.data?.items ?? []).find((r) => r.order_id === orderId) ?? null;
+  // Not `!alreadyReviewed`: posting a star is what makes that true, so gating
+  // on it here unmounted the comment step in the same tick it appeared.
+  const reviewsKnown = myReviews.data !== undefined || myReviews.isError;
+  const canRate = brandSlug !== null && reviewsKnown;
 
   return (
     <div
@@ -109,6 +112,7 @@ export function OrderDeliveredModal() {
             orderId={orderId}
             brandSlug={brandSlug}
             brandName={display?.brand_name ?? null}
+            existing={ownReview}
           />
         )}
       </div>

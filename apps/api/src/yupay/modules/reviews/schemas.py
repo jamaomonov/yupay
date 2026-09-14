@@ -54,12 +54,28 @@ class ReviewListOut(BaseModel):
 
 
 class OwnReviewOut(BaseModel):
+    """One of the caller's own reviews, as the storefronts need it.
+
+    Carries more than "this order was reviewed" because the surfaces that read
+    it stopped using it only to hide a call to action. A star-only review is an
+    invitation to write something, not a finished job, so the client needs the
+    rating to show back, the body to tell an empty review from a written one,
+    and ``can_add_text`` to know whether offering a comment box would lead
+    anywhere.
+    """
+
     model_config = ConfigDict(from_attributes=True)
 
     id: str
     order_id: str
     brand_id: str
     rating: int
+    #: What they wrote, so a returning reviewer sees their own words rather
+    #: than an empty box that looks like the text was lost.
+    body: str | None = None
+    #: Whether ``PATCH /reviews/{id}`` would accept a body right now. Computed
+    #: server-side from ``amend.can_amend`` so the two can never disagree.
+    can_add_text: bool = False
 
 
 class OwnReviewListOut(BaseModel):

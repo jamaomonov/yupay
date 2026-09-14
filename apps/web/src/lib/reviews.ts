@@ -27,6 +27,11 @@ export interface OwnReview {
   order_id: string;
   brand_id: string;
   rating: number;
+  /** What they wrote, or null for a star-only review. */
+  body: string | null;
+  /** Whether `PATCH /reviews/{id}` would still accept a body — server-computed
+   *  from one rule, so a comment box is never offered where it cannot save. */
+  can_add_text: boolean;
 }
 
 export interface ReviewEligibility {

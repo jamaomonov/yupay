@@ -54,6 +54,7 @@ from yupay_scheduler.jobs import (
     recompute_review_stats,
     refresh_supplier_prices,
     refresh_voucher_stock,
+    review_reminder,
     stuck_orders,
     sync_supplier_catalog,
     uzum_timeout,
@@ -88,6 +89,7 @@ def build_scheduler() -> AsyncIOScheduler:
     recompute_review_stats.register(scheduler)
     refresh_supplier_prices.register(scheduler)
     refresh_voucher_stock.register(scheduler)
+    review_reminder.register(scheduler)
     stuck_orders.register(scheduler)
     sync_supplier_catalog.register(scheduler)
     uzum_timeout.register(scheduler)

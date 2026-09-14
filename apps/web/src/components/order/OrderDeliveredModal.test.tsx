@@ -147,10 +147,51 @@ test("hides the form when a concurrent submit already rated the order (409)", as
   });
 });
 
-test("hides the review form when the order is already reviewed", async () => {
+test("asks a star-only review for its words instead of going quiet", async () => {
+  // Used to assert the opposite — that an already-reviewed order hides the
+  // form. Posting a star is what makes an order "already reviewed", so that
+  // rule unmounted the comment step in the tick it appeared, and production
+  // collected 27 star-only reviews against a single edit ever.
   mockApiFetch.mockResolvedValue(makeOrder("steam"));
   mockGetMyReviews.mockResolvedValue({
-    items: [{ id: "rev-1", order_id: ORDER_ID, brand_id: "brand-1", rating: 5 }],
+    items: [
+      {
+        id: "rev-1",
+        order_id: ORDER_ID,
+        brand_id: "brand-1",
+        rating: 5,
+        body: null,
+        can_add_text: true,
+      },
+    ],
+  });
+  useOrderDeliveredModal.setState({ orderId: ORDER_ID });
+
+  renderModal();
+
+  await screen.findByRole("dialog");
+  // The stars are gone — they already tapped them — and what stands in their
+  // place is the invitation to write, not silence.
+  await waitFor(() => {
+    expect(screen.getByText("web.brandReviews.followUp")).toBeInTheDocument();
+  });
+  expect(screen.queryByText("web.brandReviews.askTitleNamed")).not.toBeInTheDocument();
+  expect(screen.getByText("web.brandReviews.thanksRating")).toBeInTheDocument();
+});
+
+test("a review that already has its words is shown back, not re-asked", async () => {
+  mockApiFetch.mockResolvedValue(makeOrder("steam"));
+  mockGetMyReviews.mockResolvedValue({
+    items: [
+      {
+        id: "rev-1",
+        order_id: ORDER_ID,
+        brand_id: "brand-1",
+        rating: 5,
+        body: "пришло за минуту",
+        can_add_text: false,
+      },
+    ],
   });
   useOrderDeliveredModal.setState({ orderId: ORDER_ID });
 
@@ -158,9 +199,7 @@ test("hides the review form when the order is already reviewed", async () => {
 
   await screen.findByRole("dialog");
   await waitFor(() => {
-    expect(screen.queryByText("web.brandReviews.askTitleNamed")).not.toBeInTheDocument();
+    expect(screen.getByText("web.brandReviews.thanks")).toBeInTheDocument();
   });
-  expect(
-    screen.getByRole("heading", { name: "web.orderResult.deliveredTitle" }),
-  ).toBeInTheDocument();
+  expect(screen.queryByText("web.brandReviews.followUp")).not.toBeInTheDocument();
 });

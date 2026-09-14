@@ -105,8 +105,9 @@ export default function OrderSuccess() {
   const deliveriesQuery = useDeliveries(orderId, order?.status);
   const deliveries = deliveriesQuery.data ?? [];
 
-  // Fallback rate CTA: if the delivered dialog was skipped or missed, a
-  // signed-in buyer who hasn't reviewed this order can still rate it here.
+  // Rate CTA: if the delivered dialog was skipped or missed, a signed-in buyer
+  // can rate here — and if they already rated, this is where they are asked
+  // for the words, which is the step the old "hide once reviewed" gate ate.
   const me = useMe();
   const myReviews = useQuery({
     queryKey: ["my-reviews"],
@@ -182,8 +183,12 @@ export default function OrderSuccess() {
   const isProcessing = isProcessingOrUnknown;
   const isDelivered = order.status === "delivered";
   const rateBrandSlug = order.items[0]?.display?.brand_slug ?? null;
-  const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.id);
-  const canRate = isDelivered && Boolean(me.data) && rateBrandSlug !== null && !alreadyReviewed;
+  const ownReview = (myReviews.data?.items ?? []).find((r) => r.order_id === order.id) ?? null;
+  // Wait for `my-reviews` to answer before rendering anything: stars offered
+  // during the fetch can only ever 409 once it lands. `data` stays defined
+  // across the refetch that follows a rating, so this never flips back.
+  const reviewsKnown = myReviews.data !== undefined || myReviews.isError;
+  const canRate = isDelivered && Boolean(me.data) && rateBrandSlug !== null && reviewsKnown;
   const isFailed = TERMINAL_FAIL.includes(order.status);
 
   return (
@@ -273,6 +278,7 @@ export default function OrderSuccess() {
             orderId={order.id}
             brandSlug={rateBrandSlug}
             brandName={order.items[0]?.display?.brand_name ?? null}
+            existing={ownReview}
           />
         </div>
       )}

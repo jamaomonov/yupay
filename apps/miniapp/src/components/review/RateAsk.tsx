@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { reviewDraftHasChip, toggleChipInReviewDraft } from "@yupay/utils";
+import { reviewDraftHasChip, reviewFollowUp, toggleChipInReviewDraft } from "@yupay/utils";
 import { Star } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useT } from "@/lib/i18n";
@@ -17,68 +17,107 @@ const NEGATIVE = [
 
 type TagKey = (typeof POSITIVE)[number] | (typeof NEGATIVE)[number];
 
+/** A review of this order that already exists — from `GET /reviews/mine`. */
+export interface ExistingReview {
+  id: string;
+  rating: number;
+  body: string | null;
+  /** Whether `PATCH /reviews/{id}` would still accept a body. Server-computed. */
+  can_add_text: boolean;
+}
+
 /**
  * One-tap star rating for a delivered order, then optional chips + comment.
  * Chips write into the textarea; PATCH runs only from Submit.
+ *
+ * **The comment step must survive the rating.** Posting a star makes this
+ * order "already reviewed", and every surface that renders this component also
+ * knows that fact — so a caller that hides the component once it is true tears
+ * the follow-up out of the DOM in the same tick the follow-up appears. That
+ * was live on three surfaces (both order pages and the web order list) and is
+ * why production had 27 star-only reviews against a single edit ever. Callers
+ * now pass what they know as `existing` instead of using it to unmount this:
+ * a review that exists is a reason to *ask for the words*, not to go quiet.
  */
 export function RateAsk({
   orderId,
   brandSlug,
   brandName,
+  existing,
   onRated,
   onFinished,
 }: {
   orderId: string;
   brandSlug: string;
   brandName?: string | null | undefined;
+  existing?: ExistingReview | null | undefined;
   onRated?: (() => void) | undefined;
   onFinished?: (() => void) | undefined;
 }) {
   const { t } = useT();
   const qc = useQueryClient();
-  const [state, setState] = useState<"idle" | "sending" | "done" | "already" | "error">("idle");
-  const [rated, setRated] = useState(0);
+  const [state, setState] = useState<"idle" | "sending" | "conflict" | "error">("idle");
+  const [review, setReview] = useState<ExistingReview | null>(existing ?? null);
   const [tapped, setTapped] = useState(0);
-  const [reviewId, setReviewId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [saving, setSaving] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [amendFailed, setAmendFailed] = useState(false);
 
+  // `my-reviews` usually resolves after the first paint, so a review this
+  // order already has arrives as a prop change rather than an initial value.
+  // Adopt it — but never over a review this component just created, whose
+  // `can_add_text` is true by construction and whose follow-up is on screen.
+  useEffect(() => {
+    if (existing && review === null) setReview(existing);
+  }, [existing, review]);
+
   const title = brandName
     ? t("reviews.askTitleNamed", { brand: brandName })
     : t("reviews.askTitle");
-  const tags: readonly TagKey[] = rated >= 4 ? POSITIVE : NEGATIVE;
+  const rating = review?.rating ?? 0;
+  const tags: readonly TagKey[] = rating >= 4 ? POSITIVE : NEGATIVE;
+  // One rule, shared with the web surface — see `reviewFollowUp`.
+  const wantsWords = !confirmed && reviewFollowUp(review) === "words";
 
-  async function onRate(rating: number) {
-    setTapped(rating);
+  async function onRate(value: number) {
+    setTapped(value);
     setState("sending");
     try {
-      const review = await submitReview({
+      const created = await submitReview({
         order_id: orderId,
         brand_slug: brandSlug,
-        rating,
+        rating: value,
       });
-      setReviewId(review.id);
-      setRated(rating);
-      setState("done");
+      setReview({ id: created.id, rating: value, body: null, can_add_text: true });
+      setState("idle");
       onRated?.();
       void qc.invalidateQueries({ queryKey: ["my-reviews"] });
       void qc.invalidateQueries({ queryKey: ["review-pending-ask"] });
     } catch (err) {
       setTapped(0);
-      setState(err instanceof ApiError && err.status === 409 ? "already" : "error");
+      if (err instanceof ApiError && err.status === 409) {
+        // Rated already, on another surface or in an earlier session. We do
+        // not have the row — ask for it, and the effect above will adopt it
+        // and offer the comment step rather than leaving a dead end.
+        setState("conflict");
+        void qc.invalidateQueries({ queryKey: ["my-reviews"] });
+        return;
+      }
+      setState("error");
     }
   }
 
   async function submitComment(): Promise<void> {
     const body = draft.trim();
     if (body) {
-      if (!reviewId) return;
+      if (!review) return;
       setSaving(true);
       setAmendFailed(false);
       try {
-        await amendReview(reviewId, body);
+        await amendReview(review.id, body);
+        setReview({ ...review, body });
+        void qc.invalidateQueries({ queryKey: ["my-reviews"] });
       } catch {
         setAmendFailed(true);
         return;
@@ -89,31 +128,10 @@ export function RateAsk({
     setConfirmed(true);
   }
 
-  if (state === "already") return null;
-
-  if (state === "done" && confirmed) {
+  if (wantsWords && review) {
     return (
       <div className="rounded-xl border border-white/10 p-3">
-        <StarRow value={rated} />
-        <p className="text-primary mt-2 text-sm font-semibold">{t("reviews.thanks")}</p>
-        <p className="mt-1 text-[11px] text-white/50">{t("reviews.thanksBody")}</p>
-        {onFinished ? (
-          <button
-            type="button"
-            onClick={onFinished}
-            className="bg-primary text-primary-foreground mt-3 w-full rounded-lg py-2 text-sm font-semibold"
-          >
-            {t("reviews.done")}
-          </button>
-        ) : null}
-      </div>
-    );
-  }
-
-  if (state === "done") {
-    return (
-      <div className="rounded-xl border border-white/10 p-3">
-        <StarRow value={rated} />
+        <StarRow value={rating} />
         <p className="text-primary mt-2 text-sm font-semibold">{t("reviews.thanksRating")}</p>
         <p className="mt-1 text-[11px] text-white/50">{t("reviews.followUp")}</p>
         <div className="mt-2 flex flex-wrap gap-1.5">
@@ -172,6 +190,25 @@ export function RateAsk({
     );
   }
 
+  if (review !== null) {
+    return (
+      <div className="rounded-xl border border-white/10 p-3">
+        <StarRow value={rating} />
+        <p className="text-primary mt-2 text-sm font-semibold">{t("reviews.thanks")}</p>
+        <p className="mt-1 text-[11px] text-white/50">{t("reviews.thanksBody")}</p>
+        {onFinished ? (
+          <button
+            type="button"
+            onClick={onFinished}
+            className="bg-primary text-primary-foreground mt-3 w-full rounded-lg py-2 text-sm font-semibold"
+          >
+            {t("reviews.done")}
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-xl border border-white/10 p-3">
       <p className="text-sm font-semibold text-white">{title}</p>
@@ -195,6 +232,7 @@ export function RateAsk({
         ))}
       </div>
       {state === "error" && <p className="mt-1 text-xs text-red-400">{t("reviews.error")}</p>}
+      {state === "conflict" && <p className="mt-1 text-xs text-white/50">{t("reviews.already")}</p>}
     </div>
   );
 }

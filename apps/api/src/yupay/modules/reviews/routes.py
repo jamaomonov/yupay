@@ -8,12 +8,13 @@ from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.clock import now
 from yupay.core.errors import ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user, resolve_request_actor
 from yupay.modules.reviews import service as svc
-from yupay.modules.reviews.amend import amend_review_body
+from yupay.modules.reviews.amend import amend_review_body, can_amend
 from yupay.modules.reviews.models import BrandRatingStats, Review
 from yupay.modules.reviews.pending import pending_ask
 from yupay.modules.reviews.schemas import (
@@ -150,7 +151,20 @@ async def list_own_reviews(
     user: Annotated[User, Depends(current_user)],
 ) -> OwnReviewListOut:
     reviews = await svc.list_own(db, user_id=user.id)
-    return OwnReviewListOut(items=[OwnReviewOut.model_validate(r) for r in reviews])
+    at = now()
+    return OwnReviewListOut(
+        items=[
+            OwnReviewOut(
+                id=r.id,
+                order_id=r.order_id,
+                brand_id=r.brand_id,
+                rating=r.rating,
+                body=r.body,
+                can_add_text=can_amend(r, at=at),
+            )
+            for r in reviews
+        ]
+    )
 
 
 @router.get(

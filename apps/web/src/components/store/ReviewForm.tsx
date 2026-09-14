@@ -24,6 +24,10 @@ export interface ReviewFormProps {
   rated?: number | undefined;
   /** After the comment is saved (or skipped) and the buyer taps Done. */
   onFinished?: (() => void) | undefined;
+  /** Nothing left to write: the review already has a body, or its window for
+   *  one has closed. Shows the thanks state instead of the comment box, so a
+   *  returning reviewer is never handed an input that cannot save. */
+  settled?: boolean | undefined;
 }
 
 /**
@@ -44,6 +48,7 @@ export function ReviewForm({
   brandName,
   rated,
   onFinished,
+  settled = false,
 }: ReviewFormProps) {
   const t = useTranslations("web.brandReviews");
   const [hover, setHover] = useState(0);
@@ -72,7 +77,7 @@ export function ReviewForm({
     setConfirmed(true);
   }
 
-  if (rated !== undefined && rated >= 1 && confirmed) {
+  if (rated !== undefined && rated >= 1 && (confirmed || settled)) {
     return (
       <div className={`${frame} ${className ?? ""}`}>
         <StarRow value={rated} />

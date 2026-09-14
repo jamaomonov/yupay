@@ -8664,10 +8664,27 @@
         "type": "object"
       },
       "OwnReviewOut": {
+        "description": "One of the caller's own reviews, as the storefronts need it.\n\nCarries more than \"this order was reviewed\" because the surfaces that read\nit stopped using it only to hide a call to action. A star-only review is an\ninvitation to write something, not a finished job, so the client needs the\nrating to show back, the body to tell an empty review from a written one,\nand ``can_add_text`` to know whether offering a comment box would lead\nanywhere.",
         "properties": {
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
           "brand_id": {
             "title": "Brand Id",
             "type": "string"
+          },
+          "can_add_text": {
+            "default": false,
+            "title": "Can Add Text",
+            "type": "boolean"
           },
           "id": {
             "title": "Id",

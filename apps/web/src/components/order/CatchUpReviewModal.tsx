@@ -60,17 +60,9 @@ export function CatchUpReviewModal() {
       aria-label={tr("askTitle")}
       className="fixed inset-0 z-[90] flex items-center justify-center p-4"
     >
-      {rated ? (
-        <div className="bg-bg/80 absolute inset-0 backdrop-blur-sm" />
-      ) : (
-        <button
-          type="button"
-          aria-hidden="true"
-          tabIndex={-1}
-          onClick={close}
-          className="bg-bg/80 absolute inset-0 backdrop-blur-sm"
-        />
-      )}
+      {/* Inert — see the mini app's copy of this prompt. A backdrop tap wrote a
+          dismissal that never expired; closing is the X or «Позже». */}
+      <div className="bg-bg/80 absolute inset-0 backdrop-blur-sm" />
       <div className="border-border bg-card relative z-10 w-full max-w-[420px] rounded-2xl border p-7 outline-none">
         <button
           type="button"

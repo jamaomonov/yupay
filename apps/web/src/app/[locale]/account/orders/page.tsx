@@ -42,7 +42,11 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
     queryFn: () => getMyReviews(),
     enabled: Boolean(user),
   });
-  const reviewedOrders = new Set((myReviews.data?.items ?? []).map((r) => r.order_id));
+  // Keyed, not a Set of ids: the card needs the review itself now. A star-only
+  // review is the case this list exists to catch — somebody rated from the
+  // delivered dialog and never got asked for the words.
+  const reviewsByOrder = new Map((myReviews.data?.items ?? []).map((r) => [r.order_id, r]));
+  const reviewsKnown = myReviews.data !== undefined || myReviews.isError;
 
   if (authLoading) {
     return (
@@ -92,13 +96,15 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
             return (
               <li key={o.id}>
                 <OrderCard order={o} locale={locale} href={pathFor(locale, `/orders/${o.id}`)} />
-                {o.status === "delivered" && !reviewedOrders.has(o.id) && slug && (
+                {o.status === "delivered" && reviewsKnown && slug && (
                   <ReviewAsk
                     className="mt-2"
                     variant="bare"
                     orderId={o.id}
                     brandSlug={slug}
                     brandName={o.items[0]?.display?.brand_name ?? null}
+                    existing={reviewsByOrder.get(o.id) ?? null}
+                    hideWhenSettled
                   />
                 )}
               </li>

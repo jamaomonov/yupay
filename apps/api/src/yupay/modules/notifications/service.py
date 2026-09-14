@@ -450,6 +450,37 @@ async def notify_order_delivered(order_id: str) -> bool:
     )
 
 
+async def notify_review_reminder(db: AsyncSession, *, order_id: str, user_id: str) -> bool:
+    """Ask once more, in Telegram, about a delivered order nobody rated.
+
+    The delivery message already carries an «Оценить заказ» button, but it
+    arrives in the same breath as the codes — at the moment the buyer is
+    leaving for the game, which is the worst moment to ask. Nothing followed
+    it: the only second chance was the in-app catch-up, which requires the
+    buyer to open the Mini App again and land on home or history.
+
+    Returns ``True`` when a message actually went out. ``False`` — silently —
+    when the user has no linked Telegram, the bot token is unset, or the Mini
+    App URL is unconfigured, because none of those are failures of this call.
+    """
+    chat = await _resolve_chat_id(db, user_id=user_id)
+    if chat is None:
+        return False
+    token = get_settings().telegram_bot_token
+    markup = review_webapp_markup(order_id)
+    if not token or markup is None:
+        return False
+    return await tg.send_message(
+        bot_token=token,
+        chat_id=chat[0],
+        text=(
+            "Как прошла выдача? 🙌\n\n"
+            "Оцените заказ — это один тап, а другим игрокам помогает выбрать."
+        ),
+        reply_markup=markup,
+    )
+
+
 async def resend_guest_delivery_email(order_id: str, email: str) -> None:
     """Re-send the delivered-email (codes + a fresh access link) to a guest.
 

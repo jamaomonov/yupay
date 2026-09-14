@@ -246,8 +246,12 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   }
 
   const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
-  const alreadyReviewed = (myReviews.data?.items ?? []).some((r) => r.order_id === order.data.id);
-  const canRate = status === "delivered" && Boolean(user) && brandSlug !== null && !alreadyReviewed;
+  const ownReview = (myReviews.data?.items ?? []).find((r) => r.order_id === order.data.id) ?? null;
+  // Wait for `my-reviews` before offering stars — a tap during the fetch can
+  // only 409 once it lands. `data` stays defined across the refetch a rating
+  // triggers, so this never flips back and never unmounts the comment step.
+  const reviewsKnown = myReviews.data !== undefined || myReviews.isError;
+  const canRate = status === "delivered" && Boolean(user) && brandSlug !== null && reviewsKnown;
   // Top-up only when every item is a top-up (mirrors the Mini App's
   // `orderKind`); a mixed cart falls back to the neutral "delivered" wording.
   const isTopUp =
@@ -311,6 +315,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             orderId={order.data.id}
             brandSlug={brandSlug}
             brandName={order.data.items[0]?.display?.brand_name ?? null}
+            existing={ownReview}
           />
         )}
 

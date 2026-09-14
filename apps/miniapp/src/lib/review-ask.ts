@@ -1,19 +1,25 @@
 /** Catch-up review prompt helpers. Pure so they can be tested without jsdom. */
 
+import { isReviewSnoozeActive, reviewSnoozeValue } from "@yupay/utils";
+
 const DISMISS_PREFIX = "yupay.reviewAsk.dismissed.";
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function dismissReviewAsk(orderId: string): void {
   try {
-    window.localStorage.setItem(`${DISMISS_PREFIX}${orderId}`, "1");
+    window.localStorage.setItem(`${DISMISS_PREFIX}${orderId}`, reviewSnoozeValue(Date.now()));
   } catch {
     /* storage blocked */
   }
 }
 
+/** Snoozed, not buried — see `isReviewSnoozeActive` for why it expires. */
 export function isReviewAskDismissed(orderId: string): boolean {
   try {
-    return window.localStorage.getItem(`${DISMISS_PREFIX}${orderId}`) === "1";
+    return isReviewSnoozeActive(
+      window.localStorage.getItem(`${DISMISS_PREFIX}${orderId}`),
+      Date.now(),
+    );
   } catch {
     return false;
   }

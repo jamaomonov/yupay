@@ -314,6 +314,20 @@ class Settings(BaseSettings):
         ),
     )
 
+    # --- Review conversion ---
+    review_reminder_after_hours: int = Field(
+        default=0,
+        description=(
+            "Hours after delivery before a buyer who has not rated their order gets one "
+            "Telegram reminder. 0 = off, which is the default: this messages real "
+            "customers, so it is switched on deliberately rather than by deploying. "
+            "24 is the intended value -- the delivery message already asks, and it "
+            "arrives while the buyer is leaving for the game. Capped by "
+            "`PENDING_ASK_MAX_AGE` (14 days) at the far end, by one order per user per "
+            "run, and by a 7-day per-user cooldown; see modules/reviews/reminder.py."
+        ),
+    )
+
     # --- Manual review of large orders (ADR-0047) ---
     manual_review_threshold_usd: Decimal = Field(
         default=Decimal("40"),

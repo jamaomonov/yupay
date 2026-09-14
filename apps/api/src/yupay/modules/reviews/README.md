@@ -16,12 +16,23 @@ text); aggregates feed the storefront and Google rich snippets.
   has exactly one buyer identity (user XOR guest), so this covers both actor
   kinds. A repeat submit returns `409 already_reviewed`.
 - **Rating is immutable** after create (aggregates / SEO snapshot stay put).
-  **Body** may be replaced via `PATCH /reviews/{id}` for 15 minutes
-  (`amend_window_closed` after that). Clients send that PATCH from an
-  explicit Submit (one draft: chips toggle labels in the same textarea as
-  free text). Catch-up dialogs snapshot `pending-ask` so the follow-up is
-  not unmounted when the query goes null after the rating POST. No user delete. Admins
-  `hide`/`unhide`/`remove`; users `report`.
+  **Body** may be written via `PATCH /reviews/{id}` inside a window that
+  depends on what is being changed (`amend.amend_deadline`, one rule):
+  **15 minutes** to replace text that is already public, **14 days** to fill a
+  body that is still empty. Filling takes nothing back — there was no sentence
+  to contradict — and it is the whole point of one-tap rating; the short window
+  was measured to be one almost nobody was awake for (27 star-only reviews on
+  production against a single edit ever). `GET /reviews/mine` returns
+  `can_add_text`, computed from the same rule, so a client never offers a box
+  the next request would refuse. Clients send the PATCH from an explicit
+  Submit (one draft: chips toggle labels in the same textarea as free text).
+  No user delete. Admins `hide`/`unhide`/`remove`; users `report`.
+- **A review that exists is not a reason to hide the form.** Posting a star is
+  what makes an order "already reviewed", so a surface that unmounts on that
+  fact tears the comment step out in the tick it appears — four of them did,
+  which is what those 27 star-only reviews are. Surfaces pass what they know to
+  the ask component instead and let `reviewFollowUp` (`@yupay/utils`) decide
+  between `ask` / `words` / `settled`.
 - **Post-moderation:** a review is `published` on creation. Only `published`
   reviews count toward stats and appear in public lists. A review crossing
   `_REPORT_AUTO_HIDE_THRESHOLD` (default 3) distinct reports is auto-hidden.
@@ -70,5 +81,14 @@ Admin: `GET /admin/reviews` (queue), `POST /admin/reviews/{id}/{hide,unhide,remo
 - UGC (`body`) is escaped by the frontends on render; the service never logs it.
 - Moderation actions are naturally idempotent (a no-op status transition does
   not double-adjust stats), so they require the header but need no replay store.
+- **Reminders** (`reminder.py`, scheduler job `reviews.remind_unrated`): one
+  Telegram nudge for a delivered order nobody rated. **Off by default** —
+  `REVIEW_REMINDER_AFTER_HOURS=0` — because it messages real customers; 24 is
+  the intended value. Capped at one order per user per run, one message per
+  user per 7 days, and nothing older than `PENDING_ASK_MAX_AGE` (14 days).
+  Every asked-about order gets a `review.reminder_sent` order event, including
+  when no message could be sent (no linked Telegram), so it is never reselected.
+  Guests get no reminder: there is no session to prompt and no second email —
+  their ask is the link already in the delivery mail.
 
 See `docs/decisions/0039-reviews-and-ratings.md`.
