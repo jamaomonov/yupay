@@ -365,13 +365,101 @@ Added after the August carding wave, in the shapes Click's fraud team asked
 for; each is a hold (manual release), never a silent block, and each is off
 until its env var is set:
 
-| Rule                                                                                          | Env                                                                             | Prod value (2026-09)                                                   |
-| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| Lower threshold for liquid brands (Stars/Roblox/Steam)                                        | `RISK_LIQUID_REVIEW_THRESHOLD_USD`                                              | 10 (median real Stars purchase is $2; the fraud wave bought $94 a pop) |
-| New-buyer caps: orders per 24h / USD per 24h, identity younger than `RISK_NEW_BUYER_AGE_DAYS` | `RISK_NEW_BUYER_VELOCITY_24H`, `RISK_NEW_BUYER_SUM_24H_USD`                     | 3 / 8 (Click's «3 покупки и 100 000 сум»)                              |
-| Night multiplier on both thresholds, Tashkent hours                                           | `RISK_NIGHT_START_HOUR`/`RISK_NIGHT_END_HOUR`/`RISK_NIGHT_THRESHOLD_MULTIPLIER` | 22 / 7 / 0.5                                                           |
-| Copy of every hold to the shared fraud group with Click (masked recipient, no identities)     | `TG_FRAUD_CHAT_ID`                                                              | the shared group's chat id                                             |
+| Rule                                                                                          | Env                                                                             | Agreed with Click | Live (2026-09-14)    |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------- | -------------------- |
+| Lower threshold for liquid brands (Stars/Roblox/Steam)                                        | `RISK_LIQUID_REVIEW_THRESHOLD_USD`                                              | 10                | 40 (≈ 481 000 UZS)   |
+| New-buyer caps: orders per 24h / USD per 24h, identity younger than `RISK_NEW_BUYER_AGE_DAYS` | `RISK_NEW_BUYER_VELOCITY_24H`, `RISK_NEW_BUYER_SUM_24H_USD`                     | 3 / 8             | 8 / 60               |
+| Night multiplier on both thresholds, Tashkent hours                                           | `RISK_NIGHT_START_HOUR`/`RISK_NIGHT_END_HOUR`/`RISK_NIGHT_THRESHOLD_MULTIPLIER` | 22 / 7 / 0.5      | 22 / 7 / **1** (off) |
+| Copy of every hold to the shared fraud group with Click (masked recipient, no identities)     | `TG_FRAUD_CHAT_ID`                                                              | the group's id    | the group's id       |
 
-Regular customers (any linked order older than the age window) skip the
-new-buyer caps entirely; the thresholds and the night window only route to
-this runbook's usual release flow, so the operator playbook is unchanged.
+**The live column is looser than the agreed one, on purpose and with the
+owner's decision.** Two columns rather than one because these numbers are a
+commitment to an acquirer, not a tuning knob: anyone changing them needs to
+see what was promised, and a single "prod value" column silently overwrote
+that the first time it drifted (liquid went 10 → 24 with nothing recording
+it). Loosening any row is a conversation with Click's fraud team, not an env
+edit. What made the loosening defensible: card-not-present payment from
+unauthorised cards was switched off across all providers, which removed the
+attack these rules were shaped around — the last hold that caught a real
+fraud was 2026-08-30.
+
+Regular customers skip the new-buyer caps — but only because
+`review_reason` asks the database for delivered history. The in-window check
+inside `_new_buyer_reason` ("any linked order older than
+`RISK_NEW_BUYER_AGE_DAYS`") cannot do it: `_gather`'s sibling window is
+itself 7 days, so with the default age of 7 no sibling is ever old enough.
+This section claimed the exemption worked from 2026-09-02, and it did not;
+see the measurement below for what that cost.
+
+## Measured on production, 2026-09-14
+
+**44% of orders were being held.** 135 holds on 307 paid catalog orders in the
+twelve days after the Click rules went in — the owner's report was "almost
+every second or third order", and that is exactly right.
+
+Method, so the next person can redo it rather than re-argue it: 706 paid
+catalog orders over 37 days were exported with their identity columns (buyer,
+evidence IP, delivery targets, brand slugs, delivered history) and replayed
+through the real `risk.py` functions — `_amount_reason`, `_liquid_amount_reason`,
+`_window_reason`, `_new_buyer_reason`, `_geo_reason` — composed in
+`review_reason`'s order. The replay reproduces the amount rule to within one
+order (78 predicted, 77 actual) and velocity exactly, at a base of 18, which is
+what the env held for most of that window.
+
+### What the holds caught
+
+Four orders in 30 days, all before the unauthorised-card switch-off, all on
+liquid brands, all $50 or more: `другая страна` ×2 ($300, $250), `нужна
+верификация` ($120), `карта 3 го лица` ($50.11). A fifth non-delivered hold
+($10.26) was **not** a catch — an operator released it and it then failed on
+stock. Everything else the rules held was delivered.
+
+### Why raising the threshold alone did nothing
+
+The owner raised `MANUAL_REVIEW_THRESHOLD_USD` from 18 to 24 and saw no
+change. Replayed: raising it all the way to 66 and switching the night
+multiplier off moves the hold rate from 38% to 34%, because the identity rules
+simply pick up what the amount rule releases. The dominant rule was the
+new-buyer cap — 72 of 99 holds — via the seasoning defect above.
+
+Two numbers that are not the numbers an operator types:
+
+- **Jitter** (`RISK_JITTER`) spreads the effective threshold over
+  `[0.6 × base, base)`, so a configured $66 starts holding at $39.60.
+- **The night multiplier** halved that again between 22:00 and 07:00
+  Tashkent. A configured $24 was holding $7.20 orders at night — a 3.3× gap
+  between the typed number and the binding one. This is the single most
+  useful fact for anyone tuning these.
+
+### Live configuration after the change
+
+| Env                                | Value | ≈ UZS at 12 030/$ | What it ceilings                         |
+| ---------------------------------- | ----- | ----------------- | ---------------------------------------- |
+| `MANUAL_REVIEW_THRESHOLD_USD`      | 66    | 793 980           | one order                                |
+| `RISK_LIQUID_REVIEW_THRESHOLD_USD` | 40    | 481 200           | one order on Stars/Roblox/Steam          |
+| `RISK_SUM_24H_USD`                 | 150   | 1 804 500         | one identity per day                     |
+| `RISK_SUM_7D_USD`                  | 400   | 4 812 000         | one identity per week                    |
+| `RISK_VELOCITY_24H`                | 12    | —                 | orders per identity per day              |
+| `RISK_NEW_BUYER_VELOCITY_24H`      | 8     | —                 | same, first 7 days, no delivered history |
+| `RISK_NEW_BUYER_SUM_24H_USD`       | 60    | 721 800           | same, in money                           |
+| `RISK_DISTINCT_BUYERS_7D`          | 5     | —                 | buyers behind one IP or device           |
+| `RISK_NIGHT_THRESHOLD_MULTIPLIER`  | 1     | —                 | night no longer tightens anything        |
+
+Replayed over the same twelve days this holds **24 orders of 307 (7.8%)**,
+against 135 before, and **10 night holds instead of 43** — under one a night,
+which is what "orders should not sit until morning" came down to in practice.
+The caps are deliberately set above measured customer behaviour (p95 of a real
+identity's 24h spend was $144) rather than below it, because every one of the
+57 identity-rule holds in that window was delivered.
+
+`RISK_DISTINCT_BUYERS_7D` went 3 → 5 because 3 buyers behind one address is an
+ordinary household or office — the largest real collision measured over 14 days
+was exactly 3, and it produced four holds of $1–$15.
+
+### What the ceilings do and do not protect
+
+They bound **one identity**. Someone with several unrelated identities gets the
+per-identity ceiling several times over; nothing here caps that, and it is not
+meant to — the control that removed the carding wave was switching off payment
+from unauthorised cards, which is upstream of every rule in this file. If that
+setting is ever reversed, these numbers must come back down first.

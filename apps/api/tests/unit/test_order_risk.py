@@ -269,6 +269,28 @@ def test_targets_from_cleans_and_skips_non_strings_and_empties() -> None:
     assert _targets_from({}) == frozenset()
 
 
+def test_targets_from_skips_fields_that_name_a_thing_rather_than_a_person() -> None:
+    """A shared game server is not a shared identity.
+
+    Measured on production: `server` carried 142 values across 62 distinct
+    ones in 180 days, so two strangers who happen to play Mobile Legends on
+    server 15180 were linked into one actor and their spending summed by the
+    rolling-sum rule. The catalog keys are the same mistake waiting to scale —
+    every buyer of one Steam game shares its `app_id`.
+    """
+    assert _targets_from(
+        {
+            "player_id": "10028686281",
+            "server": "15180",
+            "app_id": "4890090",
+            "package_name": "Starfall Command",
+            "region": "CIS",
+        }
+    ) == frozenset({"10028686281"})
+    # An order carrying nothing but shared metadata links to nobody.
+    assert _targets_from({"server": "15180", "region_code": "ge"}) == frozenset()
+
+
 # ---------- review_reason: rule 1 short-circuits before the gather ----------
 
 

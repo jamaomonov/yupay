@@ -320,9 +320,13 @@ class Settings(BaseSettings):
         description=(
             "Orders at or above this amount are held after payment instead of being "
             "fulfilled automatically. Denominated in USD because `orders.total_usd` is "
-            "stable while the som amount moves with the rate. Default 40 ≈ 550 000 UZS: "
-            "the median order is about $1 and the 90th percentile about $11, so this "
-            "catches outliers without touching ordinary traffic. Set to 0 to disable."
+            "stable while the som amount moves with the rate. Re-measured 2026-09-14 "
+            "over 706 paid orders: median $2.74, p90 $20, p95 $38, p99 $146, and "
+            "12 030 UZS to the dollar, so 40 is ≈ 481 000 UZS. **This is not the "
+            "number that binds** — `risk_jitter` spreads the effective threshold over "
+            "[0.6x, 1x) and `risk_night_threshold_multiplier` used to halve that again "
+            "at night, so a configured 24 was holding $7.20 orders. See "
+            "docs/runbooks/order-held-for-review.md. Set to 0 to disable."
         ),
     )
     risk_sum_24h_usd: Decimal = Field(
@@ -330,9 +334,12 @@ class Settings(BaseSettings):
         description=(
             "Orders sharing an identity (buyer, IP, device, or delivery target) whose "
             "combined total over the trailing 24h reaches this are held, even though no "
-            "single order crossed `manual_review_threshold_usd`. 25 sits comfortably below "
-            "the $40 single-order threshold because the attack this rule targets is many "
-            "small orders rather than one large one. Set to 0 to disable."
+            "single order crossed `manual_review_threshold_usd`, because the attack this "
+            "rule targets is many small orders rather than one large one. Keep it above "
+            "what real customers spend in a day, not below the single-order threshold: "
+            "measured 2026-09-14, p95 of a real identity's 24h total is $144, and the "
+            "default 25 held 22 orders in 12 days, every one of them delivered. Set to "
+            "0 to disable."
         ),
     )
     risk_sum_7d_usd: Decimal = Field(
@@ -347,8 +354,11 @@ class Settings(BaseSettings):
         description=(
             "Orders sharing an identity whose count over the trailing 24h reaches this "
             "are held, regardless of amount — a burst of many cheap orders is itself a "
-            "signal. 5 is above the highest observed same-buyer repeat-purchase count in "
-            "a day, so ordinary customers never see it. Set to 0 to disable."
+            'signal. 5 was chosen as "above the highest observed same-buyer '
+            'repeat-purchase count in a day, so ordinary customers never see it"; '
+            "production disagreed. Re-measured 2026-09-14: p90 is 4 orders in 24h, p95 "
+            "is 6, the busiest real customer reached 12, and the rule held 10 orders in "
+            "30 days, all delivered. Set to 0 to disable."
         ),
     )
     risk_distinct_buyers_7d: int = Field(

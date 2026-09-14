@@ -30,6 +30,7 @@ from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.risk import (
     REASON_GEO_MISMATCH,
+    REASON_NEW_BUYER,
     REASON_ROLLING_SUM,
     VETO_FOREIGN_COUNTRY,
     _is_trusted_buyer,
@@ -569,6 +570,101 @@ async def test_device_identity_does_not_link_when_disabled(db_session: AsyncSess
 
 
 # ---------- precharge veto (Task 2, ADR-0063) ----------
+
+
+async def _new_buyer_settings() -> Settings:
+    """Caps where only the new-buyer rule can fire.
+
+    `_window_reason` runs first, so the rolling-sum and velocity caps are
+    lifted out of the way: a test that let them trip would pass for the wrong
+    reason and keep passing if the seasoning check were deleted.
+    """
+    base = get_settings().model_dump()
+    base.update(
+        manual_review_threshold_usd=Decimal("1000"),
+        risk_liquid_review_threshold_usd=Decimal("0"),
+        risk_sum_24h_usd=Decimal("1000"),
+        risk_sum_7d_usd=Decimal("1000"),
+        risk_velocity_24h=0,
+        risk_distinct_buyers_7d=0,
+        risk_new_buyer_velocity_24h=0,
+        risk_new_buyer_sum_24h_usd=Decimal("15"),
+    )
+    return Settings(**base)
+
+
+async def _paid_user_order(
+    db: AsyncSession, *, user_id: str, total_usd: str, minutes_ago: int, status: str = "paid"
+) -> Order:
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=user_id,
+        status=status,
+        currency="USD",
+        total_usd=Decimal(total_usd),
+        total_charged=Decimal(total_usd),
+        purpose="catalog",
+        expires_at=moment + timedelta(days=1),
+        paid_at=moment - timedelta(minutes=minutes_ago),
+    )
+    db.add(order)
+    await db.flush()
+    return order
+
+
+async def test_a_returning_buyer_is_not_held_by_the_new_buyer_caps(
+    db_session: AsyncSession,
+) -> None:
+    """The seasoning half of Click rule 3, which the 7-day window cannot answer.
+
+    `_new_buyer_reason` calls an identity seasoned when a linked order is older
+    than `risk_new_buyer_age_days`, but `_gather` only ever hands it 7 days of
+    siblings — so with the default 7 that check can never fire and every
+    returning customer stayed a new buyer forever. On production this was the
+    largest single source of holds: 72 of 99 over the 12 days after
+    2026-09-02, on 307 orders, every one of them delivered.
+
+    The delivered order here is deliberately 30 days old: inside the history
+    query, outside the sibling window, which is exactly the case that used to
+    be wrong.
+    """
+    user_id = new_id()
+    db_session.add(User(id=user_id, email="returning-buyer@example.test"))
+    await db_session.flush()
+    await _paid_user_order(
+        db_session, user_id=user_id, total_usd="4", minutes_ago=60 * 24 * 30, status="delivered"
+    )
+    # The same $18 in 24h as the test below, so the caps genuinely trip and
+    # the delivered order above is the only thing that differs between them.
+    await _paid_user_order(db_session, user_id=user_id, total_usd="6", minutes_ago=180)
+    await _paid_user_order(db_session, user_id=user_id, total_usd="6", minutes_ago=120)
+    current = await _paid_user_order(db_session, user_id=user_id, total_usd="6", minutes_ago=0)
+    await db_session.commit()
+
+    assert await review_reason(db_session, current, settings=await _new_buyer_settings()) is None
+
+
+async def test_a_genuinely_new_buyer_over_the_caps_is_still_held(
+    db_session: AsyncSession,
+) -> None:
+    """The other direction — the same $12 of siblings, no delivered history.
+
+    Without this the test above proves only that the caps were switched off.
+    """
+    user_id = new_id()
+    db_session.add(User(id=user_id, email="fresh-buyer@example.test"))
+    await db_session.flush()
+    # Paid, not delivered: registering and paying is not history. Same
+    # doctrine as `_is_trusted_buyer` -- the exemption is earned by something
+    # having shipped.
+    await _paid_user_order(db_session, user_id=user_id, total_usd="6", minutes_ago=180)
+    await _paid_user_order(db_session, user_id=user_id, total_usd="6", minutes_ago=120)
+    current = await _paid_user_order(db_session, user_id=user_id, total_usd="6", minutes_ago=0)
+    await db_session.commit()
+
+    got = await review_reason(db_session, current, settings=await _new_buyer_settings())
+    assert got == REASON_NEW_BUYER
 
 
 async def test_is_trusted_buyer_counts_only_delivered_orders_for_that_user(

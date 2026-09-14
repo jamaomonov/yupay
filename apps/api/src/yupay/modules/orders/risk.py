@@ -249,9 +249,21 @@ def _liquid_amount_reason(
 def _new_buyer_reason(current: WindowOrder, recent: list[WindowOrder], cfg: Settings) -> str | None:
     """Click rule 3: fresh identities get three small purchases, then a human.
 
-    "Fresh" means every linked order is younger than
-    ``risk_new_buyer_age_days`` — one delivered order from last month is what
-    separates a regular from a drop account, and regulars stay automatic.
+    "Fresh" means every linked order *this function can see* is younger than
+    ``risk_new_buyer_age_days``. That is a weaker claim than it looks, and the
+    weakness was live on production for twelve days: ``recent`` comes from
+    ``_gather``, whose window is itself 7 days, so with the default
+    ``risk_new_buyer_age_days=7`` no sibling can ever be old enough and this
+    check can never fire. Every returning customer was therefore a new buyer
+    forever, and the 4-orders-or-$60 cap landed on their third purchase of the
+    day, every day. It was the single largest source of holds on production:
+    72 of 99 in the 12 days after 2026-09-02, on 307 orders.
+
+    The real seasoning test — "has anything ever actually shipped to this
+    person" — cannot be answered from a 7-day window of siblings, so it lives
+    in ``review_reason``, which has the session to ask. This stays pure and
+    keeps the in-window check, which still catches an identity whose oldest
+    linked order sits near the edge when the two settings are configured apart.
     """
     if cfg.risk_new_buyer_velocity_24h <= 0 and cfg.risk_new_buyer_sum_24h_usd <= 0:
         return None
@@ -314,6 +326,31 @@ def _csv(value: str) -> frozenset[str]:
     return frozenset(v for raw in value.split(",") if (v := raw.strip().lower()))
 
 
+#: ``fulfillment_data`` keys whose values name a *thing*, not a person, and so
+#: must never link two orders as "the same actor". The test is whether many
+#: unrelated customers can legitimately share the value.
+#:
+#: ``server`` is the one measured on production: 142 uses across 62 values in
+#: 180 days, so two strangers who happen to play on the same Mobile Legends
+#: server were summed together by the rolling-sum rule as one buyer. The
+#: catalog-metadata keys below arrived with Steam gifts and are worse in
+#: principle — every buyer of the same game carries the same ``app_id`` — but
+#: had one order each when this was written, which is exactly why they belong
+#: here before that changes rather than after.
+_NON_IDENTITY_FIELDS = frozenset(
+    {
+        "server",
+        "region",
+        "region_code",
+        "app_id",
+        "app_name",
+        "package_id",
+        "package_name",
+        "supplier_price_usd",
+    }
+)
+
+
 def _targets_from(fulfillment_data: dict[str, Any]) -> frozenset[str]:
     """Delivery targets inside one order item's ``fulfillment_data``.
 
@@ -321,10 +358,17 @@ def _targets_from(fulfillment_data: dict[str, Any]) -> frozenset[str]:
     names like ``"username"``, not identities. Lowercased, ``@``-stripped and
     whitespace-trimmed so ``@durov`` and ``" Durov "`` link to the same
     account; empties are skipped.
+
+    A denylist (``_NON_IDENTITY_FIELDS``) rather than an allowlist of known
+    identity fields, because the two failure directions are not symmetric and
+    a new supplier's field will meet whichever we choose. Over-linking holds
+    innocent strangers and is invisible until someone reads the query;
+    under-linking weakens a signal. A new field is therefore treated as an
+    identity by default, and one is demoted here once it is seen to be shared.
     """
     targets: set[str] = set()
-    for value in fulfillment_data.values():
-        if not isinstance(value, str):
+    for key, value in fulfillment_data.items():
+        if not isinstance(value, str) or key.lower() in _NON_IDENTITY_FIELDS:
             continue
         cleaned = value.strip().lower().lstrip("@")
         if cleaned:
@@ -690,6 +734,11 @@ async def review_reason(
     under review against itself (ADR-0062), so a single order at or above
     `risk_sum_24h_usd`/`risk_sum_7d_usd` still holds even with zero siblings
     read.
+
+    The new-buyer rule is the one that asks a second question after firing:
+    its caps apply to a fresh identity, and "fresh" is the one thing
+    ``_gather``'s window structurally cannot establish, so a trip is checked
+    against delivered history before it becomes a hold.
     """
     cfg = settings or get_settings()
     paid_at = getattr(order, "paid_at", None)
@@ -704,7 +753,7 @@ async def review_reason(
     if window is not None:
         return window
     fresh = _new_buyer_reason(current, recent, cfg)
-    if fresh is not None:
+    if fresh is not None and not await _has_delivered_history(db, order):
         return fresh
     return _geo_reason(geo.is_guest, geo.brand_slugs, geo.timezone, cfg)
 
@@ -789,6 +838,31 @@ async def _is_trusted_buyer(db: AsyncSession, user_id: str | None) -> bool:
         )
     ).scalar_one()
     return count >= 1
+
+
+async def _has_delivered_history(db: AsyncSession, order: Order) -> bool:
+    """Whether this order's buyer has had an order delivered before.
+
+    The seasoning half of Click rule 3, asked of the database rather than of
+    ``_gather``'s 7-day sibling window — see ``_new_buyer_reason`` for why the
+    window cannot answer it. Delegates to ``_is_trusted_buyer`` so "earned by
+    something real having shipped" has one definition here and in
+    ``precharge_veto`` rather than two that drift.
+
+    Only asked when the caps have already tripped, so the extra query costs
+    nothing on the ~92% of orders that were never going to be held.
+
+    Wrapped like ``_gather``: a SAVEPOINT so a failed query cannot poison the
+    payment webhook's transaction, and a failure that answers ``False`` —
+    holding the order — because the conservative direction for a money control
+    is the one where a human looks.
+    """
+    try:
+        async with db.begin_nested():
+            return await _is_trusted_buyer(db, order.user_id)
+    except Exception:
+        log.exception("orders.risk.seasoning_check_failed", order_id=order.id)
+        return False
 
 
 class PrechargeVetoResult(NamedTuple):
