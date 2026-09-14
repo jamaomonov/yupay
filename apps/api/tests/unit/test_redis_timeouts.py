@@ -57,11 +57,15 @@ def test_a_dead_connection_is_retried_rather_than_surfaced() -> None:
     connection; more than that would be waiting out an outage on the request
     path, which the socket timeouts above exist to refuse.
     """
-    pool = rmod.get_redis().connection_pool
-    conn = pool.make_connection()
-    assert conn.retry is not None
-    assert getattr(conn.retry, "_retries", 0) >= 1, "a dead socket must be retried, not raised"
-    retried_on = {exc.__name__ for exc in getattr(conn, "retry_on_error", [])}
+    # Read off ``connection_kwargs`` like every other test here, rather than
+    # building a connection: ``make_connection`` is untyped in redis-py's
+    # stubs, and ``mypy apps`` — which CI runs over the tests too — refuses an
+    # untyped call in a typed context.
+    kwargs = rmod.get_redis().connection_pool.connection_kwargs
+    retry = kwargs.get("retry")
+    assert retry is not None
+    assert getattr(retry, "_retries", 0) >= 1, "a dead socket must be retried, not raised"
+    retried_on = {exc.__name__ for exc in kwargs.get("retry_on_error", [])}
     assert {"TimeoutError", "ConnectionError"} <= retried_on
 
 
