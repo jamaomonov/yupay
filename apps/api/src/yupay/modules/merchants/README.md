@@ -1403,7 +1403,8 @@ page: your deposit **is** the payment.
 | ------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `merchant_order_id` | yes      | **Your** id for this order, and the idempotency key. 1–128 printable ASCII characters, no spaces. Unique within your account, and compared **byte for byte** — `MY-ORDER` and `my-order` are two different orders and two debits. |
 | `sku_id`            | yes      | From `/catalog`. Must be a UUID.                                                                                                                                                                                                  |
-| `quantity`          | see note | **Required** when the SKU's `kind` is `"unit"`, **refused** when it is `"fixed"` — a `422` either way, never a silent default. Must sit inside the SKU's `min_qty`/`max_qty`.                                                     |
+| `quantity`          | see note | **Required** when the SKU's `kind` is `"unit"`, **refused** otherwise — a `422` either way, never a silent default. Must sit inside the SKU's `min_qty`/`max_qty`.                                                                |
+| `amount_usd`        | see note | **Required** when the SKU's `kind` is `"amount"`, **refused** otherwise. The **face value you are loading**, not what you pay: $100 of Steam wallet costs $104 at a 4% markup. Inside `min_amount_usd`/`max_amount_usd`.          |
 | `expected_price`    | yes      | The **order total** you last computed. For a `fixed` SKU that is its `price_usd`; for a `unit` SKU it is `ceil_to_cent(unit_price_usd × quantity)`. At most two decimals. See "Price drift" below.                                |
 | `fulfillment_data`  | no       | Whatever the SKU needs (a player id, a login) — the same fields the storefront collects, validated the same way. **Send those keys and nothing else**: an unrecognised key is a `422`, not a silently ignored one. See below.     |
 
@@ -1411,15 +1412,21 @@ One SKU per order, and no line array: a reseller's basket does not have to be
 ours, and one line per order means "the order failed" never means "half the
 order failed". Send several orders.
 
-**Two kinds of SKU, and `/catalog` tells you which.** The same split G-Engine
-publishes as FIXED / UNFIXED:
+**Three kinds of SKU, and `/catalog` tells you which.** G-Engine's FIXED /
+UNFIXED split, with UNFIXED separated the two ways it actually occurs:
 
 - **`kind: "fixed"`** — a denomination. The row carries `price_usd`, you send
-  no `quantity`, and `expected_price` is that price.
+  nothing extra, and `expected_price` is that price.
 - **`kind: "unit"`** — a currency sold by the unit (Telegram Stars). The row
   carries `unit_price_usd` at **six** decimals plus `unit`, `min_qty` and
   `max_qty`; you send `quantity`, and
   `expected_price = ceil_to_cent(unit_price_usd × quantity)`.
+- **`kind: "amount"`** — a balance loaded in dollars (the Steam wallet). The
+  row carries `unit_price_usd` — the price of **one dollar of balance** — plus
+  `min_amount_usd` and `max_amount_usd`; you send `amount_usd`, and
+  `expected_price = ceil_to_cent(unit_price_usd × amount_usd)`. A dollar of
+  balance costs us a dollar, so `unit_price_usd` is simply `1 + markup`:
+  `"1.040000"` at 4%, and $100 of balance is $104.
 
 The six decimals are not decoration. One Star costs us about a cent and a
 half, so a price rounded to the cent is a rounding _larger than the margin_ —
@@ -1491,9 +1498,9 @@ Success is `201`:
   order; if you meant a new one, use a new id.
 - Two merchants may use the same id. Scope is per account.
 
-"Same body" is decided on `sku_id`, `quantity`, `expected_price` and
-`fulfillment_data`. `quantity` is part of it because it is part of the
-_intent_: retrying `acme-417` with a corrected count is a new order, not a
+"Same body" is decided on `sku_id`, `quantity`, `amount_usd`,
+`expected_price` and `fulfillment_data`. The sizing is part of it because it
+is part of the _intent_: retrying `acme-417` with a corrected count is a new order, not a
 retry, and answering it with the first one would deliver 100 Stars against a
 request for 1000 and report success.
 The safest retry is the one the auth section already asks for: **resend the
@@ -1545,6 +1552,9 @@ below ours.)_
 | 422    | `quantity_required`     | The SKU's `kind` is `"unit"` and you sent no `quantity`. Body carries `min_qty` and `max_qty`.                                                                                            |
 | 422    | `quantity_not_accepted` | The SKU's `kind` is `"fixed"`. It is bought one at a time; send several orders.                                                                                                           |
 | 422    | `quantity_out_of_range` | Outside the SKU's `min_qty`/`max_qty`, which the body repeats.                                                                                                                            |
+| 422    | `amount_required`       | The SKU's `kind` is `"amount"` and you sent no `amount_usd`. Body carries the bounds.                                                                                                     |
+| 422    | `amount_not_accepted`   | The SKU is not loaded in dollars. Send `quantity`, or nothing at all.                                                                                                                     |
+| 422    | `amount_out_of_range`   | Outside `min_amount_usd`/`max_amount_usd`, which the body repeats.                                                                                                                        |
 | 422    | —                       | A `fulfillment_data` field the product's schema rejects. The nested `extra` object names the `field` and the `reason` (`missing`, `type`, `pattern`, …) — see "Extra fields on the body". |
 | 422    | `invalid_request`       | The request body itself did not parse — a missing field, an unknown one, more than two decimals on `expected_price`, a `sku_id` that is not a UUID. `errors` says which.                  |
 | 409    | `insufficient_deposit`  | Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.                                                                                                          |

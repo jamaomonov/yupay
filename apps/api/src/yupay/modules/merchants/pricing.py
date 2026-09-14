@@ -108,7 +108,7 @@ def merchant_unit_price(cost: Decimal, markup_pct: Decimal) -> Decimal:
     return (cost * (Decimal("1") + markup_pct / _HUNDRED)).quantize(_MICRO, rounding=ROUND_CEILING)
 
 
-def merchant_order_total(unit_price: Decimal, qty: int) -> Decimal:
+def merchant_order_total(unit_price: Decimal, qty: int | Decimal) -> Decimal:
     """What the deposit is charged: the unit price times the quantity, to the cent.
 
     **One rounding, at the end.** Rounding each unit and then multiplying is
@@ -120,12 +120,43 @@ def merchant_order_total(unit_price: Decimal, qty: int) -> Decimal:
     Args:
         unit_price: :func:`merchant_unit_price`'s result — the same value the
             price list published, not a re-derivation of it.
-        qty: How many units. ``1`` for a fixed-denomination SKU.
+        qty: How many units. ``1`` for a fixed-denomination SKU; an integer
+            count for a unit SKU; a **dollar amount** for a Steam-wallet-shaped
+            SKU, where the unit priced is one dollar of face value.
 
     Returns:
         The order total at two decimal places, rounded up.
     """
     return (unit_price * qty).quantize(_CENT, rounding=ROUND_CEILING)
+
+
+def merchant_amount_price(amount_usd: Decimal, markup_pct: Decimal) -> Decimal:
+    """What a merchant pays for ``amount_usd`` of face value.
+
+    The third shape (Steam wallet), and the one whose cost is not a column:
+    a dollar of Steam wallet costs us a dollar. Neither Waxpeer nor G-Engine
+    charges a commission on it — ``waxpeer_fee_rate`` is 0 and unset on
+    production, which is a fact rather than a stale default (owner,
+    2026-09-15) — so face value **is** ``effective_cost`` here, and the markup
+    is the whole of the margin. $100 of wallet at 4% is $104, of which $4 is
+    ours.
+
+    Retail cannot price this way and does not: its margin on the Steam wallet
+    is a spread on the exchange rate (``rate_multiplier``), which only exists
+    because the customer pays in som. A merchant's deposit is already in USD,
+    so there is no conversion to take a spread on — which is exactly why
+    ``_resolve_line_unit_price`` refuses a USD variable-amount line for
+    everyone else.
+
+    Args:
+        amount_usd: The face value the merchant asked to load.
+        markup_pct: ``merchant_markup_pct`` — the SKU's own
+            ``b2b_markup_pct``, editable per SKU and in bulk like any other.
+
+    Returns:
+        The order total at two decimal places, rounded up.
+    """
+    return merchant_order_total(merchant_unit_price(Decimal("1"), markup_pct), amount_usd)
 
 
 def merchant_price(cost: Decimal, markup_pct: Decimal) -> Decimal:
@@ -260,6 +291,7 @@ def price_to_charge(current: Decimal, expected: Decimal) -> Decimal | None:
 __all__ = [
     "PRICE_DRIFT_TOLERANCE_PCT",
     "effective_cost",
+    "merchant_amount_price",
     "merchant_markup_pct",
     "merchant_order_total",
     "merchant_price",

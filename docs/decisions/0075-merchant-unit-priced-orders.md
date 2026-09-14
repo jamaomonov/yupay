@@ -108,3 +108,45 @@ ten of. Both are refusals.
 - `apps/api/src/yupay/modules/merchants/pricing.py` — `merchant_unit_price`,
   `merchant_order_total`
 - `apps/api/src/yupay/modules/catalog/unit_sku.py` — the FIXED/UNFIXED test
+
+## Amendments
+
+### 2026-09-15 — a third shape: balances loaded in dollars
+
+The decision above described two shapes and left `variable_amount` SKUs (the
+Steam wallet) out, on the reasoning that "different pricing model, different
+risk". The owner supplied the fact that closed it: **neither Waxpeer nor
+G-Engine charges a commission on a wallet load — a dollar of balance costs us
+a dollar.** `waxpeer_fee_rate` being `0` and unset on production is therefore
+correct rather than a stale default.
+
+That makes the cost knowable, and with a cost the ordinary formula applies:
+face value × (1 + markup). $100 of wallet at 4% is $104, of which $4 is ours.
+The rate is `b2b_markup_pct` on the SKU — the same column, editable per SKU
+and in bulk, like every other (owner's requirement).
+
+Retail cannot price these that way and does not: its margin is a spread on
+the exchange rate (`rate_multiplier`), which exists only because the customer
+pays in som. A merchant's deposit is already in USD, so there is no conversion
+to take a spread on. `_resolve_line_unit_price` refused a USD variable-amount
+line for exactly that reason — "there is no margin-bearing USD price" — and
+that refusal now takes a `merchant_priced` exception, which is the only change
+this made to shared order code.
+
+So `kind` gains `"amount"`: the row publishes the price of **one dollar** of
+balance plus `min_amount_usd`/`max_amount_usd`, and the order carries
+`amount_usd` (required there, refused elsewhere, like `quantity`).
+
+**The line records the face value, not the rate** — the one place this differs
+from a unit SKU, and it is not cosmetic: Waxpeer reads `unit_price_usd` as how
+many dollars to load, so an order charged $104 must leave $100 on the line.
+That is the same "line keeps what fulfilment needs, deposit takes the money"
+split as above, arriving at a different field because the supplier reads a
+different one. `_out` therefore stopped deriving the charge from the line at
+all and takes it from the caller — `place` has just charged it, `_replayed`
+reads it off the ledger.
+
+One guard is unreachable and marked so: `load_orderable_sku` refuses a
+variable SKU whose bounds are missing, which `ck_skus_variable_amount_complete`
+already makes impossible. Kept because the function decides whether money
+moves, and validating an amount against `None` is the failure it prevents.

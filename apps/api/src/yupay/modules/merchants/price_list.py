@@ -84,9 +84,10 @@ someone adding a fourth query.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import raiseload
 
 from yupay.core.config import get_settings
@@ -107,6 +108,9 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantProductOut,
     MerchantSkuOut,
 )
+
+#: A dollar of a dollar-denominated balance costs a dollar.
+_ONE = Decimal("1")
 
 log = get_logger("yupay.merchants.price_list")
 
@@ -175,7 +179,22 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 # ``effective_cost is None`` means NOT SELLABLE, never free.
                 # Excluded in SQL as well as honoured below, so an unpriced SKU
                 # never reaches the pricing call at all.
-                Sku.cost_usdt.is_not(None),
+                # A SKU is quotable when its cost is knowable. For the two
+                # priced-off-a-column shapes that means the column is set; for
+                # a balance loaded in dollars it means the bounds exist, since
+                # the cost there is the face value on the request and there is
+                # nothing to read from the row (``merchant_amount_price``).
+                or_(
+                    and_(
+                        Sku.variable_amount.is_(False),
+                        Sku.cost_usdt.is_not(None),
+                    ),
+                    and_(
+                        Sku.variable_amount.is_(True),
+                        Sku.min_amount_usd.is_not(None),
+                        Sku.max_amount_usd.is_not(None),
+                    ),
+                ),
                 # A customer-chooses-the-amount SKU (a Steam wallet top-up) has
                 # no wholesale price to quote: the B2B formula is cost ×
                 # markup, while these price off a guarded FX rate and a margin
@@ -193,7 +212,6 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 # structural property of the SKU: it can never become
                 # orderable while it is set, so withholding it costs a merchant
                 # nothing and telling them about it costs them a round trip.
-                Sku.variable_amount.is_(False),
             )
             .order_by(
                 Brand.sort_order,
@@ -244,10 +262,13 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     brands: dict[str, MerchantBrandOut] = {}
     products: dict[str, MerchantProductOut] = {}
     for brand_id, brand_slug, product_id, product_slug, sku in rows:
-        cost = pricing.effective_cost(sku)
-        if cost is None:  # pragma: no cover - the WHERE clause already excludes these
+        markup = pricing.merchant_markup_pct(sku, merchant)
+        # One dollar of balance costs one dollar, so an amount SKU publishes
+        # the price of a dollar and its floor is checked against one.
+        cost = _ONE if sku.variable_amount else pricing.effective_cost(sku)
+        if cost is None:  # pragma: no cover - the WHERE clause excludes these
             continue
-        unit = pricing.merchant_unit_price(cost, pricing.merchant_markup_pct(sku, merchant))
+        unit = pricing.merchant_unit_price(cost, markup)
         # The floor on one unit, which is the quantity this row is priced in.
         # ``merchant_order_total(unit, 1)`` is exactly the old ``merchant_price``
         # for a fixed SKU, so a row that listed before still lists.
@@ -271,30 +292,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 skus=[],
             )
             brands[brand_id].products.append(products[product_id])
-        products[product_id].skus.append(
-            MerchantSkuOut(
-                sku_id=sku.id,
-                sku_code=sku.sku_code,
-                name=sku.denomination or sku.sku_code,
-                # Two shapes, never both: a fixed denomination has one price
-                # and no quantity, a unit SKU has a rate and bounds. The same
-                # split ``resolve_quantity`` enforces on the order, read off
-                # the same ``is_unit_sku`` — so the catalog cannot advertise a
-                # shape the order path refuses.
-                **(
-                    {
-                        "kind": "unit",
-                        "unit_price_usd": unit,
-                        "unit": sku.amount_unit,
-                        "min_qty": sku.min_qty,
-                        "max_qty": sku.max_qty,
-                    }
-                    if is_unit_sku(sku)
-                    else {"kind": "fixed", "price_usd": price}
-                ),
-                updated_at=sku.updated_at,
-            )
-        )
+        products[product_id].skus.append(_row(sku, unit=unit, price=price))
     if below_floor:
         # One line per request, not one per SKU: a merchant polls this
         # endpoint, so a per-row warning would be thousands of lines a day for
@@ -309,6 +307,54 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
             "be rejected; fix the markup in the admin catalog",
         )
     return MerchantCatalogOut(brands=list(brands.values()))
+
+
+def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
+    """One catalog row, in whichever of the three shapes this SKU is.
+
+    Exactly one shape's fields carry values and the rest stay ``None``, so a
+    client branches on ``kind`` and never on whether a key exists. Decided
+    from the same predicates the order path uses (``Sku.variable_amount``,
+    ``catalog.unit_sku.is_unit_sku``), so the catalog cannot advertise a shape
+    ``quote.resolve_shape`` would refuse.
+
+    The four shared fields are repeated per branch rather than spread from a
+    dict: on a contract surface an explicit keyword is checked by the type
+    checker, and ``**common`` is not.
+    """
+    name = sku.denomination or sku.sku_code
+    if sku.variable_amount:
+        return MerchantSkuOut(
+            sku_id=sku.id,
+            sku_code=sku.sku_code,
+            name=name,
+            kind="amount",
+            unit_price_usd=unit,
+            unit="usd",
+            min_amount_usd=sku.min_amount_usd,
+            max_amount_usd=sku.max_amount_usd,
+            updated_at=sku.updated_at,
+        )
+    if is_unit_sku(sku):
+        return MerchantSkuOut(
+            sku_id=sku.id,
+            sku_code=sku.sku_code,
+            name=name,
+            kind="unit",
+            unit_price_usd=unit,
+            unit=sku.amount_unit,
+            min_qty=sku.min_qty,
+            max_qty=sku.max_qty,
+            updated_at=sku.updated_at,
+        )
+    return MerchantSkuOut(
+        sku_id=sku.id,
+        sku_code=sku.sku_code,
+        name=name,
+        kind="fixed",
+        price_usd=price,
+        updated_at=sku.updated_at,
+    )
 
 
 __all__ = ["build"]

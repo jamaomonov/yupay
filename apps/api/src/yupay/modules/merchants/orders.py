@@ -64,7 +64,7 @@ from typing import TYPE_CHECKING, Final
 from yupay.core.config import get_settings
 from yupay.core.errors import ConflictError
 from yupay.core.logging import get_logger
-from yupay.modules.merchants import deposit, pricing, quote
+from yupay.modules.merchants import deposit, quote
 from yupay.modules.merchants.machine_schemas import MerchantOrderCreateIn, MerchantOrderOut
 
 # Imported as a submodule rather than through the ``orders`` facade: that
@@ -122,6 +122,7 @@ def _request_digest(body: MerchantOrderCreateIn) -> str:
             # and without this line the second would be answered with the
             # first order as though it were a retry.
             "quantity": body.quantity,
+            "amount_usd": None if body.amount_usd is None else str(body.amount_usd.quantize(_CENT)),
             "expected_price": str(body.expected_price.quantize(_CENT)),
             "fulfillment_data": body.fulfillment_data,
         },
@@ -140,15 +141,16 @@ def _recorded_digest(order: Order) -> str | None:
     return None
 
 
-def _out(order: Order, *, balance: Decimal) -> MerchantOrderOut:
+def _out(order: Order, *, balance: Decimal, charged: Decimal) -> MerchantOrderOut:
     """Project a persisted merchant order onto the wire contract.
 
-    ``price_usd`` is rebuilt through :func:`pricing.merchant_order_total`
-    rather than read off the line, because the line carries a per-unit *rate*
-    once a SKU can be sold by the thousand — $0.016537 on an order that cost
-    $16.54. Through the same function ``place`` charged the deposit with, so
-    the response and the debit are one rule rather than two that happen to
-    round the same way.
+    ``charged`` is passed in rather than derived from the line, because the
+    line no longer holds the money on two of the three SKU shapes. It holds a
+    per-unit *rate* on a unit SKU ($0.016537 on an order that cost $16.54) and
+    a *face value* on an amount SKU ($100 of Steam wallet on an order that
+    cost $104) — in both cases what fulfilment needs, and in neither case what
+    the merchant paid. The caller has the authoritative number: ``place`` has
+    just charged it, and ``_replayed`` reads it off the ledger.
     """
     item = order.items[0]
     return MerchantOrderOut(
@@ -156,7 +158,7 @@ def _out(order: Order, *, balance: Decimal) -> MerchantOrderOut:
         order_id=order.id,
         status=order.status,
         sku_id=item.sku_id,
-        price_usd=pricing.merchant_order_total(item.unit_price_usd, item.qty),
+        price_usd=charged,
         balance_usd=balance,
         created_at=order.created_at,
     )
@@ -187,7 +189,16 @@ async def _replayed(
             merchant_order_id=order.idempotency_key,
             order_id=order.id,
         )
-    return _out(order, balance=await deposit.deposit_balance(db, merchant_id=merchant_id))
+    # The ledger, which ``charged_for_order`` calls the only authority on what
+    # an order took. ``None`` means no charge posting exists at all, which that
+    # function documents as impossible through the code; falling back to the
+    # line would answer a replay with a number that is not money.
+    charged = await deposit.charged_for_order(db, merchant_id=merchant_id, order_id=order.id)
+    return _out(
+        order,
+        balance=await deposit.deposit_balance(db, merchant_id=merchant_id),
+        charged=charged if charged is not None else Decimal("0"),
+    )
 
 
 def _enqueue_only() -> Settings:
@@ -281,8 +292,8 @@ async def place(
         return await _replayed(db, already, merchant_id=merchant_id, digest=digest)
 
     sku, cost = await quote.load_orderable_sku(db, sku_id=body.sku_id)
-    qty = quote.resolve_quantity(sku, body.quantity)
-    quoted = quote.price_for(sku, cost, merchant, body, qty=qty)
+    shape = quote.resolve_shape(sku, body)
+    quoted = quote.price_for(sku, cost, merchant, body, shape=shape)
     price = quoted.total
 
     # The clean 409, before anything is written. Not the guarantee — that is
@@ -309,7 +320,14 @@ async def place(
         db,
         OrderCreate(
             currency=deposit.DEPOSIT_CURRENCY,
-            items=[OrderItemIn(sku_id=sku.id, qty=qty, fulfillment_data=body.fulfillment_data)],
+            items=[
+                OrderItemIn(
+                    sku_id=sku.id,
+                    qty=shape.qty,
+                    amount_usd=shape.amount_usd,
+                    fulfillment_data=body.fulfillment_data,
+                )
+            ],
         ),
         actor=actor,
         idempotency_key=body.merchant_order_id,
@@ -321,7 +339,13 @@ async def place(
         # ``qty=1`` and the whole-cent rounding of this one above it.
         # ``deposit.charged_for_order`` is the authority on what was paid and
         # says so in its own docstring; nothing reads the line for money.
-        unit_price_usd_override=(quoted.unit_price,),
+        unit_price_usd_override=(
+            # An amount SKU records the **face value** the supplier must load,
+            # not the per-dollar rate: Waxpeer reads this field as "how many
+            # dollars", so $104 charged has to leave $100 on the line. Every
+            # other shape records the rate and multiplies by ``qty``.
+            shape.amount_usd if shape.amount_usd is not None else quoted.unit_price,
+        ),
         # Spec item 3b. ``expected_price`` decides whether the order proceeds
         # and never what it costs, and until now it survived only inside
         # ``_request_digest``'s one-way SHA-256 — so a reseller disputing a
@@ -372,7 +396,11 @@ async def place(
         sku_code=sku.sku_code,
         price_usd=str(price),
     )
-    return _out(order, balance=await deposit.deposit_balance(db, merchant_id=merchant_id))
+    return _out(
+        order,
+        balance=await deposit.deposit_balance(db, merchant_id=merchant_id),
+        charged=price,
+    )
 
 
 __all__ = [

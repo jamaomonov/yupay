@@ -232,25 +232,37 @@ class MerchantSkuOut(BaseModel):
     #: untranslated, so unlike the brand and product names above it this is
     #: the same string in every locale.
     name: str
-    #: Which of the two shapes below is populated, and whether ``POST
-    #: /merchant/v1/orders`` wants a ``quantity``. ``"fixed"`` is a
-    #: denomination you buy one of; ``"unit"`` is a currency you buy an amount
-    #: of. The same split G-Engine publishes as FIXED / UNFIXED.
-    kind: Literal["fixed", "unit"]
+    #: Which shape this row is, and therefore what ``POST /merchant/v1/orders``
+    #: wants beside ``sku_id``. G-Engine's FIXED / UNFIXED, with UNFIXED split
+    #: the two ways it actually occurs:
+    #:
+    #: * ``"fixed"`` — a denomination you buy one of. Nothing extra.
+    #: * ``"unit"`` — a currency counted in units (Stars). Send ``quantity``.
+    #: * ``"amount"`` — a balance loaded in dollars (Steam wallet). Send
+    #:   ``amount_usd``.
+    kind: Literal["fixed", "unit", "amount"]
     #: ``kind="fixed"`` only: the order total, and what to send as
     #: ``expected_price``. ``null`` on a unit SKU, which has no price until a
     #: quantity is chosen.
     price_usd: UsdPrice | None = None
-    #: ``kind="unit"`` only: the price of ONE unit, at six decimals. Your
-    #: order total is ``ceil_to_cent(unit_price_usd * quantity)`` — computed
-    #: from this exact value, so you can reproduce your charge before sending
-    #: it. ``null`` on a fixed SKU.
+    #: ``kind="unit"`` and ``kind="amount"``: the price of ONE unit, at six
+    #: decimals — one Star, or one dollar of wallet balance. Your order total
+    #: is ``ceil_to_cent(unit_price_usd * quantity_or_amount)``, computed from
+    #: this exact value, so you can reproduce your charge before sending it.
+    #: ``null`` on a fixed SKU.
     unit_price_usd: UsdUnitPrice | None = None
     #: ``kind="unit"`` only: what one unit is, for your UI ("stars").
     unit: str | None = None
     #: ``kind="unit"`` only: the inclusive bounds on ``quantity``.
     min_qty: int | None = None
     max_qty: int | None = None
+    #: ``kind="amount"`` only: the inclusive bounds on ``amount_usd``, in
+    #: dollars of face value. ``unit_price_usd`` above is then the price of
+    #: **one dollar** of that balance, and your total is
+    #: ``ceil_to_cent(unit_price_usd * amount_usd)`` — the same rule as a unit
+    #: SKU, with the unit being a dollar.
+    min_amount_usd: UsdPrice | None = None
+    max_amount_usd: UsdPrice | None = None
     updated_at: datetime
 
 
@@ -326,9 +338,15 @@ class MerchantOrderCreateIn(BaseModel):
     #: while the merchant believed they bought ten. Bounded by the SKU's own
     #: ``min_qty``/``max_qty`` from ``/catalog``.
     quantity: int | None = Field(default=None, ge=1, le=UNIT_QTY_WIRE_MAX)
+    #: How many dollars of face value, on a ``kind="amount"`` SKU — required
+    #: there and refused everywhere else, on the same "no silent default"
+    #: rule as ``quantity``. Bounded by the SKU's ``min_amount_usd`` /
+    #: ``max_amount_usd``. This is the **face value you are loading**, not
+    #: what you pay: $100 of Steam wallet costs $104 at a 4% markup.
+    amount_usd: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
     #: The **order total** you last computed from ``/catalog`` — for a fixed
-    #: SKU that is its ``price_usd``; for a unit SKU it is
-    #: ``ceil_to_cent(unit_price_usd * quantity)``. A tolerance, not a bid:
+    #: SKU that is its ``price_usd``; for a unit or amount SKU it is
+    #: ``ceil_to_cent(unit_price_usd * quantity_or_amount_usd)``. A tolerance, not a bid:
     #: within ±2% of ours the order proceeds and is charged at **our** current
     #: price; outside it, ``422 price_changed`` carries that price (spec §8.4,
     #: amended 2026-09-07).

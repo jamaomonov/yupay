@@ -433,6 +433,8 @@ async def test_catalog_returns_the_b2b_visible_tree(
         "unit",
         "min_qty",
         "max_qty",
+        "min_amount_usd",
+        "max_amount_usd",
         "updated_at",
     }
     assert set(product) == {"product_id", "slug", "name", "skus"}
@@ -450,6 +452,8 @@ async def test_catalog_returns_the_b2b_visible_tree(
     assert sku["unit"] is None
     assert sku["min_qty"] is None
     assert sku["max_qty"] is None
+    assert sku["min_amount_usd"] is None
+    assert sku["max_amount_usd"] is None
     assert sku["updated_at"]
 
 
@@ -533,21 +537,20 @@ async def test_catalog_hides_every_sku_of_a_retail_only_brand(
     assert [b["slug"] for b in r.json()["brands"]] == ["brand-1"]
 
 
-async def test_a_variable_amount_sku_is_absent_from_the_price_list(
+async def test_a_variable_amount_sku_is_listed_as_a_dollar_balance(
     integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
-    """It has no wholesale price to quote, and the order path refuses it.
+    """The third shape: a balance loaded in dollars (the Steam wallet).
 
-    ``price_usd`` on a variable-amount row is not a price — the customer picks
-    the amount, and it is charged as a guarded FX rate times a margin
-    multiplier — so cost × markup has nothing to work on. Listing it would
-    advertise a SKU ``POST /merchant/v1/orders`` answers with
-    ``item_unavailable`` / ``variable_amount``.
+    This used to assert the opposite — that such a SKU is withheld, because
+    "cost × markup has nothing to work on". That was true of retail's pricing,
+    where the margin is a spread on the exchange rate, and it stopped being
+    true once B2B priced these off face value: a dollar of wallet costs us a
+    dollar (no supplier commission — owner, 2026-09-15), so the markup is the
+    whole margin. $100 of balance at 4% is $104.
 
-    Unlike retail ``active``, brand maintenance and supplier stock — all
-    deliberately unfiltered here, because they are transient and the order
-    path is where a merchant learns about them — this is a permanent property
-    of the SKU, so the catalog can settle it once.
+    The row therefore publishes the price of ONE dollar and the bounds, and
+    the order carries ``amount_usd``.
     """
     merchant_id = await _new_merchant(integration_client, admin_headers)
     key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
@@ -571,7 +574,18 @@ async def test_a_variable_amount_sku_is_absent_from_the_price_list(
     r = await _get(integration_client, key_id, secret, CATALOG_PATH)
 
     assert r.status_code == 200, r.text
-    assert set(_skus_of(r.json())) == {"fixed"}
+    rows = {s["sku_code"]: s for s in r.json()["brands"][0]["products"][0]["skus"]}
+    assert set(rows) == {"fixed", "any-amount"}
+
+    amount = rows["any-amount"]
+    assert amount["kind"] == "amount"
+    assert amount["unit"] == "usd"
+    # One dollar of balance, at the seeder's stock 7% markup.
+    assert amount["unit_price_usd"] == "1.070000"
+    assert amount["price_usd"] is None, "a balance has no price until an amount is chosen"
+    assert amount["min_amount_usd"] == "1.00"
+    assert amount["max_amount_usd"] == "100.00"
+    assert rows["fixed"]["kind"] == "fixed"
 
 
 async def test_a_sku_with_no_cost_is_absent_rather_than_free(

@@ -99,6 +99,86 @@ CODE_QUANTITY_NOT_ACCEPTED: Final = "quantity_not_accepted"
 #: ``quantity`` outside the SKU's published ``min_qty``/``max_qty``.
 CODE_QUANTITY_OUT_OF_RANGE: Final = "quantity_out_of_range"
 
+#: ``amount_usd`` missing on a balance loaded in dollars (the Steam wallet).
+CODE_AMOUNT_REQUIRED: Final = "amount_required"
+
+#: ``amount_usd`` sent for a SKU that is not sized in dollars.
+CODE_AMOUNT_NOT_ACCEPTED: Final = "amount_not_accepted"
+
+#: ``amount_usd`` outside the SKU's published bounds.
+CODE_AMOUNT_OUT_OF_RANGE: Final = "amount_out_of_range"
+
+
+class OrderShape(NamedTuple):
+    """How one merchant order line is sized.
+
+    The three shapes are mutually exclusive by construction — a SKU is a fixed
+    denomination, or counted in units, or loaded in dollars — and this is the
+    one place that decides which, so the catalog and the order path cannot
+    disagree about what a SKU wants.
+    """
+
+    #: Goes on ``OrderItem.qty``. Always ``1`` except for a unit SKU, where it
+    #: is the count fulfilment delivers.
+    qty: int
+    #: Face value for a variable-amount SKU, ``None`` otherwise. Goes on the
+    #: line as ``unit_price_usd`` — what the supplier is told to load — and is
+    #: *not* what the merchant pays.
+    amount_usd: Decimal | None
+
+
+def resolve_shape(sku: Sku, body: MerchantOrderCreateIn) -> OrderShape:
+    """Read the request's sizing against the SKU's shape, refusing every
+    mismatch in both directions.
+
+    Nothing is defaulted. Each missing-or-extra field has a wrong answer that
+    would go through silently: no quantity sells one Star, no amount sells
+    nothing, an ignored quantity charges for one denomination out of ten, an
+    ignored amount loads a wallet with the wrong sum.
+
+    Args:
+        sku: The SKU being bought.
+        body: The request.
+
+    Returns:
+        What to put on the order line.
+
+    Raises:
+        ValidationError: One of the six ``quantity_*`` / ``amount_*`` codes.
+    """
+    if sku.variable_amount:
+        if body.quantity is not None:
+            raise ValidationError(
+                "this SKU is loaded by amount, not by quantity",
+                code=CODE_QUANTITY_NOT_ACCEPTED,
+                sku_id=sku.id,
+            )
+        if body.amount_usd is None:
+            raise ValidationError(
+                "this SKU is loaded in dollars and needs an amount",
+                code=CODE_AMOUNT_REQUIRED,
+                sku_id=sku.id,
+                min_amount_usd=str(sku.min_amount_usd),
+                max_amount_usd=str(sku.max_amount_usd),
+            )
+        low, high = sku.min_amount_usd, sku.max_amount_usd
+        if low is None or high is None or not (low <= body.amount_usd <= high):
+            raise ValidationError(
+                "amount is outside this SKU's range",
+                code=CODE_AMOUNT_OUT_OF_RANGE,
+                sku_id=sku.id,
+                min_amount_usd=str(low),
+                max_amount_usd=str(high),
+            )
+        return OrderShape(qty=1, amount_usd=body.amount_usd)
+    if body.amount_usd is not None:
+        raise ValidationError(
+            "this SKU is not loaded in dollars and takes no amount",
+            code=CODE_AMOUNT_NOT_ACCEPTED,
+            sku_id=sku.id,
+        )
+    return OrderShape(qty=resolve_quantity(sku, body.quantity), amount_usd=None)
+
 
 def resolve_quantity(sku: Sku, quantity: int | None) -> int:
     """How many units this order buys, refusing every other reading.
@@ -152,7 +232,7 @@ def resolve_quantity(sku: Sku, quantity: int | None) -> int:
     return quantity
 
 
-async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Decimal]:
+async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Decimal | None]:
     """Load a SKU and refuse it unless a merchant can buy it right now.
 
     Args:
@@ -163,7 +243,9 @@ async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Dec
             ``merchant_id`` walked into in Task 2).
 
     Returns:
-        The SKU with its product and brand loaded, and its wholesale cost.
+        The SKU with its product and brand loaded, and its wholesale cost —
+        ``None`` for a variable-amount SKU, whose cost is the face value on
+        the request rather than a column.
 
     Raises:
         NotFoundError: ``item_unavailable``, with a ``reason``.
@@ -187,11 +269,25 @@ async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Dec
     if not orders.sku_is_buyable(sku):
         raise unavailable(sku_id, "out_of_stock" if not sku.in_stock else "not_for_sale")
     if sku.variable_amount:
-        # A customer-chosen amount has no wholesale price to quote: the B2B
-        # formula is cost × markup, while these SKUs price off a guarded FX
-        # rate and a margin multiplier. Not orderable in v1, and
-        # ``expected_price`` would be meaningless for them.
-        raise unavailable(sku_id, "variable_amount")
+        # Priced off the face value the merchant names, not off a column —
+        # see ``pricing.merchant_amount_price``. ``cost`` is therefore not
+        # knowable here (it is the amount, which lives on the request), and
+        # ``None`` says so rather than standing for "free".
+        #
+        # Retail prices these off a guarded FX rate times a margin multiplier,
+        # which is why they were refused outright until 2026-09-15: a spread
+        # on a conversion is not available when the buyer already holds
+        # dollars. The bounds still have to exist, or there is nothing to
+        # validate the amount against.
+        if sku.min_amount_usd is None or sku.max_amount_usd is None:  # pragma: no cover
+            # Unreachable through the database: ``ck_skus_variable_amount_complete``
+            # requires both bounds (and a rate multiplier) on any row that sets
+            # ``variable_amount``. Kept because this function decides whether
+            # money may move, and the check costs a comparison — if that
+            # constraint is ever relaxed, this refuses rather than validating
+            # an amount against ``None``.
+            raise unavailable(sku_id, "variable_amount")
+        return sku, None
     cost = pricing.effective_cost(sku)
     if cost is None:
         # Not sellable, never free — spec §8.2. The catalog withholds these
@@ -218,7 +314,12 @@ class MerchantQuote(NamedTuple):
 
 
 def price_for(
-    sku: Sku, cost: Decimal, merchant: Merchant, body: MerchantOrderCreateIn, *, qty: int
+    sku: Sku,
+    cost: Decimal | None,
+    merchant: Merchant,
+    body: MerchantOrderCreateIn,
+    *,
+    shape: OrderShape,
 ) -> MerchantQuote:
     """Our price for this merchant, reconciled against the one they quoted.
 
@@ -229,7 +330,7 @@ def price_for(
         merchant: The buyer, whose ``markup_adjustment_pp`` (dormant in v1)
             makes this price theirs rather than anyone's.
         body: The request, for ``expected_price``.
-        qty: :func:`resolve_quantity`'s result — ``1`` for a fixed SKU.
+        shape: :func:`resolve_shape`'s result — how the line is sized.
 
     Returns:
         The rate and the money, both **ours**. ``expected_price`` is an
@@ -244,13 +345,23 @@ def price_for(
             or ``price_changed`` when the merchant's number has drifted too
             far from it.
     """
-    unit = pricing.merchant_unit_price(cost, pricing.merchant_markup_pct(sku, merchant))
-    current = pricing.merchant_order_total(unit, qty)
+    markup = pricing.merchant_markup_pct(sku, merchant)
+    if shape.amount_usd is not None:
+        # A dollar of balance costs us a dollar, so the face value IS the
+        # cost — see ``pricing.merchant_amount_price``.
+        basis = shape.amount_usd
+        unit = pricing.merchant_unit_price(Decimal("1"), markup)
+        current = pricing.merchant_amount_price(shape.amount_usd, markup)
+    else:
+        assert cost is not None, "a non-variable SKU always carries a cost here"
+        basis = cost * shape.qty
+        unit = pricing.merchant_unit_price(cost, markup)
+        current = pricing.merchant_order_total(unit, shape.qty)
     floor_pct = get_settings().merchant_margin_floor_pct
     # Against the cost of what is actually being bought, so the floor means the
     # same thing at any quantity — and, at ``qty=1``, exactly what it meant
     # before quantity existed.
-    if pricing.violates_margin_floor(cost * qty, current, floor_pct):
+    if pricing.violates_margin_floor(basis, current, floor_pct):
         # The same guard ``price_list.build`` applies, reading the same
         # setting, so a SKU the catalog withheld is a SKU this refuses.
         log.warning(
@@ -278,6 +389,9 @@ def price_for(
 
 
 __all__ = [
+    "CODE_AMOUNT_NOT_ACCEPTED",
+    "CODE_AMOUNT_OUT_OF_RANGE",
+    "CODE_AMOUNT_REQUIRED",
     "CODE_ITEM_UNAVAILABLE",
     "CODE_MARGIN_FLOOR",
     "CODE_PRICE_CHANGED",
@@ -285,8 +399,10 @@ __all__ = [
     "CODE_QUANTITY_OUT_OF_RANGE",
     "CODE_QUANTITY_REQUIRED",
     "MerchantQuote",
+    "OrderShape",
     "load_orderable_sku",
     "price_for",
     "resolve_quantity",
+    "resolve_shape",
     "unavailable",
 ]

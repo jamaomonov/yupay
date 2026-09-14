@@ -7036,6 +7036,22 @@
         "additionalProperties": false,
         "description": "Body of ``POST /merchant/v1/orders`` (spec \u00a79.1).\n\nOne SKU per order, deliberately: a reseller's own basket does not have to\nbe ours, and a single line keeps \"the order failed\" from meaning \"part of\nthe order failed\". An ``items`` array can still be *added* later without a\n``/merchant/v2`` \u2014 a new optional request field is additive; removing one\nis not, which is the escape hatch ``quantity`` below was added through.\n\n``extra=\"forbid\"`` on purpose. On a response, ignoring an unknown field is\nright; on a *request* it is how a typo'd ``fulfilment_data`` silently\nbecomes an order with no player id, delivered to nobody.",
         "properties": {
+          "amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd"
+          },
           "expected_price": {
             "anyOf": [
               {
@@ -7428,10 +7444,23 @@
           "kind": {
             "enum": [
               "fixed",
-              "unit"
+              "unit",
+              "amount"
             ],
             "title": "Kind",
             "type": "string"
+          },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Usd"
           },
           "max_qty": {
             "anyOf": [
@@ -7443,6 +7472,18 @@
               }
             ],
             "title": "Max Qty"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Usd"
           },
           "min_qty": {
             "anyOf": [

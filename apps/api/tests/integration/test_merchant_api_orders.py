@@ -560,17 +560,6 @@ async def test_expected_price_is_accepted_as_a_string_or_as_a_number(
         pytest.param({"cost_usdt": None}, "no_cost", id="no-wholesale-cost"),
         pytest.param({"supplier_stock": 0}, "out_of_stock", id="supplier-out-of-stock"),
         pytest.param({"active": False}, "not_for_sale", id="deactivated"),
-        pytest.param(
-            {
-                # ``ck_skus_variable_amount_complete`` wants the whole set.
-                "variable_amount": True,
-                "min_amount_usd": Decimal("1"),
-                "max_amount_usd": Decimal("100"),
-                "rate_multiplier": Decimal("1.05"),
-            },
-            "variable_amount",
-            id="variable-amount",
-        ),
     ],
 )
 async def test_an_unsellable_sku_is_item_unavailable_and_says_why(
@@ -1684,3 +1673,162 @@ async def test_the_same_order_id_with_a_different_quantity_is_a_conflict(
         },
     )
     assert second.status_code == 409, second.text
+
+
+# ---------- amount: balances loaded in dollars (the Steam wallet) ----------
+
+
+_WALLET: dict[str, Any] = {
+    # ``ck_skus_variable_amount_complete`` wants the whole set.
+    "variable_amount": True,
+    "min_amount_usd": Decimal("1"),
+    "max_amount_usd": Decimal("300"),
+    "rate_multiplier": Decimal("1.10"),
+    "b2b_markup_pct": Decimal("4"),
+}
+
+
+async def test_a_dollar_balance_is_charged_face_value_plus_the_markup(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """$100 of Steam wallet costs $104, and $4 of that is ours.
+
+    The third shape's whole point. Retail's margin on these is a spread on the
+    exchange rate — the customer pays som, we quote a guarded USD rate times
+    ``rate_multiplier``. A merchant already holds dollars, so there is no
+    conversion and no spread; the margin is a flat markup over face value,
+    and face value is our cost because neither Waxpeer nor G-Engine charges a
+    commission on a wallet load (owner, 2026-09-15; ``waxpeer_fee_rate`` is 0).
+
+    The line must keep the **face** value: Waxpeer reads ``unit_price_usd`` as
+    how many dollars to load, so charging $104 has to leave $100 there.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "200.00")
+    sku_id = await _seeded(db_session, **_WALLET)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "wallet-1",
+            "sku_id": sku_id,
+            "amount_usd": "100.00",
+            "expected_price": "104.00",
+        },
+    )
+
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["price_usd"] == "104.00"
+    assert body["balance_usd"] == "96.00"
+    assert await _balance(db_session, merchant_id) == Decimal("96.00")
+
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == body["order_id"]))
+    ).scalar_one()
+    assert item.qty == 1, "a balance is bought by amount, not by quantity"
+    assert item.unit_price_usd == Decimal("100"), "the supplier loads the face value"
+
+
+async def test_a_balance_without_an_amount_is_refused(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """There is no sensible default: no amount means no order, not a $1 one."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "50.00")
+    sku_id = await _seeded(db_session, **_WALLET)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "wallet-2", "sku_id": sku_id, "expected_price": "1.04"},
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "amount_required"
+    assert await _balance(db_session, merchant_id) == Decimal("50.00")
+
+
+async def test_an_amount_outside_the_published_bounds_is_refused(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The bounds the catalog published, enforced off the same columns."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "500.00")
+    sku_id = await _seeded(db_session, **_WALLET)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "wallet-3",
+            "sku_id": sku_id,
+            "amount_usd": "300.01",
+            "expected_price": "312.02",
+        },
+    )
+
+    assert r.status_code == 422, r.text
+    body = r.json()
+    assert body["code"] == "amount_out_of_range"
+    assert body["max_amount_usd"] == "300.000000"
+    assert await _balance(db_session, merchant_id) == Decimal("500.00")
+
+
+async def test_a_quantity_on_a_dollar_balance_is_refused(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Buying more balance means a bigger amount, never a higher quantity."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "50.00")
+    sku_id = await _seeded(db_session, **_WALLET)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "wallet-4",
+            "sku_id": sku_id,
+            "quantity": 10,
+            "amount_usd": "10.00",
+            "expected_price": "10.40",
+        },
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "quantity_not_accepted"
+
+
+async def test_an_amount_on_a_fixed_denomination_is_refused(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The mirror: a denomination has its price already."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "20.00")
+    sku_id = await _seeded(db_session)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "fixed-amount-1",
+            "sku_id": sku_id,
+            "amount_usd": "5.00",
+            "expected_price": "1.07",
+        },
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "amount_not_accepted"
+    assert await _balance(db_session, merchant_id) == Decimal("20.00")

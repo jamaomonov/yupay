@@ -425,7 +425,9 @@ def tier_price_usd(units: int, siblings: Iterable[Sku]) -> Decimal | None:
     return total.quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
-def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Decimal:
+def _resolve_line_unit_price(
+    sku: Sku, line: OrderItemIn, currency: str, *, merchant_priced: bool = False
+) -> Decimal:
     """The USD amount one order line bills for.
 
     A variable-amount SKU (Steam wallet top-up) bills for the customer's
@@ -443,11 +445,18 @@ def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Deci
       customer twice while topping up only once. Quantity is meaningless for
       a customer-chosen amount anyway: buying more means entering a bigger
       amount, not a higher qty.
-    * ``currency == "USD"`` on a variable-amount line. The whole pricing
-      model for these SKUs is "USD amount × guarded local-currency rate ×
-      margin multiplier" — there is no margin-bearing USD price, so a USD
-      sale would be face value at zero margin (or below cost, once a
-      supplier fee is configured).
+    * ``currency == "USD"`` on a variable-amount line, **unless the line is
+      merchant-priced**. The retail pricing model for these SKUs is "USD
+      amount × guarded local-currency rate × margin multiplier" — a spread on
+      a conversion — so a retail USD sale would be face value at zero margin.
+      A merchant's deposit is already in USD and there is no conversion to
+      take a spread on, so their margin lives somewhere else entirely: a flat
+      markup over face value, applied to the **charge**, not to this line
+      (``merchants.pricing.merchant_amount_price``). The line still records
+      the face value, because that is what the supplier is told to load.
+      ``merchant_priced`` is true only where a
+      ``unit_price_usd_override`` exists, which ``create_order`` has already
+      restricted to a merchant actor.
 
     Raises:
         ValidationError: ``qty`` is outside the SKU's real bounds (see
@@ -465,7 +474,7 @@ def _resolve_line_unit_price(sku: Sku, line: OrderItemIn, currency: str) -> Deci
                 "adjust amount_usd instead",
                 extra={"sku_id": sku.id, "qty": line.qty},
             )
-        if currency == "USD":
+        if currency == "USD" and not merchant_priced:
             raise ValidationError(
                 "this product cannot be purchased in USD — choose a local currency",
                 extra={"sku_id": sku.id, "currency": currency},
@@ -888,7 +897,12 @@ async def create_order(
         # the qty bounds and the fixed-vs-variable rules are enforced, and a
         # B2B order has to obey them too. Only the resulting number is
         # replaced, at the end of the branch, so nothing can price around it.
-        unit_price_usd = _resolve_line_unit_price(sku, line, currency)
+        unit_price_usd = _resolve_line_unit_price(
+            sku,
+            line,
+            currency,
+            merchant_priced=unit_price_usd_override is not None,
+        )
         if gifts_checkout.is_gift_sku(sku):
             # Outbound HTTP call on the request path — the spec §4.3-mandated
             # server re-price, not client-trusted. Bounded by the 15-min
