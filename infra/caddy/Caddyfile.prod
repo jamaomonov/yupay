@@ -127,6 +127,23 @@ http://app.yupay.uz {
 		# the policy for the storefront.
 		Content-Security-Policy "frame-ancestors https://web.telegram.org https://*.telegram.org;"
 	}
+	# This block had no access log until 2026-09-14, and the gap was found the
+	# hard way: a user reported «Не удалось загрузить YuPay» and there was
+	# nothing on the server to look at. The storefront and the API log; the one
+	# surface people open from inside Telegram did not, so every failed load was
+	# invisible — no status, no duration, no user agent. A page that fails for
+	# only some networks is exactly the case that cannot be diagnosed without
+	# this.
+	log {
+		output stdout
+		format filter {
+			wrap json
+			fields {
+				request>headers>X-Merchant-Signature delete
+				request>headers>X-Merchant-Key delete
+			}
+		}
+	}
 	reverse_proxy miniapp:80 {
 		lb_try_duration 15s
 		lb_try_interval 250ms
