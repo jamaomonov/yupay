@@ -12,16 +12,19 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#121927" />
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <!-- Rubik replaces Inter as the UI font. Picked for: full native
          Cyrillic (RU/UZ), mild rounded corners (warmer than Inter without
          going kid-app), 400–700 weight range matching the existing hierarchy,
-         and a "fintech-friendly" feel similar to what T-Bank ships. -->
-    <link
-      href="https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
+         and a "fintech-friendly" feel similar to what T-Bank ships.
+
+         Self-hosted through `@fontsource-variable/rubik`, imported from
+         `main.tsx`, rather than linked from fonts.googleapis.com. A
+         `<link rel="stylesheet">` in the head BLOCKS RENDERING, so a network
+         that cannot reach Google quickly does not get a slow page — it gets no
+         page, and inside Telegram that is «Не удалось загрузить YuPay». The
+         storefront never had this exposure: `next/font/google` downloads the
+         font at build time and serves it from our own origin. This is the same
+         thing, done by hand, because the mini app is a plain Vite build. -->
   </head>
   <body>
     <div id="root"></div>
