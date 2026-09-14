@@ -448,7 +448,13 @@ async def read(
         order_id=order.id,
         status=order.status,
         sku_id=item.sku_id,
-        price_usd=item.unit_price_usd,
+        #: What they paid, read off the ledger like ``charged`` above it and
+        #: for the same reason. The line holds a per-unit *rate* now that a
+        #: unit SKU can be ordered by the thousand, so ``unit_price_usd`` is
+        #: no longer this order's price — it is $0.016537 on an order that
+        #: cost $16.54. The fallback covers only the "no charge posting at
+        #: all" case ``charged_for_order`` calls impossible.
+        price_usd=charged if charged is not None else item.unit_price_usd * item.qty,
         refunded_usd=refunded,
         created_at=order.created_at,
         paid_at=order.paid_at,

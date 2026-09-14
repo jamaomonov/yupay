@@ -1501,3 +1501,186 @@ async def test_no_mail_is_attempted_when_a_merchant_order_is_delivered(
     await notifications.notify_order_delivered(order_id)
 
     assert sent == []
+
+
+# ---------- quantity: SKUs sold by the unit (G-Engine's UNFIXED) ----------
+
+
+_STARS: dict[str, Any] = {
+    "cost_usdt": Decimal("0.015455"),
+    "amount_unit": "stars",
+    "min_qty": 50,
+    "max_qty": 50_000,
+}
+
+
+async def test_a_unit_sku_rounds_once_at_the_end_and_not_once_per_unit(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The bug this whole shape exists for, in one assertion: $16.54, not $20.00.
+
+    One Telegram Star costs $0.015455. At the stock 7% markup the honest price
+    is $0.016537 — but rounded up to the cent, as every merchant price was
+    before quantity existed, it is $0.02. A thousand of them is the difference
+    between charging 7% and charging 29%, and $0.02 is also more than our own
+    retail price of $0.0191, so the wholesale offer was worse than walking
+    into the shop.
+
+    The line keeps the *rate* and the deposit takes the *money*: a unit SKU's
+    ``qty`` is what fulfilment sends the supplier as the star count, so it
+    cannot be folded into the price.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = await _seeded(db_session, **_STARS)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "stars-1",
+            "sku_id": sku_id,
+            "quantity": 1000,
+            "expected_price": "16.54",
+        },
+    )
+
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["price_usd"] == "16.54"
+    assert body["balance_usd"] == "23.46"
+    assert await _balance(db_session, merchant_id) == Decimal("23.46")
+
+    order = (
+        await db_session.execute(select(Order).where(Order.id == body["order_id"]))
+    ).scalar_one_or_none()
+    assert order is not None
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    ).scalar_one()
+    assert item.qty == 1000, "fulfilment reads this as the star count"
+    assert item.unit_price_usd == Decimal("0.016537"), "the line carries the rate"
+
+
+async def test_a_unit_sku_without_a_quantity_is_refused_rather_than_sold_one(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Defaulting to 1 would sell a single Star and charge two cents for it."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+    sku_id = await _seeded(db_session, **_STARS)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {"merchant_order_id": "stars-2", "sku_id": sku_id, "expected_price": "0.02"},
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "quantity_required"
+    assert await _balance(db_session, merchant_id) == Decimal("10.00")
+    assert (await db_session.execute(select(Order))).scalars().all() == []
+
+
+async def test_a_quantity_on_a_fixed_denomination_is_refused_rather_than_ignored(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The mirror, and the direction that costs the merchant goods.
+
+    Ignoring it would charge for one denomination while they believed they
+    had bought ten.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "20.00")
+    sku_id = await _seeded(db_session)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "fixed-qty-1",
+            "sku_id": sku_id,
+            "quantity": 10,
+            "expected_price": "1.07",
+        },
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "quantity_not_accepted"
+    assert await _balance(db_session, merchant_id) == Decimal("20.00")
+
+
+async def test_a_quantity_below_the_skus_minimum_is_refused(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The bounds the price list published, enforced by the same columns."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+    sku_id = await _seeded(db_session, **_STARS)
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "stars-3",
+            "sku_id": sku_id,
+            "quantity": 49,
+            "expected_price": "0.82",
+        },
+    )
+
+    assert r.status_code == 422, r.text
+    body = r.json()
+    assert body["code"] == "quantity_out_of_range"
+    assert body["min_qty"] == 50
+    assert body["max_qty"] == 50_000
+    assert await _balance(db_session, merchant_id) == Decimal("10.00")
+
+
+async def test_the_same_order_id_with_a_different_quantity_is_a_conflict(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Quantity is part of the intent, so it is part of the replay digest.
+
+    Without it, a client that retried with a corrected count would be handed
+    the first order — delivering 100 Stars against a request for 1000 and
+    reporting success.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = await _seeded(db_session, **_STARS)
+
+    first = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "stars-dup",
+            "sku_id": sku_id,
+            "quantity": 100,
+            "expected_price": "1.66",
+        },
+    )
+    assert first.status_code == 201, first.text
+
+    second = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "stars-dup",
+            "sku_id": sku_id,
+            "quantity": 1000,
+            "expected_price": "16.54",
+        },
+    )
+    assert second.status_code == 409, second.text

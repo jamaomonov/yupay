@@ -99,6 +99,7 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.catalog.service import DEFAULT_LOCALE
+from yupay.modules.catalog.unit_sku import is_unit_sku
 from yupay.modules.merchants import pricing
 from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
@@ -246,7 +247,11 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
         cost = pricing.effective_cost(sku)
         if cost is None:  # pragma: no cover - the WHERE clause already excludes these
             continue
-        price = pricing.merchant_price(cost, pricing.merchant_markup_pct(sku, merchant))
+        unit = pricing.merchant_unit_price(cost, pricing.merchant_markup_pct(sku, merchant))
+        # The floor on one unit, which is the quantity this row is priced in.
+        # ``merchant_order_total(unit, 1)`` is exactly the old ``merchant_price``
+        # for a fixed SKU, so a row that listed before still lists.
+        price = pricing.merchant_order_total(unit, 1)
         if pricing.violates_margin_floor(cost, price, floor_pct):
             # Not sellable, so not listed — see the module docstring.
             below_floor.append(sku.sku_code)
@@ -271,7 +276,22 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 sku_id=sku.id,
                 sku_code=sku.sku_code,
                 name=sku.denomination or sku.sku_code,
-                price_usd=price,
+                # Two shapes, never both: a fixed denomination has one price
+                # and no quantity, a unit SKU has a rate and bounds. The same
+                # split ``resolve_quantity`` enforces on the order, read off
+                # the same ``is_unit_sku`` — so the catalog cannot advertise a
+                # shape the order path refuses.
+                **(
+                    {
+                        "kind": "unit",
+                        "unit_price_usd": unit,
+                        "unit": sku.amount_unit,
+                        "min_qty": sku.min_qty,
+                        "max_qty": sku.max_qty,
+                    }
+                    if is_unit_sku(sku)
+                    else {"kind": "fixed", "price_usd": price}
+                ),
                 updated_at=sku.updated_at,
             )
         )

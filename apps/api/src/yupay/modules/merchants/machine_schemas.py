@@ -20,7 +20,10 @@ from uuid import UUID
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
 
+from yupay.modules.catalog.unit_sku import UNIT_QTY_WIRE_MAX
+
 _CENT = Decimal("0.01")
+_MICRO = Decimal("0.000001")
 
 
 def _cents_down(value: Decimal) -> Decimal:
@@ -70,6 +73,27 @@ UsdBalance = Annotated[Decimal, AfterValidator(_cents_down)]
 
 #: A USD price on the wire.
 UsdPrice = Annotated[Decimal, AfterValidator(_cents_up)]
+
+
+def _micros_up(value: Decimal) -> Decimal:
+    """Quantize a **per-unit** USD price to six decimals, rounding up.
+
+    A third shape, and the note above explains why it has to be its own rather
+    than a widened ``UsdPrice``: a machine contract cannot hand a client two
+    shapes for one quantity, so a field is either always cents or always
+    micros. This one is always micros, and it appears only on a unit SKU,
+    where the cent is too coarse to price with — one Telegram Star costs about
+    a cent and a half, so rounding its price to the cent is a 29% markup.
+
+    Up, like ``_cents_up`` and for the same reason: never advertise less than
+    we charge. The value published here is the exact multiplicand of the order
+    total, so a merchant can reproduce their charge before sending it.
+    """
+    return value.quantize(_MICRO, rounding=ROUND_CEILING)
+
+
+#: A USD price for one unit of a unit-priced SKU, on the wire.
+UsdUnitPrice = Annotated[Decimal, AfterValidator(_micros_up)]
 
 
 def _cents(value: Decimal) -> Decimal:
@@ -188,10 +212,17 @@ class MerchantProfileOut(BaseModel):
 class MerchantSkuOut(BaseModel):
     """One purchasable line of the wholesale price list.
 
-    ``sku_id`` is what ``POST /merchant/v1/orders`` takes; ``price_usd`` is
-    THIS merchant's price (``pricing.merchant_price``), not the retail one.
-    ``updated_at`` is the SKU row's own stamp, so a merchant polling the
-    price list can tell what moved (spec §8.4 — there are no price webhooks).
+    ``sku_id`` is what ``POST /merchant/v1/orders`` takes. Every price here is
+    THIS merchant's, not the retail one. ``updated_at`` is the SKU row's own
+    stamp, so a merchant polling the price list can tell what moved (spec §8.4
+    — there are no price webhooks).
+
+    **Two shapes, and ``kind`` says which.** A fixed SKU is a denomination:
+    one ``price_usd``, order one of it. A unit SKU is a currency sold by the
+    unit: a six-decimal ``unit_price_usd`` and a ``quantity`` on the order.
+    Exactly one of the two price fields is ever populated, because a machine
+    contract cannot hand a client two shapes for one quantity — and "price" on
+    a unit SKU is not one quantity but two, the per-unit rate and the total.
     """
 
     sku_id: str
@@ -201,7 +232,25 @@ class MerchantSkuOut(BaseModel):
     #: untranslated, so unlike the brand and product names above it this is
     #: the same string in every locale.
     name: str
-    price_usd: UsdPrice
+    #: Which of the two shapes below is populated, and whether ``POST
+    #: /merchant/v1/orders`` wants a ``quantity``. ``"fixed"`` is a
+    #: denomination you buy one of; ``"unit"`` is a currency you buy an amount
+    #: of. The same split G-Engine publishes as FIXED / UNFIXED.
+    kind: Literal["fixed", "unit"]
+    #: ``kind="fixed"`` only: the order total, and what to send as
+    #: ``expected_price``. ``null`` on a unit SKU, which has no price until a
+    #: quantity is chosen.
+    price_usd: UsdPrice | None = None
+    #: ``kind="unit"`` only: the price of ONE unit, at six decimals. Your
+    #: order total is ``ceil_to_cent(unit_price_usd * quantity)`` — computed
+    #: from this exact value, so you can reproduce your charge before sending
+    #: it. ``null`` on a fixed SKU.
+    unit_price_usd: UsdUnitPrice | None = None
+    #: ``kind="unit"`` only: what one unit is, for your UI ("stars").
+    unit: str | None = None
+    #: ``kind="unit"`` only: the inclusive bounds on ``quantity``.
+    min_qty: int | None = None
+    max_qty: int | None = None
     updated_at: datetime
 
 
@@ -246,12 +295,11 @@ class MerchantCatalogOut(BaseModel):
 class MerchantOrderCreateIn(BaseModel):
     """Body of ``POST /merchant/v1/orders`` (spec §9.1).
 
-    One SKU per order, deliberately: the spec's body shape has no ``qty`` and
-    no line array, a reseller's own basket does not have to be ours, and a
-    single line keeps "the order failed" from meaning "part of the order
-    failed". A ``qty`` or an ``items`` array can be *added* later without a
+    One SKU per order, deliberately: a reseller's own basket does not have to
+    be ours, and a single line keeps "the order failed" from meaning "part of
+    the order failed". An ``items`` array can still be *added* later without a
     ``/merchant/v2`` — a new optional request field is additive; removing one
-    is not.
+    is not, which is the escape hatch ``quantity`` below was added through.
 
     ``extra="forbid"`` on purpose. On a response, ignoring an unknown field is
     right; on a *request* it is how a typo'd ``fulfilment_data`` silently
@@ -271,7 +319,16 @@ class MerchantOrderCreateIn(BaseModel):
     #: refusal belongs — and normalised to the spelling Postgres accepts; see
     #: :func:`_canonical_uuid`.
     sku_id: SkuId
-    #: The price you last read from ``/catalog``. A tolerance, not a bid:
+    #: How many units, on a ``kind="unit"`` SKU — **required** there and
+    #: **refused** on a ``kind="fixed"`` one, both as a 422. Neither direction
+    #: is a silent default: a missing quantity on a unit SKU would sell one
+    #: Star, and an ignored one on a fixed SKU would charge for a denomination
+    #: while the merchant believed they bought ten. Bounded by the SKU's own
+    #: ``min_qty``/``max_qty`` from ``/catalog``.
+    quantity: int | None = Field(default=None, ge=1, le=UNIT_QTY_WIRE_MAX)
+    #: The **order total** you last computed from ``/catalog`` — for a fixed
+    #: SKU that is its ``price_usd``; for a unit SKU it is
+    #: ``ceil_to_cent(unit_price_usd * quantity)``. A tolerance, not a bid:
     #: within ±2% of ours the order proceeds and is charged at **our** current
     #: price; outside it, ``422 price_changed`` carries that price (spec §8.4,
     #: amended 2026-09-07).

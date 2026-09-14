@@ -7034,7 +7034,7 @@
       },
       "MerchantOrderCreateIn": {
         "additionalProperties": false,
-        "description": "Body of ``POST /merchant/v1/orders`` (spec \u00a79.1).\n\nOne SKU per order, deliberately: the spec's body shape has no ``qty`` and\nno line array, a reseller's own basket does not have to be ours, and a\nsingle line keeps \"the order failed\" from meaning \"part of the order\nfailed\". A ``qty`` or an ``items`` array can be *added* later without a\n``/merchant/v2`` \u2014 a new optional request field is additive; removing one\nis not.\n\n``extra=\"forbid\"`` on purpose. On a response, ignoring an unknown field is\nright; on a *request* it is how a typo'd ``fulfilment_data`` silently\nbecomes an order with no player id, delivered to nobody.",
+        "description": "Body of ``POST /merchant/v1/orders`` (spec \u00a79.1).\n\nOne SKU per order, deliberately: a reseller's own basket does not have to\nbe ours, and a single line keeps \"the order failed\" from meaning \"part of\nthe order failed\". An ``items`` array can still be *added* later without a\n``/merchant/v2`` \u2014 a new optional request field is additive; removing one\nis not, which is the escape hatch ``quantity`` below was added through.\n\n``extra=\"forbid\"`` on purpose. On a response, ignoring an unknown field is\nright; on a *request* it is how a typo'd ``fulfilment_data`` silently\nbecomes an order with no player id, delivered to nobody.",
         "properties": {
           "expected_price": {
             "anyOf": [
@@ -7060,6 +7060,19 @@
             "pattern": "^[\\x21-\\x7e]+$",
             "title": "Merchant Order Id",
             "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "maximum": 50000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
           },
           "sku_id": {
             "title": "Sku Id",
@@ -7410,16 +7423,53 @@
         "type": "object"
       },
       "MerchantSkuOut": {
-        "description": "One purchasable line of the wholesale price list.\n\n``sku_id`` is what ``POST /merchant/v1/orders`` takes; ``price_usd`` is\nTHIS merchant's price (``pricing.merchant_price``), not the retail one.\n``updated_at`` is the SKU row's own stamp, so a merchant polling the\nprice list can tell what moved (spec \u00a78.4 \u2014 there are no price webhooks).",
+        "description": "One purchasable line of the wholesale price list.\n\n``sku_id`` is what ``POST /merchant/v1/orders`` takes. Every price here is\nTHIS merchant's, not the retail one. ``updated_at`` is the SKU row's own\nstamp, so a merchant polling the price list can tell what moved (spec \u00a78.4\n\u2014 there are no price webhooks).\n\n**Two shapes, and ``kind`` says which.** A fixed SKU is a denomination:\none ``price_usd``, order one of it. A unit SKU is a currency sold by the\nunit: a six-decimal ``unit_price_usd`` and a ``quantity`` on the order.\nExactly one of the two price fields is ever populated, because a machine\ncontract cannot hand a client two shapes for one quantity \u2014 and \"price\" on\na unit SKU is not one quantity but two, the per-unit rate and the total.",
         "properties": {
+          "kind": {
+            "enum": [
+              "fixed",
+              "unit"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Qty"
+          },
+          "min_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Qty"
+          },
           "name": {
             "title": "Name",
             "type": "string"
           },
           "price_usd": {
-            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
-            "title": "Price Usd",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
           },
           "sku_code": {
             "title": "Sku Code",
@@ -7428,6 +7478,29 @@
           "sku_id": {
             "title": "Sku Id",
             "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Price Usd"
           },
           "updated_at": {
             "format": "date-time",
@@ -7439,7 +7512,7 @@
           "sku_id",
           "sku_code",
           "name",
-          "price_usd",
+          "kind",
           "updated_at"
         ],
         "title": "MerchantSkuOut",

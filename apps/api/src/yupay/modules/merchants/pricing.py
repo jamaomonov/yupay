@@ -32,6 +32,10 @@ if TYPE_CHECKING:
     from yupay.modules.merchants.models import Merchant
 
 _CENT = Decimal("0.01")
+#: The scale ``skus.price_usd`` / ``order_items.unit_price_usd`` already hold
+#: (``Numeric(20, 6)``). A unit SKU's price lives here rather than at the cent,
+#: which is a third of one Telegram Star.
+_MICRO = Decimal("0.000001")
 _ZERO = Decimal("0")
 _HUNDRED = Decimal("100")
 
@@ -78,8 +82,57 @@ def merchant_markup_pct(sku: Sku, merchant: Merchant) -> Decimal:
     return sku.b2b_markup_pct + (merchant.markup_adjustment_pp or _ZERO)
 
 
+def merchant_unit_price(cost: Decimal, markup_pct: Decimal) -> Decimal:
+    """Cost plus markup for **one unit**, at the scale the columns hold.
+
+    The published price of a unit SKU (Telegram Stars) and the number its
+    order total is computed from — the same value, on purpose. A merchant has
+    to be able to reproduce what they will be charged before they send
+    ``expected_price``, and they cannot do that from a number we rounded
+    differently than we multiplied.
+
+    Six decimals rather than two because a cent is not small here. One Star
+    costs $0.015455; rounding its price up to the cent charges $0.02, which is
+    a 29% markup arrived at by arithmetic rather than by anyone deciding it,
+    and it lands above our own retail price of $0.0191 — so the wholesale
+    offer was worse than walking into the shop. That was live on production
+    until this function existed.
+
+    Args:
+        cost: The SKU's wholesale cost — :func:`effective_cost`'s result.
+        markup_pct: The markup percentage from :func:`merchant_markup_pct`.
+
+    Returns:
+        The per-unit price at six decimal places, rounded up.
+    """
+    return (cost * (Decimal("1") + markup_pct / _HUNDRED)).quantize(_MICRO, rounding=ROUND_CEILING)
+
+
+def merchant_order_total(unit_price: Decimal, qty: int) -> Decimal:
+    """What the deposit is charged: the unit price times the quantity, to the cent.
+
+    **One rounding, at the end.** Rounding each unit and then multiplying is
+    what made a thousand Stars cost $20.00 instead of $16.54 — the half-cent
+    of rounding, charged a thousand times. Money leaves the deposit in whole
+    cents, so the cent has to happen somewhere; it happens once, here, on the
+    quantity actually being bought.
+
+    Args:
+        unit_price: :func:`merchant_unit_price`'s result — the same value the
+            price list published, not a re-derivation of it.
+        qty: How many units. ``1`` for a fixed-denomination SKU.
+
+    Returns:
+        The order total at two decimal places, rounded up.
+    """
+    return (unit_price * qty).quantize(_CENT, rounding=ROUND_CEILING)
+
+
 def merchant_price(cost: Decimal, markup_pct: Decimal) -> Decimal:
-    """The wholesale price a merchant pays: cost plus markup, rounded up.
+    """The wholesale price a merchant pays for one fixed-denomination SKU.
+
+    Defined through the pair above rather than beside them, so a fixed SKU is
+    simply the ``qty=1`` case of the same rule and the two cannot drift.
 
     Rounding is always up, to the cent (``ROUND_CEILING``) — rounding down
     would erase margin on cheap SKUs one invisible cent at a time.
@@ -101,7 +154,7 @@ def merchant_price(cost: Decimal, markup_pct: Decimal) -> Decimal:
     Returns:
         The price, quantized to two decimal places, rounded up.
     """
-    return (cost * (Decimal("1") + markup_pct / _HUNDRED)).quantize(_CENT, rounding=ROUND_CEILING)
+    return merchant_order_total(merchant_unit_price(cost, markup_pct), 1)
 
 
 def violates_margin_floor(cost: Decimal, price: Decimal, floor_pct: Decimal) -> bool:
@@ -208,7 +261,9 @@ __all__ = [
     "PRICE_DRIFT_TOLERANCE_PCT",
     "effective_cost",
     "merchant_markup_pct",
+    "merchant_order_total",
     "merchant_price",
+    "merchant_unit_price",
     "price_to_charge",
     "violates_margin_floor",
 ]

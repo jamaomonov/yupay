@@ -64,7 +64,7 @@ from typing import TYPE_CHECKING, Final
 from yupay.core.config import get_settings
 from yupay.core.errors import ConflictError
 from yupay.core.logging import get_logger
-from yupay.modules.merchants import deposit, quote
+from yupay.modules.merchants import deposit, pricing, quote
 from yupay.modules.merchants.machine_schemas import MerchantOrderCreateIn, MerchantOrderOut
 
 # Imported as a submodule rather than through the ``orders`` facade: that
@@ -117,6 +117,11 @@ def _request_digest(body: MerchantOrderCreateIn) -> str:
     canonical = json.dumps(
         {
             "sku_id": body.sku_id,
+            # Part of the intent, not of the price: ordering 100 Stars and
+            # ordering 1000 under one ``merchant_order_id`` is a client bug,
+            # and without this line the second would be answered with the
+            # first order as though it were a retry.
+            "quantity": body.quantity,
             "expected_price": str(body.expected_price.quantize(_CENT)),
             "fulfillment_data": body.fulfillment_data,
         },
@@ -136,14 +141,22 @@ def _recorded_digest(order: Order) -> str | None:
 
 
 def _out(order: Order, *, balance: Decimal) -> MerchantOrderOut:
-    """Project a persisted merchant order onto the wire contract."""
+    """Project a persisted merchant order onto the wire contract.
+
+    ``price_usd`` is rebuilt through :func:`pricing.merchant_order_total`
+    rather than read off the line, because the line carries a per-unit *rate*
+    once a SKU can be sold by the thousand — $0.016537 on an order that cost
+    $16.54. Through the same function ``place`` charged the deposit with, so
+    the response and the debit are one rule rather than two that happen to
+    round the same way.
+    """
     item = order.items[0]
     return MerchantOrderOut(
         merchant_order_id=order.idempotency_key or "",
         order_id=order.id,
         status=order.status,
         sku_id=item.sku_id,
-        price_usd=item.unit_price_usd,
+        price_usd=pricing.merchant_order_total(item.unit_price_usd, item.qty),
         balance_usd=balance,
         created_at=order.created_at,
     )
@@ -268,7 +281,9 @@ async def place(
         return await _replayed(db, already, merchant_id=merchant_id, digest=digest)
 
     sku, cost = await quote.load_orderable_sku(db, sku_id=body.sku_id)
-    price = quote.price_for(sku, cost, merchant, body)
+    qty = quote.resolve_quantity(sku, body.quantity)
+    quoted = quote.price_for(sku, cost, merchant, body, qty=qty)
+    price = quoted.total
 
     # The clean 409, before anything is written. Not the guarantee — that is
     # ``charge_deposit``'s row lock (Ruling 3) — but it is what keeps the
@@ -294,11 +309,19 @@ async def place(
         db,
         OrderCreate(
             currency=deposit.DEPOSIT_CURRENCY,
-            items=[OrderItemIn(sku_id=sku.id, qty=1, fulfillment_data=body.fulfillment_data)],
+            items=[OrderItemIn(sku_id=sku.id, qty=qty, fulfillment_data=body.fulfillment_data)],
         ),
         actor=actor,
         idempotency_key=body.merchant_order_id,
-        unit_price_usd_override=(price,),
+        # The **rate**, not the money: the line records what one unit cost and
+        # fulfilment reads ``qty`` beside it as the amount to deliver (a unit
+        # SKU's ``qty`` is the customer's star count — see
+        # ``fulfillment.suppliers.gengine``). The deposit is charged
+        # ``quoted.total`` below instead, which is the same number at
+        # ``qty=1`` and the whole-cent rounding of this one above it.
+        # ``deposit.charged_for_order`` is the authority on what was paid and
+        # says so in its own docstring; nothing reads the line for money.
+        unit_price_usd_override=(quoted.unit_price,),
         # Spec item 3b. ``expected_price`` decides whether the order proceeds
         # and never what it costs, and until now it survived only inside
         # ``_request_digest``'s one-way SHA-256 — so a reseller disputing a

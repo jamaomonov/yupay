@@ -22,7 +22,7 @@ shared with retail checkout. This module sequences them and names the failure.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, NamedTuple
 
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -31,6 +31,7 @@ from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Product, Sku
+from yupay.modules.catalog.unit_sku import assert_qty_allowed, is_unit_sku
 from yupay.modules.merchants import pricing
 
 # Imported as a submodule rather than through the ``orders`` facade: that
@@ -86,6 +87,71 @@ def unavailable(sku_id: str, reason: str) -> NotFoundError:
     )
 
 
+#: ``quantity`` missing on a SKU sold by the unit. Not defaulted to 1: that
+#: would sell one Telegram Star and charge two cents for it.
+CODE_QUANTITY_REQUIRED: Final = "quantity_required"
+
+#: ``quantity`` sent for a fixed denomination. Not ignored: a merchant who
+#: sent it believes they bought that many, and silently charging for one is
+#: the same bug in the direction that costs them goods instead of money.
+CODE_QUANTITY_NOT_ACCEPTED: Final = "quantity_not_accepted"
+
+#: ``quantity`` outside the SKU's published ``min_qty``/``max_qty``.
+CODE_QUANTITY_OUT_OF_RANGE: Final = "quantity_out_of_range"
+
+
+def resolve_quantity(sku: Sku, quantity: int | None) -> int:
+    """How many units this order buys, refusing every other reading.
+
+    The FIXED/UNFIXED split, which this codebase already draws with
+    :func:`catalog.unit_sku.is_unit_sku`: a fixed denomination is bought one
+    at a time, a unit SKU is a currency and needs an amount. Both mismatches
+    are refused rather than defaulted, in both directions, because each
+    default is a silent wrong answer — one sells a single Star, the other
+    charges for one denomination while the merchant believes they bought ten.
+
+    Args:
+        sku: The SKU being bought.
+        quantity: The request's ``quantity``, or ``None``.
+
+    Returns:
+        The quantity to put on the order line — always ``1`` for a fixed SKU.
+
+    Raises:
+        ValidationError: One of the three ``quantity_*`` codes.
+    """
+    if not is_unit_sku(sku):
+        if quantity is not None:
+            raise ValidationError(
+                "this SKU is a fixed denomination and takes no quantity",
+                code=CODE_QUANTITY_NOT_ACCEPTED,
+                sku_id=sku.id,
+            )
+        return 1
+    if quantity is None:
+        raise ValidationError(
+            "this SKU is sold by the unit and needs a quantity",
+            code=CODE_QUANTITY_REQUIRED,
+            sku_id=sku.id,
+            min_qty=sku.min_qty,
+            max_qty=sku.max_qty,
+        )
+    try:
+        # The same bounds the storefront enforces, read off the same columns
+        # the price list published — one gate, so a merchant cannot be told a
+        # range the order path disagrees with.
+        assert_qty_allowed(sku, quantity)
+    except ValidationError as exc:
+        raise ValidationError(
+            "quantity is outside this SKU's range",
+            code=CODE_QUANTITY_OUT_OF_RANGE,
+            sku_id=sku.id,
+            min_qty=sku.min_qty,
+            max_qty=sku.max_qty,
+        ) from exc
+    return quantity
+
+
 async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Decimal]:
     """Load a SKU and refuse it unless a merchant can buy it right now.
 
@@ -135,7 +201,25 @@ async def load_orderable_sku(db: AsyncSession, *, sku_id: str) -> tuple[Sku, Dec
     return sku, cost
 
 
-def price_for(sku: Sku, cost: Decimal, merchant: Merchant, body: MerchantOrderCreateIn) -> Decimal:
+class MerchantQuote(NamedTuple):
+    """What one merchant order costs, as its two distinct numbers.
+
+    They are not the same quantity and a single "price" cannot be both:
+    ``unit_price`` is a rate at six decimals that goes on the order line and
+    that the price list published, while ``total`` is money at the cent, which
+    is what leaves the deposit. For a fixed denomination they coincide at
+    ``qty=1``; for a thousand Telegram Stars they are $0.016537 and $16.54.
+    """
+
+    #: Six decimals — recorded as ``order_items.unit_price_usd``.
+    unit_price: Decimal
+    #: Whole cents — charged to the deposit, and the authority for a refund.
+    total: Decimal
+
+
+def price_for(
+    sku: Sku, cost: Decimal, merchant: Merchant, body: MerchantOrderCreateIn, *, qty: int
+) -> MerchantQuote:
     """Our price for this merchant, reconciled against the one they quoted.
 
     Args:
@@ -145,22 +229,28 @@ def price_for(sku: Sku, cost: Decimal, merchant: Merchant, body: MerchantOrderCr
         merchant: The buyer, whose ``markup_adjustment_pp`` (dormant in v1)
             makes this price theirs rather than anyone's.
         body: The request, for ``expected_price``.
+        qty: :func:`resolve_quantity`'s result — ``1`` for a fixed SKU.
 
     Returns:
-        The price to charge, which is always **ours**. ``expected_price`` is
-        an accept/reject tolerance and not a bid (spec §8.4 as amended by the
+        The rate and the money, both **ours**. ``expected_price`` is an
+        accept/reject tolerance and not a bid (spec §8.4 as amended by the
         owner on 2026-09-07): inside the ±2% band the order proceeds at our
         number, never at the merchant's, and the reasoning is written out at
-        :func:`pricing.price_to_charge`.
+        :func:`pricing.price_to_charge`. It is compared against the **total**,
+        which is what a merchant is asked to send and what they pay.
 
     Raises:
         ValidationError: ``margin_floor`` when our own price fails the floor,
             or ``price_changed`` when the merchant's number has drifted too
             far from it.
     """
-    current = pricing.merchant_price(cost, pricing.merchant_markup_pct(sku, merchant))
+    unit = pricing.merchant_unit_price(cost, pricing.merchant_markup_pct(sku, merchant))
+    current = pricing.merchant_order_total(unit, qty)
     floor_pct = get_settings().merchant_margin_floor_pct
-    if pricing.violates_margin_floor(cost, current, floor_pct):
+    # Against the cost of what is actually being bought, so the floor means the
+    # same thing at any quantity — and, at ``qty=1``, exactly what it meant
+    # before quantity existed.
+    if pricing.violates_margin_floor(cost * qty, current, floor_pct):
         # The same guard ``price_list.build`` applies, reading the same
         # setting, so a SKU the catalog withheld is a SKU this refuses.
         log.warning(
@@ -184,14 +274,19 @@ def price_for(sku: Sku, cost: Decimal, merchant: Merchant, body: MerchantOrderCr
             current_price=str(current),
             expected_price=str(body.expected_price),
         )
-    return charge
+    return MerchantQuote(unit_price=unit, total=charge)
 
 
 __all__ = [
     "CODE_ITEM_UNAVAILABLE",
     "CODE_MARGIN_FLOOR",
     "CODE_PRICE_CHANGED",
+    "CODE_QUANTITY_NOT_ACCEPTED",
+    "CODE_QUANTITY_OUT_OF_RANGE",
+    "CODE_QUANTITY_REQUIRED",
+    "MerchantQuote",
     "load_orderable_sku",
     "price_for",
+    "resolve_quantity",
     "unavailable",
 ]

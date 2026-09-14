@@ -423,15 +423,76 @@ async def test_catalog_returns_the_b2b_visible_tree(
     # Exact shape, not a subset: this is a frozen third-party contract, and a
     # field added to ``MerchantSkuOut`` would otherwise be caught only by the
     # OpenAPI drift check. Same reason ``/me`` asserts its whole body.
-    assert set(sku) == {"sku_id", "sku_code", "name", "price_usd", "updated_at"}
+    assert set(sku) == {
+        "sku_id",
+        "sku_code",
+        "name",
+        "kind",
+        "price_usd",
+        "unit_price_usd",
+        "unit",
+        "min_qty",
+        "max_qty",
+        "updated_at",
+    }
     assert set(product) == {"product_id", "slug", "name", "skus"}
     assert set(brand) == {"brand_id", "slug", "name", "products"}
     assert set(body) == {"brands"}
     assert sku["sku_id"] == ids["vis-1"]
     assert sku["sku_code"] == "vis-1"
     assert sku["name"] == "60 UC"
+    # A fixed denomination: one price, and the unit half of the row empty.
+    # Both halves are always present as keys — a client branching on `kind`
+    # should not also have to branch on whether a field exists.
+    assert sku["kind"] == "fixed"
     assert isinstance(sku["price_usd"], str)
+    assert sku["unit_price_usd"] is None
+    assert sku["unit"] is None
+    assert sku["min_qty"] is None
+    assert sku["max_qty"] is None
     assert sku["updated_at"]
+
+
+async def test_catalog_prices_a_unit_sku_by_the_unit(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The shape a currency sold by the unit takes — G-Engine's UNFIXED.
+
+    The number matters as much as the shape. One Telegram Star costs
+    $0.015455; at the stock 7% markup the honest per-unit price is $0.016537,
+    and rounding it to the cent — which is what the price list did before
+    there was a unit shape — publishes $0.02, a 29% markup and more than our
+    own retail price of $0.0191. A thousand Stars at the published rate is
+    $16.54; at the rounded one it was $20.00.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(
+        db_session,
+        n=7,
+        skus=[
+            {
+                "sku_code": "stars-1",
+                "denomination": "Любое количество",
+                "cost_usdt": Decimal("0.015455"),
+                "amount_unit": "stars",
+                "min_qty": 50,
+                "max_qty": 50_000,
+            }
+        ],
+    )
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+    assert r.status_code == 200, r.text
+    sku = r.json()["brands"][0]["products"][0]["skus"][0]
+
+    assert sku["kind"] == "unit"
+    assert sku["unit_price_usd"] == "0.016537"
+    assert sku["price_usd"] is None, "a unit SKU has no price until a quantity is chosen"
+    assert sku["unit"] == "stars"
+    assert sku["min_qty"] == 50
+    assert sku["max_qty"] == 50_000
 
 
 async def test_catalog_hides_skus_that_are_not_b2b_visible(
