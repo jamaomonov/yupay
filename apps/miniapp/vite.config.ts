@@ -88,5 +88,29 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      output: {
+        // Vendors split out of the app chunk, for two reasons and one of them
+        // is not caching.
+        //
+        // The measurable one: this is the only way to see what the 200 KB is
+        // made of. `dist/assets/index-*.js` reported one number for the app
+        // and every library it pulls, so "the miniapp is over budget" could
+        // not be turned into "this library is the budget". AGENTS.md §10 has
+        // carried a 120 KB target since before the first measurement, and it
+        // drifted to 231 KB precisely because nothing broke the number down.
+        //
+        // The ordinary one: these files change on a dependency bump, the app
+        // chunk changes on every deploy, and a returning user should re-fetch
+        // only the half that moved.
+        // Only the two that measured. `react`, `telegram` and `forms` were
+        // tried and emitted 30-byte stubs — Rollup had already placed them
+        // where they are used, and naming them bought an empty file each.
+        manualChunks: {
+          motion: ["framer-motion"],
+          query: ["@tanstack/react-query"],
+        },
+      },
+    },
   },
 });

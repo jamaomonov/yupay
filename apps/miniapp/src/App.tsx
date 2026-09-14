@@ -16,22 +16,31 @@ import { I18nProvider, useT } from "@/lib/i18n";
 import { parseReviewLaunchParam } from "@/lib/review-ask";
 import { getWebApp, showSettingsButton, watchTelegramActivity } from "@/lib/telegram";
 import { useTelegramBackButton } from "@/lib/use-telegram-back-button";
-import CS2SkinMarket from "@/pages/CS2SkinMarket";
-import History from "@/pages/History";
 import Home from "@/pages/Home";
-import OrderSuccess from "@/pages/OrderSuccess";
-import Settings from "@/pages/Settings";
-import TopUp from "@/pages/TopUp";
-import Wallet from "@/pages/Wallet";
-import WalletTopUp from "@/pages/WalletTopUp";
 
-// The Steam Gifts screens are the first code-split routes in the app — the
-// miniapp is already over its 120KB bundle budget (see AGENTS.md §10), and
-// this catalog/game pair (plus its own sheets) is sizeable enough that
-// deferring it until someone actually opens `/gifts` is worth the extra
-// `Suspense` boundary.
+// `Home` is the only screen that is eagerly imported, because it is the only
+// one anybody sees on launch. Every other route is a separate chunk.
+//
+// The gifts pair was split first, and the rest followed once the mini app's
+// load path was measured during the 2026-09-14 «Не удалось загрузить»
+// incident: nine of eleven routes were static imports, so the wallet, the
+// history, the settings and the CS2 market were all downloaded by someone who
+// opened the app and looked at the home screen. On mobile data, in a Telegram
+// webview that gives up on a slow load, that is not a tidiness problem.
+//
+// The budget this serves is AGENTS.md §10: 120 KB gzipped for the miniapp,
+// against 231 KB measured before this change. Nothing enforces it in CI, which
+// is why it drifted — so the number belongs in a commit message and a review,
+// not only in a document.
+const CS2SkinMarket = lazy(() => import("@/pages/CS2SkinMarket"));
 const GiftsCatalog = lazy(() => import("@/pages/GiftsCatalog"));
 const GiftGame = lazy(() => import("@/pages/GiftGame"));
+const History = lazy(() => import("@/pages/History"));
+const OrderSuccess = lazy(() => import("@/pages/OrderSuccess"));
+const Settings = lazy(() => import("@/pages/Settings"));
+const TopUp = lazy(() => import("@/pages/TopUp"));
+const Wallet = lazy(() => import("@/pages/Wallet"));
+const WalletTopUp = lazy(() => import("@/pages/WalletTopUp"));
 
 function NotFound() {
   const { t } = useT();
@@ -120,8 +129,16 @@ function Router() {
       <CatchUpReviewDialog />
       <Switch>
         <Route path="/" component={Home} />
-        <Route path="/cs2-market" component={CS2SkinMarket} />
-        <Route path="/topup/:gameId" component={TopUp} />
+        <Route path="/cs2-market">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <CS2SkinMarket />
+          </Suspense>
+        </Route>
+        <Route path="/topup/:gameId">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <TopUp />
+          </Suspense>
+        </Route>
         <Route path="/gifts">
           <Suspense fallback={<GiftsRouteSkeleton />}>
             <GiftsCatalog />
@@ -132,11 +149,31 @@ function Router() {
             <GiftGame />
           </Suspense>
         </Route>
-        <Route path="/order/:id" component={OrderSuccess} />
-        <Route path="/wallet" component={Wallet} />
-        <Route path="/wallet/topup" component={WalletTopUp} />
-        <Route path="/history" component={History} />
-        <Route path="/settings" component={Settings} />
+        <Route path="/order/:id">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <OrderSuccess />
+          </Suspense>
+        </Route>
+        <Route path="/wallet">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <Wallet />
+          </Suspense>
+        </Route>
+        <Route path="/wallet/topup">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <WalletTopUp />
+          </Suspense>
+        </Route>
+        <Route path="/history">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <History />
+          </Suspense>
+        </Route>
+        <Route path="/settings">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <Settings />
+          </Suspense>
+        </Route>
         <Route component={NotFound} />
       </Switch>
     </Shell>
