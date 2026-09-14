@@ -9,6 +9,14 @@ shares, and failing open never gets a chance to happen.
 
 This box has a documented history of a disk fill wedging a colocated service,
 so a slow Redis is a realistic incident rather than a theoretical one.
+
+What actually happened was smaller and stranger than a wedge: a Redis holding
+2 MB, serving 0 ops/sec, with nothing in its slow log but the Prometheus
+exporter. Connections that sit idle die quietly, and the client was configured
+to *notice* that (a health-check PING) without being allowed to do anything
+about it (zero retries), so the PING's own read timed out into the caller.
+Hence the retry test below — the health check and the retry are one mechanism,
+and either alone is a false comfort.
 """
 
 from __future__ import annotations
@@ -38,6 +46,23 @@ def test_dead_connections_are_noticed_rather_than_reused() -> None:
     than as the reconnect it should have been."""
     kwargs = rmod.get_redis().connection_pool.connection_kwargs
     assert kwargs.get("health_check_interval", 0) > 0
+
+
+def test_a_dead_connection_is_retried_rather_than_surfaced() -> None:
+    """The other half of the health check.
+
+    Detecting a dead socket and then handing its timeout to the caller is not
+    a recovery: on production it read as 138 unhandled `TimeoutError`s in five
+    days, on a Redis that was doing nothing at all. One retry gets a fresh
+    connection; more than that would be waiting out an outage on the request
+    path, which the socket timeouts above exist to refuse.
+    """
+    pool = rmod.get_redis().connection_pool
+    conn = pool.make_connection()
+    assert conn.retry is not None
+    assert getattr(conn.retry, "_retries", 0) >= 1, "a dead socket must be retried, not raised"
+    retried_on = {exc.__name__ for exc in getattr(conn, "retry_on_error", [])}
+    assert {"TimeoutError", "ConnectionError"} <= retried_on
 
 
 def test_decode_and_encoding_are_unchanged() -> None:

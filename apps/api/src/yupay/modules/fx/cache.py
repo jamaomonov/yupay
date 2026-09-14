@@ -15,12 +15,14 @@ degradation when every provider fails. A manual override short-circuits both.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 
 from yupay.modules.fx.providers.base import Quote
 
@@ -72,10 +74,19 @@ async def write(
     fresh_ttl_seconds: int,
     stale_ttl_seconds: int,
 ) -> None:
-    """Store both ``fresh`` and ``:stale`` copies of a quote."""
+    """Store both ``fresh`` and ``:stale`` copies of a quote.
+
+    Best effort. This runs on the request path, straight after a provider has
+    already answered — the quote in hand is the thing the customer is waiting
+    for, and losing the chance to remember it is not a reason to lose it. The
+    reads (``read_fresh`` / ``read_stale``) deliberately do not swallow: a read
+    that fails is not a miss, and treating it as one sends every request to a
+    provider over HTTP.
+    """
     payload = _serialise(q)
-    await redis.set(_key(q.base, q.quote), payload, ex=fresh_ttl_seconds)
-    await redis.set(_key(q.base, q.quote, stale=True), payload, ex=stale_ttl_seconds)
+    with contextlib.suppress(RedisError):
+        await redis.set(_key(q.base, q.quote), payload, ex=fresh_ttl_seconds)
+        await redis.set(_key(q.base, q.quote, stale=True), payload, ex=stale_ttl_seconds)
 
 
 async def invalidate(redis: Redis, base: str, quote: str) -> None:
@@ -140,7 +151,16 @@ async def write_manual(
 
 
 async def write_manual_absent(redis: Redis, quote: str) -> None:
-    """Negative-cache a missing settings row so get_rate does not hit Postgres."""
+    """Negative-cache a missing settings row so get_rate does not hit Postgres.
+
+    Best effort, unlike ``write_manual`` itself: this records an absence for
+    speed, while that records an operator's decision.
+    """
+    with contextlib.suppress(RedisError):
+        await _write_manual_absent(redis, quote)
+
+
+async def _write_manual_absent(redis: Redis, quote: str) -> None:
     await write_manual(
         redis,
         quote=quote,

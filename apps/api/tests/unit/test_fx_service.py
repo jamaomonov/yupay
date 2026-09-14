@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock
 
 import fakeredis.aioredis
 import pytest
+from redis.exceptions import RedisError
 from yupay.core.clock import now
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
 from yupay.modules.fx.service import FxService, FxUnavailableError
@@ -377,3 +378,49 @@ async def test_the_refreshed_value_replaces_the_old_one(redis) -> None:
     await svc.refresh_all(AsyncMock(), base="USD", quotes=["RUB"])
 
     assert (await svc.get_rate("USD", "RUB")).rate == Decimal("95")
+
+
+async def test_a_redis_failure_is_not_read_as_a_cache_miss(redis, monkeypatch) -> None:
+    """The distinction this whole path turns on.
+
+    A miss means "nobody has this rate, go ask a provider". A failure means
+    "we cannot see whether anybody has it". Collapsing the second into the
+    first sends every concurrent catalog request out to a rate-limited third
+    party over HTTP, from inside a request handler — a Redis blip becoming a
+    provider stampede, which is worse than the blip.
+
+    What production actually did was neither: the `TimeoutError` travelled past
+    `except FxUnavailableError` in the catalog routes and 500ed the product and
+    brand pages, 132 times in five days.
+    """
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+
+    async def _timeout(*_args: object, **_kwargs: object) -> object:
+        raise RedisError("Timeout reading from redis:6379")
+
+    monkeypatch.setattr(redis, "get", _timeout)
+
+    with pytest.raises(FxUnavailableError):
+        await svc.get_rate("USD", "RUB")
+    assert provider.calls == 0, "a Redis failure must not send the request to a provider"
+
+
+async def test_a_failed_cache_write_does_not_lose_the_quote(redis, monkeypatch) -> None:
+    """The answer is already in hand; failing to remember it is not failing.
+
+    The read side refuses to guess, the write side refuses to matter — the
+    asymmetry is the point, and it is why this is not one blanket `suppress`
+    around the whole path.
+    """
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+
+    async def _timeout(*_args: object, **_kwargs: object) -> object:
+        raise RedisError("Timeout writing to redis:6379")
+
+    monkeypatch.setattr(redis, "set", _timeout)
+
+    q = await svc.get_rate("USD", "RUB")
+    assert q.rate == Decimal("90")
+    assert provider.calls == 1

@@ -6,11 +6,13 @@ of truth and is consulted only on a cache miss, then written back.
 
 from __future__ import annotations
 
+import contextlib
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -87,8 +89,16 @@ async def load_override(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None,
 ) -> ManualOverride | None:
-    """Redis, then Postgres. Writes Redis on a DB hit (or a short negative cache)."""
-    cached = await cache.read_manual(redis, quote)
+    """Redis, then Postgres. Writes Redis on a DB hit (or a short negative cache).
+
+    A Redis failure is not an answer, but this path has a real one behind it:
+    Postgres holds the same row, and reaching it costs a query rather than a
+    500. Distinct from the rate cache, where the fallback is an outbound HTTP
+    call and swallowing the error would turn a blip into a provider stampede.
+    """
+    cached = None
+    with contextlib.suppress(RedisError):
+        cached = await cache.read_manual(redis, quote)
     if cached is not None:
         return _from_payload(cached)
     if session_factory is None:

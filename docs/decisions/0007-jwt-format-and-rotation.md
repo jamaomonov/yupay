@@ -138,6 +138,32 @@ tokens server-side. No long-lived refresh is issued to the mini-app surface.
   remediation record, including the frontend changes and the one-time re-login
   consequence for sessions active at deploy time.
 
+- **2026-09-14 — the blocklist read fails open when Redis cannot answer.**
+  This ADR specified the blocklist without saying what happens when the store
+  behind it is unreachable, and the code took the accidental answer: the
+  `TimeoutError` propagated and every authenticated request 500ed. Sentry found
+  it through the WebSocket handshake, but `current_user` is on every
+  authenticated endpoint, so that was the reach.
+
+  Three options, and the one in place was the worst of them — it blocked the
+  customer _and_ paged us. Refusing (401) would sign every customer out
+  simultaneously for the length of a Redis blip, promoting a cache outage to a
+  total one. Allowing is what we now do, and its cost is bounded by this ADR's
+  own design: the blocklist **accelerates** an expiry that happens anyway.
+  Access tokens live 15 minutes; losing the list for the seconds of a blip
+  means a revoked token keeps working for those seconds and never past the TTL
+  already accepted here. Bans are unaffected — ADR-0045 checks those against
+  Postgres, not Redis.
+
+  Note the tension with "Alternatives considered" above, which rejected opaque
+  tokens partly for being "a single point of failure": the blocklist read
+  reintroduced exactly that, one Redis GET in front of every authenticated
+  request. Failing open is what keeps it from behaving like one.
+
+  Implemented as `auth.service._is_blocklisted`, pinned by
+  `tests/unit/test_auth_blocklist_posture.py`. The key is never logged — it
+  carries a `jti`/`sid`.
+
 ## References
 
 - [ADR-0002](./0002-use-modular-monolith.md)

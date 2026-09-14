@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -137,7 +138,18 @@ class FxService:
             )
 
         if not force:
-            fresh = await cache.read_fresh(self._redis, base_u, quote_u)
+            # A read that *failed* is not a read that found nothing. Returning
+            # None here would send this request — and every concurrent one —
+            # out to an FX provider over HTTP from inside a request handler,
+            # turning a Redis blip into a stampede against a rate-limited third
+            # party (AGENTS.md §10). "We cannot see our rates" is the honest
+            # answer, and callers already know what to do with it: the catalog
+            # renders the page without a converted price rather than 500ing,
+            # which is what was happening instead — 132 events in five days.
+            try:
+                fresh = await cache.read_fresh(self._redis, base_u, quote_u)
+            except RedisError as exc:
+                raise FxUnavailableError(f"rate cache unreadable for {base_u}->{quote_u}") from exc
             if fresh is not None:
                 return fresh
 
@@ -168,7 +180,12 @@ class FxService:
             return q
 
         if allow_stale:
-            stale = await cache.read_stale(self._redis, base_u, quote_u)
+            # Same rule; the fall-through here is the FxUnavailableError below,
+            # so this only stops a Redis error arriving as a 500 instead.
+            try:
+                stale = await cache.read_stale(self._redis, base_u, quote_u)
+            except RedisError as exc:
+                raise FxUnavailableError(f"rate cache unreadable for {base_u}->{quote_u}") from exc
             if stale is not None:
                 log.warning("fx.serving_stale", base=base_u, quote=quote_u)
                 if failed:

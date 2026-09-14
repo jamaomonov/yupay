@@ -8,12 +8,14 @@ crypto pairs via ``supports``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Literal
 
 from redis.asyncio import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -79,8 +81,15 @@ async def load_chain(
     *,
     session_factory: async_sessionmaker[AsyncSession] | None,
 ) -> list[ChainItem] | None:
-    """Redis, then Postgres. ``None`` means 'use constructor order'."""
-    cached = await redis.get(_CHAIN_KEY)
+    """Redis, then Postgres. ``None`` means 'use constructor order'.
+
+    A Redis failure falls through to Postgres, which holds the same ordering —
+    see ``quote_settings.load_override`` for why that is safe here and not for
+    the rate cache.
+    """
+    cached = None
+    with contextlib.suppress(RedisError):
+        cached = await redis.get(_CHAIN_KEY)
     if cached:
         raw: list[object] = json.loads(cached)
         items: list[ChainItem] = []

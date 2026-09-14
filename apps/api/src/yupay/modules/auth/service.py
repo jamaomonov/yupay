@@ -17,6 +17,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import timedelta
 
+from redis.exceptions import RedisError
 from sqlalchemy import delete, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -691,6 +692,41 @@ async def _deliver_verify_email(*, to: str, content: EmailContent) -> bool:
     return True
 
 
+async def _is_blocklisted(key: str, *, kind: str) -> bool:
+    """Whether this access token or session has been revoked.
+
+    **Fails open**, and the choice is deliberate enough to write down. This
+    runs on every authenticated request, so the alternatives were: refuse
+    (a Redis blip signs out every customer at once, turning a cache outage into
+    a total one), or 500 — which is what it did, and is the worst of both,
+    blocking the customer *and* paging us. Sentry caught it via the WebSocket
+    handshake, but the exposure was every authenticated endpoint.
+
+    What fail-open actually costs: the blocklist accelerates an expiry that
+    happens anyway. An access token lives 15 minutes (ADR-0007); the list makes
+    a logout take effect now instead of within that window. Losing it for the
+    seconds of a blip means a revoked token keeps working for those seconds and
+    no longer than the TTL the design already accepts. A ban is unaffected —
+    ADR-0045 checks it against Postgres a few lines below, not here.
+
+    The key is never logged: it carries a ``jti``/``sid``, which identifies a
+    live session.
+
+    Args:
+        key: The blocklist key to read.
+        kind: ``"access"`` or ``"session"`` — for the log line, since the key
+            itself cannot go in it.
+
+    Returns:
+        ``True`` only when Redis positively says the token is revoked.
+    """
+    try:
+        return await get_redis().get(key) is not None
+    except RedisError:
+        log.exception("auth.blocklist_unreadable", blocklist=kind)
+        return False
+
+
 async def current_user(
     db: AsyncSession,
     access_token: str,
@@ -702,13 +738,13 @@ async def current_user(
     claims = authjwt.verify(access_token, expected_kind="access", settings=s)
     # ADR-0007 access-token blocklist: a single Redis GET per request. A jti lands
     # here when the session is explicitly revoked (logout). See ``_blocklist_access_token``.
-    if await get_redis().get(f"auth:revoked:{claims.jti}") is not None:
+    if await _is_blocklisted(f"auth:revoked:{claims.jti}", kind="access"):
         raise UnauthorizedError("token revoked")
     # ADR-0007 session-level revocation: a revoked session (rotation, logout,
     # reuse-detection, password reset) blocklists its ``sid`` so its still-valid
     # access tokens stop working at once instead of lingering up to 15 min.
-    if claims.sid is not None and (
-        await get_redis().get(f"auth:revoked_sid:{claims.sid}") is not None
+    if claims.sid is not None and await _is_blocklisted(
+        f"auth:revoked_sid:{claims.sid}", kind="session"
     ):
         raise UnauthorizedError("session revoked")
     user = await get_user_by_id(db, claims.sub)
