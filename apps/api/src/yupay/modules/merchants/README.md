@@ -248,6 +248,80 @@ event id in its payload (that would have broken the exact-key-set rule above),
 so this is the receiver's only dedupe handle. Adding it after the first
 integrator would be a `/merchant/v2`.
 
+### Verifying a delivery
+
+Spec §10 asks for this, and until now the docs described the canonical string
+without handing you code for it — while the _inbound_ direction, where you sign
+your own calls, had two snippets. That was backwards: a wrong signature on your
+own request answers `401`, so you debug it in a minute; an unverified webhook
+answers nothing at all, and an accepted forgery is silent.
+
+Three things the code below is doing on purpose:
+
+- **Hash the raw bytes you received**, never a re-serialised object. Parsing
+  and re-dumping JSON changes whitespace and key order, and the digest with it.
+- **Compare in constant time.** A `==` on a hex signature leaks it a byte at a
+  time to anyone who can measure your response.
+- **Dedupe on `X-Yupay-Delivery`.** Delivery is at-least-once: a retry after a
+  lost `200` is indistinguishable from a genuine second transition, and that
+  header is the only stable handle — which is why it is inside the signed
+  material rather than only on the wire.
+
+Python (Flask; `request.get_data()` is the raw body, `request.json` is not):
+
+```python
+import hashlib, hmac, time
+
+SECRET = "ypmw_…"  # the webhook secret — a different credential from ypms_
+TOLERANCE_SECONDS = 300
+
+
+def verify(headers: dict[str, str], body: bytes) -> bool:
+    ts = headers.get("X-Yupay-Timestamp", "")
+    canonical = "\n".join(
+        (
+            ts,
+            headers.get("X-Yupay-Delivery", ""),
+            headers.get("X-Yupay-Event", ""),
+            hashlib.sha256(body).hexdigest(),
+        )
+    ).encode()
+    expected = hmac.new(SECRET.encode(), canonical, hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, headers.get("X-Yupay-Signature", "")):
+        return False
+    # Your own replay window; we do not impose one on you.
+    return ts.isdigit() and abs(time.time() - int(ts)) <= TOLERANCE_SECONDS
+```
+
+Node 18+ (no dependencies; keep the raw `Buffer` — `express.json()` discards
+it unless you pass `verify`):
+
+```js
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
+
+const SECRET = "ypmw_…";
+const TOLERANCE_SECONDS = 300;
+
+function verify(headers, body /* Buffer */) {
+  const ts = headers["x-yupay-timestamp"] ?? "";
+  const canonical = [
+    ts,
+    headers["x-yupay-delivery"] ?? "",
+    headers["x-yupay-event"] ?? "",
+    createHash("sha256").update(body).digest("hex"),
+  ].join("\n");
+  const expected = createHmac("sha256", SECRET).update(canonical).digest("hex");
+  const got = headers["x-yupay-signature"] ?? "";
+  if (expected.length !== got.length) return false;
+  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(got))) return false;
+  return /^\d+$/.test(ts) && Math.abs(Date.now() / 1000 - Number(ts)) <= TOLERANCE_SECONDS;
+}
+```
+
+Answer `2xx` once you have stored the event — anything else is a retry, and a
+`4xx` other than `408`/`429` counts toward the streak that auto-disables your
+endpoint.
+
 ### The retry table is derived from the client's taxonomy, not invented
 
 `webhook_retry.py` is pure and reads `core/outbound_errors.py` rather than

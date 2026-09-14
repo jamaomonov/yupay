@@ -74,10 +74,8 @@ import argparse
 import contextlib
 import os
 import re
-import shutil
 import signal
 import subprocess
-import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -174,7 +172,7 @@ def check_anchors(chosen: Sequence[Mutation]) -> int:
     return 1 if bad else 0
 
 
-def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
+def _apply(mutation: Mutation, backups: dict[Path, str]) -> None:
     """Apply every edit, insisting each one matches exactly once.
 
     Args:
@@ -187,9 +185,7 @@ def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
     """
     for path, old, new in mutation.edits:
         if path not in backups:
-            copy = Path(tempfile.mkdtemp(prefix="falsify-")) / path.name
-            shutil.copy2(path, copy)
-            backups[path] = copy
+            backups[path] = path.read_text()
         source = path.read_text()
         found = source.count(old)
         if found == 0:
@@ -209,11 +205,44 @@ def _apply(mutation: Mutation, backups: dict[Path, Path]) -> None:
         path.write_text(source.replace(old, new, 1))
 
 
-def _restore(backups: dict[Path, Path]) -> None:
-    """Put every mutated file back from its pre-edit copy."""
-    for path, copy in backups.items():
-        shutil.copy2(copy, path)
-        shutil.rmtree(copy.parent, ignore_errors=True)
+def _restore(backups: dict[Path, str]) -> None:
+    """Put every mutated file back from its pre-edit text.
+
+    **In memory, not in a temp file.** This used to copy each file into its own
+    ``mkdtemp`` and copy it back. On 2026-09-15, during a sequential run of
+    four harnesses, one of those copies was gone by the time ``_restore``
+    reached it: ``FileNotFoundError`` raised *inside the ``finally``*, the run
+    died, and a mutated ``core/outbound_target.py`` was left in the working
+    tree — with the SSRF guard's host normalisation replaced by a naive
+    ``rstrip('.')``. It is not reproducible in isolation, and the mechanism
+    behind the vanished directory was never established. It does not need to
+    be: a restore that depends on a file nothing guarantees is one Ctrl-C, one
+    ``$TMPDIR`` sweep or one unexplained flake away from poisoning the tree it
+    was meant to protect. These are source files of a few kilobytes; holding
+    them in the process that will write them back removes the whole class.
+
+    A second reason, which the copy approach had backwards: ``shutil.copy2``
+    restores the **original mtime**, and CPython's bytecode cache keys on
+    mtime and size. A file mutated and restored to its old stamp can serve a
+    ``.pyc`` compiled from the mutation. Writing it fresh cannot.
+
+    Raises:
+        SystemExit: A restore failed. Loud and by name, because the tree is
+            now mutated and the next thing to run against it — a suite, a
+            commit — would be reading someone's deliberate bug as the source.
+    """
+    failed: list[str] = []
+    for path, text in backups.items():
+        try:
+            path.write_text(text)
+        except OSError as exc:  # pragma: no cover -- disk-level failure
+            failed.append(f"{path}: {exc}")
+    if failed:
+        raise SystemExit(
+            "falsify COULD NOT RESTORE these files, and they are still mutated:\n  "
+            + "\n  ".join(failed)
+            + "\n\nRun `git checkout --` on them before anything else reads this tree."
+        )
 
 
 def _run(mutation: Mutation) -> tuple[str, list[str]]:
@@ -315,7 +344,7 @@ def main(mutations: Sequence[Mutation], *, description: str | None = None) -> in
     )
     rows: list[tuple[str, str]] = []
     for mutation in chosen:
-        backups: dict[Path, Path] = {}
+        backups: dict[Path, str] = {}
         try:
             _apply(mutation, backups)
             verdict, failures = _run(mutation)

@@ -402,6 +402,12 @@ named in `merchants/signing.py` because they are wire format:
 canonical = {timestamp}\n{delivery_id}\n{event_type}\n{sha256_hex(body)}
 ```
 
+A runnable verification snippet — Python and Node, both hashing the raw bytes
+and comparing in constant time — is in
+[`apps/api/src/yupay/modules/merchants/README.md`](../../apps/api/src/yupay/modules/merchants/README.md)
+under "Verifying a delivery". One copy on purpose: two would drift, and the
+one over there is pinned by a test that reads it out of the document.
+
 Delivery is **at-least-once** and only tie-broken, not globally ordered: a
 retried event lands after events queued behind it, so a receiver orders by the
 payload's `at` and dedupes on the delivery id. `2xx` is success; `408`/`429`/`5xx`

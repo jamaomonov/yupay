@@ -1143,12 +1143,27 @@ MUTATIONS: tuple[Mutation, ...] = (
             ),
         ),
         tests=(ATTRIB,),
+        # Re-recorded 2026-09-15 from an observed ``--record`` run. The anchor
+        # never moved; the blast radius did, the same way and for the same
+        # reason as ``cap_runs_on_replays`` a fix round earlier: C1's own round
+        # added ``test_the_refusal_lifts_once_the_delivery_has_stopped`` to a
+        # file this row already runs, and that test ends on
+        # ``assert row.status == "failed"`` — the closer's effect, which this
+        # mutation deletes. A correct consequence, not a wider break.
+        #
+        # **That round re-recorded one row and missed this one**, so the
+        # harness has reported a false red ever since. Which is the cost worth
+        # naming: a suite that cries wolf about the money path gets read as
+        # noise, and the next real WRONG BLAST RADIUS is the one nobody looks
+        # at. When a test is added to a file, every row that runs that file
+        # needs re-recording — not just the row that prompted the edit.
         expect=(
             "test_a_full_settlement_closes_the_order",
             "test_a_replay_of_the_settlement_closes_once",
             "test_a_second_settlement_is_refused_and_nothing_moves_twice",
             "test_finishing_a_partial_settlement_closes_it",
             "test_settling_an_order_whose_delivery_never_failed_reads_as_a_hand_closure",
+            "test_the_refusal_lifts_once_the_delivery_has_stopped",
             "test_the_settled_order_leaves_the_stuck_order_watchdog",
             "test_the_settlement_announces_the_order_state_by_push",
         ),
