@@ -13,7 +13,7 @@ from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
-from yupay.modules.merchants.machine_schemas import UsdBalance
+from yupay.modules.merchants.machine_schemas import UsdAmount, UsdBalance
 
 #: Long enough to resist a guess, short enough that a real person will use a
 #: manager rather than fight the field. Matches the storefront's floor.
@@ -115,10 +115,77 @@ class CabinetOrderIn(BaseModel):
     fulfillment_data: dict[str, str] = Field(default_factory=dict)
 
 
+class CabinetOrderRowOut(BaseModel):
+    """One line of the Orders list.
+
+    Money comes from the ledger, not from the order line: two of the three SKU
+    shapes put a per-unit rate or a face value there and the money elsewhere,
+    so a list built off the line would show $0.016537 against an order that
+    cost $16.54.
+    """
+
+    merchant_order_id: str
+    order_id: str
+    status: str
+    sku_code: str
+    price_usd: UsdAmount
+    refunded_usd: UsdAmount
+    created_at: datetime
+    delivered_at: datetime | None
+
+
+class CabinetOrdersOut(BaseModel):
+    items: list[CabinetOrderRowOut]
+    #: Present only while older rows remain. Keyset, not an offset: an offset
+    #: page shifts under a merchant whose orders keep arriving.
+    next_cursor: str | None
+
+
+class CabinetApiKeyOut(BaseModel):
+    """One machine credential, as Settings lists it.
+
+    Never carries the secret. That is returned once, by the create call, and
+    is not stored in a readable form afterwards — so a list that could show it
+    would mean we had kept it.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    key_id: str
+    label: str
+    created_at: datetime
+    last_used_at: datetime | None
+    revoked_at: datetime | None
+
+
+class CabinetApiKeyCreateIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    #: What this key is for, in the operator's own words ("staging", "billing
+    #: box"). Rotation is "issue, deploy, revoke", and a label is how a person
+    #: tells two live keys apart while both are.
+    label: str = Field(default="", max_length=64)
+
+
+class CabinetIssuedKeyOut(BaseModel):
+    """The one moment the secret exists outside our encryption."""
+
+    key_id: str
+    secret: str
+    label: str
+    created_at: datetime
+
+
 __all__ = [
+    "CabinetApiKeyCreateIn",
+    "CabinetApiKeyOut",
     "CabinetConfirmIn",
+    "CabinetIssuedKeyOut",
     "CabinetLoginIn",
     "CabinetOrderIn",
+    "CabinetOrderRowOut",
+    "CabinetOrdersOut",
     "CabinetProfileOut",
     "CabinetRegisterIn",
     "CabinetTokenIn",

@@ -35,12 +35,25 @@ from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.auth.ip_guard import guard_ip
-from yupay.modules.merchants import cabinet_auth, deposit, orders, price_list
+from yupay.modules.merchants import (
+    cabinet_auth,
+    cabinet_orders,
+    credentials,
+    deposit,
+    order_status,
+    orders,
+    price_list,
+    transactions,
+)
 from yupay.modules.merchants.cabinet_deps import current_merchant_user
 from yupay.modules.merchants.cabinet_schemas import (
+    CabinetApiKeyCreateIn,
+    CabinetApiKeyOut,
     CabinetConfirmIn,
+    CabinetIssuedKeyOut,
     CabinetLoginIn,
     CabinetOrderIn,
+    CabinetOrdersOut,
     CabinetProfileOut,
     CabinetRegisterIn,
     CabinetTokenIn,
@@ -50,6 +63,8 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantCatalogOut,
     MerchantOrderCreateIn,
     MerchantOrderOut,
+    MerchantOrderStatusOut,
+    MerchantTransactionsOut,
 )
 from yupay.modules.merchants.models import Merchant, MerchantUser
 from yupay.modules.notifications.channels.email import EmailSendError, send_email
@@ -216,6 +231,103 @@ async def place_order(body: CabinetOrderIn, user: CurrentUser, db: Db) -> Mercha
             fulfillment_data=dict(body.fulfillment_data),
         ),
     )
+
+
+@router.get("/orders", response_model=CabinetOrdersOut, summary="This merchant's orders")
+async def list_orders(
+    user: CurrentUser,
+    db: Db,
+    status_filter: str | None = None,
+    search: str | None = None,
+    cursor: str | None = None,
+    limit: int = 25,
+) -> CabinetOrdersOut:
+    """Newest first, keyset-paged.
+
+    ``status_filter`` rather than ``status``: FastAPI would otherwise shadow
+    the imported ``status`` module in this file's namespace, and a name that
+    silently rebinds an HTTP-status helper inside route handlers is a trap
+    worth spending one uglier query parameter to avoid.
+    """
+    merchant = await _merchant_of(db, user)
+    return await cabinet_orders.build(
+        db,
+        merchant_id=merchant.id,
+        limit=max(1, min(limit, 100)),
+        cursor=cursor,
+        status=status_filter,
+        search=search,
+    )
+
+
+@router.get(
+    "/orders/{merchant_order_id:path}",
+    response_model=MerchantOrderStatusOut,
+    summary="One order, by the id it was placed with",
+)
+async def read_order(merchant_order_id: str, user: CurrentUser, db: Db) -> MerchantOrderStatusOut:
+    """The same reader the machine API serves, so the cabinet and a reseller's
+    own polling can never describe one order two ways."""
+    return await order_status.read(
+        db, merchant=await _merchant_of(db, user), merchant_order_id=merchant_order_id
+    )
+
+
+@router.get(
+    "/transactions",
+    response_model=MerchantTransactionsOut,
+    summary="The deposit ledger",
+)
+async def list_transactions(
+    user: CurrentUser, db: Db, cursor: str | None = None, limit: int = 50
+) -> MerchantTransactionsOut:
+    merchant = await _merchant_of(db, user)
+    return await transactions.build(
+        db, merchant_id=merchant.id, limit=max(1, min(limit, 200)), cursor=cursor
+    )
+
+
+@router.get("/api-keys", response_model=list[CabinetApiKeyOut], summary="Machine credentials")
+async def list_keys(user: CurrentUser, db: Db) -> list[CabinetApiKeyOut]:
+    merchant = await _merchant_of(db, user)
+    rows = await credentials.list_api_keys(db, merchant_id=merchant.id)
+    return [CabinetApiKeyOut.model_validate(row) for row in rows]
+
+
+@router.post(
+    "/api-keys",
+    response_model=CabinetIssuedKeyOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Issue a machine credential",
+)
+async def create_key(body: CabinetApiKeyCreateIn, user: CurrentUser, db: Db) -> CabinetIssuedKeyOut:
+    """The secret is in this response and nowhere else, ever again.
+
+    Self-serve rather than a support request, which is what makes rotation —
+    issue, deploy, revoke — something a reseller can do at 3am during an
+    incident instead of waiting for our morning.
+    """
+    merchant = await _merchant_of(db, user)
+    issued = await credentials.create_api_key(db, merchant_id=merchant.id, label=body.label)
+    log.info("merchant.cabinet.key_created", merchant_id=merchant.id, key_id=issued.key.key_id)
+    return CabinetIssuedKeyOut(
+        key_id=issued.key.key_id,
+        secret=issued.secret,
+        label=issued.key.label,
+        created_at=issued.key.created_at,
+    )
+
+
+@router.delete(
+    "/api-keys/{key_id}",
+    response_model=CabinetApiKeyOut,
+    summary="Revoke a machine credential",
+)
+async def revoke_key(key_id: str, user: CurrentUser, db: Db) -> CabinetApiKeyOut:
+    merchant = await _merchant_of(db, user)
+    row = await credentials.revoke_api_key(db, merchant_id=merchant.id, key_id=key_id)
+    log.info("merchant.cabinet.key_revoked", merchant_id=merchant.id, key_id=key_id)
+    return CabinetApiKeyOut.model_validate(row)
 
 
 __all__ = ["router"]

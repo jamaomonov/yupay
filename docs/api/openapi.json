@@ -3422,6 +3422,75 @@
         "title": "BusinessSummaryOut",
         "type": "object"
       },
+      "CabinetApiKeyCreateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "title": "CabinetApiKeyCreateIn",
+        "type": "object"
+      },
+      "CabinetApiKeyOut": {
+        "description": "One machine credential, as Settings lists it.\n\nNever carries the secret. That is returned once, by the create call, and\nis not stored in a readable form afterwards \u2014 so a list that could show it\nwould mean we had kept it.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "key_id",
+          "label",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "CabinetApiKeyOut",
+        "type": "object"
+      },
       "CabinetConfirmIn": {
         "additionalProperties": false,
         "properties": {
@@ -3436,6 +3505,36 @@
           "token"
         ],
         "title": "CabinetConfirmIn",
+        "type": "object"
+      },
+      "CabinetIssuedKeyOut": {
+        "description": "The one moment the secret exists outside our encryption.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_id",
+          "secret",
+          "label",
+          "created_at"
+        ],
+        "title": "CabinetIssuedKeyOut",
         "type": "object"
       },
       "CabinetLoginIn": {
@@ -3520,6 +3619,94 @@
           "expected_price"
         ],
         "title": "CabinetOrderIn",
+        "type": "object"
+      },
+      "CabinetOrderRowOut": {
+        "description": "One line of the Orders list.\n\nMoney comes from the ledger, not from the order line: two of the three SKU\nshapes put a per-unit rate or a face value there and the money elsewhere,\nso a list built off the line would show $0.016537 against an order that\ncost $16.54.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "refunded_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_code",
+          "price_usd",
+          "refunded_usd",
+          "created_at",
+          "delivered_at"
+        ],
+        "title": "CabinetOrderRowOut",
+        "type": "object"
+      },
+      "CabinetOrdersOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetOrderRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CabinetOrdersOut",
         "type": "object"
       },
       "CabinetProfileOut": {
@@ -31119,6 +31306,175 @@
         ]
       }
     },
+    "/merchant/cabinet/api-keys": {
+      "get": {
+        "operationId": "list_keys_merchant_cabinet_api_keys_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CabinetApiKeyOut"
+                  },
+                  "title": "Response List Keys Merchant Cabinet Api Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Machine credentials",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "post": {
+        "description": "The secret is in this response and nowhere else, ever again.\n\nSelf-serve rather than a support request, which is what makes rotation \u2014\nissue, deploy, revoke \u2014 something a reseller can do at 3am during an\nincident instead of waiting for our morning.",
+        "operationId": "create_key_merchant_cabinet_api_keys_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetApiKeyCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetIssuedKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue a machine credential",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/api-keys/{key_id}": {
+      "delete": {
+        "operationId": "revoke_key_merchant_cabinet_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetApiKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke a machine credential",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/cabinet/catalog": {
       "get": {
         "description": "The same tree the machine API serves, priced for this merchant.\n\nOne builder, so the storefront a person browses and the JSON their server\npolls can never disagree about what is sellable or what it costs.",
@@ -31336,6 +31692,112 @@
       }
     },
     "/merchant/cabinet/orders": {
+      "get": {
+        "description": "Newest first, keyset-paged.\n\n``status_filter`` rather than ``status``: FastAPI would otherwise shadow\nthe imported ``status`` module in this file's namespace, and a name that\nsilently rebinds an HTTP-status helper inside route handlers is a trap\nworth spending one uglier query parameter to avoid.",
+        "operationId": "list_orders_merchant_cabinet_orders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetOrdersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "This merchant's orders",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
       "post": {
         "description": "Buy one SKU, minting the idempotency key on the merchant's behalf.\n\n``manual-<uuid>`` (spec \u00a711): unique per click, and visibly not a\nreseller's own id, so a support conversation about \"order acme-417\" is\nnever about one of these.\n\nThe trade this makes, deliberately: a double-click is two orders, where an\nAPI caller re-sending one id gets one. A person can see both in the list\nand ask for a refund; an invented key that collapsed two intentional\npurchases into one would be the worse failure, and the browser prevents the\ncommon case by disabling the button.",
         "operationId": "place_order_merchant_cabinet_orders_post",
@@ -31390,6 +31852,65 @@
           }
         },
         "summary": "Order from the catalog page",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/orders/{merchant_order_id}": {
+      "get": {
+        "description": "The same reader the machine API serves, so the cabinet and a reseller's\nown polling can never describe one order two ways.",
+        "operationId": "read_order_merchant_cabinet_orders__merchant_order_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_order_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One order, by the id it was placed with",
         "tags": [
           "merchant-cabinet"
         ]
@@ -31471,6 +31992,81 @@
           }
         },
         "summary": "Open a merchant account and its first operator",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/transactions": {
+      "get": {
+        "operationId": "list_transactions_merchant_cabinet_transactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantTransactionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The deposit ledger",
         "tags": [
           "merchant-cabinet"
         ]
