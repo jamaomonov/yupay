@@ -7,16 +7,20 @@
 -- Content-managed, NOT a fixture and NOT an Alembic data migration. Applied to
 -- prod by an operator (psql / `!`), gated by the standing deploy rule.
 --
--- UPSERT, not UPDATE — unlike every sibling seed in this directory. The brand
--- had exactly one translation row (ru) when this was written: `en` and `uz`
--- were falling back to it, so `/en/store/steam-gifts` rendered the Russian
--- name. A plain `UPDATE ... WHERE locale = 'en'` would have touched zero rows
--- and looked like it worked. `name` is NOT NULL, hence supplied here.
+-- UPSERT, not UPDATE — unlike every sibling seed in this directory. Not because
+-- a row was missing: all three locales exist, with correct per-locale names. An
+-- upsert simply works either way, and the cost of being wrong in the other
+-- direction is a seed that reports success having updated nothing.
+--
+-- (The "rows are missing" reading came from probing
+-- `/catalog/brands/steam-gifts?locale=en`, which returned the Russian name. The
+-- catalog API ignores that query parameter — it localises by `Accept-Language`,
+-- which is what `apps/web/src/lib/api.ts` sends. Worth knowing before drawing a
+-- conclusion from a hand-rolled curl against it.)
 --
 -- The conflict branch deliberately leaves `name` alone: it is supplied only so
--- the INSERT can satisfy NOT NULL on a locale that has no row yet. A name
--- already in the table was put there by someone and is not this file's to
--- overwrite (dev already carried its own en/uz names; prod had neither).
+-- the INSERT can satisfy NOT NULL on a locale that has no row yet. The names
+-- already in the table are right, and are not this file's to overwrite.
 --
 -- Idempotent: translations upsert on (brand_id, locale); FAQs are rebuilt via
 -- delete-then-insert. One transaction, so a half-run cannot leave partial
