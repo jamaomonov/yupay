@@ -24,6 +24,8 @@
   --color-primary: hsl(var(--primary));
   --color-primary-2: hsl(var(--primary-2));
   --color-primary-foreground: hsl(var(--primary-foreground));
+  /* Lime as INK, which is not the same colour as lime as a fill. See below. */
+  --color-primary-ink: hsl(var(--primary-ink));
 
   --color-blue: hsl(var(--blue));
   --color-danger: hsl(var(--danger));
@@ -56,6 +58,9 @@
   --primary: 80 100% 60%;
   --primary-2: 80 100% 70%;
   --primary-foreground: 0 0% 0%;
+  /* On the dark ground the accent IS legible as text, so ink and fill are the
+     same value here. The light theme is where they have to part company. */
+  --primary-ink: 80 100% 60%;
 
   --blue: 210 100% 68%;
   --danger: 0 85% 68%;
@@ -91,7 +96,16 @@
      never as text on the page ground. */
   --primary: 80 75% 42%;
   --primary-2: 80 70% 34%;
-  --primary-foreground: 0 0% 100%;
+  /* The rule above, made usable instead of only stated. Lime as text on white
+     measures 2.3:1 and the app was doing it in twenty places — the balance in
+     the top bar, every auth link, the status badges, the POST badge in the
+     docs sidebar. Darkening `--primary` itself would wreck the dark theme and
+     every filled button, so the ink is its own value: ~7:1 on white, and the
+     fills keep the colour people recognise. */
+  --primary-ink: 80 85% 26%;
+  /* Black, as the comment above says — white on this green measures 2.29:1
+     and fails AA on every primary button in the product. Black measures 9.2. */
+  --primary-foreground: 0 0% 0%;
 
   --blue: 210 90% 42%;
   --danger: 0 72% 45%;

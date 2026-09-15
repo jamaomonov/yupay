@@ -44,7 +44,7 @@ export function Field({
         onChange={(event) => {
           onChange(event.target.value);
         }}
-        className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm outline-none"
+        className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm"
       />
       {hint ? <p className="text-tx-dim mt-1.5 text-xs">{hint}</p> : null}
     </div>

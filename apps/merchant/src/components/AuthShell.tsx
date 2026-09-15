@@ -33,7 +33,7 @@ export function AuthShell({
 
 export function AuthLink({ href, label }: { href: string; label: string }) {
   return (
-    <Link href={href} className="text-primary font-medium underline-offset-4 hover:underline">
+    <Link href={href} className="text-primary-ink font-medium underline-offset-4 hover:underline">
       {label}
     </Link>
   );

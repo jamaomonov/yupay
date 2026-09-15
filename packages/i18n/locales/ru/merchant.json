@@ -261,7 +261,8 @@
     "statSuccess": "успешных",
     "statSuccessHint": "из завершённых",
     "statSpend": "потрачено сегодня",
-    "exportCsv": "Экспорт CSV"
+    "exportCsv": "Экспорт CSV",
+    "openOrder": "Открыть заказ"
   },
   "transactions": {
     "title": "Транзакции",

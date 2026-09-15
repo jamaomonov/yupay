@@ -15,6 +15,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { withoutLocale } from "@/lib/locale-href";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export interface NavItem {
@@ -57,7 +58,7 @@ function guideIcon(href: string): LucideIcon | undefined {
 /** The tone of each method badge. Unlisted methods render neutral. */
 const METHOD_TONE: Record<string, string> = {
   GET: "text-blue",
-  POST: "text-primary",
+  POST: "text-primary-ink",
   PUT: "text-gold",
   PATCH: "text-gold",
   DELETE: "text-danger",
@@ -83,7 +84,11 @@ export function DocsShell({
   children: React.ReactNode;
 }) {
   const t = useTranslations("merchant.docs");
-  const pathname = usePathname();
+  // Normalised on both sides — see the cabinet shell for the full story. Here
+  // the symptom was different and just as wrong: the server-rendered highlight
+  // was right, and every client-side navigation after it left the mark where
+  // it started, so clicking three guides in a row still showed the first.
+  const here = withoutLocale(usePathname());
   const [query, setQuery] = useState("");
   const box = useRef<HTMLInputElement>(null);
 
@@ -131,7 +136,7 @@ export function DocsShell({
               onChange={(event) => {
                 setQuery(event.target.value);
               }}
-              className="text-foreground min-w-0 flex-1 bg-transparent text-[13px] outline-none"
+              className="text-foreground min-w-0 flex-1 bg-transparent text-[13px]"
             />
             <kbd className="border-border text-tx-dim shrink-0 rounded border px-1.5 text-[10.5px]">
               ⌘K
@@ -147,7 +152,7 @@ export function DocsShell({
                 {group.title}
               </p>
               {group.items.map((item) => {
-                const active = pathname === item.href;
+                const active = here === withoutLocale(item.href);
                 const Icon = item.method === undefined ? guideIcon(item.href) : undefined;
                 return (
                   <Link
@@ -162,7 +167,7 @@ export function DocsShell({
                       <Icon
                         aria-hidden
                         size={14}
-                        className={`shrink-0 ${active ? "text-primary" : "text-tx-dim"}`}
+                        className={`shrink-0 ${active ? "text-primary-ink" : "text-tx-dim"}`}
                       />
                     )}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
@@ -211,9 +216,9 @@ export function DocsShell({
               <Link
                 key={item.href}
                 href={item.href}
-                aria-current={pathname === item.href ? "page" : undefined}
+                aria-current={here === withoutLocale(item.href) ? "page" : undefined}
                 className={`rounded-btn shrink-0 whitespace-nowrap border px-3 py-1.5 text-xs ${
-                  pathname === item.href
+                  here === withoutLocale(item.href)
                     ? "border-border-2 bg-card-2 font-semibold"
                     : "border-border text-tx-mute"
                 }`}

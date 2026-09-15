@@ -10,6 +10,7 @@ import type { PlacedOrder, Product, Sku } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { ApiError, api } from "@/lib/api";
+import { pathFor } from "@/lib/locale-href";
 import { fixedTotal, formatUsd, scaledTotal, toCents } from "@/lib/money";
 
 /** What this SKU is sized by, and therefore which box the form shows. */
@@ -21,6 +22,7 @@ function countLabel(sku: Sku): "none" | "quantity" | "amount" {
 
 export default function BrandPage() {
   const t = useTranslations("merchant.catalog");
+  const tOrders = useTranslations("merchant.orders");
   const locale = useLocale();
   const { locale: routeLocale, slug } = useParams<{ locale: string; slug: string }>();
   const { catalog, profile, refreshProfile } = useCabinet();
@@ -29,6 +31,11 @@ export default function BrandPage() {
   const [data, setData] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState<PlacedOrder | null>(null);
+  // Minted once per intent and held, never per request: a fresh key on every
+  // attempt is the same as having none. `api.ts` says exactly this; the
+  // cabinet's own order call was the one place that ignored it, so a retry
+  // after a timeout could charge twice.
+  const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
 
   const brand = catalog?.brands.find((b) => b.slug === slug) ?? null;
@@ -65,7 +72,7 @@ export default function BrandPage() {
         expected_price: formatUsd(total),
         fulfillment_data: data,
       };
-      const result = await api<PlacedOrder>("/orders", { method: "POST", body });
+      const result = await api<PlacedOrder>("/orders", { method: "POST", body, idempotencyKey });
       setPlaced(result);
       // The response carries the balance the charge left behind, but the top
       // bar reads the shell's copy — so re-read rather than patch two places
@@ -156,7 +163,7 @@ export default function BrandPage() {
                       <p className="text-sm font-medium">
                         {sku.name}
                         {active && (
-                          <span className="text-primary ml-2 text-[11px] font-semibold">
+                          <span className="text-primary-ink ml-2 text-[11px] font-semibold">
                             ✓ {t("selected")}
                           </span>
                         )}
@@ -197,7 +204,7 @@ export default function BrandPage() {
                     onChange={(event) => {
                       setCount(event.target.value);
                     }}
-                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-sm outline-none"
+                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-sm"
                   />
                 </label>
               )}
@@ -213,7 +220,7 @@ export default function BrandPage() {
                     onChange={(event) => {
                       setData((current) => ({ ...current, [field.key]: event.target.value }));
                     }}
-                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-sm outline-none"
+                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-sm"
                   />
                 </label>
               ))}
@@ -243,14 +250,24 @@ export default function BrandPage() {
                 </p>
               )}
               {placed && (
-                <p className="text-primary mt-3 text-sm">
+                <p role="status" className="text-primary-ink mt-3 text-sm">
                   {t("created")} · <span className="font-mono">{placed.status}</span>
+                  {" · "}
+                  <Link
+                    href={pathFor(
+                      locale,
+                      `/cabinet/orders/${encodeURIComponent(placed.merchant_order_id)}`,
+                    )}
+                    className="underline underline-offset-4"
+                  >
+                    {tOrders("openOrder")}
+                  </Link>
                 </p>
               )}
 
               <button
                 type="button"
-                disabled={busy || total === null || !affordable}
+                disabled={busy || placed !== null || total === null || !affordable}
                 onClick={() => {
                   void order();
                 }}

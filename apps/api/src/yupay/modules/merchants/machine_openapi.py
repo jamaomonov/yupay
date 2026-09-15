@@ -55,6 +55,21 @@ _REF: Final = "#/components/schemas/"
 #: programme is small enough that a name is faster than a ticket.
 SUPPORT_TELEGRAM: Final = "jama_omonov"
 
+#: The server a *published* contract names, regardless of where it was
+#: exported from.
+#:
+#: This is not a default — it is the answer. ``make gen-api`` runs on a
+#: developer's machine, where ``base_url`` is ``http://localhost:8000``, and
+#: that value went into the committed contract labelled "Production". The
+#: cabinet builds its cURL, Python and Node samples from that file, so every
+#: sample on reseller.yupay.uz told an integrator to call their own machine.
+#: A reference whose whole value is paste-and-run shipped unrunnable.
+#:
+#: Pinning it also makes the export deterministic: two developers with
+#: different ``BASE_URL`` values used to produce two different contracts, and
+#: CI's drift check would blame whoever exported second.
+PUBLISHED_BASE_URL: Final = "https://api.yupay.uz"
+
 #: One tag per area, so a reference page can group six endpoints into
 #: something a reader scans rather than an alphabetical list. FastAPI puts
 #: ``merchant-api`` on every operation; these replace it.
@@ -116,7 +131,7 @@ def _referenced(node: Any, schemas: dict[str, Any], seen: set[str]) -> None:
             _referenced(value, schemas, seen)
 
 
-def build(full: dict[str, Any]) -> dict[str, Any]:
+def build(full: dict[str, Any], *, base_url: str | None = None) -> dict[str, Any]:
     """Narrow a complete OpenAPI document to the merchant machine API.
 
     Args:
@@ -132,7 +147,10 @@ def build(full: dict[str, Any]) -> dict[str, Any]:
     seen: set[str] = set()
     _referenced(paths, schemas, seen)
 
-    base = get_settings().base_url.rstrip("/")
+    # The live endpoint answers with whatever this deployment is reachable at,
+    # which on prod is the right thing and in dev is useful. The exporter
+    # passes ``PUBLISHED_BASE_URL`` instead — see its docstring.
+    base = (base_url or get_settings().base_url).rstrip("/")
     tags: list[dict[str, str]] = []
     for path, item in paths.items():
         named = _TAGS.get(path) or _TAGS.get(path.rsplit("/", 1)[0])

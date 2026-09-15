@@ -8,6 +8,7 @@ import { Suspense, useMemo } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeading } from "@/components/PageHeading";
+import { pathFor } from "@/lib/locale-href";
 import type { Brand } from "@/lib/types";
 
 import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
@@ -106,7 +107,7 @@ function CatalogGrid() {
           return (
             <Link
               key={brand.brand_id}
-              href={`/${locale}/cabinet/catalog/${brand.slug}`}
+              href={pathFor(locale, `/cabinet/catalog/${brand.slug}`)}
               className="border-border bg-card overflow-hidden rounded-xl border"
             >
               <div
@@ -135,7 +136,7 @@ function CatalogGrid() {
                   ) : (
                     <>
                       {from.product} ·{" "}
-                      <span className="text-primary font-mono">
+                      <span className="text-primary-ink font-mono">
                         {t("from", { price: `$${formatUsd(from.cents)}` })}
                       </span>
                     </>

@@ -9,7 +9,7 @@ import { Prose } from "@/components/docs/Prose";
 import { ResponseTabs } from "@/components/docs/ResponseTabs";
 import { SchemaTable } from "@/components/docs/SchemaTable";
 import { routing } from "@/i18n/routing";
-import { bodySchema, contract, endpoints, typeLabel } from "@/lib/contract";
+import { apiBaseUrl, bodySchema, contract, endpoints, typeLabel } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 import { LANGUAGES, canonicalString, sampleFor } from "@/lib/samples";
 
@@ -25,7 +25,7 @@ export function generateStaticParams() {
 
 const METHOD_TONE: Record<string, string> = {
   GET: "bg-blue/10 text-blue",
-  POST: "bg-primary/10 text-primary",
+  POST: "bg-primary/10 text-primary-ink",
   PUT: "bg-gold/10 text-gold",
   PATCH: "bg-gold/10 text-gold",
   DELETE: "bg-danger/10 text-danger",
@@ -55,7 +55,7 @@ export default async function OperationPage({
   const query = parameters.filter((p) => p.in === "query");
   const inPath = parameters.filter((p) => p.in === "path");
   const request = bodySchema(operation.requestBody?.content);
-  const base = contract().servers?.[0]?.url ?? "https://api.yupay.uz";
+  const base = apiBaseUrl();
 
   const sample = {
     method,

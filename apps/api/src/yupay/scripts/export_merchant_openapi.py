@@ -20,7 +20,7 @@ import sys
 from pathlib import Path
 
 from yupay.bootstrap import create_app
-from yupay.modules.merchants.machine_openapi import build
+from yupay.modules.merchants.machine_openapi import PUBLISHED_BASE_URL, build
 
 _EXPECTED_ARGV = 2  # script name + output path
 
@@ -36,7 +36,7 @@ def main(argv: list[str]) -> int:
 
     output = Path(argv[1]).resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
-    document = build(create_app().openapi())
+    document = build(create_app().openapi(), base_url=PUBLISHED_BASE_URL)
     output.write_text(json.dumps(document, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"Wrote {output}")
     return 0

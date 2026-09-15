@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeading } from "@/components/PageHeading";
+import { pathFor } from "@/lib/locale-href";
 import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
 import { useSearch } from "@/components/CabinetContext";
@@ -41,7 +42,7 @@ function Stat({
   return (
     <div className="border-border bg-card rounded-xl border px-4 py-4 sm:px-5">
       <dd
-        className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary" : ""}`}
+        className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
       >
         {value}
       </dd>
@@ -53,7 +54,7 @@ function Stat({
 
 /** Status → the badge tone. Anything unlisted renders neutral, like `labels.ts`. */
 const TONE: Record<string, string> = {
-  delivered: "text-primary bg-primary/10",
+  delivered: "text-primary-ink bg-primary/10",
   paid: "text-blue bg-blue/10",
   fulfilling: "text-gold bg-gold/10",
   pending_payment: "text-gold bg-gold/10",
@@ -213,7 +214,10 @@ export default function OrdersList() {
                   <tr key={row.order_id} className="border-border border-b last:border-0">
                     <td className="px-4 py-3">
                       <Link
-                        href={`/${locale}/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`}
+                        href={pathFor(
+                          locale,
+                          `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                        )}
                         className="font-mono text-xs font-medium underline-offset-4 hover:underline"
                       >
                         {row.merchant_order_id}

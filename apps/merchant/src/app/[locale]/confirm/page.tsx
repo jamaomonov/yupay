@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
+import { pathFor } from "@/lib/locale-href";
 import { api, storeTokens, type Tokens } from "@/lib/api";
 
 function Confirming() {
@@ -33,7 +34,7 @@ function Confirming() {
           body: { token },
         });
         storeTokens(tokens);
-        router.replace(`/${locale}/cabinet`);
+        router.replace(pathFor(locale, "/cabinet"));
       } catch {
         setFailed(true);
       }
@@ -48,7 +49,7 @@ function Confirming() {
         // Was "register again", which is wrong the moment a resend exists:
         // the second registration answers `email_taken` and the person is
         // stuck where they started.
-        footer={<AuthLink href={`/${locale}/forgot`} label={t("resendLink")} />}
+        footer={<AuthLink href={pathFor(locale, "/forgot")} label={t("resendLink")} />}
       />
     );
   }

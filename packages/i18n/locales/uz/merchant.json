@@ -261,7 +261,8 @@
     "statSuccess": "yetkazildi",
     "statSuccessHint": "tugaganlaridan",
     "statSpend": "bugun sarflandi",
-    "exportCsv": "CSV eksport"
+    "exportCsv": "CSV eksport",
+    "openOrder": "Buyurtmani ochish"
   },
   "transactions": {
     "title": "Tranzaksiyalar",

@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeading } from "@/components/PageHeading";
+import { pathFor } from "@/lib/locale-href";
 import type { Transaction, TransactionsPage } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
@@ -94,7 +95,7 @@ export default function TransactionsList() {
       <section className="border-border bg-card mt-5 flex flex-wrap items-center gap-x-9 gap-y-3 rounded-xl border p-5">
         <div>
           <p className="text-tx-dim text-xs">{t("balance")}</p>
-          <p className="text-primary mt-0.5 font-mono text-2xl font-extrabold">
+          <p className="text-primary-ink mt-0.5 font-mono text-2xl font-extrabold">
             {profile === null ? "—" : `$${formatUsd(toCents(profile.balance_usd))}`}
           </p>
         </div>
@@ -131,7 +132,7 @@ export default function TransactionsList() {
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          credit ? "text-primary bg-primary/10" : "text-tx-mute bg-tx-mute/10"
+                          credit ? "text-primary-ink bg-primary/10" : "text-tx-mute bg-tx-mute/10"
                         }`}
                       >
                         {transactionKindLabel(row.kind, t)}
@@ -142,7 +143,10 @@ export default function TransactionsList() {
                         <span className="text-tx-dim">—</span>
                       ) : (
                         <Link
-                          href={`/${locale}/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`}
+                          href={pathFor(
+                            locale,
+                            `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                          )}
                           className="underline-offset-4 hover:underline"
                         >
                           {row.merchant_order_id}

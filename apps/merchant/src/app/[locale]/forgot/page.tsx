@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, SubmitButton } from "@/components/Field";
+import { pathFor } from "@/lib/locale-href";
 import { api } from "@/lib/api";
 
 /**
@@ -45,7 +46,7 @@ export default function ForgotPage() {
       <AuthShell
         title={t("forgotSentTitle")}
         subtitle={t("forgotSentBody", { email: sentTo })}
-        footer={<AuthLink href={`/${locale}/login`} label={t("backToLogin")} />}
+        footer={<AuthLink href={pathFor(locale, "/login")} label={t("backToLogin")} />}
       />
     );
   }
@@ -54,7 +55,7 @@ export default function ForgotPage() {
     <AuthShell
       title={t("forgotTitle")}
       subtitle={t("forgotSubtitle")}
-      footer={<AuthLink href={`/${locale}/login`} label={t("backToLogin")} />}
+      footer={<AuthLink href={pathFor(locale, "/login")} label={t("backToLogin")} />}
     >
       <form onSubmit={submit}>
         <Field

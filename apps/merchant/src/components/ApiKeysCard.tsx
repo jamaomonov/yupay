@@ -100,7 +100,7 @@ export function ApiKeysCard() {
             onChange={(event) => {
               setLabel(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 text-sm outline-none"
+            className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 text-sm"
           />
         </div>
         <div>
@@ -114,7 +114,7 @@ export function ApiKeysCard() {
             onChange={(event) => {
               setAllowlist(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 font-mono text-xs outline-none"
+            className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 font-mono text-xs"
           />
         </div>
         <button

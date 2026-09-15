@@ -3,6 +3,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { NavGroup } from "@/components/docs/DocsShell";
 
 import { DocsShell } from "@/components/docs/DocsShell";
+import { pathFor } from "@/lib/locale-href";
 import { contract, endpoints } from "@/lib/contract";
 
 /**
@@ -27,11 +28,11 @@ export default async function DocsLayout({
   const guides: NavGroup = {
     title: t("groupStart"),
     items: [
-      { href: `/${locale}/docs`, label: t("navIntroduction") },
-      { href: `/${locale}/docs/authentication`, label: t("navAuthentication") },
-      { href: `/${locale}/docs/quickstart`, label: t("navQuickstart") },
-      { href: `/${locale}/docs/errors`, label: t("navErrors") },
-      { href: `/${locale}/docs/webhooks`, label: t("navWebhooks") },
+      { href: pathFor(locale, "/docs"), label: t("navIntroduction") },
+      { href: pathFor(locale, "/docs/authentication"), label: t("navAuthentication") },
+      { href: pathFor(locale, "/docs/quickstart"), label: t("navQuickstart") },
+      { href: pathFor(locale, "/docs/errors"), label: t("navErrors") },
+      { href: pathFor(locale, "/docs/webhooks"), label: t("navWebhooks") },
     ],
   };
 
@@ -44,7 +45,7 @@ export default async function DocsLayout({
   for (const endpoint of endpoints()) {
     const group = byTag.get(endpoint.tag) ?? { title: endpoint.tag, items: [] };
     group.items.push({
-      href: `/${locale}/docs/api/${endpoint.id}`,
+      href: pathFor(locale, `/docs/api/${endpoint.id}`),
       label: endpoint.operation.summary ?? endpoint.path,
       method: endpoint.method,
     });
@@ -55,13 +56,13 @@ export default async function DocsLayout({
     title: t("groupSchemas"),
     items: Object.keys(contract().components.schemas)
       .sort((a, b) => a.localeCompare(b))
-      .map((name) => ({ href: `/${locale}/docs/schemas/${name}`, label: name })),
+      .map((name) => ({ href: pathFor(locale, `/docs/schemas/${name}`), label: name })),
   };
 
   const groups = [guides, ...[...byTag.values()].filter((g) => g.items.length > 0), schemas];
 
   return (
-    <DocsShell groups={groups} brand={`/${locale}`}>
+    <DocsShell groups={groups} brand={pathFor(locale, "")}>
       {children}
     </DocsShell>
   );

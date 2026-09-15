@@ -261,7 +261,8 @@
     "statSuccess": "delivered",
     "statSuccessHint": "of the ones that finished",
     "statSpend": "spent today",
-    "exportCsv": "Export CSV"
+    "exportCsv": "Export CSV",
+    "openOrder": "Open the order"
   },
   "transactions": {
     "title": "Transactions",

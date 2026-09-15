@@ -16,6 +16,27 @@ import path from "node:path";
 
 const CONTRACT = path.join(process.cwd(), "..", "..", "docs", "api", "merchant-openapi.json");
 
+/**
+ * The host every sample on this site tells an integrator to call.
+ *
+ * The contract's own `servers[0]` is **not** trusted for this. It is written
+ * by `make gen-api` on whoever's machine ran it, and it shipped saying
+ * `http://localhost:8000` under the label "Production" — so every cURL block
+ * in the published reference pointed at the reader's own laptop. The exporter
+ * now pins the value, and this prefers the build's own env on top of that, so
+ * the samples are right even if the file is wrong again.
+ *
+ * `NEXT_PUBLIC_API_BASE_URL` is what the image is built with (see the
+ * `merchant` row in `.github/workflows/build.yml`) and what every request
+ * from this app already goes to — the samples and the cabinet cannot disagree.
+ */
+export function apiBaseUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_BASE_URL?.trim();
+  if (configured !== undefined && configured !== "") return configured.replace(/\/$/, "");
+  const declared = contract().servers?.[0]?.url;
+  return declared === undefined ? "https://api.yupay.uz" : declared.replace(/\/$/, "");
+}
+
 /** A JSON Schema node, as far as the reference renders one. */
 export interface SchemaNode {
   $ref?: string;

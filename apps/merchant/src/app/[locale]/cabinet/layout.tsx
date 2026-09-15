@@ -17,6 +17,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import { CabinetProvider, sectionsOf, useCabinet } from "@/components/CabinetContext";
 import { TopBar } from "@/components/TopBar";
+import { pathFor, withoutLocale } from "@/lib/locale-href";
 import { hasSession, signOut } from "@/lib/api";
 
 /** The account group, in the order a day in the cabinet goes.
@@ -43,16 +44,23 @@ function Shell({ children }: { children: React.ReactNode }) {
   const sections = sectionsOf(catalog);
   // Which section the catalog is filtered to, so the sidebar can say so.
   const active = useSearchParams().get("section");
-  const onCatalog = pathname.includes("/cabinet/catalog");
+  // Compared without a locale segment on either side. `usePathname()` returns
+  // the browser's path — which for the default locale has no prefix at all —
+  // so comparing it to a prefixed href matched nothing, and the sidebar
+  // highlighted nothing for every Russian-speaking reseller.
+  const here = withoutLocale(pathname);
+  const onCatalog = here.startsWith("/cabinet/catalog");
 
   const leave = () => {
     void signOut().then(() => {
-      router.replace(`/${locale}/login`);
+      router.replace(pathFor(locale, "/login"));
     });
   };
 
   const catalogHref = (slug: string | null) =>
-    slug === null ? `/${locale}/cabinet/catalog` : `/${locale}/cabinet/catalog?section=${slug}`;
+    slug === null
+      ? pathFor(locale, "/cabinet/catalog")
+      : pathFor(locale, `/cabinet/catalog?section=${slug}`);
 
   const nav = (
     <>
@@ -81,18 +89,18 @@ function Shell({ children }: { children: React.ReactNode }) {
         {t("groupAccount")}
       </p>
       <SideLink
-        href={`/${locale}/cabinet`}
+        href={pathFor(locale, "/cabinet")}
         label={t("navDashboard")}
         icon={LayoutDashboard}
-        active={pathname === `/${locale}/cabinet`}
+        active={here === "/cabinet"}
       />
       {ACCOUNT.map(({ key, path, icon }) => (
         <SideLink
           key={key}
-          href={`/${locale}${path}`}
+          href={pathFor(locale, path)}
           label={t(key)}
           icon={icon}
-          active={pathname.startsWith(`/${locale}${path}`)}
+          active={here.startsWith(path)}
         />
       ))}
     </>
@@ -101,7 +109,10 @@ function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex min-h-dvh">
       <aside className="border-border bg-card hidden w-[216px] shrink-0 flex-col border-r px-3 py-4 md:flex">
-        <Link href={`/${locale}/cabinet`} className="flex items-center gap-2.5 px-2.5 pb-4 pt-1">
+        <Link
+          href={pathFor(locale, "/cabinet")}
+          className="flex items-center gap-2.5 px-2.5 pb-4 pt-1"
+        >
           <Mark />
           <span className="font-display text-[15px] font-semibold tracking-[0.02em]">YUPAY</span>
         </Link>
@@ -129,19 +140,19 @@ function Shell({ children }: { children: React.ReactNode }) {
           className="border-border flex gap-2 overflow-x-auto border-b px-4 py-2.5 md:hidden"
         >
           <MobileLink
-            href={`/${locale}/cabinet`}
+            href={pathFor(locale, "/cabinet")}
             label={t("navDashboard")}
             icon={LayoutDashboard}
-            active={pathname === `/${locale}/cabinet`}
+            active={here === "/cabinet"}
           />
           <MobileLink href={catalogHref(null)} label={t("navCatalog")} active={onCatalog} />
           {ACCOUNT.map(({ key, path, icon }) => (
             <MobileLink
               key={key}
-              href={`/${locale}${path}`}
+              href={pathFor(locale, path)}
               label={t(key)}
               icon={icon}
-              active={pathname.startsWith(`/${locale}${path}`)}
+              active={here.startsWith(path)}
             />
           ))}
           <button
@@ -191,7 +202,7 @@ function SideLink({
         <Icon
           aria-hidden
           size={15}
-          className={`shrink-0 ${active ? "text-primary" : "text-tx-dim"}`}
+          className={`shrink-0 ${active ? "text-primary-ink" : "text-tx-dim"}`}
         />
       )}
       <span className="min-w-0 truncate">{label}</span>
@@ -222,7 +233,7 @@ function MobileLink({
       }`}
     >
       {Icon !== undefined && (
-        <Icon aria-hidden size={13} className={active ? "text-primary" : "text-tx-dim"} />
+        <Icon aria-hidden size={13} className={active ? "text-primary-ink" : "text-tx-dim"} />
       )}
       {label}
     </Link>
@@ -235,7 +246,7 @@ function Mark() {
     <svg width="18" height="16" viewBox="0 0 471.8 426.26" aria-hidden>
       <path
         fill="currentColor"
-        className="text-primary"
+        className="text-primary-ink"
         d="M0.06 23.83l0 294.05c0,0 -5.53,87.63 88.85,108.37l230.68 0c0,0 68.19,-17.67 80.63,-88.17l0 -210.84 71.58 0 -57.83 -63.63 -57.83 -63.63 -57.83 63.63 -57.83 63.63 71.57 0 0 183.78c0,0 -5.1,27.06 -30.74,27.06l-167.01 0c0,0 -26.08,-1.43 -26.08,-20.21l0 -294.05 -88.17 0z"
       />
     </svg>
@@ -253,7 +264,7 @@ export default function CabinetLayout({ children }: { children: React.ReactNode 
   useEffect(() => {
     const present = hasSession();
     setSignedIn(present);
-    if (!present) router.replace(`/${locale}/login`);
+    if (!present) router.replace(pathFor(locale, "/login"));
   }, [locale, router]);
 
   if (signedIn !== true) return null;

@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { CodeWindow } from "@/components/CodeWindow";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { pathFor } from "@/lib/locale-href";
 import { countBrands } from "@/lib/brands";
 
 export const revalidate = 3600;
@@ -47,15 +48,15 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           </span>
           <nav className="text-tx-mute flex flex-wrap items-center gap-5 text-[13.5px]">
             <LocaleSwitcher />
-            <Link href={`/${locale}/docs`}>{t("navDocs")}</Link>
+            <Link href={pathFor(locale, "/docs")}>{t("navDocs")}</Link>
             <Link
-              href={`/${locale}/login`}
+              href={pathFor(locale, "/login")}
               className="border-border rounded-btn text-foreground border px-4 py-2 font-semibold"
             >
               {t("login")}
             </Link>
             <Link
-              href={`/${locale}/register`}
+              href={pathFor(locale, "/register")}
               className="bg-primary text-primary-foreground rounded-btn px-4 py-2 font-bold"
             >
               {t("ctaPrimary")}
@@ -79,27 +80,27 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
                   wholesale is worse than no number. */}
               {brands !== null && (
                 <span>
-                  <span className="text-primary font-mono">{brands}+</span> {t("metricBrands")}
+                  <span className="text-primary-ink font-mono">{brands}+</span> {t("metricBrands")}
                 </span>
               )}
               <span>
-                <span className="text-primary">●</span> {t("metricAuto")}
+                <span className="text-primary-ink">●</span> {t("metricAuto")}
               </span>
               <span>
-                <span className="text-primary font-mono">USD</span> {t("metricUsd")}
+                <span className="text-primary-ink font-mono">USD</span> {t("metricUsd")}
               </span>
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
-                href={`/${locale}/register`}
+                href={pathFor(locale, "/register")}
                 className="bg-primary text-primary-foreground rounded-btn inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold"
               >
                 {t("ctaPrimary")}
                 <ArrowRight size={16} />
               </Link>
               <Link
-                href={`/${locale}/docs`}
-                className="border-border rounded-btn inline-flex items-center px-5 py-3 text-sm font-semibold"
+                href={pathFor(locale, "/docs")}
+                className="border-border rounded-btn inline-flex items-center border px-5 py-3 text-sm font-semibold"
               >
                 {t("ctaSecondary")}
               </Link>
@@ -122,7 +123,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           <ol className="mt-7 grid gap-4 sm:grid-cols-3">
             {steps.map(({ icon: Icon, title, body }, index) => (
               <li key={title} className="border-border bg-card rounded-xl border p-5">
-                <div className="text-primary flex items-center gap-2">
+                <div className="text-primary-ink flex items-center gap-2">
                   <Icon size={18} />
                   <span className="font-mono text-xs">{String(index + 1).padStart(2, "0")}</span>
                 </div>
@@ -164,7 +165,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           <p className="text-tx-mute mt-2 text-sm">{t("supportBody")}</p>
           <a
             href="https://t.me/yupay_support"
-            className="border-border rounded-btn mt-5 inline-flex items-center px-4 py-2.5 text-sm font-semibold"
+            className="border-border rounded-btn mt-5 inline-flex items-center border px-4 py-2.5 text-sm font-semibold"
           >
             {t("supportCta")}
           </a>
@@ -174,7 +175,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
       <footer className="border-border text-tx-dim mx-auto mt-16 flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 border-t px-5 py-7 text-xs">
         <span>© YuPay · reseller.yupay.uz</span>
         <span className="flex gap-4">
-          <Link href={`/${locale}/offer`}>{tOffer("title")}</Link>
+          <Link href={pathFor(locale, "/offer")}>{tOffer("title")}</Link>
           <a href="https://t.me/yupay_support">{t("supportCta")}</a>
         </span>
       </footer>
@@ -185,7 +186,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
 /** The storefront's mark. */
 function Mark() {
   return (
-    <svg width="20" height="18" viewBox="0 0 471.8 426.26" aria-hidden className="text-primary">
+    <svg width="20" height="18" viewBox="0 0 471.8 426.26" aria-hidden className="text-primary-ink">
       <path
         fill="currentColor"
         d="M0.06 23.83l0 294.05c0,0 -5.53,87.63 88.85,108.37l230.68 0c0,0 68.19,-17.67 80.63,-88.17l0 -210.84 71.58 0 -57.83 -63.63 -57.83 -63.63 -57.83 63.63 -57.83 63.63 71.57 0 0 183.78c0,0 -5.1,27.06 -30.74,27.06l-167.01 0c0,0 -26.08,-1.43 -26.08,-20.21l0 -294.05 -88.17 0z"

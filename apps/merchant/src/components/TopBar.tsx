@@ -58,7 +58,7 @@ export function TopBar() {
             onChange={(event) => {
               setSearch(event.target.value);
             }}
-            className="text-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
+            className="text-foreground min-w-0 flex-1 bg-transparent text-sm"
           />
           <kbd className="border-border text-tx-dim hidden shrink-0 rounded border px-1.5 py-0.5 text-[11px] sm:block">
             ⌘K
@@ -70,7 +70,7 @@ export function TopBar() {
 
       <div className="flex shrink-0 items-center gap-2 sm:gap-3">
         <div className="border-border bg-card rounded-btn flex items-center gap-2 border py-1 pl-3 pr-1 sm:gap-3 sm:pl-4">
-          <span className="text-primary font-mono text-sm font-extrabold">
+          <span className="text-primary-ink font-mono text-sm font-extrabold">
             {balance === null ? "—" : `$${formatUsd(balance)}`}
           </span>
           <a

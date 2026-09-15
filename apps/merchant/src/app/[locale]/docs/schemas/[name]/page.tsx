@@ -5,6 +5,7 @@ import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Prose } from "@/components/docs/Prose";
 import { SchemaTable } from "@/components/docs/SchemaTable";
 import { routing } from "@/i18n/routing";
+import { pathFor } from "@/lib/locale-href";
 import { contract, endpoints } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 
@@ -70,7 +71,7 @@ export default async function SchemaPage({
                   {endpoint.method}
                 </span>
                 <a
-                  href={`/${locale}/docs/api/${endpoint.id}`}
+                  href={pathFor(locale, `/docs/api/${endpoint.id}`)}
                   className="underline-offset-4 hover:underline"
                 >
                   {endpoint.operation.summary ?? endpoint.path}

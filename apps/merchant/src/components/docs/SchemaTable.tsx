@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { pathFor } from "@/lib/locale-href";
 import type { SchemaNode } from "@/lib/contract";
 
 import { Prose } from "@/components/docs/Prose";
@@ -60,7 +61,7 @@ export function SchemaTable({
                   typeLabel(child)
                 ) : (
                   <Link
-                    href={`/${locale}/docs/schemas/${model}`}
+                    href={pathFor(locale, `/docs/schemas/${model}`)}
                     className="underline-offset-4 hover:underline"
                   >
                     {typeLabel(child)}

@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
+import { pathFor } from "@/lib/locale-href";
 import { ApiError, api } from "@/lib/api";
 
 export default function RegisterPage() {
@@ -59,7 +60,7 @@ export default function RegisterPage() {
       subtitle={t("registerSubtitle")}
       footer={
         <>
-          {t("haveAccount")} <AuthLink href={`/${locale}/login`} label={t("submitLogin")} />
+          {t("haveAccount")} <AuthLink href={pathFor(locale, "/login")} label={t("submitLogin")} />
         </>
       }
     >
@@ -92,7 +93,7 @@ export default function RegisterPage() {
             className="mt-0.5"
           />
           <span>
-            {t("acceptOffer")} <AuthLink href={`/${locale}/offer`} label={t("offerLink")} />
+            {t("acceptOffer")} <AuthLink href={pathFor(locale, "/offer")} label={t("offerLink")} />
           </span>
         </label>
         <SubmitButton label={t("submitRegister")} busy={busy} />

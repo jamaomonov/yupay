@@ -4,6 +4,7 @@ import path from "node:path";
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+import { pathFor } from "@/lib/locale-href";
 
 export const revalidate = 3600;
 
@@ -61,7 +62,10 @@ export default async function OfferPage({ params }: { params: Promise<{ locale: 
         {body}
       </pre>
 
-      <Link href={`/${locale}/register`} className="text-primary mt-10 inline-block text-sm">
+      <Link
+        href={pathFor(locale, "/register")}
+        className="text-primary-ink mt-10 inline-block text-sm"
+      >
         {t("back")}
       </Link>
     </main>

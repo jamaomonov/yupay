@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
 import { PageHeading } from "@/components/PageHeading";
+import { pathFor } from "@/lib/locale-href";
 import type { Profile } from "@/lib/types";
 
 import { ApiKeysCard } from "@/components/ApiKeysCard";
@@ -90,7 +91,7 @@ export default function SettingsPage() {
                 setZone(event.target.value);
                 setSavedZone(false);
               }}
-              className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 text-sm outline-none"
+              className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 text-sm"
             >
               {/* The saved value first, so a zone set elsewhere — or one this
                   list has not heard of — is never silently replaced by the
@@ -124,8 +125,8 @@ export default function SettingsPage() {
           </p>
         )}
         <Link
-          href={`/${locale}/offer`}
-          className="border-border rounded-btn mt-4 inline-flex px-4 py-2 text-sm font-semibold"
+          href={pathFor(locale, "/offer")}
+          className="border-border rounded-btn mt-4 inline-flex border px-4 py-2 text-sm font-semibold"
         >
           {tOffer("title")}
         </Link>

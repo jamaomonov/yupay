@@ -17,10 +17,38 @@ function isLocale(segment: string): segment is AppLocale {
  * Every route in this app exists under all three locales with the same slugs,
  * so unlike the storefront there is no per-locale content to fall back from.
  */
-export function hrefForLocale(next: AppLocale, pathname: string): string {
+/**
+ * A root-relative link, honouring `as-needed`.
+ *
+ * Every internal link in the app goes through this rather than being written
+ * as `` `/${locale}/x` ``, and it fixes two things that literal was quietly
+ * costing us. The default locale has **no** segment, so `/ru/cabinet/orders`
+ * was a 308 to `/cabinet/orders` — a redirect on every click in the cabinet.
+ * And because `usePathname()` returns the browser's path, which after that
+ * redirect has no prefix, `pathname === "/ru/cabinet/orders"` never matched:
+ * the sidebar highlighted nothing at all for anyone browsing in Russian,
+ * which is everyone.
+ */
+export function pathFor(locale: string, path: string): string {
+  const prefix = locale === routing.defaultLocale ? "" : `/${locale}`;
+  const rest = path === "/" ? "" : path;
+  return `${prefix}${rest}` === "" ? "/" : `${prefix}${rest}`;
+}
+
+/**
+ * Strip a locale segment, so two paths can be compared for "same page".
+ *
+ * `usePathname()` gives the browser's path and a link may carry a prefix or
+ * not; normalising both ends is what makes an active-state check survive
+ * either.
+ */
+export function withoutLocale(pathname: string): string {
   const [, first = "", ...rest] = pathname.split("/");
-  const tail = isLocale(first) ? rest : [first, ...rest].filter((part) => part !== "");
-  const path = tail.join("/");
-  const prefix = next === routing.defaultLocale ? "" : `/${next}`;
-  return path === "" ? prefix || "/" : `${prefix}/${path}`;
+  const tail = isLocale(first) ? rest : [first, ...rest];
+  const path = tail.filter((part) => part !== "").join("/");
+  return path === "" ? "/" : `/${path}`;
+}
+
+export function hrefForLocale(next: AppLocale, pathname: string): string {
+  return pathFor(next, withoutLocale(pathname));
 }

@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { pathFor } from "@/lib/locale-href";
 import type { OrderRow, OrdersPage } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
@@ -47,7 +48,7 @@ export default function Dashboard() {
         // detail on a customer-facing surface.
         <section className="border-border bg-card mt-5 rounded-xl border p-6">
           <p className="flex items-center gap-2 font-medium">
-            <Wallet aria-hidden size={17} className="text-primary shrink-0" />
+            <Wallet aria-hidden size={17} className="text-primary-ink shrink-0" />
             {t("balanceEmptyTitle")}
           </p>
           <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("balanceEmptyBody")}</p>
@@ -62,11 +63,11 @@ export default function Dashboard() {
 
       <section className="mt-5 grid gap-4 lg:grid-cols-3">
         <Link
-          href={`/${locale}/cabinet/catalog`}
+          href={pathFor(locale, "/cabinet/catalog")}
           className="border-border bg-card-2 group rounded-xl border p-5 font-semibold"
         >
           <span className="flex items-center gap-2.5">
-            <LayoutGrid aria-hidden size={18} className="text-primary shrink-0" />
+            <LayoutGrid aria-hidden size={18} className="text-primary-ink shrink-0" />
             {t("navCatalog")}
             <ArrowRight
               aria-hidden
@@ -77,7 +78,7 @@ export default function Dashboard() {
         </Link>
         <div className="border-border bg-card rounded-xl border p-5 lg:col-span-2">
           <Link
-            href={`/${locale}/cabinet/orders`}
+            href={pathFor(locale, "/cabinet/orders")}
             className="text-tx-mute flex items-center gap-2 text-sm"
           >
             <Package aria-hidden size={15} className="text-tx-dim shrink-0" />
@@ -90,7 +91,10 @@ export default function Dashboard() {
             {(recent ?? []).map((row) => (
               <li key={row.order_id} className="flex items-baseline justify-between gap-3 text-sm">
                 <Link
-                  href={`/${locale}/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`}
+                  href={pathFor(
+                    locale,
+                    `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                  )}
                   className="min-w-0 truncate underline-offset-4 hover:underline"
                 >
                   {row.merchant_order_id}

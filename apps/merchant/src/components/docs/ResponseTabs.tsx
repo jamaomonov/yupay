@@ -16,7 +16,7 @@ export interface ResponsePanel {
 
 /** The tone of a status, so a reader finds the failure case by colour. */
 function toneOf(status: string): string {
-  if (status.startsWith("2")) return "text-primary border-primary";
+  if (status.startsWith("2")) return "text-primary-ink border-primary";
   if (status.startsWith("4")) return "text-danger border-danger";
   return "text-gold border-gold";
 }

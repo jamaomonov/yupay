@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
+import { pathFor } from "@/lib/locale-href";
 import type { Webhook, WebhookWithSecret } from "@/lib/types";
 
 import { CopyButton } from "@/components/CopyButton";
@@ -115,7 +116,7 @@ export function WebhookCard({ locale }: { locale: string }) {
               onChange={(event) => {
                 setUrl(event.target.value);
               }}
-              className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm outline-none"
+              className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm"
             />
           </div>
           <button
@@ -197,7 +198,7 @@ export function WebhookCard({ locale }: { locale: string }) {
                   >
                     {t("sendTest")}
                   </button>
-                  {sent && <span className="text-primary text-xs">{t("testSent")}</span>}
+                  {sent && <span className="text-primary-ink text-xs">{t("testSent")}</span>}
                   <button
                     type="button"
                     onClick={() => {
@@ -260,7 +261,7 @@ export function WebhookCard({ locale }: { locale: string }) {
       </div>
 
       <p className="text-tx-dim mt-5 text-xs">
-        <a href={`/${locale}/cabinet/webhooks`} className="underline underline-offset-4">
+        <a href={pathFor(locale, "/cabinet/webhooks")} className="underline underline-offset-4">
           {t("logLink")}
         </a>
       </p>

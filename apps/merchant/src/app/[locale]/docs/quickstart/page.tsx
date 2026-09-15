@@ -4,7 +4,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { DocsPage, Section } from "@/components/docs/Page";
 import { routing } from "@/i18n/routing";
-import { contract, endpoints } from "@/lib/contract";
+import { pathFor } from "@/lib/locale-href";
+import { apiBaseUrl, contract, endpoints } from "@/lib/contract";
 import { bodySchema } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
@@ -17,7 +18,7 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("merchant.docs");
-  const base = contract().servers?.[0]?.url ?? "https://api.yupay.uz";
+  const base = apiBaseUrl();
 
   const order = endpoints().find((entry) => entry.id === "post-orders");
   const orderBody = bodySchema(order?.operation.requestBody?.content);
@@ -71,19 +72,19 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
         <ul className="text-tx-mute ml-4 list-disc space-y-1.5 text-[14px]">
           <li>
             <Link
-              href={`/${locale}/docs/api/get-orders-merchant-order-id`}
+              href={pathFor(locale, "/docs/api/get-orders-merchant-order-id")}
               className="underline underline-offset-4"
             >
               {t("quickPoll")}
             </Link>
           </li>
           <li>
-            <Link href={`/${locale}/docs/webhooks`} className="underline underline-offset-4">
+            <Link href={pathFor(locale, "/docs/webhooks")} className="underline underline-offset-4">
               {t("navWebhooks")}
             </Link>
           </li>
           <li>
-            <Link href={`/${locale}/docs/errors`} className="underline underline-offset-4">
+            <Link href={pathFor(locale, "/docs/errors")} className="underline underline-offset-4">
               {t("navErrors")}
             </Link>
           </li>

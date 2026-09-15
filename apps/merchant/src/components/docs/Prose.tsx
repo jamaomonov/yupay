@@ -11,7 +11,13 @@ import { Fragment } from "react";
  * never a string of markup.
  */
 export function Prose({ text, className }: { text: string; className?: string }) {
-  const blocks = text.split(/\n{2,}/);
+  // The contract's descriptions are Python docstrings, and reST spells inline
+  // code with DOUBLE backticks. `Inline` pairs single ones, so on a string
+  // like "``paid`` and ``merchants.orders.place``" it matched the *gaps*:
+  // the running prose rendered as mono-on-grey, the identifiers rendered as
+  // prose, and stray backticks were left lying around. 28 descriptions in the
+  // published contract carry them.
+  const blocks = text.replaceAll("``", "`").split(/\n{2,}/);
   return (
     <div className={className}>
       {blocks.map((block, index) => {

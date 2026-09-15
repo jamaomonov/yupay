@@ -22,7 +22,7 @@ const DELIVERY_STATUS: Record<string, string> = {
 };
 
 const TONE: Record<string, string> = {
-  delivered: "text-primary bg-primary/10",
+  delivered: "text-primary-ink bg-primary/10",
   failed: "text-danger bg-danger/10",
   in_progress: "text-blue bg-blue/10",
   pending: "text-gold bg-gold/10",

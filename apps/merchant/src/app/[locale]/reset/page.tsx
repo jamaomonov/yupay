@@ -6,6 +6,7 @@ import { Suspense, useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
+import { pathFor } from "@/lib/locale-href";
 import { ApiError, api, storeTokens, type Tokens } from "@/lib/api";
 
 const MIN_PASSWORD = 10;
@@ -33,7 +34,7 @@ function ResetForm() {
       // Signing straight in is the API's own answer, and it is safe for the
       // reason the confirm link is: holding it proves the mailbox.
       storeTokens(tokens);
-      router.replace(`/${locale}/cabinet`);
+      router.replace(pathFor(locale, "/cabinet"));
     } catch (cause) {
       // A 401 means the link is spent or expired — a different screen, since
       // no amount of retyping a password fixes it.
@@ -48,7 +49,7 @@ function ResetForm() {
       <AuthShell
         title={t("resetFailedTitle")}
         subtitle={t("resetFailedBody")}
-        footer={<AuthLink href={`/${locale}/forgot`} label={t("forgotTitle")} />}
+        footer={<AuthLink href={pathFor(locale, "/forgot")} label={t("forgotTitle")} />}
       />
     );
   }
@@ -57,7 +58,7 @@ function ResetForm() {
     <AuthShell
       title={t("resetTitle")}
       subtitle={t("resetSubtitle")}
-      footer={<AuthLink href={`/${locale}/login`} label={t("backToLogin")} />}
+      footer={<AuthLink href={pathFor(locale, "/login")} label={t("backToLogin")} />}
     >
       <form onSubmit={submit}>
         <FormError message={error} />

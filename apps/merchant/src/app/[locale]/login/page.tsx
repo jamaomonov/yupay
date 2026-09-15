@@ -6,6 +6,7 @@ import { useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
+import { pathFor } from "@/lib/locale-href";
 import { ApiError, api, storeTokens, type Tokens } from "@/lib/api";
 
 export default function LoginPage() {
@@ -28,7 +29,7 @@ export default function LoginPage() {
         body: { email, password },
       });
       storeTokens(tokens);
-      router.replace(`/${locale}/cabinet`);
+      router.replace(pathFor(locale, "/cabinet"));
     } catch (err) {
       // One message for every failure, because the API answers the same for
       // every failure — and the copy says what an unconfirmed operator should
@@ -48,10 +49,11 @@ export default function LoginPage() {
       footer={
         <div className="space-y-2">
           <p>
-            {t("noAccount")} <AuthLink href={`/${locale}/register`} label={t("submitRegister")} />
+            {t("noAccount")}{" "}
+            <AuthLink href={pathFor(locale, "/register")} label={t("submitRegister")} />
           </p>
           <p>
-            <AuthLink href={`/${locale}/forgot`} label={t("forgotLink")} />
+            <AuthLink href={pathFor(locale, "/forgot")} label={t("forgotLink")} />
           </p>
         </div>
       }

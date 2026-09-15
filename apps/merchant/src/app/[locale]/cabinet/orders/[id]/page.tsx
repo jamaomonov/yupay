@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { pathFor } from "@/lib/locale-href";
 import type { OrderDetail } from "@/lib/types";
 
 import { CopyButton } from "@/components/CopyButton";
@@ -55,7 +56,7 @@ export default function OrderDetailPage() {
   return (
     <div>
       <Link
-        href={`/${locale}/cabinet/orders`}
+        href={pathFor(locale, "/cabinet/orders")}
         className="text-tx-mute inline-flex items-center gap-1.5 text-sm"
       >
         <ArrowLeft size={15} />

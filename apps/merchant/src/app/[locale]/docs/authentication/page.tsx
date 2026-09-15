@@ -4,7 +4,7 @@ import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Code, DocsPage, Section, Table } from "@/components/docs/Page";
 import { Prose } from "@/components/docs/Prose";
 import { routing } from "@/i18n/routing";
-import { contract } from "@/lib/contract";
+import { apiBaseUrl, contract } from "@/lib/contract";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
 
 export function generateStaticParams() {
@@ -27,7 +27,7 @@ export default async function AuthenticationPage({
   const t = await getTranslations("merchant.docs");
 
   const schemes = contract().components.securitySchemes ?? {};
-  const base = contract().servers?.[0]?.url ?? "https://api.yupay.uz";
+  const base = apiBaseUrl();
 
   // The signed GET that needs the least explaining — the one an integrator
   // runs first to prove their signing works before any money is involved.
