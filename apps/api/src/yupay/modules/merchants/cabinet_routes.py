@@ -35,6 +35,7 @@ from yupay.core.logging import get_logger
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.merchants import (
     cabinet_auth,
+    cabinet_export,
     cabinet_orders,
     cabinet_summary,
     credentials,
@@ -315,6 +316,37 @@ async def list_transactions(
     return await transactions.build(
         db, merchant_id=merchant.id, limit=max(1, min(limit, 200)), cursor=cursor
     )
+
+
+def _csv(body: tuple[str, str]) -> Response:
+    """A CSV download, named so the file says what it holds."""
+    text, filename = body
+    return Response(
+        # BOM first: Excel reads a CSV without one as the system codepage and
+        # renders every Cyrillic brand name as mojibake. Every other reader
+        # tolerates it.
+        content="\ufeff" + text,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/transactions.csv", summary="The deposit statement, as CSV")
+async def export_transactions(user: CurrentUser, db: Db) -> Response:
+    """Built from the same reader the Транзакции screen pages through.
+
+    A statement disagreeing with the screen about what a merchant spent is
+    worse than no statement, and one source is the only way that cannot
+    happen.
+    """
+    merchant = await merchant_of(db, user)
+    return _csv(await cabinet_export.statement_csv(db, merchant_id=merchant.id))
+
+
+@router.get("/catalog.csv", summary="The wholesale price list, as CSV")
+async def export_catalog(user: CurrentUser, db: Db) -> Response:
+    """The same tree ``GET /catalog`` serves, flattened to one row per SKU."""
+    return _csv(await cabinet_export.price_list_csv(db, merchant=await merchant_of(db, user)))
 
 
 @router.get("/api-keys", response_model=list[CabinetApiKeyOut], summary="Machine credentials")

@@ -386,6 +386,31 @@ The admin endpoints remain — use them when a merchant cannot reach their own
 cabinet, and on a suspected leak, where the rule above still holds: revoke
 first, talk after.
 
+### The CSV exports, and the one setting they need
+
+Транзакции and Каталог each have a «Скачать CSV». Both are built from the same
+readers the screens use, so a statement can never disagree with the screen it
+came from — that is the whole design and the reason neither has a query of its
+own.
+
+Two things that look like bugs and are not:
+
+- **The statement reads at most 10 000 ledger rows**, newest first. The
+  filename carries the date range the file actually covers
+  (`yupay-statement-2026-08-01_2026-09-15.csv`), so a truncated export says so
+  by its own name rather than by a comment line that would break a parser.
+- **Values in the two free-text columns may start with an apostrophe.** That
+  is deliberate: a `merchant_order_id` a reseller's system chose can start
+  with `=`, which Excel executes, and the file is opened by their accountant.
+  The apostrophe is the OWASP mitigation and Excel strips it on display. It is
+  never applied to money or dates.
+
+**They need `Content-Disposition` on the CORS expose list**, which
+`bootstrap.py` now sets. Without it a browser on `reseller.yupay.uz` cannot
+read the header at all and every download saves under a generic name with no
+indication of what is in it. If somebody reports "my statement downloaded as
+transactions.csv", that is this.
+
 ### "Today" on the dashboard is the browser's day, not ours
 
 `GET /merchant/cabinet/summary` takes a required `since` and the browser sends

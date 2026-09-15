@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { Transaction, TransactionsPage } from "@/lib/types";
 
-import { api } from "@/lib/api";
+import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { transactionKindLabel } from "@/lib/labels";
 import { formatUsd, toCents } from "@/lib/money";
@@ -51,12 +51,23 @@ export default function TransactionsList() {
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <a
-          href="https://t.me/yupay_support"
-          className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
-        >
-          {t("requestDeposit")}
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              void downloadFile("/transactions.csv").catch(() => undefined);
+            }}
+            className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
+          >
+            {t("exportCsv")}
+          </button>
+          <a
+            href="https://t.me/yupay_support"
+            className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
+          >
+            {t("requestDeposit")}
+          </a>
+        </div>
       </div>
 
       {rows !== null && rows.length === 0 && (

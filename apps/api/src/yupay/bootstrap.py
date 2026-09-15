@@ -289,6 +289,13 @@ def create_app() -> FastAPI:
     # first, since passing it straight through as ``allow_origins=["*"]`` makes
     # Starlette set ``allow_all_origins`` just the same (see
     # ``CORSMiddleware.__init__``), which would silently reopen the same hole.
+    # ``Content-Disposition`` is not a CORS-safelisted response header, so a
+    # browser on another origin cannot read it unless it is named here. The
+    # cabinet's CSV exports carry their filename in it — the statement's names
+    # the date range it actually covers — and without this every download
+    # saves as "transactions.csv" with no idea what is in it.
+    exposed = ["Content-Disposition"]
+
     if "*" in settings.cors_allow_origins and not settings.is_prod:
         app.add_middleware(
             CORSMiddleware,
@@ -296,6 +303,7 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=exposed,
         )
     else:
         if "*" in settings.cors_allow_origins:
@@ -313,6 +321,7 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=exposed,
         )
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]

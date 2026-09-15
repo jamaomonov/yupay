@@ -31908,6 +31908,54 @@
         ]
       }
     },
+    "/merchant/cabinet/catalog.csv": {
+      "get": {
+        "description": "The same tree ``GET /catalog`` serves, flattened to one row per SKU.",
+        "operationId": "export_catalog_merchant_cabinet_catalog_csv_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The wholesale price list, as CSV",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/cabinet/confirm": {
       "post": {
         "description": "Consume the link and sign the operator in.\n\nSigning them in here rather than redirecting to a login form is safe for\nthe reason the link exists: holding it *is* proof of the mailbox, which is\nthe same proof the password form is trying to establish.",
@@ -32568,6 +32616,54 @@
           }
         },
         "summary": "The deposit ledger",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/transactions.csv": {
+      "get": {
+        "description": "Built from the same reader the \u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438 screen pages through.\n\nA statement disagreeing with the screen about what a merchant spent is\nworse than no statement, and one source is the only way that cannot\nhappen.",
+        "operationId": "export_transactions_merchant_cabinet_transactions_csv_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The deposit statement, as CSV",
         "tags": [
           "merchant-cabinet"
         ]

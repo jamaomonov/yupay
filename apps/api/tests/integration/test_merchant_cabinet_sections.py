@@ -13,8 +13,10 @@ $16.54. The Stars case is in here for exactly that reason.
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import hmac
+import io
 import json
 import re
 import time
@@ -39,6 +41,7 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.merchants import cabinet_routes
 from yupay.modules.merchants.models import MerchantUser
+from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -485,6 +488,118 @@ async def test_the_summary_refuses_a_window_it_would_not_read(
     assert ancient.json()["code"] == "window_too_long"
 
 
+async def test_the_statement_export_is_the_screen_in_a_file(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """Same reader, same numbers, and safe to open in a spreadsheet.
+
+    The formula guard is the part a reviewer would otherwise call paranoid:
+    ``merchant_order_id`` is free text from the reseller's own system and the
+    file is opened by their accountant, so a value starting with ``=`` would
+    execute there. It is prefixed with an apostrophe, which Excel strips on
+    display — and which must **not** reach the money or date columns, because
+    it would make them unparseable.
+    """
+    access, merchant_id = await _signed_up(integration_client, sent, "csv@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+    assert (
+        await integration_client.post(
+            f"{BASE}/orders",
+            headers=_auth(access),
+            json={"sku_id": sku_id, "quantity": 1000, "expected_price": "16.54"},
+        )
+    ).status_code == 201
+
+    export = await integration_client.get(f"{BASE}/transactions.csv", headers=_auth(access))
+
+    assert export.status_code == 200, export.text
+    assert export.headers["content-type"].startswith("text/csv")
+    # The filename names the range the file covers, so a truncated run says so.
+    assert "yupay-statement-" in export.headers["content-disposition"]
+    body = export.text
+    assert body.startswith("\ufeff"), "Excel reads a CSV without a BOM as the system codepage"
+    rows = list(csv.reader(io.StringIO(body.lstrip("\ufeff")), delimiter=","))
+    assert rows[0] == [
+        "created_at",
+        "kind",
+        "amount_usd",
+        "merchant_order_id",
+        "order_id",
+        "transaction_id",
+    ]
+    # The charge and the credit, newest first, with the screen's own numbers.
+    assert [row[1] for row in rows[1:]] == ["merchant_order_charge", "merchant_deposit_credit"]
+    assert [row[2] for row in rows[1:]] == ["-16.54", "40.00"]
+    assert rows[1][3].startswith("manual-"), "an ordinary id is not rewritten"
+
+
+async def test_the_statement_defuses_a_formula_without_touching_the_numbers(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """A `merchant_order_id` a reseller's system chose, starting with `=`.
+
+    Reachable only through the machine API — the cabinet mints its own ids —
+    which is exactly why it is worth a test: the id in the file is not one we
+    control.
+    """
+    access, merchant_id = await _signed_up(integration_client, sent, "inject@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    order = Order(
+        id=new_id(),
+        merchant_id=merchant_id,
+        status="delivered",
+        currency="USD",
+        total_usd=Decimal("16.54"),
+        total_charged=Decimal("16.54"),
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+        idempotency_key="=cmd|'/c calc'!A1",
+        source="merchant_api",
+    )
+    db_session.add(order)
+    await db_session.commit()
+    await _credit(integration_client, admin_headers, merchant_id, "1.00", order_id=order.id)
+
+    export = await integration_client.get(f"{BASE}/transactions.csv", headers=_auth(access))
+
+    rows = list(csv.reader(io.StringIO(export.text.lstrip("\ufeff"))))
+    settled = next(row for row in rows[1:] if row[4] == order.id)
+    assert settled[3] == "'=cmd|'/c calc'!A1", "a leading = must not reach a spreadsheet live"
+    assert settled[2] == "1.00", "the money column is never prefixed"
+
+
+async def test_the_price_list_export_is_the_catalog_flattened(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
+) -> None:
+    """One row per orderable SKU, priced for this merchant.
+
+    Built from `price_list.build`, so the export cannot advertise a price the
+    order path would refuse — the property the catalog read already has.
+    """
+    access, _ = await _signed_up(integration_client, sent, "prices@acme.example.com")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+
+    export = await integration_client.get(f"{BASE}/catalog.csv", headers=_auth(access))
+    tree = await integration_client.get(f"{BASE}/catalog", headers=_auth(access))
+
+    assert export.status_code == 200, export.text
+    rows = list(csv.reader(io.StringIO(export.text.lstrip("\ufeff"))))
+    assert rows[0][:5] == ["sku_id", "sku_code", "brand", "product", "kind"]
+    body = [row for row in rows[1:] if row[0] == sku_id]
+    assert len(body) == 1, "exactly one row per SKU"
+    from_tree = tree.json()["brands"][0]["products"][0]["skus"][0]
+    assert body[0][1] == from_tree["sku_code"]
+    assert body[0][7] == from_tree["unit_price_usd"], "the same price the tree quotes"
+
+
 async def test_the_timezone_is_the_callers_own_and_must_be_loadable(
     integration_client: AsyncClient, sent: list[dict[str, str]]
 ) -> None:
@@ -570,6 +685,8 @@ async def test_every_section_refuses_a_signed_out_browser(
         f"{BASE}/summary?since={quote(datetime.now(UTC).isoformat())}"
     )
     assert summary.status_code == 401
+    for export in ("/transactions.csv", "/catalog.csv"):
+        assert (await integration_client.get(f"{BASE}{export}")).status_code == 401, export
 
     users = (await db_session.execute(select(MerchantUser))).scalars().all()
     assert users == [], "nothing above should have created an account"

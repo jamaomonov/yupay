@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { Brand, Catalog } from "@/lib/types";
 
-import { api } from "@/lib/api";
+import { api, downloadFile } from "@/lib/api";
 import { formatUsd, toCents } from "@/lib/money";
 
 /** The cheapest thing in a brand, for the «from $X» on its card. */
@@ -41,7 +41,18 @@ export default function CatalogPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <button
+          type="button"
+          onClick={() => {
+            void downloadFile("/catalog.csv").catch(() => undefined);
+          }}
+          className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
+        >
+          {t("exportCsv")}
+        </button>
+      </div>
 
       <input
         type="search"

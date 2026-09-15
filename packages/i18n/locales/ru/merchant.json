@@ -89,7 +89,8 @@
     "created": "Заказ создан",
     "notEnough": "Недостаточно средств на депозите",
     "orderFailed": "Не удалось создать заказ",
-    "apiId": "ID для API"
+    "apiId": "ID для API",
+    "exportCsv": "Скачать CSV"
   },
   "docs": {
     "title": "Документация",
@@ -157,7 +158,8 @@
     "kindDepositCredit": "Пополнение депозита",
     "kindOrderCharge": "Списание за заказ",
     "kindOrderRefund": "Возврат за заказ",
-    "requestDeposit": "Запросить пополнение"
+    "requestDeposit": "Запросить пополнение",
+    "exportCsv": "Скачать CSV"
   },
   "settings": {
     "title": "Настройки",

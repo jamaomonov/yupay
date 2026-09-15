@@ -89,7 +89,8 @@
     "created": "Order created",
     "notEnough": "Not enough on the deposit",
     "orderFailed": "Could not create the order",
-    "apiId": "API id"
+    "apiId": "API id",
+    "exportCsv": "Download CSV"
   },
   "docs": {
     "title": "Documentation",
@@ -157,7 +158,8 @@
     "kindDepositCredit": "Deposit credited",
     "kindOrderCharge": "Order charge",
     "kindOrderRefund": "Order refund",
-    "requestDeposit": "Request a deposit"
+    "requestDeposit": "Request a deposit",
+    "exportCsv": "Download CSV"
   },
   "settings": {
     "title": "Settings",

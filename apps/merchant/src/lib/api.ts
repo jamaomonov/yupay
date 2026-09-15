@@ -169,6 +169,39 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
+/**
+ * Fetch a file from the cabinet and hand it to the browser to save.
+ *
+ * A plain `<a href>` cannot carry the `Authorization` header, so the bytes
+ * come through `fetch` and reach the disk as an object URL. The filename is
+ * read off `Content-Disposition` — the API names the statement after the date
+ * range it actually covers — which is why `Content-Disposition` is on the
+ * CORS `expose_headers` list; without that a browser on this origin cannot
+ * see the header at all.
+ */
+export async function downloadFile(path: string, retried = false): Promise<void> {
+  const access = readToken(ACCESS_KEY);
+  const response = await fetch(`${BASE}/merchant/cabinet${path}`, {
+    headers: access ? { Authorization: `Bearer ${access}` } : {},
+  });
+  if (response.status === 401 && !retried && (await rotate())) {
+    return downloadFile(path, true);
+  }
+  if (!response.ok) throw new ApiError(response.status, await parse(response));
+
+  const disposition = response.headers.get("Content-Disposition") ?? "";
+  const match = /filename="([^"]+)"/.exec(disposition);
+  const name = match?.[1] ?? "export.csv";
+  const url = URL.createObjectURL(await response.blob());
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = name;
+  document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function signOut(): Promise<void> {
   const token = readToken(REFRESH_KEY);
   // Clear locally first: a network failure must not leave a browser that looks
