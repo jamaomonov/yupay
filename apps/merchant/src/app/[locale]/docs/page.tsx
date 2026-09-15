@@ -63,7 +63,7 @@ export default async function DocsPage({ params }: { params: Promise<{ locale: s
             every admin and storefront path we have, and a client generated
             from it would be a map of our whole surface. */}
         <a
-          href={`${API_BASE}/merchant/v1/openapi.json`}
+          href={`${API_BASE}/merchant/openapi.json`}
           className="border-border rounded-btn inline-flex border px-4 py-2.5 text-sm font-semibold"
         >
           {t("fullReference")}

@@ -356,9 +356,10 @@ def create_app() -> FastAPI:
     # Its own prefix, not under /api/v1 — see the module docstring. The router
     # carries the prefix itself so there is one place to read it from.
     app.include_router(merchant_machine_router)
-    # After the machine router, and not on its exemption list: this one takes
-    # no credential, so the coarse per-IP limit is exactly the control it
-    # needs. Its own router because the machine one requires a signature.
+    # `/merchant/openapi.json`, deliberately **outside** `/merchant/v1`: that
+    # prefix means "signed, and exempt from the coarse limiter because it
+    # authenticates its own caller", and this route is neither. Four sweeps
+    # enumerate that prefix and assert those properties of everything in it.
     app.include_router(merchant_openapi_router)
     # Not added to the self-authenticating exemption above, and that is the
     # point: a password form is exactly what the coarse per-IP limit is for.

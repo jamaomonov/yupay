@@ -14,9 +14,17 @@ every admin DTO beside six public ones.
 
 Unauthenticated on purpose. A contract is not data, it is what somebody reads
 *before* they have a credential, and the whole point of publishing it is that
-an integrator can start without asking us for anything. It is **not** on the
-limiter's exemption list — that list exists for surfaces which authenticate
-their own caller, and this one does not.
+an integrator can start without asking us for anything.
+
+**And therefore served at `/merchant/openapi.json`, one level above the API it
+describes.** `/merchant/v1` has a defining property — everything under it is
+HMAC-signed, refuses an unsigned request with a 401 and a frozen merchant with
+a 403, and sits on the limiter's exemption list because it authenticates its
+own caller. This document does none of that, and three sweeps in
+`test_merchant_api_read.py` plus one in `test_rate_limit.py` enumerate the
+prefix and assert those properties of everything they find. Putting a public
+document inside that prefix broke all four, which was the right answer from
+the tests: the prefix means "signed", and a schema is not.
 """
 
 from __future__ import annotations
@@ -27,7 +35,9 @@ from fastapi import APIRouter, Request
 
 from yupay.core.config import get_settings
 
-#: Only these paths, and everything they reach.
+#: Only these paths, and everything they reach. Note it is **not** this
+#: router's own prefix — the document describes `/merchant/v1` and is served
+#: beside it.
 _PREFIX: Final = "/merchant/v1"
 
 _REF: Final = "#/components/schemas/"
@@ -37,7 +47,7 @@ _REF: Final = "#/components/schemas/"
 #: the cheapest way to spend our CPU from the outside.
 _cached: dict[str, Any] | None = None
 
-router = APIRouter(prefix=_PREFIX, tags=["merchant-api"])
+router = APIRouter(prefix="/merchant", tags=["merchant-api"])
 
 
 def _referenced(node: Any, schemas: dict[str, Any], seen: set[str]) -> None:

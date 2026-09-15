@@ -15,6 +15,12 @@ from httpx import AsyncClient
 
 pytestmark = pytest.mark.asyncio
 
+#: Served **outside** `/merchant/v1`. That prefix means "signed, and exempt
+#: from the coarse limiter because it authenticates its own caller", and four
+#: sweeps enumerate it to assert exactly that of everything they find; a
+#: public document inside it fails all four, correctly.
+SCHEMA = "/merchant/openapi.json"
+
 #: The whole machine API (spec §9.1). A seventh appearing here without a line
 #: in the module README is the failure this pins.
 DOCUMENTED = {
@@ -31,7 +37,7 @@ async def test_the_published_schema_is_the_machine_api_and_nothing_else(
     integration_client: AsyncClient,
 ) -> None:
     """Six paths, no credential required, and no path from anywhere else."""
-    r = await integration_client.get("/merchant/v1/openapi.json")
+    r = await integration_client.get(SCHEMA)
 
     assert r.status_code == 200, "the contract is what somebody reads before they have a key"
     document = r.json()
@@ -46,7 +52,7 @@ async def test_no_internal_schema_rides_along(integration_client: AsyncClient) -
     future `MerchantAdminThing`, and a reachability check alone would pass a
     leak whose name is innocent.
     """
-    document = (await integration_client.get("/merchant/v1/openapi.json")).json()
+    document = (await integration_client.get(SCHEMA)).json()
     schemas: dict[str, object] = document["components"]["schemas"]
 
     rendered = repr(document["paths"]) + repr(schemas)
@@ -62,6 +68,6 @@ async def test_no_internal_schema_rides_along(integration_client: AsyncClient) -
 async def test_the_contract_does_not_document_itself(integration_client: AsyncClient) -> None:
     """A path that serves the document adds a method to every generated client
     and tells its reader nothing."""
-    document = (await integration_client.get("/merchant/v1/openapi.json")).json()
+    document = (await integration_client.get(SCHEMA)).json()
 
-    assert "/merchant/v1/openapi.json" not in document["paths"]
+    assert SCHEMA not in document["paths"]
