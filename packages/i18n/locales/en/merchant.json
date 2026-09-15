@@ -175,7 +175,15 @@
     "offerAccepted": "Accepted {date}, version {version}",
     "revokeConfirm": "Revoke this key? Requests signed with it will stop working.",
     "revokeYes": "Yes, revoke",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "timezoneTitle": "Timezone",
+    "timezoneBody": "Affects only when we email you. Dates in the cabinet follow your browser's clock, and the API always speaks UTC.",
+    "timezone": "Timezone",
+    "save": "Save",
+    "saved": "Saved",
+    "ipAllowlist": "Allowed IPs",
+    "ipAllowlistHint": "One per line: an address or a block (203.0.113.5 or 10.0.0.0/8). Empty means no filter. It cannot be edited on an issued key — create a new one and revoke the old.",
+    "noFilter": "no filter"
   },
   "webhooks": {
     "title": "Webhooks",

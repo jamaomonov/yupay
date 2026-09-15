@@ -385,6 +385,74 @@ async def test_one_operator_never_revokes_another_merchants_key(
     assert rows[0]["revoked_at"] is None, "the owner's key must still be live"
 
 
+async def test_the_timezone_is_the_callers_own_and_must_be_loadable(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """A display setting, validated by loading the zone rather than by a list.
+
+    The "callers own" half has no id in the path to get wrong, which is the
+    point: the test exists so that a future field on this endpoint which does
+    take one fails here.
+    """
+    mine, _ = await _signed_up(integration_client, sent, "tz@acme.example.com")
+    theirs, _ = await _signed_up(integration_client, sent, "tz@other.example.com")
+
+    ok = await integration_client.patch(
+        f"{BASE}/me", headers=_auth(mine), json={"timezone": "Europe/Moscow"}
+    )
+    bad = await integration_client.patch(
+        f"{BASE}/me", headers=_auth(mine), json={"timezone": "Mars/Olympus"}
+    )
+
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["timezone"] == "Europe/Moscow"
+    assert bad.status_code == 422
+    # Unchanged by the refusal, and the other account untouched by the success.
+    assert (await integration_client.get(f"{BASE}/me", headers=_auth(mine))).json()[
+        "timezone"
+    ] == "Europe/Moscow"
+    assert (await integration_client.get(f"{BASE}/me", headers=_auth(theirs))).json()[
+        "timezone"
+    ] == "Asia/Tashkent"
+
+
+async def test_a_key_carries_the_allowlist_it_was_issued_with(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Same field, same rules and the same validator as the admin surface.
+
+    A typo'd entry stored verbatim would never match and would lock the
+    merchant out of their own API with a 403 nobody can explain, so it is
+    refused at the parse boundary — on this surface too, which is the thing
+    a second copy of the validator would eventually stop doing.
+    """
+    access, _ = await _signed_up(integration_client, sent, "ips@acme.example.com")
+
+    issued = await integration_client.post(
+        f"{BASE}/api-keys",
+        headers=_auth(access),
+        json={"label": "boxed", "ip_allowlist": ["203.0.113.5", " 10.0.0.0/8 "]},
+    )
+    refused = await integration_client.post(
+        f"{BASE}/api-keys", headers=_auth(access), json={"ip_allowlist": ["not-an-ip"]}
+    )
+    plain = await integration_client.post(
+        f"{BASE}/api-keys", headers=_auth(access), json={"label": "no filter"}
+    )
+
+    assert issued.status_code == 201, issued.text
+    assert issued.json()["ip_allowlist"] == ["203.0.113.5", "10.0.0.0/8"], "entries are trimmed"
+    assert refused.status_code == 422
+    assert plain.status_code == 201
+    assert plain.json()["ip_allowlist"] is None, "an omitted list means no filter, not an empty one"
+    listed = {
+        row["key_id"]: row["ip_allowlist"]
+        for row in (await integration_client.get(f"{BASE}/api-keys", headers=_auth(access))).json()
+    }
+    assert len(listed) == 2, "the refused call must not have minted a credential"
+    assert listed[issued.json()["key_id"]] == ["203.0.113.5", "10.0.0.0/8"]
+
+
 async def test_every_section_refuses_a_signed_out_browser(
     integration_client: AsyncClient, sent: list[dict[str, str]], db_session: AsyncSession
 ) -> None:
@@ -396,6 +464,8 @@ async def test_every_section_refuses_a_signed_out_browser(
     for path in ("/me", "/catalog", "/orders", "/transactions", "/api-keys"):
         r = await integration_client.get(f"{BASE}{path}")
         assert r.status_code == 401, f"{path} answered {r.status_code}"
+    patched = await integration_client.patch(f"{BASE}/me", json={"timezone": "UTC"})
+    assert patched.status_code == 401
 
     users = (await db_session.execute(select(MerchantUser))).scalars().all()
     assert users == [], "nothing above should have created an account"

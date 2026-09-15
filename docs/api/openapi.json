@@ -3425,6 +3425,21 @@
       "CabinetApiKeyCreateIn": {
         "additionalProperties": false,
         "properties": {
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
           "label": {
             "default": "",
             "maxLength": 64,
@@ -3446,6 +3461,20 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
           },
           "key_id": {
             "title": "Key Id",
@@ -3484,6 +3513,7 @@
           "id",
           "key_id",
           "label",
+          "ip_allowlist",
           "created_at",
           "last_used_at",
           "revoked_at"
@@ -3637,6 +3667,20 @@
             "title": "Created At",
             "type": "string"
           },
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
           "key_id": {
             "title": "Key Id",
             "type": "string"
@@ -3654,6 +3698,7 @@
           "key_id",
           "secret",
           "label",
+          "ip_allowlist",
           "created_at"
         ],
         "title": "CabinetIssuedKeyOut",
@@ -3899,6 +3944,23 @@
           "offer_accepted_at"
         ],
         "title": "CabinetProfileOut",
+        "type": "object"
+      },
+      "CabinetProfilePatchIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /merchant/cabinet/me``. Display settings only.\n\nNothing here changes what the API says or does: ``timezone`` decides when\nwe mail this operator, and the cabinet renders timestamps in the viewer's\nown zone regardless. The API always speaks ISO 8601 UTC (spec \u00a711), and a\nsetting that looked like it changed that would be the worse feature.",
+        "properties": {
+          "timezone": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timezone"
+        ],
+        "title": "CabinetProfilePatchIn",
         "type": "object"
       },
       "CabinetRegisterIn": {
@@ -31977,6 +32039,64 @@
           }
         },
         "summary": "The operator and their company",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "patch": {
+        "description": "Today that is the timezone, and only the timezone.\n\nNo ``Idempotency-Key``: this is a **last-writer-wins** field, so a replayed\nrequest lands on the value it already set. The rule in AGENTS \u00a79 protects\na write whose repetition is not the same as its first execution \u2014 a\ncharge, a minted credential \u2014 and this one has no such shape. A future\nfield on this endpoint that does needs the header and a line there.",
+        "operationId": "update_me_merchant_cabinet_me_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetProfilePatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change display settings",
         "tags": [
           "merchant-cabinet"
         ]

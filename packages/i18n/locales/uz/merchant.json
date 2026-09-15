@@ -175,7 +175,15 @@
     "offerAccepted": "{date} da qabul qilingan, versiya {version}",
     "revokeConfirm": "Bu kalit bekor qilinsinmi? U bilan imzolangan soʻrovlar ishlamay qoladi.",
     "revokeYes": "Ha, bekor qilinsin",
-    "cancel": "Bekor qilish"
+    "cancel": "Bekor qilish",
+    "timezoneTitle": "Vaqt mintaqasi",
+    "timezoneBody": "Faqat sizga qachon xat yuborishimizga taʼsir qiladi. Kabinetdagi sanalar brauzeringiz soatiga koʻra koʻrsatiladi, API esa doim UTC da gapiradi.",
+    "timezone": "Vaqt mintaqasi",
+    "save": "Saqlash",
+    "saved": "Saqlandi",
+    "ipAllowlist": "Ruxsat etilgan IP",
+    "ipAllowlistHint": "Har biri alohida qatorda: manzil yoki tarmoq (203.0.113.5 yoki 10.0.0.0/8). Boʻsh — cheklovsiz. Chiqarilgan kalitda oʻzgartirib boʻlmaydi: yangisini yarating va eskisini bekor qiling.",
+    "noFilter": "cheklovsiz"
   },
   "webhooks": {
     "title": "Vebhuklar",

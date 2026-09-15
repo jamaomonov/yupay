@@ -372,11 +372,28 @@ same `PUT`, and they can now do it themselves.
 ### Key rotation, self-serve
 
 The cabinet's Settings screen does what "Rotating and revoking a key" above
-describes, without us: create shows the secret **once**, the list shows
-`last_used_at` so they can confirm traffic moved, and revoke asks for a second
-click before it lands. The admin endpoints remain — use them when a merchant
-cannot reach their own cabinet, and on a suspected leak, where the rule above
-still holds: revoke first, talk after.
+describes, without us: create shows the secret **once**, takes an optional IP
+allowlist, and the list shows `last_used_at` plus each key's allowlist so they
+can confirm traffic moved. Revoke asks for a second click before it lands.
+
+**"Changing an IP allowlist means rotating" applies to them too**, and the
+screen says so: there is no endpoint that edits a live key's allowlist on
+either surface. That is deliberate — a mistake in a narrowed allowlist locks
+the merchant out of their own API, and the recovery has to be "deploy the key
+you still hold", not "call support".
+
+The admin endpoints remain — use them when a merchant cannot reach their own
+cabinet, and on a suspected leak, where the rule above still holds: revoke
+first, talk after.
+
+### The timezone picker changes nothing about the API
+
+Settings also carries an IANA timezone. It decides **when we mail that
+operator** and nothing else: the API always speaks ISO 8601 UTC, and the
+cabinet renders timestamps in the viewer's browser zone regardless of this
+setting. If a merchant asks why an order's `created_at` "ignores" their
+timezone, that is the answer, and it is the intended one — a machine contract
+whose timestamps moved with a display preference would be unusable.
 
 ## `INVENTORY_ENC_KEY` is now load-bearing for three subsystems
 

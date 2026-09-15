@@ -133,6 +133,7 @@ export interface ApiKey {
   id: string;
   key_id: string;
   label: string;
+  ip_allowlist: string[] | null;
   created_at: string;
   last_used_at: string | null;
   revoked_at: string | null;
@@ -143,6 +144,7 @@ export interface IssuedKey {
   key_id: string;
   secret: string;
   label: string;
+  ip_allowlist: string[] | null;
   created_at: string;
 }
 

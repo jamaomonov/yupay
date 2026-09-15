@@ -51,6 +51,7 @@ from yupay.modules.merchants.cabinet_schemas import (
     CabinetOrderIn,
     CabinetOrdersOut,
     CabinetProfileOut,
+    CabinetProfilePatchIn,
     CabinetRegisterIn,
     CabinetTokenIn,
     CabinetTokensOut,
@@ -154,6 +155,32 @@ async def logout(body: CabinetTokenIn, db: Db) -> Response:
 
 @router.get("/me", response_model=CabinetProfileOut, summary="The operator and their company")
 async def me(user: CurrentUser, db: Db) -> CabinetProfileOut:
+    merchant = await merchant_of(db, user)
+    return CabinetProfileOut(
+        user_id=user.id,
+        email=user.email,
+        timezone=user.timezone,
+        merchant_id=merchant.id,
+        title=merchant.title,
+        status=merchant.status,
+        balance_usd=await deposit.deposit_balance(db, merchant_id=merchant.id),
+        offer_version=user.offer_version,
+        offer_accepted_at=user.offer_accepted_at,
+    )
+
+
+@router.patch("/me", response_model=CabinetProfileOut, summary="Change display settings")
+async def update_me(body: CabinetProfilePatchIn, user: CurrentUser, db: Db) -> CabinetProfileOut:
+    """Today that is the timezone, and only the timezone.
+
+    No ``Idempotency-Key``: this is a **last-writer-wins** field, so a replayed
+    request lands on the value it already set. The rule in AGENTS §9 protects
+    a write whose repetition is not the same as its first execution — a
+    charge, a minted credential — and this one has no such shape. A future
+    field on this endpoint that does needs the header and a line there.
+    """
+    user.timezone = body.timezone
+    await db.flush()
     merchant = await merchant_of(db, user)
     return CabinetProfileOut(
         user_id=user.id,
@@ -287,12 +314,15 @@ async def create_key(body: CabinetApiKeyCreateIn, user: CurrentUser, db: Db) -> 
     incident instead of waiting for our morning.
     """
     merchant = await merchant_of(db, user)
-    issued = await credentials.create_api_key(db, merchant_id=merchant.id, label=body.label)
+    issued = await credentials.create_api_key(
+        db, merchant_id=merchant.id, label=body.label, ip_allowlist=body.ip_allowlist
+    )
     log.info("merchant.cabinet.key_created", merchant_id=merchant.id, key_id=issued.key.key_id)
     return CabinetIssuedKeyOut(
         key_id=issued.key.key_id,
         secret=issued.secret,
         label=issued.key.label,
+        ip_allowlist=issued.key.ip_allowlist,
         created_at=issued.key.created_at,
     )
 

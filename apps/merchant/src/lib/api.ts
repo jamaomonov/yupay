@@ -129,7 +129,7 @@ function returnToLogin(): void {
 }
 
 interface Options {
-  method?: "GET" | "POST" | "PUT" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /**
    * Sent as `Idempotency-Key`. Mint one per *intent* — per click, held in
    * state so a retry of the same click carries the same key — never per

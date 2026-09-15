@@ -11,9 +11,11 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from yupay.modules.merchants.allowlist import MAX_ENTRIES, normalize_allowlist
 from yupay.modules.merchants.machine_schemas import UsdAmount, UsdBalance
 from yupay.modules.merchants.models import WEBHOOK_URL_MAX
 
@@ -98,6 +100,36 @@ class CabinetProfileOut(BaseModel):
     offer_accepted_at: datetime | None
 
 
+class CabinetProfilePatchIn(BaseModel):
+    """Body of ``PATCH /merchant/cabinet/me``. Display settings only.
+
+    Nothing here changes what the API says or does: ``timezone`` decides when
+    we mail this operator, and the cabinet renders timestamps in the viewer's
+    own zone regardless. The API always speaks ISO 8601 UTC (spec §11), and a
+    setting that looked like it changed that would be the worse feature.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    timezone: str = Field(min_length=1, max_length=64)
+
+    @field_validator("timezone")
+    @classmethod
+    def _loadable(cls, value: str) -> str:
+        """An IANA name the running system can actually load.
+
+        Checked by loading it rather than against a hard-coded list: the list
+        the cabinet offers is a convenience, and a tzdata update that adds a
+        zone should not need a code change here to accept it.
+        """
+        name = value.strip()
+        try:
+            ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError(f"not a known IANA timezone: {name!r}") from None
+        return name
+
+
 class CabinetOrderIn(BaseModel):
     """Ordering from the catalog page, without a ``merchant_order_id``.
 
@@ -156,6 +188,11 @@ class CabinetApiKeyOut(BaseModel):
     id: str
     key_id: str
     label: str
+    #: Addresses or CIDR blocks allowed to use this key; ``null`` means no
+    #: filter. There is no endpoint that edits it — narrowing a live key's
+    #: allowlist is a rotation, so that a mistake is recoverable by deploying
+    #: the key you still hold rather than by a support call.
+    ip_allowlist: list[str] | None
     created_at: datetime
     last_used_at: datetime | None
     revoked_at: datetime | None
@@ -168,6 +205,13 @@ class CabinetApiKeyCreateIn(BaseModel):
     #: box"). Rotation is "issue, deploy, revoke", and a label is how a person
     #: tells two live keys apart while both are.
     label: str = Field(default="", max_length=64)
+    #: Optional. Same field, same rules and the **same validator** as the
+    #: admin surface's — two tables of what an address is would drift, and an
+    #: entry we accept but ``auth.address_allowed`` cannot match locks a
+    #: merchant out of their own API with a 403 nobody can explain.
+    ip_allowlist: list[str] | None = Field(default=None, max_length=MAX_ENTRIES)
+
+    _entries_parse = field_validator("ip_allowlist")(normalize_allowlist)
 
 
 class CabinetIssuedKeyOut(BaseModel):
@@ -176,6 +220,7 @@ class CabinetIssuedKeyOut(BaseModel):
     key_id: str
     secret: str
     label: str
+    ip_allowlist: list[str] | None
     created_at: datetime
 
 
@@ -277,6 +322,7 @@ __all__ = [
     "CabinetOrderRowOut",
     "CabinetOrdersOut",
     "CabinetProfileOut",
+    "CabinetProfilePatchIn",
     "CabinetRegisterIn",
     "CabinetTokenIn",
     "CabinetTokensOut",
