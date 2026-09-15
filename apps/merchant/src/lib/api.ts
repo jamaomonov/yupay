@@ -117,14 +117,23 @@ async function rotate(): Promise<boolean> {
  * client, below every component, and a full load is also the cheapest way to
  * be sure nothing stale is left in memory.
  */
+/**
+ * Where a signed-out reader belongs, from where they are now.
+ *
+ * Exported for its own test: `localePrefix: "as-needed"` means the default
+ * locale has **no** segment at all, so "the first path segment" is only
+ * sometimes a locale — and getting that wrong sends an English reader to a
+ * Russian form, which is exactly the kind of thing nobody notices by hand.
+ */
+export function loginPathFor(pathname: string): string {
+  const [, first = ""] = pathname.split("/");
+  const prefix = LOCALES.includes(first as (typeof LOCALES)[number]) ? `/${first}` : "";
+  return `${prefix}/login`;
+}
+
 function returnToLogin(): void {
   if (typeof window === "undefined") return;
-  // Keep the locale the reader is actually in. `localePrefix: "as-needed"`
-  // means the default locale has no segment at all, so an unrecognised first
-  // segment is simply not a locale.
-  const [, first = ""] = window.location.pathname.split("/");
-  const prefix = LOCALES.includes(first as (typeof LOCALES)[number]) ? `/${first}` : "";
-  const target = `${prefix}/login`;
+  const target = loginPathFor(window.location.pathname);
   if (window.location.pathname !== target) window.location.assign(target);
 }
 
