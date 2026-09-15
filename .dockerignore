@@ -22,6 +22,13 @@
 # Note: do NOT ignore **/README.md — apps/api/pyproject.toml's `readme = "README.md"`
 # requires the file inside the build context.
 docs/
+# …except the one file a build actually reads. apps/merchant renders its API
+# reference from the published contract at build time (contract.ts), so with
+# `docs/` excluded wholesale `next build` died on ENOENT inside the image while
+# building fine on a developer's machine, where the file is simply there.
+# BuildKit honours a re-include under an excluded directory; keep it to the one
+# file so the rest of docs/ stays out of every context.
+!docs/api/merchant-openapi.json
 e2e/
 playwright-report/
 test-results/
