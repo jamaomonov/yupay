@@ -17,6 +17,7 @@ PROVIDER_CURRENCY: dict[str, str] = {
     "payme": "UZS",
     "uzum": "UZS",
     "octo": "UZS",
+    "paynet": "UZS",
     "crypto": "USDT",
     "mock": "UZS",
 }

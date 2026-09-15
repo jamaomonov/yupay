@@ -41,6 +41,7 @@ LOGICAL_PROVIDERS: dict[str, LogicalProvider] = {
     "payme": LogicalProvider("Payme", ["payme"]),
     "uzum": LogicalProvider("Uzum", ["uzum"]),
     "octo": LogicalProvider("Octo", ["octo"]),
+    "paynet": LogicalProvider("Paynet", ["paynet"]),
     "crypto": LogicalProvider("USDT (crypto)", ["crypto"]),
     "wallet": LogicalProvider("Кошелёк", ["wallet"]),
 }

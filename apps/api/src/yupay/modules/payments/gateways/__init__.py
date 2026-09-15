@@ -26,6 +26,7 @@ from yupay.modules.payments.gateways.click import ClickGateway
 from yupay.modules.payments.gateways.mock import MockGateway
 from yupay.modules.payments.gateways.octo import OctoGateway
 from yupay.modules.payments.gateways.payme import PaymeGateway
+from yupay.modules.payments.gateways.paynet import PaynetGateway
 from yupay.modules.payments.gateways.uzum import UzumGateway
 from yupay.modules.payments.gateways.wallet import WalletGateway
 
@@ -48,6 +49,9 @@ REGISTRY: dict[str, PaymentGateway] = {
     # money movement happens via the Merchant JSON-RPC callback, not through
     # this registry's generic webhook route. See yupay.modules.payme.service.
     "payme": PaymeGateway(),
+    # Paynet — terminal and mobile-app network. A deep link out, the UWS
+    # JSON-RPC callback in; see yupay.modules.paynet and ADR-0078.
+    "paynet": PaynetGateway(),
     # Uzum Bank Merchant API — third Uzbek acquirer. Hosted checkout only; the
     # actual money movement happens via Uzum's own inverted webhooks, not
     # through this registry's generic webhook route. See
@@ -93,6 +97,7 @@ __all__ = [
     "PaymentGatewayError",
     "PaymentIntent",
     "PaymentNotIntegratedError",
+    "PaynetGateway",
     "RefundResult",
     "StubGateway",
     "UzumGateway",

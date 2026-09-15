@@ -1,0 +1,53 @@
+sequenceDiagram
+    autonumber
+    actor Buyer
+    participant Web as apps/web
+    participant API as payments.routes
+    participant GW as gateways/paynet
+    participant App as Paynet app
+    participant UWS as paynet.routes (/uws)
+    participant Svc as paynet.service
+    participant Pay as payments.service
+    participant DB as Postgres
+
+    Buyer->>Web: choose Paynet at checkout
+    Web->>API: POST /payments/intents {order_id, provider=paynet}
+    API->>GW: create_intent(order)
+    GW-->>API: deep link with order_id + amount in tiyin
+    API->>DB: INSERT payments (pending)
+    API-->>Web: 201 PaymentOut
+    Web-->>Buyer: open the link
+    Buyer->>App: confirm — nothing is typed
+
+    App->>UWS: GetInformation (Basic auth)
+    Note over UWS: no or wrong credentials — HTTP 401, no body
+    UWS->>Svc: is this order payable, and for how much
+    Svc->>DB: SELECT orders
+    Svc-->>UWS: status 0, amount in tiyin
+    UWS-->>App: 200 result
+
+    App->>UWS: PerformTransaction {transactionId, amount, fields.order_id}
+    UWS->>Svc: settle
+    alt this transactionId was already performed
+        Svc-->>UWS: echo the stored row — no second charge
+    else amount does not match the order
+        Svc-->>UWS: error 413
+    else
+        Svc->>DB: INSERT paynet_transactions (state 1, providerTrnId from sequence)
+        Svc->>Pay: settle_provider_payment
+        Pay->>DB: payment succeeded, order paid, fulfilment queued
+        Svc-->>UWS: providerTrnId, timestamp
+    end
+    UWS-->>App: 200 result
+    App-->>Buyer: paid
+
+    opt reversal, initiated on Paynet's side
+        App->>UWS: CancelTransaction {transactionId}
+        UWS->>Svc: reverse
+        alt any item already delivered
+            Svc-->>UWS: error 306 — settled by a human, never here
+        else
+            Svc->>Pay: reverse_provider_payment
+            Svc-->>UWS: transactionState 2
+        end
+    end

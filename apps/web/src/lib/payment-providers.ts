@@ -102,6 +102,8 @@ export function paymentProviderDisplay(provider: string | null): ProviderDisplay
       return { name: "Uzum", logo: "/payment/uzum-mark.png", logoWidth: 160, logoHeight: 160 };
     case "octo":
       return { name: "Octo" };
+    case "paynet":
+      return { name: "Paynet" };
     case "wallet":
       return { nameKey: "paidWithWallet" };
     case null:

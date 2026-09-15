@@ -811,6 +811,32 @@ class Settings(BaseSettings):
     octo_test_mode: bool = Field(default=False)
     octo_request_timeout_seconds: float = Field(default=20.0)
 
+    # --- acquirer: Paynet (UWS + app deep link) ---
+    # We are Paynet's JSON-RPC server: they call /payments/paynet/uws with
+    # these Basic credentials. Empty either half → the gateway reports
+    # available=False and the endpoint refuses every call with HTTP 401.
+    # Not a secret — Paynet knows it, it is in the contract annex. Defaulted
+    # so only the password has to be set, and deliberately not "paynet":
+    # a guessable username costs nothing to avoid.
+    paynet_username: str = Field(default="yupay_paynet")
+    paynet_password: str = Field(default="")
+    #: Our service identifier in Paynet's registry. Contractual — it is the
+    #: number in «Порядок технического взаимодействия» Table 3, and every
+    #: inbound call carrying a different one is refused with code 305. Not a
+    #: secret either, but not sequential on purpose: 305 is the cheapest
+    #: possible answer, so a prober guessing service ids never reaches an
+    #: order lookup. The password is still the control; this is depth.
+    paynet_service_id: int = Field(default=5878)
+    #: The deep link that opens the Paynet app with the order pre-filled.
+    #: A format string, NOT a fixed URL: Paynet supplies the exact host and
+    #: parameter names after integration, and the published third-party notes
+    #: disagree on both. Placeholders: {service_id}, {account} (our order id),
+    #: {amount} (tiyin) and {amount_major} (soʻm) — the template picks the
+    #: unit. Correcting the format is an env edit and a restart.
+    paynet_pay_url_template: str = Field(
+        default="https://paynet.uz/payment?provider_id={service_id}&amount={amount}&account={account}"
+    )
+
     # --- acquirer: Payme (Paycom) Merchant API ---
     payme_merchant_id: str = Field(default="")
     payme_key: str = Field(default="")  # production/cabinet key

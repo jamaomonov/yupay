@@ -30782,6 +30782,30 @@
         ]
       }
     },
+    "/api/v1/payments/paynet/uws": {
+      "post": {
+        "description": "Handle one Paynet UWS call.\n\nReturns HTTP 401 with no body when the credentials are absent or wrong \u2014\nthe spec requires that, and only that, as a non-200. Everything else is a\n200 carrying a JSON-RPC ``result`` or ``error``, with the request ``id``\nechoed verbatim.",
+        "operationId": "paynet_uws_api_v1_payments_paynet_uws_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Paynet Uws Api V1 Payments Paynet Uws Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Paynet UWS (JSON-RPC 2.0)",
+        "tags": [
+          "paynet"
+        ]
+      }
+    },
     "/api/v1/payments/providers": {
       "get": {
         "operationId": "list_providers_api_v1_payments_providers_get",
