@@ -21,7 +21,19 @@
     "sectionVouchers": "Ваучеры и карты",
     "supportHeading": "Остались вопросы?",
     "supportBody": "Напишите нам — поможем с подключением.",
-    "supportCta": "Написать в поддержку"
+    "supportCta": "Написать в поддержку",
+    "metricAuto": "автоматическая выдача",
+    "metricUsd": "расчёты",
+    "sectionTopupsBody": "PUBG Mobile, Mobile Legends, Free Fire, Roblox — зачисление на аккаунт игрока по ID.",
+    "sectionVouchersBody": "Steam, Discord, Roblox и подарочные коды — выдача кода через API и кабинет.",
+    "sectionGifts": "Игры в подарок",
+    "sectionGiftsBody": "Игры на профиль Steam — следующая категория программы.",
+    "soon": "СКОРО",
+    "navCatalog": "Каталог",
+    "navPrices": "Цены",
+    "navDocs": "Документация API",
+    "login": "Войти",
+    "metricBrands": "брендов"
   },
   "auth": {
     "registerTitle": "Создать аккаунт",

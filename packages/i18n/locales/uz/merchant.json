@@ -21,7 +21,19 @@
     "sectionVouchers": "Vaucherlar va kartalar",
     "supportHeading": "Savollar qoldimi?",
     "supportBody": "Bizga yozing — ulanishda yordam beramiz.",
-    "supportCta": "Yordamga yozish"
+    "supportCta": "Yordamga yozish",
+    "metricAuto": "avtomatik yetkazish",
+    "metricUsd": "hisob-kitob",
+    "sectionTopupsBody": "PUBG Mobile, Mobile Legends, Free Fire, Roblox — oʻyinchi hisobiga ID boʻyicha tushadi.",
+    "sectionVouchersBody": "Steam, Discord, Roblox va sovgʻa kodlari — kod API va kabinet orqali beriladi.",
+    "sectionGifts": "Sovgʻa sifatida oʻyinlar",
+    "sectionGiftsBody": "Steam profiliga oʻyinlar — dasturning keyingi boʻlimi.",
+    "soon": "TEZ ORADA",
+    "navCatalog": "Katalog",
+    "navPrices": "Narxlar",
+    "navDocs": "API hujjatlari",
+    "login": "Kirish",
+    "metricBrands": "brend"
   },
   "auth": {
     "registerTitle": "Hisob yaratish",

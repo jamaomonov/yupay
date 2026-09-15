@@ -4,10 +4,11 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
-import type { Catalog, PlacedOrder, Product, Profile, Sku } from "@/lib/types";
+import type { PlacedOrder, Product, Sku } from "@/lib/types";
 
+import { useCabinet } from "@/components/CabinetContext";
 import { ApiError, api } from "@/lib/api";
 import { fixedTotal, formatUsd, scaledTotal, toCents } from "@/lib/money";
 
@@ -22,25 +23,13 @@ export default function BrandPage() {
   const t = useTranslations("merchant.catalog");
   const locale = useLocale();
   const { locale: routeLocale, slug } = useParams<{ locale: string; slug: string }>();
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [profile, setProfile] = useState<Profile | null>(null);
+  const { catalog, profile, refreshProfile } = useCabinet();
   const [selected, setSelected] = useState<Sku | null>(null);
   const [count, setCount] = useState("1");
   const [data, setData] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState<PlacedOrder | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void api<Catalog>("/catalog")
-      .then(setCatalog)
-      .catch(() => {
-        setCatalog({ brands: [] });
-      });
-    void api<Profile>("/me")
-      .then(setProfile)
-      .catch(() => undefined);
-  }, []);
 
   const brand = catalog?.brands.find((b) => b.slug === slug) ?? null;
   const product: Product | null =
@@ -78,9 +67,10 @@ export default function BrandPage() {
       };
       const result = await api<PlacedOrder>("/orders", { method: "POST", body });
       setPlaced(result);
-      setProfile((current) =>
-        current ? { ...current, balance_usd: result.balance_usd } : current,
-      );
+      // The response carries the balance the charge left behind, but the top
+      // bar reads the shell's copy — so re-read rather than patch two places
+      // that could then disagree.
+      refreshProfile();
     } catch (err) {
       setError(
         err instanceof ApiError && err.code === "insufficient_deposit"
@@ -104,14 +94,41 @@ export default function BrandPage() {
 
   return (
     <div>
-      <Link
-        href={`/${routeLocale}/cabinet/catalog`}
-        className="text-tx-mute inline-flex items-center gap-1.5 text-sm"
-      >
-        <ArrowLeft size={14} />
-        {t("backToCatalog")}
-      </Link>
-      <h1 className="mt-3 text-2xl font-semibold tracking-tight">{brand.name}</h1>
+      <nav className="text-tx-dim flex flex-wrap items-center gap-1.5 text-xs">
+        <Link href={`/${routeLocale}/cabinet/catalog`} className="inline-flex items-center gap-1">
+          <ArrowLeft size={12} />
+          {t("backToCatalog")}
+        </Link>
+        {brand.category_name !== null && (
+          <>
+            <span aria-hidden>›</span>
+            <Link href={`/${routeLocale}/cabinet/catalog?section=${brand.category_slug ?? ""}`}>
+              {brand.category_name}
+            </Link>
+          </>
+        )}
+        <span aria-hidden>›</span>
+        <span className="text-foreground">{brand.name}</span>
+      </nav>
+
+      <div className="mt-3 flex items-center gap-3.5">
+        <div className="bg-card-2 border-border h-13 w-13 shrink-0 overflow-hidden rounded-xl border">
+          {brand.logo_url !== null && (
+            /* eslint-disable-next-line @next/next/no-img-element -- see the
+               catalog grid: an operator-entered absolute URL on a host we do
+               not control. */
+            <img src={brand.logo_url} alt="" className="h-full w-full object-cover" />
+          )}
+        </div>
+        <div className="min-w-0">
+          <h1 className="font-display truncate text-xl font-semibold tracking-tight">
+            {brand.name}
+          </h1>
+          <p className="text-tx-dim mt-0.5 truncate text-xs">
+            {brand.products.map((item) => item.name).join(" · ")}
+          </p>
+        </div>
+      </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
         <div className="space-y-6">
@@ -136,7 +153,14 @@ export default function BrandPage() {
                         active ? "border-primary bg-card-2" : "border-border bg-card"
                       }`}
                     >
-                      <p className="text-sm font-medium">{sku.name}</p>
+                      <p className="text-sm font-medium">
+                        {sku.name}
+                        {active && (
+                          <span className="text-primary ml-2 text-[11px] font-semibold">
+                            ✓ {t("selected")}
+                          </span>
+                        )}
+                      </p>
                       <p className="mt-1 font-mono text-sm">
                         {price ? `$${price}` : "—"}
                         {sku.retail_price_usd && (
@@ -202,6 +226,10 @@ export default function BrandPage() {
                   </dd>
                 </div>
                 <div className="flex justify-between">
+                  <dt className="text-tx-mute">{t("priceBefore")}</dt>
+                  <dd className="font-mono">{balance === null ? "—" : `$${formatUsd(balance)}`}</dd>
+                </div>
+                <div className="flex justify-between">
                   <dt className="text-tx-mute">{t("depositAfter")}</dt>
                   <dd className={`font-mono ${affordable ? "" : "text-danger"}`}>
                     {after === null ? "—" : `$${formatUsd(after)}`}
@@ -228,8 +256,16 @@ export default function BrandPage() {
                 }}
                 className="bg-primary text-primary-foreground rounded-btn mt-4 w-full py-2.5 text-sm font-semibold disabled:opacity-50"
               >
-                {busy ? t("creating") : t("createOrder")}
+                {busy
+                  ? t("creating")
+                  : total === null
+                    ? t("createOrder")
+                    : `${t("createOrder")} · $${formatUsd(total)}`}
               </button>
+
+              <p className="text-tx-dim mt-3 break-all font-mono text-[11px]">
+                {t("apiHint")}: sku_id {selected.sku_id}
+              </p>
             </div>
           )}
         </aside>

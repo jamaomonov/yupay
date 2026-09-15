@@ -21,7 +21,19 @@
     "sectionVouchers": "Vouchers and cards",
     "supportHeading": "Questions left?",
     "supportBody": "Write to us — we will help you connect.",
-    "supportCta": "Contact support"
+    "supportCta": "Contact support",
+    "metricAuto": "automatic delivery",
+    "metricUsd": "settlements",
+    "sectionTopupsBody": "PUBG Mobile, Mobile Legends, Free Fire, Roblox — credited to a player account by id.",
+    "sectionVouchersBody": "Steam, Discord, Roblox and gift codes — the code is handed over by API and in the cabinet.",
+    "sectionGifts": "Games as gifts",
+    "sectionGiftsBody": "Games onto a Steam profile — the programme's next section.",
+    "soon": "SOON",
+    "navCatalog": "Catalog",
+    "navPrices": "Pricing",
+    "navDocs": "API docs",
+    "login": "Sign in",
+    "metricBrands": "brands"
   },
   "auth": {
     "registerTitle": "Create an account",
