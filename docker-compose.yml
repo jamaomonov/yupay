@@ -19,6 +19,10 @@ x-app-env: &app-env
   AUTH_IP_GUARD_MAX: ${AUTH_IP_GUARD_MAX:-10}
   AUTH_IP_GUARD_WINDOW_SECONDS: ${AUTH_IP_GUARD_WINDOW_SECONDS:-60}
   WEB_BASE_URL: ${WEB_BASE_URL:-}
+  # The B2B cabinet's own origin. Every link the cabinet mails is built from
+  # it, so registration refuses outright when it is empty — which would make
+  # the whole sign-up flow unreachable in dev.
+  MERCHANT_CABINET_URL: ${MERCHANT_CABINET_URL:-http://localhost:3004}
   # Email (Resend) — verify/reset + guest order emails. Empty RESEND_API_KEY
   # disables sends (send_email raises EmailSendError, caught best-effort).
   RESEND_API_KEY: ${RESEND_API_KEY:-}

@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
-from yupay.modules.merchants import cabinet_routes
+from yupay.modules.merchants import cabinet_auth_routes
 from yupay.modules.merchants.models import MerchantWebhook, MerchantWebhookDelivery
 
 pytestmark = pytest.mark.asyncio
@@ -49,8 +49,8 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
 
     base = get_settings().model_dump()
     base["merchant_cabinet_url"] = CABINET_URL
-    monkeypatch.setattr(cabinet_routes, "send_email", _send)
-    monkeypatch.setattr(cabinet_routes, "get_settings", lambda: Settings(**base))
+    monkeypatch.setattr(cabinet_auth_routes, "send_email", _send)
+    monkeypatch.setattr(cabinet_auth_routes, "get_settings", lambda: Settings(**base))
     return mails
 
 

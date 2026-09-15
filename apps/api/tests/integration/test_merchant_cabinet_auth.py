@@ -21,7 +21,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import Settings, get_settings
-from yupay.modules.merchants import cabinet_routes
+from yupay.modules.auth import jwt as authjwt
+from yupay.modules.merchants import cabinet_auth_routes
 from yupay.modules.merchants.models import Merchant, MerchantSession, MerchantUser
 
 pytestmark = pytest.mark.asyncio
@@ -42,8 +43,8 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
 
     base = get_settings().model_dump()
     base["merchant_cabinet_url"] = CABINET_URL
-    monkeypatch.setattr(cabinet_routes, "send_email", _send)
-    monkeypatch.setattr(cabinet_routes, "get_settings", lambda: Settings(**base))
+    monkeypatch.setattr(cabinet_auth_routes, "send_email", _send)
+    monkeypatch.setattr(cabinet_auth_routes, "get_settings", lambda: Settings(**base))
     return mails
 
 
@@ -268,3 +269,164 @@ async def test_a_buyer_token_is_not_a_cabinet_token(
     r = await integration_client.get(f"{BASE}/me", headers=_auth(buyer))
 
     assert r.status_code == 401
+
+
+def _reset_token_from(mail: dict[str, str]) -> str:
+    """The reset link we actually mailed, for the same reason as above."""
+    match = re.search(r'href="([^"]+/reset\?token=[^"]+)"', mail["html"])
+    assert match is not None, "no reset link in the mail"
+    assert match.group(1).startswith(CABINET_URL)
+    return parse_qs(urlparse(match.group(1)).query)["token"][0]
+
+
+async def test_a_reset_link_changes_the_password_and_ends_every_session(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
+) -> None:
+    """The point of a reset is "somebody else may have my account".
+
+    Leaving their existing browser signed in would accomplish nothing — the
+    attacker's refresh token outlives the password they no longer need — so
+    the sessions open at reset time must all be dead afterwards, including the
+    one the victim is holding.
+    """
+    access = await _confirmed(integration_client, sent, "reset@acme.example.com")
+    assert (await integration_client.get(f"{BASE}/me", headers=_auth(access))).status_code == 200
+
+    asked = await integration_client.post(
+        f"{BASE}/password/forgot", json={"email": "reset@acme.example.com"}
+    )
+    assert asked.status_code == 204, asked.text
+    done = await integration_client.post(
+        f"{BASE}/password/reset",
+        json={"token": _reset_token_from(sent[-1]), "password": "a-whole-new-secret"},
+    )
+
+    assert done.status_code == 200, done.text
+    # Signed in on the spot, on a session that is not one of the old ones.
+    assert (
+        await integration_client.get(f"{BASE}/me", headers=_auth(done.json()["access_token"]))
+    ).status_code == 200
+    assert (await integration_client.get(f"{BASE}/me", headers=_auth(access))).status_code == 401, (
+        "the session held before the reset must be dead"
+    )
+
+    old = await integration_client.post(
+        f"{BASE}/login", json={"email": "reset@acme.example.com", "password": PASSWORD}
+    )
+    new = await integration_client.post(
+        f"{BASE}/login",
+        json={"email": "reset@acme.example.com", "password": "a-whole-new-secret"},
+    )
+    assert old.status_code == 401
+    assert new.status_code == 200
+
+
+async def test_a_reset_link_works_once(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """A JWT is replayable until it expires; a link that works twice works for
+    whoever reads the mailbox second."""
+    await _confirmed(integration_client, sent, "once@acme.example.com")
+    await integration_client.post(
+        f"{BASE}/password/forgot", json={"email": "once@acme.example.com"}
+    )
+    token = _reset_token_from(sent[-1])
+
+    first = await integration_client.post(
+        f"{BASE}/password/reset", json={"token": token, "password": "first-new-secret"}
+    )
+    second = await integration_client.post(
+        f"{BASE}/password/reset", json={"token": token, "password": "second-new-secret"}
+    )
+
+    assert first.status_code == 200, first.text
+    assert second.status_code == 401
+    # And the second password was never set.
+    assert (
+        await integration_client.post(
+            f"{BASE}/login",
+            json={"email": "once@acme.example.com", "password": "second-new-secret"},
+        )
+    ).status_code == 401
+
+
+async def test_the_mail_endpoints_answer_the_same_to_everyone(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Registration is open, so neither endpoint may report on a mailbox.
+
+    The four cases that must be indistinguishable from outside — and the three
+    of them that must send nothing, which only the mail log shows.
+    """
+    await _confirmed(integration_client, sent, "live@acme.example.com")
+    assert (await _register(integration_client, "pending@acme.example.com")).status_code == 201
+    sent.clear()
+
+    answers = [
+        await integration_client.post(f"{BASE}/password/forgot", json={"email": address})
+        for address in ("live@acme.example.com", "pending@acme.example.com", "no@acme.example.com")
+    ] + [
+        await integration_client.post(f"{BASE}/confirm/resend", json={"email": address})
+        for address in ("live@acme.example.com", "pending@acme.example.com", "no@acme.example.com")
+    ]
+
+    assert [r.status_code for r in answers] == [204] * 6
+    # Exactly two mails: a reset for the confirmed account, and a confirmation
+    # for the one still waiting. An unconfirmed account gets no reset (the
+    # link it needs is the confirmation) and a live one gets no second
+    # confirmation (anybody knowing the address could otherwise fill that
+    # mailbox on demand).
+    assert [mail["to"] for mail in sent] == [
+        "live@acme.example.com",
+        "pending@acme.example.com",
+    ]
+    assert "/reset?token=" in sent[0]["html"]
+    assert "/confirm?token=" in sent[1]["html"]
+
+
+async def test_a_resent_confirmation_link_actually_confirms(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """The endpoint `login`'s docstring has pointed at since M4 Task 1.
+
+    Before this existed, an operator whose confirmation mail was lost had no
+    path at all: registering again answers `email_taken`.
+    """
+    assert (await _register(integration_client, "lost@acme.example.com")).status_code == 201
+    sent.clear()
+
+    assert (
+        await integration_client.post(
+            f"{BASE}/confirm/resend", json={"email": "lost@acme.example.com"}
+        )
+    ).status_code == 204
+    confirmed = await integration_client.post(
+        f"{BASE}/confirm", json={"token": _token_from(sent[-1])}
+    )
+
+    assert confirmed.status_code == 200, confirmed.text
+    assert (
+        await integration_client.post(
+            f"{BASE}/login", json={"email": "lost@acme.example.com", "password": PASSWORD}
+        )
+    ).status_code == 200
+
+
+async def test_the_confirmation_link_lasts_as_long_as_the_mail_says(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """The mail promises a day. It used to mean thirty minutes.
+
+    `mint_email_verify` defaults to `jwt_email_token_ttl_seconds` (30 min),
+    which is right for a storefront address check and wrong for a registration
+    somebody opens when they next read work mail — and
+    `merchant_confirm_ttl_seconds` existed, named for exactly this, used only
+    as the Redis single-use marker's TTL.
+    """
+    assert (await _register(integration_client, "ttl@acme.example.com")).status_code == 201
+    claims = authjwt.verify(_token_from(sent[-1]), expected_kind="email_verify")
+
+    s = get_settings()
+    lifetime = int((claims.exp - claims.iat).total_seconds())
+    assert lifetime == s.merchant_confirm_ttl_seconds
+    assert lifetime > s.jwt_email_token_ttl_seconds, "the default would be 30 minutes"

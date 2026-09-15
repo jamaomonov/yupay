@@ -288,14 +288,26 @@ def mint_ws_handshake(
 def mint_email_verify(
     *,
     sub: str,
+    ttl_seconds: int | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Issue a short-lived token confirming ownership of a user's email."""
+    """Issue a short-lived token confirming ownership of a user's email.
+
+    Args:
+        sub: The row the link confirms.
+        ttl_seconds: Overrides ``jwt_email_token_ttl_seconds``. The merchant
+            cabinet passes its own (``merchant_confirm_ttl_seconds``, 24 h)
+            because the two are different product decisions: a storefront
+            email check is confirmed in the same sitting, while a registration
+            confirmation is read whenever the person next opens their work
+            mail — and the copy in that mail promises a day.
+        settings: Overrides the process settings; for tests.
+    """
     s = _settings_or(settings)
     payload = _base_payload(
         sub=sub,
         kind="email_verify",
-        ttl_seconds=s.jwt_email_token_ttl_seconds,
+        ttl_seconds=s.jwt_email_token_ttl_seconds if ttl_seconds is None else ttl_seconds,
         settings=s,
     )
     return _encode(payload, settings=s)

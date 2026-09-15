@@ -46,9 +46,14 @@ export default function LoginPage() {
     <AuthShell
       title={t("loginTitle")}
       footer={
-        <>
-          {t("noAccount")} <AuthLink href={`/${locale}/register`} label={t("submitRegister")} />
-        </>
+        <div className="space-y-2">
+          <p>
+            {t("noAccount")} <AuthLink href={`/${locale}/register`} label={t("submitRegister")} />
+          </p>
+          <p>
+            <AuthLink href={`/${locale}/forgot`} label={t("forgotLink")} />
+          </p>
+        </div>
       }
     >
       <form onSubmit={submit}>

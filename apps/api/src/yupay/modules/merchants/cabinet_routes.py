@@ -26,15 +26,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Request, Response, status
+from fastapi import APIRouter, Response, status
 
-from yupay.core.config import get_settings
-from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
-from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.merchants import (
-    cabinet_auth,
     cabinet_export,
     cabinet_orders,
     cabinet_summary,
@@ -49,17 +45,12 @@ from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetApiKeyCreateIn,
     CabinetApiKeyOut,
-    CabinetConfirmIn,
     CabinetIssuedKeyOut,
-    CabinetLoginIn,
     CabinetOrderIn,
     CabinetOrdersOut,
     CabinetProfileOut,
     CabinetProfilePatchIn,
-    CabinetRegisterIn,
     CabinetSummaryOut,
-    CabinetTokenIn,
-    CabinetTokensOut,
 )
 from yupay.modules.merchants.machine_schemas import (
     MerchantCatalogOut,
@@ -68,94 +59,10 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantOrderStatusOut,
     MerchantTransactionsOut,
 )
-from yupay.modules.notifications.channels.email import EmailSendError, send_email
-from yupay.modules.notifications.templates import merchant_confirm_email
 
 log = get_logger("yupay.merchants.cabinet_routes")
 
 router = APIRouter(prefix="/merchant/cabinet", tags=["merchant-cabinet"])
-
-
-def _tokens_out(tokens: cabinet_auth.CabinetTokens) -> CabinetTokensOut:
-    return CabinetTokensOut(
-        access_token=tokens.access_token,
-        refresh_token=tokens.refresh_token,
-        expires_in=tokens.expires_in,
-    )
-
-
-@router.post(
-    "/register",
-    status_code=status.HTTP_201_CREATED,
-    summary="Open a merchant account and its first operator",
-)
-async def register(body: CabinetRegisterIn, db: Db, request: Request) -> Response:
-    """Create the account and mail a confirmation link.
-
-    Answers ``201`` with no body. The address is not echoed and no token is
-    issued: registration is open, so the response must look the same to
-    somebody probing addresses as to the person who owns one — and the only
-    thing that proves ownership is the link.
-    """
-    await guard_ip(request, bucket="merchant_register", subject=body.email.lower())
-    s = get_settings()
-    base = s.merchant_cabinet_url.rstrip("/")
-    if not base:
-        # Rather than register an account whose confirmation can never arrive.
-        raise ValidationError(
-            "the cabinet is not configured to send mail yet",
-            code="cabinet_mail_unconfigured",
-        )
-    user, token = await cabinet_auth.register(
-        db, email=body.email, password=body.password, title=body.title
-    )
-    try:
-        content = merchant_confirm_email(link=f"{base}/confirm?token={token}")
-        await send_email(
-            to=user.email,
-            subject=content.subject,
-            html=content.html,
-            text=content.text,
-        )
-    except EmailSendError:
-        # The account exists and the address is unconfirmed, which is a state
-        # the resend endpoint can repair. Failing the request would roll the
-        # registration back and lose the password they just chose.
-        log.exception("merchant.cabinet.confirm_mail_failed", user_id=user.id)
-    return Response(status_code=status.HTTP_201_CREATED)
-
-
-@router.post("/confirm", response_model=CabinetTokensOut, summary="Confirm an address")
-async def confirm(body: CabinetConfirmIn, db: Db) -> CabinetTokensOut:
-    """Consume the link and sign the operator in.
-
-    Signing them in here rather than redirecting to a login form is safe for
-    the reason the link exists: holding it *is* proof of the mailbox, which is
-    the same proof the password form is trying to establish.
-    """
-    user = await cabinet_auth.confirm_email(db, token=body.token)
-    return _tokens_out(await cabinet_auth.open_session(db, user=user, settings=get_settings()))
-
-
-@router.post("/login", response_model=CabinetTokensOut, summary="Sign in")
-async def login(body: CabinetLoginIn, db: Db, request: Request) -> CabinetTokensOut:
-    await guard_ip(request, bucket="merchant_login", subject=body.email.lower())
-    return _tokens_out(await cabinet_auth.login(db, email=body.email, password=body.password))
-
-
-@router.post("/refresh", response_model=CabinetTokensOut, summary="Rotate a session")
-async def refresh(body: CabinetTokenIn, db: Db) -> CabinetTokensOut:
-    return _tokens_out(await cabinet_auth.refresh(db, refresh_token=body.refresh_token))
-
-
-@router.post(
-    "/logout",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Revoke one session",
-)
-async def logout(body: CabinetTokenIn, db: Db) -> Response:
-    await cabinet_auth.logout(db, refresh_token=body.refresh_token)
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/me", response_model=CabinetProfileOut, summary="The operator and their company")

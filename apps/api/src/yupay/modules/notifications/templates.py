@@ -251,6 +251,47 @@ def merchant_confirm_email(*, link: str) -> EmailContent:
     )
 
 
+def merchant_password_reset_email(*, link: str) -> EmailContent:
+    """A reset link for a merchant operator who cannot get in.
+
+    Named as a *request* the reader may not have made, and says what to do
+    about that: the endpoint answers the same to everybody, so this mail is
+    also what an address-prober's target receives. "Ignore it and nothing
+    happens" is the only honest instruction, and it has to be in the mail
+    rather than only in our heads.
+
+    Thirty minutes, and it says so: a reset link is read in the sitting it was
+    asked for, unlike a registration confirmation.
+    """
+    body = (
+        _paragraph(
+            "Кто-то запросил сброс пароля для кабинета YuPay для партнёров. "
+            "Ссылка действует 30 минут."
+        )
+        + _button(href=link, label="Задать новый пароль")
+        + _fallback_link(link)
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">Если это были не вы — '
+            "просто не открывайте ссылку. Пароль останется прежним, и в аккаунте "
+            "ничего не изменится.</span>"
+        )
+    )
+    return EmailContent(
+        subject="Сброс пароля — кабинет YuPay для партнёров",
+        html=_layout(
+            preheader="Ссылка на смену пароля действует 30 минут.",
+            heading="Сброс пароля",
+            body_html=body,
+        ),
+        text=(
+            "Сброс пароля — кабинет YuPay для партнёров\n\n"
+            "Ссылка действует 30 минут:\n"
+            f"{link}\n\n"
+            "Если это были не вы — просто проигнорируйте письмо, пароль не изменится.\n"
+        ),
+    )
+
+
 def partner_invite_email(*, link: str) -> EmailContent:
     """Approval notice for a new affiliate partner, with the set-password link.
 
@@ -494,6 +535,7 @@ def merchant_webhook_disabled_email(*, host: str, failures: int, last_error: str
 __all__ = [
     "EmailContent",
     "merchant_confirm_email",
+    "merchant_password_reset_email",
     "merchant_webhook_disabled_email",
     "order_confirmation_email",
     "order_delivered_email",

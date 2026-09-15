@@ -60,6 +60,30 @@ class CabinetTokenIn(BaseModel):
     refresh_token: str = Field(min_length=1, max_length=256)
 
 
+class CabinetEmailIn(BaseModel):
+    """An address, for the two endpoints that answer the same to everybody.
+
+    One DTO for "send me a reset" and "send my confirmation again", because
+    they are the same request shape and the same non-answer: ``204`` whatever
+    the address was. Registration is open, so anything that distinguished a
+    registered address from an unregistered one would report on somebody
+    else's mailbox.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+
+
+class CabinetSetPasswordIn(BaseModel):
+    """Consume a reset link and choose a new password."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    token: str = Field(min_length=1, max_length=4096)
+    password: str = Field(min_length=_MIN_PASSWORD, max_length=128)
+
+
 class CabinetConfirmIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -330,6 +354,7 @@ __all__ = [
     "CabinetConfirmIn",
     "CabinetDeliveriesOut",
     "CabinetDeliveryRowOut",
+    "CabinetEmailIn",
     "CabinetIssuedKeyOut",
     "CabinetLoginIn",
     "CabinetOrderIn",
@@ -338,6 +363,7 @@ __all__ = [
     "CabinetProfileOut",
     "CabinetProfilePatchIn",
     "CabinetRegisterIn",
+    "CabinetSetPasswordIn",
     "CabinetSummaryOut",
     "CabinetTokenIn",
     "CabinetTokensOut",

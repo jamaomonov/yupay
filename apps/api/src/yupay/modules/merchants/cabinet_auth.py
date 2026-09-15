@@ -27,7 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -149,7 +149,12 @@ async def register(
         # two simultaneous registrations would both pass a check-then-insert.
         raise ConflictError("this email is already registered", code="email_taken") from exc
     log.info("merchant.cabinet.registered", merchant_id=merchant.id, user_id=user.id)
-    return user, authjwt.mint_email_verify(sub=user.id, settings=s)
+    # The mail says the link lasts a day; ``mint_email_verify``'s own default
+    # is 30 minutes, which is right for a storefront address check and wrong
+    # for a registration somebody opens when they next read work mail.
+    return user, authjwt.mint_email_verify(
+        sub=user.id, ttl_seconds=s.merchant_confirm_ttl_seconds, settings=s
+    )
 
 
 async def confirm_email(
@@ -299,6 +304,122 @@ async def logout(db: AsyncSession, *, refresh_token: str) -> None:
         await db.flush()
 
 
+async def _revoke_all_sessions(db: AsyncSession, *, user_id: str) -> None:
+    """End every live session for one operator.
+
+    Called when the password changes. A reset whose point is "somebody else
+    may have my account" that left their existing browser signed in would
+    accomplish nothing — the attacker's refresh token outlives the password
+    they no longer need.
+    """
+    await db.execute(
+        update(MerchantSession)
+        .where(MerchantSession.merchant_user_id == user_id, MerchantSession.revoked_at.is_(None))
+        .values(revoked_at=now())
+    )
+    await db.flush()
+
+
+async def request_password_reset(
+    db: AsyncSession, *, email: str, settings: Settings | None = None
+) -> tuple[MerchantUser, str] | None:
+    """Mint a reset link for a confirmed account, or answer nothing.
+
+    ``None`` for an unknown address **and** for one that was never confirmed,
+    because the route answers the same either way. Registration is open, so an
+    endpoint that behaved differently for a registered address would tell a
+    prober about somebody else's mailbox — the same reason ``login`` has one
+    error text for four conditions.
+
+    An unconfirmed account is deliberately sent nothing here: the actionable
+    link for it is the confirmation, not a password reset, and
+    :func:`resend_confirmation` is where that lives.
+
+    Returns:
+        ``(user, token)`` to mail, or ``None`` when there is nothing to send.
+    """
+    s = _settings(settings)
+    user = (
+        await db.execute(select(MerchantUser).where(MerchantUser.email == email.strip().lower()))
+    ).scalar_one_or_none()
+    if user is None or user.email_confirmed_at is None:
+        return None
+    log.info("merchant.cabinet.password_reset_requested", user_id=user.id)
+    token: str = authjwt.mint_password_reset(sub=user.id, settings=s)
+    return user, token
+
+
+async def set_password(
+    db: AsyncSession, *, token: str, password: str, settings: Settings | None = None
+) -> MerchantUser:
+    """Consume a reset link, set the password, and end every other session.
+
+    Single-use through a Redis ``SET NX`` on the token's ``jti``, the device
+    ``confirm_email`` and ``affiliate.partners.set_password`` both use: a JWT
+    is replayable until it expires, and a reset link that works twice works
+    for whoever reads the mailbox second.
+
+    Confirming the address as a side effect is deliberate and is not a
+    loophole: only a confirmed account is ever sent one of these links
+    (:func:`request_password_reset`), so the flag is already set and this is a
+    no-op — it is here so that a future path which mints one for an
+    unconfirmed account cannot leave a user who can sign in but is marked
+    unconfirmed.
+
+    Raises:
+        UnauthorizedError: Invalid, expired or already-used token, a vanished
+            user, or a frozen merchant.
+    """
+    s = _settings(settings)
+    claims = authjwt.verify(token, expected_kind="password_reset", settings=s)
+    was_set = await get_redis().set(
+        f"merchant:setpw:{claims.jti}", "1", ex=s.jwt_email_token_ttl_seconds, nx=True
+    )
+    if not was_set:
+        raise UnauthorizedError("link already used")
+    user = await db.get(MerchantUser, claims.sub)
+    if user is None:
+        raise UnauthorizedError("link is no longer valid")
+    merchant = await db.get(Merchant, user.merchant_id)
+    if merchant is None or merchant.status != "active":
+        raise UnauthorizedError("link is no longer valid")
+
+    user.password_hash = await hash_password(password)
+    if user.email_confirmed_at is None:
+        user.email_confirmed_at = now()
+    await db.flush()
+    await _revoke_all_sessions(db, user_id=user.id)
+    log.info("merchant.cabinet.password_set", user_id=user.id)
+    return user
+
+
+async def resend_confirmation(
+    db: AsyncSession, *, email: str, settings: Settings | None = None
+) -> tuple[MerchantUser, str] | None:
+    """A fresh confirmation link, or nothing.
+
+    ``None`` for an unknown address and for one that is **already** confirmed.
+    The second case is the one worth naming: re-sending a confirmation to a
+    live account would let anybody who knows the address fill that mailbox on
+    demand, and there is nothing for its owner to do with the link anyway.
+
+    ``login`` refuses an unconfirmed account with the same wording it uses for
+    a wrong password, and this is the endpoint its docstring points at as the
+    actionable path — it answers the same to everyone.
+    """
+    s = _settings(settings)
+    user = (
+        await db.execute(select(MerchantUser).where(MerchantUser.email == email.strip().lower()))
+    ).scalar_one_or_none()
+    if user is None or user.email_confirmed_at is not None:
+        return None
+    log.info("merchant.cabinet.confirmation_resent", user_id=user.id)
+    token: str = authjwt.mint_email_verify(
+        sub=user.id, ttl_seconds=s.merchant_confirm_ttl_seconds, settings=s
+    )
+    return user, token
+
+
 __all__ = [
     "OFFER_VERSION",
     "CabinetTokens",
@@ -308,5 +429,8 @@ __all__ = [
     "open_session",
     "refresh",
     "register",
+    "request_password_reset",
+    "resend_confirmation",
     "resolve_user",
+    "set_password",
 ]

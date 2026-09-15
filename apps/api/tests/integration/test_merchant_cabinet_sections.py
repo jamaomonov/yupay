@@ -39,7 +39,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
-from yupay.modules.merchants import cabinet_routes
+from yupay.modules.merchants import cabinet_auth_routes
 from yupay.modules.merchants.models import MerchantUser
 from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
@@ -97,8 +97,8 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
 
     base = get_settings().model_dump()
     base["merchant_cabinet_url"] = CABINET_URL
-    monkeypatch.setattr(cabinet_routes, "send_email", _send)
-    monkeypatch.setattr(cabinet_routes, "get_settings", lambda: Settings(**base))
+    monkeypatch.setattr(cabinet_auth_routes, "send_email", _send)
+    monkeypatch.setattr(cabinet_auth_routes, "get_settings", lambda: Settings(**base))
     return mails
 
 

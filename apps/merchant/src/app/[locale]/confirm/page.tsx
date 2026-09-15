@@ -45,7 +45,10 @@ function Confirming() {
       <AuthShell
         title={t("confirmFailedTitle")}
         subtitle={t("confirmFailedBody")}
-        footer={<AuthLink href={`/${locale}/register`} label={t("submitRegister")} />}
+        // Was "register again", which is wrong the moment a resend exists:
+        // the second registration answers `email_taken` and the person is
+        // stuck where they started.
+        footer={<AuthLink href={`/${locale}/forgot`} label={t("resendLink")} />}
       />
     );
   }

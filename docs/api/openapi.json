@@ -3659,6 +3659,22 @@
         "title": "CabinetDeliveryRowOut",
         "type": "object"
       },
+      "CabinetEmailIn": {
+        "additionalProperties": false,
+        "description": "An address, for the two endpoints that answer the same to everybody.\n\nOne DTO for \"send me a reset\" and \"send my confirmation again\", because\nthey are the same request shape and the same non-answer: ``204`` whatever\nthe address was. Registration is open, so anything that distinguished a\nregistered address from an unregistered one would report on somebody\nelse's mailbox.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "CabinetEmailIn",
+        "type": "object"
+      },
       "CabinetIssuedKeyOut": {
         "description": "The one moment the secret exists outside our encryption.",
         "properties": {
@@ -3995,6 +4011,30 @@
           "accept_offer"
         ],
         "title": "CabinetRegisterIn",
+        "type": "object"
+      },
+      "CabinetSetPasswordIn": {
+        "additionalProperties": false,
+        "description": "Consume a reset link and choose a new password.",
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "CabinetSetPasswordIn",
         "type": "object"
       },
       "CabinetSummaryOut": {
@@ -31998,6 +32038,41 @@
         ]
       }
     },
+    "/merchant/cabinet/confirm/resend": {
+      "post": {
+        "description": "``204`` whatever the address was, including one already confirmed.\n\nThat last case is not an oversight: re-sending a confirmation to a live\naccount would let anybody who knows the address fill that mailbox on\ndemand, and its owner has nothing to do with the link anyway.",
+        "operationId": "resend_confirmation_merchant_cabinet_confirm_resend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetEmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mail the confirmation link again",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/cabinet/login": {
       "post": {
         "operationId": "login_merchant_cabinet_login_post",
@@ -32400,6 +32475,83 @@
           }
         },
         "summary": "One order, by the id it was placed with",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/password/forgot": {
+      "post": {
+        "description": "``204`` whatever the address was.\n\nRegistration is open, so an answer that distinguished a registered address\nfrom an unregistered one would report on somebody else's mailbox \u2014 the\nsame rule ``register`` and ``login`` follow. An **unconfirmed** account is\nsent nothing here either: the link it needs is the confirmation, which\n``/confirm/resend`` is for.",
+        "operationId": "forgot_password_merchant_cabinet_password_forgot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetEmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mail a password-reset link",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/password/reset": {
+      "post": {
+        "description": "Consume the link, set the password, end every other session, sign in.\n\nSigning them in is safe for the reason ``/confirm`` gives \u2014 holding the\nlink proves the mailbox \u2014 and ending the other sessions is the point: a\nreset whose premise is \"somebody else may have my account\" that left the\nattacker's refresh token alive would accomplish nothing.",
+        "operationId": "reset_password_merchant_cabinet_password_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetSetPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a new password and sign in",
         "tags": [
           "merchant-cabinet"
         ]

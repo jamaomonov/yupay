@@ -336,11 +336,39 @@ In order of likelihood:
    identical to owning one — which means "no mail" is also what a **second**
    sign-up on an existing address looks like. Ask them to sign in instead.
 
-The confirmation token lives 24 h (`merchant_confirm_ttl_seconds`). Past that,
-the account exists and is unconfirmed; there is no admin "confirm by hand"
-endpoint yet, so today the fix is a support-side re-register after deleting the
-row, or waiting for the resend screen. **Write that down as a gap**, not as a
-procedure.
+The confirmation token lives 24 h (`merchant_confirm_ttl_seconds`) — and
+**only since M4 Task 6**: before that it was minted with
+`mint_email_verify`'s 30-minute default while the mail promised a day, so
+anybody who opened their work mail an hour later got "link is no longer
+valid". If a merchant reports exactly that on an old account, this is why.
+
+Past 24 h, **they fix it themselves**: the cabinet's «Забыли пароль?» screen
+sends both a reset link and, if the address is still unconfirmed, the
+confirmation again. Both endpoints answer `204` to every address, so the
+screen cannot tell them which one applied — and neither can a prober.
+
+### Locked out: what the merchant can do without us
+
+One screen, «Забыли пароль?» (`/forgot`), covers both ways in:
+
+- A confirmed account gets a **reset link**, good for 30 minutes and
+  single-use. Using it ends every other session that account had open —
+  deliberately, because a reset whose premise is "somebody else may have my
+  account" that left the attacker's refresh token alive would accomplish
+  nothing. It signs them straight in, for the same reason the confirmation
+  link does: holding it proves the mailbox.
+- An **unconfirmed** account gets the confirmation mail again instead. It gets
+  no reset link: the link it needs is the confirmation, and sending both would
+  imply a password problem it does not have.
+
+Everything else answers `204` and sends nothing — an unknown address, and a
+**confirmed** account asking for another confirmation (otherwise anybody
+knowing the address could fill that mailbox on demand).
+
+There is still no admin "reset this merchant's password" button. If somebody
+loses the mailbox itself, that is a support conversation and a DB edit, and it
+should stay one — an admin path that hands out a session for a merchant
+account is a much bigger key than the freeze button we already have.
 
 ### A frozen merchant in the cabinet
 
