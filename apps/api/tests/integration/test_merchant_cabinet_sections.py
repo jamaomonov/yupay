@@ -18,8 +18,9 @@ import hmac
 import json
 import re
 import time
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, quote, urlencode, urlparse
 
 import pytest
 from httpx import AsyncClient
@@ -122,12 +123,17 @@ async def _signed_up(
 
 
 async def _credit(
-    client: AsyncClient, headers: dict[str, str], merchant_id: str, amount: str
+    client: AsyncClient,
+    headers: dict[str, str],
+    merchant_id: str,
+    amount: str,
+    order_id: str | None = None,
 ) -> None:
+    """Credit the deposit; with ``order_id``, book it as that order's refund."""
     r = await client.post(
         f"/api/v1/admin/merchants/{merchant_id}/deposit-credits",
         headers={**headers, "Idempotency-Key": f"credit-{new_id()}"},
-        json={"amount": amount},
+        json={"amount": amount, **({"order_id": order_id} if order_id else {})},
     )
     assert r.status_code == 201, r.text
 
@@ -385,6 +391,100 @@ async def test_one_operator_never_revokes_another_merchants_key(
     assert rows[0]["revoked_at"] is None, "the owner's key must still be live"
 
 
+async def test_the_summary_counts_this_merchant_and_nets_a_refund_out(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """Exact counts, ledger money, and `since` supplied by the caller.
+
+    The netting is the part worth asserting: an order charged and settled
+    inside the same window spent nothing, and a dashboard that showed $16.54
+    against it would have a reseller chasing money that already came back.
+    """
+    mine, my_merchant = await _signed_up(integration_client, sent, "sum@acme.example.com")
+    theirs, _ = await _signed_up(integration_client, sent, "sum@other.example.com")
+    await _credit(integration_client, admin_headers, my_merchant, "80.00")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+
+    placed = [
+        await integration_client.post(
+            f"{BASE}/orders",
+            headers=_auth(mine),
+            json={"sku_id": sku_id, "quantity": 1000, "expected_price": "16.54"},
+        )
+        for _ in range(2)
+    ]
+    assert [r.status_code for r in placed] == [201, 201], placed[0].text
+    since = quote((datetime.now(UTC) - timedelta(hours=1)).isoformat())
+
+    before = await integration_client.get(f"{BASE}/summary?since={since}", headers=_auth(mine))
+    # Support settles one of them in full. The settlement guard refuses while
+    # fulfilment is still in flight — crediting then would return the money
+    # with the supplier call still coming — so the runbook's own order applies:
+    # cancel the task first, then settle.
+    settled_order = str(placed[0].json()["order_id"])
+    refused = await integration_client.post(
+        f"/api/v1/admin/merchants/{my_merchant}/deposit-credits",
+        headers={**admin_headers, "Idempotency-Key": f"credit-{new_id()}"},
+        json={"amount": "16.54", "order_id": settled_order},
+    )
+    assert refused.status_code == 409, "settling a live order must still be refused"
+    for task_id in refused.json()["open_task_ids"]:
+        cancelled = await integration_client.post(
+            f"/api/v1/admin/fulfillment/tasks/{task_id}/cancel", headers=admin_headers
+        )
+        assert cancelled.status_code == 200, cancelled.text
+    await _credit(
+        integration_client,
+        admin_headers,
+        my_merchant,
+        "16.54",
+        order_id=settled_order,
+    )
+    after = await integration_client.get(f"{BASE}/summary?since={since}", headers=_auth(mine))
+    stranger = await integration_client.get(f"{BASE}/summary?since={since}", headers=_auth(theirs))
+
+    assert before.status_code == 200, before.text
+    assert before.json() == {
+        "orders": 2,
+        "delivered": 0,
+        "spend_usd": "33.08",
+        "spend_capped": False,
+    }
+    assert after.json()["spend_usd"] == "16.54", "a settled order spent nothing"
+    assert after.json()["orders"] == 2, "the count is of orders, not of money"
+    assert stranger.json() == {
+        "orders": 0,
+        "delivered": 0,
+        "spend_usd": "0.00",
+        "spend_capped": False,
+    }
+
+
+async def test_the_summary_refuses_a_window_it_would_not_read(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Bounded in both directions, so a crafted `since` is not a history scan."""
+    access, _ = await _signed_up(integration_client, sent, "window@acme.example.com")
+
+    future = await integration_client.get(
+        f"{BASE}/summary?since={quote((datetime.now(UTC) + timedelta(hours=1)).isoformat())}",
+        headers=_auth(access),
+    )
+    ancient = await integration_client.get(
+        f"{BASE}/summary?since={quote((datetime.now(UTC) - timedelta(days=90)).isoformat())}",
+        headers=_auth(access),
+    )
+
+    assert future.status_code == 422
+    assert future.json()["code"] == "bad_window"
+    assert ancient.status_code == 422
+    assert ancient.json()["code"] == "window_too_long"
+
+
 async def test_the_timezone_is_the_callers_own_and_must_be_loadable(
     integration_client: AsyncClient, sent: list[dict[str, str]]
 ) -> None:
@@ -466,6 +566,10 @@ async def test_every_section_refuses_a_signed_out_browser(
         assert r.status_code == 401, f"{path} answered {r.status_code}"
     patched = await integration_client.patch(f"{BASE}/me", json={"timezone": "UTC"})
     assert patched.status_code == 401
+    summary = await integration_client.get(
+        f"{BASE}/summary?since={quote(datetime.now(UTC).isoformat())}"
+    )
+    assert summary.status_code == 401
 
     users = (await db_session.execute(select(MerchantUser))).scalars().all()
     assert users == [], "nothing above should have created an account"

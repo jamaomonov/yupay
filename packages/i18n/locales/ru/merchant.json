@@ -66,7 +66,10 @@
     "comingSoon": "Раздел скоро откроется",
     "themeToggle": "Сменить тему",
     "navLabel": "Разделы кабинета",
-    "navWebhooks": "Вебхуки"
+    "navWebhooks": "Вебхуки",
+    "todayTitle": "Сегодня",
+    "todayDelivered": "Выдано",
+    "todayHint": "С полуночи по часам вашего браузера"
   },
   "catalog": {
     "title": "Каталог",
@@ -153,7 +156,8 @@
     "loadMore": "Показать ещё",
     "kindDepositCredit": "Пополнение депозита",
     "kindOrderCharge": "Списание за заказ",
-    "kindOrderRefund": "Возврат за заказ"
+    "kindOrderRefund": "Возврат за заказ",
+    "requestDeposit": "Запросить пополнение"
   },
   "settings": {
     "title": "Настройки",

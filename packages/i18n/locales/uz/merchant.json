@@ -66,7 +66,10 @@
     "comingSoon": "Boʻlim tez orada ochiladi",
     "themeToggle": "Mavzuni almashtirish",
     "navLabel": "Kabinet boʻlimlari",
-    "navWebhooks": "Vebhuklar"
+    "navWebhooks": "Vebhuklar",
+    "todayTitle": "Bugun",
+    "todayDelivered": "Yetkazildi",
+    "todayHint": "Brauzeringiz soati boʻyicha yarim tundan beri"
   },
   "catalog": {
     "title": "Katalog",
@@ -153,7 +156,8 @@
     "loadMore": "Yana koʻrsatish",
     "kindDepositCredit": "Depozit toʻldirildi",
     "kindOrderCharge": "Buyurtma uchun yechildi",
-    "kindOrderRefund": "Buyurtma uchun qaytarildi"
+    "kindOrderRefund": "Buyurtma uchun qaytarildi",
+    "requestDeposit": "Depozit soʻrash"
   },
   "settings": {
     "title": "Sozlamalar",

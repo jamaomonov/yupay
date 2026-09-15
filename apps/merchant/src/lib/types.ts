@@ -184,3 +184,12 @@ export interface DeliveriesPage {
   items: WebhookDelivery[];
   next_cursor: string | null;
 }
+
+/** The dashboard's three numbers, for a window the browser chose. */
+export interface Summary {
+  orders: number;
+  delivered: number;
+  spend_usd: string;
+  /** `spend_usd` is a floor: the window held more orders than the API reads. */
+  spend_capped: boolean;
+}

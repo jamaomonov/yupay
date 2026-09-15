@@ -130,6 +130,20 @@ class CabinetProfilePatchIn(BaseModel):
         return name
 
 
+class CabinetSummaryOut(BaseModel):
+    """``GET /merchant/cabinet/summary`` — the dashboard's three numbers."""
+
+    orders: int
+    delivered: int
+    #: Net: charged minus refunded. An order charged and refunded inside the
+    #: window spent nothing, and a figure that said otherwise would have a
+    #: reseller chasing money that already came back.
+    spend_usd: UsdAmount
+    #: ``True`` when the window held more orders than the summary reads, so
+    #: ``spend_usd`` is a **floor**. The counts above stay exact.
+    spend_capped: bool
+
+
 class CabinetOrderIn(BaseModel):
     """Ordering from the catalog page, without a ``merchant_order_id``.
 
@@ -324,6 +338,7 @@ __all__ = [
     "CabinetProfileOut",
     "CabinetProfilePatchIn",
     "CabinetRegisterIn",
+    "CabinetSummaryOut",
     "CabinetTokenIn",
     "CabinetTokensOut",
     "CabinetWebhookOut",

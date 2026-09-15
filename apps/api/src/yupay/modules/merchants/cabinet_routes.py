@@ -24,6 +24,8 @@ credential routes carry the two-axis ``ip_guard`` besides.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Request, Response, status
 
 from yupay.core.config import get_settings
@@ -34,6 +36,7 @@ from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.merchants import (
     cabinet_auth,
     cabinet_orders,
+    cabinet_summary,
     credentials,
     deposit,
     order_status,
@@ -53,6 +56,7 @@ from yupay.modules.merchants.cabinet_schemas import (
     CabinetProfileOut,
     CabinetProfilePatchIn,
     CabinetRegisterIn,
+    CabinetSummaryOut,
     CabinetTokenIn,
     CabinetTokensOut,
 )
@@ -192,6 +196,26 @@ async def update_me(body: CabinetProfilePatchIn, user: CurrentUser, db: Db) -> C
         balance_usd=await deposit.deposit_balance(db, merchant_id=merchant.id),
         offer_version=user.offer_version,
         offer_accepted_at=user.offer_accepted_at,
+    )
+
+
+@router.get(
+    "/summary",
+    response_model=CabinetSummaryOut,
+    summary="Orders, deliveries and spend since a moment",
+)
+async def summary(user: CurrentUser, db: Db, since: datetime) -> CabinetSummaryOut:
+    """``since`` is required and comes from the **browser**.
+
+    The cabinet renders every timestamp in the viewer's own zone, so the
+    browser is what knows when its day started. A server deciding "today" from
+    the stored `timezone` would print a count that disagreed with the dates on
+    the Orders list two screens over — and that field means "when we mail you"
+    (ADR-0076), not "how to read your clock".
+    """
+    merchant = await merchant_of(db, user)
+    return await cabinet_summary.build(
+        db, merchant_id=merchant.id, since=since, now=datetime.now(UTC)
     )
 
 

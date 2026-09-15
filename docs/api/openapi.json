@@ -3997,6 +3997,36 @@
         "title": "CabinetRegisterIn",
         "type": "object"
       },
+      "CabinetSummaryOut": {
+        "description": "``GET /merchant/cabinet/summary`` \u2014 the dashboard's three numbers.",
+        "properties": {
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "spend_capped": {
+            "title": "Spend Capped",
+            "type": "boolean"
+          },
+          "spend_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spend Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orders",
+          "delivered",
+          "spend_usd",
+          "spend_capped"
+        ],
+        "title": "CabinetSummaryOut",
+        "type": "object"
+      },
       "CabinetTokenIn": {
         "additionalProperties": false,
         "description": "A refresh or logout body. One field, named for what it carries.",
@@ -32403,6 +32433,66 @@
           }
         },
         "summary": "Open a merchant account and its first operator",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/summary": {
+      "get": {
+        "description": "``since`` is required and comes from the **browser**.\n\nThe cabinet renders every timestamp in the viewer's own zone, so the\nbrowser is what knows when its day started. A server deciding \"today\" from\nthe stored `timezone` would print a count that disagreed with the dates on\nthe Orders list two screens over \u2014 and that field means \"when we mail you\"\n(ADR-0076), not \"how to read your clock\".",
+        "operationId": "summary_merchant_cabinet_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Since",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Orders, deliveries and spend since a moment",
         "tags": [
           "merchant-cabinet"
         ]

@@ -49,7 +49,15 @@ export default function TransactionsList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <a
+          href="https://t.me/yupay_support"
+          className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
+        >
+          {t("requestDeposit")}
+        </a>
+      </div>
 
       {rows !== null && rows.length === 0 && (
         <p className="text-tx-dim mt-8 text-sm">{t("empty")}</p>

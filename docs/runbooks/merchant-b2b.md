@@ -386,6 +386,28 @@ The admin endpoints remain — use them when a merchant cannot reach their own
 cabinet, and on a suspected leak, where the rule above still holds: revoke
 first, talk after.
 
+### "Today" on the dashboard is the browser's day, not ours
+
+`GET /merchant/cabinet/summary` takes a required `since` and the browser sends
+its own local midnight. Nothing server-side decides what "today" is, so the
+counter always agrees with the dates on the Orders list — which are rendered
+in the same browser zone. A merchant in Dubai and one in Tashkent reading the
+same account at the same instant will see different numbers, and both are
+right for the person reading.
+
+Two bounds worth knowing when a number looks wrong:
+
+- The window is capped at 32 days, so a crafted `since` is not a scan of the
+  whole order history. Past it the call answers `window_too_long`.
+- **Spend** is read over at most 500 orders in the window. Past that the
+  figure comes back with `spend_capped: true` and the cabinet shows a `+`.
+  The counts stay exact either way. Nobody is near this; it exists so that
+  "the dashboard is slow" never becomes an incident.
+
+Spend is **net** — charged minus refunded. An order charged and settled inside
+the window spent nothing, and a reseller reading a gross figure would chase
+money that already came back.
+
 ### The timezone picker changes nothing about the API
 
 Settings also carries an IANA timezone. It decides **when we mail that
