@@ -42,6 +42,11 @@ dependencies = [
     "opentelemetry-instrumentation-redis>=0.49b0",
     "boto3>=1.35",
     "argon2-cffi>=23.1",
+    # CommonMark parser for the Bunzy blog import (ADR-0077). Pure Python,
+    # one small dependency (mdurl), and its own renderer is subclassable —
+    # which is how `blog/markdown_html.py` emits only the fail-closed
+    # allowlist instead of post-processing somebody else's HTML with regex.
+    "markdown-it-py>=3.0",
 ]
 
 [dependency-groups]
