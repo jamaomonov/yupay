@@ -5,6 +5,7 @@
 #   app.yupay.uz            → miniapp (Telegram Mini App)
 #   admin.yupay.uz          → admin SPA (Vite static)
 #   partners.yupay.uz       → partners (Next.js affiliate site)
+#   reseller.yupay.uz       → merchant (Next.js B2B reseller cabinet)
 #   api.yupay.uz            → FastAPI + WebSocket
 #   grafana.yupay.uz        → Grafana, gated by basic-auth
 #
@@ -163,6 +164,27 @@ http://partners.yupay.uz {
 		X-Frame-Options "DENY"
 	}
 	reverse_proxy partners:3003 {
+		lb_try_duration 15s
+		lb_try_interval 250ms
+	}
+}
+
+# ---------- B2B reseller cabinet ----------
+# A different product from partners.yupay.uz despite the adjacent name: that
+# one is the affiliate programme, this one is where a reseller signs in, reads
+# the wholesale price list and holds their API keys. Its own origin, because
+# the cabinet keeps a session token in `localStorage` and an origin is the
+# only boundary that isolates one.
+http://reseller.yupay.uz {
+	encode zstd gzip
+	header {
+		Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		X-Content-Type-Options "nosniff"
+		# The one moment an API secret is readable is a panel on this origin.
+		X-Frame-Options "DENY"
+	}
+	reverse_proxy merchant:3004 {
 		lb_try_duration 15s
 		lb_try_interval 250ms
 	}

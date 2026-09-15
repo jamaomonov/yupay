@@ -2603,6 +2603,10 @@ is percent-encoded and **the encoded form is what you sign**
 | Machine-API wire DTOs (the third-party contract)            | `machine_schemas.py` — additive changes only                                                                                                                                                                                                                                                                                                                                                                                            |
 | A request the schema itself refused (`422 invalid_request`) | `core/errors.py::problem_json_validation_handler` — registered app-wide by `bootstrap`, **scoped to this prefix**, matched by path segment so a future `/merchant/v1beta` does not inherit it; every other path is delegated to FastAPI's own handler byte for byte, because the generated TS client types every operation in the repo from the `HTTPValidationError` schema. The OpenAPI half is `machine_routes._VALIDATION_PROBLEM`. |
 | Admin-surface DTOs                                          | `schemas.py`                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| Cabinet HTTP surface (`/merchant/cabinet`)                  | `cabinet_routes.py` — the browser's BFF, **not** part of the contract above. Mounted by `bootstrap` beside `/merchant/v1` and deliberately _not_ on its rate-limit exemption list.                                                                                                                                                                                                                                                      |
+| Cabinet sessions (register / confirm / login / refresh)     | `cabinet_auth.py` over `merchant_sessions`; `cabinet_deps.current_merchant_user` is the dependency every cabinet read sits behind                                                                                                                                                                                                                                                                                                       |
+| Cabinet DTOs                                                | `cabinet_schemas.py` — free to change with the app that reads it, which is why they are not `machine_schemas.py`                                                                                                                                                                                                                                                                                                                        |
+| The cabinet's Orders list (no machine-API twin)             | `cabinet_orders.py` — keyset paging, a closed filter set, money from the ledger                                                                                                                                                                                                                                                                                                                                                         |
 
 Three of those files were carved out of two in M2 Task 5, when `service.py`
 (487 lines) and `orders.py` (468) had both drifted past the 400-line soft
@@ -2715,3 +2719,13 @@ carries the artifact, it is silent on a fulfilment that fails on its own, and it
 is configured by support until M4's cabinet. Polling the order read remains the
 contract's delivery channel, which is why it is described that way wherever it
 appears.
+
+**M4 adds the cabinet** — the browser half, `apps/merchant` at
+`reseller.yupay.uz` over `/merchant/cabinet` (ADR-0076). Nothing in it changes
+this contract: it is a BFF our own app talks to, with its own DTOs, its own
+credential and its own token kind, and a reseller integrating `/merchant/v1`
+can ignore every word of it. What it changes is who has to be awake — sign-up,
+the wholesale price list, a first order without writing code, the order and
+statement reads, and **issuing and revoking API keys** are self-serve now,
+where each one used to be a message to support. Webhook configuration is not
+yet: it stays support-side until the cabinet grows that screen.

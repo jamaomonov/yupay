@@ -302,6 +302,18 @@ services:
     depends_on:
       api: { condition: service_started }
 
+  merchant:
+    image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-merchant:${IMAGE_TAG:-main}
+    logging: *default-logging
+    # Same shape as partners, and the same reasoning: nothing here
+    # server-renders a fetch. The landing, the docs and the offer are
+    # prerendered; the cabinet is client-side against /merchant/cabinet.
+    mem_limit: 512m
+    restart: unless-stopped
+    env_file: ./secrets/merchant.env
+    depends_on:
+      api: { condition: service_started }
+
   miniapp:
     image: ghcr.io/${GHCR_OWNER:-jamaomonov}/yupay-miniapp:${IMAGE_TAG:-main}
     logging: *default-logging
@@ -341,7 +353,7 @@ services:
       - ./infra/caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
-    depends_on: [api, web, miniapp, admin, partners]
+    depends_on: [api, web, miniapp, admin, partners, merchant]
 
   prometheus:
     image: prom/prometheus:v3.12.0

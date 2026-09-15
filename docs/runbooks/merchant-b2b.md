@@ -284,6 +284,81 @@ the merchant's whole deposit balance, a signature is valid for the ±300 s
 window it was made in, and there is no per-order approval step to catch a
 fraudulent order after the fact.
 
+## The cabinet (`reseller.yupay.uz`)
+
+The browser half, ADR-0076. A reseller registers themselves, confirms their
+address, accepts the offer, browses the wholesale price list, places orders and
+**issues and revokes their own API keys**. The admin steps above did not go
+away — they are the fallback, and step 2 (crediting the deposit) is still the
+one thing that is not self-serve, by design.
+
+### It needs three settings before it works at all
+
+```bash
+# secrets/api.env — the cabinet's origin has to be in both
+MERCHANT_CABINET_URL=https://reseller.yupay.uz
+CORS_ALLOW_ORIGINS=["https://yupay.uz","https://app.yupay.uz","https://admin.yupay.uz","https://partners.yupay.uz","https://reseller.yupay.uz"]
+```
+
+`MERCHANT_CABINET_URL` is what the confirmation link is built from. With it
+empty, `POST /merchant/cabinet/register` refuses with
+`cabinet_mail_unconfigured` **rather than** creating an account whose mail can
+never arrive — so a missing setting shows up as a refusal at the form, not as
+a silent backlog of unconfirmable accounts.
+
+The CORS origin is the other half: the cabinet is a separate origin from
+`api.yupay.uz`, so without it every call from the browser is blocked and the
+screens render empty with nothing in the API log to explain it. If somebody
+reports "the cabinet shows no orders but the API works", check this first —
+open devtools, a CORS refusal is loud there and invisible everywhere else.
+
+After editing `secrets/api.env`, `up -d --force-recreate api`. A plain
+`restart` does **not** re-read `env_file`.
+
+### "I registered and no email came"
+
+In order of likelihood:
+
+1. `MERCHANT_CABINET_URL` is unset — but then they would have seen an error at
+   the form, so this is the one to rule out first and quickly.
+2. The send failed. Registration deliberately **does not** roll back on a mail
+   failure — the account exists and the password they chose is kept — so look
+   for `merchant.cabinet.confirm_mail_failed` with their `user_id`:
+
+   ```bash
+   ssh ubuntu@152.228.137.175 \
+     "docker compose -f /home/ubuntu/opt/yupay/docker-compose.prod.yml \
+        logs api --since 24h | grep confirm_mail_failed" < /dev/null
+   ```
+
+3. The address was already registered. Registration answers `201` with no body
+   whatever the address was — on purpose, so that probing addresses looks
+   identical to owning one — which means "no mail" is also what a **second**
+   sign-up on an existing address looks like. Ask them to sign in instead.
+
+The confirmation token lives 24 h (`merchant_confirm_ttl_seconds`). Past that,
+the account exists and is unconfirmed; there is no admin "confirm by hand"
+endpoint yet, so today the fix is a support-side re-register after deleting the
+row, or waiting for the resend screen. **Write that down as a gap**, not as a
+procedure.
+
+### A frozen merchant in the cabinet
+
+`current_merchant_user` loads the company fresh on **every** request rather
+than trusting the token, so a freeze takes effect on the next call instead of
+when a JWT happens to expire. What the operator sees is their screens going
+403, not a sign-out. That is the intended shape: a frozen account should be
+visibly frozen rather than look like a password problem.
+
+### Key rotation, self-serve
+
+The cabinet's Settings screen does what "Rotating and revoking a key" above
+describes, without us: create shows the secret **once**, the list shows
+`last_used_at` so they can confirm traffic moved, and revoke asks for a second
+click before it lands. The admin endpoints remain — use them when a merchant
+cannot reach their own cabinet, and on a suspected leak, where the rule above
+still holds: revoke first, talk after.
+
 ## `INVENTORY_ENC_KEY` is now load-bearing for three subsystems
 
 It was the voucher-code warehouse's key. It is now also the input from which

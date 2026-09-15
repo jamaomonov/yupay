@@ -42,6 +42,12 @@ jobs:
             build_args: |
               NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
               NEXT_PUBLIC_STOREFRONT_URL=https://yupay.uz
+          - image: merchant
+            dockerfile: infra/docker/merchant.Dockerfile
+            # The B2B cabinet. Only one NEXT_PUBLIC_*: it talks to
+            # /merchant/cabinet and links to nothing else of ours.
+            build_args: |
+              NEXT_PUBLIC_API_BASE_URL=https://api.yupay.uz
           - image: miniapp
             dockerfile: infra/docker/miniapp.Dockerfile
             build_args: |
