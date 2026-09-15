@@ -449,6 +449,32 @@ The admin endpoints remain — use them when a merchant cannot reach their own
 cabinet, and on a suspected leak, where the rule above still holds: revoke
 first, talk after.
 
+### Where the documentation lives
+
+Three surfaces, and an integrator should be pointed at the first:
+
+| URL                                  | What it is                                                      |
+| ------------------------------------ | --------------------------------------------------------------- |
+| `reseller.yupay.uz/docs`             | The reference: guides, per-operation pages, signed code samples |
+| `api.yupay.uz/merchant/docs`         | Swagger UI over the same contract                               |
+| `api.yupay.uz/merchant/openapi.json` | The contract itself, for a client generator                     |
+
+**The app's own `/openapi.json` and `/docs` are off in production.** That
+document is every path we have, `/api/v1/admin/*` included, and publishing it
+is a map of the admin surface for anyone who asks. It stays on outside prod, so
+`make gen-api` and local Swagger are unaffected; a test builds a prod app and
+asserts both routes are absent.
+
+**"Try it out" in Swagger cannot work, and that is not a bug.** A signed request
+needs the merchant's secret, which belongs on their server — a box on a web page
+asking for it would undo the one rule the auth design rests on. The description
+says so, and points at the Quickstart, where the same requests are pre-signed
+for cURL, Python and Node.js.
+
+Support in the contract is a Telegram handle, `@jama_omonov`, not a queue. If
+that ever has to change it is `SUPPORT_TELEGRAM` in `machine_openapi.py`, plus
+`make gen-api` and a cabinet deploy.
+
 ### The API reference is generated, and can go stale in exactly one way
 
 `reseller.yupay.uz/docs` is built from `docs/api/merchant-openapi.json`, which

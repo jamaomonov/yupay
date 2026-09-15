@@ -71,3 +71,61 @@ async def test_the_contract_does_not_document_itself(integration_client: AsyncCl
     document = (await integration_client.get(SCHEMA)).json()
 
     assert SCHEMA not in document["paths"]
+
+
+async def test_the_swagger_ui_renders_the_narrowed_contract(
+    integration_client: AsyncClient,
+) -> None:
+    """`/merchant/docs` is the UI an integrator is meant to have.
+
+    It reads the schema from its own origin, so there is no CORS to configure
+    and nothing to rebuild when the contract changes.
+    """
+    r = await integration_client.get("/merchant/docs")
+
+    assert r.status_code == 200
+    assert "text/html" in r.headers["content-type"]
+    assert SCHEMA in r.text
+    # Never the full schema: that is the document this whole module exists to
+    # avoid handing out.
+    assert "/openapi.json'" not in r.text.replace(SCHEMA, "")
+
+
+async def test_support_is_a_person_a_reader_can_reach(integration_client: AsyncClient) -> None:
+    # A contract nobody can ask a question about is half a contract, and the
+    # B2B programme is small enough that a name beats a ticket queue.
+    body = (await integration_client.get(SCHEMA)).json()
+
+    assert body["info"]["contact"]["url"] == "https://t.me/jama_omonov"
+    assert "jama_omonov" in body["info"]["description"]
+
+
+async def test_production_does_not_serve_the_full_schema(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The app's own `/openapi.json` and Swagger are off in production.
+
+    The full document lists every path we have, `/api/v1/admin/*` included.
+    Publishing it is a map of the admin surface for anyone who asks, and no
+    integrator has a use for it — they get the narrowed contract instead,
+    which stays on in prod.
+
+    Asserted on a freshly built app rather than over HTTP, because the test
+    suite runs as `ENVIRONMENT=test`, where both routes are deliberately live.
+    """
+    from yupay.bootstrap import create_app
+    from yupay.core import config as cfg
+
+    monkeypatch.setenv("ENVIRONMENT", "prod")
+    cfg.get_settings.cache_clear()
+    try:
+        paths = {route.path for route in create_app().routes}  # type: ignore[attr-defined]
+    finally:
+        monkeypatch.undo()
+        cfg.get_settings.cache_clear()
+
+    assert "/openapi.json" not in paths
+    assert "/docs" not in paths
+    # …and the two an integrator needs are still there.
+    assert SCHEMA in paths
+    assert "/merchant/docs" in paths

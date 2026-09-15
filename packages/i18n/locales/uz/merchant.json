@@ -210,7 +210,9 @@
     "step3Body": "Katalog sizga ochiq boʻlgan hamma narsani sizning narxlaringizda qaytaradi. Nosozlikni tuzatishda arzon nominalni oling.",
     "step4Title": "Buyurtma bering",
     "step4Body": "merchant_order_id — sizning identifikatoringiz va idempotentlik kaliti: bir xilini qayta yuborsangiz, ikkinchi yechim emas, oʻsha buyurtma qaytadi.",
-    "quickPoll": "Buyurtma holatini soʻrang"
+    "quickPoll": "Buyurtma holatini soʻrang",
+    "swaggerUi": "Swagger UI",
+    "swaggerUiHint": "Xuddi shu shartnoma interaktiv koʻrinishda. «Try it out» ishlamaydi: soʻrov sizning maxfiy kalitingiz bilan imzolanishi kerak, u esa sizning serveringizda turishi lozim — tayyor imzolangan misollar Tez start boʻlimida."
   },
   "offer": {
     "title": "Hamkorlar uchun oferta",

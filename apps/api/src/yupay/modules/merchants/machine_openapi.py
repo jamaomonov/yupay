@@ -16,6 +16,12 @@ Unauthenticated on purpose. A contract is not data, it is what somebody reads
 *before* they have a credential, and the whole point of publishing it is that
 an integrator can start without asking us for anything.
 
+Swagger UI over it lives beside it at `/merchant/docs`, for the same reason the
+schema does — same origin, so there is no CORS to configure and nothing to
+rebuild when the contract moves. The app's own `/openapi.json` and `/docs` are
+switched off in production (see `bootstrap`); these two are what an integrator
+is meant to have.
+
 **And therefore served at `/merchant/openapi.json`, one level above the API it
 describes.** `/merchant/v1` has a defining property — everything under it is
 HMAC-signed, refuses an unsigned request with a 401 and a frozen merchant with
@@ -32,6 +38,8 @@ from __future__ import annotations
 from typing import Any, Final
 
 from fastapi import APIRouter, Request
+from fastapi.openapi.docs import get_swagger_ui_html
+from fastapi.responses import HTMLResponse
 
 from yupay.core.config import get_settings
 from yupay.modules.merchants import auth as merchant_auth
@@ -42,6 +50,10 @@ from yupay.modules.merchants import auth as merchant_auth
 _PREFIX: Final = "/merchant/v1"
 
 _REF: Final = "#/components/schemas/"
+
+#: Where an integrator asks a question. A person, not a queue — the B2B
+#: programme is small enough that a name is faster than a ticket.
+SUPPORT_TELEGRAM: Final = "jama_omonov"
 
 #: One tag per area, so a reference page can group six endpoints into
 #: something a reader scans rather than an alphabetical list. FastAPI puts
@@ -161,9 +173,21 @@ def build(full: dict[str, Any]) -> dict[str, Any]:
                 "of the same request is safe.\n\n"
                 '**Money is a decimal string**, never a float — `"16.54"`. Timestamps '
                 "are ISO 8601 UTC. Fields are only ever *added* to a response, so parse "
-                "leniently; a breaking change would be a `/merchant/v2`."
+                "leniently; a breaking change would be a `/merchant/v2`.\n\n"
+                "**Stuck?** Write to "
+                f"[@{SUPPORT_TELEGRAM}](https://t.me/{SUPPORT_TELEGRAM}) in Telegram.\n\n"
+                '**"Try it out" will not work here, and cannot.** Every call is signed '
+                "with your merchant secret, and that secret belongs on your server — "
+                "pasting it into a box on a web page would undo the one rule this whole "
+                "auth design rests on. Ready-made cURL, Python and Node.js samples with "
+                "the signature already computed are at "
+                "[reseller.yupay.uz/docs](https://reseller.yupay.uz/docs); copy one into "
+                "your own terminal, where your secret already lives."
             ),
-            "contact": {"name": "YuPay integration support", "url": "https://t.me/yupay_support"},
+            "contact": {
+                "name": "Техподдержка YuPay — @jama_omonov",
+                "url": f"https://t.me/{SUPPORT_TELEGRAM}",
+            },
         },
         "tags": tags,
         "paths": paths,
@@ -201,6 +225,27 @@ def _operation_id(method: str, path: str) -> str:
         method
     ]
     return verb + "".join(words)
+
+
+@router.get("/docs", include_in_schema=False, response_class=HTMLResponse)
+async def merchant_docs() -> HTMLResponse:
+    """Swagger UI over the narrowed contract, one level above the API it reads.
+
+    Served here rather than from the cabinet because the schema it fetches is
+    on this origin — no CORS to configure, and nothing to rebuild when the
+    contract moves. The app's own Swagger is off in production (see
+    ``bootstrap``); this is the one integrators are meant to have.
+
+    ``Try it out`` renders but cannot succeed: a signed request needs the
+    merchant's secret, which belongs on their server. The description says so
+    rather than leaving somebody to discover it by pasting a credential into a
+    web page.
+    """
+    return get_swagger_ui_html(
+        openapi_url=f"{router.prefix}/openapi.json",
+        title="YuPay Merchant API",
+        swagger_favicon_url="https://yupay.uz/favicon.ico",
+    )
 
 
 @router.get(

@@ -862,10 +862,10 @@
   },
   "info": {
     "contact": {
-      "name": "YuPay integration support",
-      "url": "https://t.me/yupay_support"
+      "name": "\u0422\u0435\u0445\u043f\u043e\u0434\u0434\u0435\u0440\u0436\u043a\u0430 YuPay \u2014 @jama_omonov",
+      "url": "https://t.me/jama_omonov"
     },
-    "description": "Wholesale ordering for resellers.\n\n**Every request is signed.** Send `X-Merchant-Key`, `X-Merchant-Timestamp` and `X-Merchant-Signature`, where the signature is HMAC-SHA256 over\n\n```\n{timestamp}\\n{METHOD}\\n{raw_path}\\n{raw_query}\\n{sha256_hex(body)}\n```\n\nkeyed by your secret. The timestamp must be within \u00b1300 s of ours. A signature is deliberately **not** single-use, so an at-least-once retry of the same request is safe.\n\n**Money is a decimal string**, never a float \u2014 `\"16.54\"`. Timestamps are ISO 8601 UTC. Fields are only ever *added* to a response, so parse leniently; a breaking change would be a `/merchant/v2`.",
+    "description": "Wholesale ordering for resellers.\n\n**Every request is signed.** Send `X-Merchant-Key`, `X-Merchant-Timestamp` and `X-Merchant-Signature`, where the signature is HMAC-SHA256 over\n\n```\n{timestamp}\\n{METHOD}\\n{raw_path}\\n{raw_query}\\n{sha256_hex(body)}\n```\n\nkeyed by your secret. The timestamp must be within \u00b1300 s of ours. A signature is deliberately **not** single-use, so an at-least-once retry of the same request is safe.\n\n**Money is a decimal string**, never a float \u2014 `\"16.54\"`. Timestamps are ISO 8601 UTC. Fields are only ever *added* to a response, so parse leniently; a breaking change would be a `/merchant/v2`.\n\n**Stuck?** Write to [@jama_omonov](https://t.me/jama_omonov) in Telegram.\n\n**\"Try it out\" will not work here, and cannot.** Every call is signed with your merchant secret, and that secret belongs on your server \u2014 pasting it into a box on a web page would undo the one rule this whole auth design rests on. Ready-made cURL, Python and Node.js samples with the signature already computed are at [reseller.yupay.uz/docs](https://reseller.yupay.uz/docs); copy one into your own terminal, where your secret already lives.",
     "title": "YuPay Merchant API",
     "version": "0.0.1"
   },

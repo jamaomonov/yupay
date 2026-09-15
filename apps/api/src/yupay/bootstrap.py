@@ -260,7 +260,18 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="YuPay API",
         version="0.0.1",
-        openapi_url="/openapi.json",
+        # Off in production, along with the Swagger UI that reads it. The full
+        # schema is every path we have — `/api/v1/admin/*` included — and a
+        # public map of the admin surface is a reconnaissance gift, not
+        # documentation: nobody outside this repo has a use for it. Resellers
+        # get their own narrowed contract at `/merchant/openapi.json`, with a
+        # Swagger UI at `/merchant/docs`, and those stay on in prod because
+        # they are the six paths an integrator is meant to read.
+        #
+        # ``app.openapi()`` still builds the document in memory, so
+        # ``make gen-api`` and the merchant contract are unaffected — this
+        # only removes the route that serves it.
+        openapi_url="/openapi.json" if not settings.is_prod else None,
         docs_url="/docs" if not settings.is_prod else None,
         redoc_url=None,
         lifespan=lifespan,

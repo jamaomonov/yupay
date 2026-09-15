@@ -1,4 +1,4 @@
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
@@ -8,6 +8,9 @@ import { routing } from "@/i18n/routing";
 import { contract, endpoints } from "@/lib/contract";
 
 export const revalidate = 3600;
+
+/** Both the schema and its Swagger UI are served by the API, beside each other. */
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -82,12 +85,20 @@ export default async function IntroductionPage({
             {t("authTitle")}
           </Link>
           <a
-            href={`${process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000"}/merchant/openapi.json`}
+            href={`${API_BASE}/merchant/docs`}
+            className="border-border rounded-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold"
+          >
+            {t("swaggerUi")}
+            <ExternalLink size={14} />
+          </a>
+          <a
+            href={`${API_BASE}/merchant/openapi.json`}
             className="border-border rounded-btn text-tx-mute inline-flex items-center px-4 py-2.5 text-sm font-semibold"
           >
             {t("fullReference")}
           </a>
         </div>
+        <p className="text-tx-dim mt-1 text-[12.5px]">{t("swaggerUiHint")}</p>
         <p className="text-tx-dim mt-1 text-[12.5px]">
           {t("fullReferenceHint")} · OpenAPI {doc.openapi}
         </p>
