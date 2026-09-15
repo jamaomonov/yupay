@@ -322,8 +322,8 @@
   },
   "gifts": {
     "meta": {
-      "title": "Steam Games — gift games on Steam | YuPay",
-      "description": "Gift games and DLC on Steam: pick the edition and region, pay in UZS — a bot delivers the gift to the recipient's profile, usually within an hour."
+      "title": "Buy Steam games in Uzbekistan, pay in sum",
+      "description": "Over 4000 Steam games and DLC paid for in sum with Uzcard and Humo. Usually cheaper than Steam itself — the game arrives as a gift on the account, usually within an hour."
     },
     "hero": {
       "title": "Steam Games",
@@ -354,8 +354,8 @@
       "discount": "-{percent}%"
     },
     "game": {
-      "metaTitle": "{name} — Steam gift | YuPay",
-      "metaDescription": "Gift {name} on Steam: pick the edition and region, pay in UZS — a bot delivers the gift to the recipient's profile, usually within an hour.",
+      "metaTitle": "Buy {name} on Steam in sum — price in Uzbekistan",
+      "metaDescription": "{name} on Steam, paid in sum with Uzcard and Humo. Pick the edition and account region — the game arrives as a gift, usually within an hour.",
       "edition": "Edition",
       "editionSwitchNotice": "This edition is only sold for: {country}",
       "region": "Recipient's Steam account country",

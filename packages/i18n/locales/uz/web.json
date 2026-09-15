@@ -322,8 +322,8 @@
   },
   "gifts": {
     "meta": {
-      "title": "Steam oʻyinlari — Steam oʻyinlarini sovgʻa qiling | YuPay",
-      "description": "Doʻstlaringizga Steamʻda oʻyin va DLC sovgʻa qiling: nashr va mintaqani tanlang, soʻmda toʻlang — bot orqali sovgʻa qabul qiluvchi profiliga odatda bir soat ichida yetkaziladi."
+      "title": "Oʻzbekistonda Steam oʻyinlarini soʻmda sotib olish",
+      "description": "4000 dan ortiq Steam oʻyini va DLC, Uzcard va Humo kartalari bilan soʻmda toʻlov. Odatda Steamning oʻzidan arzon — oʻyin akkauntga sovgʻa sifatida, odatda bir soat ichida yetib boradi."
     },
     "hero": {
       "title": "Steam oʻyinlari",
@@ -354,8 +354,8 @@
       "discount": "-{percent}%"
     },
     "game": {
-      "metaTitle": "{name} — Steam sovgʻasi | YuPay",
-      "metaDescription": "{name} oʻyinini Steamʻda sovgʻa qiling: nashr va mintaqani tanlang, soʻmda toʻlang — bot sovgʻani qabul qiluvchi profiliga odatda bir soat ichida yetkazadi.",
+      "metaTitle": "{name} oʻyinini Steamda soʻmda sotib olish — Oʻzbekistonda narxi",
+      "metaDescription": "{name} Steamda, Uzcard va Humo bilan soʻmda toʻlov. Nashr va akkaunt mintaqasini tanlang — oʻyin sovgʻa sifatida, odatda bir soat ichida keladi.",
       "edition": "Nashr",
       "editionSwitchNotice": "Bu nashr faqat quyidagi uchun sotiladi: {country}",
       "region": "Qabul qiluvchining Steam akkaunti mamlakati",
