@@ -301,6 +301,58 @@ async def test_changing_the_endpoint_tells_the_account_the_host_only(
     assert len({mail["subject"] for mail in sent}) == 3, "one wording per event"
 
 
+async def test_a_test_event_goes_down_the_real_path(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Same queue, same log — because that path is what is being tested.
+
+    A test delivery that took a shortcut around the signing would pass on a
+    broken verifier, which is the one thing the button exists to catch.
+    """
+    access, _ = await _signed_up(integration_client, sent, "testevent@acme.example.com")
+
+    before = await integration_client.post(f"{BASE}/webhook/test", headers=_auth(access))
+    await integration_client.put(
+        f"{BASE}/webhook",
+        headers={**_auth(access), **_key()},
+        json={"url": "https://acme.example.com/yupay"},
+    )
+    fired = await integration_client.post(f"{BASE}/webhook/test", headers=_auth(access))
+    log = await integration_client.get(f"{BASE}/webhook/deliveries", headers=_auth(access))
+
+    assert before.status_code == 404, "nothing to test before an endpoint exists"
+    assert fired.status_code == 200, fired.text
+    rows = log.json()["items"]
+    assert [row["event_type"] for row in rows] == ["webhook.test"]
+    assert rows[0]["status"] == "pending"
+    assert rows[0]["url"] == "https://acme.example.com/yupay"
+    # No order, no money — a receiver that switches on the type and ignores
+    # what it does not know is already correct.
+    assert set(rows[0]["payload"]) == {"merchant_id", "sent_at"}
+
+
+async def test_a_disabled_hook_refuses_a_test_rather_than_swallowing_it(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """The producer writes nothing for a disabled hook, so a silent 200 would
+    be a button that looks like it did something."""
+    access, _ = await _signed_up(integration_client, sent, "testoff@acme.example.com")
+    await integration_client.put(
+        f"{BASE}/webhook",
+        headers={**_auth(access), **_key()},
+        json={"url": "https://acme.example.com/yupay"},
+    )
+    await integration_client.delete(f"{BASE}/webhook", headers={**_auth(access), **_key()})
+
+    refused = await integration_client.post(f"{BASE}/webhook/test", headers=_auth(access))
+
+    assert refused.status_code == 422
+    assert refused.json()["code"] == "webhook_disabled"
+    assert (
+        await integration_client.get(f"{BASE}/webhook/deliveries", headers=_auth(access))
+    ).json()["items"] == []
+
+
 async def test_every_webhook_route_refuses_a_signed_out_browser(
     integration_client: AsyncClient,
 ) -> None:
@@ -312,4 +364,5 @@ async def test_every_webhook_route_refuses_a_signed_out_browser(
         await integration_client.put(f"{BASE}/webhook", json={"url": "https://x.example.com/h"})
     ).status_code == 401
     assert (await integration_client.post(f"{BASE}/webhook/rotate-secret")).status_code == 401
+    assert (await integration_client.post(f"{BASE}/webhook/test")).status_code == 401
     assert (await integration_client.delete(f"{BASE}/webhook")).status_code == 401

@@ -33247,6 +33247,56 @@
         ]
       }
     },
+    "/merchant/cabinet/webhook/test": {
+      "post": {
+        "description": "Queue one ``webhook.test`` delivery, down the real path.\n\nSame queue, same signature, same delivery log \u2014 because what a merchant is\ntesting is that path, and a test that shortcut the signing would pass on a\nbroken verifier. It appears in their log beside the real ones, which is\nwhere they will look for it.\n\nNo ``Idempotency-Key``: a replay sends a second test, which is what\npressing the button twice means. Nothing is charged and nothing is\ncreated that a duplicate would corrupt.\n\nRaises:\n    NotFoundError: No endpoint configured \u2014 nothing to test.\n    ValidationError: The hook is disabled, so the producer would write\n        nothing and the button would look like it did something.",
+        "operationId": "send_test_event_merchant_cabinet_webhook_test_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send a test delivery to the configured endpoint",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/v1/catalog": {
       "get": {
         "description": "Return every B2B-visible, priced SKU with this merchant's price.\n\nVisibility, pricing and the query shape are all\n``price_list.build``'s \u2014 see that module. Every ``price_usd`` here is the\nprice this merchant would be charged; SKUs without a cost are absent\nrather than free, and there are no price webhooks, so poll this and watch\neach SKU's ``updated_at`` (spec \u00a78.4).",

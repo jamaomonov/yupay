@@ -9,6 +9,7 @@ import type { Profile } from "@/lib/types";
 
 import { ApiKeysCard } from "@/components/ApiKeysCard";
 import { useCabinet } from "@/components/CabinetContext";
+import { WebhookCard } from "@/components/WebhookCard";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 
@@ -53,6 +54,8 @@ export default function SettingsPage() {
       <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
 
       <ApiKeysCard />
+
+      <WebhookCard locale={locale} />
 
       <section className="border-border bg-card mt-6 rounded-xl border p-6">
         <h2 className="font-semibold">{t("timezoneTitle")}</h2>

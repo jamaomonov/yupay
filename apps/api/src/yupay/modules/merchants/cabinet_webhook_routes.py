@@ -22,10 +22,12 @@ from urllib.parse import urlparse
 
 from fastapi import APIRouter
 
+from yupay.core.clock import now
+from yupay.core.errors import ValidationError
 from yupay.core.idempotency import normalize_idempotency_key
 from yupay.core.logging import get_logger
 from yupay.modules.merchants import admin as merchant_admin
-from yupay.modules.merchants import cabinet_notify, cabinet_webhooks
+from yupay.modules.merchants import cabinet_notify, cabinet_webhooks, webhooks
 from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetDeliveriesOut,
@@ -174,6 +176,45 @@ async def disable_webhook(
     await cabinet_notify.notify_security(db, merchant_id=merchant.id, event="webhook_disabled")
     await remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
     return out
+
+
+@router.post(
+    "/webhook/test",
+    response_model=CabinetWebhookOut,
+    summary="Send a test delivery to the configured endpoint",
+)
+async def send_test_event(user: CurrentUser, db: Db) -> CabinetWebhookOut:
+    """Queue one ``webhook.test`` delivery, down the real path.
+
+    Same queue, same signature, same delivery log — because what a merchant is
+    testing is that path, and a test that shortcut the signing would pass on a
+    broken verifier. It appears in their log beside the real ones, which is
+    where they will look for it.
+
+    No ``Idempotency-Key``: a replay sends a second test, which is what
+    pressing the button twice means. Nothing is charged and nothing is
+    created that a duplicate would corrupt.
+
+    Raises:
+        NotFoundError: No endpoint configured — nothing to test.
+        ValidationError: The hook is disabled, so the producer would write
+            nothing and the button would look like it did something.
+    """
+    merchant = await merchant_of(db, user)
+    hook = await merchant_admin.get_webhook(db, merchant_id=merchant.id)
+    if hook.disabled_at is not None:
+        raise ValidationError(
+            "the webhook is disabled — set its URL again to re-enable it",
+            code="webhook_disabled",
+        )
+    await webhooks.enqueue(
+        db,
+        merchant_id=merchant.id,
+        event_type=webhooks.EVENT_TEST,
+        payload={"merchant_id": merchant.id, "sent_at": now().isoformat()},
+    )
+    log.info("merchant.cabinet.webhook_test_sent", merchant_id=merchant.id)
+    return CabinetWebhookOut.model_validate(hook)
 
 
 @router.get(

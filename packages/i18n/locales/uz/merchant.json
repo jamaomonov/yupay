@@ -275,6 +275,10 @@
     "received": "Nima qaytdi",
     "error": "Xatolik",
     "nextAttempt": "Keyingi urinish",
-    "loadMore": "Yana koʻrsatish"
+    "loadMore": "Yana koʻrsatish",
+    "sendTest": "Test hodisa yuborish",
+    "testSent": "Yuborildi — jurnalga qarang",
+    "logLink": "Yuborishlar jurnali →",
+    "logIntro": "Nima yuborganimiz, qayerga va serveringiz nima javob bergani. Manzil va kalit — Sozlamalarda."
   }
 }

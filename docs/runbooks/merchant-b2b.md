@@ -416,6 +416,18 @@ cannot aim our worker anywhere an operator could not: https only, no private
 or loopback host, and one pinned address per attempt. A refused URL comes back
 as a 422 quoting the rule it broke, which is what the screen shows them.
 
+**«Отправить тестовое событие» is a real delivery.** It queues a
+`webhook.test` through the same producer, the same signature and the same log
+as an order event — a test that shortcut any of those would pass on a broken
+verifier, which is the one thing the button exists to catch. It carries
+`merchant_id` and `sent_at` and nothing else, so a receiver that switches on
+`event_type` and ignores what it does not know is already correct. A merchant
+asking "what is `webhook.test` in my logs" pressed that button.
+
+The button refuses on a **disabled** hook (`422 webhook_disabled`) rather than
+answering 200: the producer writes nothing for a disabled hook, so a silent
+success would be a button that looks like it did something.
+
 See "Outgoing webhooks: the auto-disable, and turning one back on" below for
 what happens when a hook fails twenty times in a row — the re-enable is the
 same `PUT`, and they can now do it themselves.

@@ -275,6 +275,10 @@
     "received": "What came back",
     "error": "Error",
     "nextAttempt": "Next attempt",
-    "loadMore": "Show more"
+    "loadMore": "Show more",
+    "sendTest": "Send a test event",
+    "testSent": "Sent — look in the log",
+    "logLink": "Delivery log →",
+    "logIntro": "What we sent, where it went and what your server answered. The address and secret live in Настройки."
   }
 }
