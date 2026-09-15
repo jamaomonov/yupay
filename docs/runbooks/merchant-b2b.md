@@ -1214,11 +1214,35 @@ The steps:
 
 ## Known gaps before a pilot integrates
 
-One thing a reseller can meet on day one. It is not a bug in the sense of
-"something broke"; it is an omission with a price, and the price is worth
+Two things a reseller can meet on day one. Neither is a bug in the sense of
+"something broke"; each is an omission with a price, and the price is worth
 knowing before it is paid. Two other gaps — the ±2% drift giveaway, and error
 bodies that did not match the published contract — were closed in M2 and are
 recorded at the end so a regression is recognisable.
+
+### Nothing caps a merchant's failed-order rate (spec §12)
+
+The spec asks for "a sliding-window cap on the failed share of orders
+(auto-pause + notify; refund-on-failure must not become a free retry cannon)".
+**It does not exist.** The controls that do exist are the two-axis rate guard
+(requests, not outcomes), the margin floor (price, not volume) and the admin
+freeze button (all-or-nothing, and a person has to be awake for it).
+
+- **Why it matters more now than it did.** Until M4 every credential came out
+  of a support conversation. The cabinet issues them self-serve, and the same
+  screen that makes a legitimate reseller's 3am rotation possible makes a
+  hostile one's first key immediate.
+- **The shape of the abuse.** M3b refunds a failed delivery automatically when
+  the money came back. An order that reliably fails in a way that refunds is
+  then free to place, and each attempt costs us a supplier call, a player
+  check, or both. Nothing counts that.
+- **What to watch until there is a cap.** `merchant_order_placed` against
+  order status per merchant. A merchant whose failed share climbs while their
+  deposit does not move is the signature. The freeze button is the response.
+- **What a fix needs from the owner, not from code:** the window, the ratio,
+  and what "pause" means — refuse new orders, or refuse only refunds. The
+  second is the one that actually closes the loop and is also the one that
+  punishes a merchant having a genuinely bad supplier day.
 
 ### Only a supplier that gave our money back refunds automatically
 
