@@ -77,6 +77,20 @@ class DashboardOut(BaseModel):
     orders_last_7_days: list[DayBucket]
 
 
+class AnalyticsChannel(StrEnum):
+    """Which half of the business a figure is about.
+
+    Retail and B2B have genuinely different economics — a reseller buys at a
+    wholesale price with a thinner markup — so a blended margin flatters one
+    and libels the other. Every figure on the business tab can be scoped to
+    one of them, or left across both.
+    """
+
+    ALL = "all"
+    RETAIL = "retail"
+    B2B = "b2b"
+
+
 class AnalyticsRange(StrEnum):
     """Selectable analytics window."""
 
@@ -141,6 +155,23 @@ class NewUsersPoint(BaseModel):
     users: int
 
 
+class ChannelStatOut(BaseModel):
+    """Retail versus B2B. Wholesale margin is a different number entirely."""
+
+    channel: str
+    gmv_usd: Decimal
+    orders: int
+    margin_usd: Decimal | None
+
+
+class HourPoint(BaseModel):
+    """Orders by hour of the local day — staffing and supplier windows."""
+
+    hour: int
+    orders: int
+    revenue_usd: Decimal
+
+
 class BusinessSummaryOut(BaseModel):
     gmv_usd: Decimal
     orders: int
@@ -151,6 +182,9 @@ class BusinessSummaryOut(BaseModel):
     margin_pct: float
     margin_approx: bool
     margin_unknown_units: int
+    #: Money given back in the window. The funnel counts refunds in orders;
+    #: this is what they cost.
+    refunded_usd: Decimal = Decimal("0")
 
 
 class CustomersOut(BaseModel):
@@ -166,6 +200,7 @@ class BusinessAnalyticsOut(BaseModel):
     #: ``None`` for an explicit ``since``/``until`` window, which is every
     #: request the calendar makes.
     range: AnalyticsRange | None = None
+    channel: AnalyticsChannel = AnalyticsChannel.ALL
     since: datetime | None = None
     #: Exclusive. ``None`` means the window runs up to ``generated_at``.
     until: datetime | None = None
@@ -175,6 +210,12 @@ class BusinessAnalyticsOut(BaseModel):
     top_brands: list[BrandRevenueOut]
     top_skus: list[SkuRevenueOut]
     customers: CustomersOut
+    #: The window of the same length immediately before this one, so every
+    #: headline can be read as a movement rather than an absolute. ``None``
+    #: when there is no earlier data to compare against.
+    previous: BusinessSummaryOut | None = None
+    channels: list[ChannelStatOut] = []
+    hourly: list[HourPoint] = []
 
 
 # ---- ops tab ----
@@ -209,6 +250,13 @@ class CostChangeOut(BaseModel):
     captured_at: datetime
 
 
+class WalletLiabilityOut(BaseModel):
+    """Customer money we are holding, per currency. Ours to return, not to spend."""
+
+    currency: str
+    amount: Decimal
+
+
 class OpsAnalyticsOut(BaseModel):
     generated_at: datetime
     range: AnalyticsRange
@@ -220,19 +268,25 @@ class OpsAnalyticsOut(BaseModel):
     low_stock: list[LowStockOut]
     expiring_soon: int
     supplier_cost: list[CostChangeOut]
+    #: A balance, not a period figure: how much customer money sits in wallets
+    #: right now. It is a liability — spendable by them, not by us.
+    wallet_liability: list[WalletLiabilityOut] = []
 
 
 __all__ = [
+    "AnalyticsChannel",
     "AnalyticsRange",
     "BrandRevenueOut",
     "BusinessAnalyticsOut",
     "BusinessSummaryOut",
+    "ChannelStatOut",
     "CostChangeOut",
     "CurrencyAmount",
     "CustomersOut",
     "DashboardOut",
     "DayBucket",
     "FunnelOut",
+    "HourPoint",
     "InventorySummary",
     "LocaleCountOut",
     "LowStockOut",
@@ -243,5 +297,6 @@ __all__ = [
     "SkuRevenueOut",
     "StatusCount",
     "SupplierStatOut",
+    "WalletLiabilityOut",
     "range_to_days",
 ]

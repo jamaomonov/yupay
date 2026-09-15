@@ -17,6 +17,7 @@ from yupay.core.redis import get_redis
 from yupay.modules.admin.api import require_admin
 from yupay.modules.stats import service as svc
 from yupay.modules.stats.schemas import (
+    AnalyticsChannel,
     AnalyticsRange,
     BusinessAnalyticsOut,
     DashboardOut,
@@ -87,6 +88,7 @@ async def analytics_business(
     range_: Annotated[AnalyticsRange | None, Query(alias="range")] = None,
     since: Annotated[datetime | None, Query()] = None,
     until: Annotated[datetime | None, Query()] = None,
+    channel: Annotated[AnalyticsChannel, Query()] = AnalyticsChannel.ALL,
 ) -> BusinessAnalyticsOut:
     """Business analytics over a preset range, or an explicit window.
 
@@ -94,6 +96,9 @@ async def analytics_business(
     the grid, one day when a cell is clicked, and an arbitrary span when an
     operator picks two dates — all the same computation, so there is one
     endpoint rather than three. `until` is exclusive.
+
+    `channel` narrows the whole tab to retail or to B2B; the default blends
+    them, which is what the headline numbers have always meant.
     """
     if since is not None and until is not None and until <= since:
         raise ValidationError("until must be after since")
@@ -101,17 +106,20 @@ async def analytics_business(
     # the cache of whatever preset range happened to be asked for first.
     if since is None:
         preset = range_ or AnalyticsRange.D30
-        key = f"stats:analytics:business:{preset.value}"
+        key = f"stats:analytics:business:{preset.value}:{channel.value}"
         range_ = preset
     else:
         key = (
             "stats:analytics:business:"
             f"{since.isoformat()}:{until.isoformat() if until is not None else '-'}"
+            f":{channel.value}"
         )
     return await _cached(
         key,
         BusinessAnalyticsOut,
-        lambda: svc.build_business_analytics(db, r=range_, since=since, until=until),
+        lambda: svc.build_business_analytics(
+            db, r=range_, since=since, until=until, channel=channel
+        ),
     )
 
 

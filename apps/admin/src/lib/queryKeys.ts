@@ -82,7 +82,8 @@ export const qk = {
 
   // stats
   dashboard: (windowHours: number) => ["admin", "stats", "dashboard", windowHours] as const,
-  analyticsBusiness: (range: string) => ["admin", "stats", "analytics", "business", range] as const,
+  analyticsBusiness: (range: string, channel: string) =>
+    ["admin", "stats", "analytics", "business", range, channel] as const,
   analyticsOps: (range: string) => ["admin", "stats", "analytics", "ops", range] as const,
 
   // global search (cmd+k)

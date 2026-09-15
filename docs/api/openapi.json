@@ -1710,6 +1710,16 @@
         "title": "AdminUserLedgerOut",
         "type": "object"
       },
+      "AnalyticsChannel": {
+        "description": "Which half of the business a figure is about.\n\nRetail and B2B have genuinely different economics \u2014 a reseller buys at a\nwholesale price with a thinner markup \u2014 so a blended margin flatters one\nand libels the other. Every figure on the business tab can be scoped to\none of them, or left across both.",
+        "enum": [
+          "all",
+          "retail",
+          "b2b"
+        ],
+        "title": "AnalyticsChannel",
+        "type": "string"
+      },
       "AnalyticsRange": {
         "description": "Selectable analytics window.",
         "enum": [
@@ -3321,6 +3331,18 @@
       },
       "BusinessAnalyticsOut": {
         "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/AnalyticsChannel",
+            "default": "all"
+          },
+          "channels": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ChannelStatOut"
+            },
+            "title": "Channels",
+            "type": "array"
+          },
           "customers": {
             "$ref": "#/components/schemas/CustomersOut"
           },
@@ -3331,6 +3353,24 @@
             "format": "date-time",
             "title": "Generated At",
             "type": "string"
+          },
+          "hourly": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/HourPoint"
+            },
+            "title": "Hourly",
+            "type": "array"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BusinessSummaryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "range": {
             "anyOf": [
@@ -3443,6 +3483,12 @@
           "paid_orders": {
             "title": "Paid Orders",
             "type": "integer"
+          },
+          "refunded_usd": {
+            "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
           }
         },
         "required": [
@@ -4640,6 +4686,44 @@
           }
         },
         "title": "CategoryUpdate",
+        "type": "object"
+      },
+      "ChannelStatOut": {
+        "description": "Retail versus B2B. Wholesale margin is a different number entirely.",
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "gmv_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Gmv Usd",
+            "type": "string"
+          },
+          "margin_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Usd"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "channel",
+          "gmv_usd",
+          "orders",
+          "margin_usd"
+        ],
+        "title": "ChannelStatOut",
         "type": "object"
       },
       "CheckPlayerIn": {
@@ -7532,6 +7616,31 @@
         "title": "HandshakeOut",
         "type": "object"
       },
+      "HourPoint": {
+        "description": "Orders by hour of the local day \u2014 staffing and supplier windows.",
+        "properties": {
+          "hour": {
+            "title": "Hour",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "hour",
+          "orders",
+          "revenue_usd"
+        ],
+        "title": "HourPoint",
+        "type": "object"
+      },
       "InventorySummary": {
         "properties": {
           "available": {
@@ -8937,6 +9046,14 @@
               "$ref": "#/components/schemas/CostChangeOut"
             },
             "title": "Supplier Cost",
+            "type": "array"
+          },
+          "wallet_liability": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/WalletLiabilityOut"
+            },
+            "title": "Wallet Liability",
             "type": "array"
           },
           "webhook_unhealthy": {
@@ -15935,6 +16052,26 @@
           "count"
         ],
         "title": "VolumeRow",
+        "type": "object"
+      },
+      "WalletLiabilityOut": {
+        "description": "Customer money we are holding, per currency. Ours to return, not to spend.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          }
+        },
+        "required": [
+          "currency",
+          "amount"
+        ],
+        "title": "WalletLiabilityOut",
         "type": "object"
       },
       "WalletOverviewOut": {
@@ -26679,7 +26816,7 @@
     },
     "/api/v1/admin/stats/analytics/business": {
       "get": {
-        "description": "Business analytics over a preset range, or an explicit window.\n\n`since`/`until` win when given: the calendar asks for one month to paint\nthe grid, one day when a cell is clicked, and an arbitrary span when an\noperator picks two dates \u2014 all the same computation, so there is one\nendpoint rather than three. `until` is exclusive.",
+        "description": "Business analytics over a preset range, or an explicit window.\n\n`since`/`until` win when given: the calendar asks for one month to paint\nthe grid, one day when a cell is clicked, and an arbitrary span when an\noperator picks two dates \u2014 all the same computation, so there is one\nendpoint rather than three. `until` is exclusive.\n\n`channel` narrows the whole tab to retail or to B2B; the default blends\nthem, which is what the headline numbers have always meant.",
         "operationId": "analytics_business_api_v1_admin_stats_analytics_business_get",
         "parameters": [
           {
@@ -26730,6 +26867,15 @@
                 }
               ],
               "title": "Until"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/AnalyticsChannel",
+              "default": "all"
             }
           },
           {

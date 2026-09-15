@@ -6,7 +6,7 @@ import { BusinessTab } from "./BusinessTab";
 import { CalendarTab } from "./CalendarTab";
 import { OpsTab } from "./OpsTab";
 
-import type { AnalyticsRange, BusinessAnalytics, OpsAnalytics } from "./types";
+import type { AnalyticsChannel, AnalyticsRange, BusinessAnalytics, OpsAnalytics } from "./types";
 
 import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
@@ -20,6 +20,13 @@ const RANGE_LABEL: Record<AnalyticsRange, string> = {
   "90d": "90 дней",
 };
 
+const CHANNELS: AnalyticsChannel[] = ["all", "retail", "b2b"];
+const CHANNEL_LABEL: Record<AnalyticsChannel, string> = {
+  all: "Всё",
+  retail: "Розница",
+  b2b: "B2B",
+};
+
 /** An explicit window, opened from the calendar or the date pickers. */
 interface Period {
   since: string;
@@ -31,6 +38,11 @@ interface Period {
 export function AnalyticsPage() {
   const [tab, setTab] = useState<"business" | "calendar" | "ops">("business");
   const [range, setRange] = useState<AnalyticsRange>("30d");
+  // Retail and B2B are sold at different margins, so the blended headline
+  // flatters one and libels the other. The split applies to the whole tab —
+  // funnel, mix, customers — rather than to a single card, because "which
+  // brands does the wholesale side actually buy" is the question being asked.
+  const [channel, setChannel] = useState<AnalyticsChannel>("all");
   // A chosen period takes over the Business tab. It is the same tab and the
   // same computation — only the window differs — so there is no second page
   // to keep in step with this one.
@@ -42,18 +54,20 @@ export function AnalyticsPage() {
   };
 
   const periodQuery = useQuery<BusinessAnalytics>({
-    queryKey: ["admin", "stats", "analytics", "business", period?.since, period?.until],
+    queryKey: ["admin", "stats", "analytics", "business", period?.since, period?.until, channel],
     queryFn: () =>
       apiGet<BusinessAnalytics>(
-        `/api/v1/admin/stats/analytics/business?since=${encodeURIComponent(period?.since ?? "")}&until=${encodeURIComponent(period?.until ?? "")}`,
+        `/api/v1/admin/stats/analytics/business?since=${encodeURIComponent(period?.since ?? "")}&until=${encodeURIComponent(period?.until ?? "")}&channel=${channel}`,
       ),
     enabled: tab === "business" && period !== null,
   });
 
   const business = useQuery<BusinessAnalytics>({
-    queryKey: qk.analyticsBusiness(range),
+    queryKey: qk.analyticsBusiness(range, channel),
     queryFn: () =>
-      apiGet<BusinessAnalytics>(`/api/v1/admin/stats/analytics/business?range=${range}`),
+      apiGet<BusinessAnalytics>(
+        `/api/v1/admin/stats/analytics/business?range=${range}&channel=${channel}`,
+      ),
     enabled: tab === "business" && period === null,
   });
   const ops = useQuery<OpsAnalytics>({
@@ -88,38 +102,65 @@ export function AnalyticsPage() {
             </button>
           ))}
         </div>
-        {period !== null ? (
-          <button
-            type="button"
-            onClick={() => {
-              setPeriod(null);
-            }}
-            className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          >
-            <ArrowLeft className="size-4" aria-hidden="true" />
-            {period.label} · вернуться к периоду
-          </button>
-        ) : tab === "calendar" ? null : (
-          <div className="flex gap-1 rounded-lg border border-[var(--border-default)] p-1">
-            {RANGES.map((r) => (
-              <button
-                key={r}
-                type="button"
-                aria-pressed={range === r}
-                onClick={() => {
-                  setRange(r);
-                }}
-                className={`rounded-md px-3 py-1.5 text-sm ${range === r ? "bg-[var(--bg-accent-soft)] text-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
-              >
-                {RANGE_LABEL[r]}
-              </button>
-            ))}
-          </div>
-        )}
+
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Not on Операционка: stuck payments and low stock are one queue,
+              not two — a fulfilment task does not know which side it serves. */}
+          {tab === "ops" ? null : (
+            <div
+              role="group"
+              aria-label="Канал продаж"
+              className="flex gap-1 rounded-lg border border-[var(--border-default)] p-1"
+            >
+              {CHANNELS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  aria-pressed={channel === c}
+                  onClick={() => {
+                    setChannel(c);
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-sm ${channel === c ? "bg-[var(--bg-accent-soft)] text-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                >
+                  {CHANNEL_LABEL[c]}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {period !== null ? (
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod(null);
+              }}
+              className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            >
+              <ArrowLeft className="size-4" aria-hidden="true" />
+              {period.label} · вернуться к периоду
+            </button>
+          ) : tab === "calendar" ? null : (
+            <div className="flex gap-1 rounded-lg border border-[var(--border-default)] p-1">
+              {RANGES.map((r) => (
+                <button
+                  key={r}
+                  type="button"
+                  aria-pressed={range === r}
+                  onClick={() => {
+                    setRange(r);
+                  }}
+                  className={`rounded-md px-3 py-1.5 text-sm ${range === r ? "bg-[var(--bg-accent-soft)] text-[var(--accent)]" : "text-[var(--text-secondary)]"}`}
+                >
+                  {RANGE_LABEL[r]}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
 
       {tab === "calendar" ? (
-        <CalendarTab onPick={openPeriod} />
+        <CalendarTab channel={channel} onPick={openPeriod} />
       ) : active.isLoading ? (
         <Spinner label="Считаем…" />
       ) : active.isError ? (

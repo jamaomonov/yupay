@@ -34,8 +34,10 @@ from yupay.modules.stats.schemas import (
     OpsAnalyticsOut,
     ProviderStatOut,
     SupplierStatOut,
+    WalletLiabilityOut,
     range_to_days,
 )
+from yupay.modules.wallet.balances import user_wallet_totals
 
 
 async def build_ops_analytics(db: AsyncSession, *, r: AnalyticsRange) -> OpsAnalyticsOut:
@@ -66,6 +68,10 @@ async def build_ops_analytics(db: AsyncSession, *, r: AnalyticsRange) -> OpsAnal
         low_stock=low_stock,
         expiring_soon=expiring_soon,
         supplier_cost=supplier_cost,
+        wallet_liability=[
+            WalletLiabilityOut(currency=currency, amount=amount)
+            for currency, amount in await user_wallet_totals(db)
+        ],
     )
 
 

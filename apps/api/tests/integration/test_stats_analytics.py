@@ -26,10 +26,11 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.fulfillment.models import FulfillmentTask
+from yupay.modules.merchants.models import Merchant
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats import service as svc
-from yupay.modules.stats.schemas import AnalyticsRange
+from yupay.modules.stats.schemas import AnalyticsChannel, AnalyticsRange
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -495,3 +496,131 @@ async def test_an_explicit_window_is_honoured_at_both_ends(db_session: AsyncSess
     assert inside.until is not None
     assert before.summary.gmv_usd == 0, "the upper bound was not applied"
     assert before.revenue_series == []
+
+
+async def test_retail_and_b2b_are_reported_apart(db_session: AsyncSession) -> None:
+    """`IS_SALE` is both channels, so every headline blended them.
+
+    A reseller buys at a wholesale price with a thinner markup, so a good B2B
+    month reads as a margin collapse once it is averaged into retail.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    await _bare_order_item(db_session, sku_with)
+    merchant_order_id, _ = await _bare_order_item(db_session, sku_with)
+    merchant = Merchant(id=new_id(), title="Reseller", status="active")
+    db_session.add(merchant)
+    await db_session.flush()
+    order = (
+        await db_session.execute(select(Order).where(Order.id == merchant_order_id))
+    ).scalar_one()
+    # `ck_orders_actor_exclusive`: an order has exactly one actor arm, so a
+    # merchant order carries no guest address. The constraint caught this the
+    # first time and it is right to.
+    order.merchant_id = merchant.id
+    order.guest_email = None
+    await db_session.flush()
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    channels = {c.channel: c for c in out.channels}
+    assert channels["retail"].orders == 1
+    assert channels["b2b"].orders == 1
+    assert channels["retail"].gmv_usd > 0
+    assert channels["b2b"].gmv_usd > 0
+
+
+async def test_every_hour_is_reported_even_the_quiet_ones(db_session: AsyncSession) -> None:
+    """A chart with gaps reads as missing data rather than as a quiet night."""
+    sku_with, _ = await _seed_catalog(db_session)
+    await _bare_order_item(db_session, sku_with)
+    await db_session.flush()
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    assert [p.hour for p in out.hourly] == list(range(24))
+    assert sum(p.orders for p in out.hourly) == 1
+
+
+async def test_refunds_are_reported_in_money(db_session: AsyncSession) -> None:
+    """The funnel counts refunds in orders, which says nothing about the hole."""
+    sku_with, _ = await _seed_catalog(db_session)
+    order_id, _ = await _bare_order_item(db_session, sku_with)
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    order.status = "refunded"
+    await db_session.flush()
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    assert out.summary.refunded_usd > 0
+
+
+async def test_the_previous_window_is_the_same_length(db_session: AsyncSession) -> None:
+    """ "1486 orders" is neither good nor bad without the number it replaced.
+
+    The comparison window is derived from the current one rather than
+    configured, so a 30-day figure is never held up against a week.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    order_id, _ = await _bare_order_item(db_session, sku_with)
+    moment = now()
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    # Sold during the *previous* week, not this one.
+    order.paid_at = moment - timedelta(days=10)
+    await db_session.flush()
+
+    out = await svc.build_business_analytics(
+        db_session, since=moment - timedelta(days=7), until=moment
+    )
+
+    assert out.summary.gmv_usd == 0, "the order is outside the current window"
+    assert out.previous is not None, "and inside the one before it"
+    assert out.previous.gmv_usd > 0
+
+
+async def test_wallet_liability_is_reported(db_session: AsyncSession) -> None:
+    """Customer money we hold is a balance, not a period figure — and it is ours
+    to return, not to spend, so it belongs on the operations tab."""
+    out = await svc.build_ops_analytics(db_session, r=AnalyticsRange.D30)
+
+    # No wallets seeded here; what is pinned is that the field exists and is
+    # a list rather than absent, so the admin never renders `undefined`.
+    assert isinstance(out.wallet_liability, list)
+
+
+async def test_the_tab_can_be_scoped_to_one_half_of_the_business(
+    db_session: AsyncSession,
+) -> None:
+    """Retail and B2B have different economics, so a blended tab hides both.
+
+    The comparison block is the deliberate exception: it is the thing being
+    compared, so it stays whole whichever half is asked for.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    await _bare_order_item(db_session, sku_with)
+    merchant_order_id, _ = await _bare_order_item(db_session, sku_with)
+    merchant = Merchant(id=new_id(), title="Reseller", status="active")
+    db_session.add(merchant)
+    await db_session.flush()
+    order = (
+        await db_session.execute(select(Order).where(Order.id == merchant_order_id))
+    ).scalar_one()
+    # `ck_orders_actor_exclusive`: exactly one actor arm per order.
+    order.merchant_id = merchant.id
+    order.guest_email = None
+    await db_session.flush()
+
+    every = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+    retail = await svc.build_business_analytics(
+        db_session, r=AnalyticsRange.D30, channel=AnalyticsChannel.RETAIL
+    )
+    b2b = await svc.build_business_analytics(
+        db_session, r=AnalyticsRange.D30, channel=AnalyticsChannel.B2B
+    )
+
+    assert every.summary.orders == 2
+    assert retail.summary.orders == 1
+    assert b2b.summary.orders == 1
+    assert retail.summary.gmv_usd + b2b.summary.gmv_usd == every.summary.gmv_usd
+    assert retail.channel is AnalyticsChannel.RETAIL
+    # The comparison block is not scoped: it is what the scoping is compared to.
+    assert {c.channel for c in retail.channels} == {c.channel for c in every.channels}

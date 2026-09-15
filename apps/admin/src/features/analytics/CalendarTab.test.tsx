@@ -24,6 +24,7 @@ function payload(series: BusinessAnalytics["revenue_series"]): BusinessAnalytics
   return {
     generated_at: "2026-09-15T00:00:00Z",
     range: null,
+    channel: "all",
     since: "2026-09-01T00:00:00Z",
     until: "2026-10-01T00:00:00Z",
     summary: {
@@ -36,6 +37,7 @@ function payload(series: BusinessAnalytics["revenue_series"]): BusinessAnalytics
       margin_pct: 0,
       margin_approx: true,
       margin_unknown_units: 0,
+      refunded_usd: "0",
     },
     revenue_series: series,
     funnel: {
@@ -50,6 +52,9 @@ function payload(series: BusinessAnalytics["revenue_series"]): BusinessAnalytics
     },
     top_brands: [],
     top_skus: [],
+    previous: null,
+    channels: [],
+    hourly: [],
     customers: {
       new_users_series: [],
       guest_orders: 0,
@@ -64,7 +69,7 @@ function renderCalendar(onPick = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
     <QueryClientProvider client={qc}>
-      <CalendarTab onPick={onPick} />
+      <CalendarTab channel="all" onPick={onPick} />
     </QueryClientProvider>,
   );
   return onPick;
@@ -126,10 +131,10 @@ describe("the month grid", () => {
     await screen.findByText("$400");
 
     // Every day but the two seeded ones, so take the first.
-    const quiet = screen.getAllByTitle("Нет оплаченных заказов")[0];
-    expect(quiet).toBeDefined();
+    const [quiet] = screen.getAllByTitle("Нет оплаченных заказов");
+    if (!quiet) throw new Error("expected a day with no orders");
     expect(quiet).toBeDisabled();
-    fireEvent.click(quiet as HTMLElement);
+    fireEvent.click(quiet);
     expect(onPick).not.toHaveBeenCalled();
   });
 });

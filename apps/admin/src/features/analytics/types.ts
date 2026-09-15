@@ -1,4 +1,8 @@
 export type AnalyticsRange = "7d" | "30d" | "90d";
+/** Which half of the business a figure is about. Retail and B2B have
+ *  genuinely different margins, so a blended number flatters one and libels
+ *  the other. */
+export type AnalyticsChannel = "all" | "retail" | "b2b";
 
 export interface RevenuePoint {
   date: string;
@@ -41,6 +45,22 @@ export interface NewUsersPoint {
   date: string;
   users: number;
 }
+export interface ChannelStat {
+  /** `"retail"` or `"b2b"`. */
+  channel: string;
+  gmv_usd: string;
+  orders: number;
+  margin_usd: string | null;
+}
+export interface HourPoint {
+  hour: number;
+  orders: number;
+  revenue_usd: string;
+}
+export interface WalletLiability {
+  currency: string;
+  amount: string;
+}
 export interface BusinessSummary {
   gmv_usd: string;
   orders: number;
@@ -51,6 +71,9 @@ export interface BusinessSummary {
   margin_pct: number;
   margin_approx: boolean;
   margin_unknown_units: number;
+  /** Money given back in the window. The funnel counts refunds in orders;
+   *  this is what they cost. */
+  refunded_usd: string;
 }
 export interface Customers {
   new_users_series: NewUsersPoint[];
@@ -63,6 +86,7 @@ export interface BusinessAnalytics {
   generated_at: string;
   /** `null` for an explicit window — every request the calendar makes. */
   range: AnalyticsRange | null;
+  channel: AnalyticsChannel;
   since: string | null;
   /** Exclusive. `null` means the window runs up to `generated_at`. */
   until: string | null;
@@ -72,6 +96,11 @@ export interface BusinessAnalytics {
   top_brands: BrandRevenue[];
   top_skus: SkuRevenue[];
   customers: Customers;
+  /** The window of equal length immediately before this one. `null` when
+   *  there is nothing earlier to compare against. */
+  previous: BusinessSummary | null;
+  channels: ChannelStat[];
+  hourly: HourPoint[];
 }
 export interface ProviderStat {
   provider: string;
@@ -109,4 +138,5 @@ export interface OpsAnalytics {
   low_stock: LowStock[];
   expiring_soon: number;
   supplier_cost: CostChange[];
+  wallet_liability: WalletLiability[];
 }

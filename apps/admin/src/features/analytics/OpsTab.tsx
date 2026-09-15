@@ -60,6 +60,27 @@ export function OpsTab({ data }: { data: OpsAnalytics }) {
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div>
+          <h3 className="mb-2 text-sm font-semibold">Деньги клиентов на кошельках</h3>
+          {/* A balance, not a period figure — and it is ours to return, not to
+              spend, so it sits with the operational obligations rather than
+              with revenue. Per currency: the ledger does not convert. */}
+          <DataTable
+            rows={data.wallet_liability}
+            rowKey={(w) => w.currency}
+            ariaLabel="Обязательства по кошелькам"
+            empty="Кошельки пусты"
+            columns={[
+              { key: "cur", header: "Валюта", render: (w) => w.currency },
+              {
+                key: "amt",
+                header: "Сумма",
+                render: (w) =>
+                  `${Number(w.amount).toLocaleString("ru-RU", { maximumFractionDigits: 2 })} ${w.currency}`,
+              },
+            ]}
+          />
+        </div>
+        <div>
           <h3 className="mb-2 text-sm font-semibold">Заканчивается на складе</h3>
           <DataTable
             rows={data.low_stock}

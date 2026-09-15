@@ -159,12 +159,50 @@ not justify it on its own. Until then, margin is computed from current
 `sku.cost_usdt` and flagged as approximate. When the cost snapshot lands, the
 analytics aggregation switches its source and drops the `margin_approx` flag.
 
+## Amendment — 2026-09-16: arbitrary windows, a calendar, and a channel split
+
+Three things the original decision did not carry, added without a second
+endpoint or a second computation.
+
+**An explicit window beside the presets.** `business` now also accepts
+`since`/`until` (`until` exclusive). A preset range and "that Tuesday" and
+"1–15 September" are the same aggregation over a different pair of bounds, so
+they stay one endpoint; the calendar paints a month by asking for that month.
+`range` is `null` in the response whenever the window was explicit, so the
+client never has to guess which form it asked for.
+
+**A calendar tab.** A month grid where each cell carries the day's revenue and
+its margin, tinted by margin relative to the best day on screen. Revenue alone
+cannot say which days were good — a day can take $400 and keep $12 — so the
+tint is keyed on the number being compared. Clicking a day opens the ordinary
+business tab scoped to it.
+
+**A channel split (`channel={all|retail|b2b}`).** Retail and wholesale have
+genuinely different economics: a reseller buys at a thinner markup, so a blended
+margin flatters one half and libels the other. The parameter scopes the _whole_
+tab — funnel, mix, customers, the comparison window — because "which brands does
+the wholesale side actually buy" is the question being asked, and answering it
+from a blended payload would mean re-deriving it client-side from rows the
+payload no longer carries. `Order.merchant_id` is the entire distinction.
+
+**The one deliberate exception**: the «Розница и B2B» comparison block is _not_
+scoped. It is the thing the scoping is compared against; narrowing it would
+leave a single row reading 100%.
+
+User-registration figures are also left unscoped, with a comment at the query
+saying so — a user account belongs to no channel, and a reseller's end customers
+never register with us.
+
+**Cache keys grew to match.** `stats:analytics:business:{window}:{channel}`. A
+key that does not carry the whole question serves a month's grid from whatever
+range happened to be asked for first, which is a wrong answer that looks right.
+
 ## References
 
 - [ADR-0009](./0009-catalog-three-level-plus-form-schema.md) — catalog three-level model (Brand/Product/SKU)
 - [ADR-0011](./0011-order-fsm-and-snapshots.md) — order FSM and pricing snapshots
 - [ADR-0010](./0010-admin-auth-via-telegram-roles.md) — admin auth / roles
 - `docs/superpowers/specs/2026-06-04-analytics-dashboard-design.md` — feature design spec
-- `docs/architecture/cache-keys.md` — `stats:analytics:{business|ops}:{7d|30d|90d}`
+- `docs/architecture/cache-keys.md` — `stats:analytics:ops:{range}`, `stats:analytics:business:{window}:{channel}`
 - `docs/architecture/module-map.md` — `stats` read surface
-- `apps/api/src/yupay/modules/stats/analytics.py`
+- `apps/api/src/yupay/modules/stats/analytics/` — `business.py`, `ops.py`, `_common.py`

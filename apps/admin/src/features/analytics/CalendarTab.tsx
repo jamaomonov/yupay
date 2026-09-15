@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 
 import { usd } from "./format";
 
-import type { BusinessAnalytics, RevenuePoint } from "./types";
+import type { AnalyticsChannel, BusinessAnalytics, RevenuePoint } from "./types";
 
 import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
@@ -47,8 +47,12 @@ function localKey(year: number, month: number, day: number): string {
  * that is the number being compared.
  */
 export function CalendarTab({
+  channel,
   onPick,
 }: {
+  /** Retail, B2B or both — the grid is painted for the same half of the
+   *  business the tab above it is showing. */
+  channel: AnalyticsChannel;
   /** Opens the detail view for a day or a span. `until` is exclusive. */
   onPick: (since: string, until: string, label: string) => void;
 }) {
@@ -60,10 +64,10 @@ export function CalendarTab({
   const since = isoAt(cursor.y, cursor.m, 1);
   const until = isoAt(cursor.y, cursor.m + 1, 1);
   const monthQuery = useQuery<BusinessAnalytics>({
-    queryKey: ["admin", "stats", "analytics", "calendar", since, until],
+    queryKey: ["admin", "stats", "analytics", "calendar", since, until, channel],
     queryFn: () =>
       apiGet<BusinessAnalytics>(
-        `/api/v1/admin/stats/analytics/business?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`,
+        `/api/v1/admin/stats/analytics/business?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&channel=${channel}`,
       ),
   });
 

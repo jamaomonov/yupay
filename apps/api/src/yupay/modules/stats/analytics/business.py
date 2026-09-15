@@ -19,12 +19,15 @@ from yupay.modules.orders.revenue import margin_usd_expr, order_charged_usd_subq
 from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.stats.analytics._common import _PAID_LIKE
 from yupay.modules.stats.schemas import (
+    AnalyticsChannel,
     AnalyticsRange,
     BrandRevenueOut,
     BusinessAnalyticsOut,
     BusinessSummaryOut,
+    ChannelStatOut,
     CustomersOut,
     FunnelOut,
+    HourPoint,
     LocaleCountOut,
     NewUsersPoint,
     RevenuePoint,
@@ -33,9 +36,13 @@ from yupay.modules.stats.schemas import (
 )
 from yupay.modules.users.models import User
 
+#: The clock an operator reads. `paid_at` is UTC and Uzbekistan is +5, so an
+#: hourly chart built on the raw column puts the evening peak at lunchtime.
+_LOCAL_TZ = "Asia/Tashkent"
+
 
 @dataclass(frozen=True, slots=True)
-class Window:
+class Scope:
     """The period every figure on the business tab is computed over.
 
     Was a bare ``since`` with an open upper end, which is right for "the last
@@ -48,6 +55,17 @@ class Window:
     since: datetime
     #: Exclusive. ``None`` means "up to now", which is what a preset range is.
     until: datetime | None = None
+    #: Retail, B2B, or both. `Order.merchant_id` is the whole distinction.
+    channel: AnalyticsChannel = AnalyticsChannel.ALL
+
+    @property
+    def channel_filter(self) -> tuple[ColumnElement[bool], ...]:
+        """The predicate scoping a query to one half of the business."""
+        if self.channel is AnalyticsChannel.RETAIL:
+            return (Order.merchant_id.is_(None),)
+        if self.channel is AnalyticsChannel.B2B:
+            return (Order.merchant_id.isnot(None),)
+        return ()
 
     def covers(
         self, column: InstrumentedAttribute[datetime | None]
@@ -64,6 +82,7 @@ async def build_business_analytics(
     r: AnalyticsRange | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
+    channel: AnalyticsChannel = AnalyticsChannel.ALL,
 ) -> BusinessAnalyticsOut:
     """Business tab: revenue, margin (approx), funnel, product mix, customers.
 
@@ -71,12 +90,17 @@ async def build_business_analytics(
     is what the calendar asks for — one day when a cell is clicked, one month
     to paint the grid, an arbitrary span when somebody picks two dates — and it
     is the same computation, not a second one.
+
+    ``channel`` narrows every figure to retail or to B2B. The two halves of the
+    business have different margins and different failure modes, and a blended
+    number hides both; the comparison block is the deliberate exception and
+    stays whole whatever is asked for.
     """
     moment = now()
     if since is None:
         r = r or AnalyticsRange.D30
         since = moment - timedelta(days=range_to_days(r))
-    window = Window(since=since, until=until)
+    window = Scope(since=since, until=until, channel=channel)
 
     # The KPI card ("Заказов" / "оплачено N") and the funnel below it must never
     # disagree, so both are built from the *same* created_at-windowed status
@@ -88,10 +112,14 @@ async def build_business_analytics(
     top_brands = await _top_brands(db, window)
     top_skus = await _top_skus(db, window)
     customers = await _customers(db, window)
+    channels = await _channels(db, window)
+    hourly = await _hourly(db, window)
+    previous = await _previous_summary(db, window, moment)
 
     return BusinessAnalyticsOut(
         generated_at=moment,
         range=r,
+        channel=channel,
         since=window.since,
         until=window.until,
         summary=summary,
@@ -100,6 +128,9 @@ async def build_business_analytics(
         top_brands=top_brands,
         top_skus=top_skus,
         customers=customers,
+        channels=channels,
+        hourly=hourly,
+        previous=previous,
     )
 
 
@@ -147,8 +178,28 @@ def _margin_parts() -> tuple[Any, Any, Any]:
     )
 
 
+async def _previous_summary(
+    db: AsyncSession, window: Scope, moment: datetime
+) -> BusinessSummaryOut | None:
+    """The same summary over the window of equal length immediately before.
+
+    Every headline on this tab was an absolute: "1486 orders" is neither good
+    nor bad without the number it replaced. The comparison window is derived
+    from this one rather than configured, so it is always like-for-like — a
+    30-day figure is never compared against a week.
+
+    `None` when nothing was sold before the window, which is the honest answer
+    for a shop's first month rather than a misleading "+100%".
+    """
+    length = (window.until or moment) - window.since
+    earlier = Scope(since=window.since - length, until=window.since, channel=window.channel)
+    counts = await _status_counts_since(db, earlier)
+    summary = await _business_summary(db, earlier, counts)
+    return None if summary.orders == 0 and summary.gmv_usd == 0 else summary
+
+
 async def _business_summary(
-    db: AsyncSession, window: Window, status_counts: dict[str, int]
+    db: AsyncSession, window: Scope, status_counts: dict[str, int]
 ) -> BusinessSummaryOut:
     # GMV: money actually collected in the window — orders whose *payment*
     # landed in ``since..now`` (``paid_at``-windowed), which can include orders
@@ -166,7 +217,12 @@ async def _business_summary(
             select(func.coalesce(func.sum(gross.c.charged_usd), 0))
             .select_from(Order)
             .join(gross, gross.c.order_id == Order.id, isouter=True)
-            .where(IS_SALE, *window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+            .where(
+                IS_SALE,
+                *window.covers(Order.paid_at),
+                *window.channel_filter,
+                Order.status.in_(_PAID_LIKE),
+            )
         )
     ).scalar_one()
     gmv = Decimal(str(gmv_raw or 0))
@@ -187,13 +243,30 @@ async def _business_summary(
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
         .join(Sku, Sku.id == OrderItem.sku_id)
-        .where(*window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .where(*window.covers(Order.paid_at), *window.channel_filter, Order.status.in_(_PAID_LIKE))
     )
     known_rev_raw, known_cost_raw, unknown_units = (await db.execute(m)).one()
     known_rev = Decimal(str(known_rev_raw or 0))
     known_cost = Decimal(str(known_cost_raw or 0))
     margin = known_rev - known_cost
     margin_pct = float(margin / known_rev * 100) if known_rev > 0 else 0.0
+    # Refunds, in money. The funnel counts them in orders, which says nothing
+    # about what they cost: one refunded Steam top-up and one refunded voucher
+    # are one number each and two very different holes.
+    refunded_raw = (
+        await db.execute(
+            select(func.coalesce(func.sum(gross.c.charged_usd), 0))
+            .select_from(Order)
+            .join(gross, gross.c.order_id == Order.id, isouter=True)
+            .where(
+                IS_SALE,
+                *window.covers(Order.paid_at),
+                *window.channel_filter,
+                Order.status == "refunded",
+            )
+        )
+    ).scalar_one()
+
     aov = (gmv / paid_orders) if paid_orders else Decimal("0")
 
     return BusinessSummaryOut(
@@ -206,10 +279,11 @@ async def _business_summary(
         margin_pct=round(margin_pct, 2),
         margin_approx=True,
         margin_unknown_units=int(unknown_units or 0),
+        refunded_usd=Decimal(str(refunded_raw or 0)),
     )
 
 
-async def _revenue_series(db: AsyncSession, window: Window) -> list[RevenuePoint]:
+async def _revenue_series(db: AsyncSession, window: Scope) -> list[RevenuePoint]:
     """Revenue, order count and approximate margin, one row per day.
 
     Two queries rather than one: revenue is per *order* and margin is per
@@ -228,7 +302,12 @@ async def _revenue_series(db: AsyncSession, window: Window) -> list[RevenuePoint
         )
         .select_from(Order)
         .join(gross, gross.c.order_id == Order.id, isouter=True)
-        .where(IS_SALE, *window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .where(
+            IS_SALE,
+            *window.covers(Order.paid_at),
+            *window.channel_filter,
+            Order.status.in_(_PAID_LIKE),
+        )
         .group_by(day)
         .order_by(day)
     )
@@ -240,7 +319,12 @@ async def _revenue_series(db: AsyncSession, window: Window) -> list[RevenuePoint
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
         .join(Sku, Sku.id == OrderItem.sku_id)
-        .where(IS_SALE, *window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .where(
+            IS_SALE,
+            *window.covers(Order.paid_at),
+            *window.channel_filter,
+            Order.status.in_(_PAID_LIKE),
+        )
         .group_by(item_day)
     )
     by_day: dict[date_cls, tuple[Decimal, int]] = {}
@@ -271,7 +355,108 @@ async def _revenue_series(db: AsyncSession, window: Window) -> list[RevenuePoint
     return out
 
 
-async def _status_counts_since(db: AsyncSession, window: Window) -> dict[str, int]:
+async def _channels(db: AsyncSession, window: Scope) -> list[ChannelStatOut]:
+    """Retail against B2B.
+
+    `IS_SALE` is `purpose == "catalog"`, which is both of them, so every
+    headline on this tab has been one blended figure — and the two have
+    genuinely different economics: a reseller buys at a wholesale price with a
+    thinner markup, so a good B2B month reads as a margin collapse when it is
+    averaged into retail. `merchant_id` is the whole distinction and was used
+    nowhere in analytics.
+
+    Deliberately **not** scoped by ``window.channel``: this block is the
+    comparison, and filtering it to one side would collapse it to a single
+    bar. It stays the full picture even while the rest of the tab is drilled
+    into one half.
+    """
+    gross = order_charged_usd_subq()
+    is_b2b = Order.merchant_id.isnot(None)
+    stmt = (
+        select(
+            is_b2b.label("b2b"),
+            func.coalesce(func.sum(gross.c.charged_usd), 0),
+            func.count(Order.id),
+        )
+        .select_from(Order)
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
+        .where(IS_SALE, *window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .group_by(is_b2b)
+    )
+    revenue = {
+        bool(b2b): (Decimal(str(g or 0)), int(c or 0))
+        for b2b, g, c in (await db.execute(stmt)).all()
+    }
+
+    margins = (
+        select(is_b2b.label("b2b"), *_margin_parts())
+        .select_from(OrderItem)
+        .join(Order, Order.id == OrderItem.order_id)
+        .join(Sku, Sku.id == OrderItem.sku_id)
+        .where(IS_SALE, *window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .group_by(is_b2b)
+    )
+    margin_by: dict[bool, Decimal] = {}
+    for b2b, known_rev, known_cost, _unknown in (await db.execute(margins)).all():
+        margin_by[bool(b2b)] = Decimal(str(known_rev or 0)) - Decimal(str(known_cost or 0))
+
+    out: list[ChannelStatOut] = []
+    for b2b, name in ((False, "retail"), (True, "b2b")):
+        gmv, orders = revenue.get(b2b, (Decimal("0"), 0))
+        out.append(
+            ChannelStatOut(
+                channel=name,
+                gmv_usd=gmv,
+                orders=orders,
+                margin_usd=margin_by.get(b2b),
+            )
+        )
+    return out
+
+
+async def _hourly(db: AsyncSession, window: Scope) -> list[HourPoint]:
+    """Orders by hour of the **local** day.
+
+    `paid_at` is stored UTC, and Uzbekistan is +5 — read raw, the evening peak
+    lands at lunchtime and every conclusion drawn from it is wrong by five
+    hours. Postgres converts, so the hour is the one an operator recognises.
+    """
+    gross = order_charged_usd_subq()
+    hour = func.extract("hour", func.timezone(_LOCAL_TZ, Order.paid_at))
+    stmt = (
+        select(
+            hour.label("h"),
+            func.count(Order.id),
+            func.coalesce(func.sum(gross.c.charged_usd), 0),
+        )
+        .select_from(Order)
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
+        .where(
+            IS_SALE,
+            *window.covers(Order.paid_at),
+            *window.channel_filter,
+            Order.status.in_(_PAID_LIKE),
+        )
+        .group_by(hour)
+    )
+    found = {
+        int(h): (int(c or 0), Decimal(str(rev or 0)))
+        for h, c, rev in (await db.execute(stmt)).all()
+        if h is not None
+    }
+    # Every hour, including the empty ones: a chart with gaps in it reads as
+    # missing data rather than as a quiet night.
+    return [
+        HourPoint(
+            hour=h,
+            orders=found.get(h, (0, Decimal("0")))[0],
+            revenue_usd=found.get(h, (0, Decimal("0")))[1],
+        )
+        for h in range(24)
+    ]
+
+
+async def _status_counts_since(db: AsyncSession, window: Scope) -> dict[str, int]:
     """Order counts by current status, for orders *created* inside the window.
 
     Single source of truth for both the funnel and the "orders" / "paid
@@ -279,7 +464,7 @@ async def _status_counts_since(db: AsyncSession, window: Window) -> dict[str, in
     """
     stmt = (
         select(Order.status, func.count())
-        .where(IS_SALE, *window.covers(Order.created_at))
+        .where(IS_SALE, *window.covers(Order.created_at), *window.channel_filter)
         .group_by(Order.status)
     )
     return {s: int(c) for s, c in (await db.execute(stmt)).all()}
@@ -314,7 +499,7 @@ def _funnel(counts: dict[str, int]) -> FunnelOut:
     )
 
 
-async def _top_brands(db: AsyncSession, window: Window) -> list[BrandRevenueOut]:
+async def _top_brands(db: AsyncSession, window: Scope) -> list[BrandRevenueOut]:
     stmt = (
         select(
             Brand.slug,
@@ -329,7 +514,7 @@ async def _top_brands(db: AsyncSession, window: Window) -> list[BrandRevenueOut]
         .join(Sku, Sku.id == OrderItem.sku_id)
         .join(Product, Product.id == Sku.product_id)
         .join(Brand, Brand.id == Product.brand_id)
-        .where(*window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .where(*window.covers(Order.paid_at), *window.channel_filter, Order.status.in_(_PAID_LIKE))
         .group_by(Brand.slug)
         .order_by(func.sum(OrderItem.qty * OrderItem.unit_price_usd).desc())
         .limit(10)
@@ -347,7 +532,7 @@ async def _top_brands(db: AsyncSession, window: Window) -> list[BrandRevenueOut]
     return out
 
 
-async def _top_skus(db: AsyncSession, window: Window) -> list[SkuRevenueOut]:
+async def _top_skus(db: AsyncSession, window: Scope) -> list[SkuRevenueOut]:
     stmt = (
         select(
             Sku.sku_code,
@@ -360,7 +545,7 @@ async def _top_skus(db: AsyncSession, window: Window) -> list[SkuRevenueOut]:
         .select_from(OrderItem)
         .join(Order, Order.id == OrderItem.order_id)
         .join(Sku, Sku.id == OrderItem.sku_id)
-        .where(*window.covers(Order.paid_at), Order.status.in_(_PAID_LIKE))
+        .where(*window.covers(Order.paid_at), *window.channel_filter, Order.status.in_(_PAID_LIKE))
         .group_by(Sku.sku_code)
         .order_by(func.sum(OrderItem.qty * OrderItem.unit_price_usd).desc())
         .limit(10)
@@ -378,11 +563,13 @@ async def _top_skus(db: AsyncSession, window: Window) -> list[SkuRevenueOut]:
     return out
 
 
-async def _customers(db: AsyncSession, window: Window) -> CustomersOut:
+async def _customers(db: AsyncSession, window: Scope) -> CustomersOut:
     day = func.date_trunc("day", User.created_at)
     new_rows = (
         await db.execute(
             select(day.label("d"), func.count())
+            # Not channel-filtered: a registration is not an order, and a
+            # reseller signs up through the cabinet, not through this series.
             .where(*window.covers(User.created_at))
             .group_by(day)
             .order_by(day)
@@ -398,7 +585,10 @@ async def _customers(db: AsyncSession, window: Window) -> CustomersOut:
         (
             await db.execute(
                 select(func.count(Order.id)).where(
-                    IS_SALE, *window.covers(Order.created_at), Order.user_id.is_(None)
+                    IS_SALE,
+                    *window.covers(Order.created_at),
+                    *window.channel_filter,
+                    Order.user_id.is_(None),
                 )
             )
         ).scalar_one()
@@ -408,7 +598,10 @@ async def _customers(db: AsyncSession, window: Window) -> CustomersOut:
         (
             await db.execute(
                 select(func.count(Order.id)).where(
-                    IS_SALE, *window.covers(Order.created_at), Order.user_id.isnot(None)
+                    IS_SALE,
+                    *window.covers(Order.created_at),
+                    *window.channel_filter,
+                    Order.user_id.isnot(None),
                 )
             )
         ).scalar_one()
@@ -419,7 +612,12 @@ async def _customers(db: AsyncSession, window: Window) -> CustomersOut:
     per_user = (
         await db.execute(
             select(Order.user_id, func.count(Order.id))
-            .where(IS_SALE, *window.covers(Order.created_at), Order.user_id.isnot(None))
+            .where(
+                IS_SALE,
+                *window.covers(Order.created_at),
+                *window.channel_filter,
+                Order.user_id.isnot(None),
+            )
             .group_by(Order.user_id)
         )
     ).all()
@@ -430,6 +628,8 @@ async def _customers(db: AsyncSession, window: Window) -> CustomersOut:
     locale_rows = (
         await db.execute(
             select(User.locale, func.count())
+            # Not channel-filtered: a registration is not an order, and a
+            # reseller signs up through the cabinet, not through this series.
             .where(*window.covers(User.created_at))
             .group_by(User.locale)
             .order_by(func.count().desc())
