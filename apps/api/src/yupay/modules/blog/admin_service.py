@@ -108,7 +108,8 @@ async def list_posts(
 
 async def create_post(db: AsyncSession, body: PostCreate) -> BlogPost:
     """Insert a draft (or a scheduled-ready row still in ``draft``)."""
-    await _require_brand(db, body.primary_brand_id)
+    if body.primary_brand_id is not None:
+        await _require_brand(db, body.primary_brand_id)
     _require_event_window(body.kind, body.event_starts_at, body.event_ends_at)
     cover = _cover(body.cover_image_url)
     post = BlogPost(
@@ -134,26 +135,17 @@ async def create_post(db: AsyncSession, body: PostCreate) -> BlogPost:
 async def update_post(db: AsyncSession, post_id: str, body: PostUpdate) -> BlogPost:
     """Patch fields; a provided ``translations`` array replaces the set."""
     post = await get_post(db, post_id)
-    if body.kind is not None:
-        post.kind = body.kind
-        if body.kind != "event":
-            post.event_starts_at = None
-            post.event_ends_at = None
-    if body.primary_brand_id is not None:
-        await _require_brand(db, body.primary_brand_id)
+    _patch_scalars(post, body)
+    # ``None`` in the body means "clear the brand", which is only reachable
+    # while the post is a draft; omitting the key means "leave it alone".
+    # Without the ``model_fields_set`` check the form could not take a brand
+    # back off a draft at all — it would silently keep the old one.
+    if "primary_brand_id" in body.model_fields_set:
+        if body.primary_brand_id is not None:
+            await _require_brand(db, body.primary_brand_id)
         post.primary_brand_id = body.primary_brand_id
-    if body.show_buy_card is not None:
-        post.show_buy_card = body.show_buy_card
-    if body.pin_on_brand is not None:
-        post.pin_on_brand = body.pin_on_brand
-    if body.cover_image_url is not None:
-        post.cover_image_url = _cover(body.cover_image_url) if body.cover_image_url else None
-    if body.event_starts_at is not None:
-        post.event_starts_at = body.event_starts_at
-    if body.event_ends_at is not None:
-        post.event_ends_at = body.event_ends_at
     _require_event_window(post.kind, post.event_starts_at, post.event_ends_at)
-    if post.status == "published" and post.pin_on_brand:
+    if post.status == "published" and post.pin_on_brand and post.primary_brand_id is not None:
         await _ensure_pin_cap(db, post.primary_brand_id, excluding_id=post.id)
     if body.translations is not None:
         post.translations.clear()
@@ -169,6 +161,25 @@ async def update_post(db: AsyncSession, post_id: str, body: PostUpdate) -> BlogP
     return post
 
 
+def _patch_scalars(post: BlogPost, body: PostUpdate) -> None:
+    """Apply the plain "omitted means unchanged" fields, in place."""
+    if body.kind is not None:
+        post.kind = body.kind
+        if body.kind != "event":
+            post.event_starts_at = None
+            post.event_ends_at = None
+    if body.show_buy_card is not None:
+        post.show_buy_card = body.show_buy_card
+    if body.pin_on_brand is not None:
+        post.pin_on_brand = body.pin_on_brand
+    if body.cover_image_url is not None:
+        post.cover_image_url = _cover(body.cover_image_url) if body.cover_image_url else None
+    if body.event_starts_at is not None:
+        post.event_starts_at = body.event_starts_at
+    if body.event_ends_at is not None:
+        post.event_ends_at = body.event_ends_at
+
+
 async def publish_post(db: AsyncSession, post_id: str) -> BlogPost:
     """First publish stamps ``published_at``; later publishes keep it."""
     post = await get_post(db, post_id)
@@ -179,6 +190,10 @@ async def publish_post(db: AsyncSession, post_id: str) -> BlogPost:
     _require_event_window(post.kind, post.event_starts_at, post.event_ends_at)
     if not post.translations:
         raise ValidationError("publish requires at least one translation")
+    if post.primary_brand_id is None:
+        # The CHECK on ``blog_posts`` says the same thing; saying it here
+        # turns a 500 from Postgres into the sentence the editor needs.
+        raise ValidationError("publish requires a primary brand")
     for row in post.translations:
         row.body_html = sanitize_body(
             row.body_html, media_base_url=_media_base(), allow_empty=False
@@ -213,6 +228,8 @@ async def schedule_post(db: AsyncSession, post_id: str, scheduled_for: datetime)
     post = await get_post(db, post_id)
     if post.status not in _EDITABLE:
         raise ConflictError("only a draft or scheduled post can be scheduled")
+    if post.primary_brand_id is None:
+        raise ValidationError("scheduling requires a primary brand")
     when = scheduled_for if scheduled_for.tzinfo is not None else scheduled_for.replace(tzinfo=UTC)
     if when <= now():
         raise ValidationError("scheduled_for must be in the future")
@@ -294,7 +311,7 @@ def _faqs(rows: list[FaqIn]) -> list[BlogPostFaq]:
 
 
 async def _extra_brands(
-    db: AsyncSession, primary_brand_id: str, brand_ids: list[str]
+    db: AsyncSession, primary_brand_id: str | None, brand_ids: list[str]
 ) -> list[BlogPostBrand]:
     out: list[BlogPostBrand] = []
     seen: set[str] = set()

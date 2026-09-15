@@ -73,7 +73,7 @@ export function PostMetaFields({
           </Select>
         )}
       </Field>
-      <Field label={T.form.brand}>
+      <Field label={T.form.brand} hint={T.form.brandDraftHint}>
         {({ inputProps }) => (
           <Select
             {...inputProps}
@@ -82,7 +82,7 @@ export function PostMetaFields({
               onBrandId(e.target.value);
             }}
           >
-            <option value="">{T.form.needBrand}</option>
+            <option value="">{T.form.brandNone}</option>
             {brands.map((b) => (
               <option key={b.id} value={b.id}>
                 {b.translations.find((t) => t.locale === "ru")?.name ?? b.slug}

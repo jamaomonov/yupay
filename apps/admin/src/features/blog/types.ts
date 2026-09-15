@@ -25,7 +25,8 @@ export interface AdminPost {
   id: string;
   kind: PostKind;
   status: PostStatus;
-  primary_brand_id: string;
+  /** Null on a draft nobody has assigned yet — an imported article starts this way. */
+  primary_brand_id: string | null;
   show_buy_card: boolean;
   pin_on_brand: boolean;
   cover_image_url: string | null;
@@ -54,7 +55,7 @@ export interface AdminPostList {
 
 export interface PostWriteBody {
   kind: PostKind;
-  primary_brand_id: string;
+  primary_brand_id: string | null;
   show_buy_card: boolean;
   pin_on_brand: boolean;
   cover_image_url: string | null;

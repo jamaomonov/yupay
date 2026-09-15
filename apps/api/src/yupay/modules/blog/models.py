@@ -1,8 +1,10 @@
 """SQLAlchemy ORM for the ``blog`` module.
 
-A post is always bound to one catalogue brand (the conversion target) and
-may mention extra brands. Copy lives per locale with no fallback bleed —
-a missing ``uz`` row is omitted from ``uz``, not filled from ``ru``.
+Anything a reader can reach is bound to one catalogue brand (the conversion
+target) and may mention extra brands; a *draft* may not have one yet, which
+is how an imported article lands before an editor has decided what it sells.
+Copy lives per locale with no fallback bleed — a missing ``uz`` row is
+omitted from ``uz``, not filled from ``ru``.
 """
 
 from __future__ import annotations
@@ -47,6 +49,14 @@ class BlogPost(Base):
             "status IN ('draft', 'scheduled', 'published', 'archived')",
             name="status_known",
         ),
+        # A draft may have no brand yet — an imported article arrives before
+        # anyone has decided what it sells. Everything a reader can reach
+        # must have one: every public query inner-joins ``brands`` through
+        # this column, and they all filter to ``published``.
+        CheckConstraint(
+            "primary_brand_id IS NOT NULL OR status = 'draft'",
+            name="brand_unless_draft",
+        ),
         Index("ix_blog_posts_status_published", "status", "published_at"),
         Index(
             "ix_blog_posts_brand_status_published",
@@ -64,10 +74,10 @@ class BlogPost(Base):
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     kind: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'draft'"))
-    primary_brand_id: Mapped[str] = mapped_column(
+    primary_brand_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False),
         ForeignKey("brands.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     show_buy_card: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("true")
@@ -178,6 +188,52 @@ class BlogPostFaq(Base):
     answer: Mapped[str] = mapped_column(Text, nullable=False)
 
     post: Mapped[BlogPost] = relationship(back_populates="faqs")
+
+
+class BlogImportedPost(Base):
+    """What an external writer sent us, and what we made of it.
+
+    One row per upstream article, keyed by the identifier *they* use. It
+    exists to answer two questions on every re-sync: has the source changed
+    since we last looked, and is our copy still the one we wrote? The second
+    is what protects an editor's work — ``rendered_hash`` is the body we
+    stored, so a body that no longer hashes to it has been edited by hand and
+    the importer leaves it alone.
+    """
+
+    __tablename__ = "blog_imported_posts"
+    __table_args__ = (
+        PrimaryKeyConstraint("source", "external_id", name="pk_blog_imported_posts"),
+        UniqueConstraint("post_id", name="uq_blog_imported_posts_post"),
+        CheckConstraint("source IN ('bunzy')", name="source_known"),
+    )
+
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(160), nullable=False)
+    post_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("blog_posts.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    #: SHA-256 over the upstream fields we consume, so an unchanged article
+    #: costs one comparison and no writes.
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    #: SHA-256 of the ``body_html`` we last wrote for this article.
+    rendered_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    source_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    #: Last pass that saw the article upstream, changed or not.
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    #: Last pass that actually rewrote our copy.
+    last_synced_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
 
 
 class BlogPostLike(Base):

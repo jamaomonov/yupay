@@ -64,6 +64,12 @@ _(owner)_. Optional extra brands (e.g. Steam + steam-gifts) are a join table.
 A post with no brand is out of v1 — we do not have a generic «индустрия»
 vertical to rank for, and the conversion card would have nothing to bind to.
 
+> **Amended 2026-09-15 (ADR-0077).** Still true for anything a reader can
+> reach: a CHECK requires the brand unless the row is a draft, and
+> `publish_post` / `schedule_post` refuse without one. The column itself is
+> now nullable, so a **draft** can exist before the brand is chosen — which
+> is how an article imported from bunzy.io arrives.
+
 `/store/{brand}` grows a «Новое по {brand}» block (M2): pinned + latest
 published posts. The how-to page is unchanged.
 
@@ -111,19 +117,19 @@ apps/web    app/[locale]/blog  ──anon GET──▶  /api/v1/blog/*
 
 ### 7.1 `blog_posts`
 
-| Column                              | Notes                                                                                     |
-| ----------------------------------- | ----------------------------------------------------------------------------------------- |
-| `id`                                | UUID string, `yupay.core.ids`                                                             |
-| `kind`                              | `guide` \| `news` \| `update` \| `event` + CHECK                                          |
-| `status`                            | `draft` \| `scheduled` \| `published` \| `archived` + CHECK                               |
-| `primary_brand_id`                  | FK `brands.id` ON DELETE RESTRICT (do not cascade-wipe journalism)                        |
-| `show_buy_card`                     | bool, default true                                                                        |
-| `pin_on_brand`                      | bool, default false. Service cap: **at most 2** published pins per brand                  |
-| `cover_image_url`                   | nullable text, must be our CDN when set                                                   |
-| `event_starts_at` / `event_ends_at` | timestamptz, nullable; required together when `kind=event` (service, not a brittle CHECK) |
-| `published_at`                      | set on first transition to `published`; left in place on archive                          |
-| `scheduled_for`                     | timestamptz, used when `status=scheduled` (M2 scheduler; column exists in M1)             |
-| `created_at` / `updated_at`         | timestamptz                                                                               |
+| Column                              | Notes                                                                                                   |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `id`                                | UUID string, `yupay.core.ids`                                                                           |
+| `kind`                              | `guide` \| `news` \| `update` \| `event` + CHECK                                                        |
+| `status`                            | `draft` \| `scheduled` \| `published` \| `archived` + CHECK                                             |
+| `primary_brand_id`                  | FK `brands.id` ON DELETE RESTRICT (do not cascade-wipe journalism). Nullable on a draft only — ADR-0077 |
+| `show_buy_card`                     | bool, default true                                                                                      |
+| `pin_on_brand`                      | bool, default false. Service cap: **at most 2** published pins per brand                                |
+| `cover_image_url`                   | nullable text, must be our CDN when set                                                                 |
+| `event_starts_at` / `event_ends_at` | timestamptz, nullable; required together when `kind=event` (service, not a brittle CHECK)               |
+| `published_at`                      | set on first transition to `published`; left in place on archive                                        |
+| `scheduled_for`                     | timestamptz, used when `status=scheduled` (M2 scheduler; column exists in M1)                           |
+| `created_at` / `updated_at`         | timestamptz                                                                                             |
 
 Indexes: `(status, published_at DESC)` for the public feed;
 `(primary_brand_id, status, published_at DESC)` for the brand block;

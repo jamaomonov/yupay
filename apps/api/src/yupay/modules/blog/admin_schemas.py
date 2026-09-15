@@ -42,7 +42,9 @@ class PostCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: PostKind
-    primary_brand_id: str
+    #: Optional: a draft may not know yet what it sells (an imported article
+    #: arrives without one). ``publish`` refuses until it is filled.
+    primary_brand_id: str | None = None
     show_buy_card: bool = True
     pin_on_brand: bool = False
     cover_image_url: str | None = Field(default=None, max_length=512)
@@ -92,7 +94,7 @@ class AdminPostOut(BaseModel):
     id: str
     kind: PostKind
     status: PostStatus
-    primary_brand_id: str
+    primary_brand_id: str | None
     show_buy_card: bool
     pin_on_brand: bool
     cover_image_url: str | None

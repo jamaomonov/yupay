@@ -249,7 +249,9 @@
       "archived": "Archived.",
       "error": "Could not save: {message}",
       "needTranslation": "At least one locale needs a title and a slug.",
-      "needBrand": "Pick a brand."
+      "needBrand": "Pick a brand.",
+      "brandNone": "No brand — draft only",
+      "brandDraftHint": "A draft can be saved without a brand. Publishing requires one."
     }
   }
 }
