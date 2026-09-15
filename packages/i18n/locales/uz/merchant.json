@@ -3,6 +3,9 @@
     "title": "Hamkorlar uchun YuPay — toʻldirish va vaucherlarga ulgurji kirish",
     "description": "Oʻyinlarni toʻldirish, vaucherlar va sovgʻa kartalari katalogini ulgurji narxlarda ulang. API, avtomatik yetkazish, balans va tarix bilan kabinet."
   },
+  "common": {
+    "localeSwitch": "Interfeys tili"
+  },
   "landing": {
     "heading": "Raqamli tovarlarga ulgurji kirish",
     "subheading": "Oʻyinlarni toʻldirish, vaucherlar va sovgʻa kartalari — API orqali yoki toʻgʻridan-toʻgʻri kabinetdan. Avtomatik yetkazish.",

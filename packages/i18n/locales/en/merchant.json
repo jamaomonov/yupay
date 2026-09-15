@@ -3,6 +3,9 @@
     "title": "YuPay for partners — wholesale access to top-ups and vouchers",
     "description": "Connect a catalog of game top-ups, vouchers and gift cards at wholesale prices. API, automatic delivery, a cabinet with balance and history."
   },
+  "common": {
+    "localeSwitch": "Interface language"
+  },
   "landing": {
     "heading": "Wholesale access to digital goods",
     "subheading": "Game top-ups, vouchers and gift cards — through the API or straight from the cabinet. Automatic delivery.",

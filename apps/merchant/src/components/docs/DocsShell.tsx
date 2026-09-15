@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 
 export interface NavItem {
@@ -151,6 +152,7 @@ export function DocsShell({
             <Link href={brand} className="text-tx-mute hidden text-[13.5px] sm:block">
               {t("backToSite")}
             </Link>
+            <LocaleSwitcher />
             <ThemeToggle />
           </div>
         </header>

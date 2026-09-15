@@ -2,6 +2,7 @@ import { ArrowRight, KeyRound, ShoppingCart, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { countBrands } from "@/lib/brands";
 
 export const revalidate = 3600;
@@ -43,6 +44,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
             </span>
           </span>
           <nav className="text-tx-mute flex flex-wrap items-center gap-5 text-[13.5px]">
+            <LocaleSwitcher />
             <Link href={`/${locale}/docs`}>{t("navDocs")}</Link>
             <Link
               href={`/${locale}/login`}

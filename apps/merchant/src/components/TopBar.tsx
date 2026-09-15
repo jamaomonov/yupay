@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 
 import { useCabinet } from "@/components/CabinetContext";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -79,6 +80,11 @@ export function TopBar() {
             {t("topUp")}
           </a>
         </div>
+        {/* Shown on a phone too. Hiding it there would leave the one
+            surface a reseller uses daily with no way to change language — the
+            complaint this whole control answers. The search box carries
+            `min-w-0 flex-1`, so it gives up the width. */}
+        <LocaleSwitcher />
         <ThemeToggle />
         <div
           aria-hidden
