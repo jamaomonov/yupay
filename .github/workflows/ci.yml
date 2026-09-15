@@ -138,10 +138,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: |
           cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json
+          uv run python -m yupay.scripts.export_merchant_openapi ../../docs/api/merchant-openapi.json
           cd ../.. && pnpm --filter @yupay/api-client gen:api
       - name: Fail if generated files drifted
         run: |
-          if [[ -n "$(git status --porcelain docs/api/openapi.json packages/api-client/src/generated)" ]]; then
+          if [[ -n "$(git status --porcelain docs/api packages/api-client/src/generated)" ]]; then
             echo '::error::OpenAPI schema or generated client is out of date. Run `make gen-api` and commit.'
             git --no-pager diff
             exit 1

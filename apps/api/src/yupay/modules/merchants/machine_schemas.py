@@ -181,18 +181,23 @@ class MerchantValidationProblem(BaseModel):
     there rides in ``errors`` instead.
     """
 
-    type: str
-    title: str
-    status: int
-    detail: str
-    #: Always ``core.errors.CODE_INVALID_REQUEST``. A field rather than a
-    #: constant on the wire so a client switching on ``code`` needs no special
-    #: case for this one.
-    code: str
-    #: FastAPI's own per-failure entries — ``{type, loc, msg, input, ctx}`` —
-    #: passed through unchanged. Read them for diagnostics; do not switch on
-    #: them, they are a framework's shape and not part of this contract.
-    errors: list[dict[str, Any]]
+    type: str = Field(description="A URL identifying this error class.")
+    title: str = Field(description="A short, human-readable summary.")
+    status: int = Field(description="The HTTP status code, repeated in the body.")
+    detail: str = Field(description="What went wrong, in one sentence.")
+    code: str = Field(
+        description=(
+            "Always `invalid_request` here. Switch on this rather than on the "
+            "status: every error on this API carries one, so no case is special."
+        )
+    )
+    errors: list[dict[str, Any]] = Field(
+        description=(
+            "Per-field failures — `{type, loc, msg, input, ctx}` — for diagnostics. "
+            "Read them when you are debugging; do not switch on them. They are the "
+            "validation framework's shape and are not part of this contract."
+        )
+    )
 
 
 class MerchantProfileOut(BaseModel):
@@ -203,10 +208,20 @@ class MerchantProfileOut(BaseModel):
     balance column to drift from it.
     """
 
-    merchant_id: str
-    title: str
-    status: str
-    balance_usd: UsdBalance
+    merchant_id: str = Field(description="Your account id. Quote it to support.")
+    title: str = Field(description="Your company name, as it appears on your invoices.")
+    status: str = Field(
+        description=(
+            "`active`, or `frozen` while the account is suspended. A frozen account "
+            "can still read, and every write answers `403 merchant_frozen`."
+        )
+    )
+    balance_usd: UsdBalance = Field(
+        description=(
+            "What you can spend right now, in USD. Summed from the deposit ledger on "
+            "every call — there is no stored balance that could drift from it."
+        )
+    )
 
 
 class MerchantSkuOut(BaseModel):
@@ -225,56 +240,79 @@ class MerchantSkuOut(BaseModel):
     a unit SKU is not one quantity but two, the per-unit rate and the total.
     """
 
-    sku_id: str
-    sku_code: str
-    #: Human label: the SKU's denomination ("60 UC"), falling back to
-    #: ``sku_code`` for lines that carry none. Denominations are stored
-    #: untranslated, so unlike the brand and product names above it this is
-    #: the same string in every locale.
-    name: str
-    #: Which shape this row is, and therefore what ``POST /merchant/v1/orders``
-    #: wants beside ``sku_id``. G-Engine's FIXED / UNFIXED, with UNFIXED split
-    #: the two ways it actually occurs:
-    #:
-    #: * ``"fixed"`` — a denomination you buy one of. Nothing extra.
-    #: * ``"unit"`` — a currency counted in units (Stars). Send ``quantity``.
-    #: * ``"amount"`` — a balance loaded in dollars (Steam wallet). Send
-    #:   ``amount_usd``.
-    kind: Literal["fixed", "unit", "amount"]
-    #: ``kind="fixed"`` only: the order total, and what to send as
-    #: ``expected_price``. ``null`` on a unit SKU, which has no price until a
-    #: quantity is chosen.
-    price_usd: UsdPrice | None = None
-    #: ``kind="unit"`` and ``kind="amount"``: the price of ONE unit, at six
-    #: decimals — one Star, or one dollar of wallet balance. Your order total
-    #: is ``ceil_to_cent(unit_price_usd * quantity_or_amount)``, computed from
-    #: this exact value, so you can reproduce your charge before sending it.
-    #: ``null`` on a fixed SKU.
-    unit_price_usd: UsdUnitPrice | None = None
-    #: ``kind="unit"`` only: what one unit is, for your UI ("stars").
-    unit: str | None = None
-    #: ``kind="unit"`` only: the inclusive bounds on ``quantity``.
-    min_qty: int | None = None
-    max_qty: int | None = None
-    #: Our own storefront price for the same thing, so a reseller can see the
-    #: reference they are being offered a discount against without opening
-    #: yupay.uz and matching SKUs by hand. Public information either way — the
-    #: storefront shows it to anyone — so publishing it here discloses nothing
-    #: and saves a comparison the cabinet would otherwise have to fake.
-    #:
-    #: ``null`` on a ``kind="amount"`` row, where the SKU's ``price_usd`` is a
-    #: face-value placeholder and not a price at all: retail charges those as a
-    #: guarded FX rate times a margin multiplier, which has no dollar figure to
-    #: quote.
-    retail_price_usd: UsdPrice | None = None
-    #: ``kind="amount"`` only: the inclusive bounds on ``amount_usd``, in
-    #: dollars of face value. ``unit_price_usd`` above is then the price of
-    #: **one dollar** of that balance, and your total is
-    #: ``ceil_to_cent(unit_price_usd * amount_usd)`` — the same rule as a unit
-    #: SKU, with the unit being a dollar.
-    min_amount_usd: UsdPrice | None = None
-    max_amount_usd: UsdPrice | None = None
-    updated_at: datetime
+    sku_id: str = Field(description="What `POST /merchant/v1/orders` takes. Stable forever.")
+    sku_code: str = Field(
+        description="Our internal code for the line. Useful in a support conversation."
+    )
+    name: str = Field(
+        description=(
+            'The denomination, as a person would read it ("60 UC"). Falls back to '
+            "`sku_code` for lines that carry none. The same string in every locale — "
+            "denominations are not translated."
+        )
+    )
+    kind: Literal["fixed", "unit", "amount"] = Field(
+        description=(
+            "Which shape this line is, and therefore what to send beside `sku_id`:\n\n"
+            "- `fixed` — a denomination you buy one of. Nothing extra.\n"
+            "- `unit` — a currency counted in units (Telegram Stars). Send `quantity`.\n"
+            "- `amount` — a balance loaded in dollars (a Steam wallet). Send `amount_usd`."
+        )
+    )
+    price_usd: UsdPrice | None = Field(
+        default=None,
+        description=(
+            "`kind=fixed` only: the order total, and what to send as `expected_price`. "
+            "`null` on the other two shapes, which have no price until a quantity is "
+            "chosen."
+        ),
+    )
+    unit_price_usd: UsdUnitPrice | None = Field(
+        default=None,
+        description=(
+            "`kind=unit` and `kind=amount`: the price of **one** unit at six decimals — "
+            "one Star, or one dollar of wallet balance. Your total is "
+            "`ceil_to_cent(unit_price_usd × quantity_or_amount)`, computed from this "
+            "exact value, so you can reproduce your charge before you send it. "
+            "`null` on a fixed line."
+        ),
+    )
+    unit: str | None = Field(
+        default=None, description='`kind=unit` only: what one unit is, for your UI ("stars").'
+    )
+    min_qty: int | None = Field(
+        default=None, description="`kind=unit` only: the smallest `quantity` we accept, inclusive."
+    )
+    max_qty: int | None = Field(
+        default=None, description="`kind=unit` only: the largest `quantity` we accept, inclusive."
+    )
+    retail_price_usd: UsdPrice | None = Field(
+        default=None,
+        description=(
+            "What the same thing costs on yupay.uz — the reference your wholesale price "
+            "is a discount against, so you do not have to match SKUs by hand. "
+            "`null` on a `kind=amount` line, where retail is charged as a live FX rate "
+            "times a margin and there is no single figure to quote."
+        ),
+    )
+    min_amount_usd: UsdPrice | None = Field(
+        default=None,
+        description=(
+            "`kind=amount` only: the smallest `amount_usd` we accept, inclusive, in "
+            "dollars of face value. `unit_price_usd` is then the price of **one dollar** "
+            "of that balance."
+        ),
+    )
+    max_amount_usd: UsdPrice | None = Field(
+        default=None,
+        description="`kind=amount` only: the largest `amount_usd` we accept, inclusive.",
+    )
+    updated_at: datetime = Field(
+        description=(
+            "When this line last changed. Poll the catalog and compare it to tell what "
+            "moved — there are no price webhooks."
+        )
+    )
 
 
 class MerchantFieldOut(BaseModel):
@@ -293,14 +331,23 @@ class MerchantFieldOut(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    key: str
-    type: str
-    required: bool
-    label: dict[str, str] = Field(default_factory=dict)
-    placeholder: dict[str, str] = Field(default_factory=dict)
-    #: The regex the order path enforces. Published so a reseller can reject a
-    #: bad id in their own UI rather than spending a round trip on a 422.
-    pattern: str | None = None
+    key: str = Field(description="The key to put in `fulfillment_data`.")
+    type: str = Field(description='What kind of value it is ("text", "number").')
+    required: bool = Field(description="Whether the order is refused without it.")
+    label: dict[str, str] = Field(
+        default_factory=dict,
+        description="Locale → label, for your own UI. A machine caller can ignore it.",
+    )
+    placeholder: dict[str, str] = Field(
+        default_factory=dict, description="Locale → placeholder text, for your own UI."
+    )
+    pattern: str | None = Field(
+        default=None,
+        description=(
+            "The regex we validate against before anything is charged. Check it in your "
+            "own form and save the round trip."
+        ),
+    )
 
 
 class MerchantProductOut(BaseModel):
@@ -312,12 +359,16 @@ class MerchantProductOut(BaseModel):
     machine-readable half and never changes with a translation edit.
     """
 
-    product_id: str
-    slug: str
-    name: str
-    #: What every SKU under this product needs in ``fulfillment_data``.
-    required_fields: list[MerchantFieldOut] = Field(default_factory=list)
-    skus: list[MerchantSkuOut]
+    product_id: str = Field(description="Our id for the product.")
+    slug: str = Field(
+        description="The stable machine-readable name. Never changes with a translation edit."
+    )
+    name: str = Field(description="The product name, in the catalog's default locale.")
+    required_fields: list[MerchantFieldOut] = Field(
+        default_factory=list,
+        description="What every SKU under this product needs in `fulfillment_data`.",
+    )
+    skus: list[MerchantSkuOut] = Field(description="The purchasable lines, cheapest first.")
 
 
 class MerchantBrandOut(BaseModel):
@@ -327,23 +378,34 @@ class MerchantBrandOut(BaseModel):
     whose products all price out is absent entirely rather than empty.
     """
 
-    brand_id: str
-    slug: str
-    name: str
-    #: Which storefront section this brand sits in — the cabinet groups its
-    #: catalog by it, the same split a person sees on yupay.uz. Additive in
-    #: v1: a client that ignores it keeps working, and a brand whose category
-    #: row is somehow missing comes back ``null`` rather than dropping out of
-    #: the list, because the price list's job is prices.
-    category_slug: str | None = None
-    category_name: str | None = None
-    #: Brand artwork, absolute URLs, the same files the storefront renders.
-    #: ``null`` where none is uploaded — a cabinet showing a placeholder is
-    #: better than one showing a broken image, and this is the field that
-    #: says which.
-    logo_url: str | None = None
-    hero_image_url: str | None = None
-    products: list[MerchantProductOut]
+    brand_id: str = Field(description="Our id for the brand.")
+    slug: str = Field(description="The stable machine-readable name.")
+    name: str = Field(description="The brand name, in the catalog's default locale.")
+    category_slug: str | None = Field(
+        default=None,
+        description=(
+            "Which storefront section this brand sits in — the same split a person sees "
+            "on yupay.uz. `null` if it has none; the brand is still listed, because the "
+            "price list's job is prices."
+        ),
+    )
+    category_name: str | None = Field(
+        default=None, description="That section's name, in the catalog's default locale."
+    )
+    logo_url: str | None = Field(
+        default=None,
+        description=(
+            "Brand artwork, an absolute URL — the same file the storefront renders. "
+            "`null` where none is uploaded, so you can draw a placeholder instead of a "
+            "broken image."
+        ),
+    )
+    hero_image_url: str | None = Field(
+        default=None, description="Wider brand artwork, an absolute URL, or `null`."
+    )
+    products: list[MerchantProductOut] = Field(
+        description="Products with at least one purchasable SKU. Never an empty shell."
+    )
 
 
 class MerchantCatalogOut(BaseModel):
@@ -353,7 +415,9 @@ class MerchantCatalogOut(BaseModel):
     future field (a cursor, a generated-at stamp) is added beside ``brands``.
     """
 
-    brands: list[MerchantBrandOut]
+    brands: list[MerchantBrandOut] = Field(
+        description="Every brand you can buy from, priced for your account."
+    )
 
 
 class MerchantOrderCreateIn(BaseModel):
@@ -372,43 +436,66 @@ class MerchantOrderCreateIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: The reseller's own id for this order, and the idempotency key (spec
-    #: §9.3). Printable ASCII with no spaces, so it survives being a path
-    #: segment in ``GET /merchant/v1/orders/{merchant_order_id}`` and the
-    #: canonical signing string without an encoding argument.
-    merchant_order_id: str = Field(min_length=1, max_length=128, pattern=r"^[\x21-\x7e]+$")
-    #: From ``GET /merchant/v1/catalog``. Parsed as a UUID here rather than
-    #: taken as free text — an unparseable id reaches Postgres as
-    #: ``uuid = 'whatever'``, which is a ``DataError`` and a 500 where a clean
-    #: refusal belongs — and normalised to the spelling Postgres accepts; see
-    #: :func:`_canonical_uuid`.
-    sku_id: SkuId
-    #: How many units, on a ``kind="unit"`` SKU — **required** there and
-    #: **refused** on a ``kind="fixed"`` one, both as a 422. Neither direction
-    #: is a silent default: a missing quantity on a unit SKU would sell one
-    #: Star, and an ignored one on a fixed SKU would charge for a denomination
-    #: while the merchant believed they bought ten. Bounded by the SKU's own
-    #: ``min_qty``/``max_qty`` from ``/catalog``.
-    quantity: int | None = Field(default=None, ge=1, le=UNIT_QTY_WIRE_MAX)
-    #: How many dollars of face value, on a ``kind="amount"`` SKU — required
-    #: there and refused everywhere else, on the same "no silent default"
-    #: rule as ``quantity``. Bounded by the SKU's ``min_amount_usd`` /
-    #: ``max_amount_usd``. This is the **face value you are loading**, not
-    #: what you pay: $100 of Steam wallet costs $104 at a 4% markup.
-    amount_usd: Decimal | None = Field(default=None, gt=0, max_digits=12, decimal_places=2)
-    #: The **order total** you last computed from ``/catalog`` — for a fixed
-    #: SKU that is its ``price_usd``; for a unit or amount SKU it is
-    #: ``ceil_to_cent(unit_price_usd * quantity_or_amount_usd)``. A tolerance, not a bid:
-    #: within ±2% of ours the order proceeds and is charged at **our** current
-    #: price; outside it, ``422 price_changed`` carries that price (spec §8.4,
-    #: amended 2026-09-07).
-    expected_price: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
-    #: Whatever the SKU's product requires (a player id, a login). Validated
-    #: against the same schema the storefront uses
-    #: (``orders.validation.validate_fulfillment_data``), which **rejects** a
-    #: key the product does not declare rather than dropping it — so a SKU that
-    #: requires nothing accepts only ``{}``. The README says so at the field.
-    fulfillment_data: dict[str, Any] = Field(default_factory=dict)
+    merchant_order_id: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[\x21-\x7e]+$",
+        description=(
+            "**Your** id for this order, and the idempotency key — send the same one "
+            "again and you get the same order back, never a second charge. Printable "
+            "ASCII with no spaces, so it survives being a path segment in "
+            "`GET /merchant/v1/orders/{merchant_order_id}` and the signing string."
+        ),
+    )
+    sku_id: SkuId = Field(
+        description="From `GET /merchant/v1/catalog`. A UUID; any spelling of it is accepted."
+    )
+    quantity: int | None = Field(
+        default=None,
+        ge=1,
+        le=UNIT_QTY_WIRE_MAX,
+        description=(
+            "How many units, on a `kind=unit` SKU. **Required** there and **refused** "
+            "on the other shapes, both as a 422 — neither direction has a silent "
+            "default, because a missing quantity would sell one Star and an ignored one "
+            "would charge for a denomination you thought was ten. Bounded by that SKU's "
+            "`min_qty` and `max_qty`."
+        ),
+    )
+    amount_usd: Decimal | None = Field(
+        default=None,
+        gt=0,
+        max_digits=12,
+        decimal_places=2,
+        description=(
+            "How many dollars of face value, on a `kind=amount` SKU. Required there and "
+            "refused elsewhere, on the same no-silent-default rule as `quantity`. "
+            "This is the **face value you are loading**, not what you pay: $100 of "
+            "Steam wallet costs $104 at a 4% markup. Bounded by that SKU's "
+            "`min_amount_usd` and `max_amount_usd`."
+        ),
+    )
+    expected_price: Decimal = Field(
+        gt=0,
+        max_digits=12,
+        decimal_places=2,
+        description=(
+            "The **order total** you last computed from `/catalog` — a fixed SKU's "
+            "`price_usd`, or `ceil_to_cent(unit_price_usd × quantity_or_amount_usd)`.\n\n"
+            "A tolerance, **not a bid**: within ±2% of ours the order proceeds and is "
+            "charged at *our* current price; outside it you get `422 price_changed` "
+            "carrying that price, and you decide whether to re-send."
+        ),
+    )
+    fulfillment_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Whatever the SKU's product requires — a player id, a login. The keys and "
+            "their patterns are published on each product as `required_fields`. An "
+            "undeclared key is **rejected**, not dropped, so a SKU that requires "
+            "nothing accepts only `{}`."
+        ),
+    )
 
 
 class MerchantOrderOut(BaseModel):
@@ -420,20 +507,21 @@ class MerchantOrderOut(BaseModel):
     ``GET /merchant/v1/orders/{merchant_order_id}`` for the rest.
     """
 
-    merchant_order_id: str
-    #: Our id for the order. Quote it to support; key your own records on
-    #: ``merchant_order_id``, which is yours and which we cannot change.
-    order_id: str
-    status: str
-    sku_id: str
-    #: What this order actually charged — always **our** price at the moment
-    #: you ordered, which is within ±2% of the ``expected_price`` you sent or
-    #: the order would have been refused. Fixed from here on: whatever
-    #: fulfilment ends up costing us is our problem, not yours (spec §8.4).
-    price_usd: UsdPrice
-    #: Your deposit after this order.
-    balance_usd: UsdBalance
-    created_at: datetime
+    merchant_order_id: str = Field(description="The id you sent. Key your records on it.")
+    order_id: str = Field(
+        description="Our id for the order. Quote it to support; key nothing on it."
+    )
+    status: str = Field(description="Where the order is right now. See the order read.")
+    sku_id: str = Field(description="The SKU you bought.")
+    price_usd: UsdPrice = Field(
+        description=(
+            "What this order charged — **our** price at the moment you ordered, within "
+            "±2% of the `expected_price` you sent or it would have been refused. Fixed "
+            "from here on: whatever fulfilment ends up costing us is our problem."
+        )
+    )
+    balance_usd: UsdBalance = Field(description="Your deposit after this order.")
+    created_at: datetime = Field(description="When the order was placed, ISO 8601 UTC.")
 
 
 class MerchantOrderEventOut(BaseModel):
@@ -446,11 +534,13 @@ class MerchantOrderEventOut(BaseModel):
     M3c Task 6), and none of them is worth a field on a third-party contract.
     """
 
-    #: One of the ``order.*`` kinds listed in the module README. Kinds outside
-    #: that list — internal audit rows such as ``admin.deliveries_viewed`` —
-    #: are omitted, and a new kind stays omitted until it is added there.
-    event: str
-    at: datetime
+    event: str = Field(
+        description=(
+            "One of the published `order.*` kinds. Internal audit entries are omitted "
+            "entirely, and a new kind stays omitted until it is documented."
+        )
+    )
+    at: datetime = Field(description="When it happened, ISO 8601 UTC.")
 
 
 class MerchantDeliveryOut(BaseModel):
@@ -467,9 +557,20 @@ class MerchantDeliveryOut(BaseModel):
     uses.
     """
 
-    artifact_kind: str
-    artifact: dict[str, Any]
-    delivered_at: datetime
+    artifact_kind: str = Field(
+        description=(
+            "What was delivered: `voucher_code` or `topup_receipt`. It decides the shape "
+            "of `artifact`."
+        )
+    )
+    artifact: dict[str, Any] = Field(
+        description=(
+            "The delivered thing. For `voucher_code` it carries `code` (or `codes`). "
+            "Internal fields — our supplier, their order id, our warehouse row — are "
+            "never in here."
+        )
+    )
+    delivered_at: datetime = Field(description="When it was handed over, ISO 8601 UTC.")
 
 
 class MerchantOrderStatusOut(BaseModel):
@@ -482,55 +583,54 @@ class MerchantOrderStatusOut(BaseModel):
     the merchant's logs and in ours, and a voucher code is a bearer instrument.
     """
 
-    merchant_order_id: str
-    #: Our id for the order. Quote it to support; key your own records on
-    #: ``merchant_order_id``, which is yours and which we cannot change.
-    order_id: str
-    #: ``paid`` → ``fulfilling`` → ``delivered``, or ``failed``. ``failed``
-    #: arrives two ways: support closing an undeliverable order by hand, and —
-    #: since M3c Task 6 — a delivery failure whose **whole** charge is already
-    #: back on the deposit, which closes itself within seconds. Read
-    #: ``failure_reason`` to tell them apart. New values may be added; treat one
-    #: you do not know as still in flight, which is why the refund reuses
-    #: ``failed`` instead of minting ``refunded``.
-    status: str
-    sku_id: str
-    #: What this order charged. Final — see ``POST /merchant/v1/orders``.
-    price_usd: UsdPrice
-    #: How much of ``price_usd`` has been credited back to your deposit.
-    #: ``"0.00"`` until something has come back; read from the ledger, not a
-    #: flag, so both routes land here — M3b's automatic refund of a supplier
-    #: failure that returned our money, and a settlement support books by
-    #: hand. Never more than ``price_usd``: both writers refuse to take an
-    #: order past its own charge.
-    refunded_usd: UsdAmount
-    created_at: datetime
-    paid_at: datetime | None
-    delivered_at: datetime | None
-    #: ``null``, ``"fulfillment_delayed"``, ``"fulfillment_failed_refunded"``,
-    #: ``"fulfillment_failed"`` or ``"order_failed"`` — a closed vocabulary,
-    #: additive only. Never an operator's or a supplier's own words: those are
-    #: internal, and a client cannot switch on prose.
-    #:
-    #: **``"fulfillment_delayed"`` is the one value that is not terminal**
-    #: (M3b Task 4). It means the delivery has stopped but the order has not:
-    #: keep polling, do not re-order, do not refund your end customer. Every
-    #: other non-null value means stop. A loop that breaks on
-    #: ``failure_reason != null`` stops polling an order we are about to
-    #: deliver — see the module README.
-    #:
-    #: ``"fulfillment_failed_refunded"`` is M3b Task 3's addition and means
-    #: "the delivery failed **and all** of what you paid is back"; a *partial*
-    #: settlement is a human mid-decision and reads ``"fulfillment_failed"``.
-    #:
-    #: No value here says **which supplier** or **what went wrong with them**:
-    #: not whether one kept our money versus we cannot tell (both read
-    #: ``"fulfillment_failed"``), and not that a delay is our own balance
-    #: running short. Those are facts about our supplier relationships rather
-    #: than about your order.
-    failure_reason: str | None
-    delivery: MerchantDeliveryOut | None
-    timeline: list[MerchantOrderEventOut]
+    merchant_order_id: str = Field(description="The id you placed the order with.")
+    order_id: str = Field(description="Our id for the order. Quote it to support.")
+    status: str = Field(
+        description=(
+            "`paid` → `fulfilling` → `delivered`, or `failed`.\n\n"
+            "`failed` arrives two ways: support closing an undeliverable order, and a "
+            "delivery failure whose **whole** charge is already back on your deposit. "
+            "Read `failure_reason` to tell them apart. New values may be added — treat "
+            "one you do not know as still in flight."
+        )
+    )
+    sku_id: str = Field(description="The SKU this order was placed against.")
+    price_usd: UsdPrice = Field(description="What this order charged. Final.")
+    refunded_usd: UsdAmount = Field(
+        description=(
+            'How much of `price_usd` is back on your deposit. `"0.00"` until something '
+            "comes back. Read from the ledger, so both an automatic refund and a "
+            "settlement booked by hand land here. Never more than `price_usd`."
+        )
+    )
+    created_at: datetime = Field(description="When you placed it, ISO 8601 UTC.")
+    paid_at: datetime | None = Field(
+        description="When the deposit was charged. A merchant order is born paid."
+    )
+    delivered_at: datetime | None = Field(
+        description="When it was delivered, or `null` if it has not been."
+    )
+    failure_reason: str | None = Field(
+        description=(
+            "A closed vocabulary, additive only — never a supplier's or an operator's "
+            "own words, because you cannot switch on prose.\n\n"
+            "- `null` — nothing has gone wrong.\n"
+            "- `fulfillment_delayed` — **not terminal.** Delivery has stopped; the order "
+            "has not. Keep polling, do not re-order, do not refund your customer.\n"
+            "- `fulfillment_failed_refunded` — delivery failed and **all** of what you "
+            "paid is back.\n"
+            "- `fulfillment_failed` — delivery failed; any refund is partial or pending.\n"
+            "- `order_failed` — support closed the order.\n\n"
+            "A loop that stops on `failure_reason != null` will stop polling an order we "
+            "are about to deliver. Stop on the terminal values, not on the field."
+        )
+    )
+    delivery: MerchantDeliveryOut | None = Field(
+        description="What was delivered, once anything was. **The only place a code is given.**"
+    )
+    timeline: list[MerchantOrderEventOut] = Field(
+        description="What happened and when, oldest first."
+    )
 
 
 class MerchantPlayerCheckIn(BaseModel):
@@ -544,22 +644,31 @@ class MerchantPlayerCheckIn(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    #: The SKU you are about to order, from ``GET /merchant/v1/catalog``. A
-    #: SKU, not a product, so the id you check is the id you buy. Same
-    #: :data:`SkuId` the order body uses: parsed as a UUID at the boundary and
-    #: normalised to the spelling Postgres accepts.
-    sku_id: SkuId
-    #: Your **end customer's** identifier: the game's player id, or the Steam
-    #: login for a Steam top-up. We hold it for the length of the request and
-    #: never write it to a log or a URL (spec §9.5).
-    player_id: str = Field(min_length=1, max_length=64)
-    #: The game server / zone, for the games that ask for one. Send what the
-    #: SKU's product declares; omit it otherwise. ``min_length=1`` so that an
-    #: empty string is a refusal rather than a third spelling of "no server":
-    #: downstream it would read as ``None`` (``server_id or "-"`` in the cache
-    #: key), and a client that sent ``""`` meaning something else would never
-    #: find out.
-    server_id: str | None = Field(default=None, min_length=1, max_length=64)
+    sku_id: SkuId = Field(
+        description=(
+            "The SKU you are about to order. A SKU and not a product, so the id you "
+            "check is the id you buy."
+        )
+    )
+    player_id: str = Field(
+        min_length=1,
+        max_length=64,
+        description=(
+            "Your **end customer's** identifier — the game's player id, or the Steam "
+            "login. We hold it for the length of the request and never write it to a log "
+            "or a URL, which is why this endpoint is a POST."
+        ),
+    )
+    server_id: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=64,
+        description=(
+            "The game server or zone, for the games that ask for one. Send what the "
+            "SKU's product declares and omit it otherwise — an empty string is refused "
+            'rather than taken as a third spelling of "no server".'
+        ),
+    )
 
 
 class MerchantPlayerCheckOut(BaseModel):
@@ -586,8 +695,25 @@ class MerchantPlayerCheckOut(BaseModel):
     cached" caveat would only invite integrators to distrust a good one.
     """
 
-    status: Literal["valid", "invalid", "error", "unsupported"]
-    name: str | None = None
+    status: Literal["valid", "invalid", "error", "unsupported"] = Field(
+        description=(
+            "Switch on this. Never read “not `invalid`” as approval.\n\n"
+            "- `valid` — the provider resolved the id.\n"
+            "- `invalid` — the provider answered and the id does not exist. The one "
+            "answer that means your customer mistyped something.\n"
+            "- `error` — **we could not check.** Says nothing about the id. Retry, or "
+            "order without a check.\n"
+            "- `unsupported` — this product has no player check and will not grow one. "
+            "Never worth retrying."
+        )
+    )
+    name: str | None = Field(
+        default=None,
+        description=(
+            "The account nickname, where the provider returns one. `null` is an absence, "
+            "not a placeholder — some providers have no display name to give."
+        ),
+    )
 
 
 class MerchantTransactionOut(BaseModel):
@@ -597,33 +723,48 @@ class MerchantTransactionOut(BaseModel):
     it. The column adds up to the balance ``GET /merchant/v1/me`` reports.
     """
 
-    transaction_id: str
-    #: ``merchant_deposit_credit`` (we credited your deposit),
-    #: ``merchant_order_charge`` (an order spent it),
-    #: ``merchant_order_refund`` (M3b: we returned a failed order's charge),
-    #: and more later. Treat an unknown kind as "some movement" and trust
-    #: ``amount_usd``.
-    kind: str
-    amount_usd: UsdAmount
-    #: Set on every row that names an order, and that is **not** the same
-    #: as "not a credit": since M3b Task 2 a support settlement booked
-    #: against a failed order is a ``merchant_deposit_credit`` carrying one.
-    #: ``null`` means the movement belongs to no order — an ordinary
-    #: prepayment.
-    order_id: str | None
-    #: The same order's ``merchant_order_id`` — your own reference, so a
-    #: statement line reconciles against your books without a second lookup.
-    merchant_order_id: str | None
-    created_at: datetime
+    transaction_id: str = Field(description="Our id for this ledger entry.")
+    kind: str = Field(
+        description=(
+            "- `merchant_deposit_credit` — we credited your deposit.\n"
+            "- `merchant_order_charge` — an order spent it.\n"
+            "- `merchant_order_refund` — we returned a failed order's charge.\n\n"
+            'More may be added. Treat an unknown kind as "some movement" and trust '
+            "`amount_usd`."
+        )
+    )
+    amount_usd: UsdAmount = Field(
+        description=(
+            "**Signed**: positive credited the deposit, negative spent it. The column "
+            "adds up to the balance `GET /merchant/v1/me` reports."
+        )
+    )
+    order_id: str | None = Field(
+        description=(
+            "The order this movement belongs to, if any. Present on credits too — a "
+            "settlement booked against a failed order is a credit that names it. `null` "
+            "means an ordinary prepayment."
+        )
+    )
+    merchant_order_id: str | None = Field(
+        description=(
+            "The same order's id in **your** system, so a statement line reconciles "
+            "against your books without a second lookup."
+        )
+    )
+    created_at: datetime = Field(description="When it was posted, ISO 8601 UTC.")
 
 
 class MerchantTransactionsOut(BaseModel):
     """Body of ``GET /merchant/v1/transactions`` — one page, newest first."""
 
-    items: list[MerchantTransactionOut]
-    #: Pass back as ``?cursor=`` for the next (older) page. ``null`` means
-    #: this page is the last one — never call again on a null.
-    next_cursor: str | None
+    items: list[MerchantTransactionOut] = Field(description="One page, newest first.")
+    next_cursor: str | None = Field(
+        description=(
+            "Pass back as `?cursor=` for the next, older page. `null` means this page is "
+            "the last one — never call again on a null."
+        )
+    )
 
 
 __all__ = [

@@ -79,8 +79,8 @@ psql: ## Open a psql shell inside the postgres container
 	$(COMPOSE_DEV) exec postgres psql -U yupay_app -d yupay
 
 .PHONY: seed
-seed: ## Seed dev data
-	$(COMPOSE_DEV) exec api python -m yupay.scripts.seed
+seed: ## Seed dev data (idempotent: matches by slug / sku_code and updates in place)
+	$(COMPOSE_DEV) exec api python -m yupay.scripts.seed_catalog
 
 ##@ Quality
 
@@ -133,9 +133,11 @@ build: ## Build all Docker images locally
 	$(COMPOSE_DEV) build
 
 .PHONY: gen-api
-gen-api: ## Regenerate docs/api/openapi.json + packages/api-client
+gen-api: ## Regenerate docs/api/*.json + packages/api-client
 	@if [ -d apps/api/src/yupay ]; then \
-		cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json; \
+		cd apps/api && uv run python -m yupay.scripts.export_openapi ../../docs/api/openapi.json \
+			&& uv run python -m yupay.scripts.export_merchant_openapi ../../docs/api/merchant-openapi.json \
+			&& cd ../..; \
 		pnpm --filter @yupay/api-client gen:api; \
 	else \
 		echo "apps/api not scaffolded yet"; \
