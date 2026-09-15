@@ -140,7 +140,7 @@
     "webhooksTitle": "Vebhuklar",
     "webhooksBody": "Har bir yetkazishni imzolaymiz. Imzoni tananing xom baytlari boʻyicha tekshiring va doimiy vaqtda solishtiring.",
     "fullReference": "Toʻliq API maʼlumotnomasi",
-    "fullReferenceHint": "OpenAPI 3.1 hujjati — oltita endpoint va ularning modellari. Klient generatoriga bering.",
+    "fullReferenceHint": "Shartnoma boʻyicha Swagger UI: oltita endpoint va ularning modellari. Agar mijoz generatsiya qilsangiz, sxemaning oʻziga havola shu sahifaning yuqorisida.",
     "searchPlaceholder": "Qidirish",
     "navLabel": "Hujjat boʻlimlari",
     "noMatches": "Hech narsa topilmadi",
@@ -212,7 +212,6 @@
     "step4Title": "Buyurtma bering",
     "step4Body": "merchant_order_id — sizning identifikatoringiz va idempotentlik kaliti: bir xilini qayta yuborsangiz, ikkinchi yechim emas, oʻsha buyurtma qaytadi.",
     "quickPoll": "Buyurtma holatini soʻrang",
-    "swaggerUi": "Swagger UI",
     "swaggerUiHint": "Xuddi shu shartnoma interaktiv koʻrinishda. «Try it out» ishlamaydi: soʻrov sizning maxfiy kalitingiz bilan imzolanishi kerak, u esa sizning serveringizda turishi lozim — tayyor imzolangan misollar Tez start boʻlimida."
   },
   "offer": {

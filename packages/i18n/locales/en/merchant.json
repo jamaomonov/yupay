@@ -140,7 +140,7 @@
     "webhooksTitle": "Webhooks",
     "webhooksBody": "We sign every delivery. Verify over the raw body bytes and compare in constant time.",
     "fullReference": "Full API reference",
-    "fullReferenceHint": "An OpenAPI 3.1 document — six endpoints and their models. Feed it to a client generator.",
+    "fullReferenceHint": "Swagger UI over the contract: six endpoints and their models. The schema itself is linked at the top of that page, if you are generating a client.",
     "searchPlaceholder": "Search",
     "navLabel": "Documentation sections",
     "noMatches": "Nothing found",
@@ -212,7 +212,6 @@
     "step4Title": "Order",
     "step4Body": "merchant_order_id is your own id and the idempotency key: send the same one again and you get the same order back, not a second charge.",
     "quickPoll": "Poll the order status",
-    "swaggerUi": "Swagger UI",
     "swaggerUiHint": "The same contract, rendered. \"Try it out\" will not work: a request has to be signed with your secret, and that belongs on your server — signed samples are in the Quickstart."
   },
   "offer": {

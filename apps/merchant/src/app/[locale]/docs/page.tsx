@@ -84,24 +84,22 @@ export default async function IntroductionPage({
           >
             {t("authTitle")}
           </Link>
+          {/* Swagger, not the raw schema. A reader who followed the old link
+              got a wall of JSON in a browser tab; the one person who wants
+              that — somebody feeding a client generator — finds it linked at
+              the top of Swagger's own page. */}
           <a
             href={`${API_BASE}/merchant/docs`}
             className="border-border rounded-btn inline-flex items-center gap-2 px-4 py-2.5 text-sm font-semibold"
           >
-            {t("swaggerUi")}
+            {t("fullReference")}
             <ExternalLink size={14} />
           </a>
-          <a
-            href={`${API_BASE}/merchant/openapi.json`}
-            className="border-border rounded-btn text-tx-mute inline-flex items-center px-4 py-2.5 text-sm font-semibold"
-          >
-            {t("fullReference")}
-          </a>
         </div>
-        <p className="text-tx-dim mt-1 text-[12.5px]">{t("swaggerUiHint")}</p>
         <p className="text-tx-dim mt-1 text-[12.5px]">
           {t("fullReferenceHint")} · OpenAPI {doc.openapi}
         </p>
+        <p className="text-tx-dim mt-1 text-[12.5px]">{t("swaggerUiHint")}</p>
       </Section>
     </DocsPage>
   );
