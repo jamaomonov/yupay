@@ -2,6 +2,11 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 export const revalidate = 3600;
 
+const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(
+  /\/$/,
+  "",
+);
+
 /**
  * The quick start (spec §11).
  *
@@ -51,6 +56,19 @@ export default async function DocsPage({ params }: { params: Promise<{ locale: s
       <section className="mt-12">
         <h2 className="text-xl font-semibold tracking-tight">{t("webhooksTitle")}</h2>
         <p className="text-tx-mute mt-3 text-sm leading-relaxed">{t("webhooksBody")}</p>
+      </section>
+
+      <section className="mt-12">
+        {/* The machine API's own schema, not the app's: `/openapi.json` carries
+            every admin and storefront path we have, and a client generated
+            from it would be a map of our whole surface. */}
+        <a
+          href={`${API_BASE}/merchant/v1/openapi.json`}
+          className="border-border rounded-btn inline-flex border px-4 py-2.5 text-sm font-semibold"
+        >
+          {t("fullReference")}
+        </a>
+        <p className="text-tx-dim mt-2.5 text-sm">{t("fullReferenceHint")}</p>
       </section>
     </main>
   );

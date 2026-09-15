@@ -119,7 +119,8 @@
     "kindAmount": "amount — dollardagi balans. amount_usd yuboring.",
     "webhooksTitle": "Vebhuklar",
     "webhooksBody": "Har bir yetkazishni imzolaymiz. Imzoni tananing xom baytlari boʻyicha tekshiring va doimiy vaqtda solishtiring.",
-    "fullReference": "Toʻliq API maʼlumotnomasi"
+    "fullReference": "Toʻliq API maʼlumotnomasi",
+    "fullReferenceHint": "OpenAPI 3.1 hujjati — oltita endpoint va ularning modellari. Klient generatoriga bering."
   },
   "offer": {
     "title": "Hamkorlar uchun oferta",

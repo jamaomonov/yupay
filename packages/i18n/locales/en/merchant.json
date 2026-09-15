@@ -119,7 +119,8 @@
     "kindAmount": "amount — a balance in dollars. Send amount_usd.",
     "webhooksTitle": "Webhooks",
     "webhooksBody": "We sign every delivery. Verify over the raw body bytes and compare in constant time.",
-    "fullReference": "Full API reference"
+    "fullReference": "Full API reference",
+    "fullReferenceHint": "An OpenAPI 3.1 document — six endpoints and their models. Feed it to a client generator."
   },
   "offer": {
     "title": "Partner offer",
