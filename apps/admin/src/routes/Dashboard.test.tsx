@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
 
@@ -57,6 +57,22 @@ function renderDashboard(over: Record<string, unknown> = {}) {
   );
 }
 
+/** Wait for the payload to actually land.
+ *
+ * A card's *label* renders before the query resolves — the value falls back
+ * to zero — so awaiting one proves nothing, and an assertion about absence
+ * made against the pre-load render passes for the wrong reason. The charged
+ * line only exists once there is data. */
+async function loaded(): Promise<void> {
+  await screen.findByText("147 818 UZS");
+}
+
+function cardFor(label: string): HTMLElement {
+  const card = screen.getByText(label).closest("article");
+  if (card === null) throw new Error(`no card for ${label}`);
+  return card;
+}
+
 it("formats UZS revenue through the shared money formatter", async () => {
   renderDashboard();
 
@@ -77,7 +93,10 @@ it("localizes a failed order in the status breakdown instead of leaking the raw 
 it("still shows a dash when nothing was earned in the window", async () => {
   renderDashboard({ revenue_in_window: [] });
 
-  expect(await screen.findByText("—")).toBeInTheDocument();
+  // Scoped to the card: «Возвраты» is also a dash on a payload with no
+  // totals, and an unscoped query cannot tell which one it found.
+  await screen.findByText("Выручка");
+  expect(within(cardFor("Выручка")).getByText("—")).toBeInTheDocument();
 });
 
 it("shows the margin beside the revenue it belongs to", async () => {
@@ -101,4 +120,72 @@ it("still renders against an API that has no margin yet", async () => {
   renderDashboard({ margin_in_window: undefined });
   expect(await screen.findByText("147 818 UZS")).toBeInTheDocument();
   expect(screen.queryByText(/Маржа/)).not.toBeInTheDocument();
+});
+
+const TOTALS = {
+  orders: 7,
+  delivered: 2,
+  failed: 4,
+  revenue_usd: "120.00",
+  margin_usd: "12.50",
+  refunded_usd: "0",
+};
+
+it("reads a headline as a movement, not an absolute", async () => {
+  // "7 заказов" is neither good nor bad without the number it replaced.
+  renderDashboard({ totals: TOTALS, previous: { ...TOTALS, orders: 4 } });
+  await loaded();
+
+  expect(within(cardFor("Заказы (24ч)")).getByText("+75%")).toBeInTheDocument();
+});
+
+it("flips the colours where up is bad", async () => {
+  // More cancellations than yesterday is a red number, not a green one.
+  renderDashboard({ totals: TOTALS, previous: { ...TOTALS, failed: 2 } });
+  await loaded();
+
+  const chip = within(cardFor("Отменено / истекло")).getByText("+100%");
+  expect(chip.className).toContain("--danger-fg");
+});
+
+it("draws no chip at all for a shop with no yesterday", async () => {
+  // A blank is honest here; "+100% против нуля" is not.
+  renderDashboard({ totals: TOTALS, previous: null });
+  await loaded();
+
+  expect(screen.queryByText(/к прошлым 24ч/)).not.toBeInTheDocument();
+});
+
+it("says what was refunded beside the gross it is missing from", async () => {
+  renderDashboard({ totals: { ...TOTALS, refunded_usd: "30.00" } });
+  await loaded();
+
+  expect(within(cardFor("Возвраты")).getByText("30,00 USD")).toBeInTheDocument();
+});
+
+it("names both halves of the business", async () => {
+  // "7 заказов" does not say whether the wholesale side moved at all, and it
+  // is the half that moves in steps of one.
+  renderDashboard({
+    totals: TOTALS,
+    channels_in_window: [
+      { channel: "retail", orders: 6, revenue_usd: "100.00" },
+      { channel: "b2b", orders: 1, revenue_usd: "20.00" },
+    ],
+  });
+  await loaded();
+
+  const strip = screen.getByText("Каналы за 24ч").closest("section");
+  if (strip === null) throw new Error("no channel strip");
+  expect(within(strip).getByText("Розница")).toBeInTheDocument();
+  expect(within(strip).getByText("B2B")).toBeInTheDocument();
+});
+
+it("hides the channel strip against an API that does not send it", async () => {
+  // Deploy skew must degrade to the screen the operator had, never to an
+  // empty box implying both channels sold nothing.
+  renderDashboard();
+  await loaded();
+
+  expect(screen.queryByText("Каналы за 24ч")).not.toBeInTheDocument();
 });

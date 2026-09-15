@@ -5643,6 +5643,32 @@
         "title": "CustomersOut",
         "type": "object"
       },
+      "DashboardChannel": {
+        "additionalProperties": false,
+        "description": "One side of the business over the window.\n\nRetail and B2B are one blended tally on this screen otherwise, and \"43\norders\" does not say whether the wholesale side moved at all.\n``Order.merchant_id`` is the entire distinction.",
+        "properties": {
+          "channel": {
+            "title": "Channel",
+            "type": "string"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "channel",
+          "orders",
+          "revenue_usd"
+        ],
+        "title": "DashboardChannel",
+        "type": "object"
+      },
       "DashboardMargin": {
         "additionalProperties": false,
         "description": "What the window's revenue left us, beside the revenue itself.\n\nUSD-only by necessity: cost is recorded in USD on the SKU, while revenue is\ncharged per currency. ``pct`` is what makes the two comparable on one card.",
@@ -5673,6 +5699,14 @@
         "additionalProperties": false,
         "description": "Single payload behind ``GET /admin/stats/dashboard``.",
         "properties": {
+          "channels_in_window": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/DashboardChannel"
+            },
+            "title": "Channels In Window",
+            "type": "array"
+          },
           "generated_at": {
             "format": "date-time",
             "title": "Generated At",
@@ -5711,6 +5745,16 @@
             "title": "Pending Orders",
             "type": "integer"
           },
+          "previous": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DashboardTotals"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "revenue_in_window": {
             "items": {
               "$ref": "#/components/schemas/CurrencyAmount"
@@ -5728,6 +5772,9 @@
           "stuck_payments": {
             "title": "Stuck Payments",
             "type": "integer"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/DashboardTotals"
           },
           "window_hours": {
             "title": "Window Hours",
@@ -5747,9 +5794,53 @@
           "stuck_payments",
           "pending_orders",
           "inventory",
-          "orders_last_7_days"
+          "orders_last_7_days",
+          "totals"
         ],
         "title": "DashboardOut",
+        "type": "object"
+      },
+      "DashboardTotals": {
+        "additionalProperties": false,
+        "description": "The window's figures, in a shape another window can be compared against.\n\nEvery headline on the dashboard used to be an absolute, and \"43 \u0437\u0430\u043a\u0430\u0437\u0430\" is\nneither good nor bad without the number it replaced. So the same six\nfigures are emitted for the current window and for the one of equal length\nimmediately before it, and the card does the subtraction.\n\n``revenue_usd`` exists beside the per-currency ``revenue_in_window`` for\nexactly that reason: a list of three currencies cannot be compared with\nanother list of three currencies, and a delta needs one number.",
+        "properties": {
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "margin_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin Usd",
+            "type": "string"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "refunded_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orders",
+          "delivered",
+          "failed",
+          "revenue_usd",
+          "margin_usd",
+          "refunded_usd"
+        ],
+        "title": "DashboardTotals",
         "type": "object"
       },
       "DayBucket": {

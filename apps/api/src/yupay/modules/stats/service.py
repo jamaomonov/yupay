@@ -1,8 +1,9 @@
 """Dashboard aggregate service.
 
 All queries hit indexes (``created_at`` on every event table). For the
-skeleton's volumes one Dashboard request fires ~8 SELECTs, none of which
-scans more than a day's worth of rows. Move to a materialised rollup when
+skeleton's volumes one Dashboard request fires ~11 SELECTs, none of which
+scans more than two days' worth of rows — the window and the one before it,
+which is what makes every headline a movement instead of an absolute. Move to a materialised rollup when
 ``orders`` crosses ~1M rows.
 """
 
@@ -28,8 +29,10 @@ from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.payments.models import Payment
 from yupay.modules.stats.schemas import (
     CurrencyAmount,
+    DashboardChannel,
     DashboardMargin,
     DashboardOut,
+    DashboardTotals,
     DayBucket,
     InventorySummary,
     StatusCount,
@@ -51,19 +54,20 @@ async def build_dashboard(
 ) -> DashboardOut:
     """Build the dashboard payload in one shot."""
     moment = now()
-    window_start = moment - timedelta(hours=window_hours)
+    span = timedelta(hours=window_hours)
+    window_start = moment - span
 
-    orders_in_window = await _count_orders_in_window(db, window_start)
-    orders_delivered = await _count_orders_with_status_in_window(
-        db, window_start, statuses=("delivered",)
-    )
-    orders_failed = await _count_orders_with_status_in_window(
-        db, window_start, statuses=("cancelled", "expired")
-    )
+    margin = await _margin_in_window(db, window_start)
+    totals = await _window_totals(db, window_start, moment, margin=margin)
+    # The window of equal length immediately before, so the cards can show a
+    # movement rather than an absolute. Derived from this window rather than
+    # configured: a 24-hour figure must never be held up against a week.
+    earlier_margin = await _margin_in_window(db, window_start - span, until=window_start)
+    previous = await _window_totals(db, window_start - span, window_start, margin=earlier_margin)
 
     revenue = await _revenue_in_window(db, window_start)
-    margin = await _margin_in_window(db, window_start)
     status_mix = await _status_breakdown(db, window_start)
+    channels = await _channels_in_window(db, window_start)
 
     in_flight = await _count_in_flight_tasks(db)
     stuck = await _count_stuck_payments(db, moment - _STUCK_PAYMENT_AFTER)
@@ -75,9 +79,11 @@ async def build_dashboard(
     return DashboardOut(
         generated_at=moment,
         window_hours=window_hours,
-        orders_in_window=orders_in_window,
-        orders_delivered_in_window=orders_delivered,
-        orders_failed_in_window=orders_failed,
+        # The same numbers as `totals`, kept flat because the admin bundle
+        # ships separately from the API and an older one still reads them.
+        orders_in_window=totals.orders,
+        orders_delivered_in_window=totals.delivered,
+        orders_failed_in_window=totals.failed,
         revenue_in_window=revenue,
         margin_in_window=margin,
         status_breakdown=status_mix,
@@ -86,26 +92,104 @@ async def build_dashboard(
         pending_orders=pending,
         inventory=inventory,
         orders_last_7_days=last_7,
+        totals=totals,
+        previous=_meaningful(previous),
+        channels_in_window=channels,
     )
+
+
+def _meaningful(totals: DashboardTotals) -> DashboardTotals | None:
+    """`None` for a window in which nothing happened at all.
+
+    A shop's first day has no yesterday, and "+100% against zero" is a worse
+    answer than no chip at all.
+    """
+    return None if totals.orders == 0 and totals.revenue_usd == 0 else totals
 
 
 # ---------- helpers ---------------------------------------------------------
 
 
-async def _count_orders_in_window(db: AsyncSession, since: datetime) -> int:
-    stmt = select(func.count()).select_from(Order).where(IS_SALE, Order.created_at >= since)
-    return int((await db.execute(stmt)).scalar_one() or 0)
+async def _window_totals(
+    db: AsyncSession, since: datetime, until: datetime, *, margin: DashboardMargin
+) -> DashboardTotals:
+    """The six comparable figures for one window, in two queries.
 
+    Was three separate `COUNT` queries that differed only by a status filter;
+    aggregate filters collapse them into one, which matters because this now
+    runs twice per request — once for the window and once for the one before.
 
-async def _count_orders_with_status_in_window(
-    db: AsyncSession, since: datetime, *, statuses: tuple[str, ...]
-) -> int:
-    stmt = (
-        select(func.count())
+    Money is `charged_usd`, never `Order.total_usd`: on a variable-amount line
+    the latter is the face value the customer picked, so the markup — the
+    margin the business runs on — would be missing from revenue while still
+    being counted as margin on the card beside it. See `orders.revenue`.
+
+    Windowed on `created_at` throughout, like everything else on this screen:
+    the dashboard answers "what happened in the last 24 hours", not "what
+    settled in them".
+    """
+    counts_stmt = select(
+        func.count(),
+        func.count().filter(Order.status == "delivered"),
+        func.count().filter(Order.status.in_(("cancelled", "expired"))),
+    ).where(IS_SALE, Order.created_at >= since, Order.created_at < until)
+    orders_raw, delivered_raw, failed_raw = (await db.execute(counts_stmt)).one()
+
+    gross = order_charged_usd_subq()
+    money_stmt = (
+        select(
+            func.coalesce(func.sum(gross.c.charged_usd).filter(Order.status.in_(_PAID_LIKE)), 0),
+            func.coalesce(func.sum(gross.c.charged_usd).filter(Order.status == "refunded"), 0),
+        )
         .select_from(Order)
-        .where(IS_SALE, Order.created_at >= since, Order.status.in_(statuses))
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
+        .where(IS_SALE, Order.created_at >= since, Order.created_at < until)
     )
-    return int((await db.execute(stmt)).scalar_one() or 0)
+    revenue_raw, refunded_raw = (await db.execute(money_stmt)).one()
+
+    return DashboardTotals(
+        orders=int(orders_raw or 0),
+        delivered=int(delivered_raw or 0),
+        failed=int(failed_raw or 0),
+        revenue_usd=Decimal(str(revenue_raw or 0)).quantize(Decimal("0.01")),
+        margin_usd=margin.amount_usd,
+        refunded_usd=Decimal(str(refunded_raw or 0)).quantize(Decimal("0.01")),
+    )
+
+
+async def _channels_in_window(db: AsyncSession, since: datetime) -> list[DashboardChannel]:
+    """Retail and B2B, side by side.
+
+    A reseller's order and a customer's are one tally otherwise, and the
+    number that moves is the one nobody can see. Both rows are always emitted,
+    including at zero: a missing row reads as missing data rather than as a
+    quiet morning on that side.
+    """
+    gross = order_charged_usd_subq()
+    is_b2b = Order.merchant_id.isnot(None)
+    stmt = (
+        select(
+            is_b2b.label("b2b"),
+            func.count(),
+            func.coalesce(func.sum(gross.c.charged_usd).filter(Order.status.in_(_PAID_LIKE)), 0),
+        )
+        .select_from(Order)
+        .join(gross, gross.c.order_id == Order.id, isouter=True)
+        .where(IS_SALE, Order.created_at >= since)
+        .group_by(is_b2b)
+    )
+    seen = {
+        ("b2b" if b2b else "retail"): (int(count or 0), Decimal(str(revenue or 0)))
+        for b2b, count, revenue in (await db.execute(stmt)).all()
+    }
+    return [
+        DashboardChannel(
+            channel=name,
+            orders=seen.get(name, (0, Decimal(0)))[0],
+            revenue_usd=seen.get(name, (0, Decimal(0)))[1].quantize(Decimal("0.01")),
+        )
+        for name in ("retail", "b2b")
+    ]
 
 
 async def _revenue_in_window(db: AsyncSession, since: datetime) -> list[CurrencyAmount]:
@@ -121,7 +205,9 @@ async def _revenue_in_window(db: AsyncSession, since: datetime) -> list[Currency
     return [CurrencyAmount(currency=cur, amount=Decimal(str(amt or 0))) for cur, amt in rows]
 
 
-async def _margin_in_window(db: AsyncSession, since: datetime) -> DashboardMargin:
+async def _margin_in_window(
+    db: AsyncSession, since: datetime, *, until: datetime | None = None
+) -> DashboardMargin:
     """What the window's revenue actually left us, in USD.
 
     Deliberately the same orders as :func:`_revenue_in_window` — same window,
@@ -139,6 +225,10 @@ async def _margin_in_window(db: AsyncSession, since: datetime) -> DashboardMargi
     from both the margin and the gross it is a percentage of — counting them at
     zero cost would report an unknown as a 100% margin — so the card can say
     the number is partial instead of implying it is complete.
+
+    ``until`` closes the window at the top, which the current one does not
+    need — it runs to now — and the comparison window does: without it the
+    "previous 24 hours" would quietly include the present ones.
     """
     priced = select(
         func.coalesce(func.sum(charged_usd_expr()).filter(margin_usd_expr().isnot(None)), 0),
@@ -150,6 +240,8 @@ async def _margin_in_window(db: AsyncSession, since: datetime) -> DashboardMargi
         .join(Sku, Sku.id == OrderItem.sku_id)
         .where(IS_SALE, Order.created_at >= since, Order.status.in_(_PAID_LIKE))
     )
+    if until is not None:
+        stmt = stmt.where(Order.created_at < until)
     gross_raw, margin_raw, unknown_raw = (await db.execute(stmt)).one()
     gross = Decimal(str(gross_raw or 0))
     margin = Decimal(str(margin_raw or 0))

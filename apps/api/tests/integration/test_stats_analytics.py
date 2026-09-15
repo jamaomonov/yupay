@@ -624,3 +624,74 @@ async def test_the_tab_can_be_scoped_to_one_half_of_the_business(
     assert retail.channel is AnalyticsChannel.RETAIL
     # The comparison block is not scoped: it is what the scoping is compared to.
     assert {c.channel for c in retail.channels} == {c.channel for c in every.channels}
+
+
+async def test_provider_volume_counts_the_markup_on_a_steam_order(
+    db_session: AsyncSession,
+) -> None:
+    """`Order.total_usd` is the face value the customer picked, not what we took.
+
+    A $10 Steam top-up at a 1.13 multiplier is charged ~$11.30. Reporting the
+    provider's volume from `total_usd` drops the markup — which is the whole
+    margin the business runs on — so the figure is summed from `charged_usd`.
+    """
+    _sku_with, _ = await _seed_catalog(db_session)
+    variable = Sku(
+        id=new_id(),
+        product_id=(await db_session.execute(select(Sku.product_id).limit(1))).scalar_one(),
+        sku_code="steam-10",
+        price_usd=Decimal("10.00"),
+        cost_usdt=None,
+        variable_amount=True,
+        # `ck_skus_variable_amount_complete`: a variable SKU is only complete
+        # with its bounds and its multiplier.
+        min_amount_usd=Decimal("1.00"),
+        max_amount_usd=Decimal("500.00"),
+        rate_multiplier=Decimal("1.13"),
+    )
+    db_session.add(variable)
+    await db_session.flush()
+
+    moment = now()
+    order = Order(
+        id=new_id(),
+        user_id=None,
+        guest_email="g@example.com",
+        status="delivered",
+        currency="UZS",
+        total_usd=Decimal("10.00"),
+        total_charged=Decimal("134380.00"),
+        created_at=moment,
+        paid_at=moment,
+        expires_at=moment + timedelta(hours=1),
+    )
+    db_session.add(order)
+    await db_session.flush()
+    db_session.add(
+        OrderItem(
+            id=new_id(),
+            order_id=order.id,
+            sku_id=variable.id,
+            qty=1,
+            unit_price_usd=Decimal("10.00"),
+            rate_multiplier=Decimal("1.13"),
+        )
+    )
+    db_session.add(
+        Payment(
+            id=new_id(),
+            order_id=order.id,
+            provider="click",
+            status="succeeded",
+            amount=Decimal("134380.00"),
+            currency="UZS",
+            created_at=moment,
+            succeeded_at=moment,
+        )
+    )
+    await db_session.flush()
+
+    out = await svc.build_ops_analytics(db_session, r=AnalyticsRange.D30)
+
+    click = next(p for p in out.payments if p.provider == "click")
+    assert click.volume_usd == Decimal("11.30"), "the markup is ours and belongs in the volume"

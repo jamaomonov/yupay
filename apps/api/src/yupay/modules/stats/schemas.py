@@ -52,6 +52,50 @@ class DashboardMargin(BaseModel):
     unknown_units: int
 
 
+class DashboardTotals(BaseModel):
+    """The window's figures, in a shape another window can be compared against.
+
+    Every headline on the dashboard used to be an absolute, and "43 заказа" is
+    neither good nor bad without the number it replaced. So the same six
+    figures are emitted for the current window and for the one of equal length
+    immediately before it, and the card does the subtraction.
+
+    ``revenue_usd`` exists beside the per-currency ``revenue_in_window`` for
+    exactly that reason: a list of three currencies cannot be compared with
+    another list of three currencies, and a delta needs one number.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    orders: int
+    delivered: int
+    #: Cancelled or expired — the two ways an order dies without a refund.
+    failed: int
+    #: Summed from ``charged_usd``, never ``total_usd``: see ``orders.revenue``.
+    revenue_usd: Decimal
+    margin_usd: Decimal
+    #: Money given back. Gross revenue above does not net it out, so without
+    #: this the screen cannot say a good day was undone by an afternoon of
+    #: refunds.
+    refunded_usd: Decimal
+
+
+class DashboardChannel(BaseModel):
+    """One side of the business over the window.
+
+    Retail and B2B are one blended tally on this screen otherwise, and "43
+    orders" does not say whether the wholesale side moved at all.
+    ``Order.merchant_id`` is the entire distinction.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: ``"retail"`` or ``"b2b"``.
+    channel: str
+    orders: int
+    revenue_usd: Decimal
+
+
 class DashboardOut(BaseModel):
     """Single payload behind ``GET /admin/stats/dashboard``."""
 
@@ -75,6 +119,16 @@ class DashboardOut(BaseModel):
     inventory: InventorySummary
 
     orders_last_7_days: list[DayBucket]
+
+    #: The same six figures the card compares. The flat fields above are the
+    #: same numbers, kept because the admin bundle ships separately from the
+    #: API and an older one still reads them.
+    totals: DashboardTotals
+    #: The window of equal length immediately before this one. ``None`` when
+    #: nothing at all happened in it — an honest blank rather than a "+100%"
+    #: against zero.
+    previous: DashboardTotals | None = None
+    channels_in_window: list[DashboardChannel] = []
 
 
 class AnalyticsChannel(StrEnum):

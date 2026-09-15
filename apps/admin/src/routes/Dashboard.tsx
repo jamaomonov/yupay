@@ -8,11 +8,14 @@ import {
   CreditCard,
   Package,
   Receipt,
+  RotateCcw,
   Truck,
+  Users,
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
 import { Badge } from "@/components/Badge";
+import { Delta } from "@/components/Delta";
 import { useAuthStore } from "@/features/auth/authStore";
 import { type OrderStatus, STATUS_TONE } from "@/features/orders/types";
 import { apiGet } from "@/lib/api";
@@ -42,6 +45,23 @@ interface DashboardOut {
     low_stock_skus: number;
   };
   orders_last_7_days: { date: string; count: number; revenue_usd: string }[];
+  /** Optional for the same reason `margin_in_window` is: the admin bundle
+   *  ships separately from the API, so a deploy skew must degrade to "no
+   *  comparison" rather than take the overview down. */
+  totals?: DashboardTotals;
+  /** The window of equal length immediately before. Absent when nothing
+   *  happened in it — a shop's first day has no yesterday. */
+  previous?: DashboardTotals | null;
+  channels_in_window?: { channel: string; orders: number; revenue_usd: string }[];
+}
+
+interface DashboardTotals {
+  orders: number;
+  delivered: number;
+  failed: number;
+  revenue_usd: string;
+  margin_usd: string;
+  refunded_usd: string;
 }
 
 /**
@@ -116,12 +136,13 @@ export function DashboardPage() {
 
       {q.isError && <p className="text-sm text-[var(--danger)]">Не удалось загрузить метрики.</p>}
 
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Kpi
           icon={Receipt}
           label="Заказы (24ч)"
           value={d?.orders_in_window ?? 0}
           accent
+          delta={movement(d, (t) => t.orders)}
           sparkline={d?.orders_last_7_days.map((b) => b.count) ?? []}
         />
         <Kpi
@@ -129,26 +150,41 @@ export function DashboardPage() {
           label="Доставлено"
           value={d?.orders_delivered_in_window ?? 0}
           tone="success"
+          delta={movement(d, (t) => t.delivered)}
         />
         <Kpi
           icon={AlertTriangle}
           label="Отменено / истекло"
           value={d?.orders_failed_in_window ?? 0}
           tone={(d?.orders_failed_in_window ?? 0) > 0 ? "warn" : "muted"}
+          delta={movement(d, (t) => t.failed, true)}
         />
         <Kpi
           icon={CircleDollarSign}
           label="Выручка"
-          value={
-            d && d.revenue_in_window.length > 0
-              ? d.revenue_in_window.map((r) => formatMoney(r.amount, r.currency)).join(" · ")
-              : "—"
-          }
+          // The USD equivalent, not the per-currency list: three currencies
+          // cannot be compared with yesterday's three, and a movement needs
+          // one number. What was actually charged is the line below.
+          value={d?.totals ? formatMoney(d.totals.revenue_usd, "USD") : revenueFallback(d)}
           accent
+          delta={movement(d, (t) => Number(t.revenue_usd))}
+          sub={chargedLine(d)}
           hint={marginHint(d?.margin_in_window)}
           sparkline={d?.orders_last_7_days.map((b) => Number.parseFloat(b.revenue_usd) || 0) ?? []}
         />
+        {/* Gross revenue above does not net refunds out, so without this card
+            the screen cannot say a good morning was undone by an afternoon of
+            them. Up is bad here, so the chip's colours are flipped. */}
+        <Kpi
+          icon={RotateCcw}
+          label="Возвраты"
+          value={d?.totals ? formatMoney(d.totals.refunded_usd, "USD") : "—"}
+          tone={Number(d?.totals?.refunded_usd ?? 0) > 0 ? "warn" : "muted"}
+          delta={movement(d, (t) => Number(t.refunded_usd), true)}
+        />
       </section>
+
+      <ChannelStrip channels={d?.channels_in_window ?? []} />
 
       <AlertsBlock
         stuck={d?.stuck_payments ?? 0}
@@ -160,8 +196,11 @@ export function DashboardPage() {
         <article className="rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
           <header className="mb-3 flex items-baseline justify-between">
             <h2 className="text-sm font-semibold">Заказы за 7 дней</h2>
-            <span className="text-xs text-[var(--text-secondary)]">
+            <span className="flex items-baseline gap-3 text-xs text-[var(--text-secondary)]">
               {d?.orders_last_7_days.reduce((s, b) => s + b.count, 0) ?? 0} всего
+              <Link to="/analytics" className="hover:underline">
+                аналитика →
+              </Link>
             </span>
           </header>
           {d ? (
@@ -229,11 +268,10 @@ export function DashboardPage() {
 /**
  * The margin line under the revenue figure.
  *
- * Revenue is charged per currency and cost is recorded in USD, so the two
- * cannot share a unit — the percentage is what lets an operator read them as
- * one thought. Uncosted units are named rather than folded in: the figure
- * describes part of the window's sales, and a card that does not say so is
- * read as if it described all of them.
+ * Cost is recorded in USD, so the percentage is what lets an operator read the
+ * two as one thought. Uncosted units are named rather than folded in: the
+ * figure describes part of the window's sales, and a card that does not say so
+ * is read as if it described all of them.
  */
 function marginHint(
   m: { amount_usd: string; pct: number; unknown_units: number } | undefined,
@@ -243,6 +281,73 @@ function marginHint(
   return m.unknown_units > 0 ? `${base} · без себестоимости: ${m.unknown_units} шт.` : base;
 }
 
+/** What was actually charged, per currency — the truth under the USD headline.
+ *  Its own line rather than folded into the margin hint: they are two separate
+ *  facts, and one long run-on is read as neither. */
+function chargedLine(d: DashboardOut | undefined): string | undefined {
+  // Only under a USD headline. Against an API with no `totals` this list *is*
+  // the headline, and printing it twice on one card is worse than not at all.
+  if (!d?.totals || d.revenue_in_window.length === 0) return undefined;
+  return d.revenue_in_window.map((r) => formatMoney(r.amount, r.currency)).join(" · ");
+}
+
+/** The old per-currency headline, for a bundle talking to an API that predates
+ *  `totals`. Degrading to "no USD figure" beats rendering `$NaN`. */
+function revenueFallback(d: DashboardOut | undefined): string {
+  if (!d || d.revenue_in_window.length === 0) return "—";
+  return d.revenue_in_window.map((r) => formatMoney(r.amount, r.currency)).join(" · ");
+}
+
+/** This window's figure and the previous window's, or `undefined` when there
+ *  is no previous window to compare against. */
+function movement(
+  d: DashboardOut | undefined,
+  pick: (t: DashboardTotals) => number,
+  inverted = false,
+): { now: number; was: number; inverted: boolean } | undefined {
+  if (!d?.totals || !d.previous) return undefined;
+  return { now: pick(d.totals), was: pick(d.previous), inverted };
+}
+
+/**
+ * Retail and B2B, side by side.
+ *
+ * "43 заказа" does not say whether the wholesale side moved at all, and it is
+ * the half that moves in steps of one. Hidden entirely until the API sends the
+ * rows, so an older deployment shows the screen it always did.
+ */
+function ChannelStrip({
+  channels,
+}: {
+  channels: { channel: string; orders: number; revenue_usd: string }[];
+}) {
+  if (channels.length === 0) return null;
+  const label = (c: string) => (c === "b2b" ? "B2B" : "Розница");
+  return (
+    <section className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border bg-[var(--bg-surface)] px-4 py-3 text-sm shadow-[var(--shadow-sm)]">
+      <span className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+        <Users className="size-4" aria-hidden />
+        Каналы за 24ч
+      </span>
+      {channels.map((c) => (
+        <span key={c.channel} className="flex items-baseline gap-2">
+          <span className="text-[var(--text-secondary)]">{label(c.channel)}</span>
+          <span className="font-semibold">{c.orders}</span>
+          <span className="text-[var(--text-secondary)]">
+            · {formatMoney(c.revenue_usd, "USD")}
+          </span>
+        </span>
+      ))}
+      <Link
+        to="/analytics"
+        className="ml-auto text-xs text-[var(--text-secondary)] hover:underline"
+      >
+        разбор по каналам →
+      </Link>
+    </section>
+  );
+}
+
 function Kpi({
   icon: Icon,
   label,
@@ -250,6 +355,8 @@ function Kpi({
   accent,
   tone,
   hint,
+  sub,
+  delta,
   sparkline,
 }: {
   icon: typeof Receipt;
@@ -259,6 +366,11 @@ function Kpi({
   tone?: "warn" | "success" | "muted";
   /** Secondary line under the value, for a figure that qualifies it. */
   hint?: string | undefined;
+  /** A second such line, for a card carrying two of them. */
+  sub?: string | undefined;
+  /** This figure against the previous window's. `undefined` draws nothing,
+   *  which is what a shop with no yesterday deserves. */
+  delta?: { now: number; was: number; inverted: boolean } | undefined;
   /** Optional 7-day series rendered as a mini sparkline under the value. */
   sparkline?: number[];
 }) {
@@ -293,6 +405,13 @@ function Kpi({
         </span>
       </div>
       <div className={`mt-3 text-2xl font-semibold ${valueCls}`}>{value}</div>
+      {delta && (
+        <div className="mt-1 text-xs">
+          <Delta now={delta.now} was={delta.was} inverted={delta.inverted} />
+          <span className="ml-1.5 text-[var(--text-secondary)]">к прошлым 24ч</span>
+        </div>
+      )}
+      {sub && <div className="mt-1 text-xs text-[var(--text-secondary)]">{sub}</div>}
       {hint && <div className="mt-1 text-xs text-[var(--text-secondary)]">{hint}</div>}
       {sparkline && sparkline.length > 0 && <MiniSparkline values={sparkline} />}
     </article>

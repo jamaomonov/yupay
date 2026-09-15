@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 
 import { usd } from "./format";
 
@@ -23,8 +23,25 @@ const MONTHS = [
   "Ноябрь",
   "Декабрь",
 ];
+/** For "10 сентября" — a date reads in the genitive, a month heading does not. */
+const MONTHS_OF = [
+  "января",
+  "февраля",
+  "марта",
+  "апреля",
+  "мая",
+  "июня",
+  "июля",
+  "августа",
+  "сентября",
+  "октября",
+  "ноября",
+  "декабря",
+];
 /** Monday first — a Russian week, and the one an operator reads. */
 const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+
+const DAY_MS = 86_400_000;
 
 /** Local midnight, formatted as the API's `since`/`until` expect. */
 function isoAt(year: number, month: number, day: number): string {
@@ -38,6 +55,11 @@ function localKey(year: number, month: number, day: number): string {
   return `${String(d.getFullYear())}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
 
+/** "10 сентября" — what an operator would say out loud. */
+function dayLabel(d: Date): string {
+  return `${String(d.getDate())} ${MONTHS_OF[d.getMonth()] ?? ""}`;
+}
+
 /**
  * A month of days, each showing what it earned and what it kept.
  *
@@ -45,6 +67,11 @@ function localKey(year: number, month: number, day: number): string {
  * days were good. Revenue alone cannot say — a day can take $400 and keep $12
  * — so the cell carries both, and the tint is keyed on **margin**, because
  * that is the number being compared.
+ *
+ * A period is picked by clicking its two ends on the grid. It used to be two
+ * `дд.мм.гггг` boxes, which asked an operator to type a month and a year to
+ * ask about last Tuesday; the anchor survives the month stepper, so a span
+ * across a month boundary is still two clicks.
  */
 export function CalendarTab({
   channel,
@@ -58,8 +85,11 @@ export function CalendarTab({
 }) {
   const today = new Date();
   const [cursor, setCursor] = useState({ y: today.getFullYear(), m: today.getMonth() });
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  // The first end of a pending span. Deliberately not cleared when the month
+  // steps, so "с 28 августа по 3 сентября" is the same two clicks as any
+  // other span.
+  const [anchor, setAnchor] = useState<Date | null>(null);
+  const [hovered, setHovered] = useState<Date | null>(null);
 
   const since = isoAt(cursor.y, cursor.m, 1);
   const until = isoAt(cursor.y, cursor.m + 1, 1);
@@ -70,6 +100,22 @@ export function CalendarTab({
         `/api/v1/admin/stats/analytics/business?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}&channel=${channel}`,
       ),
   });
+
+  // Escape abandons a half-made selection. Without it the only way out of the
+  // pending state is to complete a span you no longer want.
+  useEffect(() => {
+    if (anchor === null) return undefined;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setAnchor(null);
+        setHovered(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [anchor]);
 
   const byDay = useMemo(() => {
     const map = new Map<string, RevenuePoint>();
@@ -98,6 +144,33 @@ export function CalendarTab({
     });
   };
 
+  /** The span currently being previewed: the anchor plus whatever the pointer
+   *  is over, in whichever order they were clicked. */
+  const preview = useMemo(() => {
+    if (anchor === null) return null;
+    const other = hovered ?? anchor;
+    const a = Math.min(anchor.getTime(), other.getTime());
+    const b = Math.max(anchor.getTime(), other.getTime());
+    return { from: a, to: b };
+  }, [anchor, hovered]);
+
+  const choose = (day: Date) => {
+    if (anchor === null) {
+      setAnchor(day);
+      return;
+    }
+    const from = new Date(Math.min(anchor.getTime(), day.getTime()));
+    const to = new Date(Math.max(anchor.getTime(), day.getTime()));
+    // `until` is exclusive, so the chosen end day has to be included by
+    // asking for the morning after it. Clicking the same day twice is one day.
+    const end = new Date(to.getTime() + DAY_MS);
+    const label =
+      from.getTime() === to.getTime() ? dayLabel(from) : `${dayLabel(from)} — ${dayLabel(to)}`;
+    setAnchor(null);
+    setHovered(null);
+    onPick(from.toISOString(), end.toISOString(), label);
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -124,57 +197,39 @@ export function CalendarTab({
             <ChevronRight className="size-4" aria-hidden="true" />
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          {/* An arbitrary span, beside the month. Two dates rather than a
-              range widget: the operator already knows the two days they mean,
-              and a picker that has to be learned is slower than typing them. */}
-          <input
-            type="date"
-            aria-label="Период с"
-            value={from}
-            onChange={(e) => {
-              setFrom(e.target.value);
-            }}
-            className="rounded-md border border-[var(--border-default)] bg-transparent px-2 py-1.5 text-sm"
-          />
-          <span className="text-sm text-[var(--text-secondary)]">по</span>
-          <input
-            type="date"
-            aria-label="Период по"
-            value={to}
-            onChange={(e) => {
-              setTo(e.target.value);
-            }}
-            className="rounded-md border border-[var(--border-default)] bg-transparent px-2 py-1.5 text-sm"
-          />
-          <button
-            type="button"
-            disabled={from === "" || to === "" || to < from}
-            onClick={() => {
-              // `until` is exclusive, so the chosen end date has to be
-              // included by asking for the morning after it.
-              const end = new Date(`${to}T00:00:00`);
-              end.setDate(end.getDate() + 1);
-              onPick(
-                new Date(`${from}T00:00:00`).toISOString(),
-                end.toISOString(),
-                `${from} — ${to}`,
-              );
-            }}
-            className="rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-45"
-          >
-            Разбор за период
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              onPick(since, until, monthLabel);
-            }}
-            className="rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-          >
-            Разбор за месяц
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={() => {
+            onPick(since, until, monthLabel);
+          }}
+          className="rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+        >
+          Разбор за месяц
+        </button>
+      </div>
+
+      {/* The instruction lives on screen only while it is actionable. A
+          permanent "кликните два дня" is read once and then becomes furniture. */}
+      <div role="status" className="text-xs text-[var(--text-secondary)]" aria-live="polite">
+        {anchor === null ? (
+          "Кликните день — или два дня, чтобы разобрать период между ними."
+        ) : (
+          <span className="inline-flex items-center gap-2">
+            Начало: <strong className="font-semibold">{dayLabel(anchor)}</strong> · выберите второй
+            день (тот же — за один день)
+            <button
+              type="button"
+              onClick={() => {
+                setAnchor(null);
+                setHovered(null);
+              }}
+              className="inline-flex items-center gap-1 rounded border border-[var(--border-default)] px-1.5 py-0.5 hover:text-[var(--text-primary)]"
+            >
+              <X className="size-3" aria-hidden="true" />
+              Отмена
+            </button>
+          </span>
+        )}
       </div>
 
       {monthQuery.isLoading ? (
@@ -188,34 +243,60 @@ export function CalendarTab({
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-7 gap-1.5">
+          <div
+            className="grid grid-cols-7 gap-1.5"
+            onMouseLeave={() => {
+              setHovered(null);
+            }}
+          >
             {Array.from({ length: lead }, (_, i) => (
               <div key={`lead-${String(i)}`} aria-hidden="true" />
             ))}
             {Array.from({ length: daysInMonth }, (_, i) => {
               const day = i + 1;
+              const date = new Date(cursor.y, cursor.m, day);
               const point = byDay.get(localKey(cursor.y, cursor.m, day));
               const margin = Number(point?.margin_usd ?? 0);
               // Floor at 8% so a day with any margin at all is still visibly
               // not an empty one.
               const tint = peakMargin > 0 && margin > 0 ? Math.max(0.08, margin / peakMargin) : 0;
-              const dayIso = isoAt(cursor.y, cursor.m, day);
-              const nextIso = isoAt(cursor.y, cursor.m, day + 1);
-              const label = `${String(day)} ${MONTHS[cursor.m] ?? ""}`;
+              const inPreview =
+                preview !== null && date.getTime() >= preview.from && date.getTime() <= preview.to;
+              const isAnchor = anchor !== null && anchor.getTime() === date.getTime();
               return (
                 <button
                   key={day}
                   type="button"
-                  disabled={point === undefined}
-                  onClick={() => {
-                    onPick(dayIso, nextIso, label);
+                  onMouseEnter={() => {
+                    setHovered(date);
                   }}
-                  title={point === undefined ? "Нет оплаченных заказов" : label}
-                  className="min-h-[76px] rounded-lg border border-[var(--border-default)] p-2 text-left transition enabled:hover:border-[var(--accent)] disabled:opacity-45"
+                  onFocus={() => {
+                    setHovered(date);
+                  }}
+                  onClick={() => {
+                    choose(date);
+                  }}
+                  // Days with nothing sold stay selectable: "с 10 по 14" is a
+                  // perfectly ordinary question when the 10th was quiet, and
+                  // an unclickable end makes it unaskable.
+                  aria-label={
+                    point === undefined
+                      ? `${dayLabel(date)} — нет оплаченных заказов`
+                      : `${dayLabel(date)} — выручка ${usd(point.revenue_usd)}${point.margin_usd === null ? "" : `, маржа ${usd(point.margin_usd)}`}`
+                  }
+                  className={`min-h-[76px] rounded-lg border p-2 text-left transition hover:border-[var(--accent)] ${
+                    isAnchor
+                      ? "border-[var(--accent)] ring-2 ring-[var(--accent)]"
+                      : inPreview
+                        ? "border-[var(--accent)]"
+                        : "border-[var(--border-default)]"
+                  } ${point === undefined ? "opacity-45" : ""}`}
                   style={
-                    tint > 0
+                    tint > 0 || inPreview
                       ? {
-                          backgroundColor: `color-mix(in srgb, var(--accent) ${String(Math.round(tint * 28))}%, transparent)`,
+                          backgroundColor: inPreview
+                            ? "var(--bg-accent-soft)"
+                            : `color-mix(in srgb, var(--accent) ${String(Math.round(tint * 28))}%, transparent)`,
                         }
                       : undefined
                   }

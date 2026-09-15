@@ -149,6 +149,14 @@ health) for a **different cadence** and audience. Bolting multi-day trend fields
 and a range selector onto it would muddle both surfaces and force the operational
 view to carry heavier aggregations it does not need.
 
+_Still rejected as of 2026-09-16._ The overview did gain a previous-window
+comparison, a refunds figure and a retail/B2B line that day, and none of them
+crosses this line: all three are the **same 24-hour window** (the comparison is
+one more window of the same length, not a range the operator selects), all are
+counts and sums over the same rows the screen already read, and the tab with the
+funnel, the mix and the hourly chart stayed where it is. What the overview now
+carries instead of a trend is a **link to this one**.
+
 ### Option 3 — denormalise order-item cost for exact margin
 
 **Deferred, not rejected.** Snapshotting supplier cost onto each order item at
@@ -174,8 +182,16 @@ client never has to guess which form it asked for.
 **A calendar tab.** A month grid where each cell carries the day's revenue and
 its margin, tinted by margin relative to the best day on screen. Revenue alone
 cannot say which days were good — a day can take $400 and keep $12 — so the
-tint is keyed on the number being compared. Clicking a day opens the ordinary
-business tab scoped to it.
+tint is keyed on the number being compared.
+
+A period is picked by clicking its two ends on the grid; the same cell twice is
+one day. It shipped as two `дд.мм.гггг` inputs, which asked an operator to type
+a month and a year to ask about last Tuesday — the owner said so, and they are
+gone. The pending anchor survives the month stepper, so a span across a month
+boundary is still two clicks. Quiet days stopped being `disabled` in the same
+change: that was right while a click meant "open this day" and wrong the moment
+it could mean "start here", because «с 10 по 14» is an ordinary question when
+the 10th happened to be quiet.
 
 **A channel split (`channel={all|retail|b2b}`).** Retail and wholesale have
 genuinely different economics: a reseller buys at a thinner markup, so a blended

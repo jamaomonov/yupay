@@ -25,7 +25,7 @@ from yupay.modules.catalog.models import Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.integrations.models import SupplierPriceHistory
 from yupay.modules.inventory.models import InventoryCode
-from yupay.modules.orders.models import Order
+from yupay.modules.orders.revenue import order_charged_usd_subq
 from yupay.modules.payments.models import Payment, PaymentWebhook
 from yupay.modules.stats.schemas import (
     AnalyticsRange,
@@ -84,18 +84,32 @@ async def _payment_stats(db: AsyncSession, since: datetime) -> list[ProviderStat
     "$35 181 403" for what was 35 million so'm — and the providers were not
     comparable with each other either, since the column silently mixed units.
 
-    The order already carries the same charge converted at its own frozen FX
-    snapshot, so the join is the answer rather than a rate lookup here.
-    `order_id` is NOT NULL, so the inner join changes no count.
+    A payment is created for the whole order (`amount=order.total_charged`,
+    `currency=order.currency`), so the order's own USD gross *is* this
+    payment's value and no rate lookup is needed here. `charged_usd` rather
+    than `Order.total_usd`: on a variable-amount line the latter is the face
+    value the customer picked, so every Steam top-up would be reported at $10
+    where ~$11.30 was taken. See `orders.revenue` — this is the exact reading
+    that module exists to prevent.
+
+    The subquery is one row per order, so joining it fans nothing out. An
+    order with no items still counts, valued at zero.
     """
+    gross = order_charged_usd_subq()
     stmt = (
         select(
             Payment.provider,
             func.count(),
-            func.coalesce(func.sum(Order.total_usd).filter(Payment.status == "succeeded"), 0),
+            func.coalesce(
+                func.sum(func.coalesce(gross.c.charged_usd, 0)).filter(
+                    Payment.status == "succeeded"
+                ),
+                0,
+            ),
             func.count().filter(Payment.status == "succeeded"),
         )
-        .join(Order, Order.id == Payment.order_id)
+        .select_from(Payment)
+        .join(gross, gross.c.order_id == Payment.order_id, isouter=True)
         .where(Payment.created_at >= since)
         .group_by(Payment.provider)
         .order_by(func.count().desc())

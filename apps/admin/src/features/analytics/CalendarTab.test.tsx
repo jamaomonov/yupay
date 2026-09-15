@@ -111,11 +111,16 @@ describe("the month grid", () => {
     expect(screen.getByText("+$48")).toBeInTheDocument();
   });
 
-  it("asks for the clicked day with an exclusive upper bound", async () => {
+  it("asks for one day with an exclusive upper bound", async () => {
+    // Clicking the same cell twice is how a single day is asked for now that
+    // the grid picks spans. One click only arms the selection.
     const onPick = renderCalendar();
     await screen.findByText("$400");
 
-    fireEvent.click(screen.getByTitle("1 Сентябрь"));
+    const cell = screen.getByRole("button", { name: /^1 сентября/ });
+    fireEvent.click(cell);
+    expect(onPick).not.toHaveBeenCalled();
+    fireEvent.click(cell);
 
     await waitFor(() => {
       expect(onPick).toHaveBeenCalledTimes(1);
@@ -126,15 +131,53 @@ describe("the month grid", () => {
     expect(new Date(until).getDate()).toBe(2);
   });
 
-  it("leaves a day with no paid orders unclickable", async () => {
+  it("picks a span from its two ends, in either order", async () => {
+    // The whole point of the change: «с 10 по 14» used to mean typing
+    // дд.мм.гггг twice, month and year included, to ask about last week.
     const onPick = renderCalendar();
     await screen.findByText("$400");
 
-    // Every day but the two seeded ones, so take the first.
-    const [quiet] = screen.getAllByTitle("Нет оплаченных заказов");
-    if (!quiet) throw new Error("expected a day with no orders");
-    expect(quiet).toBeDisabled();
-    fireEvent.click(quiet);
+    fireEvent.click(screen.getByRole("button", { name: /^14 сентября/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^10 сентября/ }));
+
+    await waitFor(() => {
+      expect(onPick).toHaveBeenCalledTimes(1);
+    });
+    const [since, until, label] = onPick.mock.calls[0] as [string, string, string];
+    expect(new Date(since).getDate()).toBe(10);
+    // Clicked backwards; the span still runs 10 → 15 (exclusive), so the
+    // 14th is inside it.
+    expect(new Date(until).getDate()).toBe(15);
+    expect(label).toBe("10 сентября — 14 сентября");
+  });
+
+  it("lets a quiet day be one end of a span", async () => {
+    // These cells used to be `disabled`, which was right while a click meant
+    // "open this day" and wrong the moment it could mean "start here": «с 10
+    // по 14» is an ordinary question when the 10th happened to be quiet, and
+    // an unclickable end makes it unaskable.
+    const onPick = renderCalendar();
+    await screen.findByText("$400");
+
+    fireEvent.click(screen.getByRole("button", { name: /^3 сентября.*нет оплаченных/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^5 сентября/ }));
+
+    await waitFor(() => {
+      expect(onPick).toHaveBeenCalledTimes(1);
+    });
+    const [since] = onPick.mock.calls[0] as [string, string, string];
+    expect(new Date(since).getDate()).toBe(3);
+  });
+
+  it("abandons a half-made selection on Escape", async () => {
+    const onPick = renderCalendar();
+    await screen.findByText("$400");
+
+    fireEvent.click(screen.getByRole("button", { name: /^10 сентября/ }));
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: /^14 сентября/ }));
+
+    // The second click re-arms rather than completing the abandoned span.
     expect(onPick).not.toHaveBeenCalled();
   });
 });

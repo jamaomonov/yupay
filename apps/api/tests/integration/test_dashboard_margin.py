@@ -246,3 +246,63 @@ async def test_checkout_records_the_cost_it_bought_at(db_session: AsyncSession) 
         await db_session.execute(select(OrderItem).where(OrderItem.order_id == order.id))
     ).scalar_one()
     assert line.cost_usdt == Decimal("8.00"), "checkout did not freeze the cost"
+
+
+async def test_yesterday_is_the_window_before_this_one(db_session: AsyncSession) -> None:
+    """ "43 заказа" is neither good nor bad without the number it replaced.
+
+    The comparison window is derived from the current one rather than
+    configured, and it must be *closed* at the top: without an upper bound the
+    "previous 24 hours" quietly includes the present ones and every delta
+    reads as zero.
+    """
+    known, _ = await _seed_skus(db_session)
+    await _order(db_session, sku_id=known, qty=1, unit="10.00", created_ago=timedelta(hours=30))
+
+    out = await build_dashboard(db_session, window_hours=24)
+
+    assert out.totals.orders == 0, "the order is outside the current window"
+    assert out.previous is not None, "and inside the one before it"
+    assert out.previous.orders == 1
+    assert out.previous.revenue_usd == Decimal("10.00")
+
+
+async def test_a_shop_with_no_yesterday_gets_no_comparison(db_session: AsyncSession) -> None:
+    """A blank is honest; "+100% против нуля" is not."""
+    known, _ = await _seed_skus(db_session)
+    await _order(db_session, sku_id=known, qty=1, unit="10.00", created_ago=timedelta(hours=1))
+
+    out = await build_dashboard(db_session, window_hours=24)
+
+    assert out.totals.orders == 1
+    assert out.previous is None
+
+
+async def test_refunded_money_is_reported_beside_gross_revenue(
+    db_session: AsyncSession,
+) -> None:
+    """Revenue on this screen is gross — it does not net refunds out.
+
+    Without this figure the screen cannot say that a good morning was undone
+    by an afternoon of refunds.
+    """
+    known, _ = await _seed_skus(db_session)
+    await _order(db_session, sku_id=known, qty=1, unit="10.00", status="refunded")
+
+    out = await build_dashboard(db_session, window_hours=24)
+
+    assert out.totals.refunded_usd == Decimal("10.00")
+    assert out.totals.revenue_usd == 0, "a refunded order is not revenue"
+
+
+async def test_both_halves_of_the_business_are_always_named(db_session: AsyncSession) -> None:
+    """A missing row reads as missing data, not as a quiet morning on that side."""
+    known, _ = await _seed_skus(db_session)
+    await _order(db_session, sku_id=known, qty=1, unit="10.00")
+
+    out = await build_dashboard(db_session, window_hours=24)
+
+    by_channel = {c.channel: c for c in out.channels_in_window}
+    assert set(by_channel) == {"retail", "b2b"}
+    assert by_channel["retail"].orders == 1
+    assert by_channel["b2b"].orders == 0
