@@ -898,6 +898,25 @@ class Settings(BaseSettings):
     # value (USD-equivalent). Set to 0 to disable.
     supplier_low_balance_threshold: float = Field(default=50.0)
 
+    # --- blog import (Bunzy) ---
+    # A third party writes one article a day and we pull it in as a
+    # **draft** — never published automatically (ADR-0077). Leave the key
+    # empty to disable the job entirely; that is the dev and CI default.
+    bunzy_api_url: str = Field(
+        default="https://app.bunzy.io",
+        description="Origin of the Bunzy blog API; no trailing slash.",
+    )
+    bunzy_api_key: str = Field(
+        default="",
+        description=(
+            "Server-side only. It authenticates as our whole blog account, so "
+            "it must never reach a browser bundle or a client-rendered page."
+        ),
+    )
+    bunzy_import_interval_minutes: int = Field(default=60)
+    #: How many of the newest articles each pass looks at.
+    bunzy_import_page_size: int = Field(default=20)
+
     @property
     def is_prod(self) -> bool:
         """Whether we are running in production."""

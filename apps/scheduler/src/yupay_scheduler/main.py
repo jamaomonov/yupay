@@ -40,6 +40,7 @@ from yupay_scheduler.jobs import (
     affiliate_accrual,
     blog_publish_due,
     broadcast_dispatch,
+    bunzy_import,
     catalog_watch,
     click_timeout,
     expire_orders,
@@ -75,6 +76,7 @@ def build_scheduler() -> AsyncIOScheduler:
     affiliate_accrual.register(scheduler)
     blog_publish_due.register(scheduler)
     broadcast_dispatch.register(scheduler)
+    bunzy_import.register(scheduler)
     catalog_watch.register(scheduler)
     click_timeout.register(scheduler)
     expire_orders.register(scheduler)
