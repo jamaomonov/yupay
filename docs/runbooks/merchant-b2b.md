@@ -449,6 +449,26 @@ The admin endpoints remain — use them when a merchant cannot reach their own
 cabinet, and on a suspected leak, where the rule above still holds: revoke
 first, talk after.
 
+### The API reference is generated, and can go stale in exactly one way
+
+`reseller.yupay.uz/docs` is built from `docs/api/merchant-openapi.json`, which
+`make gen-api` writes and CI diffs. So the reference cannot drift from the
+contract — but it **can** lag a deploy, because it is baked into the cabinet's
+build. A contract change reaches the API on the API's deploy and the reference
+on the cabinet's. Ship both, or the docs describe last week for however long
+you wait.
+
+What a reader sees comes from `Field(description=...)` in
+`machine_schemas.py`. If somebody reports a field with no explanation, that is
+where it is missing — not on the page. Eighty of them were `#:` comments until
+M4, which Pydantic does not read, and the whole contract published with no
+descriptions at all.
+
+There is **no "try it" button** and there should not be one: sending a signed
+request needs the merchant's secret, which belongs on their server, and an
+order placed from a docs page spends real money with a real supplier. If a
+reseller asks for one, the answer is the generated cURL sample.
+
 ### The CSV exports, and the one setting they need
 
 Транзакции and Каталог each have a «Скачать CSV». Both are built from the same

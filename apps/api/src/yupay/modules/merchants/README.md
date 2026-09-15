@@ -2594,6 +2594,7 @@ is percent-encoded and **the encoded form is what you sign**
 | Admin HTTP surface                                          | `admin_routes.py` (`/admin/merchants`) and `catalog_b2b_routes.py` (`/admin/catalog`), over the shared replay helpers in `route_replay.py`                                                                                                                                                                                                                                                                                              |
 | Machine API routes (`/merchant/v1`)                         | `machine_routes.py` — mounted by `bootstrap`, own prefix. **`GET /orders/{merchant_order_id:path}` is greedy** and matches everything under `/orders/`; register any future `/orders/{id}/…` route above it or Starlette will swallow it.                                                                                                                                                                                               |
 | The published contract (`GET /merchant/openapi.json`)       | `machine_openapi.py` — the app's schema narrowed to these six paths and the models they reach. **Unauthenticated, not limiter-exempt, and deliberately outside `/merchant/v1`** — that prefix means "signed", and four sweeps enumerate it to assert exactly that of everything in it                                                                                                                                                   |
+| The reference an integrator reads                           | `apps/merchant/src/app/[locale]/docs` — generated from `docs/api/merchant-openapi.json` at **build** time. Every field table, type label and example body is walked out of the schema, so a field added here appears there and cannot be forgotten                                                                                                                                                                                      |
 | The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift. Its `unavailable()` is the one `item_unavailable` refusal on this API; `validate.py` raises the same one.                                                                                                                                                                                                                                                                          |
 | The advisory player check (`/validate/player`)              | `validate.py` — resolves the SKU, decides `unsupported`, and hands the rest to `integrations.player_check`. It performs no check of its own and must never turn that module's `error` into anything friendlier.                                                                                                                                                                                                                         |
@@ -2728,6 +2729,13 @@ carries the artifact, it is silent on a fulfilment that fails on its own, and it
 is configured by support until M4's cabinet. Polling the order read remains the
 contract's delivery channel, which is why it is described that way wherever it
 appears.
+
+**The field descriptions in `machine_schemas.py` are published.** They are
+`Field(description=...)`, not `#:` comments, and they reach the JSON, every
+generated client and the reference page at `reseller.yupay.uz/docs`. Write
+them for a third-party integrator: what the field means and what to do about
+it, never a spec section number, a task number or the name of a function.
+Eighty of them were `#:` comments until M4 and reached nobody.
 
 **M4 adds the cabinet** — the browser half, `apps/merchant` at
 `reseller.yupay.uz` over `/merchant/cabinet` (ADR-0076). Nothing in it changes
