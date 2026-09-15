@@ -76,7 +76,13 @@ async def build(
             raise ValidationError("unknown status filter", code="unknown_status", status=status)
         query = query.where(Order.status == status)
     if search:
-        needle = f"%{search.strip()}%"
+        # Escape what ILIKE treats as a pattern before wrapping it in one.
+        # Without this, typing ``_`` matches every order and ``%`` matches
+        # every order, which reads as a broken search rather than as a
+        # feature nobody documented. There is no injection either way — the
+        # needle is a bind parameter — this is about the answer being right.
+        escaped = search.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        needle = f"%{escaped}%"
         # ``Order.id`` is a Postgres ``uuid`` and there is no ``uuid ILIKE``
         # operator, so the cast is not a nicety: without it the whole search
         # answers 500 rather than answering nothing. Substring on both ids is
@@ -85,7 +91,8 @@ async def build(
         # keeps the scan inside one account's orders, which is what the
         # ``idempotency_key`` half already costs.
         query = query.where(
-            Order.idempotency_key.ilike(needle) | cast(Order.id, String).ilike(needle)
+            Order.idempotency_key.ilike(needle, escape="\\")
+            | cast(Order.id, String).ilike(needle, escape="\\")
         )
     if cursor is not None:
         created_at, order_id = transactions.decode_cursor(cursor)

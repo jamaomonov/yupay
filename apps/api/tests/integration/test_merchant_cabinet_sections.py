@@ -266,6 +266,11 @@ async def test_search_finds_an_order_by_either_id(
     assert [row["merchant_order_id"] for row in await _search(ours)] == [mine]
     assert [row["merchant_order_id"] for row in await _search(ours[-12:])] == [mine]
     assert await _search("no-such-order") == []
+    # ILIKE metacharacters are escaped, so they search for themselves. Typing
+    # one used to match every order, which reads as a broken search.
+    assert await _search("%") == []
+    assert await _search("_") == []
+    assert await _search("manual%") == []
 
 
 async def test_one_operator_never_lists_another_merchants_orders(
