@@ -1,13 +1,30 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
+import { Braces, Check, Code, Copy, Terminal, type LucideIcon } from "lucide-react";
 import { useState } from "react";
+
+import { CodeWindow } from "@/components/CodeWindow";
 
 export interface Tab {
   id: string;
   label: string;
   code: string;
 }
+
+/**
+ * What kind of thing the open tab is, as an icon.
+ *
+ * Keyed on the tab id the call sites already use — `curl`, `python`, `node`,
+ * `json`. An id we have no icon for gets none rather than a wrong one: a
+ * generic glyph beside every block is decoration, and the point of this one
+ * is to distinguish "paste this in a terminal" from "this is a payload".
+ */
+const ICON_BY_TAB: Record<string, LucideIcon> = {
+  curl: Terminal,
+  python: Code,
+  node: Code,
+  json: Braces,
+};
 
 /**
  * A code block with tabs and a copy button.
@@ -33,51 +50,53 @@ export function CodeTabs({
   const shown = tabs.find((tab) => tab.id === active) ?? tabs[0];
 
   return (
-    <div className="border-border bg-card overflow-hidden rounded-xl border">
-      <div className="border-border bg-card-2 flex items-center gap-1 border-b px-2 py-1.5">
-        {label !== undefined && (
-          <span className="text-tx-dim px-2 text-[11px] font-semibold tracking-wide">{label}</span>
-        )}
-        {tabs.length > 1 &&
-          tabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              onClick={() => {
-                setActive(tab.id);
-                setCopied(false);
-              }}
-              className={`rounded-btn px-2.5 py-1 text-[12px] ${
-                tab.id === shown?.id ? "bg-card text-foreground font-semibold" : "text-tx-mute"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
-        <button
-          type="button"
-          aria-label={copied ? copiedLabel : copyLabel}
-          onClick={() => {
-            if (shown === undefined) return;
-            void navigator.clipboard.writeText(shown.code).then(
-              () => {
-                setCopied(true);
-                setTimeout(() => {
+    <CodeWindow
+      {...(shown === undefined ? {} : { icon: ICON_BY_TAB[shown.id] })}
+      {...(label === undefined ? {} : { title: label })}
+      actions={
+        <>
+          {tabs.length > 1 &&
+            tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => {
+                  setActive(tab.id);
                   setCopied(false);
-                }, 2000);
-              },
-              () => undefined,
-            );
-          }}
-          className="text-tx-dim ml-auto inline-flex items-center gap-1.5 px-2 py-1 text-[11px]"
-        >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? copiedLabel : copyLabel}
-        </button>
-      </div>
+                }}
+                className={`rounded-btn px-2.5 py-1 text-[12px] ${
+                  tab.id === shown?.id ? "bg-card text-foreground font-semibold" : "text-tx-mute"
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          <button
+            type="button"
+            aria-label={copied ? copiedLabel : copyLabel}
+            onClick={() => {
+              if (shown === undefined) return;
+              void navigator.clipboard.writeText(shown.code).then(
+                () => {
+                  setCopied(true);
+                  setTimeout(() => {
+                    setCopied(false);
+                  }, 2000);
+                },
+                () => undefined,
+              );
+            }}
+            className="text-tx-dim inline-flex items-center gap-1.5 px-2 py-1 text-[11px]"
+          >
+            {copied ? <Check size={12} /> : <Copy size={12} />}
+            {copied ? copiedLabel : copyLabel}
+          </button>
+        </>
+      }
+    >
       <pre className="max-h-[32rem] overflow-auto p-4 font-mono text-[12.5px] leading-[1.7]">
         <code>{shown?.code ?? ""}</code>
       </pre>
-    </div>
+    </CodeWindow>
   );
 }

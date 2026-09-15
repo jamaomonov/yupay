@@ -1,17 +1,19 @@
-import { ArrowRight, KeyRound, ShoppingCart, UserPlus } from "lucide-react";
+import { ArrowRight, Braces, KeyRound, ShoppingCart, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import { CodeWindow } from "@/components/CodeWindow";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { countBrands } from "@/lib/brands";
 
 export const revalidate = 3600;
 
+/** The window's title: the request the body below belongs to. */
+const SNIPPET_TITLE = "POST /merchant/v1/orders";
+
 /** Kept verbatim rather than built from strings: it is a code sample, and the
  *  moment it is templated somebody will template a field name too. */
-const SNIPPET = `POST /merchant/v1/orders
-
-{
+const SNIPPET = `{
   "merchant_order_id": "shop-10482",
   "sku_id": "01a042ce-7bf4-...",
   "expected_price": "8.91",
@@ -108,9 +110,11 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
             fastest way to answer "what is this" for the person deciding, and
             it is real — the field names are the ones `POST /merchant/v1/orders`
             takes. */}
-          <pre className="border-border bg-card text-tx-mute overflow-x-auto rounded-xl border p-5 font-mono text-[12.5px] leading-[1.75]">
-            <code>{SNIPPET}</code>
-          </pre>
+          <CodeWindow icon={Braces} title={SNIPPET_TITLE}>
+            <pre className="text-tx-mute overflow-x-auto p-5 font-mono text-[12.5px] leading-[1.75]">
+              <code>{SNIPPET}</code>
+            </pre>
+          </CodeWindow>
         </section>
 
         <section className="mt-20">
