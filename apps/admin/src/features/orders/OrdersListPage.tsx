@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
-import { Ban, Search } from "lucide-react";
+import { Ban, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -135,6 +135,12 @@ export function OrdersListPage() {
       return apiGet<OrderAdminListOut>(`/api/v1/admin/orders?${params.toString()}`);
     },
     refetchInterval: 10_000,
+    // Overrides the global `refetchOnWindowFocus: false` for this list alone.
+    // The 10s poll pauses whenever the tab is not focused, so an operator who
+    // switched to the supplier's panel and came back was reading whatever was
+    // on screen when they left — which is why the page was being reloaded by
+    // hand. Other admin screens are reference data and keep the global rule.
+    refetchOnWindowFocus: true,
   });
 
   const cancel = useMutation<OrderAdminOut, ApiError, OrderAdminOut>({
@@ -411,14 +417,28 @@ export function OrdersListPage() {
         )}
       </section>
 
-      {Object.keys(totalCharged).length > 0 && (
-        <p className="mb-3 text-xs text-[var(--text-secondary)]">
-          Сумма на этой странице:{" "}
-          {Object.entries(totalCharged)
-            .map(([cur, v]) => formatMoney(v, cur))
-            .join(" · ")}
+      {/* The row is unconditional even though the total is not: an empty page
+          is exactly when an operator wants to ask again, and a button that
+          disappears with the last row is a button that is missing when it is
+          needed. */}
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-[var(--text-secondary)]">
+          {Object.keys(totalCharged).length > 0 && (
+            <>
+              Сумма на этой странице:{" "}
+              {Object.entries(totalCharged)
+                .map(([cur, v]) => formatMoney(v, cur))
+                .join(" · ")}
+            </>
+          )}
         </p>
-      )}
+        <RefreshButton
+          busy={ordersQuery.isFetching}
+          onClick={() => {
+            void ordersQuery.refetch();
+          }}
+        />
+      </div>
 
       {ordersQuery.isError && <p className="text-sm text-[var(--danger)]">Не удалось загрузить.</p>}
 
@@ -466,4 +486,31 @@ function toUntilIso(dateOnly: string): string | null {
   if (!dateOnly) return null;
   const d = new Date(`${dateOnly}T23:59:59.999`);
   return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+/**
+ * Fetch the list again, now.
+ *
+ * The list polls, so this is not the only path to fresh data — it is the one
+ * an operator can *see*. Watching a row sit at "в работе" with no way to ask
+ * is what sends somebody to the browser's reload button, which throws away
+ * the filter, the page and the scroll position with it.
+ *
+ * Disabled while a fetch is in flight so a second click cannot queue another,
+ * and the icon spins rather than the button changing size — a control that
+ * moves under the cursor is a control you miss.
+ */
+function RefreshButton({ busy, onClick }: { busy: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      title="Обновить"
+      aria-label="Обновить"
+      className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-sm text-[var(--text-secondary)] hover:bg-[var(--bg-muted)] hover:text-[var(--text-primary)] disabled:opacity-60"
+    >
+      <RefreshCw className={`size-4 ${busy ? "animate-spin" : ""}`} aria-hidden="true" />
+    </button>
+  );
 }

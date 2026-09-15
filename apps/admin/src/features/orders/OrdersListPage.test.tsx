@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { expect, it, vi } from "vitest";
 
@@ -212,4 +212,26 @@ it("renders nothing for a reason this build has never heard of", async () => {
   const row = await findDataRow();
   expect(within(row).getByText("В работе")).toBeInTheDocument();
   expect(within(row).queryByText("something_new")).not.toBeInTheDocument();
+});
+
+it("refetches the list when the refresh button is pressed", async () => {
+  // The list polls every 10s, but only while the tab is focused — so an
+  // operator who switched to the supplier's panel and came back was reading
+  // whatever was on screen when they left. This button is the visible way to
+  // ask; without it the answer was the browser's reload, which throws the
+  // filter, the page and the scroll position away with it.
+  renderPage([makeOrder()]);
+  await findDataRow();
+  const before = mockedApiGet.mock.calls.filter((call) =>
+    String(call[0]).includes("/admin/orders?"),
+  ).length;
+
+  fireEvent.click(await screen.findByRole("button", { name: "Обновить" }));
+
+  await waitFor(() => {
+    const after = mockedApiGet.mock.calls.filter((call) =>
+      String(call[0]).includes("/admin/orders?"),
+    ).length;
+    expect(after).toBeGreaterThan(before);
+  });
 });
