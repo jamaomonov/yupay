@@ -71,7 +71,8 @@
     "resetFailedBody": "It may have expired or already been used. Ask for a new one.",
     "resendLink": "Send the email again",
     "resendSentBody": "If {email} is waiting to be confirmed, we have sent the link again.",
-    "backToLogin": "Back to sign in"
+    "backToLogin": "Back to sign in",
+    "registerFailed": "Could not create the account. Try again, or write to support."
   },
   "cabinet": {
     "navDashboard": "Overview",

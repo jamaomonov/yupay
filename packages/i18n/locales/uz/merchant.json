@@ -71,7 +71,8 @@
     "resetFailedBody": "Muddati oʻtgan yoki allaqachon ishlatilgan boʻlishi mumkin. Yangisini soʻrang.",
     "resendLink": "Xatni qayta yuborish",
     "resendSentBody": "Agar {email} tasdiqlanishini kutayotgan boʻlsa, havolani qayta yubordik.",
-    "backToLogin": "Kirishga qaytish"
+    "backToLogin": "Kirishga qaytish",
+    "registerFailed": "Hisob yaratib boʻlmadi. Qayta urinib koʻring yoki qoʻllab-quvvatlashga yozing."
   },
   "cabinet": {
     "navDashboard": "Umumiy",

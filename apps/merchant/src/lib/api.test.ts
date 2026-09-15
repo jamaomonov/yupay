@@ -91,6 +91,61 @@ describe("concurrent rotation", () => {
   });
 });
 
+/**
+ * A 2xx that carries no body.
+ *
+ * `POST /register` answers **201 with no body** on purpose — registration is
+ * open, so the surface must not reveal whether an address already exists.
+ * Calling `response.json()` on that throws a SyntaxError, which is not an
+ * `ApiError`, so the form fell into its catch-all and told the operator the
+ * address was already registered. The account had in fact been created and the
+ * confirmation mail sent; they were being told the opposite, and would
+ * reasonably try again with a different address.
+ */
+describe("an empty 2xx body", () => {
+  it("resolves rather than throwing, whatever the status", async () => {
+    for (const status of [200, 201, 202, 204]) {
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async () => empty(status)),
+      );
+      await expect(api("/register", { method: "POST", anonymous: true })).resolves.toBeUndefined();
+    }
+  });
+
+  it("still parses a body when there is one", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(201, { id: "x" })),
+    );
+    await expect(api("/orders", { method: "POST", anonymous: true })).resolves.toEqual({ id: "x" });
+  });
+
+  it("still raises an ApiError on a failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => response(409, { code: "email_taken" })),
+    );
+    await expect(api("/register", { method: "POST", anonymous: true })).rejects.toMatchObject({
+      name: "ApiError",
+      status: 409,
+      code: "email_taken",
+    });
+  });
+});
+
+function empty(status: number): Response {
+  return {
+    status,
+    ok: status < 400,
+    text: async () => "",
+    json: async () => {
+      throw new SyntaxError("Unexpected end of JSON input");
+    },
+    headers: new Map<string, string>() as unknown as Headers,
+  } as unknown as Response;
+}
+
 function response(status: number, body: unknown): Response {
   return {
     status,

@@ -198,7 +198,14 @@ export async function api<T>(path: string, options: Options = {}): Promise<T> {
     returnToLogin();
   }
   if (!response.ok) throw new ApiError(response.status, await parse(response));
-  return (response.status === 204 ? undefined : await response.json()) as T;
+  // A 2xx with no body is not a failure, and `response.json()` on one throws a
+  // SyntaxError that is not an ApiError. `POST /register` answers **201 with
+  // no body** — deliberately, so the surface cannot report on whether an
+  // address exists — and registration therefore succeeded on the server while
+  // the form told the operator the address was already taken. Anything empty
+  // is `undefined`, whatever the status.
+  const text = await response.text();
+  return (text ? (JSON.parse(text) as T) : undefined) as T;
 }
 
 /**

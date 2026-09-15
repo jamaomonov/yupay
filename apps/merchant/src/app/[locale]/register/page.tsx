@@ -35,9 +35,13 @@ export default function RegisterPage() {
       });
       setSent(true);
     } catch (err) {
+      // The last branch used to claim the address was taken, whatever went
+      // wrong — so a network blip, a 500, or a client-side parse error all
+      // read as "you already have an account". Only say that when the API
+      // says it.
       if (err instanceof ApiError && err.code === "email_taken") setError(t("emailTaken"));
       else if (err instanceof ApiError && err.status === 429) setError(t("tooManyAttempts"));
-      else setError(t("emailTaken"));
+      else setError(t("registerFailed"));
     } finally {
       setBusy(false);
     }
