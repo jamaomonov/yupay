@@ -211,6 +211,49 @@ async def test_the_orders_list_shows_what_the_deposit_paid_not_the_line(
     assert rows[0]["merchant_order_id"].startswith("manual-")
 
 
+async def test_search_finds_an_order_by_either_id(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """Both halves of the search box, because only one of them is text.
+
+    ``Order.id`` is a Postgres ``uuid``. ``uuid ILIKE text`` is not an
+    operator, so an uncast comparison does not return nothing — it raises,
+    and the whole endpoint answers 500 the moment anybody types. A test that
+    exercised only the status filter would never have seen it; this one was
+    written after a browser did.
+    """
+    access, merchant_id = await _signed_up(integration_client, sent, "find@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+    placed = await integration_client.post(
+        f"{BASE}/orders",
+        headers=_auth(access),
+        json={"sku_id": sku_id, "quantity": 1000, "expected_price": "16.54"},
+    )
+    assert placed.status_code == 201, placed.text
+    mine = str(placed.json()["merchant_order_id"])
+    ours = str(placed.json()["order_id"])
+
+    async def _search(needle: str) -> list[dict[str, object]]:
+        r = await integration_client.get(
+            f"{BASE}/orders", headers=_auth(access), params={"search": needle}
+        )
+        assert r.status_code == 200, r.text
+        items: list[dict[str, object]] = r.json()["items"]
+        return items
+
+    # Their own id, whole and in part; our id, whole and in part.
+    assert [row["merchant_order_id"] for row in await _search(mine)] == [mine]
+    assert [row["merchant_order_id"] for row in await _search(mine[-12:])] == [mine]
+    assert [row["merchant_order_id"] for row in await _search(ours)] == [mine]
+    assert [row["merchant_order_id"] for row in await _search(ours[-12:])] == [mine]
+    assert await _search("no-such-order") == []
+
+
 async def test_one_operator_never_lists_another_merchants_orders(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],

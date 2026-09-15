@@ -35,10 +35,16 @@ export default function CabinetLayout({ children }: { children: React.ReactNode 
     { href: `/${locale}/cabinet/settings`, label: t("navSettings"), icon: Settings },
   ];
 
+  const leave = () => {
+    void signOut().then(() => {
+      router.replace(`/${locale}/login`);
+    });
+  };
+
   return (
     <div className="mx-auto flex w-full max-w-6xl gap-8 px-5 py-8">
       <aside className="hidden w-52 shrink-0 md:block">
-        <nav className="space-y-1">
+        <nav aria-label={t("navLabel")} className="space-y-1">
           {nav.map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
@@ -58,11 +64,7 @@ export default function CabinetLayout({ children }: { children: React.ReactNode 
         </nav>
         <button
           type="button"
-          onClick={() => {
-            void signOut().then(() => {
-              router.replace(`/${locale}/login`);
-            });
-          }}
+          onClick={leave}
           className="text-tx-dim mt-6 flex items-center gap-2.5 px-3 py-2 text-sm"
         >
           <LogOut size={16} />
@@ -71,8 +73,44 @@ export default function CabinetLayout({ children }: { children: React.ReactNode 
       </aside>
 
       <div className="min-w-0 flex-1">
-        <div className="mb-6 flex justify-end">
-          <ThemeToggle />
+        {/* Below `md` the sidebar is gone, so the same five destinations —
+            and the way out — ride above the content as a scrolling row. A
+            drawer would be tidier and would also mean a phone user staring at
+            a screen with no visible way off it until they find the button. */}
+        <div className="mb-6 flex items-center gap-3">
+          <nav
+            aria-label={t("navLabel")}
+            className="-mx-5 flex min-w-0 flex-1 gap-2 overflow-x-auto px-5 md:hidden"
+          >
+            {nav.map(({ href, label }) => {
+              const active = pathname === href;
+              return (
+                <Link
+                  key={href}
+                  href={href}
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-btn shrink-0 whitespace-nowrap border px-3 py-1.5 text-xs ${
+                    active
+                      ? "border-border-2 bg-card-2 font-semibold"
+                      : "border-border text-tx-mute"
+                  }`}
+                >
+                  {label}
+                </Link>
+              );
+            })}
+            <button
+              type="button"
+              onClick={leave}
+              aria-label={t("signOut")}
+              className="border-border text-tx-dim rounded-btn shrink-0 border px-3 py-1.5"
+            >
+              <LogOut size={14} />
+            </button>
+          </nav>
+          <div className="ml-auto shrink-0">
+            <ThemeToggle />
+          </div>
         </div>
         {children}
       </div>

@@ -103,7 +103,7 @@ async function rotate(): Promise<boolean> {
 }
 
 interface Options {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "DELETE";
   body?: unknown;
   /** Set by the retry below; callers never pass it. */
   retried?: boolean;

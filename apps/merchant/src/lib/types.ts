@@ -68,3 +68,80 @@ export interface PlacedOrder {
   balance_usd: string;
   created_at: string;
 }
+
+/** One line of the Orders list. Money is the ledger's, not the order line's. */
+export interface OrderRow {
+  merchant_order_id: string;
+  order_id: string;
+  status: string;
+  sku_code: string;
+  price_usd: string;
+  refunded_usd: string;
+  created_at: string;
+  delivered_at: string | null;
+}
+
+export interface OrdersPage {
+  items: OrderRow[];
+  next_cursor: string | null;
+}
+
+/** What a delivered order handed over. `artifact`'s shape follows its kind. */
+export interface Delivery {
+  artifact_kind: string;
+  artifact: Record<string, unknown>;
+  delivered_at: string;
+}
+
+export interface OrderEvent {
+  event: string;
+  at: string;
+}
+
+export interface OrderDetail {
+  merchant_order_id: string;
+  order_id: string;
+  status: string;
+  sku_id: string;
+  price_usd: string;
+  refunded_usd: string;
+  created_at: string;
+  paid_at: string | null;
+  delivered_at: string | null;
+  failure_reason: string | null;
+  delivery: Delivery | null;
+  timeline: OrderEvent[];
+}
+
+/** One movement of the deposit. `amount_usd` is signed. */
+export interface Transaction {
+  transaction_id: string;
+  kind: string;
+  amount_usd: string;
+  order_id: string | null;
+  merchant_order_id: string | null;
+  created_at: string;
+}
+
+export interface TransactionsPage {
+  items: Transaction[];
+  next_cursor: string | null;
+}
+
+/** A machine credential as Settings lists it — never with its secret. */
+export interface ApiKey {
+  id: string;
+  key_id: string;
+  label: string;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+/** The create call's answer: the one moment the secret is readable. */
+export interface IssuedKey {
+  key_id: string;
+  secret: string;
+  label: string;
+  created_at: string;
+}

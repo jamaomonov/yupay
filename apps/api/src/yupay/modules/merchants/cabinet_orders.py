@@ -17,7 +17,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Final
 
-from sqlalchemy import Select, select
+from sqlalchemy import Select, String, cast, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import ValidationError
@@ -77,7 +77,16 @@ async def build(
         query = query.where(Order.status == status)
     if search:
         needle = f"%{search.strip()}%"
-        query = query.where(Order.idempotency_key.ilike(needle) | Order.id.ilike(needle))
+        # ``Order.id`` is a Postgres ``uuid`` and there is no ``uuid ILIKE``
+        # operator, so the cast is not a nicety: without it the whole search
+        # answers 500 rather than answering nothing. Substring on both ids is
+        # the documented behaviour — an operator pastes a fragment out of a
+        # support chat as often as a whole id — and the merchant scope above
+        # keeps the scan inside one account's orders, which is what the
+        # ``idempotency_key`` half already costs.
+        query = query.where(
+            Order.idempotency_key.ilike(needle) | cast(Order.id, String).ilike(needle)
+        )
     if cursor is not None:
         created_at, order_id = transactions.decode_cursor(cursor)
         # Strictly older, or the same instant and a smaller id — the tie-break
