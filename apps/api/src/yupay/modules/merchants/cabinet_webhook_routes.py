@@ -18,12 +18,14 @@ called, which is the property that lets the caller change.
 
 from __future__ import annotations
 
+from urllib.parse import urlparse
+
 from fastapi import APIRouter
 
 from yupay.core.idempotency import normalize_idempotency_key
 from yupay.core.logging import get_logger
 from yupay.modules.merchants import admin as merchant_admin
-from yupay.modules.merchants import cabinet_webhooks
+from yupay.modules.merchants import cabinet_notify, cabinet_webhooks
 from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetDeliveriesOut,
@@ -92,6 +94,14 @@ async def set_webhook(
     configured = await merchant_admin.set_webhook(db, merchant_id=merchant.id, url=body.url)
     out = _webhook_secret_out(configured)
     log.info("merchant.cabinet.webhook_set", merchant_id=merchant.id)
+    # The host, not the whole URL: a path can carry a token a merchant chose
+    # to put there, and this mail may sit in several inboxes.
+    await cabinet_notify.notify_security(
+        db,
+        merchant_id=merchant.id,
+        event="webhook_url_changed",
+        detail=urlparse(configured.webhook.url).hostname or "",
+    )
     await remember(
         db,
         scope=scope,
@@ -127,6 +137,9 @@ async def rotate_webhook_secret(
     configured = await merchant_admin.rotate_webhook_secret(db, merchant_id=merchant.id)
     out = _webhook_secret_out(configured)
     log.info("merchant.cabinet.webhook_secret_rotated", merchant_id=merchant.id)
+    await cabinet_notify.notify_security(
+        db, merchant_id=merchant.id, event="webhook_secret_rotated"
+    )
     await remember(
         db,
         scope=scope,
@@ -158,6 +171,7 @@ async def disable_webhook(
         await merchant_admin.disable_webhook(db, merchant_id=merchant.id)
     )
     log.info("merchant.cabinet.webhook_disabled", merchant_id=merchant.id)
+    await cabinet_notify.notify_security(db, merchant_id=merchant.id, event="webhook_disabled")
     await remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
     return out
 

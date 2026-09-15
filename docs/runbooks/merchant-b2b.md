@@ -347,6 +347,29 @@ sends both a reset link and, if the address is still unconfirmed, the
 confirmation again. Both endpoints answer `204` to every address, so the
 screen cannot tell them which one applied — and neither can a prober.
 
+### What the cabinet mails, and what it deliberately does not
+
+Five events, and only five: a key issued, a key revoked, a webhook URL
+changed, its signing secret rotated, the hook disabled. Every confirmed
+operator on the account gets each one — not only whoever clicked, which is the
+point: the notice has to be worth something on the day a credential was issued
+by somebody who should not have issued it.
+
+What they carry: a key id, or a webhook **host**. Never a secret, never a
+whole URL (a webhook path can hold a token the merchant put there), and no
+"was this you? / no" link — that would be an endpoint an attacker can reach
+too. The instruction is to sign in and revoke, which they reach by their own
+route.
+
+Nothing else is mailed. An order, a deposit credit, a delivery: silent. A
+cabinet that mailed about every action trains its readers to ignore the mail,
+and then the one message that mattered is ignored with the rest.
+
+A send that fails is a log line (`merchant.cabinet.security_mail_failed`),
+never a failed request — the change has already happened, and refusing it
+afterwards would leave the caller unable to tell what state they are in. If
+these stop arriving, check `RESEND_API_KEY` before looking at the cabinet.
+
 ### Locked out: what the merchant can do without us
 
 One screen, «Забыли пароль?» (`/forgot`), covers both ways in:

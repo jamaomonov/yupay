@@ -32,6 +32,7 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.merchants import (
     cabinet_export,
+    cabinet_notify,
     cabinet_orders,
     cabinet_summary,
     credentials,
@@ -281,6 +282,9 @@ async def create_key(body: CabinetApiKeyCreateIn, user: CurrentUser, db: Db) -> 
         db, merchant_id=merchant.id, label=body.label, ip_allowlist=body.ip_allowlist
     )
     log.info("merchant.cabinet.key_created", merchant_id=merchant.id, key_id=issued.key.key_id)
+    await cabinet_notify.notify_security(
+        db, merchant_id=merchant.id, event="api_key_created", detail=issued.key.key_id
+    )
     return CabinetIssuedKeyOut(
         key_id=issued.key.key_id,
         secret=issued.secret,
@@ -299,6 +303,9 @@ async def revoke_key(key_id: str, user: CurrentUser, db: Db) -> CabinetApiKeyOut
     merchant = await merchant_of(db, user)
     row = await credentials.revoke_api_key(db, merchant_id=merchant.id, key_id=key_id)
     log.info("merchant.cabinet.key_revoked", merchant_id=merchant.id, key_id=key_id)
+    await cabinet_notify.notify_security(
+        db, merchant_id=merchant.id, event="api_key_revoked", detail=row.key_id
+    )
     return CabinetApiKeyOut.model_validate(row)
 
 

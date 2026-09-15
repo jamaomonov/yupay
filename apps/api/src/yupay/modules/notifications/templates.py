@@ -292,6 +292,63 @@ def merchant_password_reset_email(*, link: str) -> EmailContent:
     )
 
 
+#: What each cabinet security notice says it is. Prose per event rather than
+#: one "что-то изменилось": a notice a reader cannot act on is a notice they
+#: learn to ignore, and the whole point is that an unexpected one is noticed.
+_MERCHANT_SECURITY_LINES: dict[str, tuple[str, str]] = {
+    "api_key_created": (
+        "Выпущен новый ключ API",
+        "В вашем кабинете выпустили новый ключ API",
+    ),
+    "api_key_revoked": (
+        "Ключ API отозван",
+        "В вашем кабинете отозвали ключ API",
+    ),
+    "webhook_url_changed": (
+        "Изменён адрес вебхука",
+        "В вашем кабинете изменили адрес, на который мы отправляем вебхуки",
+    ),
+    "webhook_secret_rotated": (
+        "Изменён секрет подписи вебхуков",
+        "В вашем кабинете сменили секрет, которым мы подписываем вебхуки",
+    ),
+    "webhook_disabled": (
+        "Вебхук отключён",
+        "В вашем кабинете отключили вебхук — доставки прекращены",
+    ),
+}
+
+
+def merchant_security_email(*, event: str, detail: str = "") -> EmailContent:
+    """Tell a merchant's operators that a credential or an endpoint changed.
+
+    No link and no button: there is nothing to click that is safer than what
+    the reader would do anyway, and a "was this you? / no" link in a mail is
+    an endpoint an attacker can reach too. The instruction is to sign in, or
+    to write to support — both of which they reach by their own route.
+
+    ``detail`` is shown verbatim and is a key id or a webhook host: enough to
+    tell "the key I just made" from "a key I did not", never a secret.
+    """
+    heading, sentence = _MERCHANT_SECURITY_LINES.get(
+        event, ("Изменение в кабинете", "В вашем кабинете изменились настройки доступа")
+    )
+    named = f"{sentence}: {detail}." if detail else f"{sentence}."
+    body = _paragraph(named) + _paragraph(
+        f'<span style="font-size:13px;color:{_MUTED};">Если это были не вы — '
+        "сразу отзовите ключи в кабинете и напишите в поддержку.</span>"
+    )
+    return EmailContent(
+        subject=f"{heading} — кабинет YuPay для партнёров",
+        html=_layout(preheader=named, heading=heading, body_html=body),
+        text=(
+            f"{heading} — кабинет YuPay для партнёров\n\n{named}\n\n"
+            "Если это были не вы — сразу отзовите ключи в кабинете "
+            "и напишите в поддержку.\n"
+        ),
+    )
+
+
 def partner_invite_email(*, link: str) -> EmailContent:
     """Approval notice for a new affiliate partner, with the set-password link.
 
@@ -536,6 +593,7 @@ __all__ = [
     "EmailContent",
     "merchant_confirm_email",
     "merchant_password_reset_email",
+    "merchant_security_email",
     "merchant_webhook_disabled_email",
     "order_confirmation_email",
     "order_delivered_email",

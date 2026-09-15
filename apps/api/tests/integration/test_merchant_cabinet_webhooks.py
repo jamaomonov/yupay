@@ -24,7 +24,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import Settings, get_settings
 from yupay.core.ids import new_id
-from yupay.modules.merchants import cabinet_auth_routes
+from yupay.modules.merchants import cabinet_auth_routes, cabinet_notify
 from yupay.modules.merchants.models import MerchantWebhook, MerchantWebhookDelivery
 
 pytestmark = pytest.mark.asyncio
@@ -51,6 +51,7 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
     base["merchant_cabinet_url"] = CABINET_URL
     monkeypatch.setattr(cabinet_auth_routes, "send_email", _send)
     monkeypatch.setattr(cabinet_auth_routes, "get_settings", lambda: Settings(**base))
+    monkeypatch.setattr(cabinet_notify, "send_email", _send)
     return mails
 
 
@@ -270,6 +271,34 @@ async def test_the_delivery_log_is_this_merchants_only_and_pages(
     # The other merchant sees only their own row, whatever ours contains.
     theirs_page = await integration_client.get(f"{BASE}/webhook/deliveries", headers=_auth(theirs))
     assert [row["payload"]["owner"] for row in theirs_page.json()["items"]] == [their_merchant]
+
+
+async def test_changing_the_endpoint_tells_the_account_the_host_only(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """A webhook path can carry a token the merchant chose to put there.
+
+    The notice names the **host** and not the whole URL, because the mail may
+    sit in several inboxes and the thing a reader needs is "did it move to
+    somewhere I recognise", which the host answers.
+    """
+    access, _ = await _signed_up(integration_client, sent, "hooknotify@acme.example.com")
+    sent.clear()
+
+    await integration_client.put(
+        f"{BASE}/webhook",
+        headers={**_auth(access), **_key()},
+        json={"url": "https://acme.example.com/hooks/s3cr3t-path"},
+    )
+    await integration_client.post(
+        f"{BASE}/webhook/rotate-secret", headers={**_auth(access), **_key()}
+    )
+    await integration_client.delete(f"{BASE}/webhook", headers={**_auth(access), **_key()})
+
+    assert [mail["to"] for mail in sent] == ["hooknotify@acme.example.com"] * 3
+    assert "acme.example.com" in sent[0]["html"]
+    assert "s3cr3t-path" not in sent[0]["html"], "the path is not ours to repeat"
+    assert len({mail["subject"] for mail in sent}) == 3, "one wording per event"
 
 
 async def test_every_webhook_route_refuses_a_signed_out_browser(

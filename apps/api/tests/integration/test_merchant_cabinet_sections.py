@@ -39,7 +39,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
-from yupay.modules.merchants import cabinet_auth_routes
+from yupay.modules.merchants import cabinet_auth_routes, cabinet_notify
 from yupay.modules.merchants.models import MerchantUser
 from yupay.modules.orders.models import Order
 from yupay.modules.users.models import TelegramLink, User
@@ -99,6 +99,11 @@ def sent(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str]]:
     base["merchant_cabinet_url"] = CABINET_URL
     monkeypatch.setattr(cabinet_auth_routes, "send_email", _send)
     monkeypatch.setattr(cabinet_auth_routes, "get_settings", lambda: Settings(**base))
+    # The security notices import ``send_email`` into their own module, so
+    # they need their own patch — without it they fall through to a real
+    # (unconfigured) send, which is swallowed, and a test asserting on them
+    # would silently assert on nothing.
+    monkeypatch.setattr(cabinet_notify, "send_email", _send)
     return mails
 
 
@@ -666,6 +671,34 @@ async def test_a_key_carries_the_allowlist_it_was_issued_with(
     }
     assert len(listed) == 2, "the refused call must not have minted a credential"
     assert listed[issued.json()["key_id"]] == ["203.0.113.5", "10.0.0.0/8"]
+
+
+async def test_issuing_and_revoking_a_key_tells_the_account(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """Spec §11's security mail, and the one thing it has to accomplish.
+
+    A credential issued by somebody who should not have issued it must be
+    **noticed**, so the notice names the key id — enough to tell "the key I
+    just made" from "a key I did not" — and never the secret.
+    """
+    access, _ = await _signed_up(integration_client, sent, "notify@acme.example.com")
+    sent.clear()
+
+    issued = await integration_client.post(
+        f"{BASE}/api-keys", headers=_auth(access), json={"label": "prod"}
+    )
+    key_id = str(issued.json()["key_id"])
+    secret = str(issued.json()["secret"])
+    await integration_client.delete(f"{BASE}/api-keys/{key_id}", headers=_auth(access))
+
+    assert [mail["to"] for mail in sent] == ["notify@acme.example.com"] * 2
+    assert all(key_id in mail["html"] for mail in sent)
+    assert secret not in sent[0]["html"], "a notice must never carry the secret"
+    assert secret not in sent[0]["text"]
+    # Different words per event, not one "что-то изменилось": a notice a
+    # reader cannot act on is a notice they learn to ignore.
+    assert sent[0]["subject"] != sent[1]["subject"]
 
 
 async def test_every_section_refuses_a_signed_out_browser(
