@@ -3422,6 +3422,251 @@
         "title": "BusinessSummaryOut",
         "type": "object"
       },
+      "CabinetConfirmIn": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "CabinetConfirmIn",
+        "type": "object"
+      },
+      "CabinetLoginIn": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "CabinetLoginIn",
+        "type": "object"
+      },
+      "CabinetOrderIn": {
+        "additionalProperties": false,
+        "description": "Ordering from the catalog page, without a ``merchant_order_id``.\n\nThe cabinet mints one (``manual-<uuid>``, spec \u00a711) rather than asking a\nperson to invent an idempotency key. Everything else is the machine API's\nbody, because this order must walk the identical pricing, validation and\ndeposit path \u2014 one flow, so a cabinet order and an API order are the same\nkind of thing in history, in the ledger and in a dispute.",
+        "properties": {
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd"
+          },
+          "expected_price": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Expected Price"
+          },
+          "fulfillment_data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fulfillment Data",
+            "type": "object"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "expected_price"
+        ],
+        "title": "CabinetOrderIn",
+        "type": "object"
+      },
+      "CabinetProfileOut": {
+        "description": "``GET /merchant/cabinet/me`` \u2014 the operator and their company.",
+        "properties": {
+          "balance_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Usd",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "offer_accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Accepted At"
+          },
+          "offer_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Version"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "timezone",
+          "merchant_id",
+          "title",
+          "status",
+          "balance_usd",
+          "offer_version",
+          "offer_accepted_at"
+        ],
+        "title": "CabinetProfileOut",
+        "type": "object"
+      },
+      "CabinetRegisterIn": {
+        "additionalProperties": false,
+        "properties": {
+          "accept_offer": {
+            "title": "Accept Offer",
+            "type": "boolean"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 128,
+            "minLength": 2,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "title",
+          "accept_offer"
+        ],
+        "title": "CabinetRegisterIn",
+        "type": "object"
+      },
+      "CabinetTokenIn": {
+        "additionalProperties": false,
+        "description": "A refresh or logout body. One field, named for what it carries.",
+        "properties": {
+          "refresh_token": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "CabinetTokenIn",
+        "type": "object"
+      },
+      "CabinetTokensOut": {
+        "description": "What the browser stores after a sign-in or a rotation.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in"
+        ],
+        "title": "CabinetTokensOut",
+        "type": "object"
+      },
       "CatalogEntryOut": {
         "properties": {
           "external_id": {
@@ -30802,6 +31047,363 @@
         "summary": "Liveness probe",
         "tags": [
           "meta"
+        ]
+      }
+    },
+    "/merchant/cabinet/catalog": {
+      "get": {
+        "description": "The same tree the machine API serves, priced for this merchant.\n\nOne builder, so the storefront a person browses and the JSON their server\npolls can never disagree about what is sellable or what it costs.",
+        "operationId": "catalog_merchant_cabinet_catalog_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantCatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The wholesale price list",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/confirm": {
+      "post": {
+        "description": "Consume the link and sign the operator in.\n\nSigning them in here rather than redirecting to a login form is safe for\nthe reason the link exists: holding it *is* proof of the mailbox, which is\nthe same proof the password form is trying to establish.",
+        "operationId": "confirm_merchant_cabinet_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm an address",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/login": {
+      "post": {
+        "operationId": "login_merchant_cabinet_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign in",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/logout": {
+      "post": {
+        "operationId": "logout_merchant_cabinet_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke one session",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/me": {
+      "get": {
+        "operationId": "me_merchant_cabinet_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The operator and their company",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/orders": {
+      "post": {
+        "description": "Buy one SKU, minting the idempotency key on the merchant's behalf.\n\n``manual-<uuid>`` (spec \u00a711): unique per click, and visibly not a\nreseller's own id, so a support conversation about \"order acme-417\" is\nnever about one of these.\n\nThe trade this makes, deliberately: a double-click is two orders, where an\nAPI caller re-sending one id gets one. A person can see both in the list\nand ask for a refund; an invented key that collapsed two intentional\npurchases into one would be the worse failure, and the browser prevents the\ncommon case by disabling the button.",
+        "operationId": "place_order_merchant_cabinet_orders_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetOrderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Order from the catalog page",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/refresh": {
+      "post": {
+        "operationId": "refresh_merchant_cabinet_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rotate a session",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/register": {
+      "post": {
+        "description": "Create the account and mail a confirmation link.\n\nAnswers ``201`` with no body. The address is not echoed and no token is\nissued: registration is open, so the response must look the same to\nsomebody probing addresses as to the person who owns one \u2014 and the only\nthing that proves ownership is the link.",
+        "operationId": "register_merchant_cabinet_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetRegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open a merchant account and its first operator",
+        "tags": [
+          "merchant-cabinet"
         ]
       }
     },

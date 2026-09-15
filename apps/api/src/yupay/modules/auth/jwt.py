@@ -34,6 +34,11 @@ TokenKind = Literal[
     # token structurally unusable on a buyer endpoint and a buyer token
     # unusable on the panel.
     "partner_access",
+    # Merchant cabinet operators (spec §11). Same reasoning as the line above,
+    # one actor further out: a reseller's operator is neither a buyer nor a
+    # partner, and three kinds that reject each other are three mistakes the
+    # type system makes for us.
+    "merchant_access",
 ]
 
 
@@ -151,6 +156,41 @@ def mint_partner_access(
         sub=sub,
         kind="partner_access",
         ttl_seconds=s.affiliate_access_ttl_seconds,
+        settings=s,
+    )
+    payload["sid"] = sid
+    return _encode(payload, settings=s)
+
+
+def mint_merchant_access(
+    *,
+    sub: str,
+    sid: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a short-lived access JWT for an authenticated **merchant user**.
+
+    Its own ``kind``, for the reason :func:`mint_partner_access` gives: a
+    cabinet token must be structurally unusable on a buyer or partner endpoint
+    and vice versa. Note what ``sub`` is — the ``merchant_users`` row, the
+    person — not the ``merchants`` row. The cabinet resolves the company from
+    the person on every request, so a user moved between merchants cannot keep
+    acting for the old one on a token minted before the move.
+
+    Args:
+        sub: The ``merchant_users`` row id.
+        sid: The ``merchant_sessions`` row this token belongs to. The caller is
+            responsible for it being non-revoked.
+        settings: Overrides the process settings; for tests.
+
+    Returns:
+        The encoded JWT.
+    """
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="merchant_access",
+        ttl_seconds=s.merchant_access_ttl_seconds,
         settings=s,
     )
     payload["sid"] = sid

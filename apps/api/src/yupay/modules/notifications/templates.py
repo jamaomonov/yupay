@@ -214,6 +214,43 @@ def password_reset_email(*, link: str) -> EmailContent:
     )
 
 
+def merchant_confirm_email(*, link: str) -> EmailContent:
+    """Confirm a merchant operator's address after an open registration.
+
+    Registration is open (spec §11), so this link is the only thing between a
+    stranger and a mailbox that is not theirs — which is why the copy names
+    what happens if they did not register: nothing, if they ignore it.
+
+    Says nothing about deposits, delivery times or pricing mechanics: the
+    landing-copy rules apply to mail we send about the same product.
+    """
+    body = (
+        _paragraph(
+            "Подтвердите адрес, чтобы войти в кабинет для партнёров YuPay. Ссылка действует сутки."
+        )
+        + _button(href=link, label="Подтвердить адрес")
+        + _fallback_link(link)
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">Если вы не регистрировались, '
+            "просто не открывайте ссылку — без подтверждения аккаунт не активен.</span>"
+        )
+    )
+    return EmailContent(
+        subject="Подтвердите адрес — кабинет YuPay для партнёров",
+        html=_layout(
+            preheader="Подтвердите адрес и войдите в кабинет.",
+            heading="Подтверждение адреса",
+            body_html=body,
+        ),
+        text=(
+            "Подтвердите адрес — кабинет YuPay для партнёров\n\n"
+            "Ссылка действует сутки:\n"
+            f"{link}\n\n"
+            "Если вы не регистрировались — просто проигнорируйте это письмо.\n"
+        ),
+    )
+
+
 def partner_invite_email(*, link: str) -> EmailContent:
     """Approval notice for a new affiliate partner, with the set-password link.
 
@@ -456,6 +493,7 @@ def merchant_webhook_disabled_email(*, host: str, failures: int, last_error: str
 
 __all__ = [
     "EmailContent",
+    "merchant_confirm_email",
     "merchant_webhook_disabled_email",
     "order_confirmation_email",
     "order_delivered_email",

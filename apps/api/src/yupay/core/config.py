@@ -130,6 +130,22 @@ class Settings(BaseSettings):
     #: a partner session guards money going out rather than money coming in.
     affiliate_access_ttl_seconds: int = Field(default=900)  # 15 min
     affiliate_refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 30)  # 30 days
+    # --- Merchant cabinet (spec §11) ---
+    # The same pair for a reseller's operator. Matched to the affiliate panel's
+    # numbers rather than to the storefront's: both are a person working in a
+    # back office on their own machine, not a shopper on a phone, and a
+    # 15-minute access token with a 30-day refresh is what that shape already
+    # uses here.
+    merchant_access_ttl_seconds: int = Field(default=900)  # 15 min
+    merchant_refresh_ttl_seconds: int = Field(default=60 * 60 * 24 * 30)  # 30 days
+    #: How long a cabinet email-confirmation link stays usable. Deliberately
+    #: shorter than the affiliate password-reset window is long: a merchant who
+    #: misses it registers again, which costs them a minute and us nothing.
+    merchant_confirm_ttl_seconds: int = Field(default=60 * 60 * 24)  # 24 h
+    #: Where the cabinet lives, for the confirmation link. Empty disables
+    #: registration mail rather than sending a link to nowhere — a confirmation
+    #: a merchant cannot complete is worse than a clear failure at signup.
+    merchant_cabinet_url: str = Field(default="")
     #: Where the partner site lives. The approval email links into it, so an
     #: empty value would send a partner a href that goes nowhere.
     partners_base_url: str = Field(default="https://partners.yupay.uz")
