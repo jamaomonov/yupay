@@ -84,7 +84,7 @@ export function PostEditPage() {
     const post = postQ.data;
     if (post === undefined) return;
     setKind(post.kind);
-    setBrandId(post.primary_brand_id);
+    setBrandId(post.primary_brand_id ?? "");
     setCover(post.cover_image_url ?? "");
     setBuyCard(post.show_buy_card);
     setPin(post.pin_on_brand);
@@ -109,9 +109,18 @@ export function PostEditPage() {
     );
   }
 
-  function body(): PostWriteBody | null {
+  /**
+   * The write payload, or `null` after telling the operator what is missing.
+   *
+   * `needsBrand` is what separates saving from publishing: a draft may sit
+   * without a brand — that is how an imported article arrives, before anyone
+   * has decided what it sells — but publishing and scheduling both put the
+   * post in front of readers, and every storefront query reaches the article
+   * through its brand.
+   */
+  function body(needsBrand: boolean): PostWriteBody | null {
     const rows = filled(translations);
-    if (!brandId) {
+    if (needsBrand && !brandId) {
       toast.error(T.form.needBrand);
       return null;
     }
@@ -133,7 +142,7 @@ export function PostEditPage() {
     }
     return {
       kind,
-      primary_brand_id: brandId,
+      primary_brand_id: brandId || null,
       show_buy_card: buyCard,
       pin_on_brand: pin,
       cover_image_url: cover.trim() || null,
@@ -145,8 +154,8 @@ export function PostEditPage() {
   }
 
   const save = useMutation({
-    mutationFn: async () => {
-      const payload = body();
+    mutationFn: async (needsBrand: boolean) => {
+      const payload = body(needsBrand);
       if (payload === null) throw new Error(T.form.needTranslation);
       if (isNew) {
         return apiPost<AdminPost>("/api/v1/admin/blog/posts", payload, idemHeaders());
@@ -167,7 +176,7 @@ export function PostEditPage() {
 
   const publish = useMutation({
     mutationFn: async () => {
-      const saved = await save.mutateAsync();
+      const saved = await save.mutateAsync(true);
       return apiPost<AdminPost>(`/api/v1/admin/blog/posts/${saved.id}/publish`, {}, idemHeaders());
     },
     onSuccess: (post) => {
@@ -184,7 +193,7 @@ export function PostEditPage() {
       if (!scheduleAt || Date.parse(scheduleAt) <= Date.now()) {
         throw new Error(T.form.needSchedule);
       }
-      const saved = await save.mutateAsync();
+      const saved = await save.mutateAsync(true);
       return apiPost<AdminPost>(
         `/api/v1/admin/blog/posts/${saved.id}/schedule`,
         { scheduled_for: scheduleAt },
@@ -227,7 +236,7 @@ export function PostEditPage() {
           <div className="flex flex-wrap gap-2">
             <Button
               onClick={() => {
-                save.mutate();
+                save.mutate(false);
               }}
               disabled={save.isPending}
             >

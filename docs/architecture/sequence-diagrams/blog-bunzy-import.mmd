@@ -1,0 +1,41 @@
+sequenceDiagram
+    autonumber
+    participant Job as scheduler/bunzy_import
+    participant Bunzy as app.bunzy.io/api/v1
+    participant Imp as blog.bunzy_import
+    participant MD as blog.markdown_html
+    participant DB as Postgres
+    actor Editor
+    participant SPA as apps/admin
+
+    Note over Job: hourly — not registered at all without BUNZY_API_KEY
+
+    Job->>Bunzy: GET /posts?limit=20 (Bearer key)
+    Bunzy-->>Job: [{slug, updatedAt}, …]
+    Job->>Imp: stale_slugs(summaries)
+    Imp->>DB: SELECT blog_imported_posts WHERE external_id IN (…)
+    Imp-->>Job: only the slugs whose revision moved
+
+    loop each stale slug (own session, own transaction)
+        Job->>Bunzy: GET /posts/{slug}
+        Bunzy-->>Job: markdown + keyTakeaways + faq + seo
+        Job->>Imp: sync_post(post)
+        Imp->>MD: markdown_to_html(takeaways + body)
+        MD-->>Imp: allowlisted HTML (h1→h2, images dropped, no attrs)
+
+        alt first time we see this slug
+            Imp->>DB: INSERT blog_posts (status='draft', primary_brand_id=NULL)
+            Imp->>DB: INSERT translation + blog_post_faqs + blog_imported_posts
+        else source unchanged
+            Imp->>DB: UPDATE last_seen_at
+        else our copy no longer hashes to what we wrote
+            Note over Imp: a person edited it — stop, permanently
+        else post left 'draft'
+            Note over Imp: published / scheduled / archived — never touched
+        else still ours and still a draft
+            Imp->>DB: UPDATE translation + replace FAQ + new fingerprints
+        end
+    end
+
+    Editor->>SPA: open the draft, attach a brand, fix, publish
+    SPA->>DB: publish refuses while primary_brand_id IS NULL

@@ -919,8 +919,15 @@
             "type": "boolean"
           },
           "primary_brand_id": {
-            "title": "Primary Brand Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Brand Id"
           },
           "published_at": {
             "anyOf": [
@@ -10620,8 +10627,15 @@
             "type": "boolean"
           },
           "primary_brand_id": {
-            "title": "Primary Brand Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Primary Brand Id"
           },
           "related_brand_ids": {
             "items": {
@@ -10646,7 +10660,6 @@
         },
         "required": [
           "kind",
-          "primary_brand_id",
           "translations"
         ],
         "title": "PostCreate",

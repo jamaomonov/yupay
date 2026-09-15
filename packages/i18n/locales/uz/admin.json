@@ -249,7 +249,9 @@
       "archived": "Arxivda.",
       "error": "Saqlab bo'lmadi: {message}",
       "needTranslation": "Kamida bitta tilda sarlavha va slug kerak.",
-      "needBrand": "Brendni tanlang."
+      "needBrand": "Brendni tanlang.",
+      "brandNone": "Brendsiz — faqat qoralama",
+      "brandDraftHint": "Qoralamani brendsiz saqlash mumkin. Chop etish uchun brend majburiy."
     }
   }
 }
