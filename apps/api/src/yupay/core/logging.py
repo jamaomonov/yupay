@@ -62,6 +62,7 @@ REDACTED_KEYS = frozenset(
         # on the blocklist before something starts logging it, not after.
         "x-merchant-key",
         "x-merchant-signature",
+        "paynet_password",
         "octo_secret",
         "octo_signature_key",
         "payme_key",

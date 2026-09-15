@@ -49,6 +49,7 @@ from yupay.modules.payments.api import admin_router as payments_admin_router
 from yupay.modules.payments.api import admin_webhook_router as payments_admin_webhook_router
 from yupay.modules.payments.api import router as payments_router
 from yupay.modules.payments.api import webhook_router as payments_webhook_router
+from yupay.modules.paynet.api import router as paynet_router
 from yupay.modules.promo.api import admin_router as promo_admin_router
 from yupay.modules.promo.api import router as promo_router
 from yupay.modules.realtime.api import router as realtime_router
@@ -86,6 +87,7 @@ router.include_router(payments_admin_router)
 router.include_router(payments_admin_webhook_router)
 router.include_router(payments_webhook_router)
 router.include_router(payme_router)
+router.include_router(paynet_router)
 router.include_router(uzum_router)
 router.include_router(click_router)
 router.include_router(g2b_webhook_router)
