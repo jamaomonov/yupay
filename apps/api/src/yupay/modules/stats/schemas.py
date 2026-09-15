@@ -97,6 +97,13 @@ class RevenuePoint(BaseModel):
     date: date
     revenue_usd: Decimal
     orders: int
+    #: Approximate, on the same basis as the summary's: fixed SKUs with a known
+    #: cost and variable ones priced off a multiplier. ``None`` when nothing
+    #: that day had a cost we know, which is not the same as a zero margin.
+    margin_usd: Decimal | None = None
+    #: Units that day whose cost we do not know, so a reader can tell a thin
+    #: margin from an incomplete one.
+    margin_unknown_units: int = 0
 
 
 class FunnelOut(BaseModel):
@@ -156,7 +163,12 @@ class CustomersOut(BaseModel):
 
 class BusinessAnalyticsOut(BaseModel):
     generated_at: datetime
-    range: AnalyticsRange
+    #: ``None`` for an explicit ``since``/``until`` window, which is every
+    #: request the calendar makes.
+    range: AnalyticsRange | None = None
+    since: datetime | None = None
+    #: Exclusive. ``None`` means the window runs up to ``generated_at``.
+    until: datetime | None = None
     summary: BusinessSummaryOut
     revenue_series: list[RevenuePoint]
     funnel: FunnelOut

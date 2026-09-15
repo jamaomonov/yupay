@@ -25,6 +25,7 @@ from yupay.modules.catalog.models import Sku
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.integrations.models import SupplierPriceHistory
 from yupay.modules.inventory.models import InventoryCode
+from yupay.modules.orders.models import Order
 from yupay.modules.payments.models import Payment, PaymentWebhook
 from yupay.modules.stats.schemas import (
     AnalyticsRange,
@@ -69,13 +70,26 @@ async def build_ops_analytics(db: AsyncSession, *, r: AnalyticsRange) -> OpsAnal
 
 
 async def _payment_stats(db: AsyncSession, since: datetime) -> list[ProviderStatOut]:
+    """Per-provider volume, in USD — which is not what `Payment.amount` holds.
+
+    `Payment.amount` is the charge in the payment's **own** currency: so'm for
+    Click, Payme and Uzum, USDT for crypto. Summing it produced a figure
+    labelled `volume_usd` and rendered with a `$`, so the admin read
+    "$35 181 403" for what was 35 million so'm — and the providers were not
+    comparable with each other either, since the column silently mixed units.
+
+    The order already carries the same charge converted at its own frozen FX
+    snapshot, so the join is the answer rather than a rate lookup here.
+    `order_id` is NOT NULL, so the inner join changes no count.
+    """
     stmt = (
         select(
             Payment.provider,
             func.count(),
-            func.coalesce(func.sum(Payment.amount).filter(Payment.status == "succeeded"), 0),
+            func.coalesce(func.sum(Order.total_usd).filter(Payment.status == "succeeded"), 0),
             func.count().filter(Payment.status == "succeeded"),
         )
+        .join(Order, Order.id == Payment.order_id)
         .where(Payment.created_at >= since)
         .group_by(Payment.provider)
         .order_by(func.count().desc())

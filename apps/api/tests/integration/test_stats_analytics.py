@@ -413,3 +413,85 @@ async def test_invalid_range_rejected(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert r.status_code == 422
+
+
+async def test_provider_volume_is_dollars_not_the_charged_currency(
+    db_session: AsyncSession,
+) -> None:
+    """The column says `volume_usd` and the admin renders it with a `$`.
+
+    `Payment.amount` is the charge in the payment's **own** currency — so'm for
+    Click, Payme and Uzum, USDT for crypto — so summing it put "$35 181 403"
+    on the analytics page for what was 35 million so'm, and made the providers
+    incomparable with each other on top of that, because the column silently
+    mixed units. The order carries the same charge already converted at its own
+    frozen FX snapshot, which is what the figure has to come from.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    moment = now()
+    order_id, _ = await _bare_order_item(db_session, sku_with)
+    # A UZS payment on a $1.00 order: 12 500 so'm charged, one dollar of volume.
+    db_session.add(
+        Payment(
+            id=new_id(),
+            order_id=order_id,
+            provider="payme",
+            status="succeeded",
+            amount=Decimal("12500.00"),
+            currency="UZS",
+            created_at=moment,
+            succeeded_at=moment,
+        )
+    )
+    await db_session.flush()
+
+    out = await svc.build_ops_analytics(db_session, r=AnalyticsRange.D30)
+    payme = next(p for p in out.payments if p.provider == "payme")
+
+    assert payme.volume_usd == Decimal("1.00"), "summed the charged so'm, not the order's USD"
+
+
+async def test_the_daily_series_carries_margin(db_session: AsyncSession) -> None:
+    """The calendar's whole point: what each day earned, not only what it took.
+
+    Margin lived on the summary alone, so a series row could say "$400 of
+    revenue" with no way to tell a good day from one that sold at cost.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    order_id, _ = await _bare_order_item(db_session, sku_with)
+    await db_session.flush()
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    assert out.revenue_series, "expected the seeded paid order to appear"
+    point = out.revenue_series[-1]
+    assert point.margin_usd is not None
+    # The seeded SKU has a known cost, so nothing that day is unpriced.
+    assert point.margin_unknown_units == 0
+
+
+async def test_an_explicit_window_is_honoured_at_both_ends(db_session: AsyncSession) -> None:
+    """One day, one month, or an arbitrary span — the calendar asks for all three.
+
+    A preset range is open-ended at the top, which cannot express "that
+    Tuesday". The upper bound is exclusive, so two adjacent windows never
+    double-count the boundary order.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    await _bare_order_item(db_session, sku_with)
+    await db_session.flush()
+    moment = now()
+
+    inside = await svc.build_business_analytics(
+        db_session, since=moment - timedelta(hours=1), until=moment + timedelta(hours=1)
+    )
+    before = await svc.build_business_analytics(
+        db_session, since=moment - timedelta(days=3), until=moment - timedelta(days=2)
+    )
+
+    assert inside.summary.gmv_usd > 0
+    assert inside.range is None, "a custom window has no preset to report"
+    assert inside.since is not None
+    assert inside.until is not None
+    assert before.summary.gmv_usd == 0, "the upper bound was not applied"
+    assert before.revenue_series == []

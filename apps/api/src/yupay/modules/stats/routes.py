@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 from collections.abc import Awaitable, Callable
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
@@ -11,6 +12,7 @@ from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
+from yupay.core.errors import ValidationError
 from yupay.core.redis import get_redis
 from yupay.modules.admin.api import require_admin
 from yupay.modules.stats import service as svc
@@ -82,12 +84,34 @@ async def _cached[AnalyticsT: BaseModel](
 async def analytics_business(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
-    range_: Annotated[AnalyticsRange, Query(alias="range")] = AnalyticsRange.D30,
+    range_: Annotated[AnalyticsRange | None, Query(alias="range")] = None,
+    since: Annotated[datetime | None, Query()] = None,
+    until: Annotated[datetime | None, Query()] = None,
 ) -> BusinessAnalyticsOut:
+    """Business analytics over a preset range, or an explicit window.
+
+    `since`/`until` win when given: the calendar asks for one month to paint
+    the grid, one day when a cell is clicked, and an arbitrary span when an
+    operator picks two dates — all the same computation, so there is one
+    endpoint rather than three. `until` is exclusive.
+    """
+    if since is not None and until is not None and until <= since:
+        raise ValidationError("until must be after since")
+    # The key has to carry the window, or a month's grid would be served from
+    # the cache of whatever preset range happened to be asked for first.
+    if since is None:
+        preset = range_ or AnalyticsRange.D30
+        key = f"stats:analytics:business:{preset.value}"
+        range_ = preset
+    else:
+        key = (
+            "stats:analytics:business:"
+            f"{since.isoformat()}:{until.isoformat() if until is not None else '-'}"
+        )
     return await _cached(
-        f"stats:analytics:business:{range_.value}",
+        key,
         BusinessAnalyticsOut,
-        lambda: svc.build_business_analytics(db, r=range_),
+        lambda: svc.build_business_analytics(db, r=range_, since=since, until=until),
     )
 
 

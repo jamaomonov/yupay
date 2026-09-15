@@ -3333,7 +3333,14 @@
             "type": "string"
           },
           "range": {
-            "$ref": "#/components/schemas/AnalyticsRange"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticsRange"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "revenue_series": {
             "items": {
@@ -3341,6 +3348,18 @@
             },
             "title": "Revenue Series",
             "type": "array"
+          },
+          "since": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Since"
           },
           "summary": {
             "$ref": "#/components/schemas/BusinessSummaryOut"
@@ -3358,11 +3377,22 @@
             },
             "title": "Top Skus",
             "type": "array"
+          },
+          "until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Until"
           }
         },
         "required": [
           "generated_at",
-          "range",
           "summary",
           "revenue_series",
           "funnel",
@@ -12916,6 +12946,23 @@
             "format": "date",
             "title": "Date",
             "type": "string"
+          },
+          "margin_unknown_units": {
+            "default": 0,
+            "title": "Margin Unknown Units",
+            "type": "integer"
+          },
+          "margin_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Usd"
           },
           "orders": {
             "title": "Orders",
@@ -26632,6 +26679,7 @@
     },
     "/api/v1/admin/stats/analytics/business": {
       "get": {
+        "description": "Business analytics over a preset range, or an explicit window.\n\n`since`/`until` win when given: the calendar asks for one month to paint\nthe grid, one day when a cell is clicked, and an arbitrary span when an\noperator picks two dates \u2014 all the same computation, so there is one\nendpoint rather than three. `until` is exclusive.",
         "operationId": "analytics_business_api_v1_admin_stats_analytics_business_get",
         "parameters": [
           {
@@ -26639,8 +26687,49 @@
             "name": "range",
             "required": false,
             "schema": {
-              "$ref": "#/components/schemas/AnalyticsRange",
-              "default": "30d"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AnalyticsRange"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Range"
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since"
+            }
+          },
+          {
+            "in": "query",
+            "name": "until",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date-time",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Until"
             }
           },
           {
