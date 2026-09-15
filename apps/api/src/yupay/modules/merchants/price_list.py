@@ -85,7 +85,7 @@ someone adding a fourth query.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import raiseload
@@ -105,6 +105,7 @@ from yupay.modules.merchants import pricing
 from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
     MerchantCatalogOut,
+    MerchantFieldOut,
     MerchantProductOut,
     MerchantSkuOut,
 )
@@ -170,7 +171,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     """
     rows = (
         await db.execute(
-            select(Brand.id, Brand.slug, Product.id, Product.slug, Sku)
+            select(Brand.id, Brand.slug, Product.id, Product.slug, Product.required_fields, Sku)
             .join(Product, Product.brand_id == Brand.id)
             .join(Sku, Sku.product_id == Product.id)
             .where(
@@ -261,7 +262,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     # disagreeing with it.
     brands: dict[str, MerchantBrandOut] = {}
     products: dict[str, MerchantProductOut] = {}
-    for brand_id, brand_slug, product_id, product_slug, sku in rows:
+    for brand_id, brand_slug, product_id, product_slug, required_fields, sku in rows:
         markup = pricing.merchant_markup_pct(sku, merchant)
         # One dollar of balance costs one dollar, so an amount SKU publishes
         # the price of a dollar and its floor is checked against one.
@@ -289,6 +290,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 product_id=product_id,
                 slug=product_slug,
                 name=product_names.get(product_id, product_slug),
+                required_fields=_fields(required_fields),
                 skus=[],
             )
             brands[brand_id].products.append(products[product_id])
@@ -309,6 +311,39 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     return MerchantCatalogOut(brands=list(brands.values()))
 
 
+def _fields(raw: list[dict[str, Any]] | None) -> list[MerchantFieldOut]:
+    """Trim a product's checkout schema to what a caller needs.
+
+    Reads defensively rather than trusting the column's shape: it is JSONB
+    written by the admin form and by the G2B importer, so a row with a missing
+    key or a label that is a bare string instead of a locale map is a data
+    problem, not a reason for every merchant's catalog to 500.
+    """
+    out: list[MerchantFieldOut] = []
+    for item in raw or []:
+        key = item.get("key")
+        if not isinstance(key, str) or not key:
+            continue
+        label = item.get("label")
+        placeholder = item.get("placeholder")
+        pattern = item.get("pattern")
+        out.append(
+            MerchantFieldOut(
+                key=key,
+                type=str(item.get("type") or "text"),
+                required=bool(item.get("required", True)),
+                label={k: str(v) for k, v in label.items()} if isinstance(label, dict) else {},
+                placeholder=(
+                    {k: str(v) for k, v in placeholder.items()}
+                    if isinstance(placeholder, dict)
+                    else {}
+                ),
+                pattern=pattern if isinstance(pattern, str) else None,
+            )
+        )
+    return out
+
+
 def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
     """One catalog row, in whichever of the three shapes this SKU is.
 
@@ -323,6 +358,9 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
     checker, and ``**common`` is not.
     """
     name = sku.denomination or sku.sku_code
+    # A variable-amount row's ``price_usd`` is a face-value placeholder, not a
+    # price — see the field's own note on the schema.
+    retail = None if sku.variable_amount else sku.price_usd
     if sku.variable_amount:
         return MerchantSkuOut(
             sku_id=sku.id,
@@ -341,6 +379,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
             sku_code=sku.sku_code,
             name=name,
             kind="unit",
+            retail_price_usd=retail,
             unit_price_usd=unit,
             unit=sku.amount_unit,
             min_qty=sku.min_qty,
@@ -353,6 +392,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
         name=name,
         kind="fixed",
         price_usd=price,
+        retail_price_usd=retail,
         updated_at=sku.updated_at,
     )
 

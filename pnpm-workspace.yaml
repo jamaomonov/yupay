@@ -3,5 +3,6 @@ packages:
   - "apps/miniapp"
   - "apps/admin"
   - "apps/partners"
+  - "apps/merchant"
   - "packages/*"
   - "e2e"

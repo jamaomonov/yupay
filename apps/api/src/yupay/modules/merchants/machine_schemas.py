@@ -256,6 +256,17 @@ class MerchantSkuOut(BaseModel):
     #: ``kind="unit"`` only: the inclusive bounds on ``quantity``.
     min_qty: int | None = None
     max_qty: int | None = None
+    #: Our own storefront price for the same thing, so a reseller can see the
+    #: reference they are being offered a discount against without opening
+    #: yupay.uz and matching SKUs by hand. Public information either way — the
+    #: storefront shows it to anyone — so publishing it here discloses nothing
+    #: and saves a comparison the cabinet would otherwise have to fake.
+    #:
+    #: ``null`` on a ``kind="amount"`` row, where the SKU's ``price_usd`` is a
+    #: face-value placeholder and not a price at all: retail charges those as a
+    #: guarded FX rate times a margin multiplier, which has no dollar figure to
+    #: quote.
+    retail_price_usd: UsdPrice | None = None
     #: ``kind="amount"`` only: the inclusive bounds on ``amount_usd``, in
     #: dollars of face value. ``unit_price_usd`` above is then the price of
     #: **one dollar** of that balance, and your total is
@@ -264,6 +275,32 @@ class MerchantSkuOut(BaseModel):
     min_amount_usd: UsdPrice | None = None
     max_amount_usd: UsdPrice | None = None
     updated_at: datetime
+
+
+class MerchantFieldOut(BaseModel):
+    """One input a product's ``fulfillment_data`` expects.
+
+    The machine API has always told an integrator that ``fulfillment_data`` is
+    required and never *what it takes* — that lived in prose, which means every
+    new product is a documentation round trip before a reseller can sell it.
+    This is the same schema the storefront renders its checkout form from,
+    trimmed to what a caller needs: the key to send, whether it is optional,
+    and the pattern we will validate against before anything is charged.
+
+    ``label`` and ``placeholder`` are locale maps because the cabinet renders
+    them to a person; a machine caller can ignore both and read ``key``.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str
+    type: str
+    required: bool
+    label: dict[str, str] = Field(default_factory=dict)
+    placeholder: dict[str, str] = Field(default_factory=dict)
+    #: The regex the order path enforces. Published so a reseller can reject a
+    #: bad id in their own UI rather than spending a round trip on a 422.
+    pattern: str | None = None
 
 
 class MerchantProductOut(BaseModel):
@@ -278,6 +315,8 @@ class MerchantProductOut(BaseModel):
     product_id: str
     slug: str
     name: str
+    #: What every SKU under this product needs in ``fulfillment_data``.
+    required_fields: list[MerchantFieldOut] = Field(default_factory=list)
     skus: list[MerchantSkuOut]
 
 
@@ -578,6 +617,7 @@ __all__ = [
     "MerchantBrandOut",
     "MerchantCatalogOut",
     "MerchantDeliveryOut",
+    "MerchantFieldOut",
     "MerchantOrderCreateIn",
     "MerchantOrderEventOut",
     "MerchantOrderOut",

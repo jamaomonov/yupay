@@ -1,0 +1,152 @@
+/**
+ * The cabinet's HTTP client.
+ *
+ * Talks only to `/merchant/cabinet/*` — the BFF — and never to
+ * `/merchant/v1`. That separation is the point: `/merchant/v1` is signed with
+ * a merchant's HMAC secret, which belongs on their server and must never reach
+ * a browser. This client carries a short-lived access token instead.
+ *
+ * Tokens live in `localStorage` rather than a cookie, because the cabinet is
+ * a separate origin from the API and a cookie would need third-party
+ * semantics that browsers are actively removing. The trade is the usual one:
+ * an XSS on this origin can read them. The mitigations are the access token's
+ * 15 minutes and a refresh that rotates — a stolen refresh works once, and the
+ * theft surfaces as the real operator's next refresh failing.
+ */
+
+const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
+
+const ACCESS_KEY = "yupay.merchant.access";
+const REFRESH_KEY = "yupay.merchant.refresh";
+
+export interface Tokens {
+  access_token: string;
+  refresh_token: string;
+  expires_in: number;
+}
+
+/** A problem+json body, as far as the cabinet cares about it. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  readonly body: Record<string, unknown>;
+
+  constructor(status: number, body: Record<string, unknown>) {
+    super(typeof body.detail === "string" ? body.detail : `HTTP ${status}`);
+    this.name = "ApiError";
+    this.status = status;
+    this.code = typeof body.code === "string" ? body.code : null;
+    this.body = body;
+  }
+}
+
+function readToken(key: string): string | null {
+  try {
+    return window.localStorage.getItem(key);
+  } catch {
+    // Private mode, or a browser set to block site data. The cabinet then
+    // behaves as signed-out, which is honest: nothing can be kept.
+    return null;
+  }
+}
+
+export function storeTokens(tokens: Tokens): void {
+  try {
+    window.localStorage.setItem(ACCESS_KEY, tokens.access_token);
+    window.localStorage.setItem(REFRESH_KEY, tokens.refresh_token);
+  } catch {
+    /* see readToken */
+  }
+}
+
+export function clearTokens(): void {
+  try {
+    window.localStorage.removeItem(ACCESS_KEY);
+    window.localStorage.removeItem(REFRESH_KEY);
+  } catch {
+    /* see readToken */
+  }
+}
+
+export function hasSession(): boolean {
+  return readToken(ACCESS_KEY) !== null;
+}
+
+export function refreshToken(): string | null {
+  return readToken(REFRESH_KEY);
+}
+
+async function parse(response: Response): Promise<Record<string, unknown>> {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { detail: text };
+  }
+}
+
+async function rotate(): Promise<boolean> {
+  const token = readToken(REFRESH_KEY);
+  if (!token) return false;
+  const response = await fetch(`${BASE}/merchant/cabinet/refresh`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ refresh_token: token }),
+  });
+  if (!response.ok) {
+    clearTokens();
+    return false;
+  }
+  storeTokens((await response.json()) as Tokens);
+  return true;
+}
+
+interface Options {
+  method?: "GET" | "POST";
+  body?: unknown;
+  /** Set by the retry below; callers never pass it. */
+  retried?: boolean;
+  /** Endpoints that are reached before there is a session. */
+  anonymous?: boolean;
+}
+
+export async function api<T>(path: string, options: Options = {}): Promise<T> {
+  const { method = "GET", body, retried = false, anonymous = false } = options;
+  const access = anonymous ? null : readToken(ACCESS_KEY);
+  const response = await fetch(`${BASE}/merchant/cabinet${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      ...(access ? { Authorization: `Bearer ${access}` } : {}),
+    },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+
+  if (response.status === 401 && !anonymous && !retried && (await rotate())) {
+    // Once. A second 401 after a successful rotation is not an expiry, it is
+    // a revoked session or a frozen merchant, and retrying forever would hide
+    // that behind a spinner.
+    return api<T>(path, { ...options, retried: true });
+  }
+  if (!response.ok) throw new ApiError(response.status, await parse(response));
+  return (response.status === 204 ? undefined : await response.json()) as T;
+}
+
+export async function signOut(): Promise<void> {
+  const token = readToken(REFRESH_KEY);
+  // Clear locally first: a network failure must not leave a browser that looks
+  // signed in. The server-side revoke is best effort on top of that.
+  clearTokens();
+  if (token) {
+    try {
+      await fetch(`${BASE}/merchant/cabinet/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: token }),
+      });
+    } catch {
+      /* the session still expires on its own */
+    }
+  }
+}

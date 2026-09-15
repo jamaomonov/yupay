@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* yupay partners — the storefront's palette, because a reseller signing in
+   should recognise the product they resell. Same token names, same scale.
+
+   Two themes from day one (spec §11). Every colour is defined ONCE, on
+   `:root`, as raw HSL components; the light theme redefines the same names
+   under `[data-theme="light"]`. No component reads a literal colour, so light
+   is a token swap rather than a second stylesheet — which is the only reason
+   it can be added later without touching every file. */
+
+@theme inline {
+  --color-bg: hsl(var(--bg));
+  --color-card: hsl(var(--card));
+  --color-card-2: hsl(var(--card-2));
+  --color-muted: hsl(var(--muted));
+  --color-border: hsl(var(--border));
+  --color-border-2: hsl(var(--border-2));
+
+  --color-foreground: hsl(var(--foreground));
+  --color-tx-mute: hsl(var(--tx-mute));
+  --color-tx-dim: hsl(var(--tx-dim));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-2: hsl(var(--primary-2));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-blue: hsl(var(--blue));
+  --color-danger: hsl(var(--danger));
+  --color-gold: hsl(var(--gold));
+
+  --font-sans: var(--app-font-sans);
+  --font-mono: var(--app-font-mono);
+
+  --radius-btn: 0.75rem;
+  --radius-lg: 0.875rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.75rem;
+}
+
+:root {
+  --bg: 232 50% 6%;
+  --card: 230 45% 8%;
+  --card-2: 232 41% 12%;
+  --muted: 228 32% 12%;
+  --border: 228 38% 16%;
+  --border-2: 232 36% 23%;
+
+  --foreground: 0 0% 100%;
+  /* Both text tones are the storefront's post-audit values, which clear WCAG
+     AA on the darkest surface here as well — the surfaces are the same. */
+  --tx-mute: 222 33% 70%;
+  --tx-dim: 226 17% 55%;
+
+  --primary: 80 100% 60%;
+  --primary-2: 80 100% 70%;
+  --primary-foreground: 0 0% 0%;
+
+  --blue: 210 100% 68%;
+  --danger: 0 85% 68%;
+  --gold: 45 100% 71%;
+
+  --app-font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --app-font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: 228 40% 98%;
+  --card: 0 0% 100%;
+  --card-2: 228 40% 96%;
+  --muted: 228 30% 94%;
+  --border: 228 24% 88%;
+  --border-2: 228 22% 80%;
+
+  --foreground: 232 45% 10%;
+  /* Darkened rather than reused: 70%/55% lightness are legible on a near-black
+     ground and invisible on a near-white one. The pair below clears 4.5:1 on
+     `--bg`, `--card` and `--muted`. */
+  --tx-mute: 228 18% 38%;
+  --tx-dim: 228 14% 46%;
+
+  /* Electric lime on white fails contrast for anything but a filled button, so
+     the light theme keeps it as a *surface* colour with black text on it and
+     never as text on the page ground. */
+  --primary: 80 75% 42%;
+  --primary-2: 80 70% 34%;
+  --primary-foreground: 0 0% 100%;
+
+  --blue: 210 90% 42%;
+  --danger: 0 72% 45%;
+  --gold: 38 90% 40%;
+
+  color-scheme: light;
+}
+
+@layer base {
+  html,
+  body {
+    background-color: hsl(var(--bg));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* A cabinet is a form-heavy surface; focus must be visible on every control
+     and on both grounds. */
+  :focus-visible {
+    outline: 2px solid hsl(var(--primary));
+    outline-offset: 2px;
+  }
+}

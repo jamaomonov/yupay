@@ -7260,6 +7260,56 @@
         "title": "MerchantDeliveryOut",
         "type": "object"
       },
+      "MerchantFieldOut": {
+        "additionalProperties": false,
+        "description": "One input a product's ``fulfillment_data`` expects.\n\nThe machine API has always told an integrator that ``fulfillment_data`` is\nrequired and never *what it takes* \u2014 that lived in prose, which means every\nnew product is a documentation round trip before a reseller can sell it.\nThis is the same schema the storefront renders its checkout form from,\ntrimmed to what a caller needs: the key to send, whether it is optional,\nand the pattern we will validate against before anything is charged.\n\n``label`` and ``placeholder`` are locale maps because the cabinet renders\nthem to a person; a machine caller can ignore both and read ``key``.",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Label",
+            "type": "object"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "placeholder": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Placeholder",
+            "type": "object"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "required"
+        ],
+        "title": "MerchantFieldOut",
+        "type": "object"
+      },
       "MerchantListOut": {
         "description": "Body of ``GET /admin/merchants``.",
         "properties": {
@@ -7632,6 +7682,13 @@
             "title": "Product Id",
             "type": "string"
           },
+          "required_fields": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantFieldOut"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          },
           "skus": {
             "items": {
               "$ref": "#/components/schemas/MerchantSkuOut"
@@ -7756,6 +7813,18 @@
               }
             ],
             "title": "Price Usd"
+          },
+          "retail_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retail Price Usd"
           },
           "sku_code": {
             "title": "Sku Code",
