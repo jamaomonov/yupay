@@ -85,7 +85,7 @@ someone adding a fourth query.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import raiseload
@@ -95,6 +95,8 @@ from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import (
     Brand,
     BrandTranslation,
+    Category,
+    CategoryTranslation,
     Product,
     ProductTranslation,
     Sku,
@@ -105,6 +107,7 @@ from yupay.modules.merchants import pricing
 from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
     MerchantCatalogOut,
+    MerchantFieldOut,
     MerchantProductOut,
     MerchantSkuOut,
 )
@@ -170,7 +173,22 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     """
     rows = (
         await db.execute(
-            select(Brand.id, Brand.slug, Product.id, Product.slug, Sku)
+            # Labelled, and read by name below. They were read positionally
+            # until two brand columns were inserted in the middle and the
+            # product-name lookup silently started keying on the category —
+            # every product in the cabinet fell back to its slug, and nothing
+            # failed.
+            select(
+                Brand.id.label("brand_id"),
+                Brand.slug.label("brand_slug"),
+                Brand.category_id.label("category_id"),
+                Brand.logo_url.label("logo_url"),
+                Brand.hero_image_url.label("hero_image_url"),
+                Product.id.label("product_id"),
+                Product.slug.label("product_slug"),
+                Product.required_fields.label("required_fields"),
+                Sku,
+            )
             .join(Product, Product.brand_id == Brand.id)
             .join(Sku, Sku.product_id == Product.id)
             .where(
@@ -235,10 +253,41 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                     BrandTranslation.locale,
                     BrandTranslation.name,
                 )
-                .where(BrandTranslation.brand_id.in_({row[0] for row in rows}))
+                .where(BrandTranslation.brand_id.in_({row.brand_id for row in rows}))
                 .order_by(BrandTranslation.locale)
             )
         ).all()
+    )
+    # One query for the sections, not a join on the main one: a category is
+    # shared by many brands, so joining would repeat its name on every SKU row
+    # of the biggest query here.
+    category_ids = {row.category_id for row in rows if row.category_id is not None}
+    category_slugs: dict[str, str] = {}
+    if category_ids:
+        category_slugs = {
+            category_id: slug
+            for category_id, slug in (
+                await db.execute(
+                    select(Category.id, Category.slug).where(Category.id.in_(category_ids))
+                )
+            ).all()
+        }
+    category_names = (
+        _names(
+            (
+                await db.execute(
+                    select(
+                        CategoryTranslation.category_id,
+                        CategoryTranslation.locale,
+                        CategoryTranslation.name,
+                    )
+                    .where(CategoryTranslation.category_id.in_(category_ids))
+                    .order_by(CategoryTranslation.locale)
+                )
+            ).all()
+        )
+        if category_ids
+        else {}
     )
     product_names = _names(
         (
@@ -248,7 +297,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                     ProductTranslation.locale,
                     ProductTranslation.name,
                 )
-                .where(ProductTranslation.product_id.in_({row[2] for row in rows}))
+                .where(ProductTranslation.product_id.in_({row.product_id for row in rows}))
                 .order_by(ProductTranslation.locale)
             )
         ).all()
@@ -261,7 +310,12 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     # disagreeing with it.
     brands: dict[str, MerchantBrandOut] = {}
     products: dict[str, MerchantProductOut] = {}
-    for brand_id, brand_slug, product_id, product_slug, sku in rows:
+    for row in rows:
+        brand_id = row.brand_id
+        brand_slug = row.brand_slug
+        product_id = row.product_id
+        product_slug = row.product_slug
+        sku = row.Sku
         markup = pricing.merchant_markup_pct(sku, merchant)
         # One dollar of balance costs one dollar, so an amount SKU publishes
         # the price of a dollar and its floor is checked against one.
@@ -282,6 +336,10 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 brand_id=brand_id,
                 slug=brand_slug,
                 name=brand_names.get(brand_id, brand_slug),
+                category_slug=category_slugs.get(row.category_id),
+                category_name=category_names.get(row.category_id),
+                logo_url=row.logo_url,
+                hero_image_url=row.hero_image_url,
                 products=[],
             )
         if product_id not in products:
@@ -289,6 +347,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 product_id=product_id,
                 slug=product_slug,
                 name=product_names.get(product_id, product_slug),
+                required_fields=_fields(row.required_fields),
                 skus=[],
             )
             brands[brand_id].products.append(products[product_id])
@@ -309,6 +368,39 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     return MerchantCatalogOut(brands=list(brands.values()))
 
 
+def _fields(raw: list[dict[str, Any]] | None) -> list[MerchantFieldOut]:
+    """Trim a product's checkout schema to what a caller needs.
+
+    Reads defensively rather than trusting the column's shape: it is JSONB
+    written by the admin form and by the G2B importer, so a row with a missing
+    key or a label that is a bare string instead of a locale map is a data
+    problem, not a reason for every merchant's catalog to 500.
+    """
+    out: list[MerchantFieldOut] = []
+    for item in raw or []:
+        key = item.get("key")
+        if not isinstance(key, str) or not key:
+            continue
+        label = item.get("label")
+        placeholder = item.get("placeholder")
+        pattern = item.get("pattern")
+        out.append(
+            MerchantFieldOut(
+                key=key,
+                type=str(item.get("type") or "text"),
+                required=bool(item.get("required", True)),
+                label={k: str(v) for k, v in label.items()} if isinstance(label, dict) else {},
+                placeholder=(
+                    {k: str(v) for k, v in placeholder.items()}
+                    if isinstance(placeholder, dict)
+                    else {}
+                ),
+                pattern=pattern if isinstance(pattern, str) else None,
+            )
+        )
+    return out
+
+
 def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
     """One catalog row, in whichever of the three shapes this SKU is.
 
@@ -323,6 +415,9 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
     checker, and ``**common`` is not.
     """
     name = sku.denomination or sku.sku_code
+    # A variable-amount row's ``price_usd`` is a face-value placeholder, not a
+    # price — see the field's own note on the schema.
+    retail = None if sku.variable_amount else sku.price_usd
     if sku.variable_amount:
         return MerchantSkuOut(
             sku_id=sku.id,
@@ -341,6 +436,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
             sku_code=sku.sku_code,
             name=name,
             kind="unit",
+            retail_price_usd=retail,
             unit_price_usd=unit,
             unit=sku.amount_unit,
             min_qty=sku.min_qty,
@@ -353,6 +449,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
         name=name,
         kind="fixed",
         price_usd=price,
+        retail_price_usd=retail,
         updated_at=sku.updated_at,
     )
 

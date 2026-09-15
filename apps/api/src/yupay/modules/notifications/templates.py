@@ -214,6 +214,141 @@ def password_reset_email(*, link: str) -> EmailContent:
     )
 
 
+def merchant_confirm_email(*, link: str) -> EmailContent:
+    """Confirm a merchant operator's address after an open registration.
+
+    Registration is open (spec §11), so this link is the only thing between a
+    stranger and a mailbox that is not theirs — which is why the copy names
+    what happens if they did not register: nothing, if they ignore it.
+
+    Says nothing about deposits, delivery times or pricing mechanics: the
+    landing-copy rules apply to mail we send about the same product.
+    """
+    body = (
+        _paragraph(
+            "Подтвердите адрес, чтобы войти в кабинет для партнёров YuPay. Ссылка действует сутки."
+        )
+        + _button(href=link, label="Подтвердить адрес")
+        + _fallback_link(link)
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">Если вы не регистрировались, '
+            "просто не открывайте ссылку — без подтверждения аккаунт не активен.</span>"
+        )
+    )
+    return EmailContent(
+        subject="Подтвердите адрес — кабинет YuPay для партнёров",
+        html=_layout(
+            preheader="Подтвердите адрес и войдите в кабинет.",
+            heading="Подтверждение адреса",
+            body_html=body,
+        ),
+        text=(
+            "Подтвердите адрес — кабинет YuPay для партнёров\n\n"
+            "Ссылка действует сутки:\n"
+            f"{link}\n\n"
+            "Если вы не регистрировались — просто проигнорируйте это письмо.\n"
+        ),
+    )
+
+
+def merchant_password_reset_email(*, link: str) -> EmailContent:
+    """A reset link for a merchant operator who cannot get in.
+
+    Named as a *request* the reader may not have made, and says what to do
+    about that: the endpoint answers the same to everybody, so this mail is
+    also what an address-prober's target receives. "Ignore it and nothing
+    happens" is the only honest instruction, and it has to be in the mail
+    rather than only in our heads.
+
+    Thirty minutes, and it says so: a reset link is read in the sitting it was
+    asked for, unlike a registration confirmation.
+    """
+    body = (
+        _paragraph(
+            "Кто-то запросил сброс пароля для кабинета YuPay для партнёров. "
+            "Ссылка действует 30 минут."
+        )
+        + _button(href=link, label="Задать новый пароль")
+        + _fallback_link(link)
+        + _paragraph(
+            f'<span style="font-size:13px;color:{_MUTED};">Если это были не вы — '
+            "просто не открывайте ссылку. Пароль останется прежним, и в аккаунте "
+            "ничего не изменится.</span>"
+        )
+    )
+    return EmailContent(
+        subject="Сброс пароля — кабинет YuPay для партнёров",
+        html=_layout(
+            preheader="Ссылка на смену пароля действует 30 минут.",
+            heading="Сброс пароля",
+            body_html=body,
+        ),
+        text=(
+            "Сброс пароля — кабинет YuPay для партнёров\n\n"
+            "Ссылка действует 30 минут:\n"
+            f"{link}\n\n"
+            "Если это были не вы — просто проигнорируйте письмо, пароль не изменится.\n"
+        ),
+    )
+
+
+#: What each cabinet security notice says it is. Prose per event rather than
+#: one "что-то изменилось": a notice a reader cannot act on is a notice they
+#: learn to ignore, and the whole point is that an unexpected one is noticed.
+_MERCHANT_SECURITY_LINES: dict[str, tuple[str, str]] = {
+    "api_key_created": (
+        "Выпущен новый ключ API",
+        "В вашем кабинете выпустили новый ключ API",
+    ),
+    "api_key_revoked": (
+        "Ключ API отозван",
+        "В вашем кабинете отозвали ключ API",
+    ),
+    "webhook_url_changed": (
+        "Изменён адрес вебхука",
+        "В вашем кабинете изменили адрес, на который мы отправляем вебхуки",
+    ),
+    "webhook_secret_rotated": (
+        "Изменён секрет подписи вебхуков",
+        "В вашем кабинете сменили секрет, которым мы подписываем вебхуки",
+    ),
+    "webhook_disabled": (
+        "Вебхук отключён",
+        "В вашем кабинете отключили вебхук — доставки прекращены",
+    ),
+}
+
+
+def merchant_security_email(*, event: str, detail: str = "") -> EmailContent:
+    """Tell a merchant's operators that a credential or an endpoint changed.
+
+    No link and no button: there is nothing to click that is safer than what
+    the reader would do anyway, and a "was this you? / no" link in a mail is
+    an endpoint an attacker can reach too. The instruction is to sign in, or
+    to write to support — both of which they reach by their own route.
+
+    ``detail`` is shown verbatim and is a key id or a webhook host: enough to
+    tell "the key I just made" from "a key I did not", never a secret.
+    """
+    heading, sentence = _MERCHANT_SECURITY_LINES.get(
+        event, ("Изменение в кабинете", "В вашем кабинете изменились настройки доступа")
+    )
+    named = f"{sentence}: {detail}." if detail else f"{sentence}."
+    body = _paragraph(named) + _paragraph(
+        f'<span style="font-size:13px;color:{_MUTED};">Если это были не вы — '
+        "сразу отзовите ключи в кабинете и напишите в поддержку.</span>"
+    )
+    return EmailContent(
+        subject=f"{heading} — кабинет YuPay для партнёров",
+        html=_layout(preheader=named, heading=heading, body_html=body),
+        text=(
+            f"{heading} — кабинет YuPay для партнёров\n\n{named}\n\n"
+            "Если это были не вы — сразу отзовите ключи в кабинете "
+            "и напишите в поддержку.\n"
+        ),
+    )
+
+
 def partner_invite_email(*, link: str) -> EmailContent:
     """Approval notice for a new affiliate partner, with the set-password link.
 
@@ -456,6 +591,9 @@ def merchant_webhook_disabled_email(*, host: str, failures: int, last_error: str
 
 __all__ = [
     "EmailContent",
+    "merchant_confirm_email",
+    "merchant_password_reset_email",
+    "merchant_security_email",
     "merchant_webhook_disabled_email",
     "order_confirmation_email",
     "order_delivered_email",

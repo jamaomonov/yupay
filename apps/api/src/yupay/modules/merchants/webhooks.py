@@ -92,11 +92,23 @@ EVENT_ORDER_STATUS_CHANGED: Final = "order.status_changed"
 #: Support credited the merchant's deposit.
 EVENT_BALANCE_CREDITED: Final = "balance.credited"
 
+#: A merchant pressed «Отправить тестовое событие» in the cabinet.
+#:
+#: It goes down the **real** path — same queue, same signature, same delivery
+#: log — because the thing being tested is that path, and a test that took a
+#: shortcut around the signing would pass on a broken integration. It carries
+#: no order and no money, so a receiver that switches on ``event_type`` and
+#: ignores what it does not know is already correct; the module README tells
+#: them to expect it and discard it.
+EVENT_TEST: Final = "webhook.test"
+
 #: The complete v1 vocabulary (spec §10). ``merchant_webhook_deliveries``
 #: deliberately carries no CHECK on ``event_type`` — enforcing it here keeps
-#: adding a third event a code change rather than a migration on a table that
+#: adding a fourth event a code change rather than a migration on a table that
 #: only grows.
-EVENT_TYPES: Final[frozenset[str]] = frozenset({EVENT_ORDER_STATUS_CHANGED, EVENT_BALANCE_CREDITED})
+EVENT_TYPES: Final[frozenset[str]] = frozenset(
+    {EVENT_ORDER_STATUS_CHANGED, EVENT_BALANCE_CREDITED, EVENT_TEST}
+)
 
 _AMOUNT = TypeAdapter(UsdAmount)
 _BALANCE = TypeAdapter(UsdBalance)
@@ -318,6 +330,7 @@ async def enqueue_balance_credited(
 __all__ = [
     "EVENT_BALANCE_CREDITED",
     "EVENT_ORDER_STATUS_CHANGED",
+    "EVENT_TEST",
     "EVENT_TYPES",
     "WEBHOOK_QUEUE_CHANNEL",
     "enqueue",

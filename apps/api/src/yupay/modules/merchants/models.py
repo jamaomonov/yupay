@@ -115,7 +115,16 @@ class MerchantUser(Base):
     """
 
     __tablename__ = "merchant_users"
-    __table_args__ = (Index("ix_merchant_users_merchant_id", "merchant_id"),)
+    __table_args__ = (
+        Index("ix_merchant_users_merchant_id", "merchant_id"),
+        # Either both or neither: a version with no timestamp is not evidence
+        # of anything, and a timestamp with no version cannot say what was
+        # accepted.
+        CheckConstraint(
+            "(offer_version IS NULL) = (offer_accepted_at IS NULL)",
+            name="ck_merchant_users_offer_complete",
+        ),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     merchant_id: Mapped[str] = mapped_column(
@@ -129,6 +138,48 @@ class MerchantUser(Base):
     timezone: Mapped[str] = mapped_column(
         String(64), nullable=False, server_default=text("'Asia/Tashkent'")
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    #: Which version of the B2B offer this person ticked, and when. On the
+    #: user rather than the merchant because a person accepts terms, not a
+    #: company row. Both nullable and constrained to move together: every
+    #: merchant created by support before the cabinet existed accepted
+    #: nothing, and back-filling a consent nobody gave is the one thing a
+    #: consent record must never do.
+    offer_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    offer_accepted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class MerchantSession(Base):
+    """One signed-in cabinet session for a merchant user.
+
+    Modelled on ``AffiliateSession``, and a table rather than a column for the
+    reason that shape exists: an operator may be signed in on a laptop and a
+    phone, and signing one out must not sign out the other.
+
+    ``token_hash`` is the refresh token's SHA-256. The token itself is handed
+    to the browser once and never stored, so a database dump is not a set of
+    live credentials. The access JWT carries this row's id as its ``sid``,
+    which is what lets a revocation reach tokens already minted rather than
+    waiting out their TTL.
+    """
+
+    __tablename__ = "merchant_sessions"
+    __table_args__ = (
+        Index("uq_merchant_sessions_token_hash", "token_hash", unique=True),
+        Index("ix_merchant_sessions_user", "merchant_user_id"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    merchant_user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("merchant_users.id", ondelete="CASCADE"), nullable=False
+    )
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
@@ -345,6 +396,7 @@ __all__ = [
     "InetAsText",
     "Merchant",
     "MerchantApiKey",
+    "MerchantSession",
     "MerchantUser",
     "MerchantWebhook",
     "MerchantWebhookDelivery",

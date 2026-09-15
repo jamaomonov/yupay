@@ -34,6 +34,11 @@ TokenKind = Literal[
     # token structurally unusable on a buyer endpoint and a buyer token
     # unusable on the panel.
     "partner_access",
+    # Merchant cabinet operators (spec §11). Same reasoning as the line above,
+    # one actor further out: a reseller's operator is neither a buyer nor a
+    # partner, and three kinds that reject each other are three mistakes the
+    # type system makes for us.
+    "merchant_access",
 ]
 
 
@@ -157,6 +162,41 @@ def mint_partner_access(
     return _encode(payload, settings=s)
 
 
+def mint_merchant_access(
+    *,
+    sub: str,
+    sid: str,
+    settings: Settings | None = None,
+) -> str:
+    """Issue a short-lived access JWT for an authenticated **merchant user**.
+
+    Its own ``kind``, for the reason :func:`mint_partner_access` gives: a
+    cabinet token must be structurally unusable on a buyer or partner endpoint
+    and vice versa. Note what ``sub`` is — the ``merchant_users`` row, the
+    person — not the ``merchants`` row. The cabinet resolves the company from
+    the person on every request, so a user moved between merchants cannot keep
+    acting for the old one on a token minted before the move.
+
+    Args:
+        sub: The ``merchant_users`` row id.
+        sid: The ``merchant_sessions`` row this token belongs to. The caller is
+            responsible for it being non-revoked.
+        settings: Overrides the process settings; for tests.
+
+    Returns:
+        The encoded JWT.
+    """
+    s = _settings_or(settings)
+    payload = _base_payload(
+        sub=sub,
+        kind="merchant_access",
+        ttl_seconds=s.merchant_access_ttl_seconds,
+        settings=s,
+    )
+    payload["sid"] = sid
+    return _encode(payload, settings=s)
+
+
 def mint_refresh(
     *,
     sub: str,
@@ -248,14 +288,26 @@ def mint_ws_handshake(
 def mint_email_verify(
     *,
     sub: str,
+    ttl_seconds: int | None = None,
     settings: Settings | None = None,
 ) -> str:
-    """Issue a short-lived token confirming ownership of a user's email."""
+    """Issue a short-lived token confirming ownership of a user's email.
+
+    Args:
+        sub: The row the link confirms.
+        ttl_seconds: Overrides ``jwt_email_token_ttl_seconds``. The merchant
+            cabinet passes its own (``merchant_confirm_ttl_seconds``, 24 h)
+            because the two are different product decisions: a storefront
+            email check is confirmed in the same sitting, while a registration
+            confirmation is read whenever the person next opens their work
+            mail — and the copy in that mail promises a day.
+        settings: Overrides the process settings; for tests.
+    """
     s = _settings_or(settings)
     payload = _base_payload(
         sub=sub,
         kind="email_verify",
-        ttl_seconds=s.jwt_email_token_ttl_seconds,
+        ttl_seconds=s.jwt_email_token_ttl_seconds if ttl_seconds is None else ttl_seconds,
         settings=s,
     )
     return _encode(payload, settings=s)

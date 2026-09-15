@@ -34,11 +34,19 @@ from yupay.core.logging import configure_logging, get_logger
 from yupay.core.observability import init_sentry
 from yupay.core.redis import close_redis
 from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
+from yupay.modules.merchants.cabinet_auth_routes import (
+    router as merchant_cabinet_auth_router,
+)
+from yupay.modules.merchants.cabinet_routes import router as merchant_cabinet_router
+from yupay.modules.merchants.cabinet_webhook_routes import (
+    router as merchant_cabinet_webhook_router,
+)
 
 # Imported from ``machine_routes`` rather than the ``merchants`` facade, the
 # same rule ``api/v1`` follows for that module's admin routers: the facade is
 # imported by service-layer callers and a router re-exported from it would
 # close a cycle back through the route stack.
+from yupay.modules.merchants.machine_openapi import router as merchant_openapi_router
 from yupay.modules.merchants.machine_routes import router as merchant_machine_router
 
 #: Latency histogram bounds, in seconds. Dense below 250ms because most
@@ -285,6 +293,13 @@ def create_app() -> FastAPI:
     # first, since passing it straight through as ``allow_origins=["*"]`` makes
     # Starlette set ``allow_all_origins`` just the same (see
     # ``CORSMiddleware.__init__``), which would silently reopen the same hole.
+    # ``Content-Disposition`` is not a CORS-safelisted response header, so a
+    # browser on another origin cannot read it unless it is named here. The
+    # cabinet's CSV exports carry their filename in it — the statement's names
+    # the date range it actually covers — and without this every download
+    # saves as "transactions.csv" with no idea what is in it.
+    exposed = ["Content-Disposition"]
+
     if "*" in settings.cors_allow_origins and not settings.is_prod:
         app.add_middleware(
             CORSMiddleware,
@@ -292,6 +307,7 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=exposed,
         )
     else:
         if "*" in settings.cors_allow_origins:
@@ -309,6 +325,7 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
+            expose_headers=exposed,
         )
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
@@ -339,6 +356,16 @@ def create_app() -> FastAPI:
     # Its own prefix, not under /api/v1 — see the module docstring. The router
     # carries the prefix itself so there is one place to read it from.
     app.include_router(merchant_machine_router)
+    # `/merchant/openapi.json`, deliberately **outside** `/merchant/v1`: that
+    # prefix means "signed, and exempt from the coarse limiter because it
+    # authenticates its own caller", and this route is neither. Four sweeps
+    # enumerate that prefix and assert those properties of everything in it.
+    app.include_router(merchant_openapi_router)
+    # Not added to the self-authenticating exemption above, and that is the
+    # point: a password form is exactly what the coarse per-IP limit is for.
+    app.include_router(merchant_cabinet_auth_router)
+    app.include_router(merchant_cabinet_router)
+    app.include_router(merchant_cabinet_webhook_router)
 
     # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),
     # which makes `histogram_quantile` unable to return anything above 1.0 —

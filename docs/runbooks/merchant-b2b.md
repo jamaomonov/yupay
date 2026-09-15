@@ -284,6 +284,247 @@ the merchant's whole deposit balance, a signature is valid for the ±300 s
 window it was made in, and there is no per-order approval step to catch a
 fraudulent order after the fact.
 
+## The cabinet (`reseller.yupay.uz`)
+
+The browser half, ADR-0076. A reseller registers themselves, confirms their
+address, accepts the offer, browses the wholesale price list, places orders and
+**issues and revokes their own API keys**. The admin steps above did not go
+away — they are the fallback, and step 2 (crediting the deposit) is still the
+one thing that is not self-serve, by design.
+
+### It needs three settings before it works at all
+
+```bash
+# secrets/api.env — the cabinet's origin has to be in both
+MERCHANT_CABINET_URL=https://reseller.yupay.uz
+CORS_ALLOW_ORIGINS=["https://yupay.uz","https://app.yupay.uz","https://admin.yupay.uz","https://partners.yupay.uz","https://reseller.yupay.uz"]
+```
+
+`MERCHANT_CABINET_URL` is what the confirmation link is built from. With it
+empty, `POST /merchant/cabinet/register` refuses with
+`cabinet_mail_unconfigured` **rather than** creating an account whose mail can
+never arrive — so a missing setting shows up as a refusal at the form, not as
+a silent backlog of unconfirmable accounts.
+
+The CORS origin is the other half: the cabinet is a separate origin from
+`api.yupay.uz`, so without it every call from the browser is blocked and the
+screens render empty with nothing in the API log to explain it. If somebody
+reports "the cabinet shows no orders but the API works", check this first —
+open devtools, a CORS refusal is loud there and invisible everywhere else.
+
+After editing `secrets/api.env`, `up -d --force-recreate api`. A plain
+`restart` does **not** re-read `env_file`.
+
+### "I registered and no email came"
+
+In order of likelihood:
+
+1. `MERCHANT_CABINET_URL` is unset — but then they would have seen an error at
+   the form, so this is the one to rule out first and quickly.
+2. The send failed. Registration deliberately **does not** roll back on a mail
+   failure — the account exists and the password they chose is kept — so look
+   for `merchant.cabinet.confirm_mail_failed` with their `user_id`:
+
+   ```bash
+   ssh ubuntu@152.228.137.175 \
+     "docker compose -f /home/ubuntu/opt/yupay/docker-compose.prod.yml \
+        logs api --since 24h | grep confirm_mail_failed" < /dev/null
+   ```
+
+3. The address was already registered. Registration answers `201` with no body
+   whatever the address was — on purpose, so that probing addresses looks
+   identical to owning one — which means "no mail" is also what a **second**
+   sign-up on an existing address looks like. Ask them to sign in instead.
+
+The confirmation token lives 24 h (`merchant_confirm_ttl_seconds`) — and
+**only since M4 Task 6**: before that it was minted with
+`mint_email_verify`'s 30-minute default while the mail promised a day, so
+anybody who opened their work mail an hour later got "link is no longer
+valid". If a merchant reports exactly that on an old account, this is why.
+
+Past 24 h, **they fix it themselves**: the cabinet's «Забыли пароль?» screen
+sends both a reset link and, if the address is still unconfirmed, the
+confirmation again. Both endpoints answer `204` to every address, so the
+screen cannot tell them which one applied — and neither can a prober.
+
+### What the cabinet mails, and what it deliberately does not
+
+Five events, and only five: a key issued, a key revoked, a webhook URL
+changed, its signing secret rotated, the hook disabled. Every confirmed
+operator on the account gets each one — not only whoever clicked, which is the
+point: the notice has to be worth something on the day a credential was issued
+by somebody who should not have issued it.
+
+What they carry: a key id, or a webhook **host**. Never a secret, never a
+whole URL (a webhook path can hold a token the merchant put there), and no
+"was this you? / no" link — that would be an endpoint an attacker can reach
+too. The instruction is to sign in and revoke, which they reach by their own
+route.
+
+Nothing else is mailed. An order, a deposit credit, a delivery: silent. A
+cabinet that mailed about every action trains its readers to ignore the mail,
+and then the one message that mattered is ignored with the rest.
+
+A send that fails is a log line (`merchant.cabinet.security_mail_failed`),
+never a failed request — the change has already happened, and refusing it
+afterwards would leave the caller unable to tell what state they are in. If
+these stop arriving, check `RESEND_API_KEY` before looking at the cabinet.
+
+### Locked out: what the merchant can do without us
+
+One screen, «Забыли пароль?» (`/forgot`), covers both ways in:
+
+- A confirmed account gets a **reset link**, good for 30 minutes and
+  single-use. Using it ends every other session that account had open —
+  deliberately, because a reset whose premise is "somebody else may have my
+  account" that left the attacker's refresh token alive would accomplish
+  nothing. It signs them straight in, for the same reason the confirmation
+  link does: holding it proves the mailbox.
+- An **unconfirmed** account gets the confirmation mail again instead. It gets
+  no reset link: the link it needs is the confirmation, and sending both would
+  imply a password problem it does not have.
+
+Everything else answers `204` and sends nothing — an unknown address, and a
+**confirmed** account asking for another confirmation (otherwise anybody
+knowing the address could fill that mailbox on demand).
+
+There is still no admin "reset this merchant's password" button. If somebody
+loses the mailbox itself, that is a support conversation and a DB edit, and it
+should stay one — an admin path that hands out a session for a merchant
+account is a much bigger key than the freeze button we already have.
+
+### A frozen merchant in the cabinet
+
+`current_merchant_user` loads the company fresh on **every** request rather
+than trusting the token, so a freeze takes effect on the next call instead of
+when a JWT happens to expire. What the operator sees is their screens going
+403, not a sign-out. That is the intended shape: a frozen account should be
+visibly frozen rather than look like a password problem.
+
+### Webhooks, self-serve
+
+The cabinet's Вебхуки screen sets the URL, rotates the signing secret,
+disables the hook and shows the **delivery log** — the event, the address it
+went to, the response code, our error text and the body their server returned.
+That log is the thing support used to read out of Postgres by hand, and it is
+now the first place to send a reseller who says an event never arrived: "we
+recorded a 200 at 14:02 — which of your hosts?" is answerable from their own
+screen.
+
+The SSRF rules are unchanged and are enforced below the caller, so a merchant
+cannot aim our worker anywhere an operator could not: https only, no private
+or loopback host, and one pinned address per attempt. A refused URL comes back
+as a 422 quoting the rule it broke, which is what the screen shows them.
+
+**«Отправить тестовое событие» is a real delivery.** It queues a
+`webhook.test` through the same producer, the same signature and the same log
+as an order event — a test that shortcut any of those would pass on a broken
+verifier, which is the one thing the button exists to catch. It carries
+`merchant_id` and `sent_at` and nothing else, so a receiver that switches on
+`event_type` and ignores what it does not know is already correct. A merchant
+asking "what is `webhook.test` in my logs" pressed that button.
+
+The button refuses on a **disabled** hook (`422 webhook_disabled`) rather than
+answering 200: the producer writes nothing for a disabled hook, so a silent
+success would be a button that looks like it did something.
+
+See "Outgoing webhooks: the auto-disable, and turning one back on" below for
+what happens when a hook fails twenty times in a row — the re-enable is the
+same `PUT`, and they can now do it themselves.
+
+### Key rotation, self-serve
+
+The cabinet's Settings screen does what "Rotating and revoking a key" above
+describes, without us: create shows the secret **once**, takes an optional IP
+allowlist, and the list shows `last_used_at` plus each key's allowlist so they
+can confirm traffic moved. Revoke asks for a second click before it lands.
+
+**"Changing an IP allowlist means rotating" applies to them too**, and the
+screen says so: there is no endpoint that edits a live key's allowlist on
+either surface. That is deliberate — a mistake in a narrowed allowlist locks
+the merchant out of their own API, and the recovery has to be "deploy the key
+you still hold", not "call support".
+
+The admin endpoints remain — use them when a merchant cannot reach their own
+cabinet, and on a suspected leak, where the rule above still holds: revoke
+first, talk after.
+
+### The API reference is generated, and can go stale in exactly one way
+
+`reseller.yupay.uz/docs` is built from `docs/api/merchant-openapi.json`, which
+`make gen-api` writes and CI diffs. So the reference cannot drift from the
+contract — but it **can** lag a deploy, because it is baked into the cabinet's
+build. A contract change reaches the API on the API's deploy and the reference
+on the cabinet's. Ship both, or the docs describe last week for however long
+you wait.
+
+What a reader sees comes from `Field(description=...)` in
+`machine_schemas.py`. If somebody reports a field with no explanation, that is
+where it is missing — not on the page. Eighty of them were `#:` comments until
+M4, which Pydantic does not read, and the whole contract published with no
+descriptions at all.
+
+There is **no "try it" button** and there should not be one: sending a signed
+request needs the merchant's secret, which belongs on their server, and an
+order placed from a docs page spends real money with a real supplier. If a
+reseller asks for one, the answer is the generated cURL sample.
+
+### The CSV exports, and the one setting they need
+
+Транзакции and Каталог each have a «Скачать CSV». Both are built from the same
+readers the screens use, so a statement can never disagree with the screen it
+came from — that is the whole design and the reason neither has a query of its
+own.
+
+Two things that look like bugs and are not:
+
+- **The statement reads at most 10 000 ledger rows**, newest first. The
+  filename carries the date range the file actually covers
+  (`yupay-statement-2026-08-01_2026-09-15.csv`), so a truncated export says so
+  by its own name rather than by a comment line that would break a parser.
+- **Values in the two free-text columns may start with an apostrophe.** That
+  is deliberate: a `merchant_order_id` a reseller's system chose can start
+  with `=`, which Excel executes, and the file is opened by their accountant.
+  The apostrophe is the OWASP mitigation and Excel strips it on display. It is
+  never applied to money or dates.
+
+**They need `Content-Disposition` on the CORS expose list**, which
+`bootstrap.py` now sets. Without it a browser on `reseller.yupay.uz` cannot
+read the header at all and every download saves under a generic name with no
+indication of what is in it. If somebody reports "my statement downloaded as
+transactions.csv", that is this.
+
+### "Today" on the dashboard is the browser's day, not ours
+
+`GET /merchant/cabinet/summary` takes a required `since` and the browser sends
+its own local midnight. Nothing server-side decides what "today" is, so the
+counter always agrees with the dates on the Orders list — which are rendered
+in the same browser zone. A merchant in Dubai and one in Tashkent reading the
+same account at the same instant will see different numbers, and both are
+right for the person reading.
+
+Two bounds worth knowing when a number looks wrong:
+
+- The window is capped at 32 days, so a crafted `since` is not a scan of the
+  whole order history. Past it the call answers `window_too_long`.
+- **Spend** is read over at most 500 orders in the window. Past that the
+  figure comes back with `spend_capped: true` and the cabinet shows a `+`.
+  The counts stay exact either way. Nobody is near this; it exists so that
+  "the dashboard is slow" never becomes an incident.
+
+Spend is **net** — charged minus refunded. An order charged and settled inside
+the window spent nothing, and a reseller reading a gross figure would chase
+money that already came back.
+
+### The timezone picker changes nothing about the API
+
+Settings also carries an IANA timezone. It decides **when we mail that
+operator** and nothing else: the API always speaks ISO 8601 UTC, and the
+cabinet renders timestamps in the viewer's browser zone regardless of this
+setting. If a merchant asks why an order's `created_at` "ignores" their
+timezone, that is the answer, and it is the intended one — a machine contract
+whose timestamps moved with a display preference would be unusable.
+
 ## `INVENTORY_ENC_KEY` is now load-bearing for three subsystems
 
 It was the voucher-code warehouse's key. It is now also the input from which
@@ -411,12 +652,21 @@ merchant_webhook.auto_disabled     merchant_id=… failures=… error=…
 merchant_webhook.attempt_failed    delivery_id=… status_code=… outcome=…
 ```
 
-**The only way back on** is `PUT /api/v1/admin/merchants/{id}/webhook` with the
-URL (the same one, or a corrected one). It clears `disabled_at` **and** the
-streak, does not rotate the secret, and the queued backlog resumes from where
-it stopped. There is deliberately no second re-enable path — do not clear
-`disabled_at` by hand in SQL, because the streak would stay at its ceiling and
-the very next failure would disable the hook again.
+**The way back on** is a `PUT` of the URL (the same one, or a corrected one).
+It clears `disabled_at` **and** the streak, does not rotate the secret, and the
+queued backlog resumes from where it stopped. There is deliberately no second
+re-enable path — do not clear `disabled_at` by hand in SQL, because the streak
+would stay at its ceiling and the very next failure would disable the hook
+again.
+
+Since M4 that `PUT` has **two** front doors and they are the same call:
+`PUT /api/v1/admin/merchants/{id}/webhook` for us, and the merchant's own
+Вебхуки screen in the cabinet, which also shows them the failure streak, the
+last success and the delivery log. Prefer pointing them at their own screen —
+they can read the 502 their server returned, which is usually the whole
+answer, and they know their correct URL better than we do. Reach for the admin
+endpoint when they cannot sign in, or when you are re-enabling a batch after
+an incident of ours.
 
 Two things "the backlog resumes" does not mean, and the merchant will ask about
 both:
@@ -996,11 +1246,35 @@ The steps:
 
 ## Known gaps before a pilot integrates
 
-One thing a reseller can meet on day one. It is not a bug in the sense of
-"something broke"; it is an omission with a price, and the price is worth
+Two things a reseller can meet on day one. Neither is a bug in the sense of
+"something broke"; each is an omission with a price, and the price is worth
 knowing before it is paid. Two other gaps — the ±2% drift giveaway, and error
 bodies that did not match the published contract — were closed in M2 and are
 recorded at the end so a regression is recognisable.
+
+### Nothing caps a merchant's failed-order rate (spec §12)
+
+The spec asks for "a sliding-window cap on the failed share of orders
+(auto-pause + notify; refund-on-failure must not become a free retry cannon)".
+**It does not exist.** The controls that do exist are the two-axis rate guard
+(requests, not outcomes), the margin floor (price, not volume) and the admin
+freeze button (all-or-nothing, and a person has to be awake for it).
+
+- **Why it matters more now than it did.** Until M4 every credential came out
+  of a support conversation. The cabinet issues them self-serve, and the same
+  screen that makes a legitimate reseller's 3am rotation possible makes a
+  hostile one's first key immediate.
+- **The shape of the abuse.** M3b refunds a failed delivery automatically when
+  the money came back. An order that reliably fails in a way that refunds is
+  then free to place, and each attempt costs us a supplier call, a player
+  check, or both. Nothing counts that.
+- **What to watch until there is a cap.** `merchant_order_placed` against
+  order status per merchant. A merchant whose failed share climbs while their
+  deposit does not move is the signature. The freeze button is the response.
+- **What a fix needs from the owner, not from code:** the window, the ratio,
+  and what "pause" means — refuse new orders, or refuse only refunds. The
+  second is the one that actually closes the loop and is also the one that
+  punishes a merchant having a genuinely bad supplier day.
 
 ### Only a supplier that gave our money back refunds automatically
 

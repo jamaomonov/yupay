@@ -19,6 +19,10 @@ x-app-env: &app-env
   AUTH_IP_GUARD_MAX: ${AUTH_IP_GUARD_MAX:-10}
   AUTH_IP_GUARD_WINDOW_SECONDS: ${AUTH_IP_GUARD_WINDOW_SECONDS:-60}
   WEB_BASE_URL: ${WEB_BASE_URL:-}
+  # The B2B cabinet's own origin. Every link the cabinet mails is built from
+  # it, so registration refuses outright when it is empty — which would make
+  # the whole sign-up flow unreachable in dev.
+  MERCHANT_CABINET_URL: ${MERCHANT_CABINET_URL:-http://localhost:3004}
   # Email (Resend) — verify/reset + guest order emails. Empty RESEND_API_KEY
   # disables sends (send_email raises EmailSendError, caught best-effort).
   RESEND_API_KEY: ${RESEND_API_KEY:-}
@@ -295,6 +299,36 @@ services:
       # survive; without these `next dev` crashes on missing deps.
       - /app/node_modules
       - /app/apps/partners/node_modules
+
+  merchant:
+    # Dev image: `next dev` with HMR over the bind-mounted apps/merchant +
+    # packages. The production build lives in merchant.Dockerfile.
+    #
+    # Separate from `partners` on purpose: that site is the affiliate
+    # programme and this one is the B2B reseller cabinet. Two audiences, two
+    # origins, and the cabinet holds a session token — so it must not share an
+    # origin with anything else.
+    build:
+      context: .
+      dockerfile: infra/docker/merchant.dev.Dockerfile
+    restart: unless-stopped
+    environment:
+      # The landing and the docs prerender without touching the API, and the
+      # cabinet is entirely client-side, so there is no API_INTERNAL_URL here.
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+      # Poll the bind-mounted FS so Next's watcher sees edits on macOS/Docker.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3004:3004"
+    depends_on:
+      - api
+    volumes:
+      - ./apps/merchant:/app/apps/merchant
+      - ./packages:/app/packages
+      # Anonymous volumes mask the bind-mounts so the image's node_modules
+      # survive; without these `next dev` crashes on missing deps.
+      - /app/node_modules
+      - /app/apps/merchant/node_modules
 
   miniapp:
     # Dev image: runs `vite dev` with HMR. Source is bind-mounted below so

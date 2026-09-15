@@ -15,7 +15,6 @@ visible from the file name.
 
 from __future__ import annotations
 
-import ipaddress
 from datetime import datetime
 from decimal import Decimal
 
@@ -27,6 +26,7 @@ from pydantic import (
     model_validator,
 )
 
+from yupay.modules.merchants.allowlist import MAX_ENTRIES, normalize_allowlist
 from yupay.modules.merchants.models import WEBHOOK_URL_MAX
 
 #: What ``Numeric(5, 2)`` can hold — the schema bound for markup fields.
@@ -142,29 +142,11 @@ class ApiKeyCreateIn(BaseModel):
     #: Addresses or CIDR blocks allowed to use the key; ``None``/omitted means
     #: no filter. Bounded at 32 entries because ``auth.address_allowed`` walks
     #: the list on every machine-API request.
-    ip_allowlist: list[str] | None = Field(default=None, max_length=32)
+    ip_allowlist: list[str] | None = Field(default=None, max_length=MAX_ENTRIES)
 
-    @field_validator("ip_allowlist")
-    @classmethod
-    def _entries_parse(cls, value: list[str] | None) -> list[str] | None:
-        """Reject anything ``ipaddress`` cannot read, at the parse boundary.
-
-        A typo'd entry stored verbatim would silently never match and lock the
-        merchant out of their own API with a 403 nobody can explain. Host bits
-        are allowed (``203.0.113.5/24``) and read as the network at match
-        time, the same ``strict=False`` the auth path uses.
-        """
-        if value is None:
-            return None
-        cleaned: list[str] = []
-        for raw in value:
-            entry = raw.strip()
-            try:
-                ipaddress.ip_network(entry, strict=False)
-            except ValueError:
-                raise ValueError(f"not an IP address or CIDR block: {entry!r}") from None
-            cleaned.append(entry)
-        return cleaned or None
+    #: Shared with the cabinet's own create DTO rather than re-derived: two
+    #: tables of what an address is would drift, and the drift is silent.
+    _entries_parse = field_validator("ip_allowlist")(normalize_allowlist)
 
 
 class ApiKeyOut(BaseModel):

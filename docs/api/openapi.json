@@ -3422,6 +3422,866 @@
         "title": "BusinessSummaryOut",
         "type": "object"
       },
+      "CabinetApiKeyCreateIn": {
+        "additionalProperties": false,
+        "properties": {
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 32,
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
+          "label": {
+            "default": "",
+            "maxLength": 64,
+            "title": "Label",
+            "type": "string"
+          }
+        },
+        "title": "CabinetApiKeyCreateIn",
+        "type": "object"
+      },
+      "CabinetApiKeyOut": {
+        "description": "One machine credential, as Settings lists it.\n\nNever carries the secret. That is returned once, by the create call, and\nis not stored in a readable form afterwards \u2014 so a list that could show it\nwould mean we had kept it.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_used_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Used At"
+          },
+          "revoked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Revoked At"
+          }
+        },
+        "required": [
+          "id",
+          "key_id",
+          "label",
+          "ip_allowlist",
+          "created_at",
+          "last_used_at",
+          "revoked_at"
+        ],
+        "title": "CabinetApiKeyOut",
+        "type": "object"
+      },
+      "CabinetConfirmIn": {
+        "additionalProperties": false,
+        "properties": {
+          "token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token"
+        ],
+        "title": "CabinetConfirmIn",
+        "type": "object"
+      },
+      "CabinetDeliveriesOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetDeliveryRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CabinetDeliveriesOut",
+        "type": "object"
+      },
+      "CabinetDeliveryRowOut": {
+        "description": "One attempted delivery, as the log shows it.\n\n``url`` is the address the attempt went to, snapshotted at enqueue rather\nthan joined from the configuration \u2014 the question this log answers turns\non which host answered, not on which host is configured now.\n\n``payload`` is exactly the body we signed and sent, so a reseller can\nreplay our signature against it. ``response_body`` and ``last_error`` are\nbounded in their columns, not merely by the writer, because both\ninterpolate text a third party chose and both are rendered in a browser.",
+        "properties": {
+          "attempts_count": {
+            "title": "Attempts Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "response_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Body"
+          },
+          "response_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Code"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "url",
+          "status",
+          "attempts_count",
+          "payload",
+          "response_code",
+          "response_body",
+          "last_error",
+          "next_attempt_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CabinetDeliveryRowOut",
+        "type": "object"
+      },
+      "CabinetEmailIn": {
+        "additionalProperties": false,
+        "description": "An address, for the two endpoints that answer the same to everybody.\n\nOne DTO for \"send me a reset\" and \"send my confirmation again\", because\nthey are the same request shape and the same non-answer: ``204`` whatever\nthe address was. Registration is open, so anything that distinguished a\nregistered address from an unregistered one would report on somebody\nelse's mailbox.",
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email"
+        ],
+        "title": "CabinetEmailIn",
+        "type": "object"
+      },
+      "CabinetIssuedKeyOut": {
+        "description": "The one moment the secret exists outside our encryption.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "ip_allowlist": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ip Allowlist"
+          },
+          "key_id": {
+            "title": "Key Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "secret": {
+            "title": "Secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key_id",
+          "secret",
+          "label",
+          "ip_allowlist",
+          "created_at"
+        ],
+        "title": "CabinetIssuedKeyOut",
+        "type": "object"
+      },
+      "CabinetLoginIn": {
+        "additionalProperties": false,
+        "properties": {
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ],
+        "title": "CabinetLoginIn",
+        "type": "object"
+      },
+      "CabinetOrderIn": {
+        "additionalProperties": false,
+        "description": "Ordering from the catalog page, without a ``merchant_order_id``.\n\nThe cabinet mints one (``manual-<uuid>``, spec \u00a711) rather than asking a\nperson to invent an idempotency key. Everything else is the machine API's\nbody, because this order must walk the identical pricing, validation and\ndeposit path \u2014 one flow, so a cabinet order and an API order are the same\nkind of thing in history, in the ledger and in a dispute.",
+        "properties": {
+          "amount_usd": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Usd"
+          },
+          "expected_price": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Expected Price"
+          },
+          "fulfillment_data": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Fulfillment Data",
+            "type": "object"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantity"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "expected_price"
+        ],
+        "title": "CabinetOrderIn",
+        "type": "object"
+      },
+      "CabinetOrderRowOut": {
+        "description": "One line of the Orders list.\n\nMoney comes from the ledger, not from the order line: two of the three SKU\nshapes put a per-unit rate or a face value there and the money elsewhere,\nso a list built off the line would show $0.016537 against an order that\ncost $16.54.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "refunded_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_code",
+          "price_usd",
+          "refunded_usd",
+          "created_at",
+          "delivered_at"
+        ],
+        "title": "CabinetOrderRowOut",
+        "type": "object"
+      },
+      "CabinetOrdersOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetOrderRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CabinetOrdersOut",
+        "type": "object"
+      },
+      "CabinetProfileOut": {
+        "description": "``GET /merchant/cabinet/me`` \u2014 the operator and their company.",
+        "properties": {
+          "balance_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Usd",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "offer_accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Accepted At"
+          },
+          "offer_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Version"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "timezone",
+          "merchant_id",
+          "title",
+          "status",
+          "balance_usd",
+          "offer_version",
+          "offer_accepted_at"
+        ],
+        "title": "CabinetProfileOut",
+        "type": "object"
+      },
+      "CabinetProfilePatchIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /merchant/cabinet/me``. Display settings only.\n\nNothing here changes what the API says or does: ``timezone`` decides when\nwe mail this operator, and the cabinet renders timestamps in the viewer's\nown zone regardless. The API always speaks ISO 8601 UTC (spec \u00a711), and a\nsetting that looked like it changed that would be the worse feature.",
+        "properties": {
+          "timezone": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "timezone"
+        ],
+        "title": "CabinetProfilePatchIn",
+        "type": "object"
+      },
+      "CabinetRegisterIn": {
+        "additionalProperties": false,
+        "properties": {
+          "accept_offer": {
+            "title": "Accept Offer",
+            "type": "boolean"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 128,
+            "minLength": 2,
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "email",
+          "password",
+          "title",
+          "accept_offer"
+        ],
+        "title": "CabinetRegisterIn",
+        "type": "object"
+      },
+      "CabinetSetPasswordIn": {
+        "additionalProperties": false,
+        "description": "Consume a reset link and choose a new password.",
+        "properties": {
+          "password": {
+            "maxLength": 128,
+            "minLength": 10,
+            "title": "Password",
+            "type": "string"
+          },
+          "token": {
+            "maxLength": 4096,
+            "minLength": 1,
+            "title": "Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ],
+        "title": "CabinetSetPasswordIn",
+        "type": "object"
+      },
+      "CabinetSummaryOut": {
+        "description": "``GET /merchant/cabinet/summary`` \u2014 the dashboard's three numbers.",
+        "properties": {
+          "delivered": {
+            "title": "Delivered",
+            "type": "integer"
+          },
+          "failed": {
+            "title": "Failed",
+            "type": "integer"
+          },
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "spend_capped": {
+            "title": "Spend Capped",
+            "type": "boolean"
+          },
+          "spend_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Spend Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "orders",
+          "delivered",
+          "failed",
+          "spend_usd",
+          "spend_capped"
+        ],
+        "title": "CabinetSummaryOut",
+        "type": "object"
+      },
+      "CabinetTokenIn": {
+        "additionalProperties": false,
+        "description": "A refresh or logout body. One field, named for what it carries.",
+        "properties": {
+          "refresh_token": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "refresh_token"
+        ],
+        "title": "CabinetTokenIn",
+        "type": "object"
+      },
+      "CabinetTokensOut": {
+        "description": "What the browser stores after a sign-in or a rotation.",
+        "properties": {
+          "access_token": {
+            "title": "Access Token",
+            "type": "string"
+          },
+          "expires_in": {
+            "title": "Expires In",
+            "type": "integer"
+          },
+          "refresh_token": {
+            "title": "Refresh Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "access_token",
+          "refresh_token",
+          "expires_in"
+        ],
+        "title": "CabinetTokensOut",
+        "type": "object"
+      },
+      "CabinetWebhookOut": {
+        "description": "The endpoint and how it has been behaving.\n\nNo ``merchant_id``: the cabinet already knows whose it is, and a field\nnaming the account on every response is a field a future screen might\nread a request parameter into. No ``secret`` either \u2014 that exists only in\nthe response to the call that minted it.\n\n``failure_streak`` and the two timestamps are the delivery worker's\nrunning state. A reseller asking \"is my hook healthy\" reads them here\nrather than counting rows in the log below.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "failure_streak": {
+            "title": "Failure Streak",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "disabled_at",
+          "failure_streak",
+          "last_success_at",
+          "last_failure_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CabinetWebhookOut",
+        "type": "object"
+      },
+      "CabinetWebhookSecretOut": {
+        "description": "The two calls that can mint a signing secret \u2014 the only ones carrying it.\n\n``secret`` is ``None`` when the call minted nothing: a URL change on an\nexisting hook, or a re-enable. Changing where deliveries go must not\nsilently break a working verifier, so it does not rotate the key.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "failure_streak": {
+            "title": "Failure Streak",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "disabled_at",
+          "failure_streak",
+          "last_success_at",
+          "last_failure_at",
+          "created_at",
+          "updated_at",
+          "secret"
+        ],
+        "title": "CabinetWebhookSecretOut",
+        "type": "object"
+      },
+      "CabinetWebhookSetIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PUT /merchant/cabinet/webhook``.\n\nShape only. The SSRF rules \u2014 https, no private or loopback host \u2014 live in\n``admin.validate_webhook_url``, which ``set_webhook`` applies for every\ncaller of the facade. That placement is what lets a **merchant** aim our\noutbound worker at an address of their choosing without the rules having\nto be restated here, and restating them is how one copy drifts.",
+        "properties": {
+          "url": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "CabinetWebhookSetIn",
+        "type": "object"
+      },
       "CatalogEntryOut": {
         "properties": {
           "external_id": {
@@ -6927,14 +7787,65 @@
         "description": "One brand of the wholesale catalog, with its products.\n\n``name`` is the catalog's default locale, like the product's; a brand\nwhose products all price out is absent entirely rather than empty.",
         "properties": {
           "brand_id": {
+            "description": "Our id for the brand.",
             "title": "Brand Id",
             "type": "string"
           },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That section's name, in the catalog's default locale.",
+            "title": "Category Name"
+          },
+          "category_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which storefront section this brand sits in \u2014 the same split a person sees on yupay.uz. `null` if it has none; the brand is still listed, because the price list's job is prices.",
+            "title": "Category Slug"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wider brand artwork, an absolute URL, or `null`.",
+            "title": "Hero Image Url"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Brand artwork, an absolute URL \u2014 the same file the storefront renders. `null` where none is uploaded, so you can draw a placeholder instead of a broken image.",
+            "title": "Logo Url"
+          },
           "name": {
+            "description": "The brand name, in the catalog's default locale.",
             "title": "Name",
             "type": "string"
           },
           "products": {
+            "description": "Products with at least one purchasable SKU. Never an empty shell.",
             "items": {
               "$ref": "#/components/schemas/MerchantProductOut"
             },
@@ -6942,6 +7853,7 @@
             "type": "array"
           },
           "slug": {
+            "description": "The stable machine-readable name.",
             "title": "Slug",
             "type": "string"
           }
@@ -6959,6 +7871,7 @@
         "description": "Body of ``GET /merchant/v1/catalog``: the whole B2B price list.\n\nAn object rather than a bare array so v1 clients keep parsing when a\nfuture field (a cursor, a generated-at stamp) is added beside ``brands``.",
         "properties": {
           "brands": {
+            "description": "Every brand you can buy from, priced for your account.",
             "items": {
               "$ref": "#/components/schemas/MerchantBrandOut"
             },
@@ -6994,14 +7907,17 @@
         "properties": {
           "artifact": {
             "additionalProperties": true,
+            "description": "The delivered thing. For `voucher_code` it carries `code` (or `codes`). Internal fields \u2014 our supplier, their order id, our warehouse row \u2014 are never in here.",
             "title": "Artifact",
             "type": "object"
           },
           "artifact_kind": {
+            "description": "What was delivered: `voucher_code` or `topup_receipt`. It decides the shape of `artifact`.",
             "title": "Artifact Kind",
             "type": "string"
           },
           "delivered_at": {
+            "description": "When it was handed over, ISO 8601 UTC.",
             "format": "date-time",
             "title": "Delivered At",
             "type": "string"
@@ -7013,6 +7929,62 @@
           "delivered_at"
         ],
         "title": "MerchantDeliveryOut",
+        "type": "object"
+      },
+      "MerchantFieldOut": {
+        "additionalProperties": false,
+        "description": "One input a product's ``fulfillment_data`` expects.\n\nThe machine API has always told an integrator that ``fulfillment_data`` is\nrequired and never *what it takes* \u2014 that lived in prose, which means every\nnew product is a documentation round trip before a reseller can sell it.\nThis is the same schema the storefront renders its checkout form from,\ntrimmed to what a caller needs: the key to send, whether it is optional,\nand the pattern we will validate against before anything is charged.\n\n``label`` and ``placeholder`` are locale maps because the cabinet renders\nthem to a person; a machine caller can ignore both and read ``key``.",
+        "properties": {
+          "key": {
+            "description": "The key to put in `fulfillment_data`.",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Locale \u2192 label, for your own UI. A machine caller can ignore it.",
+            "title": "Label",
+            "type": "object"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The regex we validate against before anything is charged. Check it in your own form and save the round trip.",
+            "title": "Pattern"
+          },
+          "placeholder": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Locale \u2192 placeholder text, for your own UI.",
+            "title": "Placeholder",
+            "type": "object"
+          },
+          "required": {
+            "description": "Whether the order is refused without it.",
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "What kind of value it is (\"text\", \"number\").",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "required"
+        ],
+        "title": "MerchantFieldOut",
         "type": "object"
       },
       "MerchantListOut": {
@@ -7050,6 +8022,7 @@
                 "type": "null"
               }
             ],
+            "description": "How many dollars of face value, on a `kind=amount` SKU. Required there and refused elsewhere, on the same no-silent-default rule as `quantity`. This is the **face value you are loading**, not what you pay: $100 of Steam wallet costs $104 at a 4% markup. Bounded by that SKU's `min_amount_usd` and `max_amount_usd`.",
             "title": "Amount Usd"
           },
           "expected_price": {
@@ -7063,14 +8036,17 @@
                 "type": "string"
               }
             ],
+            "description": "The **order total** you last computed from `/catalog` \u2014 a fixed SKU's `price_usd`, or `ceil_to_cent(unit_price_usd \u00d7 quantity_or_amount_usd)`.\n\nA tolerance, **not a bid**: within \u00b12% of ours the order proceeds and is charged at *our* current price; outside it you get `422 price_changed` carrying that price, and you decide whether to re-send.",
             "title": "Expected Price"
           },
           "fulfillment_data": {
             "additionalProperties": true,
+            "description": "Whatever the SKU's product requires \u2014 a player id, a login. The keys and their patterns are published on each product as `required_fields`. An undeclared key is **rejected**, not dropped, so a SKU that requires nothing accepts only `{}`.",
             "title": "Fulfillment Data",
             "type": "object"
           },
           "merchant_order_id": {
+            "description": "**Your** id for this order, and the idempotency key \u2014 send the same one again and you get the same order back, never a second charge. Printable ASCII with no spaces, so it survives being a path segment in `GET /merchant/v1/orders/{merchant_order_id}` and the signing string.",
             "maxLength": 128,
             "minLength": 1,
             "pattern": "^[\\x21-\\x7e]+$",
@@ -7088,9 +8064,11 @@
                 "type": "null"
               }
             ],
+            "description": "How many units, on a `kind=unit` SKU. **Required** there and **refused** on the other shapes, both as a 422 \u2014 neither direction has a silent default, because a missing quantity would sell one Star and an ignored one would charge for a denomination you thought was ten. Bounded by that SKU's `min_qty` and `max_qty`.",
             "title": "Quantity"
           },
           "sku_id": {
+            "description": "From `GET /merchant/v1/catalog`. A UUID; any spelling of it is accepted.",
             "title": "Sku Id",
             "type": "string"
           }
@@ -7107,11 +8085,13 @@
         "description": "One entry of an order's timeline.\n\n``event`` only \u2014 no payload. An ``order_events`` payload carries internal\nvalues (``order.paid``'s is a fingerprint of the reseller's own request;\n``order.failed``'s is an operator's free-text note when support closed the\norder by hand, and an internal label when the automatic refund closed it \u2014\nM3c Task 6), and none of them is worth a field on a third-party contract.",
         "properties": {
           "at": {
+            "description": "When it happened, ISO 8601 UTC.",
             "format": "date-time",
             "title": "At",
             "type": "string"
           },
           "event": {
+            "description": "One of the published `order.*` kinds. Internal audit entries are omitted entirely, and a new kind stays omitted until it is documented.",
             "title": "Event",
             "type": "string"
           }
@@ -7127,33 +8107,40 @@
         "description": "Body of ``POST /merchant/v1/orders``.\n\n``status`` is the order's live status, not a fixed ``\"paid\"``: a merchant\norder is born paid and fulfilment starts in the same transaction, so what\ncomes back is where that left it. Poll\n``GET /merchant/v1/orders/{merchant_order_id}`` for the rest.",
         "properties": {
           "balance_usd": {
+            "description": "Your deposit after this order.",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Balance Usd",
             "type": "string"
           },
           "created_at": {
+            "description": "When the order was placed, ISO 8601 UTC.",
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
           "merchant_order_id": {
+            "description": "The id you sent. Key your records on it.",
             "title": "Merchant Order Id",
             "type": "string"
           },
           "order_id": {
+            "description": "Our id for the order. Quote it to support; key nothing on it.",
             "title": "Order Id",
             "type": "string"
           },
           "price_usd": {
+            "description": "What this order charged \u2014 **our** price at the moment you ordered, within \u00b12% of the `expected_price` you sent or it would have been refused. Fixed from here on: whatever fulfilment ends up costing us is our problem.",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Price Usd",
             "type": "string"
           },
           "sku_id": {
+            "description": "The SKU you bought.",
             "title": "Sku Id",
             "type": "string"
           },
           "status": {
+            "description": "Where the order is right now. See the order read.",
             "title": "Status",
             "type": "string"
           }
@@ -7174,6 +8161,7 @@
         "description": "Body of ``GET /merchant/v1/orders/{merchant_order_id}``.\n\nThe reseller's whole view of one order: where it is, what it cost, what it\ndelivered, and whether anything came back. **This is the only place the\ndelivered voucher code is handed over** \u2014 the ``order.status_changed``\nwebhook (M3a, ADR-0070) does not carry it, because a webhook body lands in\nthe merchant's logs and in ours, and a voucher code is a bearer instrument.",
         "properties": {
           "created_at": {
+            "description": "When you placed it, ISO 8601 UTC.",
             "format": "date-time",
             "title": "Created At",
             "type": "string"
@@ -7188,6 +8176,7 @@
                 "type": "null"
               }
             ],
+            "description": "When it was delivered, or `null` if it has not been.",
             "title": "Delivered At"
           },
           "delivery": {
@@ -7198,7 +8187,8 @@
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "What was delivered, once anything was. **The only place a code is given.**"
           },
           "failure_reason": {
             "anyOf": [
@@ -7209,13 +8199,16 @@
                 "type": "null"
               }
             ],
+            "description": "A closed vocabulary, additive only \u2014 never a supplier's or an operator's own words, because you cannot switch on prose.\n\n- `null` \u2014 nothing has gone wrong.\n- `fulfillment_delayed` \u2014 **not terminal.** Delivery has stopped; the order has not. Keep polling, do not re-order, do not refund your customer.\n- `fulfillment_failed_refunded` \u2014 delivery failed and **all** of what you paid is back.\n- `fulfillment_failed` \u2014 delivery failed; any refund is partial or pending.\n- `order_failed` \u2014 support closed the order.\n\nA loop that stops on `failure_reason != null` will stop polling an order we are about to deliver. Stop on the terminal values, not on the field.",
             "title": "Failure Reason"
           },
           "merchant_order_id": {
+            "description": "The id you placed the order with.",
             "title": "Merchant Order Id",
             "type": "string"
           },
           "order_id": {
+            "description": "Our id for the order. Quote it to support.",
             "title": "Order Id",
             "type": "string"
           },
@@ -7229,27 +8222,33 @@
                 "type": "null"
               }
             ],
+            "description": "When the deposit was charged. A merchant order is born paid.",
             "title": "Paid At"
           },
           "price_usd": {
+            "description": "What this order charged. Final.",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Price Usd",
             "type": "string"
           },
           "refunded_usd": {
+            "description": "How much of `price_usd` is back on your deposit. `\"0.00\"` until something comes back. Read from the ledger, so both an automatic refund and a settlement booked by hand land here. Never more than `price_usd`.",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Refunded Usd",
             "type": "string"
           },
           "sku_id": {
+            "description": "The SKU this order was placed against.",
             "title": "Sku Id",
             "type": "string"
           },
           "status": {
+            "description": "`paid` \u2192 `fulfilling` \u2192 `delivered`, or `failed`.\n\n`failed` arrives two ways: support closing an undeliverable order, and a delivery failure whose **whole** charge is already back on your deposit. Read `failure_reason` to tell them apart. New values may be added \u2014 treat one you do not know as still in flight.",
             "title": "Status",
             "type": "string"
           },
           "timeline": {
+            "description": "What happened and when, oldest first.",
             "items": {
               "$ref": "#/components/schemas/MerchantOrderEventOut"
             },
@@ -7315,6 +8314,7 @@
         "description": "Body of ``POST /merchant/v1/validate/player`` (spec \u00a79.1).\n\n``extra=\"forbid\"``, for the same reason ``MerchantOrderCreateIn`` sets it:\non a request, silently ignoring an unknown key is how a typo'd\n``player_id`` becomes a check of nothing that answers ``unsupported`` and\ngets read as \"this SKU needs no verification\".",
         "properties": {
           "player_id": {
+            "description": "Your **end customer's** identifier \u2014 the game's player id, or the Steam login. We hold it for the length of the request and never write it to a log or a URL, which is why this endpoint is a POST.",
             "maxLength": 64,
             "minLength": 1,
             "title": "Player Id",
@@ -7331,9 +8331,11 @@
                 "type": "null"
               }
             ],
+            "description": "The game server or zone, for the games that ask for one. Send what the SKU's product declares and omit it otherwise \u2014 an empty string is refused rather than taken as a third spelling of \"no server\".",
             "title": "Server Id"
           },
           "sku_id": {
+            "description": "The SKU you are about to order. A SKU and not a product, so the id you check is the id you buy.",
             "title": "Sku Id",
             "type": "string"
           }
@@ -7357,9 +8359,11 @@
                 "type": "null"
               }
             ],
+            "description": "The account nickname, where the provider returns one. `null` is an absence, not a placeholder \u2014 some providers have no display name to give.",
             "title": "Name"
           },
           "status": {
+            "description": "Switch on this. Never read \u201cnot `invalid`\u201d as approval.\n\n- `valid` \u2014 the provider resolved the id.\n- `invalid` \u2014 the provider answered and the id does not exist. The one answer that means your customer mistyped something.\n- `error` \u2014 **we could not check.** Says nothing about the id. Retry, or order without a check.\n- `unsupported` \u2014 this product has no player check and will not grow one. Never worth retrying.",
             "enum": [
               "valid",
               "invalid",
@@ -7380,14 +8384,25 @@
         "description": "One product of a brand, with its purchasable SKUs.\n\nOnly products with at least one purchasable SKU appear \u2014 there are no\nempty shells to iterate past. ``name`` is the catalog's default locale\n(``catalog.service.DEFAULT_LOCALE``, ``ru``); ``slug`` is the stable\nmachine-readable half and never changes with a translation edit.",
         "properties": {
           "name": {
+            "description": "The product name, in the catalog's default locale.",
             "title": "Name",
             "type": "string"
           },
           "product_id": {
+            "description": "Our id for the product.",
             "title": "Product Id",
             "type": "string"
           },
+          "required_fields": {
+            "description": "What every SKU under this product needs in `fulfillment_data`.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantFieldOut"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          },
           "skus": {
+            "description": "The purchasable lines, cheapest first.",
             "items": {
               "$ref": "#/components/schemas/MerchantSkuOut"
             },
@@ -7395,6 +8410,7 @@
             "type": "array"
           },
           "slug": {
+            "description": "The stable machine-readable name. Never changes with a translation edit.",
             "title": "Slug",
             "type": "string"
           }
@@ -7412,19 +8428,23 @@
         "description": "Body of ``GET /merchant/v1/me`` \u2014 who is calling, and what they can spend.\n\n``balance_usd`` is the deposit ledger's signed posting sum\n(``service.deposit_balance``), read live on every call \u2014 there is no\nbalance column to drift from it.",
         "properties": {
           "balance_usd": {
+            "description": "What you can spend right now, in USD. Summed from the deposit ledger on every call \u2014 there is no stored balance that could drift from it.",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Balance Usd",
             "type": "string"
           },
           "merchant_id": {
+            "description": "Your account id. Quote it to support.",
             "title": "Merchant Id",
             "type": "string"
           },
           "status": {
+            "description": "`active`, or `frozen` while the account is suspended. A frozen account can still read, and every write answers `403 merchant_frozen`.",
             "title": "Status",
             "type": "string"
           },
           "title": {
+            "description": "Your company name, as it appears on your invoices.",
             "title": "Title",
             "type": "string"
           }
@@ -7442,6 +8462,7 @@
         "description": "One purchasable line of the wholesale price list.\n\n``sku_id`` is what ``POST /merchant/v1/orders`` takes. Every price here is\nTHIS merchant's, not the retail one. ``updated_at`` is the SKU row's own\nstamp, so a merchant polling the price list can tell what moved (spec \u00a78.4\n\u2014 there are no price webhooks).\n\n**Two shapes, and ``kind`` says which.** A fixed SKU is a denomination:\none ``price_usd``, order one of it. A unit SKU is a currency sold by the\nunit: a six-decimal ``unit_price_usd`` and a ``quantity`` on the order.\nExactly one of the two price fields is ever populated, because a machine\ncontract cannot hand a client two shapes for one quantity \u2014 and \"price\" on\na unit SKU is not one quantity but two, the per-unit rate and the total.",
         "properties": {
           "kind": {
+            "description": "Which shape this line is, and therefore what to send beside `sku_id`:\n\n- `fixed` \u2014 a denomination you buy one of. Nothing extra.\n- `unit` \u2014 a currency counted in units (Telegram Stars). Send `quantity`.\n- `amount` \u2014 a balance loaded in dollars (a Steam wallet). Send `amount_usd`.",
             "enum": [
               "fixed",
               "unit",
@@ -7460,6 +8481,7 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=amount` only: the largest `amount_usd` we accept, inclusive.",
             "title": "Max Amount Usd"
           },
           "max_qty": {
@@ -7471,6 +8493,7 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=unit` only: the largest `quantity` we accept, inclusive.",
             "title": "Max Qty"
           },
           "min_amount_usd": {
@@ -7483,6 +8506,7 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=amount` only: the smallest `amount_usd` we accept, inclusive, in dollars of face value. `unit_price_usd` is then the price of **one dollar** of that balance.",
             "title": "Min Amount Usd"
           },
           "min_qty": {
@@ -7494,9 +8518,11 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=unit` only: the smallest `quantity` we accept, inclusive.",
             "title": "Min Qty"
           },
           "name": {
+            "description": "The denomination, as a person would read it (\"60 UC\"). Falls back to `sku_code` for lines that carry none. The same string in every locale \u2014 denominations are not translated.",
             "title": "Name",
             "type": "string"
           },
@@ -7510,13 +8536,29 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=fixed` only: the order total, and what to send as `expected_price`. `null` on the other two shapes, which have no price until a quantity is chosen.",
             "title": "Price Usd"
           },
+          "retail_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the same thing costs on yupay.uz \u2014 the reference your wholesale price is a discount against, so you do not have to match SKUs by hand. `null` on a `kind=amount` line, where retail is charged as a live FX rate times a margin and there is no single figure to quote.",
+            "title": "Retail Price Usd"
+          },
           "sku_code": {
+            "description": "Our internal code for the line. Useful in a support conversation.",
             "title": "Sku Code",
             "type": "string"
           },
           "sku_id": {
+            "description": "What `POST /merchant/v1/orders` takes. Stable forever.",
             "title": "Sku Id",
             "type": "string"
           },
@@ -7529,6 +8571,7 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=unit` only: what one unit is, for your UI (\"stars\").",
             "title": "Unit"
           },
           "unit_price_usd": {
@@ -7541,9 +8584,11 @@
                 "type": "null"
               }
             ],
+            "description": "`kind=unit` and `kind=amount`: the price of **one** unit at six decimals \u2014 one Star, or one dollar of wallet balance. Your total is `ceil_to_cent(unit_price_usd \u00d7 quantity_or_amount)`, computed from this exact value, so you can reproduce your charge before you send it. `null` on a fixed line.",
             "title": "Unit Price Usd"
           },
           "updated_at": {
+            "description": "When this line last changed. Poll the catalog and compare it to tell what moved \u2014 there are no price webhooks.",
             "format": "date-time",
             "title": "Updated At",
             "type": "string"
@@ -7563,16 +8608,19 @@
         "description": "One movement of the merchant's deposit.\n\n``amount_usd`` is **signed**: positive credited the deposit, negative spent\nit. The column adds up to the balance ``GET /merchant/v1/me`` reports.",
         "properties": {
           "amount_usd": {
+            "description": "**Signed**: positive credited the deposit, negative spent it. The column adds up to the balance `GET /merchant/v1/me` reports.",
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Amount Usd",
             "type": "string"
           },
           "created_at": {
+            "description": "When it was posted, ISO 8601 UTC.",
             "format": "date-time",
             "title": "Created At",
             "type": "string"
           },
           "kind": {
+            "description": "- `merchant_deposit_credit` \u2014 we credited your deposit.\n- `merchant_order_charge` \u2014 an order spent it.\n- `merchant_order_refund` \u2014 we returned a failed order's charge.\n\nMore may be added. Treat an unknown kind as \"some movement\" and trust `amount_usd`.",
             "title": "Kind",
             "type": "string"
           },
@@ -7585,6 +8633,7 @@
                 "type": "null"
               }
             ],
+            "description": "The same order's id in **your** system, so a statement line reconciles against your books without a second lookup.",
             "title": "Merchant Order Id"
           },
           "order_id": {
@@ -7596,9 +8645,11 @@
                 "type": "null"
               }
             ],
+            "description": "The order this movement belongs to, if any. Present on credits too \u2014 a settlement booked against a failed order is a credit that names it. `null` means an ordinary prepayment.",
             "title": "Order Id"
           },
           "transaction_id": {
+            "description": "Our id for this ledger entry.",
             "title": "Transaction Id",
             "type": "string"
           }
@@ -7618,6 +8669,7 @@
         "description": "Body of ``GET /merchant/v1/transactions`` \u2014 one page, newest first.",
         "properties": {
           "items": {
+            "description": "One page, newest first.",
             "items": {
               "$ref": "#/components/schemas/MerchantTransactionOut"
             },
@@ -7633,6 +8685,7 @@
                 "type": "null"
               }
             ],
+            "description": "Pass back as `?cursor=` for the next, older page. `null` means this page is the last one \u2014 never call again on a null.",
             "title": "Next Cursor"
           }
         },
@@ -30805,6 +31858,1525 @@
         ]
       }
     },
+    "/merchant/cabinet/api-keys": {
+      "get": {
+        "operationId": "list_keys_merchant_cabinet_api_keys_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/CabinetApiKeyOut"
+                  },
+                  "title": "Response List Keys Merchant Cabinet Api Keys Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Machine credentials",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "post": {
+        "description": "The secret is in this response and nowhere else, ever again.\n\nSelf-serve rather than a support request, which is what makes rotation \u2014\nissue, deploy, revoke \u2014 something a reseller can do at 3am during an\nincident instead of waiting for our morning.",
+        "operationId": "create_key_merchant_cabinet_api_keys_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetApiKeyCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetIssuedKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Issue a machine credential",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/api-keys/{key_id}": {
+      "delete": {
+        "operationId": "revoke_key_merchant_cabinet_api_keys__key_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key_id",
+            "required": true,
+            "schema": {
+              "title": "Key Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetApiKeyOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke a machine credential",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/catalog": {
+      "get": {
+        "description": "The same tree the machine API serves, priced for this merchant.\n\nOne builder, so the storefront a person browses and the JSON their server\npolls can never disagree about what is sellable or what it costs.",
+        "operationId": "catalog_merchant_cabinet_catalog_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantCatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The wholesale price list",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/catalog.csv": {
+      "get": {
+        "description": "The same tree ``GET /catalog`` serves, flattened to one row per SKU.",
+        "operationId": "export_catalog_merchant_cabinet_catalog_csv_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The wholesale price list, as CSV",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/confirm": {
+      "post": {
+        "description": "Consume the link and sign the operator in.\n\nSigning them in here rather than redirecting to a login form is safe for\nthe reason the link exists: holding it *is* proof of the mailbox, which is\nthe same proof the password form is trying to establish.",
+        "operationId": "confirm_merchant_cabinet_confirm_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetConfirmIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Confirm an address",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/confirm/resend": {
+      "post": {
+        "description": "``204`` whatever the address was, including one already confirmed.\n\nThat last case is not an oversight: re-sending a confirmation to a live\naccount would let anybody who knows the address fill that mailbox on\ndemand, and its owner has nothing to do with the link anyway.",
+        "operationId": "resend_confirmation_merchant_cabinet_confirm_resend_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetEmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mail the confirmation link again",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/login": {
+      "post": {
+        "operationId": "login_merchant_cabinet_login_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetLoginIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sign in",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/logout": {
+      "post": {
+        "operationId": "logout_merchant_cabinet_logout_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke one session",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/me": {
+      "get": {
+        "operationId": "me_merchant_cabinet_me_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The operator and their company",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "patch": {
+        "description": "Today that is the timezone, and only the timezone.\n\nNo ``Idempotency-Key``: this is a **last-writer-wins** field, so a replayed\nrequest lands on the value it already set. The rule in AGENTS \u00a79 protects\na write whose repetition is not the same as its first execution \u2014 a\ncharge, a minted credential \u2014 and this one has no such shape. A future\nfield on this endpoint that does needs the header and a line there.",
+        "operationId": "update_me_merchant_cabinet_me_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetProfilePatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change display settings",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/orders": {
+      "get": {
+        "description": "Newest first, keyset-paged.\n\n``status_filter`` rather than ``status``: FastAPI would otherwise shadow\nthe imported ``status`` module in this file's namespace, and a name that\nsilently rebinds an HTTP-status helper inside route handlers is a trap\nworth spending one uglier query parameter to avoid.",
+        "operationId": "list_orders_merchant_cabinet_orders_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status_filter",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "search",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Search"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetOrdersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "This merchant's orders",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "post": {
+        "description": "Buy one SKU, minting the idempotency key on the merchant's behalf.\n\n``manual-<uuid>`` (spec \u00a711): unique per click, and visibly not a\nreseller's own id, so a support conversation about \"order acme-417\" is\nnever about one of these.\n\nThe trade this makes, deliberately: a double-click is two orders, where an\nAPI caller re-sending one id gets one. A person can see both in the list\nand ask for a refund; an invented key that collapsed two intentional\npurchases into one would be the worse failure, and the browser prevents the\ncommon case by disabling the button.",
+        "operationId": "place_order_merchant_cabinet_orders_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetOrderIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Order from the catalog page",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/orders.csv": {
+      "get": {
+        "description": "The same reader the \u0417\u0430\u043a\u0430\u0437\u044b screen pages through, money included.",
+        "operationId": "export_orders_merchant_cabinet_orders_csv_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The order history, as CSV",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/orders/{merchant_order_id}": {
+      "get": {
+        "description": "The same reader the machine API serves, so the cabinet and a reseller's\nown polling can never describe one order two ways.",
+        "operationId": "read_order_merchant_cabinet_orders__merchant_order_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_order_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Order Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One order, by the id it was placed with",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/password/forgot": {
+      "post": {
+        "description": "``204`` whatever the address was.\n\nRegistration is open, so an answer that distinguished a registered address\nfrom an unregistered one would report on somebody else's mailbox \u2014 the\nsame rule ``register`` and ``login`` follow. An **unconfirmed** account is\nsent nothing here either: the link it needs is the confirmation, which\n``/confirm/resend`` is for.",
+        "operationId": "forgot_password_merchant_cabinet_password_forgot_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetEmailIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mail a password-reset link",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/password/reset": {
+      "post": {
+        "description": "Consume the link, set the password, end every other session, sign in.\n\nSigning them in is safe for the reason ``/confirm`` gives \u2014 holding the\nlink proves the mailbox \u2014 and ending the other sessions is the point: a\nreset whose premise is \"somebody else may have my account\" that left the\nattacker's refresh token alive would accomplish nothing.",
+        "operationId": "reset_password_merchant_cabinet_password_reset_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetSetPasswordIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set a new password and sign in",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/refresh": {
+      "post": {
+        "operationId": "refresh_merchant_cabinet_refresh_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetTokenIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetTokensOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Rotate a session",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/register": {
+      "post": {
+        "description": "Create the account and mail a confirmation link.\n\nAnswers ``201`` with no body. The address is not echoed and no token is\nissued: registration is open, so the response must look the same to\nsomebody probing addresses as to the person who owns one \u2014 and the only\nthing that proves ownership is the link.",
+        "operationId": "register_merchant_cabinet_register_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetRegisterIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Open a merchant account and its first operator",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/summary": {
+      "get": {
+        "description": "``since`` is required and comes from the **browser**.\n\nThe cabinet renders every timestamp in the viewer's own zone, so the\nbrowser is what knows when its day started. A server deciding \"today\" from\nthe stored `timezone` would print a count that disagreed with the dates on\nthe Orders list two screens over \u2014 and that field means \"when we mail you\"\n(ADR-0076), not \"how to read your clock\".",
+        "operationId": "summary_merchant_cabinet_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "since",
+            "required": true,
+            "schema": {
+              "format": "date-time",
+              "title": "Since",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Orders, deliveries and spend since a moment",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/transactions": {
+      "get": {
+        "operationId": "list_transactions_merchant_cabinet_transactions_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantTransactionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The deposit ledger",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/transactions.csv": {
+      "get": {
+        "description": "Built from the same reader the \u0422\u0440\u0430\u043d\u0437\u0430\u043a\u0446\u0438\u0438 screen pages through.\n\nA statement disagreeing with the screen about what a merchant spent is\nworse than no statement, and one source is the only way that cannot\nhappen.",
+        "operationId": "export_transactions_merchant_cabinet_transactions_csv_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The deposit statement, as CSV",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook": {
+      "delete": {
+        "description": "A timestamp, never a DELETE: the log stays readable and turning it back\non is a ``PUT`` with the URL, not a re-onboarding with a new secret.",
+        "operationId": "disable_webhook_merchant_cabinet_webhook_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop delivering (keeps the row and the log)",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "get": {
+        "description": "404 until one has been set. Never carries the secret \u2014 no such field.",
+        "operationId": "read_webhook_merchant_cabinet_webhook_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The configured endpoint",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "put": {
+        "description": "Set the endpoint; the first call mints the signing secret and shows it once.\n\nSelf-serve from M4 \u2014 until now this was an admin-only control and a\nreseller changing their endpoint meant a support conversation. The SSRF\nrules that made it admin-only are enforced by the facade\n(``admin.validate_webhook_url``: https, no private or loopback host) and\nthe delivery client pins one resolved address per attempt, so the control\nis safe to hand over rather than merely convenient to.\n\nSetting a URL also clears ``disabled_at`` and the failure streak, which\nmakes this the recovery path after an auto-disable.\n\nA retry carrying the same ``Idempotency-Key`` replays the original\nresponse with ``secret: null``: ``idempotent_responses`` has no reaper, so\na usable signing key must never be persisted there. If the first response\nwas lost, rotate.",
+        "operationId": "set_webhook_merchant_cabinet_webhook_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetWebhookSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Point the webhook at a URL",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook/deliveries": {
+      "get": {
+        "operationId": "list_deliveries_merchant_cabinet_webhook_deliveries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetDeliveriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What we sent, where, and what came back",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook/rotate-secret": {
+      "post": {
+        "description": "Mint a new secret and show it once; the old one stops signing immediately.\n\nOne live key at a time, unlike an API credential's overlapping rotation:\nthere the merchant redeploys between issue and revoke and only they know\nwhen that finished, whereas here **we** are the sender and the switch is\nours to make. A replay answers ``secret: null`` rather than rotating twice.",
+        "operationId": "rotate_webhook_secret_merchant_cabinet_webhook_rotate_secret_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace the webhook signing secret",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook/test": {
+      "post": {
+        "description": "Queue one ``webhook.test`` delivery, down the real path.\n\nSame queue, same signature, same delivery log \u2014 because what a merchant is\ntesting is that path, and a test that shortcut the signing would pass on a\nbroken verifier. It appears in their log beside the real ones, which is\nwhere they will look for it.\n\nNo ``Idempotency-Key``: a replay sends a second test, which is what\npressing the button twice means. Nothing is charged and nothing is\ncreated that a duplicate would corrupt.\n\nRaises:\n    NotFoundError: No endpoint configured \u2014 nothing to test.\n    ValidationError: The hook is disabled, so the producer would write\n        nothing and the button would look like it did something.",
+        "operationId": "send_test_event_merchant_cabinet_webhook_test_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Send a test delivery to the configured endpoint",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/v1/catalog": {
       "get": {
         "description": "Return every B2B-visible, priced SKU with this merchant's price.\n\nVisibility, pricing and the query shape are all\n``price_list.build``'s \u2014 see that module. Every ``price_usd`` here is the\nprice this merchant would be charged; SKUs without a cost are absent\nrather than free, and there are no price webhooks, so poll this and watch\neach SKU's ``updated_at`` (spec \u00a78.4).",
@@ -30827,14 +33399,17 @@
                   "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
                   "properties": {
                     "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
                       "title": "Code",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What went wrong, in one sentence.",
                       "title": "Detail",
                       "type": "string"
                     },
                     "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
                       "items": {
                         "additionalProperties": true,
                         "type": "object"
@@ -30843,14 +33418,17 @@
                       "type": "array"
                     },
                     "status": {
+                      "description": "The HTTP status code, repeated in the body.",
                       "title": "Status",
                       "type": "integer"
                     },
                     "title": {
+                      "description": "A short, human-readable summary.",
                       "title": "Title",
                       "type": "string"
                     },
                     "type": {
+                      "description": "A URL identifying this error class.",
                       "title": "Type",
                       "type": "string"
                     }
@@ -30899,14 +33477,17 @@
                   "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
                   "properties": {
                     "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
                       "title": "Code",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What went wrong, in one sentence.",
                       "title": "Detail",
                       "type": "string"
                     },
                     "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
                       "items": {
                         "additionalProperties": true,
                         "type": "object"
@@ -30915,14 +33496,17 @@
                       "type": "array"
                     },
                     "status": {
+                      "description": "The HTTP status code, repeated in the body.",
                       "title": "Status",
                       "type": "integer"
                     },
                     "title": {
+                      "description": "A short, human-readable summary.",
                       "title": "Title",
                       "type": "string"
                     },
                     "type": {
+                      "description": "A URL identifying this error class.",
                       "title": "Type",
                       "type": "string"
                     }
@@ -30981,14 +33565,17 @@
                   "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
                   "properties": {
                     "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
                       "title": "Code",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What went wrong, in one sentence.",
                       "title": "Detail",
                       "type": "string"
                     },
                     "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
                       "items": {
                         "additionalProperties": true,
                         "type": "object"
@@ -30997,14 +33584,17 @@
                       "type": "array"
                     },
                     "status": {
+                      "description": "The HTTP status code, repeated in the body.",
                       "title": "Status",
                       "type": "integer"
                     },
                     "title": {
+                      "description": "A short, human-readable summary.",
                       "title": "Title",
                       "type": "string"
                     },
                     "type": {
+                      "description": "A URL identifying this error class.",
                       "title": "Type",
                       "type": "string"
                     }
@@ -31066,14 +33656,17 @@
                   "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
                   "properties": {
                     "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
                       "title": "Code",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What went wrong, in one sentence.",
                       "title": "Detail",
                       "type": "string"
                     },
                     "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
                       "items": {
                         "additionalProperties": true,
                         "type": "object"
@@ -31082,14 +33675,17 @@
                       "type": "array"
                     },
                     "status": {
+                      "description": "The HTTP status code, repeated in the body.",
                       "title": "Status",
                       "type": "integer"
                     },
                     "title": {
+                      "description": "A short, human-readable summary.",
                       "title": "Title",
                       "type": "string"
                     },
                     "type": {
+                      "description": "A URL identifying this error class.",
                       "title": "Type",
                       "type": "string"
                     }
@@ -31168,14 +33764,17 @@
                   "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
                   "properties": {
                     "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
                       "title": "Code",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What went wrong, in one sentence.",
                       "title": "Detail",
                       "type": "string"
                     },
                     "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
                       "items": {
                         "additionalProperties": true,
                         "type": "object"
@@ -31184,14 +33783,17 @@
                       "type": "array"
                     },
                     "status": {
+                      "description": "The HTTP status code, repeated in the body.",
                       "title": "Status",
                       "type": "integer"
                     },
                     "title": {
+                      "description": "A short, human-readable summary.",
                       "title": "Title",
                       "type": "string"
                     },
                     "type": {
+                      "description": "A URL identifying this error class.",
                       "title": "Type",
                       "type": "string"
                     }
@@ -31250,14 +33852,17 @@
                   "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
                   "properties": {
                     "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
                       "title": "Code",
                       "type": "string"
                     },
                     "detail": {
+                      "description": "What went wrong, in one sentence.",
                       "title": "Detail",
                       "type": "string"
                     },
                     "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
                       "items": {
                         "additionalProperties": true,
                         "type": "object"
@@ -31266,14 +33871,17 @@
                       "type": "array"
                     },
                     "status": {
+                      "description": "The HTTP status code, repeated in the body.",
                       "title": "Status",
                       "type": "integer"
                     },
                     "title": {
+                      "description": "A short, human-readable summary.",
                       "title": "Title",
                       "type": "string"
                     },
                     "type": {
+                      "description": "A URL identifying this error class.",
                       "title": "Type",
                       "type": "string"
                     }

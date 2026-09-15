@@ -1,0 +1,48 @@
+%% A reseller opens an account and reaches their first order without us.
+%%
+%% The two halves worth reading together: registration answers 201 with no
+%% body whatever the address was — so probing addresses looks identical to
+%% owning one — and the confirmation link is what signs them in, because
+%% holding it already proves the mailbox the password form was trying to
+%% establish.
+sequenceDiagram
+    autonumber
+    actor Op as Reseller's operator
+    participant Cab as Cabinet (reseller.yupay.uz)
+    participant BFF as /merchant/cabinet
+    participant Auth as merchants.cabinet_auth
+    participant DB as Postgres
+    participant Mail as notifications.email
+    actor Sup as YuPay support
+
+    Op->>Cab: fill sign-up, tick the offer
+    Cab->>BFF: POST /register {email, password, title, accept_offer}
+    BFF->>BFF: guard_ip(bucket=merchant_register)
+    Note over BFF: refuses outright if merchant_cabinet_url is unset —<br/>an account whose link can never arrive is worse than none
+    BFF->>Auth: register()
+    Auth->>DB: INSERT merchants, merchant_users<br/>(argon2 hash, offer_version + offer_accepted_at together)
+    Auth-->>BFF: user, confirm token (24h)
+    BFF->>Mail: confirmation link
+    BFF-->>Cab: 201, no body
+    Note over Cab,BFF: identical for an address already taken
+
+    Op->>Cab: open the link
+    Cab->>BFF: POST /confirm {token}
+    BFF->>Auth: confirm_email()
+    Auth->>DB: mark confirmed, INSERT merchant_sessions<br/>(sha256 of the refresh token)
+    Auth-->>BFF: merchant_access (15 min) + refresh (30 d)
+    BFF-->>Cab: tokens
+    Cab->>Cab: store in localStorage
+
+    Op->>Cab: /cabinet
+    Cab->>BFF: GET /me
+    BFF->>DB: deposit.deposit_balance()
+    BFF-->>Cab: profile, balance $0.00
+    Note over Op,Sup: the one step that is not self-serve —<br/>crediting a deposit is support's job, by design
+
+    Sup->>DB: POST /admin/merchants/{id}/deposit-credits
+    Op->>Cab: /cabinet/catalog → pick a SKU → order
+    Cab->>BFF: POST /orders {sku_id, quantity, expected_price}
+    BFF->>BFF: mint merchant_order_id = manual-<uuid>
+    Note over BFF: from here it is the machine API's own path:<br/>quote → margin floor → charge deposit → enqueue fulfilment
+    BFF-->>Cab: 201 {merchant_order_id, status, price_usd, balance_usd}

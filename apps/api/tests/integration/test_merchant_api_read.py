@@ -429,6 +429,7 @@ async def test_catalog_returns_the_b2b_visible_tree(
         "name",
         "kind",
         "price_usd",
+        "retail_price_usd",
         "unit_price_usd",
         "unit",
         "min_qty",
@@ -437,8 +438,28 @@ async def test_catalog_returns_the_b2b_visible_tree(
         "max_amount_usd",
         "updated_at",
     }
-    assert set(product) == {"product_id", "slug", "name", "skus"}
-    assert set(brand) == {"brand_id", "slug", "name", "products"}
+    assert set(product) == {"product_id", "slug", "name", "required_fields", "skus"}
+    # The seeded product asks for nothing; the field exists either way, so a
+    # client reads one shape rather than branching on whether a key is there.
+    assert product["required_fields"] == []
+    # M4 added four: the cabinet groups its catalog by section and draws the
+    # brand's artwork, and both come from here rather than from a second
+    # endpoint the two surfaces could disagree with. Additive, which v1
+    # allows — what this set still catches is a rename or a removal.
+    assert set(brand) == {
+        "brand_id",
+        "slug",
+        "name",
+        "category_slug",
+        "category_name",
+        "logo_url",
+        "hero_image_url",
+        "products",
+    }
+    # The seeded brand has a category and no artwork, which is the shape most
+    # of the real catalog is in today.
+    assert brand["category_slug"] is not None
+    assert brand["logo_url"] is None
     assert set(body) == {"brands"}
     assert sku["sku_id"] == ids["vis-1"]
     assert sku["sku_code"] == "vis-1"
@@ -448,6 +469,9 @@ async def test_catalog_returns_the_b2b_visible_tree(
     # should not also have to branch on whether a field exists.
     assert sku["kind"] == "fixed"
     assert isinstance(sku["price_usd"], str)
+    # The storefront's own price for the same thing — public either way, and
+    # the reference the wholesale price is a discount against.
+    assert sku["retail_price_usd"] == "9.99"
     assert sku["unit_price_usd"] is None
     assert sku["unit"] is None
     assert sku["min_qty"] is None
@@ -455,6 +479,49 @@ async def test_catalog_returns_the_b2b_visible_tree(
     assert sku["min_amount_usd"] is None
     assert sku["max_amount_usd"] is None
     assert sku["updated_at"]
+
+
+async def test_the_catalog_publishes_the_form_a_product_expects(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """What `fulfillment_data` takes, from the catalog rather than from prose.
+
+    The machine API has always said the field is required without saying what
+    goes in it, so every new product was a documentation round trip before a
+    reseller could sell it. The pattern travels too: a bad player id can be
+    refused in their own UI instead of costing a 422.
+
+    Junk is skipped rather than 500ing the whole catalog — this column is JSONB
+    written by an admin form and by the G2B importer, so a malformed row is a
+    data problem and not every merchant's problem.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    ids = _seed_brand(db_session, n=9, skus=[{"sku_code": "ff-100"}])
+    product = await db_session.get(Product, ids["product"])
+    assert product is not None
+    product.required_fields = [
+        {
+            "key": "player_id",
+            "type": "text",
+            "required": True,
+            "label": {"ru": "ID игрока", "en": "Player ID"},
+            "placeholder": {"ru": "12345678"},
+            "pattern": "^[0-9]{6,20}$",
+        },
+        {"type": "text", "label": {"ru": "без ключа"}},
+    ]
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+
+    assert r.status_code == 200, r.text
+    fields = r.json()["brands"][0]["products"][0]["required_fields"]
+    assert [f["key"] for f in fields] == ["player_id"], "a field with no key is not a field"
+    assert fields[0]["required"] is True
+    assert fields[0]["pattern"] == "^[0-9]{6,20}$"
+    assert fields[0]["label"]["ru"] == "ID игрока"
+    assert fields[0]["placeholder"] == {"ru": "12345678"}
 
 
 async def test_catalog_prices_a_unit_sku_by_the_unit(
@@ -493,6 +560,7 @@ async def test_catalog_prices_a_unit_sku_by_the_unit(
 
     assert sku["kind"] == "unit"
     assert sku["unit_price_usd"] == "0.016537"
+    assert sku["retail_price_usd"] == "9.99"
     assert sku["price_usd"] is None, "a unit SKU has no price until a quantity is chosen"
     assert sku["unit"] == "stars"
     assert sku["min_qty"] == 50
@@ -583,6 +651,7 @@ async def test_a_variable_amount_sku_is_listed_as_a_dollar_balance(
     # One dollar of balance, at the seeder's stock 7% markup.
     assert amount["unit_price_usd"] == "1.070000"
     assert amount["price_usd"] is None, "a balance has no price until an amount is chosen"
+    assert amount["retail_price_usd"] is None, "a face-value placeholder is not a price"
     assert amount["min_amount_usd"] == "1.00"
     assert amount["max_amount_usd"] == "100.00"
     assert rows["fixed"]["kind"] == "fixed"

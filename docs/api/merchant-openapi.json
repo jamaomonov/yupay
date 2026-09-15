@@ -1,0 +1,1524 @@
+{
+  "components": {
+    "schemas": {
+      "MerchantBrandOut": {
+        "description": "One brand of the wholesale catalog, with its products.\n\n``name`` is the catalog's default locale, like the product's; a brand\nwhose products all price out is absent entirely rather than empty.",
+        "properties": {
+          "brand_id": {
+            "description": "Our id for the brand.",
+            "title": "Brand Id",
+            "type": "string"
+          },
+          "category_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "That section's name, in the catalog's default locale.",
+            "title": "Category Name"
+          },
+          "category_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Which storefront section this brand sits in \u2014 the same split a person sees on yupay.uz. `null` if it has none; the brand is still listed, because the price list's job is prices.",
+            "title": "Category Slug"
+          },
+          "hero_image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Wider brand artwork, an absolute URL, or `null`.",
+            "title": "Hero Image Url"
+          },
+          "logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Brand artwork, an absolute URL \u2014 the same file the storefront renders. `null` where none is uploaded, so you can draw a placeholder instead of a broken image.",
+            "title": "Logo Url"
+          },
+          "name": {
+            "description": "The brand name, in the catalog's default locale.",
+            "title": "Name",
+            "type": "string"
+          },
+          "products": {
+            "description": "Products with at least one purchasable SKU. Never an empty shell.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantProductOut"
+            },
+            "title": "Products",
+            "type": "array"
+          },
+          "slug": {
+            "description": "The stable machine-readable name.",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "brand_id",
+          "slug",
+          "name",
+          "products"
+        ],
+        "title": "MerchantBrandOut",
+        "type": "object"
+      },
+      "MerchantCatalogOut": {
+        "description": "Body of ``GET /merchant/v1/catalog``: the whole B2B price list.\n\nAn object rather than a bare array so v1 clients keep parsing when a\nfuture field (a cursor, a generated-at stamp) is added beside ``brands``.",
+        "properties": {
+          "brands": {
+            "description": "Every brand you can buy from, priced for your account.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantBrandOut"
+            },
+            "title": "Brands",
+            "type": "array"
+          }
+        },
+        "required": [
+          "brands"
+        ],
+        "title": "MerchantCatalogOut",
+        "type": "object"
+      },
+      "MerchantDeliveryOut": {
+        "description": "The artifact a delivered order handed over \u2014 the voucher code lives here.\n\nPresent as soon as a ``deliveries`` row exists for the order \u2014 it is the\ndelivery record that decides, not the order's status, which is what\n``order_status._delivery`` reads. The two normally move together.\n``artifact``'s shape depends on ``artifact_kind`` (``voucher_code`` or\n``topup_receipt`` today); for ``voucher_code`` it carries ``code`` (or\n``codes``). Internal fields recorded alongside it \u2014 our supplier's name,\ntheir order id, our warehouse row \u2014 are filtered out by\n``fulfillment.buyer_safe_artifact``, the same allow-list the storefront\nuses.",
+        "properties": {
+          "artifact": {
+            "additionalProperties": true,
+            "description": "The delivered thing. For `voucher_code` it carries `code` (or `codes`). Internal fields \u2014 our supplier, their order id, our warehouse row \u2014 are never in here.",
+            "title": "Artifact",
+            "type": "object"
+          },
+          "artifact_kind": {
+            "description": "What was delivered: `voucher_code` or `topup_receipt`. It decides the shape of `artifact`.",
+            "title": "Artifact Kind",
+            "type": "string"
+          },
+          "delivered_at": {
+            "description": "When it was handed over, ISO 8601 UTC.",
+            "format": "date-time",
+            "title": "Delivered At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "artifact_kind",
+          "artifact",
+          "delivered_at"
+        ],
+        "title": "MerchantDeliveryOut",
+        "type": "object"
+      },
+      "MerchantFieldOut": {
+        "additionalProperties": false,
+        "description": "One input a product's ``fulfillment_data`` expects.\n\nThe machine API has always told an integrator that ``fulfillment_data`` is\nrequired and never *what it takes* \u2014 that lived in prose, which means every\nnew product is a documentation round trip before a reseller can sell it.\nThis is the same schema the storefront renders its checkout form from,\ntrimmed to what a caller needs: the key to send, whether it is optional,\nand the pattern we will validate against before anything is charged.\n\n``label`` and ``placeholder`` are locale maps because the cabinet renders\nthem to a person; a machine caller can ignore both and read ``key``.",
+        "properties": {
+          "key": {
+            "description": "The key to put in `fulfillment_data`.",
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Locale \u2192 label, for your own UI. A machine caller can ignore it.",
+            "title": "Label",
+            "type": "object"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The regex we validate against before anything is charged. Check it in your own form and save the round trip.",
+            "title": "Pattern"
+          },
+          "placeholder": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Locale \u2192 placeholder text, for your own UI.",
+            "title": "Placeholder",
+            "type": "object"
+          },
+          "required": {
+            "description": "Whether the order is refused without it.",
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "description": "What kind of value it is (\"text\", \"number\").",
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "type",
+          "required"
+        ],
+        "title": "MerchantFieldOut",
+        "type": "object"
+      },
+      "MerchantOrderCreateIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /merchant/v1/orders`` (spec \u00a79.1).\n\nOne SKU per order, deliberately: a reseller's own basket does not have to\nbe ours, and a single line keeps \"the order failed\" from meaning \"part of\nthe order failed\". An ``items`` array can still be *added* later without a\n``/merchant/v2`` \u2014 a new optional request field is additive; removing one\nis not, which is the escape hatch ``quantity`` below was added through.\n\n``extra=\"forbid\"`` on purpose. On a response, ignoring an unknown field is\nright; on a *request* it is how a typo'd ``fulfilment_data`` silently\nbecomes an order with no player id, delivered to nobody.",
+        "properties": {
+          "amount_usd": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many dollars of face value, on a `kind=amount` SKU. Required there and refused elsewhere, on the same no-silent-default rule as `quantity`. This is the **face value you are loading**, not what you pay: $100 of Steam wallet costs $104 at a 4% markup. Bounded by that SKU's `min_amount_usd` and `max_amount_usd`.",
+            "title": "Amount Usd"
+          },
+          "expected_price": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "description": "The **order total** you last computed from `/catalog` \u2014 a fixed SKU's `price_usd`, or `ceil_to_cent(unit_price_usd \u00d7 quantity_or_amount_usd)`.\n\nA tolerance, **not a bid**: within \u00b12% of ours the order proceeds and is charged at *our* current price; outside it you get `422 price_changed` carrying that price, and you decide whether to re-send.",
+            "title": "Expected Price"
+          },
+          "fulfillment_data": {
+            "additionalProperties": true,
+            "description": "Whatever the SKU's product requires \u2014 a player id, a login. The keys and their patterns are published on each product as `required_fields`. An undeclared key is **rejected**, not dropped, so a SKU that requires nothing accepts only `{}`.",
+            "title": "Fulfillment Data",
+            "type": "object"
+          },
+          "merchant_order_id": {
+            "description": "**Your** id for this order, and the idempotency key \u2014 send the same one again and you get the same order back, never a second charge. Printable ASCII with no spaces, so it survives being a path segment in `GET /merchant/v1/orders/{merchant_order_id}` and the signing string.",
+            "maxLength": 128,
+            "minLength": 1,
+            "pattern": "^[\\x21-\\x7e]+$",
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "quantity": {
+            "anyOf": [
+              {
+                "maximum": 50000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many units, on a `kind=unit` SKU. **Required** there and **refused** on the other shapes, both as a 422 \u2014 neither direction has a silent default, because a missing quantity would sell one Star and an ignored one would charge for a denomination you thought was ten. Bounded by that SKU's `min_qty` and `max_qty`.",
+            "title": "Quantity"
+          },
+          "sku_id": {
+            "description": "From `GET /merchant/v1/catalog`. A UUID; any spelling of it is accepted.",
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "sku_id",
+          "expected_price"
+        ],
+        "title": "MerchantOrderCreateIn",
+        "type": "object"
+      },
+      "MerchantOrderEventOut": {
+        "description": "One entry of an order's timeline.\n\n``event`` only \u2014 no payload. An ``order_events`` payload carries internal\nvalues (``order.paid``'s is a fingerprint of the reseller's own request;\n``order.failed``'s is an operator's free-text note when support closed the\norder by hand, and an internal label when the automatic refund closed it \u2014\nM3c Task 6), and none of them is worth a field on a third-party contract.",
+        "properties": {
+          "at": {
+            "description": "When it happened, ISO 8601 UTC.",
+            "format": "date-time",
+            "title": "At",
+            "type": "string"
+          },
+          "event": {
+            "description": "One of the published `order.*` kinds. Internal audit entries are omitted entirely, and a new kind stays omitted until it is documented.",
+            "title": "Event",
+            "type": "string"
+          }
+        },
+        "required": [
+          "event",
+          "at"
+        ],
+        "title": "MerchantOrderEventOut",
+        "type": "object"
+      },
+      "MerchantOrderOut": {
+        "description": "Body of ``POST /merchant/v1/orders``.\n\n``status`` is the order's live status, not a fixed ``\"paid\"``: a merchant\norder is born paid and fulfilment starts in the same transaction, so what\ncomes back is where that left it. Poll\n``GET /merchant/v1/orders/{merchant_order_id}`` for the rest.",
+        "properties": {
+          "balance_usd": {
+            "description": "Your deposit after this order.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Usd",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "When the order was placed, ISO 8601 UTC.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "description": "The id you sent. Key your records on it.",
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "description": "Our id for the order. Quote it to support; key nothing on it.",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "price_usd": {
+            "description": "What this order charged \u2014 **our** price at the moment you ordered, within \u00b12% of the `expected_price` you sent or it would have been refused. Fixed from here on: whatever fulfilment ends up costing us is our problem.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "sku_id": {
+            "description": "The SKU you bought.",
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "Where the order is right now. See the order read.",
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_id",
+          "price_usd",
+          "balance_usd",
+          "created_at"
+        ],
+        "title": "MerchantOrderOut",
+        "type": "object"
+      },
+      "MerchantOrderStatusOut": {
+        "description": "Body of ``GET /merchant/v1/orders/{merchant_order_id}``.\n\nThe reseller's whole view of one order: where it is, what it cost, what it\ndelivered, and whether anything came back. **This is the only place the\ndelivered voucher code is handed over** \u2014 the ``order.status_changed``\nwebhook (M3a, ADR-0070) does not carry it, because a webhook body lands in\nthe merchant's logs and in ours, and a voucher code is a bearer instrument.",
+        "properties": {
+          "created_at": {
+            "description": "When you placed it, ISO 8601 UTC.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When it was delivered, or `null` if it has not been.",
+            "title": "Delivered At"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MerchantDeliveryOut"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What was delivered, once anything was. **The only place a code is given.**"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "A closed vocabulary, additive only \u2014 never a supplier's or an operator's own words, because you cannot switch on prose.\n\n- `null` \u2014 nothing has gone wrong.\n- `fulfillment_delayed` \u2014 **not terminal.** Delivery has stopped; the order has not. Keep polling, do not re-order, do not refund your customer.\n- `fulfillment_failed_refunded` \u2014 delivery failed and **all** of what you paid is back.\n- `fulfillment_failed` \u2014 delivery failed; any refund is partial or pending.\n- `order_failed` \u2014 support closed the order.\n\nA loop that stops on `failure_reason != null` will stop polling an order we are about to deliver. Stop on the terminal values, not on the field.",
+            "title": "Failure Reason"
+          },
+          "merchant_order_id": {
+            "description": "The id you placed the order with.",
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "description": "Our id for the order. Quote it to support.",
+            "title": "Order Id",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the deposit was charged. A merchant order is born paid.",
+            "title": "Paid At"
+          },
+          "price_usd": {
+            "description": "What this order charged. Final.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "refunded_usd": {
+            "description": "How much of `price_usd` is back on your deposit. `\"0.00\"` until something comes back. Read from the ledger, so both an automatic refund and a settlement booked by hand land here. Never more than `price_usd`.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "sku_id": {
+            "description": "The SKU this order was placed against.",
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "`paid` \u2192 `fulfilling` \u2192 `delivered`, or `failed`.\n\n`failed` arrives two ways: support closing an undeliverable order, and a delivery failure whose **whole** charge is already back on your deposit. Read `failure_reason` to tell them apart. New values may be added \u2014 treat one you do not know as still in flight.",
+            "title": "Status",
+            "type": "string"
+          },
+          "timeline": {
+            "description": "What happened and when, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantOrderEventOut"
+            },
+            "title": "Timeline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_id",
+          "price_usd",
+          "refunded_usd",
+          "created_at",
+          "paid_at",
+          "delivered_at",
+          "failure_reason",
+          "delivery",
+          "timeline"
+        ],
+        "title": "MerchantOrderStatusOut",
+        "type": "object"
+      },
+      "MerchantPlayerCheckIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /merchant/v1/validate/player`` (spec \u00a79.1).\n\n``extra=\"forbid\"``, for the same reason ``MerchantOrderCreateIn`` sets it:\non a request, silently ignoring an unknown key is how a typo'd\n``player_id`` becomes a check of nothing that answers ``unsupported`` and\ngets read as \"this SKU needs no verification\".",
+        "properties": {
+          "player_id": {
+            "description": "Your **end customer's** identifier \u2014 the game's player id, or the Steam login. We hold it for the length of the request and never write it to a log or a URL, which is why this endpoint is a POST.",
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Player Id",
+            "type": "string"
+          },
+          "server_id": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The game server or zone, for the games that ask for one. Send what the SKU's product declares and omit it otherwise \u2014 an empty string is refused rather than taken as a third spelling of \"no server\".",
+            "title": "Server Id"
+          },
+          "sku_id": {
+            "description": "The SKU you are about to order. A SKU and not a product, so the id you check is the id you buy.",
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "player_id"
+        ],
+        "title": "MerchantPlayerCheckIn",
+        "type": "object"
+      },
+      "MerchantPlayerCheckOut": {
+        "description": "Body of ``POST /merchant/v1/validate/player`` \u2014 an **advisory** verdict.\n\nFour outcomes, and the difference between them is the whole point of the\nendpoint. Switch on ``status``; never treat \"not ``invalid``\" as approval.\n\n* ``valid`` \u2014 the provider resolved the id. ``name`` carries the account\n  nickname where the provider returns one (G2B does; Steam has no display\n  name to give, so it stays ``null`` \u2014 an absence, not a placeholder).\n* ``invalid`` \u2014 the provider answered and the id does not exist. This is\n  the one answer that says your customer mistyped something.\n* ``error`` \u2014 **we could not check.** An upstream fault, a timeout, a\n  rejected credential of ours, or a circuit we opened after a run of\n  failures. It says nothing at all about the id, so it must not be read as\n  either approval or refusal; retry, or order without a check.\n* ``unsupported`` \u2014 this SKU's product has no player check configured, and\n  will not grow one on its own. Distinct from ``error`` because that one is\n  worth retrying and this one never is.\n\nNothing here reports how the answer was reached, deliberately: a verdict\nserved from the 300 s cache is still our best answer, and a \"this was\ncached\" caveat would only invite integrators to distrust a good one.",
+        "properties": {
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The account nickname, where the provider returns one. `null` is an absence, not a placeholder \u2014 some providers have no display name to give.",
+            "title": "Name"
+          },
+          "status": {
+            "description": "Switch on this. Never read \u201cnot `invalid`\u201d as approval.\n\n- `valid` \u2014 the provider resolved the id.\n- `invalid` \u2014 the provider answered and the id does not exist. The one answer that means your customer mistyped something.\n- `error` \u2014 **we could not check.** Says nothing about the id. Retry, or order without a check.\n- `unsupported` \u2014 this product has no player check and will not grow one. Never worth retrying.",
+            "enum": [
+              "valid",
+              "invalid",
+              "error",
+              "unsupported"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "title": "MerchantPlayerCheckOut",
+        "type": "object"
+      },
+      "MerchantProductOut": {
+        "description": "One product of a brand, with its purchasable SKUs.\n\nOnly products with at least one purchasable SKU appear \u2014 there are no\nempty shells to iterate past. ``name`` is the catalog's default locale\n(``catalog.service.DEFAULT_LOCALE``, ``ru``); ``slug`` is the stable\nmachine-readable half and never changes with a translation edit.",
+        "properties": {
+          "name": {
+            "description": "The product name, in the catalog's default locale.",
+            "title": "Name",
+            "type": "string"
+          },
+          "product_id": {
+            "description": "Our id for the product.",
+            "title": "Product Id",
+            "type": "string"
+          },
+          "required_fields": {
+            "description": "What every SKU under this product needs in `fulfillment_data`.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantFieldOut"
+            },
+            "title": "Required Fields",
+            "type": "array"
+          },
+          "skus": {
+            "description": "The purchasable lines, cheapest first.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantSkuOut"
+            },
+            "title": "Skus",
+            "type": "array"
+          },
+          "slug": {
+            "description": "The stable machine-readable name. Never changes with a translation edit.",
+            "title": "Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "product_id",
+          "slug",
+          "name",
+          "skus"
+        ],
+        "title": "MerchantProductOut",
+        "type": "object"
+      },
+      "MerchantProfileOut": {
+        "description": "Body of ``GET /merchant/v1/me`` \u2014 who is calling, and what they can spend.\n\n``balance_usd`` is the deposit ledger's signed posting sum\n(``service.deposit_balance``), read live on every call \u2014 there is no\nbalance column to drift from it.",
+        "properties": {
+          "balance_usd": {
+            "description": "What you can spend right now, in USD. Summed from the deposit ledger on every call \u2014 there is no stored balance that could drift from it.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance Usd",
+            "type": "string"
+          },
+          "merchant_id": {
+            "description": "Your account id. Quote it to support.",
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "status": {
+            "description": "`active`, or `frozen` while the account is suspended. A frozen account can still read, and every write answers `403 merchant_frozen`.",
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "description": "Your company name, as it appears on your invoices.",
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "merchant_id",
+          "title",
+          "status",
+          "balance_usd"
+        ],
+        "title": "MerchantProfileOut",
+        "type": "object"
+      },
+      "MerchantSkuOut": {
+        "description": "One purchasable line of the wholesale price list.\n\n``sku_id`` is what ``POST /merchant/v1/orders`` takes. Every price here is\nTHIS merchant's, not the retail one. ``updated_at`` is the SKU row's own\nstamp, so a merchant polling the price list can tell what moved (spec \u00a78.4\n\u2014 there are no price webhooks).\n\n**Two shapes, and ``kind`` says which.** A fixed SKU is a denomination:\none ``price_usd``, order one of it. A unit SKU is a currency sold by the\nunit: a six-decimal ``unit_price_usd`` and a ``quantity`` on the order.\nExactly one of the two price fields is ever populated, because a machine\ncontract cannot hand a client two shapes for one quantity \u2014 and \"price\" on\na unit SKU is not one quantity but two, the per-unit rate and the total.",
+        "properties": {
+          "kind": {
+            "description": "Which shape this line is, and therefore what to send beside `sku_id`:\n\n- `fixed` \u2014 a denomination you buy one of. Nothing extra.\n- `unit` \u2014 a currency counted in units (Telegram Stars). Send `quantity`.\n- `amount` \u2014 a balance loaded in dollars (a Steam wallet). Send `amount_usd`.",
+            "enum": [
+              "fixed",
+              "unit",
+              "amount"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "max_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=amount` only: the largest `amount_usd` we accept, inclusive.",
+            "title": "Max Amount Usd"
+          },
+          "max_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=unit` only: the largest `quantity` we accept, inclusive.",
+            "title": "Max Qty"
+          },
+          "min_amount_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=amount` only: the smallest `amount_usd` we accept, inclusive, in dollars of face value. `unit_price_usd` is then the price of **one dollar** of that balance.",
+            "title": "Min Amount Usd"
+          },
+          "min_qty": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=unit` only: the smallest `quantity` we accept, inclusive.",
+            "title": "Min Qty"
+          },
+          "name": {
+            "description": "The denomination, as a person would read it (\"60 UC\"). Falls back to `sku_code` for lines that carry none. The same string in every locale \u2014 denominations are not translated.",
+            "title": "Name",
+            "type": "string"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=fixed` only: the order total, and what to send as `expected_price`. `null` on the other two shapes, which have no price until a quantity is chosen.",
+            "title": "Price Usd"
+          },
+          "retail_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the same thing costs on yupay.uz \u2014 the reference your wholesale price is a discount against, so you do not have to match SKUs by hand. `null` on a `kind=amount` line, where retail is charged as a live FX rate times a margin and there is no single figure to quote.",
+            "title": "Retail Price Usd"
+          },
+          "sku_code": {
+            "description": "Our internal code for the line. Useful in a support conversation.",
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "sku_id": {
+            "description": "What `POST /merchant/v1/orders` takes. Stable forever.",
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=unit` only: what one unit is, for your UI (\"stars\").",
+            "title": "Unit"
+          },
+          "unit_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`kind=unit` and `kind=amount`: the price of **one** unit at six decimals \u2014 one Star, or one dollar of wallet balance. Your total is `ceil_to_cent(unit_price_usd \u00d7 quantity_or_amount)`, computed from this exact value, so you can reproduce your charge before you send it. `null` on a fixed line.",
+            "title": "Unit Price Usd"
+          },
+          "updated_at": {
+            "description": "When this line last changed. Poll the catalog and compare it to tell what moved \u2014 there are no price webhooks.",
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "sku_code",
+          "name",
+          "kind",
+          "updated_at"
+        ],
+        "title": "MerchantSkuOut",
+        "type": "object"
+      },
+      "MerchantTransactionOut": {
+        "description": "One movement of the merchant's deposit.\n\n``amount_usd`` is **signed**: positive credited the deposit, negative spent\nit. The column adds up to the balance ``GET /merchant/v1/me`` reports.",
+        "properties": {
+          "amount_usd": {
+            "description": "**Signed**: positive credited the deposit, negative spent it. The column adds up to the balance `GET /merchant/v1/me` reports.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "created_at": {
+            "description": "When it was posted, ISO 8601 UTC.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "kind": {
+            "description": "- `merchant_deposit_credit` \u2014 we credited your deposit.\n- `merchant_order_charge` \u2014 an order spent it.\n- `merchant_order_refund` \u2014 we returned a failed order's charge.\n\nMore may be added. Treat an unknown kind as \"some movement\" and trust `amount_usd`.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The same order's id in **your** system, so a statement line reconciles against your books without a second lookup.",
+            "title": "Merchant Order Id"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The order this movement belongs to, if any. Present on credits too \u2014 a settlement booked against a failed order is a credit that names it. `null` means an ordinary prepayment.",
+            "title": "Order Id"
+          },
+          "transaction_id": {
+            "description": "Our id for this ledger entry.",
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "kind",
+          "amount_usd",
+          "order_id",
+          "merchant_order_id",
+          "created_at"
+        ],
+        "title": "MerchantTransactionOut",
+        "type": "object"
+      },
+      "MerchantTransactionsOut": {
+        "description": "Body of ``GET /merchant/v1/transactions`` \u2014 one page, newest first.",
+        "properties": {
+          "items": {
+            "description": "One page, newest first.",
+            "items": {
+              "$ref": "#/components/schemas/MerchantTransactionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Pass back as `?cursor=` for the next, older page. `null` means this page is the last one \u2014 never call again on a null.",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "MerchantTransactionsOut",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "MerchantKey": {
+        "description": "Your key id, `ypm_\u2026`. Public; it identifies the key, not you.",
+        "in": "header",
+        "name": "X-Merchant-Key",
+        "type": "apiKey"
+      },
+      "MerchantSignature": {
+        "description": "Lowercase hex HMAC-SHA256 of the canonical string, keyed by your secret. Send `X-Merchant-Timestamp` beside it.",
+        "in": "header",
+        "name": "X-Merchant-Signature",
+        "type": "apiKey"
+      }
+    }
+  },
+  "info": {
+    "contact": {
+      "name": "YuPay integration support",
+      "url": "https://t.me/yupay_support"
+    },
+    "description": "Wholesale ordering for resellers.\n\n**Every request is signed.** Send `X-Merchant-Key`, `X-Merchant-Timestamp` and `X-Merchant-Signature`, where the signature is HMAC-SHA256 over\n\n```\n{timestamp}\\n{METHOD}\\n{raw_path}\\n{raw_query}\\n{sha256_hex(body)}\n```\n\nkeyed by your secret. The timestamp must be within \u00b1300 s of ours. A signature is deliberately **not** single-use, so an at-least-once retry of the same request is safe.\n\n**Money is a decimal string**, never a float \u2014 `\"16.54\"`. Timestamps are ISO 8601 UTC. Fields are only ever *added* to a response, so parse leniently; a breaking change would be a `/merchant/v2`.",
+    "title": "YuPay Merchant API",
+    "version": "0.0.1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/merchant/v1/catalog": {
+      "get": {
+        "description": "Return every B2B-visible, priced SKU with this merchant's price.\n\nVisibility, pricing and the query shape are all\n``price_list.build``'s \u2014 see that module. Every ``price_usd`` here is the\nprice this merchant would be charged; SKUs without a cost are absent\nrather than free, and there are no price webhooks, so poll this and watch\neach SKU's ``updated_at`` (spec \u00a78.4).",
+        "operationId": "getCatalog",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantCatalogOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated. `code` is `missing_credentials` (a header is absent), `stale_timestamp` (not digits, or more than \u00b1300 s from ours) or `invalid_credentials` (unknown key, revoked key, or a signature that does not match). The three are deliberately indistinguishable from outside beyond the code."
+          },
+          "403": {
+            "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "description": "What went wrong, in one sentence.",
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "description": "The HTTP status code, repeated in the body.",
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "description": "A short, human-readable summary.",
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "A URL identifying this error class.",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
+          },
+          "429": {
+            "description": "Rate limited, with `Retry-After`. Two axes: per source address, charged before anything is parsed, and per key, charged only once your signature verifies \u2014 so nobody who reads your key id off a header can spend your budget."
+          }
+        },
+        "security": [
+          {
+            "MerchantKey": [],
+            "MerchantSignature": []
+          }
+        ],
+        "summary": "The wholesale price list, priced for the calling merchant",
+        "tags": [
+          "Catalog"
+        ]
+      }
+    },
+    "/merchant/v1/me": {
+      "get": {
+        "description": "Return who is calling and what they can spend.\n\n``balance_usd`` is the deposit ledger's signed posting sum, read live \u2014\nthere is no balance column, so nothing can drift from it. A merchant who\nhas never been credited reads ``\"0.00\"``.",
+        "operationId": "getMe",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantProfileOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated. `code` is `missing_credentials` (a header is absent), `stale_timestamp` (not digits, or more than \u00b1300 s from ours) or `invalid_credentials` (unknown key, revoked key, or a signature that does not match). The three are deliberately indistinguishable from outside beyond the code."
+          },
+          "403": {
+            "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "description": "What went wrong, in one sentence.",
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "description": "The HTTP status code, repeated in the body.",
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "description": "A short, human-readable summary.",
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "A URL identifying this error class.",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
+          },
+          "429": {
+            "description": "Rate limited, with `Retry-After`. Two axes: per source address, charged before anything is parsed, and per key, charged only once your signature verifies \u2014 so nobody who reads your key id off a header can spend your budget."
+          }
+        },
+        "security": [
+          {
+            "MerchantKey": [],
+            "MerchantSignature": []
+          }
+        ],
+        "summary": "The calling merchant's profile and live deposit balance",
+        "tags": [
+          "Account"
+        ]
+      }
+    },
+    "/merchant/v1/orders": {
+      "post": {
+        "description": "Buy one SKU against the prepaid deposit.\n\nThe whole flow \u2014 pricing, the \u00b12% drift rule, the margin floor, the\ndeposit debit, ``paid`` and the start of fulfilment \u2014 is\n``merchants.orders.place``'s; this parses and dispatches. Idempotent on\n``merchant_order_id``: the same id with the same body returns the order\nalready placed, a different body is a ``409``.",
+        "operationId": "postOrders",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantOrderCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated. `code` is `missing_credentials` (a header is absent), `stale_timestamp` (not digits, or more than \u00b1300 s from ours) or `invalid_credentials` (unknown key, revoked key, or a signature that does not match). The three are deliberately indistinguishable from outside beyond the code."
+          },
+          "403": {
+            "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "description": "What went wrong, in one sentence.",
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "description": "The HTTP status code, repeated in the body.",
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "description": "A short, human-readable summary.",
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "A URL identifying this error class.",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
+          },
+          "429": {
+            "description": "Rate limited, with `Retry-After`. Two axes: per source address, charged before anything is parsed, and per key, charged only once your signature verifies \u2014 so nobody who reads your key id off a header can spend your budget."
+          }
+        },
+        "security": [
+          {
+            "MerchantKey": [],
+            "MerchantSignature": []
+          }
+        ],
+        "summary": "Place an order and settle it from the deposit",
+        "tags": [
+          "Orders"
+        ]
+      }
+    },
+    "/merchant/v1/orders/{merchant_order_id}": {
+      "get": {
+        "description": "Return one order's status, timeline, delivered artifact and refund mark.\n\nScoped to the authenticated merchant and to their own id \u2014 see\n``merchants.order_status``, which also explains why an order belonging to\nanother merchant answers with the same 404 as one that never existed.\n\nThe path segment arrives percent-decoded, so an id containing ``/``\n(legal, and in the README's worked example) is matched against the stored\nvalue rather than split into route segments.",
+        "operationId": "getOrdersMerchantOrderId",
+        "parameters": [
+          {
+            "description": "Your own id for the order, percent-encoded in the path.",
+            "in": "path",
+            "name": "merchant_order_id",
+            "required": true,
+            "schema": {
+              "description": "Your own id for the order, percent-encoded in the path.",
+              "title": "Merchant Order Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOrderStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated. `code` is `missing_credentials` (a header is absent), `stale_timestamp` (not digits, or more than \u00b1300 s from ours) or `invalid_credentials` (unknown key, revoked key, or a signature that does not match). The three are deliberately indistinguishable from outside beyond the code."
+          },
+          "403": {
+            "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "description": "What went wrong, in one sentence.",
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "description": "The HTTP status code, repeated in the body.",
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "description": "A short, human-readable summary.",
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "A URL identifying this error class.",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
+          },
+          "429": {
+            "description": "Rate limited, with `Retry-After`. Two axes: per source address, charged before anything is parsed, and per key, charged only once your signature verifies \u2014 so nobody who reads your key id off a header can spend your budget."
+          }
+        },
+        "security": [
+          {
+            "MerchantKey": [],
+            "MerchantSignature": []
+          }
+        ],
+        "summary": "Read one of your orders back, with its delivered code",
+        "tags": [
+          "Orders"
+        ]
+      }
+    },
+    "/merchant/v1/transactions": {
+      "get": {
+        "description": "Return one page of the calling merchant's deposit movements.\n\nPaging, the shared grouped query and why it is keyset rather than OFFSET\nare all ``merchants.transactions``'. The merchant comes from the signature;\nno parameter here names one.\n\nNote that ``limit`` and ``cursor`` are part of the signed canonical string\n(Task 2's fourth field, the raw query), so a signature does not carry\nacross a change of page.",
+        "operationId": "getTransactions",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantTransactionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated. `code` is `missing_credentials` (a header is absent), `stale_timestamp` (not digits, or more than \u00b1300 s from ours) or `invalid_credentials` (unknown key, revoked key, or a signature that does not match). The three are deliberately indistinguishable from outside beyond the code."
+          },
+          "403": {
+            "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "description": "What went wrong, in one sentence.",
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "description": "The HTTP status code, repeated in the body.",
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "description": "A short, human-readable summary.",
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "A URL identifying this error class.",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
+          },
+          "429": {
+            "description": "Rate limited, with `Retry-After`. Two axes: per source address, charged before anything is parsed, and per key, charged only once your signature verifies \u2014 so nobody who reads your key id off a header can spend your budget."
+          }
+        },
+        "security": [
+          {
+            "MerchantKey": [],
+            "MerchantSignature": []
+          }
+        ],
+        "summary": "Your deposit ledger, newest first",
+        "tags": [
+          "Deposit"
+        ]
+      }
+    },
+    "/merchant/v1/validate/player": {
+      "post": {
+        "description": "Verify a player id (or Steam login) against the SKU you intend to buy.\n\nAdvisory, and never a fake approver (spec \u00a79.1): ``valid`` and ``invalid``\nare the provider's own verdict, ``error`` means we could not check and says\nnothing about the id, and ``unsupported`` means this SKU has no checker at\nall. The rules, and why ``error`` may never render as ``valid``, are\n``merchants.validate``'s; this parses and dispatches.\n\nA ``POST`` although it writes nothing \u2014 the identifier must not travel in a\nURL (spec \u00a79.2) \u2014 so it takes no ``Idempotency-Key``; see the module\ndocstring.\n\n**Two counters, both this endpoint's own**, charged after authentication\nbecause the prefix-wide IP counter in ``merchant_auth`` has already turned\naway anyone unauthenticated: one per source address, and one per\n*merchant*. The second is not redundant \u2014 the quota being rationed is a\nsupplier's, which a reseller spends per account rather than per egress\nnode, so an address counter alone hands a multi-node NAT pool one budget\neach. ``merchants.validate.charge_merchant_quota`` carries the argument.\n\n``merchant`` is used for that counter and for nothing else: what a merchant\nmay *check* is a property of the catalog row (``brand.visible_b2b AND\nsku.visible_b2b``), not of the caller.",
+        "operationId": "postValidatePlayer",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantPlayerCheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantPlayerCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "401": {
+            "description": "Not authenticated. `code` is `missing_credentials` (a header is absent), `stale_timestamp` (not digits, or more than \u00b1300 s from ours) or `invalid_credentials` (unknown key, revoked key, or a signature that does not match). The three are deliberately indistinguishable from outside beyond the code."
+          },
+          "403": {
+            "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "422": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "description": "The ``422`` a request the schema itself refused answers with.\n\nNot raised anywhere \u2014 it exists so the OpenAPI document tells the truth for\nthis prefix. Every other surface answers a validation failure with\nFastAPI's ``HTTPValidationError`` (``{\"detail\": [ \u2026 ]}``); ``/merchant/v1``\nanswers RFC 7807, because its error table is published to third parties\nwho cannot redeploy on our schedule. The renderer is\n``core.errors.problem_json_validation_handler``, which is scoped to this\nprefix for that reason and delegates everywhere else.\n\n``detail`` is a **string** here, as RFC 7807 requires and as every other\nerror on this API already is; the per-field list FastAPI would have put\nthere rides in ``errors`` instead.",
+                  "properties": {
+                    "code": {
+                      "description": "Always `invalid_request` here. Switch on this rather than on the status: every error on this API carries one, so no case is special.",
+                      "title": "Code",
+                      "type": "string"
+                    },
+                    "detail": {
+                      "description": "What went wrong, in one sentence.",
+                      "title": "Detail",
+                      "type": "string"
+                    },
+                    "errors": {
+                      "description": "Per-field failures \u2014 `{type, loc, msg, input, ctx}` \u2014 for diagnostics. Read them when you are debugging; do not switch on them. They are the validation framework's shape and are not part of this contract.",
+                      "items": {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      "title": "Errors",
+                      "type": "array"
+                    },
+                    "status": {
+                      "description": "The HTTP status code, repeated in the body.",
+                      "title": "Status",
+                      "type": "integer"
+                    },
+                    "title": {
+                      "description": "A short, human-readable summary.",
+                      "title": "Title",
+                      "type": "string"
+                    },
+                    "type": {
+                      "description": "A URL identifying this error class.",
+                      "title": "Type",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "type",
+                    "title",
+                    "status",
+                    "detail",
+                    "code",
+                    "errors"
+                  ],
+                  "title": "MerchantValidationProblem",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "The request did not validate (RFC 7807, `code: invalid_request`)"
+          },
+          "429": {
+            "description": "Rate limited, with `Retry-After`. Two axes: per source address, charged before anything is parsed, and per key, charged only once your signature verifies \u2014 so nobody who reads your key id off a header can spend your budget."
+          }
+        },
+        "security": [
+          {
+            "MerchantKey": [],
+            "MerchantSignature": []
+          }
+        ],
+        "summary": "Check an end customer's player id before you order for them",
+        "tags": [
+          "Validation"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "description": "Production",
+      "url": "http://localhost:8000"
+    }
+  ],
+  "tags": [
+    {
+      "description": "Who you are and what you can spend.",
+      "name": "Account"
+    },
+    {
+      "description": "What you can buy, priced for your account.",
+      "name": "Catalog"
+    },
+    {
+      "description": "Placing an order and reading it back.",
+      "name": "Orders"
+    },
+    {
+      "description": "Check an end customer's id before you charge them.",
+      "name": "Validation"
+    },
+    {
+      "description": "Every movement of your balance.",
+      "name": "Deposit"
+    }
+  ]
+}

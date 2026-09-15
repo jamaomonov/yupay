@@ -68,8 +68,8 @@
 	}
 }
 
-yupay.uz, www.yupay.uz, app.yupay.uz, partners.yupay.uz, admin.yupay.uz, api.yupay.uz,
-grafana.yupay.uz {
+yupay.uz, www.yupay.uz, app.yupay.uz, partners.yupay.uz, reseller.yupay.uz,
+admin.yupay.uz, api.yupay.uz, grafana.yupay.uz {
 	import yupay_upstream
 }
 
