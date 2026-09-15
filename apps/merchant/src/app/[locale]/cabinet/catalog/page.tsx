@@ -6,13 +6,13 @@ import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Suspense, useMemo } from "react";
 
-import { EmptyState } from "@/components/EmptyState";
-import { PageHeading } from "@/components/PageHeading";
-import { pathFor } from "@/lib/locale-href";
 import type { Brand } from "@/lib/types";
 
 import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import { downloadFile } from "@/lib/api";
+import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
 /**

@@ -6,15 +6,15 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { EmptyState } from "@/components/EmptyState";
-import { PageHeading } from "@/components/PageHeading";
-import { pathFor } from "@/lib/locale-href";
 import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
 import { useSearch } from "@/components/CabinetContext";
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { ORDER_FILTERS, orderStatusLabel } from "@/lib/labels";
+import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
 /** The two terminal outcomes, as a percentage of themselves.
@@ -40,14 +40,20 @@ function Stat({
   accent?: boolean;
 }) {
   return (
-    <div className="border-border bg-card rounded-xl border px-4 py-4 sm:px-5">
+    // `dt` first and `dd` second, as a definition list requires, with the
+    // visual order flipped in CSS — the number reads first on screen, but the
+    // markup pairs the term with its value. The hint moved inside the `dd`:
+    // a loose `<p>` is not allowed in a `dl` group at all.
+    <div className="border-border bg-card flex flex-col-reverse rounded-xl border px-4 py-4 sm:px-5">
+      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">{label}</dt>
       <dd
         className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
       >
         {value}
+        {hint !== undefined && (
+          <span className="text-tx-dim mt-0.5 block font-sans text-[11px] font-normal">{hint}</span>
+        )}
       </dd>
-      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">{label}</dt>
-      {hint !== undefined && <p className="text-tx-dim mt-0.5 text-[11px]">{hint}</p>}
     </div>
   );
 }

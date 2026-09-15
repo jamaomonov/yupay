@@ -4,7 +4,9 @@
     "description": "Connect a catalog of game top-ups, vouchers and gift cards at wholesale prices. API, automatic delivery, a cabinet with balance and history."
   },
   "common": {
-    "localeSwitch": "Interface language"
+    "localeSwitch": "Interface language",
+    "skipToContent": "Skip to content",
+    "codeSample": "Code sample, scrolls sideways"
   },
   "landing": {
     "heading": "Wholesale access to digital goods",

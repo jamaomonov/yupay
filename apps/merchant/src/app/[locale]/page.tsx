@@ -4,8 +4,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { CodeWindow } from "@/components/CodeWindow";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { pathFor } from "@/lib/locale-href";
 import { countBrands } from "@/lib/brands";
+import { pathFor } from "@/lib/locale-href";
 
 export const revalidate = 3600;
 
@@ -84,7 +84,10 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
                 </span>
               )}
               <span>
-                <span className="text-primary-ink">●</span> {t("metricAuto")}
+                <span aria-hidden="true" className="text-primary-ink">
+                  ●
+                </span>{" "}
+                {t("metricAuto")}
               </span>
               <span>
                 <span className="text-primary-ink font-mono">USD</span> {t("metricUsd")}
@@ -112,7 +115,12 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
             it is real — the field names are the ones `POST /merchant/v1/orders`
             takes. */}
           <CodeWindow icon={Braces} title={SNIPPET_TITLE}>
-            <pre className="text-tx-mute overflow-x-auto p-5 font-mono text-[12.5px] leading-[1.75]">
+            <pre
+              tabIndex={0}
+              role="region"
+              aria-label={SNIPPET_TITLE}
+              className="text-tx-mute overflow-x-auto p-5 font-mono text-[12.5px] leading-[1.75]"
+            >
               <code>{SNIPPET}</code>
             </pre>
           </CodeWindow>
@@ -142,9 +150,15 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
               { name: t("sectionVouchers"), body: t("sectionVouchersBody"), soon: false },
               { name: t("sectionGifts"), body: t("sectionGiftsBody"), soon: true },
             ].map(({ name, body, soon }) => (
+              // No `opacity` on the "soon" card: it multiplies against
+              // `tx-dim`/`tx-mute`, which pass AA on their own, and dropped
+              // the badge to 2.74:1 and the copy to 3.96:1 — the one
+              // dark-theme text failure in the app, and the kind pure token
+              // maths never catches. The badge and the dimmer ground already
+              // say "not yet".
               <div
                 key={name}
-                className={`border-border bg-card rounded-xl border p-5 ${soon ? "opacity-65" : ""}`}
+                className={`rounded-xl border p-5 ${soon ? "border-border bg-card-2" : "border-border bg-card"}`}
               >
                 <p className="flex flex-wrap items-center gap-2.5 font-semibold">
                   {name}

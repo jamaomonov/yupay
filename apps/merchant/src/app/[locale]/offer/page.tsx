@@ -4,6 +4,7 @@ import path from "node:path";
 import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
+
 import { pathFor } from "@/lib/locale-href";
 
 export const revalidate = 3600;

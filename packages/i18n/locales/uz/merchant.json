@@ -4,7 +4,9 @@
     "description": "Oʻyinlarni toʻldirish, vaucherlar va sovgʻa kartalari katalogini ulgurji narxlarda ulang. API, avtomatik yetkazish, balans va tarix bilan kabinet."
   },
   "common": {
-    "localeSwitch": "Interfeys tili"
+    "localeSwitch": "Interfeys tili",
+    "skipToContent": "Kontentga oʻtish",
+    "codeSample": "Kod namunasi, yon tomonga aylanadi"
   },
   "landing": {
     "heading": "Raqamli tovarlarga ulgurji kirish",

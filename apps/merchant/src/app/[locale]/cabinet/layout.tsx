@@ -16,9 +16,10 @@ import { useTranslations } from "next-intl";
 import { Suspense, useEffect, useState } from "react";
 
 import { CabinetProvider, sectionsOf, useCabinet } from "@/components/CabinetContext";
+import { SkipLink } from "@/components/SkipLink";
 import { TopBar } from "@/components/TopBar";
-import { pathFor, withoutLocale } from "@/lib/locale-href";
 import { hasSession, signOut } from "@/lib/api";
+import { pathFor, withoutLocale } from "@/lib/locale-href";
 
 /** The account group, in the order a day in the cabinet goes.
  *
@@ -108,6 +109,7 @@ function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex min-h-dvh">
+      <SkipLink />
       <aside className="border-border bg-card hidden w-[216px] shrink-0 flex-col border-r px-3 py-4 md:flex">
         <Link
           href={pathFor(locale, "/cabinet")}
@@ -165,7 +167,9 @@ function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </nav>
 
-        <main className="min-w-0 flex-1 px-4 py-5 sm:px-6">{children}</main>
+        <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 sm:px-6">
+          {children}
+        </main>
       </div>
     </div>
   );

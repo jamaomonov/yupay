@@ -6,8 +6,8 @@ import { Suspense, useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
-import { pathFor } from "@/lib/locale-href";
 import { ApiError, api, storeTokens, type Tokens } from "@/lib/api";
+import { pathFor } from "@/lib/locale-href";
 
 const MIN_PASSWORD = 10;
 

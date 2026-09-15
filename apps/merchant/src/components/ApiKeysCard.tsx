@@ -50,7 +50,7 @@ export function ApiKeysCard() {
         // Rendered above the list and never re-rendered from it: this is the
         // only moment the secret exists outside our encryption, so the panel
         // has to be impossible to miss and impossible to get back.
-        <div className="border-primary bg-card-2 mt-5 rounded-xl border p-5">
+        <div role="status" className="border-primary bg-card-2 mt-5 rounded-xl border p-5">
           <p className="font-semibold">{t("secretOnceTitle")}</p>
           <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("secretOnceBody")}</p>
           <p className="mt-4 break-all font-mono text-xs">{issued.key_id}</p>
@@ -180,7 +180,7 @@ export function ApiKeysCard() {
                           setBusy(false);
                         });
                     }}
-                    className="bg-danger rounded-btn px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    className="bg-danger rounded-btn px-3 py-1.5 text-xs font-semibold text-[hsl(var(--bg))] disabled:opacity-50"
                   >
                     {t("revokeYes")}
                   </button>

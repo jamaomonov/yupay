@@ -1,10 +1,10 @@
 import Link from "next/link";
 
-import { pathFor } from "@/lib/locale-href";
 import type { SchemaNode } from "@/lib/contract";
 
 import { Prose } from "@/components/docs/Prose";
 import { isNullable, refName, resolve, typeLabel } from "@/lib/contract";
+import { pathFor } from "@/lib/locale-href";
 
 /**
  * A schema's fields, as rows a developer scans.
@@ -54,8 +54,12 @@ export function SchemaTable({
             : undefined;
         return (
           <div key={name} className="py-3.5">
-            <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
-              <dt className="font-mono text-[13px] font-semibold">{name}</dt>
+            {/* The flex row IS the <dt>. It used to be a second <div> with the
+                <dt> inside it, which puts the term two levels below the <dl>
+                and breaks the pairing — HTML5 allows exactly one grouping
+                <div>, not two. */}
+            <dt className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
+              <span className="font-mono text-[13px] font-semibold">{name}</span>
               <span className="text-tx-dim font-mono text-[12px]">
                 {model === null ? (
                   typeLabel(child)
@@ -73,10 +77,10 @@ export function SchemaTable({
               ) : (
                 isNullable(child) && <span className="text-tx-dim text-[11px]">nullable</span>
               )}
-            </div>
+            </dt>
             {child.description !== undefined && (
               <dd className="text-tx-mute mt-1.5 text-[13px]">
-                <Prose text={child.description} />
+                <Prose text={child.description} lang="en" />
               </dd>
             )}
             <Constraints node={child} />

@@ -6,8 +6,8 @@ import { useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, SubmitButton } from "@/components/Field";
-import { pathFor } from "@/lib/locale-href";
 import { api } from "@/lib/api";
+import { pathFor } from "@/lib/locale-href";
 
 /**
  * Ask for a reset link, or for the confirmation mail again.

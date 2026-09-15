@@ -3,12 +3,12 @@
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
-import { pathFor } from "@/lib/locale-href";
 import type { Webhook, WebhookWithSecret } from "@/lib/types";
 
 import { CopyButton } from "@/components/CopyButton";
 import { ApiError, api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
+import { pathFor } from "@/lib/locale-href";
 
 /** A key per intent, held until the call succeeds — see `api.ts`. */
 function newKey(): string {
@@ -78,7 +78,7 @@ export function WebhookCard({ locale }: { locale: string }) {
       <p className="text-tx-mute mt-1.5 max-w-2xl text-sm leading-relaxed">{t("intro")}</p>
 
       {secret !== null && (
-        <div className="border-primary bg-card-2 mt-6 rounded-xl border p-5">
+        <div role="status" className="border-primary bg-card-2 mt-6 rounded-xl border p-5">
           <p className="font-semibold">{t("secretOnceTitle")}</p>
           <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("secretOnceBody")}</p>
           <p className="mt-4 break-all font-mono text-sm">{secret}</p>
@@ -198,7 +198,11 @@ export function WebhookCard({ locale }: { locale: string }) {
                   >
                     {t("sendTest")}
                   </button>
-                  {sent && <span className="text-primary-ink text-xs">{t("testSent")}</span>}
+                  {sent && (
+                    <span role="status" className="text-primary-ink text-xs">
+                      {t("testSent")}
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -240,7 +244,7 @@ export function WebhookCard({ locale }: { locale: string }) {
                           : api<Webhook>("/webhook", { method: "DELETE", idempotencyKey: key }),
                       );
                     }}
-                    className="bg-danger rounded-btn px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+                    className="bg-danger rounded-btn px-3 py-1.5 text-xs font-semibold text-[hsl(var(--bg))] disabled:opacity-50"
                   >
                     {confirming === "rotate" ? t("rotateYes") : t("disableYes")}
                   </button>

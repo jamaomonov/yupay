@@ -5,8 +5,8 @@ import { useTranslations } from "next-intl";
 import { Suspense, useEffect, useRef, useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
-import { pathFor } from "@/lib/locale-href";
 import { api, storeTokens, type Tokens } from "@/lib/api";
+import { pathFor } from "@/lib/locale-href";
 
 function Confirming() {
   const t = useTranslations("merchant.auth");

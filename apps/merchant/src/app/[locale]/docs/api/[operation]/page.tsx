@@ -89,7 +89,7 @@ export default async function OperationPage({
     <div className="mx-auto grid w-full max-w-[1400px] gap-10 px-4 py-8 sm:px-8 xl:grid-cols-[minmax(0,1fr)_28rem]">
       <article className="min-w-0">
         <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
-          {operation.summary ?? path}
+          <span lang="en">{operation.summary ?? path}</span>
         </h1>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
@@ -109,7 +109,7 @@ export default async function OperationPage({
         </div>
 
         {operation.description !== undefined && (
-          <Prose text={operation.description} className="text-tx-mute mt-5 max-w-2xl" />
+          <Prose text={operation.description} className="text-tx-mute mt-5 max-w-2xl" lang="en" />
         )}
 
         {(inPath.length > 0 || query.length > 0) && (
@@ -143,7 +143,7 @@ export default async function OperationPage({
         </section>
       </article>
 
-      <aside className="min-w-0 xl:sticky xl:top-8 xl:h-fit">
+      <aside aria-label={t("requestSample")} className="min-w-0 xl:sticky xl:top-8 xl:h-fit">
         <CodeTabs
           label={t("requestSample")}
           copyLabel={t("copy")}
@@ -173,13 +173,14 @@ function ParameterList({ title, items }: { title: string; items: Parameter[] }) 
       <dl className="divide-border mt-1 divide-y">
         {items.map((item) => (
           <div key={item.name} className="py-3">
-            <div className="flex flex-wrap items-baseline gap-x-2.5">
-              <dt className="font-mono text-[13px] font-semibold">{item.name}</dt>
+            {/* See SchemaTable: the row is the <dt>, not a div around one. */}
+            <dt className="flex flex-wrap items-baseline gap-x-2.5">
+              <span className="font-mono text-[13px] font-semibold">{item.name}</span>
               <span className="text-tx-dim font-mono text-[12px]">{typeLabel(item.schema)}</span>
               {item.required === true && (
                 <span className="text-danger text-[11px] font-semibold">required</span>
               )}
-            </div>
+            </dt>
             {item.description !== undefined && (
               <dd className="text-tx-mute mt-1.5 text-[13px] leading-relaxed">
                 {item.description}

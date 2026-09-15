@@ -5,8 +5,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { DocsPage, Section } from "@/components/docs/Page";
 import { Prose } from "@/components/docs/Prose";
 import { routing } from "@/i18n/routing";
-import { pathFor } from "@/lib/locale-href";
 import { contract, endpoints } from "@/lib/contract";
+import { pathFor } from "@/lib/locale-href";
 
 export const revalidate = 3600;
 

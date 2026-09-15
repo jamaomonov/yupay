@@ -1,6 +1,7 @@
 "use client";
 
 import { Braces, Check, Code, Copy, Terminal, type LucideIcon } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { CodeWindow } from "@/components/CodeWindow";
@@ -45,6 +46,7 @@ export function CodeTabs({
   copyLabel: string;
   copiedLabel: string;
 }) {
+  const codeRegionLabel = useTranslations("merchant.common")("codeSample");
   const [active, setActive] = useState(tabs[0]?.id ?? "");
   const [copied, setCopied] = useState(false);
   const shown = tabs.find((tab) => tab.id === active) ?? tabs[0];
@@ -60,6 +62,7 @@ export function CodeTabs({
               <button
                 key={tab.id}
                 type="button"
+                aria-pressed={tab.id === shown?.id}
                 onClick={() => {
                   setActive(tab.id);
                   setCopied(false);
@@ -94,7 +97,16 @@ export function CodeTabs({
         </>
       }
     >
-      <pre className="max-h-[32rem] overflow-auto p-4 font-mono text-[12.5px] leading-[1.7]">
+      {/* Focusable, because it scrolls. Measured before this: 1420px of cURL
+          inside a 356px box with `tabIndex: -1` and no focusable descendant,
+          so a keyboard user could read the left quarter of our own
+          integration sample and no more. A named region, not a bare stop. */}
+      <pre
+        tabIndex={0}
+        role="region"
+        aria-label={`${label ?? ""} ${shown?.label ?? ""}`.trim() || codeRegionLabel}
+        className="max-h-[32rem] overflow-auto p-4 font-mono text-[12.5px] leading-[1.7]"
+      >
         <code>{shown?.code ?? ""}</code>
       </pre>
     </CodeWindow>

@@ -3,8 +3,8 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { NavGroup } from "@/components/docs/DocsShell";
 
 import { DocsShell } from "@/components/docs/DocsShell";
-import { pathFor } from "@/lib/locale-href";
 import { contract, endpoints } from "@/lib/contract";
+import { pathFor } from "@/lib/locale-href";
 
 /**
  * The documentation shell, with its navigation built from the contract.

@@ -29,6 +29,7 @@ export function Field({
   minLength?: number;
 }) {
   const id = useId();
+  const hintId = `${id}-hint`;
   return (
     <div className="mb-4">
       <label htmlFor={id} className="text-tx-mute mb-1.5 block text-sm">
@@ -44,9 +45,17 @@ export function Field({
         onChange={(event) => {
           onChange(event.target.value);
         }}
+        // The hint was a loose paragraph beside the field: "не короче 10
+        // символов" is a *requirement*, and a screen reader never heard it
+        // before the user submitted and failed.
+        aria-describedby={hint ? hintId : undefined}
         className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm"
       />
-      {hint ? <p className="text-tx-dim mt-1.5 text-xs">{hint}</p> : null}
+      {hint ? (
+        <p id={hintId} className="text-tx-dim mt-1.5 text-xs">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

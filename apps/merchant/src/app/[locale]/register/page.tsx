@@ -6,8 +6,8 @@ import { useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
-import { pathFor } from "@/lib/locale-href";
 import { ApiError, api } from "@/lib/api";
+import { pathFor } from "@/lib/locale-href";
 
 export default function RegisterPage() {
   const t = useTranslations("merchant.auth");

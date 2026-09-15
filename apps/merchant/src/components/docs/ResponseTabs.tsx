@@ -40,6 +40,7 @@ export function ResponseTabs({ panels }: { panels: ResponsePanel[] }) {
           <button
             key={panel.status}
             type="button"
+            aria-pressed={panel.status === shown?.status}
             onClick={() => {
               setActive(panel.status);
             }}

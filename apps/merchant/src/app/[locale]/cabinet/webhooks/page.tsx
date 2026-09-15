@@ -5,10 +5,10 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
-import { EmptyState } from "@/components/EmptyState";
-import { PageHeading } from "@/components/PageHeading";
 import type { DeliveriesPage, WebhookDelivery } from "@/lib/types";
 
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 

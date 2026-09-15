@@ -6,13 +6,13 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
-import { pathFor } from "@/lib/locale-href";
 import type { OrderDetail } from "@/lib/types";
 
 import { CopyButton } from "@/components/CopyButton";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { failureLabel, orderStatusLabel } from "@/lib/labels";
+import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
 /**

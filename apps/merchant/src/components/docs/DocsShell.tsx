@@ -15,8 +15,9 @@ import { useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { withoutLocale } from "@/lib/locale-href";
+import { SkipLink } from "@/components/SkipLink";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { withoutLocale } from "@/lib/locale-href";
 
 export interface NavItem {
   href: string;
@@ -94,6 +95,18 @@ export function DocsShell({
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Not while the reader is typing somewhere else: on macOS Ctrl-K is the
+      // standard "kill to end of line" inside a text field, and stealing it
+      // yanks somebody mid-edit into a search box they did not ask for.
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement)
+      ) {
+        return;
+      }
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         box.current?.focus();
@@ -118,7 +131,11 @@ export function DocsShell({
 
   return (
     <div className="flex min-h-dvh">
-      <aside className="border-border bg-card hidden w-[252px] shrink-0 flex-col border-r md:flex">
+      <SkipLink />
+      <aside
+        aria-label={t("navLabel")}
+        className="border-border bg-card hidden w-[252px] shrink-0 flex-col border-r md:flex"
+      >
         <div className="px-5 pb-4 pt-5">
           <Link href={brand} className="font-display text-[15px] font-semibold tracking-[0.02em]">
             {t("title")}
@@ -145,7 +162,11 @@ export function DocsShell({
         </div>
 
         <nav aria-label={t("navLabel")} className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
-          {shown.length === 0 && <p className="text-tx-dim px-2 py-3 text-xs">{t("noMatches")}</p>}
+          {shown.length === 0 && (
+            <p role="status" className="text-tx-dim px-2 py-3 text-xs">
+              {t("noMatches")}
+            </p>
+          )}
           {shown.map((group) => (
             <div key={group.title} className="mb-4">
               <p className="text-tx-dim px-2 pb-1.5 pt-2 text-[10.5px] font-bold tracking-[0.09em]">
@@ -228,7 +249,9 @@ export function DocsShell({
             ))}
         </nav>
 
-        <main className="min-w-0 flex-1">{children}</main>
+        <main id="main" tabIndex={-1} className="min-w-0 flex-1">
+          {children}
+        </main>
       </div>
     </div>
   );

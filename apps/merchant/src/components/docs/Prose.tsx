@@ -10,7 +10,18 @@ import { Fragment } from "react";
  * people read. This escapes by construction: it emits React elements and
  * never a string of markup.
  */
-export function Prose({ text, className }: { text: string; className?: string }) {
+export function Prose({
+  text,
+  className,
+  lang,
+}: {
+  text: string;
+  className?: string;
+  /** `"en"` for text that came from the contract. The page chrome is Russian
+   *  and the field descriptions are not, and a screen reader that is not told
+   *  reads English with Russian phonemes. */
+  lang?: string;
+}) {
   // The contract's descriptions are Python docstrings, and reST spells inline
   // code with DOUBLE backticks. `Inline` pairs single ones, so on a string
   // like "``paid`` and ``merchants.orders.place``" it matched the *gaps*:
@@ -19,7 +30,7 @@ export function Prose({ text, className }: { text: string; className?: string })
   // published contract carry them.
   const blocks = text.replaceAll("``", "`").split(/\n{2,}/);
   return (
-    <div className={className}>
+    <div className={className} lang={lang}>
       {blocks.map((block, index) => {
         const lines = block.split("\n");
         if (lines.every((line) => line.trimStart().startsWith("- "))) {

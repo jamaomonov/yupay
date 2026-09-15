@@ -6,15 +6,15 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
-import { PageHeading } from "@/components/PageHeading";
-import { pathFor } from "@/lib/locale-href";
 import type { Profile } from "@/lib/types";
 
 import { ApiKeysCard } from "@/components/ApiKeysCard";
 import { useCabinet } from "@/components/CabinetContext";
+import { PageHeading } from "@/components/PageHeading";
 import { WebhookCard } from "@/components/WebhookCard";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
+import { pathFor } from "@/lib/locale-href";
 
 /**
  * The zones a reseller in our markets actually sits in, plus UTC.
@@ -110,7 +110,11 @@ export default function SettingsPage() {
           >
             {t("save")}
           </button>
-          {savedZone && <p className="text-tx-mute text-sm">{t("saved")}</p>}
+          {savedZone && (
+            <p role="status" className="text-tx-mute text-sm">
+              {t("saved")}
+            </p>
+          )}
         </form>
       </section>
 

@@ -6,13 +6,13 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
-import { pathFor } from "@/lib/locale-href";
 import type { OrderRow, OrdersPage } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { api } from "@/lib/api";
 import { orderStatusLabel } from "@/lib/labels";
+import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
 /** Enough to recognise "yes, my integration is placing orders" at a glance. */

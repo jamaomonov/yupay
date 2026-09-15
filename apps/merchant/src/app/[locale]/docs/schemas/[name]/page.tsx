@@ -5,9 +5,9 @@ import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Prose } from "@/components/docs/Prose";
 import { SchemaTable } from "@/components/docs/SchemaTable";
 import { routing } from "@/i18n/routing";
-import { pathFor } from "@/lib/locale-href";
 import { contract, endpoints } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
+import { pathFor } from "@/lib/locale-href";
 
 export const dynamicParams = false;
 
@@ -40,7 +40,7 @@ export default async function SchemaPage({
       <p className="text-tx-dim text-[11px] font-semibold tracking-[0.09em]">{t("groupSchemas")}</p>
       <h1 className="font-display mt-1.5 text-2xl font-semibold tracking-tight">{name}</h1>
       {node.description !== undefined && (
-        <Prose text={node.description} className="text-tx-mute mt-4 max-w-2xl" />
+        <Prose text={node.description} className="text-tx-mute mt-4 max-w-2xl" lang="en" />
       )}
 
       <section className="mt-9">

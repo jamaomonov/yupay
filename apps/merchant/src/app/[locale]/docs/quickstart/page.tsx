@@ -4,10 +4,10 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { DocsPage, Section } from "@/components/docs/Page";
 import { routing } from "@/i18n/routing";
-import { pathFor } from "@/lib/locale-href";
 import { apiBaseUrl, contract, endpoints } from "@/lib/contract";
 import { bodySchema } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
+import { pathFor } from "@/lib/locale-href";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
 
 export function generateStaticParams() {

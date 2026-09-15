@@ -27,6 +27,18 @@ export function TopBar() {
   useEffect(() => {
     if (searchPlaceholder === null) return undefined;
     const onKey = (event: KeyboardEvent) => {
+      // Not while the reader is typing somewhere else: on macOS Ctrl-K is the
+      // standard "kill to end of line" inside a text field, and stealing it
+      // yanks somebody mid-edit into a search box they did not ask for.
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+          target instanceof HTMLInputElement ||
+          target instanceof HTMLTextAreaElement)
+      ) {
+        return;
+      }
       // ⌘K / Ctrl-K focuses the box. Not a command palette — this is the
       // shortcut for the search that is already on the screen, which is the
       // half of ⌘K people actually reach for.

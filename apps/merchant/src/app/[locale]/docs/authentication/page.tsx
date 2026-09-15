@@ -50,7 +50,7 @@ export default async function AuthenticationPage({
               <span key="v" className="text-tx-dim font-mono text-[12px]">
                 {scheme.name === "X-Merchant-Key" ? "ypm_…" : "hex"}
               </span>,
-              <Prose key="d" text={scheme.description ?? ""} />,
+              <Prose key="d" text={scheme.description ?? ""} lang="en" />,
             ]),
             [
               <Code key="h">X-Merchant-Timestamp</Code>,
