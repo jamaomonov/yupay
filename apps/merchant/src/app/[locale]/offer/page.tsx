@@ -2,8 +2,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 
 import { AlertTriangle } from "lucide-react";
-import { getTranslations, setRequestLocale } from "next-intl/server";
 import Link from "next/link";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 
 export const revalidate = 3600;
 
