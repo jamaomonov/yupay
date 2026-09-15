@@ -2607,6 +2607,9 @@ is percent-encoded and **the encoded form is what you sign**
 | Cabinet sessions (register / confirm / login / refresh)     | `cabinet_auth.py` over `merchant_sessions`; `cabinet_deps.current_merchant_user` is the dependency every cabinet read sits behind                                                                                                                                                                                                                                                                                                       |
 | Cabinet DTOs                                                | `cabinet_schemas.py` — free to change with the app that reads it, which is why they are not `machine_schemas.py`                                                                                                                                                                                                                                                                                                                        |
 | The cabinet's Orders list (no machine-API twin)             | `cabinet_orders.py` — keyset paging, a closed filter set, money from the ledger                                                                                                                                                                                                                                                                                                                                                         |
+| The cabinet's webhook screen                                | `cabinet_webhook_routes.py` — a second router over the same prefix, carved off when the first passed AGENTS §6's soft limit                                                                                                                                                                                                                                                                                                             |
+| The cabinet's delivery log (no machine-API twin)            | `cabinet_webhooks.py` — keyset paging over the index `merchant_webhook_deliveries` was built with                                                                                                                                                                                                                                                                                                                                       |
+| Shared cabinet dependencies                                 | `cabinet_deps.py` — `current_merchant_user`, the `Db`/`CurrentUser` annotations, and `merchant_of`, which reloads the company on **every** request so a freeze lands on the next call                                                                                                                                                                                                                                                   |
 
 Three of those files were carved out of two in M2 Task 5, when `service.py`
 (487 lines) and `orders.py` (468) had both drifted past the 400-line soft
@@ -2727,5 +2730,12 @@ credential and its own token kind, and a reseller integrating `/merchant/v1`
 can ignore every word of it. What it changes is who has to be awake — sign-up,
 the wholesale price list, a first order without writing code, the order and
 statement reads, and **issuing and revoking API keys** are self-serve now,
-where each one used to be a message to support. Webhook configuration is not
-yet: it stays support-side until the cabinet grows that screen.
+where each one used to be a message to support. **Webhook configuration moved
+with them.** Through M3a it was admin-only, and the reason was SSRF — letting
+a stranger aim our outbound worker at an address of their choosing. What makes
+handing it over safe is that both defences sit below the caller:
+`admin.validate_webhook_url` refuses a non-https or non-public host at save
+time, and `core/outbound.py` pins one resolved address per attempt at send
+time. Neither asks who called. The screen also carries the **delivery log**
+`merchant_webhook_deliveries` was built for — what we sent, where it went,
+what came back — which is the question support answered by hand until now.

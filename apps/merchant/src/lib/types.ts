@@ -145,3 +145,40 @@ export interface IssuedKey {
   label: string;
   created_at: string;
 }
+
+/** The configured endpoint and how it has been behaving. */
+export interface Webhook {
+  url: string;
+  disabled_at: string | null;
+  failure_streak: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** What a call that could mint a signing secret answers. `null` when it did not. */
+export interface WebhookWithSecret extends Webhook {
+  secret: string | null;
+}
+
+/** One attempted delivery. `url` is where it went, snapshotted at enqueue. */
+export interface WebhookDelivery {
+  id: string;
+  event_type: string;
+  url: string;
+  status: string;
+  attempts_count: number;
+  payload: Record<string, unknown>;
+  response_code: number | null;
+  response_body: string | null;
+  last_error: string | null;
+  next_attempt_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DeliveriesPage {
+  items: WebhookDelivery[];
+  next_cursor: string | null;
+}

@@ -3507,6 +3507,128 @@
         "title": "CabinetConfirmIn",
         "type": "object"
       },
+      "CabinetDeliveriesOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetDeliveryRowOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CabinetDeliveriesOut",
+        "type": "object"
+      },
+      "CabinetDeliveryRowOut": {
+        "description": "One attempted delivery, as the log shows it.\n\n``url`` is the address the attempt went to, snapshotted at enqueue rather\nthan joined from the configuration \u2014 the question this log answers turns\non which host answered, not on which host is configured now.\n\n``payload`` is exactly the body we signed and sent, so a reseller can\nreplay our signature against it. ``response_body`` and ``last_error`` are\nbounded in their columns, not merely by the writer, because both\ninterpolate text a third party chose and both are rendered in a browser.",
+        "properties": {
+          "attempts_count": {
+            "title": "Attempts Count",
+            "type": "integer"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "event_type": {
+            "title": "Event Type",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Error"
+          },
+          "next_attempt_at": {
+            "format": "date-time",
+            "title": "Next Attempt At",
+            "type": "string"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "response_body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Body"
+          },
+          "response_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Response Code"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "event_type",
+          "url",
+          "status",
+          "attempts_count",
+          "payload",
+          "response_code",
+          "response_body",
+          "last_error",
+          "next_attempt_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CabinetDeliveryRowOut",
+        "type": "object"
+      },
       "CabinetIssuedKeyOut": {
         "description": "The one moment the secret exists outside our encryption.",
         "properties": {
@@ -3852,6 +3974,175 @@
           "expires_in"
         ],
         "title": "CabinetTokensOut",
+        "type": "object"
+      },
+      "CabinetWebhookOut": {
+        "description": "The endpoint and how it has been behaving.\n\nNo ``merchant_id``: the cabinet already knows whose it is, and a field\nnaming the account on every response is a field a future screen might\nread a request parameter into. No ``secret`` either \u2014 that exists only in\nthe response to the call that minted it.\n\n``failure_streak`` and the two timestamps are the delivery worker's\nrunning state. A reseller asking \"is my hook healthy\" reads them here\nrather than counting rows in the log below.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "failure_streak": {
+            "title": "Failure Streak",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "disabled_at",
+          "failure_streak",
+          "last_success_at",
+          "last_failure_at",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "CabinetWebhookOut",
+        "type": "object"
+      },
+      "CabinetWebhookSecretOut": {
+        "description": "The two calls that can mint a signing secret \u2014 the only ones carrying it.\n\n``secret`` is ``None`` when the call minted nothing: a URL change on an\nexisting hook, or a re-enable. Changing where deliveries go must not\nsilently break a working verifier, so it does not rotate the key.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "disabled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Disabled At"
+          },
+          "failure_streak": {
+            "title": "Failure Streak",
+            "type": "integer"
+          },
+          "last_failure_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Failure At"
+          },
+          "last_success_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Success At"
+          },
+          "secret": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Secret"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url",
+          "disabled_at",
+          "failure_streak",
+          "last_success_at",
+          "last_failure_at",
+          "created_at",
+          "updated_at",
+          "secret"
+        ],
+        "title": "CabinetWebhookSecretOut",
+        "type": "object"
+      },
+      "CabinetWebhookSetIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PUT /merchant/cabinet/webhook``.\n\nShape only. The SSRF rules \u2014 https, no private or loopback host \u2014 live in\n``admin.validate_webhook_url``, which ``set_webhook`` applies for every\ncaller of the facade. That placement is what lets a **merchant** aim our\noutbound worker at an address of their choosing without the rules having\nto be restated here, and restating them is how one copy drifts.",
+        "properties": {
+          "url": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "CabinetWebhookSetIn",
         "type": "object"
       },
       "CatalogEntryOut": {
@@ -32067,6 +32358,335 @@
           }
         },
         "summary": "The deposit ledger",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook": {
+      "delete": {
+        "description": "A timestamp, never a DELETE: the log stays readable and turning it back\non is a ``PUT`` with the URL, not a re-onboarding with a new secret.",
+        "operationId": "disable_webhook_merchant_cabinet_webhook_delete",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Stop delivering (keeps the row and the log)",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "get": {
+        "description": "404 until one has been set. Never carries the secret \u2014 no such field.",
+        "operationId": "read_webhook_merchant_cabinet_webhook_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The configured endpoint",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "put": {
+        "description": "Set the endpoint; the first call mints the signing secret and shows it once.\n\nSelf-serve from M4 \u2014 until now this was an admin-only control and a\nreseller changing their endpoint meant a support conversation. The SSRF\nrules that made it admin-only are enforced by the facade\n(``admin.validate_webhook_url``: https, no private or loopback host) and\nthe delivery client pins one resolved address per attempt, so the control\nis safe to hand over rather than merely convenient to.\n\nSetting a URL also clears ``disabled_at`` and the failure streak, which\nmakes this the recovery path after an auto-disable.\n\nA retry carrying the same ``Idempotency-Key`` replays the original\nresponse with ``secret: null``: ``idempotent_responses`` has no reaper, so\na usable signing key must never be persisted there. If the first response\nwas lost, rotate.",
+        "operationId": "set_webhook_merchant_cabinet_webhook_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CabinetWebhookSetIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Point the webhook at a URL",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook/deliveries": {
+      "get": {
+        "operationId": "list_deliveries_merchant_cabinet_webhook_deliveries_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetDeliveriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What we sent, where, and what came back",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/webhook/rotate-secret": {
+      "post": {
+        "description": "Mint a new secret and show it once; the old one stops signing immediately.\n\nOne live key at a time, unlike an API credential's overlapping rotation:\nthere the merchant redeploys between issue and revoke and only they know\nwhen that finished, whereas here **we** are the sender and the switch is\nours to make. A replay answers ``secret: null`` rather than rotating twice.",
+        "operationId": "rotate_webhook_secret_merchant_cabinet_webhook_rotate_secret_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetWebhookSecretOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace the webhook signing secret",
         "tags": [
           "merchant-cabinet"
         ]

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.api.v1.deps import db_session
 from yupay.core.errors import UnauthorizedError
 from yupay.modules.merchants.cabinet_auth import resolve_user
-from yupay.modules.merchants.models import MerchantUser
+from yupay.modules.merchants.models import Merchant, MerchantUser
 
 
 def _bearer(authorization: str | None) -> str:
@@ -41,4 +41,24 @@ async def current_merchant_user(
     return await resolve_user(db, _bearer(authorization))
 
 
-__all__ = ["current_merchant_user"]
+#: The two annotations every cabinet route repeats. Here rather than in one
+#: router, because there are two of them now and a second copy is how they
+#: come to mean different things.
+Db = Annotated[AsyncSession, Depends(db_session)]
+CurrentUser = Annotated[MerchantUser, Depends(current_merchant_user)]
+
+
+async def merchant_of(db: AsyncSession, user: MerchantUser) -> Merchant:
+    """The company behind the signed-in operator.
+
+    :func:`current_merchant_user` has already proved it exists and is active,
+    so this is a load and not a check — but it is loaded **fresh on every
+    request** rather than carried in the token, so a freeze takes effect on
+    the next call instead of when a JWT happens to expire.
+    """
+    merchant = await db.get(Merchant, user.merchant_id)
+    assert merchant is not None, "resolve_user proved this row exists"
+    return merchant
+
+
+__all__ = ["CurrentUser", "Db", "current_merchant_user", "merchant_of"]

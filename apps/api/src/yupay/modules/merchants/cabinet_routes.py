@@ -24,12 +24,8 @@ credential routes carry the two-axis ``ip_guard`` besides.
 
 from __future__ import annotations
 
-from typing import Annotated
+from fastapi import APIRouter, Request, Response, status
 
-from fastapi import APIRouter, Depends, Request, Response, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
@@ -45,7 +41,7 @@ from yupay.modules.merchants import (
     price_list,
     transactions,
 )
-from yupay.modules.merchants.cabinet_deps import current_merchant_user
+from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetApiKeyCreateIn,
     CabinetApiKeyOut,
@@ -66,16 +62,12 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantOrderStatusOut,
     MerchantTransactionsOut,
 )
-from yupay.modules.merchants.models import Merchant, MerchantUser
 from yupay.modules.notifications.channels.email import EmailSendError, send_email
 from yupay.modules.notifications.templates import merchant_confirm_email
 
 log = get_logger("yupay.merchants.cabinet_routes")
 
 router = APIRouter(prefix="/merchant/cabinet", tags=["merchant-cabinet"])
-
-Db = Annotated[AsyncSession, Depends(db_session)]
-CurrentUser = Annotated[MerchantUser, Depends(current_merchant_user)]
 
 
 def _tokens_out(tokens: cabinet_auth.CabinetTokens) -> CabinetTokensOut:
@@ -84,19 +76,6 @@ def _tokens_out(tokens: cabinet_auth.CabinetTokens) -> CabinetTokensOut:
         refresh_token=tokens.refresh_token,
         expires_in=tokens.expires_in,
     )
-
-
-async def _merchant_of(db: AsyncSession, user: MerchantUser) -> Merchant:
-    """The company behind the signed-in operator.
-
-    ``current_merchant_user`` has already proved it exists and is active, so
-    this is a load and not a check — but it is loaded fresh on every request
-    rather than carried in the token, so a freeze takes effect on the next
-    call instead of when a JWT happens to expire.
-    """
-    merchant = await db.get(Merchant, user.merchant_id)
-    assert merchant is not None, "resolve_user proved this row exists"
-    return merchant
 
 
 @router.post(
@@ -175,7 +154,7 @@ async def logout(body: CabinetTokenIn, db: Db) -> Response:
 
 @router.get("/me", response_model=CabinetProfileOut, summary="The operator and their company")
 async def me(user: CurrentUser, db: Db) -> CabinetProfileOut:
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     return CabinetProfileOut(
         user_id=user.id,
         email=user.email,
@@ -196,7 +175,7 @@ async def catalog(user: CurrentUser, db: Db) -> MerchantCatalogOut:
     One builder, so the storefront a person browses and the JSON their server
     polls can never disagree about what is sellable or what it costs.
     """
-    return await price_list.build(db, merchant=await _merchant_of(db, user))
+    return await price_list.build(db, merchant=await merchant_of(db, user))
 
 
 @router.post(
@@ -218,7 +197,7 @@ async def place_order(body: CabinetOrderIn, user: CurrentUser, db: Db) -> Mercha
     purchases into one would be the worse failure, and the browser prevents the
     common case by disabling the button.
     """
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     return await orders.place(
         db,
         merchant=merchant,
@@ -249,7 +228,7 @@ async def list_orders(
     silently rebinds an HTTP-status helper inside route handlers is a trap
     worth spending one uglier query parameter to avoid.
     """
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     return await cabinet_orders.build(
         db,
         merchant_id=merchant.id,
@@ -269,7 +248,7 @@ async def read_order(merchant_order_id: str, user: CurrentUser, db: Db) -> Merch
     """The same reader the machine API serves, so the cabinet and a reseller's
     own polling can never describe one order two ways."""
     return await order_status.read(
-        db, merchant=await _merchant_of(db, user), merchant_order_id=merchant_order_id
+        db, merchant=await merchant_of(db, user), merchant_order_id=merchant_order_id
     )
 
 
@@ -281,7 +260,7 @@ async def read_order(merchant_order_id: str, user: CurrentUser, db: Db) -> Merch
 async def list_transactions(
     user: CurrentUser, db: Db, cursor: str | None = None, limit: int = 50
 ) -> MerchantTransactionsOut:
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     return await transactions.build(
         db, merchant_id=merchant.id, limit=max(1, min(limit, 200)), cursor=cursor
     )
@@ -289,7 +268,7 @@ async def list_transactions(
 
 @router.get("/api-keys", response_model=list[CabinetApiKeyOut], summary="Machine credentials")
 async def list_keys(user: CurrentUser, db: Db) -> list[CabinetApiKeyOut]:
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     rows = await credentials.list_api_keys(db, merchant_id=merchant.id)
     return [CabinetApiKeyOut.model_validate(row) for row in rows]
 
@@ -307,7 +286,7 @@ async def create_key(body: CabinetApiKeyCreateIn, user: CurrentUser, db: Db) -> 
     issue, deploy, revoke — something a reseller can do at 3am during an
     incident instead of waiting for our morning.
     """
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     issued = await credentials.create_api_key(db, merchant_id=merchant.id, label=body.label)
     log.info("merchant.cabinet.key_created", merchant_id=merchant.id, key_id=issued.key.key_id)
     return CabinetIssuedKeyOut(
@@ -324,7 +303,7 @@ async def create_key(body: CabinetApiKeyCreateIn, user: CurrentUser, db: Db) -> 
     summary="Revoke a machine credential",
 )
 async def revoke_key(key_id: str, user: CurrentUser, db: Db) -> CabinetApiKeyOut:
-    merchant = await _merchant_of(db, user)
+    merchant = await merchant_of(db, user)
     row = await credentials.revoke_api_key(db, merchant_id=merchant.id, key_id=key_id)
     log.info("merchant.cabinet.key_revoked", merchant_id=merchant.id, key_id=key_id)
     return CabinetApiKeyOut.model_validate(row)

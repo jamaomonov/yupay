@@ -1,6 +1,6 @@
 "use client";
 
-import { LayoutGrid, LogOut, Receipt, Settings, ShoppingBag, Wallet } from "lucide-react";
+import { LayoutGrid, LogOut, Receipt, Settings, ShoppingBag, Wallet, Webhook } from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -32,6 +32,7 @@ export default function CabinetLayout({ children }: { children: React.ReactNode 
     { href: `/${locale}/cabinet/catalog`, label: t("navCatalog"), icon: ShoppingBag },
     { href: `/${locale}/cabinet/orders`, label: t("navOrders"), icon: Receipt },
     { href: `/${locale}/cabinet/transactions`, label: t("navTransactions"), icon: Wallet },
+    { href: `/${locale}/cabinet/webhooks`, label: t("navWebhooks"), icon: Webhook },
     { href: `/${locale}/cabinet/settings`, label: t("navSettings"), icon: Settings },
   ];
 

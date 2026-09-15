@@ -14,6 +14,8 @@
  * theft surfaces as the real operator's next refresh failing.
  */
 
+import { LOCALES } from "@yupay/i18n";
+
 const BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
 const ACCESS_KEY = "yupay.merchant.access";
@@ -102,8 +104,39 @@ async function rotate(): Promise<boolean> {
   return true;
 }
 
+/**
+ * Send the browser back to the sign-in form, once.
+ *
+ * A session that cannot be rotated is gone, and every screen in the cabinet
+ * renders an *empty state* when its read fails — so without this a reseller
+ * whose refresh lapsed sees "no orders", "no webhook" and a dash where their
+ * balance was, and reasonably concludes their account broke. The redirect is
+ * what turns that into "you are signed out".
+ *
+ * `location.assign` rather than a router push: this runs inside the HTTP
+ * client, below every component, and a full load is also the cheapest way to
+ * be sure nothing stale is left in memory.
+ */
+function returnToLogin(): void {
+  if (typeof window === "undefined") return;
+  // Keep the locale the reader is actually in. `localePrefix: "as-needed"`
+  // means the default locale has no segment at all, so an unrecognised first
+  // segment is simply not a locale.
+  const [, first = ""] = window.location.pathname.split("/");
+  const prefix = LOCALES.includes(first as (typeof LOCALES)[number]) ? `/${first}` : "";
+  const target = `${prefix}/login`;
+  if (window.location.pathname !== target) window.location.assign(target);
+}
+
 interface Options {
-  method?: "GET" | "POST" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  /**
+   * Sent as `Idempotency-Key`. Mint one per *intent* — per click, held in
+   * state so a retry of the same click carries the same key — never per
+   * request: a fresh key on every attempt is the same as having none.
+   * The API refuses anything shorter than 16 characters, so a UUID.
+   */
+  idempotencyKey?: string;
   body?: unknown;
   /** Set by the retry below; callers never pass it. */
   retried?: boolean;
@@ -112,22 +145,25 @@ interface Options {
 }
 
 export async function api<T>(path: string, options: Options = {}): Promise<T> {
-  const { method = "GET", body, retried = false, anonymous = false } = options;
+  const { method = "GET", body, retried = false, anonymous = false, idempotencyKey } = options;
   const access = anonymous ? null : readToken(ACCESS_KEY);
   const response = await fetch(`${BASE}/merchant/cabinet${path}`, {
     method,
     headers: {
       "Content-Type": "application/json",
       ...(access ? { Authorization: `Bearer ${access}` } : {}),
+      ...(idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {}),
     },
     ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   });
 
-  if (response.status === 401 && !anonymous && !retried && (await rotate())) {
+  if (response.status === 401 && !anonymous) {
     // Once. A second 401 after a successful rotation is not an expiry, it is
-    // a revoked session or a frozen merchant, and retrying forever would hide
-    // that behind a spinner.
-    return api<T>(path, { ...options, retried: true });
+    // a revoked session, and retrying forever would hide that behind a
+    // spinner.
+    if (!retried && (await rotate())) return api<T>(path, { ...options, retried: true });
+    clearTokens();
+    returnToLogin();
   }
   if (!response.ok) throw new ApiError(response.status, await parse(response));
   return (response.status === 204 ? undefined : await response.json()) as T;

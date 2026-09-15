@@ -40,6 +40,9 @@ from yupay.modules.fulfillment.suppliers.g2b_client import close_g2b_pool
 # imported by service-layer callers and a router re-exported from it would
 # close a cycle back through the route stack.
 from yupay.modules.merchants.cabinet_routes import router as merchant_cabinet_router
+from yupay.modules.merchants.cabinet_webhook_routes import (
+    router as merchant_cabinet_webhook_router,
+)
 from yupay.modules.merchants.machine_routes import router as merchant_machine_router
 
 #: Latency histogram bounds, in seconds. Dense below 250ms because most
@@ -343,6 +346,7 @@ def create_app() -> FastAPI:
     # Not added to the self-authenticating exemption above, and that is the
     # point: a password form is exactly what the coarse per-IP limit is for.
     app.include_router(merchant_cabinet_router)
+    app.include_router(merchant_cabinet_webhook_router)
 
     # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),
     # which makes `histogram_quantile` unable to return anything above 1.0 —

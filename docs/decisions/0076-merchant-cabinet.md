@@ -19,8 +19,9 @@ offer, reads the wholesale price list, places a first order without writing
 any code, watches their orders and statement, and issues and revokes their own
 credentials.
 
-Five decisions here are the ones a future maintainer would otherwise
-re-litigate.
+The decisions below are the ones a future maintainer would otherwise
+re-litigate. One of them (§2b) **reverses** a call ADR-0070 made four weeks
+earlier, and is written up at length for that reason.
 
 ## Decisions
 
@@ -72,6 +73,30 @@ consequences worth naming:
   history, in the ledger and in a dispute, which is what lets the catalog page
   double as the no-code first purchase.
 
+### 2b. Webhook configuration moves to the merchant, because the defences did not
+
+Through M3a, setting a webhook URL was admin-only, and ADR-0070 gives the
+reason: a write on `/merchant/v1` "would exist only to let a stranger aim our
+worker at an address of their choosing". That reason does not survive M4, and
+it is worth saying why rather than quietly reversing it.
+
+The two SSRF defences live **below** the caller, not in the admin router.
+`admin.validate_webhook_url` refuses a non-https URL or a host that resolves
+into a blocked range at **save** time, and it is the same function the
+catalog's image URLs go through rather than a second copy of the ranges;
+`core/outbound.py` pins one resolved address per attempt at **send** time, so
+a host that answers publicly on the first lookup and privately on the second
+does not get a second lookup. Neither asks who called. A merchant therefore
+cannot aim our worker anywhere an operator could not, which is the property
+that makes the control safe to hand over — not that a cabinet session is
+somehow more trusted than an anonymous one.
+
+What the merchant gets besides the four writes is the **delivery log**:
+the event, the address it went to, the code that came back, their server's own
+body, and our error text. `merchant_webhook_deliveries` was built for it —
+that model's docstring calls itself "M4's delivery log" and carries a
+`(merchant_id, created_at DESC)` index nothing read until now.
+
 ### 3. Its own credential, its own session table, its own token kind
 
 `merchant_users` gets Argon2 passwords and a `merchant_sessions` table holding
@@ -112,7 +137,8 @@ routes carry the two-axis Redis `ip_guard` besides.
 **Positive**
 
 - Onboarding stops being a support conversation. A reseller can reach a first
-  order, and rotate a leaked key at 3am, without waiting for our morning.
+  order, rotate a leaked key at 3am, and re-enable their own auto-disabled
+  webhook, without waiting for our morning.
 - The offer acceptance is a **record**, not a checkbox: `offer_version` and
   `offer_accepted_at` are written together under
   `ck_merchant_users_offer_complete`, and the cabinet shows both back.

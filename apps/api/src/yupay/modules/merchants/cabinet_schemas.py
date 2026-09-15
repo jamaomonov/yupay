@@ -10,10 +10,12 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from yupay.modules.merchants.machine_schemas import UsdAmount, UsdBalance
+from yupay.modules.merchants.models import WEBHOOK_URL_MAX
 
 #: Long enough to resist a guess, short enough that a real person will use a
 #: manager rather than fight the field. Matches the storefront's floor.
@@ -177,10 +179,98 @@ class CabinetIssuedKeyOut(BaseModel):
     created_at: datetime
 
 
+class CabinetWebhookSetIn(BaseModel):
+    """Body of ``PUT /merchant/cabinet/webhook``.
+
+    Shape only. The SSRF rules — https, no private or loopback host — live in
+    ``admin.validate_webhook_url``, which ``set_webhook`` applies for every
+    caller of the facade. That placement is what lets a **merchant** aim our
+    outbound worker at an address of their choosing without the rules having
+    to be restated here, and restating them is how one copy drifts.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str = Field(min_length=1, max_length=WEBHOOK_URL_MAX)
+
+
+class CabinetWebhookOut(BaseModel):
+    """The endpoint and how it has been behaving.
+
+    No ``merchant_id``: the cabinet already knows whose it is, and a field
+    naming the account on every response is a field a future screen might
+    read a request parameter into. No ``secret`` either — that exists only in
+    the response to the call that minted it.
+
+    ``failure_streak`` and the two timestamps are the delivery worker's
+    running state. A reseller asking "is my hook healthy" reads them here
+    rather than counting rows in the log below.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    url: str
+    disabled_at: datetime | None
+    failure_streak: int
+    last_success_at: datetime | None
+    last_failure_at: datetime | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CabinetWebhookSecretOut(CabinetWebhookOut):
+    """The two calls that can mint a signing secret — the only ones carrying it.
+
+    ``secret`` is ``None`` when the call minted nothing: a URL change on an
+    existing hook, or a re-enable. Changing where deliveries go must not
+    silently break a working verifier, so it does not rotate the key.
+    """
+
+    secret: str | None
+
+
+class CabinetDeliveryRowOut(BaseModel):
+    """One attempted delivery, as the log shows it.
+
+    ``url`` is the address the attempt went to, snapshotted at enqueue rather
+    than joined from the configuration — the question this log answers turns
+    on which host answered, not on which host is configured now.
+
+    ``payload`` is exactly the body we signed and sent, so a reseller can
+    replay our signature against it. ``response_body`` and ``last_error`` are
+    bounded in their columns, not merely by the writer, because both
+    interpolate text a third party chose and both are rendered in a browser.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    event_type: str
+    url: str
+    status: str
+    attempts_count: int
+    payload: dict[str, Any]
+    response_code: int | None
+    response_body: str | None
+    last_error: str | None
+    next_attempt_at: datetime
+    created_at: datetime
+    updated_at: datetime
+
+
+class CabinetDeliveriesOut(BaseModel):
+    items: list[CabinetDeliveryRowOut]
+    #: Keyset, like every other page on this surface: the worker writes this
+    #: log while a person reads it.
+    next_cursor: str | None
+
+
 __all__ = [
     "CabinetApiKeyCreateIn",
     "CabinetApiKeyOut",
     "CabinetConfirmIn",
+    "CabinetDeliveriesOut",
+    "CabinetDeliveryRowOut",
     "CabinetIssuedKeyOut",
     "CabinetLoginIn",
     "CabinetOrderIn",
@@ -190,4 +280,7 @@ __all__ = [
     "CabinetRegisterIn",
     "CabinetTokenIn",
     "CabinetTokensOut",
+    "CabinetWebhookOut",
+    "CabinetWebhookSecretOut",
+    "CabinetWebhookSetIn",
 ]

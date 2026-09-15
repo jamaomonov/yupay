@@ -350,6 +350,25 @@ when a JWT happens to expire. What the operator sees is their screens going
 403, not a sign-out. That is the intended shape: a frozen account should be
 visibly frozen rather than look like a password problem.
 
+### Webhooks, self-serve
+
+The cabinet's Вебхуки screen sets the URL, rotates the signing secret,
+disables the hook and shows the **delivery log** — the event, the address it
+went to, the response code, our error text and the body their server returned.
+That log is the thing support used to read out of Postgres by hand, and it is
+now the first place to send a reseller who says an event never arrived: "we
+recorded a 200 at 14:02 — which of your hosts?" is answerable from their own
+screen.
+
+The SSRF rules are unchanged and are enforced below the caller, so a merchant
+cannot aim our worker anywhere an operator could not: https only, no private
+or loopback host, and one pinned address per attempt. A refused URL comes back
+as a 422 quoting the rule it broke, which is what the screen shows them.
+
+See "Outgoing webhooks: the auto-disable, and turning one back on" below for
+what happens when a hook fails twenty times in a row — the re-enable is the
+same `PUT`, and they can now do it themselves.
+
 ### Key rotation, self-serve
 
 The cabinet's Settings screen does what "Rotating and revoking a key" above
@@ -486,12 +505,21 @@ merchant_webhook.auto_disabled     merchant_id=… failures=… error=…
 merchant_webhook.attempt_failed    delivery_id=… status_code=… outcome=…
 ```
 
-**The only way back on** is `PUT /api/v1/admin/merchants/{id}/webhook` with the
-URL (the same one, or a corrected one). It clears `disabled_at` **and** the
-streak, does not rotate the secret, and the queued backlog resumes from where
-it stopped. There is deliberately no second re-enable path — do not clear
-`disabled_at` by hand in SQL, because the streak would stay at its ceiling and
-the very next failure would disable the hook again.
+**The way back on** is a `PUT` of the URL (the same one, or a corrected one).
+It clears `disabled_at` **and** the streak, does not rotate the secret, and the
+queued backlog resumes from where it stopped. There is deliberately no second
+re-enable path — do not clear `disabled_at` by hand in SQL, because the streak
+would stay at its ceiling and the very next failure would disable the hook
+again.
+
+Since M4 that `PUT` has **two** front doors and they are the same call:
+`PUT /api/v1/admin/merchants/{id}/webhook` for us, and the merchant's own
+Вебхуки screen in the cabinet, which also shows them the failure streak, the
+last success and the delivery log. Prefer pointing them at their own screen —
+they can read the 502 their server returned, which is usually the whole
+answer, and they know their correct URL better than we do. Reach for the admin
+endpoint when they cannot sign in, or when you are re-enabling a batch after
+an incident of ours.
 
 Two things "the backlog resumes" does not mean, and the merchant will ask about
 both:
