@@ -89,9 +89,9 @@ async def build(
     pairs = [(merchant_id, order_id) for order_id in ids[:MAX_ORDERS]]
     charged = await deposit.charged_for_orders(db, pairs=pairs)
     refunded = await deposit.refunded_for_orders(db, pairs=pairs)
-    # Net: what the deposit is actually out by. An order charged and then
-    # refunded in the same day spent nothing, and a dashboard that said
-    # otherwise would have a reseller chasing money that came back.
+    # Net: what the deposit is out by for *these* orders, counting refunds
+    # against them whenever those were posted. A gross figure would have a
+    # reseller chasing money that already came back.
     spend = sum(charged.values(), Decimal("0")) - sum(refunded.values(), Decimal("0"))
 
     return CabinetSummaryOut(

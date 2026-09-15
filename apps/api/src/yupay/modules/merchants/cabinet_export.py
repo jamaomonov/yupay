@@ -84,7 +84,10 @@ async def statement_csv(db: AsyncSession, *, merchant_id: str) -> tuple[str, str
                 ]
             )
         cursor = page.next_cursor
-        if cursor is None:
+        # ``build`` only hands back a cursor on a full page, so an empty one
+        # with a cursor cannot happen — and if it ever could, this loop would
+        # spin forever rather than fail. Cheap insurance against that.
+        if cursor is None or not page.items:
             break
 
     header = ["created_at", "kind", "amount_usd", "merchant_order_id", "order_id", "transaction_id"]

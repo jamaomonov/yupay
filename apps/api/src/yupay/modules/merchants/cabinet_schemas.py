@@ -159,9 +159,11 @@ class CabinetSummaryOut(BaseModel):
 
     orders: int
     delivered: int
-    #: Net: charged minus refunded. An order charged and refunded inside the
-    #: window spent nothing, and a figure that said otherwise would have a
-    #: reseller chasing money that already came back.
+    #: What the orders **placed in this window** ended up costing: their
+    #: charges minus everything refunded against them, whenever the refund
+    #: was posted. A gross figure would have a reseller chasing money that
+    #: already came back; counting refunds by their own date instead would
+    #: give a number that does not tie to the orders counted above.
     spend_usd: UsdAmount
     #: ``True`` when the window held more orders than the summary reads, so
     #: ``spend_usd`` is a **floor**. The counts above stay exact.
