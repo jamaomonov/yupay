@@ -50,6 +50,7 @@ function runningBalance(balance: string | null, rows: Transaction[], index: numb
 
 export default function TransactionsList() {
   const t = useTranslations("merchant.transactions");
+  const tCommon = useTranslations("merchant.common");
   const { locale } = useParams<{ locale: string }>();
   const { profile } = useCabinet();
   const [rows, setRows] = useState<Transaction[] | null>(null);
@@ -88,7 +89,7 @@ export default function TransactionsList() {
           }}
           className="border-border bg-card rounded-btn text-tx-mute border px-3 py-1.5 text-xs font-semibold"
         >
-          {t("exportCsv")}
+          {tCommon("exportCsv")}
         </button>
       </div>
 

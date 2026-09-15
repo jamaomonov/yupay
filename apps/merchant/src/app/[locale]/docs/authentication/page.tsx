@@ -47,14 +47,14 @@ export default async function AuthenticationPage({
           rows={[
             ...Object.values(schemes).map((scheme) => [
               <Code key="h">{scheme.name ?? ""}</Code>,
-              <span key="v" className="text-tx-dim font-mono text-[12px]">
+              <span key="v" className="text-tx-dim font-mono text-xs">
                 {scheme.name === "X-Merchant-Key" ? "ypm_…" : "hex"}
               </span>,
               <Prose key="d" text={scheme.description ?? ""} lang="en" />,
             ]),
             [
               <Code key="h">X-Merchant-Timestamp</Code>,
-              <span key="v" className="text-tx-dim font-mono text-[12px]">
+              <span key="v" className="text-tx-dim font-mono text-xs">
                 1789454994
               </span>,
               <span key="d">Unix seconds, digits only. ±300 s of ours.</span>,
@@ -64,7 +64,7 @@ export default async function AuthenticationPage({
       </Section>
 
       <Section id="canonical" title={t("authCanonical")}>
-        <Prose text={t("authCanonicalBody")} className="text-tx-mute text-[14px]" />
+        <Prose text={t("authCanonicalBody")} className="text-tx-mute text-sm" />
         <CodeTabs
           copyLabel={t("copy")}
           copiedLabel={t("copied")}
@@ -83,11 +83,11 @@ export default async function AuthenticationPage({
       </Section>
 
       <Section id="window" title={t("authWindow")}>
-        <Prose text={t("authWindowBody")} className="text-tx-mute text-[14px]" />
+        <Prose text={t("authWindowBody")} className="text-tx-mute text-sm" />
       </Section>
 
       <Section id="keys" title={t("authKeys")}>
-        <Prose text={t("authKeysBody")} className="text-tx-mute text-[14px]" />
+        <Prose text={t("authKeysBody")} className="text-tx-mute text-sm" />
       </Section>
     </DocsPage>
   );

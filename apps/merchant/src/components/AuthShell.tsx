@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { Mark } from "@/components/Mark";
 
 /** The centred card every signed-out screen sits in. */
 export function AuthShell({
@@ -17,10 +18,18 @@ export function AuthShell({
 }) {
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-md flex-col justify-center px-5 py-12">
-      {/* Above the heading, not in a header bar: these screens have no
-          chrome, and somebody who landed on a Russian sign-up form needs the
-          way out before they read anything else. */}
-      <div className="mb-7 flex justify-end">
+      {/* The only surface that carried no logo: a page asking for a password
+          should say whose password it is. The locale switcher sits on the
+          same line — these screens have no chrome to put it in, and somebody
+          who landed on a Russian sign-up form needs the way out before they
+          read anything else. */}
+      <div className="mb-7 flex items-center justify-between gap-4">
+        <Link href="/" className="flex items-center gap-2.5">
+          <Mark />
+          <span className="font-display text-[15px] font-semibold tracking-[0.02em]">
+            YUPAY <span className="text-tx-dim font-sans text-xs font-medium">reseller</span>
+          </span>
+        </Link>
         <LocaleSwitcher />
       </div>
       <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>

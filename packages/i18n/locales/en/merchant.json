@@ -6,7 +6,15 @@
   "common": {
     "localeSwitch": "Interface language",
     "skipToContent": "Skip to content",
-    "codeSample": "Code sample, scrolls sideways"
+    "codeSample": "Code sample, scrolls sideways",
+    "errorTitle": "Something went wrong",
+    "errorBody": "The page did not render. Try again — if it keeps happening, write to support.",
+    "errorRetry": "Try again",
+    "notFoundTitle": "Page not found",
+    "notFoundBody": "The address is wrong, or the section moved.",
+    "goHome": "Go home",
+    "loading": "Loading…",
+    "exportCsv": "Download CSV"
   },
   "landing": {
     "heading": "Wholesale access to digital goods",
@@ -87,7 +95,7 @@
     "navSettings": "Settings",
     "navDocs": "Documentation",
     "signOut": "Sign out",
-    "balance": "Deposit balance",
+    "balance": "Balance",
     "balanceEmptyTitle": "Your deposit is empty",
     "balanceEmptyBody": "The catalog and prices are available. To place orders, contact support and we will credit your deposit.",
     "requestDeposit": "Request a top-up",
@@ -126,7 +134,6 @@
     "notEnough": "Not enough on the deposit",
     "orderFailed": "Could not create the order",
     "apiId": "API id",
-    "exportCsv": "Download CSV",
     "priceBefore": "Balance now",
     "selected": "selected",
     "apiHint": "Through the API — the same thing"
@@ -263,7 +270,6 @@
     "statSuccess": "delivered",
     "statSuccessHint": "of the ones that finished",
     "statSpend": "spent today",
-    "exportCsv": "Export CSV",
     "openOrder": "Open the order"
   },
   "transactions": {
@@ -278,7 +284,6 @@
     "kindOrderCharge": "Order charge",
     "kindOrderRefund": "Order refund",
     "requestDeposit": "Request a deposit",
-    "exportCsv": "Download CSV",
     "balance": "Balance",
     "topUpHint": "Top-ups are in USD. Message support — the amount lands once the transfer is confirmed.",
     "colBalanceAfter": "Balance after"

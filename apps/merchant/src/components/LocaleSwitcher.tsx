@@ -37,7 +37,7 @@ export function LocaleSwitcher({ className = "" }: { className?: string }) {
             href={hrefForLocale(locale, pathname)}
             hrefLang={locale}
             aria-current={active ? "true" : undefined}
-            className={`rounded-[7px] px-2 py-1 text-[11px] font-bold uppercase tracking-wider transition ${
+            className={`rounded-lg px-2 py-1 text-[11px] font-bold uppercase tracking-wider transition ${
               active
                 ? "bg-card-2 text-foreground"
                 : "text-tx-dim hover:text-foreground hover:bg-card-2/60"

@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 
 import type { OrderDetail } from "@/lib/types";
 
@@ -54,7 +54,9 @@ export default function OrderDetailPage() {
   const refunded = order ? toCents(order.refunded_usd) : 0n;
 
   return (
-    <div>
+    // A reading measure. These two run long forms, and a two-column grid
+    // stretched to 1600px puts a label and its value half a screen apart.
+    <div className="max-w-4xl">
       <Link
         href={pathFor(locale, "/cabinet/orders")}
         className="text-tx-mute inline-flex items-center gap-1.5 text-sm"
@@ -122,13 +124,18 @@ export default function OrderDetailPage() {
           {order.delivery !== null && (
             <section className="border-border bg-card mt-6 rounded-xl border p-6">
               <h2 className="font-semibold">{t("delivery")}</h2>
-              <dl className="mt-4 space-y-3">
+              {/* A two-column grid, not a fixed `w-28`: `supplier_reference`
+                  is wider than 112px and overlapped its own value, which read
+                  as `supplier_referencG2B-99182734` on screen. The copy
+                  buttons line up in a column of their own instead of landing
+                  at four different x positions. */}
+              <dl className="mt-4 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-3">
                 {artifactLines(order.delivery.artifact).map(({ key, value }) => (
-                  <div key={key} className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                    <dt className="text-tx-dim w-28 shrink-0 font-mono text-xs">{key}</dt>
-                    <dd className="break-all font-mono text-sm">{value}</dd>
+                  <Fragment key={key}>
+                    <dt className="text-tx-dim whitespace-nowrap font-mono text-xs">{key}</dt>
+                    <dd className="min-w-0 break-all font-mono text-sm">{value}</dd>
                     <CopyButton value={value} label={t("copy")} done={t("copied")} />
-                  </div>
+                  </Fragment>
                 ))}
               </dl>
             </section>

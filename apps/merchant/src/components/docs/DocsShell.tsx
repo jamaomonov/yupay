@@ -22,6 +22,8 @@ import { withoutLocale } from "@/lib/locale-href";
 export interface NavItem {
   href: string;
   label: string;
+  /** The long form — shown on hover, and searched alongside the label. */
+  title?: string;
   /** `GET`, `POST`… on a reference entry; absent on a guide. */
   method?: string;
 }
@@ -124,7 +126,12 @@ export function DocsShell({
     return groups
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => item.label.toLowerCase().includes(needle)),
+        // Both halves. The label is now the path, so typing "orders" — the
+        // natural query — used to match the prose and never the endpoint,
+        // and typing "/merchant/v1/catalog" matched nothing at all.
+        items: group.items.filter((item) =>
+          `${item.label} ${item.title ?? ""}`.toLowerCase().includes(needle),
+        ),
       }))
       .filter((group) => group.items.length > 0);
   }, [groups, query]);
@@ -180,6 +187,7 @@ export function DocsShell({
                     key={item.href}
                     href={item.href}
                     aria-current={active ? "page" : undefined}
+                    title={item.title}
                     className={`rounded-btn flex items-center gap-2 px-2 py-1.5 text-[13px] ${
                       active ? "bg-card-2 text-foreground font-semibold" : "text-tx-mute"
                     }`}

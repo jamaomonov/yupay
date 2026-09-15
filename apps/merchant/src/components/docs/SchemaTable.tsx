@@ -60,7 +60,7 @@ export function SchemaTable({
                 <div>, not two. */}
             <dt className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1">
               <span className="font-mono text-[13px] font-semibold">{name}</span>
-              <span className="text-tx-dim font-mono text-[12px]">
+              <span className="text-tx-dim font-mono text-xs">
                 {model === null ? (
                   typeLabel(child)
                 ) : (

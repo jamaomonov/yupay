@@ -6,12 +6,13 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
-import type { OrderRow, OrdersPage } from "@/lib/types";
+import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
+import { TodayStats } from "@/components/TodayStats";
 import { api } from "@/lib/api";
-import { orderStatusLabel } from "@/lib/labels";
+import { orderStatusLabel, orderStatusTone } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const { locale } = useParams<{ locale: string }>();
   const { profile } = useCabinet();
   const [recent, setRecent] = useState<OrderRow[] | null>(null);
+  const [today, setToday] = useState<Summary | null>(null);
 
   useEffect(() => {
     void api<OrdersPage>(`/orders?limit=${String(RECENT)}`)
@@ -33,6 +35,13 @@ export default function Dashboard() {
       .catch(() => {
         setRecent([]);
       });
+    // Midnight on the viewer's clock, as Orders does — the server does not
+    // decide what "today" is.
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    void api<Summary>(`/summary?since=${encodeURIComponent(midnight.toISOString())}`)
+      .then(setToday)
+      .catch(() => undefined);
   }, []);
 
   const balance = profile ? toCents(profile.balance_usd) : null;
@@ -61,7 +70,11 @@ export default function Dashboard() {
         </section>
       )}
 
-      <section className="mt-5 grid gap-4 lg:grid-cols-3">
+      <div className="mt-5">
+        <TodayStats today={today} balance={balance === null ? "—" : `$${formatUsd(balance)}`} />
+      </div>
+
+      <section className="mt-4 grid gap-4 lg:grid-cols-3">
         <Link
           href={pathFor(locale, "/cabinet/catalog")}
           className="border-border bg-card-2 group rounded-xl border p-5 font-semibold"
@@ -99,7 +112,9 @@ export default function Dashboard() {
                 >
                   {row.merchant_order_id}
                 </Link>
-                <span className="text-tx-dim shrink-0 text-xs">
+                <span
+                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(row.status)}`}
+                >
                   {orderStatusLabel(row.status, tOrders)}
                 </span>
                 <span className="shrink-0 font-mono text-xs">

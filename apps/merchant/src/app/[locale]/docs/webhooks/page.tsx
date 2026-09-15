@@ -88,7 +88,7 @@ export default async function WebhooksPage({ params }: { params: Promise<{ local
       </Section>
 
       <Section id="verify" title={t("webhooksVerify")}>
-        <Prose text={t("webhooksVerifyBody")} className="text-tx-mute text-[14px]" />
+        <Prose text={t("webhooksVerifyBody")} className="text-tx-mute text-sm" />
         <CodeTabs
           copyLabel={t("copy")}
           copiedLabel={t("copied")}
@@ -100,7 +100,7 @@ export default async function WebhooksPage({ params }: { params: Promise<{ local
       </Section>
 
       <Section id="no-code" title={t("webhooksNoCode")}>
-        <Prose text={t("webhooksNoCodeBody")} className="text-tx-mute text-[14px]" />
+        <Prose text={t("webhooksNoCodeBody")} className="text-tx-mute text-sm" />
       </Section>
     </DocsPage>
   );

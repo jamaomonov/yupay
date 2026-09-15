@@ -58,6 +58,7 @@ function cheapest(brand: Brand): { cents: bigint; product: string } | null {
 
 function CatalogGrid() {
   const t = useTranslations("merchant.catalog");
+  const tCommon = useTranslations("merchant.common");
   const { locale } = useParams<{ locale: string }>();
   const { catalog } = useCabinet();
   const query = useSearch(t("searchPlaceholder"));
@@ -93,7 +94,7 @@ function CatalogGrid() {
           }}
           className="border-border bg-card rounded-btn text-tx-mute border px-3 py-1.5 text-xs font-semibold"
         >
-          {t("exportCsv")}
+          {tCommon("exportCsv")}
         </button>
       </div>
 
@@ -130,15 +131,19 @@ function CatalogGrid() {
               </div>
               <div className="px-3 pb-3 pt-2.5">
                 <p className="truncate text-[13.5px] font-bold">{brand.name}</p>
-                <p className="text-tx-dim mt-0.5 truncate text-[11.5px]">
+                {/* Price first, and only the product name truncates. It used
+                    to read "<product> · from $X" inside one `truncate`, so on
+                    most cards the price — the only reason a reseller opens
+                    this screen — was the half that got cut. */}
+                <p className="text-tx-dim mt-0.5 flex min-w-0 items-baseline gap-1.5 text-[11.5px]">
                   {from === null ? (
                     "—"
                   ) : (
                     <>
-                      {from.product} ·{" "}
-                      <span className="text-primary-ink font-mono">
+                      <span className="text-primary-ink shrink-0 font-mono">
                         {t("from", { price: `$${formatUsd(from.cents)}` })}
                       </span>
+                      <span className="min-w-0 truncate">{from.product}</span>
                     </>
                   )}
                 </p>

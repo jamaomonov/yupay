@@ -57,9 +57,13 @@ export function TopBar() {
   const initial = profile?.title.trim().charAt(0).toUpperCase() ?? "";
 
   return (
-    <div className="border-border flex items-center justify-between gap-3 border-b px-4 py-3 sm:px-6">
+    // Wraps below `sm`. The row holds a search box, a balance, a top-up
+    // button, three locale links, a theme toggle and an avatar; at 390px the
+    // search collapsed to zero width and the toggle sat 14px past the edge.
+    // Letting the search take its own row is cheaper than hiding any of it.
+    <div className="border-border flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b px-4 py-3 sm:flex-nowrap sm:px-6">
       {searchPlaceholder !== null ? (
-        <label className="border-border bg-card-2 rounded-btn text-tx-dim flex min-w-0 flex-1 items-center gap-2 border px-3 py-2 sm:max-w-sm">
+        <label className="border-border bg-card-2 rounded-btn text-tx-dim order-last flex w-full min-w-0 items-center gap-2 border px-3 py-2 sm:order-none sm:w-auto sm:max-w-sm sm:flex-1">
           <Search size={15} className="shrink-0" />
           <input
             ref={box}
@@ -77,10 +81,10 @@ export function TopBar() {
           </kbd>
         </label>
       ) : (
-        <div className="min-w-0 flex-1" />
+        <div className="hidden min-w-0 flex-1 sm:block" />
       )}
 
-      <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+      <div className="ml-auto flex min-w-0 items-center gap-2 sm:ml-0 sm:shrink-0 sm:gap-3">
         <div className="border-border bg-card rounded-btn flex items-center gap-2 border py-1 pl-3 pr-1 sm:gap-3 sm:pl-4">
           <span className="text-primary-ink font-mono text-sm font-extrabold">
             {balance === null ? "—" : `$${formatUsd(balance)}`}
@@ -100,7 +104,7 @@ export function TopBar() {
         <ThemeToggle />
         <div
           aria-hidden
-          className="bg-primary text-primary-foreground hidden h-[34px] w-[34px] items-center justify-center rounded-[10px] text-sm font-extrabold sm:flex"
+          className="bg-primary text-primary-foreground hidden h-9 w-9 items-center justify-center rounded-lg text-sm font-extrabold sm:flex"
         >
           {initial}
         </div>

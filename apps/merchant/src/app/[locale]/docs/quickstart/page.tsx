@@ -53,7 +53,7 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
     <DocsPage eyebrow={t("groupStart")} title={t("quickTitle")} lead={t("quickLead")}>
       {steps.map(({ key, sample }, index) => (
         <Section key={key} id={key} title={`${String(index + 1)}. ${t(`${key}Title`)}`}>
-          <p className="text-tx-mute text-[14px] leading-relaxed">{t(`${key}Body`)}</p>
+          <p className="text-tx-mute text-sm leading-relaxed">{t(`${key}Body`)}</p>
           {sample !== null && (
             <CodeTabs
               copyLabel={t("copy")}
@@ -69,7 +69,7 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
       ))}
 
       <Section id="then" title={t("introNext")}>
-        <ul className="text-tx-mute ml-4 list-disc space-y-1.5 text-[14px]">
+        <ul className="text-tx-mute ml-4 list-disc space-y-1.5 text-sm">
           <li>
             <Link
               href={pathFor(locale, "/docs/api/get-orders-merchant-order-id")}

@@ -30,14 +30,14 @@ export default async function IntroductionPage({
   return (
     <DocsPage title={t("introTitle")} lead={t("introLead")}>
       <Section id="what" title={t("introWhat")}>
-        <p className="text-tx-mute text-[14px] leading-relaxed">{t("introWhatBody")}</p>
+        <p className="text-tx-mute text-sm leading-relaxed">{t("introWhatBody")}</p>
       </Section>
 
       <Section id="rules" title={t("introRules")}>
         <ol className="space-y-3">
           {["introRule1", "introRule2", "introRule3"].map((key, index) => (
             <li key={key} className="border-border bg-card flex gap-3.5 rounded-xl border p-4">
-              <span className="text-primary-ink shrink-0 font-mono text-[12px] font-bold">
+              <span className="text-primary-ink shrink-0 font-mono text-xs font-bold">
                 {String(index + 1).padStart(2, "0")}
               </span>
               <Prose text={t(key)} className="text-tx-mute min-w-0 text-[13.5px]" />
@@ -60,10 +60,10 @@ export default async function IntroductionPage({
                 <span className="text-tx-dim w-12 shrink-0 font-mono text-[11px] font-bold">
                   {endpoint.method}
                 </span>
-                <span className="text-[14px] font-medium">
+                <span className="text-sm font-medium">
                   {endpoint.operation.summary ?? endpoint.path}
                 </span>
-                <code className="text-tx-dim font-mono text-[12px]">{endpoint.path}</code>
+                <code className="text-tx-dim font-mono text-xs">{endpoint.path}</code>
               </Link>
             </li>
           ))}

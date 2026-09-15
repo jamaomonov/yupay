@@ -46,7 +46,12 @@ export default async function DocsLayout({
     const group = byTag.get(endpoint.tag) ?? { title: endpoint.tag, items: [] };
     group.items.push({
       href: pathFor(locale, `/docs/api/${endpoint.id}`),
-      label: endpoint.operation.summary ?? endpoint.path,
+      // The path, not the summary. A full English sentence truncates to
+      // nothing useful in a 252px rail, and the path is what somebody
+      // integrating is scanning for. The summary rides along as the title
+      // attribute and as the second half of the search predicate.
+      label: endpoint.path.replace("/merchant/v1", "") || "/",
+      title: endpoint.operation.summary ?? endpoint.path,
       method: endpoint.method,
     });
     byTag.set(endpoint.tag, group);

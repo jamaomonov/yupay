@@ -63,3 +63,25 @@ export function failureLabel(reason: string, t: Translate): string {
 export function transactionKindLabel(kind: string, t: Translate): string {
   return lookup(TRANSACTION_KIND, kind, t);
 }
+
+/**
+ * Status → badge tone, shared by every screen that shows an order status.
+ *
+ * Anything unlisted renders neutral, the same rule the label maps use: a
+ * status we have not met should look unremarkable rather than alarming.
+ * `text-primary-ink` and not `text-primary` — the accent is a fill colour and
+ * fails contrast as ink on the light theme.
+ */
+const ORDER_TONE: Record<string, string> = {
+  delivered: "text-primary-ink bg-primary/10",
+  paid: "text-blue bg-blue/10",
+  fulfilling: "text-gold bg-gold/10",
+  pending_payment: "text-gold bg-gold/10",
+  failed: "text-danger bg-danger/10",
+  cancelled: "text-tx-mute bg-tx-mute/10",
+  refunded: "text-tx-mute bg-tx-mute/10",
+};
+
+export function orderStatusTone(status: string): string {
+  return ORDER_TONE[status] ?? "text-tx-mute bg-tx-mute/10";
+}

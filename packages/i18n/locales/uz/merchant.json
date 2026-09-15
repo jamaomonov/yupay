@@ -6,7 +6,15 @@
   "common": {
     "localeSwitch": "Interfeys tili",
     "skipToContent": "Kontentga oʻtish",
-    "codeSample": "Kod namunasi, yon tomonga aylanadi"
+    "codeSample": "Kod namunasi, yon tomonga aylanadi",
+    "errorTitle": "Nimadir notoʻgʻri ketdi",
+    "errorBody": "Sahifa chizilmadi. Qayta urinib koʻring — takrorlansa, qoʻllab-quvvatlashga yozing.",
+    "errorRetry": "Qayta urinish",
+    "notFoundTitle": "Sahifa topilmadi",
+    "notFoundBody": "Manzil notoʻgʻri yoki boʻlim koʻchirilgan.",
+    "goHome": "Bosh sahifaga",
+    "loading": "Yuklanmoqda…",
+    "exportCsv": "CSV yuklab olish"
   },
   "landing": {
     "heading": "Raqamli tovarlarga ulgurji kirish",
@@ -87,7 +95,7 @@
     "navSettings": "Sozlamalar",
     "navDocs": "Hujjatlar",
     "signOut": "Chiqish",
-    "balance": "Depozit balansi",
+    "balance": "Balans",
     "balanceEmptyTitle": "Depozit hozircha boʻsh",
     "balanceEmptyBody": "Katalog va narxlar mavjud. Buyurtma berish uchun yordamga yozing — depozitni toʻldiramiz.",
     "requestDeposit": "Toʻldirishni soʻrash",
@@ -126,7 +134,6 @@
     "notEnough": "Depozitda mablagʻ yetarli emas",
     "orderFailed": "Buyurtma yaratib boʻlmadi",
     "apiId": "API uchun ID",
-    "exportCsv": "CSV yuklab olish",
     "priceBefore": "Hozirgi balans",
     "selected": "tanlandi",
     "apiHint": "API orqali — aynan shu"
@@ -263,7 +270,6 @@
     "statSuccess": "yetkazildi",
     "statSuccessHint": "tugaganlaridan",
     "statSpend": "bugun sarflandi",
-    "exportCsv": "CSV eksport",
     "openOrder": "Buyurtmani ochish"
   },
   "transactions": {
@@ -278,7 +284,6 @@
     "kindOrderCharge": "Buyurtma uchun yechildi",
     "kindOrderRefund": "Buyurtma uchun qaytarildi",
     "requestDeposit": "Depozit soʻrash",
-    "exportCsv": "CSV yuklab olish",
     "balance": "Balans",
     "topUpHint": "Toʻldirish USD da. Qoʻllab-quvvatlash xizmatiga yozing — summa oʻtkazma tasdiqlangach tushadi.",
     "colBalanceAfter": "Keyingi balans"

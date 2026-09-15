@@ -86,7 +86,7 @@ export default async function OperationPage({
   });
 
   return (
-    <div className="mx-auto grid w-full max-w-[1400px] gap-10 px-4 py-8 sm:px-8 xl:grid-cols-[minmax(0,1fr)_28rem]">
+    <div className="mx-auto grid w-full max-w-[1400px] gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_28rem]">
       <article className="min-w-0">
         <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           <span lang="en">{operation.summary ?? path}</span>
@@ -143,7 +143,7 @@ export default async function OperationPage({
         </section>
       </article>
 
-      <aside aria-label={t("requestSample")} className="min-w-0 xl:sticky xl:top-8 xl:h-fit">
+      <aside aria-label={t("requestSample")} className="min-w-0 lg:sticky lg:top-8 lg:h-fit">
         <CodeTabs
           label={t("requestSample")}
           copyLabel={t("copy")}
@@ -156,10 +156,10 @@ export default async function OperationPage({
         />
         <div className="border-border bg-card mt-4 rounded-xl border p-4">
           <p className="text-tx-dim text-[11px] font-semibold tracking-wide">{t("canonical")}</p>
-          <pre className="text-tx-mute mt-2 overflow-x-auto font-mono text-[12px] leading-[1.7]">
+          <pre className="text-tx-mute mt-2 overflow-x-auto font-mono text-xs leading-[1.7]">
             <code>{canonicalString(sample)}</code>
           </pre>
-          <p className="text-tx-dim mt-3 text-[12px] leading-relaxed">{t("canonicalHint")}</p>
+          <p className="text-tx-dim mt-3 text-xs leading-relaxed">{t("canonicalHint")}</p>
         </div>
       </aside>
     </div>
@@ -176,7 +176,7 @@ function ParameterList({ title, items }: { title: string; items: Parameter[] }) 
             {/* See SchemaTable: the row is the <dt>, not a div around one. */}
             <dt className="flex flex-wrap items-baseline gap-x-2.5">
               <span className="font-mono text-[13px] font-semibold">{item.name}</span>
-              <span className="text-tx-dim font-mono text-[12px]">{typeLabel(item.schema)}</span>
+              <span className="text-tx-dim font-mono text-xs">{typeLabel(item.schema)}</span>
               {item.required === true && (
                 <span className="text-danger text-[11px] font-semibold">required</span>
               )}

@@ -67,7 +67,7 @@ export function CodeTabs({
                   setActive(tab.id);
                   setCopied(false);
                 }}
-                className={`rounded-btn px-2.5 py-1 text-[12px] ${
+                className={`rounded-btn px-2.5 py-1 text-xs ${
                   tab.id === shown?.id ? "bg-card text-foreground font-semibold" : "text-tx-mute"
                 }`}
               >

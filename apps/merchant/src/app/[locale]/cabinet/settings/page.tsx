@@ -53,7 +53,9 @@ export default function SettingsPage() {
   }, [profile]);
 
   return (
-    <div>
+    // A reading measure. These two run long forms, and a two-column grid
+    // stretched to 1600px puts a label and its value half a screen apart.
+    <div className="max-w-4xl">
       <PageHeading icon={Settings} title={t("title")} />
 
       <ApiKeysCard />

@@ -4,6 +4,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import { CodeWindow } from "@/components/CodeWindow";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { Mark } from "@/components/Mark";
 import { countBrands } from "@/lib/brands";
 import { pathFor } from "@/lib/locale-href";
 
@@ -68,7 +69,9 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
       <main className="mx-auto w-full max-w-5xl px-5 py-16 sm:py-20">
         <section className="grid items-center gap-10 lg:grid-cols-[1fr_26rem]">
           <div>
-            <h1 className="max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
+            {/* The display face, on the one headline on the site that should carry
+                the brand. Unbounded was on 20px cabinet titles and not on this. */}
+            <h1 className="font-display max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
               {t("heading")}
             </h1>
             <p className="text-tx-mute mt-5 max-w-2xl text-lg leading-relaxed">{t("subheading")}</p>
@@ -127,7 +130,9 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
         </section>
 
         <section className="mt-20">
-          <h2 className="text-2xl font-semibold tracking-tight">{t("stepsHeading")}</h2>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">
+            {t("stepsHeading")}
+          </h2>
           <ol className="mt-7 grid gap-4 sm:grid-cols-3">
             {steps.map(({ icon: Icon, title, body }, index) => (
               <li key={title} className="border-border bg-card rounded-xl border p-5">
@@ -143,7 +148,9 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
         </section>
 
         <section className="mt-20">
-          <h2 className="text-2xl font-semibold tracking-tight">{t("sectionsHeading")}</h2>
+          <h2 className="font-display text-2xl font-semibold tracking-tight">
+            {t("sectionsHeading")}
+          </h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             {[
               { name: t("sectionTopups"), body: t("sectionTopupsBody"), soon: false },
@@ -198,13 +205,3 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
 }
 
 /** The storefront's mark. */
-function Mark() {
-  return (
-    <svg width="20" height="18" viewBox="0 0 471.8 426.26" aria-hidden className="text-primary-ink">
-      <path
-        fill="currentColor"
-        d="M0.06 23.83l0 294.05c0,0 -5.53,87.63 88.85,108.37l230.68 0c0,0 68.19,-17.67 80.63,-88.17l0 -210.84 71.58 0 -57.83 -63.63 -57.83 -63.63 -57.83 63.63 -57.83 63.63 71.57 0 0 183.78c0,0 -5.1,27.06 -30.74,27.06l-167.01 0c0,0 -26.08,-1.43 -26.08,-20.21l0 -294.05 -88.17 0z"
-      />
-    </svg>
-  );
-}

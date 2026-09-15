@@ -76,7 +76,7 @@ export default async function SchemaPage({
                 >
                   {endpoint.operation.summary ?? endpoint.path}
                 </a>
-                <code className="text-tx-dim font-mono text-[12px]">{endpoint.path}</code>
+                <code className="text-tx-dim font-mono text-xs">{endpoint.path}</code>
               </li>
             ))}
           </ul>

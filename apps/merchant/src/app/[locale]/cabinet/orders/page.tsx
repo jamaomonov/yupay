@@ -11,9 +11,10 @@ import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 import { useSearch } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { PageHeading } from "@/components/PageHeading";
+import { TodayStats } from "@/components/TodayStats";
 import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
-import { ORDER_FILTERS, orderStatusLabel } from "@/lib/labels";
+import { ORDER_FILTERS, orderStatusLabel, orderStatusTone } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -22,58 +23,13 @@ import { formatUsd, toCents } from "@/lib/money";
  * Not `delivered / orders`: most of a morning's orders are still in flight,
  * so that reads as a collapsing success rate all morning and recovers by
  * evening. `—` until something has actually finished. */
-function successRate(today: Summary | null): string {
-  if (today === null) return "—";
-  const finished = today.delivered + today.failed;
-  return finished === 0 ? "—" : `${String(Math.round((today.delivered / finished) * 100))}%`;
-}
-
-function Stat({
-  value,
-  label,
-  hint,
-  accent,
-}: {
-  value: string;
-  label: string;
-  hint?: string;
-  accent?: boolean;
-}) {
-  return (
-    // `dt` first and `dd` second, as a definition list requires, with the
-    // visual order flipped in CSS — the number reads first on screen, but the
-    // markup pairs the term with its value. The hint moved inside the `dd`:
-    // a loose `<p>` is not allowed in a `dl` group at all.
-    <div className="border-border bg-card flex flex-col-reverse rounded-xl border px-4 py-4 sm:px-5">
-      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">{label}</dt>
-      <dd
-        className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
-      >
-        {value}
-        {hint !== undefined && (
-          <span className="text-tx-dim mt-0.5 block font-sans text-[11px] font-normal">{hint}</span>
-        )}
-      </dd>
-    </div>
-  );
-}
-
-/** Status → the badge tone. Anything unlisted renders neutral, like `labels.ts`. */
-const TONE: Record<string, string> = {
-  delivered: "text-primary-ink bg-primary/10",
-  paid: "text-blue bg-blue/10",
-  fulfilling: "text-gold bg-gold/10",
-  pending_payment: "text-gold bg-gold/10",
-  failed: "text-danger bg-danger/10",
-  cancelled: "text-tx-mute bg-tx-mute/10",
-  refunded: "text-tx-mute bg-tx-mute/10",
-};
 
 /** `null` is the «all» chip — a status of "no filter", not a status. */
 const CHIPS: (string | null)[] = [null, ...ORDER_FILTERS];
 
 export default function OrdersList() {
   const t = useTranslations("merchant.orders");
+  const tCommon = useTranslations("merchant.common");
   const { locale } = useParams<{ locale: string }>();
 
   const [status, setStatus] = useState<string | null>(null);
@@ -153,27 +109,11 @@ export default function OrdersList() {
           }}
           className="border-border bg-card rounded-btn text-tx-mute border px-3 py-1.5 text-xs font-semibold"
         >
-          {t("exportCsv")}
+          {tCommon("exportCsv")}
         </button>
       </div>
 
-      <dl className="mt-5 grid grid-cols-3 gap-3.5">
-        <Stat value={today === null ? "—" : String(today.orders)} label={t("statToday")} />
-        <Stat
-          value={successRate(today)}
-          label={t("statSuccess")}
-          hint={t("statSuccessHint")}
-          accent
-        />
-        <Stat
-          value={
-            today === null
-              ? "—"
-              : `$${formatUsd(toCents(today.spend_usd))}${today.spend_capped ? "+" : ""}`
-          }
-          label={t("statSpend")}
-        />
-      </dl>
+      <TodayStats today={today} />
 
       <div className="mt-5 flex flex-wrap gap-2">
         {CHIPS.map((chip) => {
@@ -232,9 +172,9 @@ export default function OrdersList() {
                     <td className="px-4 py-3">{row.sku_code}</td>
                     <td className="px-4 py-3">
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          TONE[row.status] ?? "text-tx-mute bg-tx-mute/10"
-                        }`}
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusTone(
+                          row.status,
+                        )}`}
                       >
                         {orderStatusLabel(row.status, t)}
                       </span>

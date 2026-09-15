@@ -48,7 +48,7 @@ export function Prose({
           return (
             <pre
               key={index}
-              className="bg-card-2 rounded-btn mt-3 overflow-x-auto p-3 font-mono text-[12px] first:mt-0"
+              className="bg-card-2 rounded-btn mt-3 overflow-x-auto p-3 font-mono text-xs first:mt-0"
             >
               <code>{block.replaceAll("```", "").trim()}</code>
             </pre>
