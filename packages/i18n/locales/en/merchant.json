@@ -83,11 +83,15 @@
     "navWebhooks": "Webhooks",
     "todayTitle": "Today",
     "todayDelivered": "Delivered",
-    "todayHint": "Since midnight on your browser's clock"
+    "todayHint": "Since midnight on your browser's clock",
+    "topUp": "+ Top up",
+    "groupCatalog": "PRODUCTS",
+    "groupAccount": "ACCOUNT",
+    "navAllBrands": "All brands"
   },
   "catalog": {
     "title": "Catalog",
-    "searchPlaceholder": "Search by brand",
+    "searchPlaceholder": "Search brands and products",
     "from": "from {price}",
     "empty": "Nothing found",
     "backToCatalog": "Back to catalog",
@@ -104,7 +108,10 @@
     "notEnough": "Not enough on the deposit",
     "orderFailed": "Could not create the order",
     "apiId": "API id",
-    "exportCsv": "Download CSV"
+    "exportCsv": "Download CSV",
+    "priceBefore": "Balance now",
+    "selected": "selected",
+    "apiHint": "Through the API — the same thing"
   },
   "docs": {
     "title": "Documentation",
@@ -160,7 +167,13 @@
     "failureFulfillmentDelayed": "Delivery is delayed — the order is still open, do not re-order",
     "failureFulfillmentFailedRefunded": "Delivery failed; the whole charge is back on your deposit",
     "failureFulfillmentFailed": "Delivery failed — contact support",
-    "failureOrderFailed": "Closed by support"
+    "failureOrderFailed": "Closed by support",
+    "colProduct": "Product",
+    "statToday": "orders today",
+    "statSuccess": "delivered",
+    "statSuccessHint": "of the ones that finished",
+    "statSpend": "spent today",
+    "exportCsv": "Export CSV"
   },
   "transactions": {
     "title": "Transactions",
@@ -174,7 +187,10 @@
     "kindOrderCharge": "Order charge",
     "kindOrderRefund": "Order refund",
     "requestDeposit": "Request a deposit",
-    "exportCsv": "Download CSV"
+    "exportCsv": "Download CSV",
+    "balance": "Balance",
+    "topUpHint": "Top-ups are in USD. Message support — the amount lands once the transfer is confirmed.",
+    "colBalanceAfter": "Balance after"
   },
   "settings": {
     "title": "Settings",

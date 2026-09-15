@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import type { Profile } from "@/lib/types";
 
 import { ApiKeysCard } from "@/components/ApiKeysCard";
+import { useCabinet } from "@/components/CabinetContext";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 
@@ -36,24 +37,20 @@ export default function SettingsPage() {
   const tOffer = useTranslations("merchant.offer");
   const { locale } = useParams<{ locale: string }>();
 
-  const [profile, setProfile] = useState<Profile | null>(null);
+  // From the shell rather than a fetch of its own — the top bar already has
+  // it, and two reads of the same profile can disagree after a save.
+  const { profile, refreshProfile } = useCabinet();
   const [zone, setZone] = useState("");
   const [savedZone, setSavedZone] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    void api<Profile>("/me").then(
-      (me) => {
-        setProfile(me);
-        setZone(me.timezone);
-      },
-      () => undefined,
-    );
-  }, []);
+    if (profile !== null) setZone(profile.timezone);
+  }, [profile]);
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+      <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
 
       <ApiKeysCard />
 
@@ -67,8 +64,8 @@ export default function SettingsPage() {
             setBusy(true);
             setSavedZone(false);
             void api<Profile>("/me", { method: "PATCH", body: { timezone: zone } })
-              .then((me) => {
-                setProfile(me);
+              .then(() => {
+                refreshProfile();
                 setSavedZone(true);
               })
               .catch(() => undefined)

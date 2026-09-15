@@ -1,93 +1,158 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import Link from "next/link";
+import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo } from "react";
 
-import type { Brand, Catalog } from "@/lib/types";
+import type { Brand } from "@/lib/types";
 
-import { api, downloadFile } from "@/lib/api";
+import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
+import { downloadFile } from "@/lib/api";
 import { formatUsd, toCents } from "@/lib/money";
 
-/** The cheapest thing in a brand, for the «from $X» on its card. */
-function cheapest(brand: Brand): bigint | null {
-  const prices = brand.products
-    .flatMap((product) => product.skus)
-    .map((sku) => (sku.kind === "fixed" ? sku.price_usd : sku.unit_price_usd))
-    .filter((price): price is string => price !== null)
-    .map(toCents);
-  return prices.length > 0 ? prices.reduce((a, b) => (a < b ? a : b)) : null;
+/**
+ * A tint per brand, stable across renders and sessions.
+ *
+ * Every brand in the dev catalog has `logo_url: null`, and a grid of twenty
+ * identical grey rectangles is harder to scan than a grid of twenty different
+ * ones. The tint is derived from the slug, so a brand keeps its colour — it
+ * reads as identity rather than as decoration, right up until real artwork
+ * replaces it.
+ */
+const TINTS = [
+  "from-orange-500/25",
+  "from-blue-500/25",
+  "from-violet-500/25",
+  "from-rose-500/25",
+  "from-cyan-500/25",
+  "from-lime-500/20",
+] as const;
+
+function tintOf(slug: string): string {
+  let hash = 0;
+  for (const char of slug) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  // `noUncheckedIndexedAccess` types a computed index as possibly undefined
+  // even when the modulo makes that impossible; `as const` above is what
+  // makes the fallback a known literal rather than a second maybe-undefined.
+  return TINTS[hash % TINTS.length] ?? TINTS[0];
 }
 
-export default function CatalogPage() {
+/** The cheapest SKU in a brand, and the product it belongs to. */
+function cheapest(brand: Brand): { cents: bigint; product: string } | null {
+  let best: { cents: bigint; product: string } | null = null;
+  for (const product of brand.products) {
+    for (const sku of product.skus) {
+      const price = sku.kind === "fixed" ? sku.price_usd : sku.unit_price_usd;
+      if (price === null) continue;
+      const cents = toCents(price);
+      if (best === null || cents < best.cents) best = { cents, product: product.name };
+    }
+  }
+  return best;
+}
+
+function CatalogGrid() {
   const t = useTranslations("merchant.catalog");
   const { locale } = useParams<{ locale: string }>();
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
-  const [query, setQuery] = useState("");
+  const { catalog } = useCabinet();
+  const query = useSearch(t("searchPlaceholder"));
+  const section = useSearchParams().get("section");
 
-  useEffect(() => {
-    void api<Catalog>("/catalog")
-      .then(setCatalog)
-      .catch(() => {
-        setCatalog({ brands: [] });
-      });
-  }, []);
+  const sectionName = useMemo(
+    () => sectionsOf(catalog).find((entry) => entry.slug === section)?.name ?? null,
+    [catalog, section],
+  );
 
   const brands = useMemo(() => {
     const all = catalog?.brands ?? [];
+    const inSection = section === null ? all : all.filter((b) => b.category_slug === section);
     const needle = query.trim().toLowerCase();
-    return needle ? all.filter((b) => b.name.toLowerCase().includes(needle)) : all;
-  }, [catalog, query]);
+    if (needle === "") return inSection;
+    // Brand name or any product under it: a reseller looking for "robux"
+    // is looking for Roblox, and typing the currency is the natural way in.
+    return inSection.filter(
+      (brand) =>
+        brand.name.toLowerCase().includes(needle) ||
+        brand.products.some((product) => product.name.toLowerCase().includes(needle)),
+    );
+  }, [catalog, section, query]);
 
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+        <h1 className="font-display text-xl font-semibold tracking-tight">
+          {sectionName ?? t("title")}
+        </h1>
         <button
           type="button"
           onClick={() => {
             void downloadFile("/catalog.csv").catch(() => undefined);
           }}
-          className="border-border rounded-btn border px-4 py-2 text-sm font-semibold"
+          className="border-border bg-card rounded-btn text-tx-mute border px-3 py-1.5 text-xs font-semibold"
         >
           {t("exportCsv")}
         </button>
       </div>
 
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => {
-          setQuery(event.target.value);
-        }}
-        placeholder={t("searchPlaceholder")}
-        aria-label={t("searchPlaceholder")}
-        className="border-border bg-card rounded-btn mt-5 w-full border px-3.5 py-2.5 text-sm outline-none sm:max-w-sm"
-      />
-
       {catalog !== null && brands.length === 0 && (
         <p className="text-tx-dim mt-8 text-sm">{t("empty")}</p>
       )}
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <div className="mt-5 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {brands.map((brand) => {
           const from = cheapest(brand);
           return (
-            <a
+            <Link
               key={brand.brand_id}
               href={`/${locale}/cabinet/catalog/${brand.slug}`}
-              className="border-border bg-card rounded-xl border p-5"
+              className="border-border bg-card overflow-hidden rounded-xl border"
             >
-              <p className="font-semibold">{brand.name}</p>
-              {from !== null && (
-                <p className="text-tx-mute mt-1.5 font-mono text-sm">
-                  {t("from", { price: `$${formatUsd(from)}` })}
+              <div
+                className={`bg-card-2 relative flex aspect-[4/3] items-end bg-gradient-to-tr to-transparent p-2.5 ${tintOf(
+                  brand.slug,
+                )}`}
+              >
+                {brand.logo_url !== null && (
+                  /* eslint-disable-next-line @next/next/no-img-element --
+                     the URL is an operator-entered absolute one on a host we
+                     do not control, so `next/image` would need every one of
+                     them allowlisted in the config and would fail the page on
+                     the first that is not. */
+                  <img
+                    src={brand.logo_url}
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                )}
+              </div>
+              <div className="px-3 pb-3 pt-2.5">
+                <p className="truncate text-[13.5px] font-bold">{brand.name}</p>
+                <p className="text-tx-dim mt-0.5 truncate text-[11.5px]">
+                  {from === null ? (
+                    "—"
+                  ) : (
+                    <>
+                      {from.product} ·{" "}
+                      <span className="text-primary font-mono">
+                        {t("from", { price: `$${formatUsd(from.cents)}` })}
+                      </span>
+                    </>
+                  )}
                 </p>
-              )}
-            </a>
+              </div>
+            </Link>
           );
         })}
       </div>
     </div>
+  );
+}
+
+export default function CatalogPage() {
+  return (
+    <Suspense fallback={null}>
+      <CatalogGrid />
+    </Suspense>
   );
 }

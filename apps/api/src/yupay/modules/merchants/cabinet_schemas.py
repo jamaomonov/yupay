@@ -159,6 +159,12 @@ class CabinetSummaryOut(BaseModel):
 
     orders: int
     delivered: int
+    #: Terminally failed. Beside ``delivered`` this is what makes a success
+    #: *rate* honest: a rate over all orders reads low all morning simply
+    #: because most of the morning's orders are still in flight, and the
+    #: number a reseller wants is "of the ones that finished, how many
+    #: landed".
+    failed: int
     #: What the orders **placed in this window** ended up costing: their
     #: charges minus everything refunded against them, whenever the refund
     #: was posted. A gross figure would have a reseller chasing money that

@@ -5,12 +5,59 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { OrderRow, OrdersPage } from "@/lib/types";
+import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
-import { api } from "@/lib/api";
+import { useSearch } from "@/components/CabinetContext";
+import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { ORDER_FILTERS, orderStatusLabel } from "@/lib/labels";
 import { formatUsd, toCents } from "@/lib/money";
+
+/** The two terminal outcomes, as a percentage of themselves.
+ *
+ * Not `delivered / orders`: most of a morning's orders are still in flight,
+ * so that reads as a collapsing success rate all morning and recovers by
+ * evening. `—` until something has actually finished. */
+function successRate(today: Summary | null): string {
+  if (today === null) return "—";
+  const finished = today.delivered + today.failed;
+  return finished === 0 ? "—" : `${String(Math.round((today.delivered / finished) * 100))}%`;
+}
+
+function Stat({
+  value,
+  label,
+  hint,
+  accent,
+}: {
+  value: string;
+  label: string;
+  hint?: string;
+  accent?: boolean;
+}) {
+  return (
+    <div className="border-border bg-card rounded-xl border px-4 py-4 sm:px-5">
+      <dd
+        className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary" : ""}`}
+      >
+        {value}
+      </dd>
+      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">{label}</dt>
+      {hint !== undefined && <p className="text-tx-dim mt-0.5 text-[11px]">{hint}</p>}
+    </div>
+  );
+}
+
+/** Status → the badge tone. Anything unlisted renders neutral, like `labels.ts`. */
+const TONE: Record<string, string> = {
+  delivered: "text-primary bg-primary/10",
+  paid: "text-blue bg-blue/10",
+  fulfilling: "text-gold bg-gold/10",
+  pending_payment: "text-gold bg-gold/10",
+  failed: "text-danger bg-danger/10",
+  cancelled: "text-tx-mute bg-tx-mute/10",
+  refunded: "text-tx-mute bg-tx-mute/10",
+};
 
 /** `null` is the «all» chip — a status of "no filter", not a status. */
 const CHIPS: (string | null)[] = [null, ...ORDER_FILTERS];
@@ -20,8 +67,9 @@ export default function OrdersList() {
   const { locale } = useParams<{ locale: string }>();
 
   const [status, setStatus] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
+  const query = useSearch(t("search"));
   const [search, setSearch] = useState("");
+  const [today, setToday] = useState<Summary | null>(null);
   const [rows, setRows] = useState<OrderRow[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -37,6 +85,17 @@ export default function OrdersList() {
       clearTimeout(id);
     };
   }, [query]);
+
+  useEffect(() => {
+    // Midnight on the *viewer's* clock, sent as UTC. The server does not
+    // decide what "today" is — a day derived from the stored timezone would
+    // disagree with the dates in the table below, which are browser-local.
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    void api<Summary>(`/summary?since=${encodeURIComponent(midnight.toISOString())}`)
+      .then(setToday)
+      .catch(() => undefined);
+  }, []);
 
   const fetchPage = useCallback(
     async (after: string | null) => {
@@ -75,20 +134,38 @@ export default function OrdersList() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
+        <button
+          type="button"
+          onClick={() => {
+            void downloadFile("/orders.csv").catch(() => undefined);
+          }}
+          className="border-border bg-card rounded-btn text-tx-mute border px-3 py-1.5 text-xs font-semibold"
+        >
+          {t("exportCsv")}
+        </button>
+      </div>
 
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => {
-          setQuery(event.target.value);
-        }}
-        placeholder={t("search")}
-        aria-label={t("search")}
-        className="border-border bg-card rounded-btn mt-5 w-full border px-3.5 py-2.5 text-sm outline-none sm:max-w-sm"
-      />
+      <dl className="mt-5 grid grid-cols-3 gap-3.5">
+        <Stat value={today === null ? "—" : String(today.orders)} label={t("statToday")} />
+        <Stat
+          value={successRate(today)}
+          label={t("statSuccess")}
+          hint={t("statSuccessHint")}
+          accent
+        />
+        <Stat
+          value={
+            today === null
+              ? "—"
+              : `$${formatUsd(toCents(today.spend_usd))}${today.spend_capped ? "+" : ""}`
+          }
+          label={t("statSpend")}
+        />
+      </dl>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-5 flex flex-wrap gap-2">
         {CHIPS.map((chip) => {
           const active = chip === status;
           return (
@@ -117,10 +194,11 @@ export default function OrdersList() {
 
       {rows !== null && rows.length > 0 && (
         <div className="border-border bg-card mt-6 overflow-x-auto rounded-xl border">
-          <table className="w-full min-w-[44rem] text-sm">
+          <table className="w-full min-w-[52rem] text-sm">
             <thead className="text-tx-dim border-border border-b text-left text-xs">
               <tr>
                 <th className="px-4 py-3 font-medium">{t("colOrder")}</th>
+                <th className="px-4 py-3 font-medium">{t("colProduct")}</th>
                 <th className="px-4 py-3 font-medium">{t("colStatus")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("colPrice")}</th>
                 <th className="px-4 py-3 text-right font-medium">{t("colRefunded")}</th>
@@ -135,13 +213,21 @@ export default function OrdersList() {
                     <td className="px-4 py-3">
                       <Link
                         href={`/${locale}/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`}
-                        className="font-medium underline-offset-4 hover:underline"
+                        className="font-mono text-xs font-medium underline-offset-4 hover:underline"
                       >
                         {row.merchant_order_id}
                       </Link>
-                      <p className="text-tx-dim mt-0.5 font-mono text-xs">{row.sku_code}</p>
                     </td>
-                    <td className="text-tx-mute px-4 py-3">{orderStatusLabel(row.status, t)}</td>
+                    <td className="px-4 py-3">{row.sku_code}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
+                          TONE[row.status] ?? "text-tx-mute bg-tx-mute/10"
+                        }`}
+                      >
+                        {orderStatusLabel(row.status, t)}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-right font-mono">
                       ${formatUsd(toCents(row.price_usd))}
                     </td>

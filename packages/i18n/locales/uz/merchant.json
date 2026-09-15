@@ -83,11 +83,15 @@
     "navWebhooks": "Vebhuklar",
     "todayTitle": "Bugun",
     "todayDelivered": "Yetkazildi",
-    "todayHint": "Brauzeringiz soati boʻyicha yarim tundan beri"
+    "todayHint": "Brauzeringiz soati boʻyicha yarim tundan beri",
+    "topUp": "+ Toʻldirish",
+    "groupCatalog": "MAHSULOTLAR",
+    "groupAccount": "HISOB",
+    "navAllBrands": "Barcha brendlar"
   },
   "catalog": {
     "title": "Katalog",
-    "searchPlaceholder": "Brend boʻyicha qidirish",
+    "searchPlaceholder": "Brend va mahsulotlar boʻyicha qidirish",
     "from": "{price} dan",
     "empty": "Hech narsa topilmadi",
     "backToCatalog": "Katalogga qaytish",
@@ -104,7 +108,10 @@
     "notEnough": "Depozitda mablagʻ yetarli emas",
     "orderFailed": "Buyurtma yaratib boʻlmadi",
     "apiId": "API uchun ID",
-    "exportCsv": "CSV yuklab olish"
+    "exportCsv": "CSV yuklab olish",
+    "priceBefore": "Hozirgi balans",
+    "selected": "tanlandi",
+    "apiHint": "API orqali — aynan shu"
   },
   "docs": {
     "title": "Hujjatlar",
@@ -160,7 +167,13 @@
     "failureFulfillmentDelayed": "Yetkazish kechikmoqda — buyurtma hali ochiq, qayta buyurtma bermang",
     "failureFulfillmentFailedRefunded": "Yetkazish amalga oshmadi, butun summa depozitga qaytarildi",
     "failureFulfillmentFailed": "Yetkazish amalga oshmadi — qoʻllab-quvvatlash xizmatiga yozing",
-    "failureOrderFailed": "Buyurtma qoʻllab-quvvatlash xizmati tomonidan yopilgan"
+    "failureOrderFailed": "Buyurtma qoʻllab-quvvatlash xizmati tomonidan yopilgan",
+    "colProduct": "Mahsulot",
+    "statToday": "bugungi buyurtmalar",
+    "statSuccess": "yetkazildi",
+    "statSuccessHint": "tugaganlaridan",
+    "statSpend": "bugun sarflandi",
+    "exportCsv": "CSV eksport"
   },
   "transactions": {
     "title": "Tranzaksiyalar",
@@ -174,7 +187,10 @@
     "kindOrderCharge": "Buyurtma uchun yechildi",
     "kindOrderRefund": "Buyurtma uchun qaytarildi",
     "requestDeposit": "Depozit soʻrash",
-    "exportCsv": "CSV yuklab olish"
+    "exportCsv": "CSV yuklab olish",
+    "balance": "Balans",
+    "topUpHint": "Toʻldirish USD da. Qoʻllab-quvvatlash xizmatiga yozing — summa oʻtkazma tasdiqlangach tushadi.",
+    "colBalanceAfter": "Keyingi balans"
   },
   "settings": {
     "title": "Sozlamalar",

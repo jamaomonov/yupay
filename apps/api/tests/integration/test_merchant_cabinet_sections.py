@@ -464,6 +464,7 @@ async def test_the_summary_counts_this_merchant_and_nets_a_refund_out(
     assert before.json() == {
         "orders": 2,
         "delivered": 0,
+        "failed": 0,
         "spend_usd": "33.08",
         "spend_capped": False,
     }
@@ -472,6 +473,7 @@ async def test_the_summary_counts_this_merchant_and_nets_a_refund_out(
     assert stranger.json() == {
         "orders": 0,
         "delivered": 0,
+        "failed": 0,
         "spend_usd": "0.00",
         "spend_capped": False,
     }

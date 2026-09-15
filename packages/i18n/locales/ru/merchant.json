@@ -83,11 +83,15 @@
     "navWebhooks": "Вебхуки",
     "todayTitle": "Сегодня",
     "todayDelivered": "Выдано",
-    "todayHint": "С полуночи по часам вашего браузера"
+    "todayHint": "С полуночи по часам вашего браузера",
+    "topUp": "+ Пополнить",
+    "groupCatalog": "ТОВАРЫ",
+    "groupAccount": "АККАУНТ",
+    "navAllBrands": "Все бренды"
   },
   "catalog": {
     "title": "Каталог",
-    "searchPlaceholder": "Поиск по бренду",
+    "searchPlaceholder": "Поиск по брендам и товарам",
     "from": "от {price}",
     "empty": "Ничего не найдено",
     "backToCatalog": "К каталогу",
@@ -104,7 +108,10 @@
     "notEnough": "Недостаточно средств на депозите",
     "orderFailed": "Не удалось создать заказ",
     "apiId": "ID для API",
-    "exportCsv": "Скачать CSV"
+    "exportCsv": "Скачать CSV",
+    "priceBefore": "Баланс сейчас",
+    "selected": "выбрано",
+    "apiHint": "Через API — то же самое"
   },
   "docs": {
     "title": "Документация",
@@ -160,7 +167,13 @@
     "failureFulfillmentDelayed": "Выдача задерживается — заказ ещё в работе, повторять не нужно",
     "failureFulfillmentFailedRefunded": "Выдача не удалась, вся сумма возвращена на депозит",
     "failureFulfillmentFailed": "Выдача не удалась — напишите в поддержку",
-    "failureOrderFailed": "Заказ закрыт поддержкой"
+    "failureOrderFailed": "Заказ закрыт поддержкой",
+    "colProduct": "Товар",
+    "statToday": "заказов сегодня",
+    "statSuccess": "успешных",
+    "statSuccessHint": "из завершённых",
+    "statSpend": "потрачено сегодня",
+    "exportCsv": "Экспорт CSV"
   },
   "transactions": {
     "title": "Транзакции",
@@ -174,7 +187,10 @@
     "kindOrderCharge": "Списание за заказ",
     "kindOrderRefund": "Возврат за заказ",
     "requestDeposit": "Запросить пополнение",
-    "exportCsv": "Скачать CSV"
+    "exportCsv": "Скачать CSV",
+    "balance": "Баланс",
+    "topUpHint": "Пополнение в USD. Напишите в поддержку — сумма зачислится после подтверждения перевода.",
+    "colBalanceAfter": "Баланс после"
   },
   "settings": {
     "title": "Настройки",

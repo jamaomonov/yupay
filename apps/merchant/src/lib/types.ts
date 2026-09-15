@@ -52,6 +52,12 @@ export interface Brand {
   brand_id: string;
   slug: string;
   name: string;
+  /** Which storefront section this brand sits in; `null` if it has none. */
+  category_slug: string | null;
+  category_name: string | null;
+  /** Brand artwork, absolute URLs. `null` where none is uploaded. */
+  logo_url: string | null;
+  hero_image_url: string | null;
   products: Product[];
 }
 
@@ -189,6 +195,8 @@ export interface DeliveriesPage {
 export interface Summary {
   orders: number;
   delivered: number;
+  /** Terminally failed — with `delivered`, the two outcomes a rate is over. */
+  failed: number;
   spend_usd: string;
   /** `spend_usd` is a floor: the window held more orders than the API reads. */
   spend_capped: boolean;

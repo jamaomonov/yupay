@@ -1,10 +1,10 @@
-"""CSV exports: the deposit statement, and the wholesale price list.
+"""CSV exports: the order history, the deposit statement, the price list.
 
-Both are built from the **same readers** the screens use — `transactions.build`
-for the ledger, `price_list.build` for the catalog — rather than from queries
-of their own. A statement that disagreed with the Транзакции screen about what
-a merchant spent is worse than no statement, and the only reliable way to keep
-two views of money identical is to give them one source.
+All three are built from the **same readers** the screens use —
+`cabinet_orders.build`, `transactions.build`, `price_list.build` — rather than
+from queries of their own. A statement that disagreed with the Транзакции
+screen about what a merchant spent is worse than no statement, and the only
+reliable way to keep two views of money identical is to give them one source.
 
 Neither takes a window. A deposit ledger is one row per order plus the
 occasional credit, and a price list is a few hundred SKUs, so both fit; the
@@ -20,7 +20,7 @@ from typing import Final
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yupay.modules.merchants import price_list, transactions
+from yupay.modules.merchants import cabinet_orders, price_list, transactions
 from yupay.modules.merchants.models import Merchant
 
 #: Ledger rows one export will read, newest first. The filename names the
@@ -95,6 +95,60 @@ async def statement_csv(db: AsyncSession, *, merchant_id: str) -> tuple[str, str
     return _render(header, rows[:MAX_ROWS]), f"yupay-statement-{span}.csv"
 
 
+async def orders_csv(db: AsyncSession, *, merchant_id: str) -> tuple[str, str]:
+    """The order history as CSV, newest first.
+
+    Built from `cabinet_orders.build`, the same reader the Заказы screen pages
+    through — including its money, which comes from the ledger rather than
+    from the order line. A file that priced an order off the line would show
+    $0.016537 against one that cost $16.54, and it would be the file somebody
+    reconciles against.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant_id: Taken from the signed-in operator.
+
+    Returns:
+        ``(csv_text, filename)``. The filename carries the date range covered,
+        for the reason :func:`statement_csv` gives.
+    """
+    rows: list[list[str]] = []
+    cursor: str | None = None
+    while len(rows) < MAX_ROWS:
+        page = await cabinet_orders.build(
+            db, merchant_id=merchant_id, limit=_PAGE, cursor=cursor, status=None, search=None
+        )
+        for item in page.items:
+            rows.append(
+                [
+                    item.created_at.isoformat(),
+                    _text(item.merchant_order_id),
+                    item.order_id,
+                    _text(item.sku_code),
+                    item.status,
+                    str(item.price_usd),
+                    str(item.refunded_usd),
+                    item.delivered_at.isoformat() if item.delivered_at else "",
+                ]
+            )
+        cursor = page.next_cursor
+        if cursor is None or not page.items:
+            break
+
+    header = [
+        "created_at",
+        "merchant_order_id",
+        "order_id",
+        "sku_code",
+        "status",
+        "price_usd",
+        "refunded_usd",
+        "delivered_at",
+    ]
+    span = f"{rows[-1][0][:10]}_{rows[0][0][:10]}" if rows else "empty"
+    return _render(header, rows[:MAX_ROWS]), f"yupay-orders-{span}.csv"
+
+
 async def price_list_csv(db: AsyncSession, *, merchant: Merchant) -> tuple[str, str]:
     """The wholesale price list as CSV — one row per orderable SKU.
 
@@ -147,4 +201,4 @@ async def price_list_csv(db: AsyncSession, *, merchant: Merchant) -> tuple[str, 
     return _render(header, rows), "yupay-price-list.csv"
 
 
-__all__ = ["MAX_ROWS", "price_list_csv", "statement_csv"]
+__all__ = ["MAX_ROWS", "orders_csv", "price_list_csv", "statement_csv"]

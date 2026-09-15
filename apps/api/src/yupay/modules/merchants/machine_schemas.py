@@ -330,6 +330,19 @@ class MerchantBrandOut(BaseModel):
     brand_id: str
     slug: str
     name: str
+    #: Which storefront section this brand sits in — the cabinet groups its
+    #: catalog by it, the same split a person sees on yupay.uz. Additive in
+    #: v1: a client that ignores it keeps working, and a brand whose category
+    #: row is somehow missing comes back ``null`` rather than dropping out of
+    #: the list, because the price list's job is prices.
+    category_slug: str | None = None
+    category_name: str | None = None
+    #: Brand artwork, absolute URLs, the same files the storefront renders.
+    #: ``null`` where none is uploaded — a cabinet showing a placeholder is
+    #: better than one showing a broken image, and this is the field that
+    #: says which.
+    logo_url: str | None = None
+    hero_image_url: str | None = None
     products: list[MerchantProductOut]
 
 

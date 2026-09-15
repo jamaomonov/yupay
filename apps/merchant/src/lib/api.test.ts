@@ -1,7 +1,11 @@
 import { LOCALES } from "@yupay/i18n";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { loginPathFor } from "./api";
+import { api, loginPathFor } from "./api";
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 /**
  * Where a lapsed session lands.
@@ -39,3 +43,60 @@ describe("loginPathFor", () => {
     }
   });
 });
+
+/**
+ * Two requests that 401 at the same moment.
+ *
+ * The cabinet shell produces exactly this on every load: the profile and the
+ * catalog go out together. Refresh tokens rotate, so if both started a
+ * rotation the second would present a token the first had already spent — and
+ * a valid session would be signed out on a cold load.
+ */
+describe("concurrent rotation", () => {
+  it("rotates once for every request that hit 401 together", async () => {
+    const store = new Map<string, string>([
+      ["yupay.merchant.access", "stale"],
+      ["yupay.merchant.refresh", "good"],
+    ]);
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => store.get(key) ?? null,
+        setItem: (key: string, value: string) => store.set(key, value),
+        removeItem: (key: string) => store.delete(key),
+      },
+      location: { pathname: "/en/cabinet", assign: vi.fn() },
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
+
+    let refreshes = 0;
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url.endsWith("/refresh")) {
+        refreshes += 1;
+        // Slow enough that the second caller is certainly still waiting.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        store.set("yupay.merchant.access", "fresh");
+        return response(200, { access_token: "fresh", refresh_token: "next", expires_in: 900 });
+      }
+      const token = store.get("yupay.merchant.access");
+      return token === "fresh" ? response(200, { ok: true }) : response(401, {});
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const [first, second] = await Promise.all([api("/me"), api("/catalog")]);
+
+    expect(refreshes).toBe(1);
+    expect(first).toEqual({ ok: true });
+    expect(second).toEqual({ ok: true });
+  });
+});
+
+function response(status: number, body: unknown): Response {
+  return {
+    status,
+    ok: status < 400,
+    text: async () => JSON.stringify(body),
+    json: async () => body,
+    headers: new Map<string, string>() as unknown as Headers,
+  } as unknown as Response;
+}

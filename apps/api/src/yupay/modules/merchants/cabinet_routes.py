@@ -239,6 +239,13 @@ def _csv(body: tuple[str, str]) -> Response:
     )
 
 
+@router.get("/orders.csv", summary="The order history, as CSV")
+async def export_orders(user: CurrentUser, db: Db) -> Response:
+    """The same reader the Заказы screen pages through, money included."""
+    merchant = await merchant_of(db, user)
+    return _csv(await cabinet_export.orders_csv(db, merchant_id=merchant.id))
+
+
 @router.get("/transactions.csv", summary="The deposit statement, as CSV")
 async def export_transactions(user: CurrentUser, db: Db) -> Response:
     """Built from the same reader the Транзакции screen pages through.

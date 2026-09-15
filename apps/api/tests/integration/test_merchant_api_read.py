@@ -442,7 +442,24 @@ async def test_catalog_returns_the_b2b_visible_tree(
     # The seeded product asks for nothing; the field exists either way, so a
     # client reads one shape rather than branching on whether a key is there.
     assert product["required_fields"] == []
-    assert set(brand) == {"brand_id", "slug", "name", "products"}
+    # M4 added four: the cabinet groups its catalog by section and draws the
+    # brand's artwork, and both come from here rather than from a second
+    # endpoint the two surfaces could disagree with. Additive, which v1
+    # allows — what this set still catches is a rename or a removal.
+    assert set(brand) == {
+        "brand_id",
+        "slug",
+        "name",
+        "category_slug",
+        "category_name",
+        "logo_url",
+        "hero_image_url",
+        "products",
+    }
+    # The seeded brand has a category and no artwork, which is the shape most
+    # of the real catalog is in today.
+    assert brand["category_slug"] is not None
+    assert brand["logo_url"] is None
     assert set(body) == {"brands"}
     assert sku["sku_id"] == ids["vis-1"]
     assert sku["sku_code"] == "vis-1"

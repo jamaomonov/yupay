@@ -51,8 +51,11 @@ async def build(
         now: Current time, for bounding the window.
 
     Returns:
-        Counts and net spend. ``spend_capped`` says the window held more than
-        :data:`MAX_ORDERS` orders and the figure is therefore a floor.
+        Counts and net spend. ``delivered`` and ``failed`` are the two
+        terminal outcomes, so a success rate is theirs to compute and never
+        includes orders still in flight. ``spend_capped`` says the window held
+        more than :data:`MAX_ORDERS` orders and the figure is therefore a
+        floor.
 
     Raises:
         ValidationError: ``since`` is in the future or older than
@@ -70,6 +73,13 @@ async def build(
     delivered = (
         await db.execute(
             select(func.count()).select_from(Order).where(*scoped, Order.status == "delivered")
+        )
+    ).scalar_one()
+    # ``failed`` only — not ``cancelled``, which is a decision somebody made,
+    # and not ``refunded``, which is about money rather than about delivery.
+    failed = (
+        await db.execute(
+            select(func.count()).select_from(Order).where(*scoped, Order.status == "failed")
         )
     ).scalar_one()
 
@@ -97,6 +107,7 @@ async def build(
     return CabinetSummaryOut(
         orders=orders,
         delivered=delivered,
+        failed=failed,
         spend_usd=spend,
         spend_capped=capped,
     )

@@ -92,7 +92,7 @@ export default function WebhooksPage() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+      <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
       <p className="text-tx-mute mt-2 max-w-2xl text-sm leading-relaxed">{t("intro")}</p>
 
       {secret !== null && (

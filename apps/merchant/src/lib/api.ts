@@ -88,20 +88,43 @@ async function parse(response: Response): Promise<Record<string, unknown>> {
   }
 }
 
+/**
+ * The rotation in flight, if there is one.
+ *
+ * Refresh tokens **rotate**: presenting one kills it. So two requests that
+ * 401 at the same moment — which the cabinet shell produces on every load,
+ * since it fetches the profile and the catalog together — must not each start
+ * a rotation. The first would succeed and the second would present a token
+ * that no longer exists, fail, and sign a perfectly valid session out.
+ *
+ * Every caller awaits the same promise instead, and they all get the same
+ * answer about the same rotation.
+ */
+let rotating: Promise<boolean> | null = null;
+
 async function rotate(): Promise<boolean> {
-  const token = readToken(REFRESH_KEY);
-  if (!token) return false;
-  const response = await fetch(`${BASE}/merchant/cabinet/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: token }),
-  });
-  if (!response.ok) {
-    clearTokens();
-    return false;
+  rotating ??= (async () => {
+    const token = readToken(REFRESH_KEY);
+    if (!token) return false;
+    const response = await fetch(`${BASE}/merchant/cabinet/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: token }),
+    });
+    if (!response.ok) {
+      clearTokens();
+      return false;
+    }
+    storeTokens((await response.json()) as Tokens);
+    return true;
+  })();
+  try {
+    return await rotating;
+  } finally {
+    // Cleared only after every waiter has its answer, so the *next* 401 —
+    // fifteen minutes later — starts a fresh one rather than replaying this.
+    rotating = null;
   }
-  storeTokens((await response.json()) as Tokens);
-  return true;
 }
 
 /**
