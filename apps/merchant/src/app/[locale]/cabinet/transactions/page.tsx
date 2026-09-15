@@ -1,10 +1,13 @@
 "use client";
 
+import { ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import type { Transaction, TransactionsPage } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
@@ -76,7 +79,7 @@ export default function TransactionsList() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
+        <PageHeading icon={ArrowLeftRight} title={t("title")} />
         <button
           type="button"
           onClick={() => {
@@ -99,7 +102,7 @@ export default function TransactionsList() {
       </section>
 
       {rows !== null && rows.length === 0 && (
-        <p className="text-tx-dim mt-8 text-sm">{t("empty")}</p>
+        <EmptyState icon={ArrowLeftRight} title={t("empty")} />
       )}
 
       {rows !== null && rows.length > 0 && (

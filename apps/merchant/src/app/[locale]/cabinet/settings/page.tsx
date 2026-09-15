@@ -1,10 +1,12 @@
 "use client";
 
+import { Settings } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useState } from "react";
 
+import { PageHeading } from "@/components/PageHeading";
 import type { Profile } from "@/lib/types";
 
 import { ApiKeysCard } from "@/components/ApiKeysCard";
@@ -51,7 +53,7 @@ export default function SettingsPage() {
 
   return (
     <div>
-      <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
+      <PageHeading icon={Settings} title={t("title")} />
 
       <ApiKeysCard />
 

@@ -1,10 +1,13 @@
 "use client";
 
+import { Package } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
 import { useSearch } from "@/components/CabinetContext";
@@ -135,7 +138,7 @@ export default function OrdersList() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold tracking-tight">{t("title")}</h1>
+        <PageHeading icon={Package} title={t("title")} />
         <button
           type="button"
           onClick={() => {
@@ -188,9 +191,7 @@ export default function OrdersList() {
         })}
       </div>
 
-      {rows !== null && rows.length === 0 && (
-        <p className="text-tx-dim mt-8 text-sm">{t("empty")}</p>
-      )}
+      {rows !== null && rows.length === 0 && <EmptyState icon={Package} title={t("empty")} />}
 
       {rows !== null && rows.length > 0 && (
         <div className="border-border bg-card mt-6 overflow-x-auto rounded-xl border">

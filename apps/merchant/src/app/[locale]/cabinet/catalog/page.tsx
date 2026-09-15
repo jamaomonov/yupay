@@ -1,10 +1,13 @@
 "use client";
 
+import { LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { Suspense, useMemo } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import type { Brand } from "@/lib/types";
 
 import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
@@ -81,9 +84,7 @@ function CatalogGrid() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="font-display text-xl font-semibold tracking-tight">
-          {sectionName ?? t("title")}
-        </h1>
+        <PageHeading icon={LayoutGrid} title={sectionName ?? t("title")} />
         <button
           type="button"
           onClick={() => {
@@ -96,7 +97,7 @@ function CatalogGrid() {
       </div>
 
       {catalog !== null && brands.length === 0 && (
-        <p className="text-tx-dim mt-8 text-sm">{t("empty")}</p>
+        <EmptyState icon={LayoutGrid} title={t("empty")} />
       )}
 
       <div className="mt-5 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

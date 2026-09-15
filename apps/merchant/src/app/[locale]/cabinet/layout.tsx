@@ -1,6 +1,15 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import {
+  ArrowLeftRight,
+  BookOpen,
+  LayoutDashboard,
+  LogOut,
+  Package,
+  Settings,
+  Webhook,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -12,16 +21,18 @@ import { hasSession, signOut } from "@/lib/api";
 
 /** The account group, in the order a day in the cabinet goes.
  *
- * Dots rather than icons, like the sections above them: six icons in a column
- * read as six unrelated things, and the grouping is what carries the meaning
- * here. */
-const ACCOUNT = [
-  { key: "navOrders", path: "/cabinet/orders" },
-  { key: "navTransactions", path: "/cabinet/transactions" },
-  { key: "navWebhooks", path: "/cabinet/webhooks" },
-  { key: "navSettings", path: "/cabinet/settings" },
-  { key: "navDocs", path: "/docs" },
-] as const;
+ * These carry icons and the catalog sections above them do not, which is the
+ * distinction rather than an inconsistency: a section is a *filter* on one
+ * screen — and there is no icon for "Игры" that is not invented — while these
+ * five are *places*. The dot marks the first kind, the icon the second, and
+ * each screen repeats its own icon in the heading so a click visibly landed. */
+const ACCOUNT: { key: string; path: string; icon: LucideIcon }[] = [
+  { key: "navOrders", path: "/cabinet/orders", icon: Package },
+  { key: "navTransactions", path: "/cabinet/transactions", icon: ArrowLeftRight },
+  { key: "navWebhooks", path: "/cabinet/webhooks", icon: Webhook },
+  { key: "navSettings", path: "/cabinet/settings", icon: Settings },
+  { key: "navDocs", path: "/docs", icon: BookOpen },
+];
 
 function Shell({ children }: { children: React.ReactNode }) {
   const t = useTranslations("merchant.cabinet");
@@ -72,13 +83,15 @@ function Shell({ children }: { children: React.ReactNode }) {
       <SideLink
         href={`/${locale}/cabinet`}
         label={t("navDashboard")}
+        icon={LayoutDashboard}
         active={pathname === `/${locale}/cabinet`}
       />
-      {ACCOUNT.map(({ key, path }) => (
+      {ACCOUNT.map(({ key, path, icon }) => (
         <SideLink
           key={key}
           href={`/${locale}${path}`}
           label={t(key)}
+          icon={icon}
           active={pathname.startsWith(`/${locale}${path}`)}
         />
       ))}
@@ -118,14 +131,16 @@ function Shell({ children }: { children: React.ReactNode }) {
           <MobileLink
             href={`/${locale}/cabinet`}
             label={t("navDashboard")}
+            icon={LayoutDashboard}
             active={pathname === `/${locale}/cabinet`}
           />
           <MobileLink href={catalogHref(null)} label={t("navCatalog")} active={onCatalog} />
-          {ACCOUNT.map(({ key, path }) => (
+          {ACCOUNT.map(({ key, path, icon }) => (
             <MobileLink
               key={key}
               href={`/${locale}${path}`}
               label={t(key)}
+              icon={icon}
               active={pathname.startsWith(`/${locale}${path}`)}
             />
           ))}
@@ -149,11 +164,14 @@ function SideLink({
   href,
   label,
   count,
+  icon: Icon,
   active,
 }: {
   href: string;
   label: string;
   count?: number;
+  /** A destination gets a mark; a catalog filter gets the dot below. */
+  icon?: LucideIcon;
   active: boolean;
 }) {
   return (
@@ -164,10 +182,18 @@ function SideLink({
         active ? "bg-card-2 text-foreground font-semibold" : "text-tx-mute"
       }`}
     >
-      <span
-        aria-hidden
-        className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-primary" : "bg-border-2"}`}
-      />
+      {Icon === undefined ? (
+        <span
+          aria-hidden
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${active ? "bg-primary" : "bg-border-2"}`}
+        />
+      ) : (
+        <Icon
+          aria-hidden
+          size={15}
+          className={`shrink-0 ${active ? "text-primary" : "text-tx-dim"}`}
+        />
+      )}
       <span className="min-w-0 truncate">{label}</span>
       {count !== undefined && (
         <span className="text-tx-dim ml-auto font-mono text-[11px]">{count}</span>
@@ -176,15 +202,28 @@ function SideLink({
   );
 }
 
-function MobileLink({ href, label, active }: { href: string; label: string; active: boolean }) {
+function MobileLink({
+  href,
+  label,
+  icon: Icon,
+  active,
+}: {
+  href: string;
+  label: string;
+  icon?: LucideIcon;
+  active: boolean;
+}) {
   return (
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={`rounded-btn shrink-0 whitespace-nowrap border px-3 py-1.5 text-xs ${
+      className={`rounded-btn flex shrink-0 items-center gap-1.5 whitespace-nowrap border px-3 py-1.5 text-xs ${
         active ? "border-border-2 bg-card-2 font-semibold" : "border-border text-tx-mute"
       }`}
     >
+      {Icon !== undefined && (
+        <Icon aria-hidden size={13} className={active ? "text-primary" : "text-tx-dim"} />
+      )}
       {label}
     </Link>
   );

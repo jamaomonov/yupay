@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { routing } from "@/i18n/routing";
-
 import { hrefForLocale } from "./locale-href";
+
+import { routing } from "@/i18n/routing";
 
 /**
  * Switching language must not be a redirect.

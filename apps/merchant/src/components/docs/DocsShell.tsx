@@ -1,6 +1,14 @@
 "use client";
 
-import { Search } from "lucide-react";
+import {
+  BookOpen,
+  KeyRound,
+  Rocket,
+  Search,
+  TriangleAlert,
+  Webhook,
+  type LucideIcon,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -19,6 +27,31 @@ export interface NavItem {
 export interface NavGroup {
   title: string;
   items: NavItem[];
+}
+
+/**
+ * An icon for each guide, keyed on its trailing path segment.
+ *
+ * Keyed here rather than carried on `NavItem` because the sidebar is built in
+ * a Server Component and a component reference cannot cross that boundary as a
+ * prop. The segment is stable — these five pages are the guides — and a path
+ * that is not one of them gets no icon rather than a wrong one.
+ *
+ * Only the guides. The reference entries below already carry a method badge,
+ * and the schema list is one kind of thing repeated: an icon on every row
+ * there would be wallpaper.
+ */
+const GUIDE_ICON: Record<string, LucideIcon> = {
+  docs: BookOpen,
+  authentication: KeyRound,
+  quickstart: Rocket,
+  errors: TriangleAlert,
+  webhooks: Webhook,
+};
+
+function guideIcon(href: string): LucideIcon | undefined {
+  const segment = href.split("/").filter(Boolean).at(-1) ?? "";
+  return GUIDE_ICON[segment];
 }
 
 /** The tone of each method badge. Unlisted methods render neutral. */
@@ -115,6 +148,7 @@ export function DocsShell({
               </p>
               {group.items.map((item) => {
                 const active = pathname === item.href;
+                const Icon = item.method === undefined ? guideIcon(item.href) : undefined;
                 return (
                   <Link
                     key={item.href}
@@ -124,6 +158,13 @@ export function DocsShell({
                       active ? "bg-card-2 text-foreground font-semibold" : "text-tx-mute"
                     }`}
                   >
+                    {Icon !== undefined && (
+                      <Icon
+                        aria-hidden
+                        size={14}
+                        className={`shrink-0 ${active ? "text-primary" : "text-tx-dim"}`}
+                      />
+                    )}
                     <span className="min-w-0 flex-1 truncate">{item.label}</span>
                     {item.method !== undefined && (
                       <span

@@ -1,9 +1,12 @@
 "use client";
 
+import { Webhook } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
+import { EmptyState } from "@/components/EmptyState";
+import { PageHeading } from "@/components/PageHeading";
 import type { DeliveriesPage, WebhookDelivery } from "@/lib/types";
 
 import { api } from "@/lib/api";
@@ -58,12 +61,10 @@ export default function WebhookLog() {
 
   return (
     <div>
-      <h1 className="font-display text-xl font-semibold tracking-tight">{t("logTitle")}</h1>
+      <PageHeading icon={Webhook} title={t("logTitle")} />
       <p className="text-tx-mute mt-2 max-w-2xl text-sm leading-relaxed">{t("logIntro")}</p>
 
-      {rows !== null && rows.length === 0 && (
-        <p className="text-tx-dim mt-6 text-sm">{t("logEmpty")}</p>
-      )}
+      {rows !== null && rows.length === 0 && <EmptyState icon={Webhook} title={t("logEmpty")} />}
 
       {rows !== null && rows.length > 0 && (
         <ul className="border-border divide-border mt-5 divide-y border-t">
