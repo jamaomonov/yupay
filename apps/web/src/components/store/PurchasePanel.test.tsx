@@ -1334,3 +1334,25 @@ it("keeps a settled payment off the acquirer path — no flag, no navigation", a
   expect(pushMock).not.toHaveBeenCalled();
   expect(screen.queryByRole("link", { name: /goToPay/ })).not.toBeInTheDocument();
 });
+
+it("points a not-found id at the other region when the brand has one", async () => {
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  vi.spyOn(playerCheck, "checkPlayer").mockResolvedValue({ status: "invalid", name: null });
+  renderPanel(
+    <PurchasePanel
+      products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]}
+      locale="ru"
+      regionSibling={{ slug: "mobile-legends-ru", name: "Mobile Legends RU" }}
+    />,
+  );
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+  expect(await screen.findByText("checkNotFound")).toBeInTheDocument();
+  expect(screen.getByText("checkTryRegion")).toHaveAttribute(
+    "href",
+    expect.stringContaining("/store/mobile-legends-ru"),
+  );
+});

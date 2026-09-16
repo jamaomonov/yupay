@@ -18,8 +18,15 @@ import { RatingSummary } from "@/components/store/RatingSummary";
 import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
-import { getBrandDetail, getBrandSlugs, getProductDetail, type ProductDetail } from "@/lib/catalog";
+import {
+  getBrandDetail,
+  getBrands,
+  getBrandSlugs,
+  getProductDetail,
+  type ProductDetail,
+} from "@/lib/catalog";
 import { isOptimizable } from "@/lib/image";
+import { regionSibling } from "@/lib/region-sibling";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
   alternates,
@@ -116,6 +123,10 @@ export default async function BrandPage({
     t("brandMetaDescription", { name: brand.name });
   const heroImg = brand.hero_image_url ?? brand.logo_url;
   const highlights = brand.highlights ?? [];
+  // The other region's brand, when this one is one half of a `<slug>` /
+  // `<slug>-ru` pair (ADR-0079: a brand is one supplier game, so Mobile
+  // Legends and Mobile Legends RU are two brands, not one with a toggle).
+  const sibling = regionSibling(brand.slug, await getBrands(locale));
 
   // Reviews are additive: never let a reviews outage break the brand page (or
   // the SSG build prerendering against an API that predates the endpoint).
@@ -404,12 +415,29 @@ export default async function BrandPage({
           </div>
         </div>
 
+        {sibling && (
+          <p className="border-border/70 mt-6 rounded-md border border-dashed px-4 py-3 text-[14px]">
+            <Link
+              href={pathFor(locale, `/store/${sibling.slug}`)}
+              className="text-primary font-semibold hover:underline"
+            >
+              {t(brand.slug.endsWith("-ru") ? "regionSiblingGlobal" : "regionSiblingRu", {
+                name: sibling.name,
+              })}
+            </Link>
+          </p>
+        )}
+
         {/* Pick sits right under the hero; the how-to / about / FAQ sections are
             passed into the left column so the sticky order sidebar scrolls with
             them — one aligned 2-column grid (see PurchasePanel). */}
         <div className="mt-8">
           {products.length > 0 ? (
-            <PurchasePanel products={products} locale={locale}>
+            <PurchasePanel
+              products={products}
+              locale={locale}
+              regionSibling={sibling ? { slug: sibling.slug, name: sibling.name } : null}
+            >
               {brand.instructions && (
                 <section className="mt-14 scroll-mt-[88px]">
                   <h2 className="font-display text-xl font-bold tracking-[-0.02em]">

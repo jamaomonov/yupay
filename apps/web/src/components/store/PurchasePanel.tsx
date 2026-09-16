@@ -173,6 +173,7 @@ function CheckablePlayerField({
   placeholder,
   check,
   onCheckResult,
+  siblingHint,
   t,
 }: {
   brandSlug: string;
@@ -199,6 +200,11 @@ function CheckablePlayerField({
    *  about, or `null` when the pill's «Изменить» drops it. Lets the panel
    *  require a real "valid" before Pay, not just a filled-in box. */
   onCheckResult: (verdict: PlayerCheckVerdict | null) => void;
+  /** The sibling-region brand's page, when this brand is one half of a
+   *  `<slug>` / `<slug>-ru` pair — the panel resolves it once (it already
+   *  has `locale` for `pathFor`) and hands down a ready `href`, so this field
+   *  needs no `locale` prop of its own. `null` when the brand has no twin. */
+  siblingHint: { href: string; name: string } | null;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   // Pick the mobile keyboard from the field's pattern: a letter-bearing
@@ -329,6 +335,14 @@ function CheckablePlayerField({
             {t("checkEdit")}
           </button>
         </div>
+        {siblingHint && (
+          <a
+            href={siblingHint.href}
+            className="text-primary mt-2 inline-block text-[13px] underline-offset-4 hover:underline"
+          >
+            {t("checkTryRegion", { name: siblingHint.name })}
+          </a>
+        )}
       </div>
     );
   }
@@ -926,15 +940,25 @@ function UnitPackTiles({
 export function PurchasePanel({
   products,
   locale,
+  regionSibling,
   children,
 }: {
   products: ProductDetail[];
   locale: string;
+  /** The other region's brand, when this brand is one half of a `<slug>` /
+   *  `<slug>-ru` pair (see `@/lib/region-sibling`). `null`/absent for every
+   *  other brand — the field then renders no hint at all. */
+  regionSibling?: { slug: string; name: string } | null;
   /** Server-rendered sections (how-to, about, FAQ) placed in the left column
    *  below the pick, so the sticky order sidebar scrolls alongside them. */
   children?: ReactNode;
 }) {
   const t = useTranslations("web.store");
+  // Resolved once here (not in the field) because only the panel already
+  // carries `locale` for `pathFor` — the field stays locale-agnostic.
+  const siblingHint = regionSibling
+    ? { href: pathFor(locale, `/store/${regionSibling.slug}`), name: regionSibling.name }
+    : null;
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   // Nothing is preselected on a grid the buyer still has to choose from. The
@@ -1853,6 +1877,7 @@ export function PurchasePanel({
                         // effect, so it cannot feed itself a new render.
                         setCheckResults((prev) => ({ ...prev, [f.key]: verdict }));
                       }}
+                      siblingHint={siblingHint}
                       t={t}
                     />
                   ) : (
