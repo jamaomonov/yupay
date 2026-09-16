@@ -572,6 +572,23 @@ async def test_a_brand_withheld_from_b2b_is_not_checkable(
     assert "sku_id" not in body
 
 
+async def test_a_visible_brand_with_no_visible_sku_is_not_checkable(
+    integration_client: AsyncClient, credentials: tuple[str, str], db_session: AsyncSession
+) -> None:
+    """The second half of the visibility rule: the brand itself is
+    ``visible_b2b``, but none of its SKUs are — the correlated ``EXISTS`` in
+    ``_checkable_brand`` is what catches this, distinct from the brand-level
+    refusal above."""
+    category, brand, product, sku = _tree(8, required_fields=_G2B_FIELD, sku_visible_b2b=False)
+    db_session.add_all([category, brand, product, sku])
+    await db_session.commit()
+    r = await _validate(integration_client, credentials, {"brand": brand.slug, "player_id": "1"})
+    assert r.status_code == 404, r.text
+    body = r.json()
+    assert body["reason"] == "not_b2b_visible"
+    assert body["brand"] == brand.slug
+
+
 async def test_an_unknown_body_field_is_refused(
     integration_client: AsyncClient, credentials: tuple[str, str], g2b_sku_id: str
 ) -> None:

@@ -131,9 +131,17 @@ async def charge_merchant_quota(merchant_id: str) -> None:
 async def _checkable_brand(db: AsyncSession, *, brand_slug: str) -> str:
     """Resolve a merchant-visible brand slug to its id.
 
-    The rule is ``/catalog``'s: the brand is ``visible_b2b`` and at least one of
-    its SKUs is. A brand withheld from B2B is not checkable, so this endpoint
-    cannot be used to enumerate what ``/catalog`` hides.
+    The rule is exactly ``/catalog``'s — ``price_list.py``'s catalog query
+    filters on ``Brand.visible_b2b AND Sku.visible_b2b`` and nothing else
+    (``price_list.py:194-196``). The active chain (brand, product, SKU) is
+    deliberately **not** applied here either, for the same reason
+    ``price_list.py`` does not apply it (``price_list.py:224-232``): active is
+    a transient state that moves between a merchant's poll and their order, so
+    filtering on it here would 404 a brand ``/catalog`` still lists as
+    checkable. A brand withheld from B2B (or visible with no B2B-visible SKU)
+    is not checkable, so this endpoint cannot be used to enumerate what
+    ``/catalog`` hides — but it also cannot be *stricter* than what
+    ``/catalog`` shows.
 
     One statement, not two: the visible-SKU test rides along as a correlated
     ``EXISTS`` on the brand row rather than a second round trip — the same
@@ -149,14 +157,12 @@ async def _checkable_brand(db: AsyncSession, *, brand_slug: str) -> str:
     has_visible_sku = (
         select(Sku.id)
         .join(Product, Product.id == Sku.product_id)
-        .where(Product.brand_id == Brand.id, Sku.visible_b2b.is_(True), Sku.active.is_(True))
+        .where(Product.brand_id == Brand.id, Sku.visible_b2b.is_(True))
         .exists()
     )
     row = (
         await db.execute(
-            select(Brand.id, Brand.visible_b2b, has_visible_sku).where(
-                Brand.slug == brand_slug, Brand.active.is_(True)
-            )
+            select(Brand.id, Brand.visible_b2b, has_visible_sku).where(Brand.slug == brand_slug)
         )
     ).one_or_none()
     if row is None:

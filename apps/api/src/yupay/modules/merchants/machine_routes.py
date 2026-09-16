@@ -270,8 +270,8 @@ async def validate_player(
     each. ``merchants.validate.charge_merchant_quota`` carries the argument.
 
     ``merchant`` is used for that counter and for nothing else: what a merchant
-    may *check* is a property of the catalog row (``brand.visible_b2b AND
-    sku.visible_b2b``), not of the caller.
+    may *check* is a property of the catalog row — brand ``visible_b2b`` and at
+    least one B2B-visible SKU under it — not of the caller.
     """
     await guard_ip(request, bucket=merchants.VALIDATE_RATE_BUCKET)
     await merchants.charge_validate_quota(merchant.id)

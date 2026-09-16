@@ -670,8 +670,8 @@ class MerchantPlayerCheckIn(BaseModel):
         max_length=64,
         description=(
             "The game server or zone, for the games that ask for one. Send what the "
-            "SKU's product declares and omit it otherwise — an empty string is refused "
-            'rather than taken as a third spelling of "no server".'
+            "brand's product form declares and omit it otherwise — an empty string is "
+            'refused rather than taken as a third spelling of "no server".'
         ),
     )
 
@@ -691,9 +691,9 @@ class MerchantPlayerCheckOut(BaseModel):
       rejected credential of ours, or a circuit we opened after a run of
       failures. It says nothing at all about the id, so it must not be read as
       either approval or refusal; retry, or order without a check.
-    * ``unsupported`` — this SKU's product has no player check configured, and
-      will not grow one on its own. Distinct from ``error`` because that one is
-      worth retrying and this one never is.
+    * ``unsupported`` — no product of this brand declares a player check, and
+      none will grow one on its own. Distinct from ``error`` because that one
+      is worth retrying and this one never is.
 
     Nothing here reports how the answer was reached, deliberately: a verdict
     served from the 300 s cache is still our best answer, and a "this was
@@ -708,8 +708,8 @@ class MerchantPlayerCheckOut(BaseModel):
             "answer that means your customer mistyped something.\n"
             "- `error` — **we could not check.** Says nothing about the id. Retry, or "
             "order without a check.\n"
-            "- `unsupported` — this product has no player check and will not grow one. "
-            "Never worth retrying."
+            "- `unsupported` — no product of this brand declares a player check and none "
+            "will grow one. Never worth retrying."
         )
     )
     name: str | None = Field(
