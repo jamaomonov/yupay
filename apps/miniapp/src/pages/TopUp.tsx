@@ -236,11 +236,6 @@ export default function TopUp() {
   const currency = useDisplayCurrency();
   const productQuery = useProductWithSkus(selectedProductSlug || undefined, currency);
   const requiredFields = productQuery.data?.product.required_fields ?? [];
-  // The product the account fields — and any player check run against them —
-  // belong to. A game sold per account region (ADR-0048) is one product per
-  // region, and switching between them keeps the typed id, so this is half of
-  // what makes a stored verdict still true.
-  const productId = productQuery.data?.product.id ?? "";
   const productImage = productQuery.data?.product.image_url ?? null;
   // A gift card is a purchase, not a top-up: there's no account being
   // credited, only a code or activation link handed over after payment.
@@ -363,7 +358,7 @@ export default function TopUp() {
   const [suggestions, setSuggestions] = useState<Record<string, string>>({});
   // Each checkable field's latest player-check verdict, reported by
   // DynamicFields from the check itself and filed under the question it was
-  // asked (product + id + server). Lets "continue" require an actual
+  // asked (brand + id + server). Lets "continue" require an actual
   // verification instead of a filled-in box — a mistyped id otherwise sails
   // straight to checkout, and the refund policy says a wrong id after payment
   // is unrecoverable. Read back only through `currentFieldCheck`, never
@@ -634,7 +629,7 @@ export default function TopUp() {
   // A checkable field (`f.check`) with something typed into it but no
   // successful "Проверить" behind that value yet — either it was never
   // pressed, it came back "not found", or the answer on file is about another
-  // question: another product, another id, another server (`currentFieldCheck`).
+  // question: another brand, another id, another server (`currentFieldCheck`).
   // A check that could not *run* does not count — see `blocksCheckout`.
   // Checked after `missingFieldKey` on purpose: an empty required field is
   // "nothing to verify yet", not "unverified".
@@ -642,7 +637,7 @@ export default function TopUp() {
     if (!f.check) return false;
     const v = (fulfillment[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return blocksCheckout(currentFieldCheck(checkResults, productId, fulfillment, f));
+    return blocksCheckout(currentFieldCheck(checkResults, gameId ?? "", fulfillment, f));
   })?.key;
 
   // One expression for the CTA's disabled state, used by both its styling and
@@ -686,7 +681,7 @@ export default function TopUp() {
       const value = fulfillment[f.key] ?? "";
       // The same derivation the gate above uses, so the review screen can
       // never show a nickname for an account the CTA no longer vouches for.
-      const checked = currentFieldCheck(checkResults, productId, fulfillment, f);
+      const checked = currentFieldCheck(checkResults, gameId ?? "", fulfillment, f);
       return {
         key: f.key,
         label: pickLocalized(f.label, locale, f.key),
@@ -1137,7 +1132,7 @@ export default function TopUp() {
                   sub={fillingHint}
                 />
                 <DynamicFields
-                  productId={productId}
+                  brandSlug={gameId ?? ""}
                   fields={requiredFields}
                   values={fulfillment}
                   suggestions={suggestions}

@@ -33,24 +33,24 @@ describe("canCheck", () => {
 describe("runPlayerCheck", () => {
   test("passes a valid result through", async () => {
     const run = vi.fn().mockResolvedValue({ status: "valid", name: "Neo" });
-    const s = await runPlayerCheck("p1", { playerId: "51234567" }, run);
+    const s = await runPlayerCheck("pubg-mobile", { playerId: "51234567" }, run);
     expect(s).toEqual({ status: "valid", name: "Neo" });
-    expect(run).toHaveBeenCalledWith("p1", { playerId: "51234567" });
+    expect(run).toHaveBeenCalledWith("pubg-mobile", { playerId: "51234567" });
   });
   test("passes an invalid result through unchanged (not folded to error)", async () => {
     const run = vi.fn().mockResolvedValue({ status: "invalid", name: null });
-    const s = await runPlayerCheck("p1", { playerId: "9" }, run);
+    const s = await runPlayerCheck("pubg-mobile", { playerId: "9" }, run);
     expect(s).toEqual({ status: "invalid", name: null });
   });
   test("folds a thrown error into status=error, never invalid", async () => {
     const run = vi.fn().mockRejectedValue(new Error("network"));
-    const s = await runPlayerCheck("p1", { playerId: "9" }, run);
+    const s = await runPlayerCheck("pubg-mobile", { playerId: "9" }, run);
     expect(s).toEqual({ status: "error", name: null });
   });
   test("passes serverId through", async () => {
     const run = vi.fn().mockResolvedValue({ status: "invalid", name: null });
-    await runPlayerCheck("p1", { playerId: "9", serverId: "as" }, run);
-    expect(run).toHaveBeenCalledWith("p1", { playerId: "9", serverId: "as" });
+    await runPlayerCheck("pubg-mobile", { playerId: "9", serverId: "as" }, run);
+    expect(run).toHaveBeenCalledWith("pubg-mobile", { playerId: "9", serverId: "as" });
   });
 });
 
@@ -63,48 +63,49 @@ describe("runPlayerCheck", () => {
  */
 describe("currentCheck", () => {
   const verdict: PlayerCheckVerdict = {
-    productId: "prod-ru",
+    brandSlug: "mobile-legends-ru",
     playerId: "1313232551",
     serverId: "6618",
     result: { status: "valid", name: "blood moon" },
   };
 
   test("reads the verdict back for the question it was asked", () => {
-    expect(currentCheck(verdict, "prod-ru", "1313232551", "6618")).toEqual({
+    expect(currentCheck(verdict, "mobile-legends-ru", "1313232551", "6618")).toEqual({
       status: "valid",
       name: "blood moon",
     });
   });
 
-  test("drops it the moment the package points at another product", () => {
-    // ADR-0048: Mobile Legends and Magic Chess sell one product per account
-    // region, and switching between them keeps the typed id.
-    expect(currentCheck(verdict, "prod-global", "1313232551", "6618")).toBeNull();
+  test("drops it the moment the package points at another brand", () => {
+    // ADR-0079: a brand is one supplier game, so Mobile Legends global and RU
+    // are two brands now, not two products of one — a region split no longer
+    // shares a verdict, but a package switch inside one brand does.
+    expect(currentCheck(verdict, "mobile-legends", "1313232551", "6618")).toBeNull();
   });
 
   test("drops it the moment the id is edited, including trailing whitespace", () => {
-    expect(currentCheck(verdict, "prod-ru", "1313232552", "6618")).toBeNull();
+    expect(currentCheck(verdict, "mobile-legends-ru", "1313232552", "6618")).toBeNull();
     // Not trimmed on purpose: the verdict answers for the literal text that
     // was sent, and `runPlayerCheck` sends the field's value untouched.
-    expect(currentCheck(verdict, "prod-ru", "1313232551 ", "6618")).toBeNull();
+    expect(currentCheck(verdict, "mobile-legends-ru", "1313232551 ", "6618")).toBeNull();
   });
 
   test("drops it the moment the server is edited — the id was checked ON one", () => {
-    expect(currentCheck(verdict, "prod-ru", "1313232551", "7001")).toBeNull();
-    expect(currentCheck(verdict, "prod-ru", "1313232551", null)).toBeNull();
+    expect(currentCheck(verdict, "mobile-legends-ru", "1313232551", "7001")).toBeNull();
+    expect(currentCheck(verdict, "mobile-legends-ru", "1313232551", null)).toBeNull();
   });
 
   test("an invalid verdict is read back the same way — it blocks, so it must not evaporate", () => {
     const bad: PlayerCheckVerdict = { ...verdict, result: { status: "invalid", name: null } };
-    expect(currentCheck(bad, "prod-ru", "1313232551", "6618")).toEqual({
+    expect(currentCheck(bad, "mobile-legends-ru", "1313232551", "6618")).toEqual({
       status: "invalid",
       name: null,
     });
   });
 
   test("nothing stored reads as nothing checked", () => {
-    expect(currentCheck(null, "prod-ru", "1313232551", "6618")).toBeNull();
-    expect(currentCheck(undefined, "prod-ru", "1313232551", "6618")).toBeNull();
+    expect(currentCheck(null, "mobile-legends-ru", "1313232551", "6618")).toBeNull();
+    expect(currentCheck(undefined, "mobile-legends-ru", "1313232551", "6618")).toBeNull();
   });
 });
 
@@ -132,7 +133,7 @@ describe("currentFieldCheck", () => {
   const values = { player_id: "1313232551", server: "6618" };
   const verdicts: Record<string, PlayerCheckVerdict | null> = {
     player_id: {
-      productId: "prod-ru",
+      brandSlug: "mobile-legends-ru",
       playerId: "1313232551",
       serverId: "6618",
       result: { status: "valid", name: "blood moon" },
@@ -140,11 +141,13 @@ describe("currentFieldCheck", () => {
   };
 
   test("stands while the form still asks the same question", () => {
-    expect(currentFieldCheck(verdicts, "prod-ru", values, field)).toEqual({
+    expect(currentFieldCheck(verdicts, "mobile-legends-ru", values, field)).toEqual({
       status: "valid",
       name: "blood moon",
     });
-    expect(blocksCheckout(currentFieldCheck(verdicts, "prod-ru", values, field))).toBe(false);
+    expect(blocksCheckout(currentFieldCheck(verdicts, "mobile-legends-ru", values, field))).toBe(
+      false,
+    );
   });
 
   test("editing the server alone unverifies the account, and blocks", () => {
@@ -154,27 +157,31 @@ describe("currentFieldCheck", () => {
     // *on a server*; a `{player_id, server}` pair nobody checked is how a
     // top-up lands on a stranger's account.
     const moved = { ...values, server: "7001" };
-    expect(currentFieldCheck(verdicts, "prod-ru", moved, field)).toBeNull();
-    expect(blocksCheckout(currentFieldCheck(verdicts, "prod-ru", moved, field))).toBe(true);
+    expect(currentFieldCheck(verdicts, "mobile-legends-ru", moved, field)).toBeNull();
+    expect(blocksCheckout(currentFieldCheck(verdicts, "mobile-legends-ru", moved, field))).toBe(
+      true,
+    );
   });
 
-  test("switching to the other region's product unverifies it too", () => {
-    expect(currentFieldCheck(verdicts, "prod-global", values, field)).toBeNull();
-    expect(blocksCheckout(currentFieldCheck(verdicts, "prod-global", values, field))).toBe(true);
+  test("switching to the other region's brand unverifies it too", () => {
+    expect(currentFieldCheck(verdicts, "mobile-legends", values, field)).toBeNull();
+    expect(blocksCheckout(currentFieldCheck(verdicts, "mobile-legends", values, field))).toBe(true);
   });
 
   test("editing the id unverifies it", () => {
     const retyped = { ...values, player_id: "1313232559" };
-    expect(currentFieldCheck(verdicts, "prod-ru", retyped, field)).toBeNull();
+    expect(currentFieldCheck(verdicts, "mobile-legends-ru", retyped, field)).toBeNull();
   });
 
   test("a field with no check config never stands behind anything", () => {
     // `TopUp` calls this for every required field, including plain ones.
-    expect(currentFieldCheck(verdicts, "prod-ru", values, { key: "player_id" })).toBeNull();
+    expect(
+      currentFieldCheck(verdicts, "mobile-legends-ru", values, { key: "player_id" }),
+    ).toBeNull();
   });
 
   test("reads only its own field's verdict", () => {
-    expect(currentFieldCheck(verdicts, "prod-ru", values, { key: "server" })).toBeNull();
+    expect(currentFieldCheck(verdicts, "mobile-legends-ru", values, { key: "server" })).toBeNull();
   });
 });
 

@@ -13,11 +13,11 @@ export interface PlayerCheckResult {
 }
 
 export function checkPlayer(
-  productId: string,
+  brandSlug: string,
   input: { playerId: string; serverId?: string | null },
 ): Promise<PlayerCheckResult> {
   return apiPost<PlayerCheckResult>(
-    `/api/v1/catalog/products/${productId}/check-player`,
+    `/api/v1/catalog/brands/${encodeURIComponent(brandSlug)}/check-player`,
     { player_id: input.playerId, server_id: input.serverId ?? null },
     { anonymous: true },
   );

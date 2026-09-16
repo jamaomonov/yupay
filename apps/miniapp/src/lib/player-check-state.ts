@@ -33,12 +33,12 @@ export function canCheck(
 /** Run the check, folding ANY error into an advisory soft-failure (never throws).
  *  `run` is injectable for testing; defaults to the real API wrapper. */
 export async function runPlayerCheck(
-  productId: string,
+  brandSlug: string,
   input: { playerId: string; serverId?: string | null },
   run: typeof checkPlayer = checkPlayer,
 ): Promise<PlayerCheckResult> {
   try {
-    return await run(productId, input);
+    return await run(brandSlug, input);
   } catch {
     // A thrown fetch (network, our 5xx, 429) is our/provider fault, not the
     // customer's — surface it as `error`, never `invalid`.
@@ -57,13 +57,14 @@ interface CheckableField {
 /**
  * One check outcome, kept together with the question it answers.
  *
- * The lookup is scoped to a product, an id and the server that id lives on,
- * so the answer is only ever about that triple. Two of the three are easy to
+ * The lookup is scoped to a brand, an id and the server that id lives on, so
+ * the answer is only ever about that triple. Two of the three are easy to
  * forget:
  *
- * - the **product**, because a game sold per account region (ADR-0048) is one
- *   product per region, and switching package switches product while keeping
- *   the typed id;
+ * - the **brand**, because a brand is exactly one supplier game (ADR-0079) —
+ *   a game sold per account region (Mobile Legends: global vs RU) is two
+ *   brands now, not two products of one, so a package switch *inside* a
+ *   brand keeps the verdict while a switch of brand does not;
  * - the **server**, because G2B resolves a player *on a server* and the form
  *   leaves that field editable next to the confirmed id.
  *
@@ -71,7 +72,9 @@ interface CheckableField {
  * account nobody asked about.
  */
 export interface PlayerCheckVerdict {
-  productId: string;
+  /** The brand the lookup was scoped to — one game, so one verdict per brand
+   *  (ADR-0079); a package switch inside the brand does not invalidate it. */
+  brandSlug: string;
   /** The id exactly as it was sent — not trimmed, not normalized, so the
    *  verdict answers for the literal text the field held. */
   playerId: string;
@@ -112,12 +115,12 @@ export function serverIdFor(field: CheckableField, values: Record<string, string
  */
 export function currentCheck(
   verdict: PlayerCheckVerdict | null | undefined,
-  productId: string,
+  brandSlug: string,
   playerId: string,
   serverId: string | null,
 ): PlayerCheckResult | null {
   if (verdict == null) return null;
-  return verdict.productId === productId &&
+  return verdict.brandSlug === brandSlug &&
     verdict.playerId === playerId &&
     verdict.serverId === serverId
     ? verdict.result
@@ -142,14 +145,14 @@ export function currentCheck(
  */
 export function currentFieldCheck(
   verdicts: Record<string, PlayerCheckVerdict | null>,
-  productId: string,
+  brandSlug: string,
   values: Record<string, string>,
   field: CheckableField,
 ): PlayerCheckResult | null {
   if (!field.check) return null;
   return currentCheck(
     verdicts[field.key],
-    productId,
+    brandSlug,
     values[field.key] ?? "",
     serverIdFor(field, values),
   );

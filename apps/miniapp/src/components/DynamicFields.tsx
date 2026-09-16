@@ -44,9 +44,10 @@ export function pickLocalized(
 }
 
 export interface DynamicFieldsProps {
-  /** Product these fields belong to — required for the player-check button,
-   *  which looks up the nickname against this specific product's provider. */
-  productId: string;
+  /** Brand these fields belong to — required for the player-check button,
+   *  which looks up the nickname against this brand's one supplier game
+   *  (ADR-0079). */
+  brandSlug: string;
   fields: FormField[];
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
@@ -54,7 +55,7 @@ export interface DynamicFieldsProps {
    *  tap-to-fill suggestion. Never auto-applied — the user decides. */
   suggestions?: Record<string, string>;
   /** Reports a checkable field's fresh verdict, filed under the question it
-   *  was asked (product + id + server), or `null` when «Изменить» drops it.
+   *  was asked (brand + id + server), or `null` when «Изменить» drops it.
    *  Only fired for fields that carry a `check` config; lets the parent gate
    *  checkout on "verified", not just "typed something", and show the
    *  resolved nickname elsewhere (order summary).
@@ -75,7 +76,7 @@ export interface DynamicFieldsProps {
 }
 
 export function DynamicFields({
-  productId,
+  brandSlug,
   fields,
   values,
   onChange,
@@ -100,7 +101,7 @@ export function DynamicFields({
         return (
           <DynamicField
             key={field.key}
-            productId={productId}
+            brandSlug={brandSlug}
             field={field}
             value={values[field.key] ?? ""}
             allValues={values}
@@ -110,7 +111,7 @@ export function DynamicFields({
               onChange(field.key, v);
             }}
             onCheckResult={onCheckResult}
-            check={currentFieldCheck(checkResults, productId, values, field)}
+            check={currentFieldCheck(checkResults, brandSlug, values, field)}
           />
         );
       })}
@@ -119,7 +120,7 @@ export function DynamicFields({
 }
 
 function DynamicField({
-  productId,
+  brandSlug,
   field,
   value,
   allValues,
@@ -129,7 +130,7 @@ function DynamicField({
   onCheckResult,
   check,
 }: {
-  productId: string;
+  brandSlug: string;
   field: FormField;
   value: string;
   allValues: Record<string, string>;
@@ -203,7 +204,7 @@ function DynamicField({
         />
       ) : (
         <TextLikeField
-          productId={productId}
+          brandSlug={brandSlug}
           field={field}
           value={value}
           allValues={allValues}
@@ -241,7 +242,7 @@ function DynamicField({
 type PlayerCheckQuestion = Omit<PlayerCheckVerdict, "result">;
 
 function TextLikeField({
-  productId,
+  brandSlug,
   field,
   value,
   allValues,
@@ -254,7 +255,7 @@ function TextLikeField({
   onCheckResult,
   check,
 }: {
-  productId: string;
+  brandSlug: string;
   field: FormField;
   value: string;
   allValues: Record<string, string>;
@@ -269,7 +270,7 @@ function TextLikeField({
   suggestion: string | null;
   onCheckResult: (key: string, verdict: PlayerCheckVerdict | null) => void;
   /** The verdict that currently applies to this field's value under this
-   *  product and server, or `null` when none does — derived by the parent
+   *  brand and server, or `null` when none does — derived by the parent
    *  through `currentFieldCheck`. See `DynamicFieldsProps.checkResults`. */
   check: PlayerCheckResult | null;
 }) {
@@ -287,7 +288,7 @@ function TextLikeField({
   // The question currently in flight, or `null` when none is. Held as the
   // question rather than as a bare `true` so the spinner goes stale on exactly
   // the terms the verdict does: `checkPlayer` sets no deadline of its own, so
-  // switching product mid-check would otherwise leave the button spinning,
+  // switching brand mid-check would otherwise leave the button spinning,
   // disabled, on a lookup whose answer is already going to be discarded.
   const [asking, setAsking] = useState<PlayerCheckQuestion | null>(null);
   // The same value, readable from inside an in-flight check — `asking` there
@@ -295,8 +296,8 @@ function TextLikeField({
   // press has superseded it. Written and cleared in lockstep with the state.
   const latestAsk = useRef<PlayerCheckQuestion | null>(null);
   // Clearing on unmount is what stops a *dead* instance authorising a late
-  // report. Switching product unmounts this form while a lookup is out; the
-  // buyer re-checks on the new product and gets a fresh verdict, and then the
+  // report. Switching brand unmounts this form while a lookup is out; the
+  // buyer re-checks on the new brand and gets a fresh verdict, and then the
   // old lookup lands still holding this ref, whose `.current` is its own
   // question — so the guard below would pass and it would overwrite the newer
   // verdict in the parent. That reads back as `null`, so nothing unverified
@@ -313,7 +314,7 @@ function TextLikeField({
   const serverId = serverIdFor(field, allValues);
   const checking =
     asking !== null &&
-    asking.productId === productId &&
+    asking.brandSlug === brandSlug &&
     asking.playerId === value &&
     asking.serverId === serverId;
   const idOk = canCheck(value, field.pattern);
@@ -326,13 +327,13 @@ function TextLikeField({
   const missingServer = idOk && serverLabel !== null && (serverId ?? "").trim().length === 0;
 
   const handleCheck = async () => {
-    // What the answer will be filed under: the product, the id and the server
+    // What the answer will be filed under: the brand, the id and the server
     // as they are at the moment of the press, never as they are when it lands.
-    const asked: PlayerCheckQuestion = { productId, playerId: value, serverId };
+    const asked: PlayerCheckQuestion = { brandSlug, playerId: value, serverId };
     latestAsk.current = asked;
     setAsking(asked);
     try {
-      const result = await runPlayerCheck(productId, { playerId: value, serverId });
+      const result = await runPlayerCheck(brandSlug, { playerId: value, serverId });
       // Only if this press is still the latest. Two checks can be in flight
       // (editing the id re-enables the button), and letting an older one
       // report would file its question over the fresh verdict — the pill would
