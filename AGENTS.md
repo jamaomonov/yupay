@@ -241,7 +241,7 @@ yupay/
   replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`
   only to keep an identifier out of the URL — and therefore out of the edge access log,
   which records the full query string — not because they mutate anything. Three such
-  endpoints exist today: `POST /catalog/products/{id}/check-player`,
+  endpoints exist today: `POST /catalog/brands/{slug}/check-player`,
   `POST /gifts/steam-profile` and `POST /merchant/v1/validate/player` (the same
   player check, exposed to a reseller — the identifier it carries is their end
   customer's). If you add a fourth, say in its docstring why it is keyless.
@@ -282,7 +282,7 @@ yupay/
   with no record of it, and one slow upstream holds a pool connection somebody's checkout
   needed. Four **advisory pre-purchase lookups** deviate from it, and they are the whole
   list: `GET /admin/integrations/g2b/games/{game_code}/check-player` (ADR-0019, the
-  precedent), `POST /catalog/products/{id}/check-player` and
+  precedent), `POST /catalog/brands/{slug}/check-player` and
   `POST /merchant/v1/validate/player` (both ADR-0031, which carries the justification and
   the conditions — advisory, off the order path, short timeout, breaker, Redis-cached, its
   own rate-limit bucket), and `POST /gifts/steam-profile`, which calls the Steam Web API

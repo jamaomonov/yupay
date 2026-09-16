@@ -1,4 +1,4 @@
-"""POST /catalog/products/{id}/check-player — storefront player verification."""
+"""POST /catalog/brands/{slug}/check-player — storefront player verification."""
 
 from __future__ import annotations
 
@@ -243,7 +243,7 @@ async def test_check_player_valid(client: httpx.AsyncClient, seed_g2b_product: P
         return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        "/api/v1/catalog/brands/pubgm-check/check-player",
         json={"player_id": "51234567", "server_id": None},
     )
     assert r.status_code == 200
@@ -259,7 +259,7 @@ async def test_check_player_invalid(client: httpx.AsyncClient, seed_g2b_product:
         return_value=httpx.Response(400, json={"valid": "invalid", "name": ""})
     )
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        "/api/v1/catalog/brands/pubgm-check/check-player",
         json={"player_id": "9"},
     )
     assert r.status_code == 200
@@ -278,7 +278,7 @@ async def test_check_player_real_400_error_is_error_not_invalid(
         return_value=httpx.Response(400, json={"message": "bad request"})
     )
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        "/api/v1/catalog/brands/pubgm-check/check-player",
         json={"player_id": "9"},
     )
     assert r.status_code == 200
@@ -289,88 +289,136 @@ async def test_check_player_real_400_error_is_error_not_invalid(
 async def test_g2b_error_degrades_to_error_status(client, seed_g2b_product: Product) -> None:
     respx.post(url__regex=r".*/games/checkPlayerId").mock(side_effect=httpx.ConnectError("down"))
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        "/api/v1/catalog/brands/pubgm-check/check-player",
         json={"player_id": "51234567"},
     )
     assert r.status_code == 200
     assert r.json()["status"] == "error"
 
 
-async def test_two_game_codes_on_one_product_check_nothing(
-    client, db_session: AsyncSession, seed_g2b_product: Product
-) -> None:
-    """A product mapped to two G2B games has no single right answer.
-
-    Region is split across products (ADR-0048), so this is a misconfiguration —
-    and the old ``.limit(1)`` picked one arbitrarily, which would verify a
-    player against the wrong region's game and report a perfectly good id as
-    invalid. No check beats a wrong one: the storefront shows "couldn't check",
-    never "wrong id".
-    """
-    second = Sku(
+@pytest.fixture
+async def seed_split_brand(db_session: AsyncSession) -> str:
+    """One brand, two products, two G2B games — the pre-ADR-0079 MLBB shape."""
+    category = Category(
         id=new_id(),
-        product_id=seed_g2b_product.id,
-        sku_code="pubgm-325uc-check",
-        denomination="325",
-        region="RU",
-        price_usd=Decimal("5.00"),
-        sort_order=20,
+        slug="games-split-check",
+        sort_order=10,
         active=True,
+        translations=[CategoryTranslation(locale="ru", name="Игры")],
     )
-    db_session.add(second)
-    await db_session.commit()
-    db_session.add(
-        SkuSupplierMapping(
-            sku_id=second.id,
-            supplier_slug="g2b",
-            kind="game",
-            external_product_id="pubgm_ru",
-            external_variant_id="325UC",
-            is_active=True,
+    brand = Brand(
+        id=new_id(),
+        slug="mlbb-split-check",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="MLBB")],
+    )
+    field = [
+        {"key": "player_id", "label": {"ru": "ID"}, "type": "text", "check": {"provider": "g2b"}}
+    ]
+    products = [
+        Product(
+            id=new_id(),
+            slug=f"mlbb-{tag}-check",
+            brand_id=brand.id,
+            kind="top_up",
+            sort_order=i,
+            active=True,
+            required_fields=field,
+            translations=[ProductTranslation(locale="ru", name=f"MLBB {tag}")],
         )
+        for i, tag in enumerate(("global", "ru"))
+    ]
+    skus = [
+        Sku(
+            id=new_id(),
+            product_id=p.id,
+            sku_code=f"mlbb-{p.slug}-60",
+            denomination="60",
+            region="WW",
+            price_usd=Decimal("1.00"),
+            sort_order=1,
+            active=True,
+        )
+        for p in products
+    ]
+    db_session.add_all([category, brand, *products, *skus])
+    await db_session.commit()
+    db_session.add_all(
+        [
+            SkuSupplierMapping(
+                sku_id=skus[0].id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id="mlbb",
+                external_variant_id="60",
+                is_active=True,
+            ),
+            SkuSupplierMapping(
+                sku_id=skus[1].id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id="mlbb_ru",
+                external_variant_id="60",
+                is_active=True,
+            ),
+        ]
     )
     await db_session.commit()
+    return brand.slug
 
-    r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
-        json={"player_id": "51234567"},
+
+@respx.mock
+async def test_a_brand_spanning_two_games_checks_nothing(
+    client: httpx.AsyncClient, seed_split_brand: str
+) -> None:
+    """Picking one of two games would validate a player against the wrong
+    region and call a good id `invalid`. The only honest answer is `error`."""
+    route = respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
+    with structlog.testing.capture_logs() as logs:
+        r = await client.post(
+            f"/api/v1/catalog/brands/{seed_split_brand}/check-player",
+            json={"player_id": "51234567"},
+        )
     assert r.status_code == 200
     assert r.json()["status"] == "error"
+    assert not route.called, "no supplier call on an ambiguous brand"
+    assert any(e["event"] == "player_check_brand_spans_games" for e in logs)
 
 
 async def test_not_checkable_product_422(client, seed_plain_product: Product) -> None:
     # NOTE: the task brief's global constraints and design spec both say "→ 400"
-    # for a non-checkable product. The already-merged Task 3 service
-    # (`player_check.check_player_for_product`) raises `ValidationError`, which
-    # this codebase's global error handler maps to **422** everywhere
-    # (`yupay.core.errors.ValidationError.status_code = 422`; see
-    # `tests/integration/test_payments_routes.py:370` and
+    # for a non-checkable brand. `player_check.check_player_for_brand_id` raises
+    # `ValidationError`, which this codebase's global error handler maps to
+    # **422** everywhere (`yupay.core.errors.ValidationError.status_code = 422`;
+    # see `tests/integration/test_payments_routes.py:370` and
     # `tests/integration/test_inventory_sourcing_routes.py:355` for the same
-    # established convention). Task 4 only wires the route — changing the
-    # module-wide `ValidationError` status code is out of scope and would
-    # ripple across every other module that raises it. Asserting the real,
-    # already-established status code here rather than the brief's stale 400.
+    # established convention). Asserting the real, already-established status
+    # code here rather than the brief's stale 400.
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_plain_product.id}/check-player",
+        "/api/v1/catalog/brands/steam-plain-check/check-player",
         json={"player_id": "1"},
     )
     assert r.status_code == 422
 
 
-async def test_unknown_product_404(client) -> None:
+async def test_unknown_brand_404(client: httpx.AsyncClient) -> None:
     r = await client.post(
-        "/api/v1/catalog/products/00000000-0000-0000-0000-000000000000/check-player",
+        "/api/v1/catalog/brands/no-such-brand/check-player",
         json={"player_id": "1"},
     )
     assert r.status_code == 404
+    assert r.json()["code"] == "brand_not_found"
 
 
-async def test_malformed_product_id_404_not_500(client) -> None:
-    """``Product.id`` is a UUID column — a non-UUID path segment must fold
-    into the same "not found" contract (ADR-0031), not a raw DBAPIError."""
+async def test_old_product_route_is_gone(client) -> None:
+    """The route moved to the brand path (ADR-0079); the old product-scoped
+    one no longer exists at all — FastAPI 404s with no matching route."""
     r = await client.post(
-        "/api/v1/catalog/products/not-a-uuid/check-player",
+        "/api/v1/catalog/products/00000000-0000-0000-0000-000000000000/check-player",
         json={"player_id": "1"},
     )
     assert r.status_code == 404
@@ -392,7 +440,7 @@ async def test_rate_limited_after_threshold(client, seed_g2b_product, monkeypatc
     respx.post(url__regex=r".*/games/checkPlayerId").mock(
         return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
-    url = f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player"
+    url = "/api/v1/catalog/brands/pubgm-check/check-player"
     last = None
     for _ in range(8):
         last = await client.post(url, json={"player_id": "51234567"})
@@ -433,7 +481,7 @@ async def test_player_id_never_logged_plaintext(client, seed_g2b_product) -> Non
     secret = "51234567"
     with structlog.testing.capture_logs() as cap:
         r = await client.post(
-            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            "/api/v1/catalog/brands/pubgm-check/check-player",
             json={"player_id": secret},
         )
     assert r.status_code == 200
@@ -448,7 +496,7 @@ async def test_steam_login_valid(client: httpx.AsyncClient, seed_waxpeer_product
         return_value=httpx.Response(200, json={"success": True, "valid": True})
     )
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+        "/api/v1/catalog/brands/steam-wallet-check/check-player",
         json={"player_id": "gaben-valid"},
     )
     assert r.status_code == 200
@@ -467,7 +515,7 @@ async def test_steam_login_invalid(
         )
     )
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+        "/api/v1/catalog/brands/steam-wallet-check/check-player",
         json={"player_id": "gaben-invalid"},
     )
     assert r.status_code == 200
@@ -484,7 +532,7 @@ async def test_steam_check_upstream_failure_is_error(
     customer, and never blocks checkout."""
     respx.get(url__regex=r".*/steam-topup/validate").mock(side_effect=httpx.ConnectError("down"))
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_waxpeer_product.id}/check-player",
+        "/api/v1/catalog/brands/steam-wallet-check/check-player",
         json={"player_id": "gaben-error"},
     )
     assert r.status_code == 200
@@ -537,7 +585,7 @@ async def test_breaker_stops_paying_the_backoff_for_every_customer(
 
     for i in range(pc._BREAKER_THRESHOLD):
         r = await client.post(
-            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            "/api/v1/catalog/brands/pubgm-check/check-player",
             json={"player_id": f"5123456{i}"},
         )
         assert r.json()["status"] == "error"
@@ -546,7 +594,7 @@ async def test_breaker_stops_paying_the_backoff_for_every_customer(
     calls_while_closed = route.call_count
 
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        "/api/v1/catalog/brands/pubgm-check/check-player",
         json={"player_id": "51234599"},
     )
     assert r.status_code == 200
@@ -569,7 +617,7 @@ async def test_a_good_check_closes_the_circuit(
     route.mock(side_effect=httpx.ConnectError("down"))
     for i in range(pc._BREAKER_THRESHOLD):
         await client.post(
-            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            "/api/v1/catalog/brands/pubgm-check/check-player",
             json={"player_id": f"5123457{i}"},
         )
     assert await redis.exists("breaker:g2b:player_check:open")
@@ -580,7 +628,7 @@ async def test_a_good_check_closes_the_circuit(
     route.mock(return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"}))
 
     r = await client.post(
-        f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+        "/api/v1/catalog/brands/pubgm-check/check-player",
         json={"player_id": "51234588"},
     )
     assert r.json()["status"] == "valid"
@@ -623,7 +671,7 @@ async def test_the_db_connection_is_released_before_the_supplier_call(
 
     try:
         r = await client.post(
-            f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player",
+            "/api/v1/catalog/brands/pubgm-check/check-player",
             json={"player_id": "51230001"},
         )
     finally:
@@ -655,7 +703,7 @@ async def test_a_negative_g2b_verdict_is_not_served_from_cache(
             httpx.Response(200, json={"valid": "valid", "name": "Neo"}),
         ]
     )
-    url = f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player"
+    url = "/api/v1/catalog/brands/pubgm-check/check-player"
 
     first = await client.post(url, json={"player_id": "51234567", "server_id": None})
     assert first.json()["status"] == "invalid"

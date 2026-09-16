@@ -30,7 +30,7 @@ from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.catalog_sync import sync_g2b_catalog as run_g2b_catalog_sync
 from yupay.modules.integrations.models import SkuSupplierMapping
-from yupay.modules.integrations.player_check import check_player_for_product
+from yupay.modules.integrations.player_check import check_player_for_brand
 from yupay.modules.integrations.schemas import (
     CatalogEntryOut,
     CatalogKind,
@@ -70,22 +70,23 @@ router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 
 @router.post(
-    "/products/{product_id}/check-player",
+    "/brands/{slug}/check-player",
     response_model=PlayerCheckOut,
-    summary="Verify a player id for a product (advisory nickname lookup)",
+    summary="Verify a player id for a brand (advisory nickname lookup)",
 )
 async def check_player(
-    product_id: str,
+    slug: str,
     body: PlayerCheckIn,
     request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
 ) -> PlayerCheckOut:
     """Storefront-facing. Advisory — folds upstream errors into
-    ``{valid: false}``; never blocks checkout. Rate-limited per IP. See ADR-0031.
+    ``status="error"``; never blocks checkout. Rate-limited per IP. See
+    ADR-0031 and ADR-0079 (why a brand: a brand is one game).
     """
     await guard_ip(request, bucket="check_player")
-    return await check_player_for_product(
-        db, product_id=product_id, player_id=body.player_id, server_id=body.server_id
+    return await check_player_for_brand(
+        db, brand_slug=slug, player_id=body.player_id, server_id=body.server_id
     )
 
 
@@ -332,7 +333,7 @@ def _waxpeer_fulfiller_or_none() -> WaxpeerFulfiller | None:
     """Return the registered Waxpeer adapter iff ``WAXPEER_API_KEY`` is set.
 
     Mirrors :func:`_g2b_fulfiller_or_none` above — used by the Steam-login
-    branch of ``player_check.check_player_for_product``.
+    branch of ``player_check.check_player_for_brand``.
     """
     from yupay.modules.fulfillment.suppliers import REGISTRY
     from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller

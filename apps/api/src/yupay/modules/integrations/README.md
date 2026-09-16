@@ -22,6 +22,10 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   each customer ~150ms rather than the client's full ~15s retry backoff. The
   breaker guards this advisory path only — fulfilment keeps its retry budget,
   see [ADR-0059](../../../../../../docs/decisions/0059-player-check-circuit-breaker.md).
+  The check is resolved per **brand** (`check_player_for_brand`,
+  `POST /catalog/brands/{slug}/check-player`), not per product. A brand is one
+  supplier game (ADR-0079); a brand whose active g2b/game mappings span two
+  codes answers `error` and logs `player_check_brand_spans_games`.
 - **Import** a G2B game into the catalog (Brand + Product + SKUs + mappings).
 
 ## Public interface
