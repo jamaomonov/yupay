@@ -48,6 +48,14 @@ Rollout: seed first, code second — the product-scoped check did not read the
 brand, so the data split was safe on the old release, while the new resolver
 on the old data would have refused MLBB.
 
+The two brands pair up by a slug convention, `<slug>` ↔ `<slug>-ru`
+(`apps/web/src/lib/region-sibling.ts`), not a column — two pairs do not
+justify a schema. The risk that trade accepts: an unrelated future brand
+whose slug happens to end in `-ru`, whose stripped prefix happens to match
+another real brand's slug, would link to it as if it were that brand's
+region sibling. Accepted for two pairs; revisit with a column if a third
+pair, or a near-miss, shows up.
+
 ## Consequences
 
 - Reviews stay with the global brands; the RU brands start at zero.
@@ -55,6 +63,17 @@ on the old data would have refused MLBB.
   nothing is deleted).
 - A future two-game brand fails loudly (`error` + log) instead of quietly
   checking the wrong game.
+
+## Deferred
+
+The spec's §5.6 admin banner — the supplier detail page listing any brand
+whose active `g2b/game` mappings span two codes — is not built in this
+release. Until it is, the signals a brand mid-split (or simply
+misconfigured) are: the `player_check_brand_spans_games` and
+`player_check_brand_config_mismatch` warnings logged by
+`integrations/player_check.py`, and the pre-seed SQL checks in
+`docs/superpowers/plans/2026-09-16-brand-level-player-check.md`'s Rollout
+step 0.
 
 ## Validation
 
@@ -74,10 +93,12 @@ on the old data would have refused MLBB.
   only, no active-chain filter.
 - `apps/web/src/components/store/PurchasePanel.test.tsx`: the check is
   enabled before a package is picked on a multi-product brand; a confirmed
-  nickname survives a same-brand package switch; the sibling-region link
-  renders on `mobile-legends` / `mobile-legends-ru` and nowhere else.
+  nickname survives a same-brand package switch; a not-found id gets a hint
+  pointing at the sibling brand, given one. It does not pin where the
+  always-visible sibling link renders — that link is on the (server
+  component) brand page, not the panel, so it has no component test.
 - `apps/web/src/lib/region-sibling.test.ts`: the `<slug>` ↔ `<slug>-ru`
-  pairing.
+  pairing itself — both directions, and `null` for a brand with no sibling.
 - `apps/miniapp/src/lib/player-check-state.test.ts`: the brand-keyed verdict,
   mirroring web.
 - `scripts/seed/2026-09-16_region_brands.sql`: applied and re-applied against

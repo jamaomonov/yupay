@@ -1350,6 +1350,48 @@ git commit -m "docs(adr): 0079 region brands and the brand-level player check; s
 
 ## Rollout (operator, after the plan is merged — needs the owner's explicit go)
 
+0. **Before the seed, on prod.** Two pre-flight checks against the prod DB;
+   **both must return zero rows** before the seed runs. A hit on either means
+   the catalog already has a brand this release would answer `error` (or
+   `unsupported`) for, independent of the region split — fix the catalog
+   first, then re-run these.
+
+   Spanning games — a brand whose active products' SKUs carry more than one
+   distinct G2B `game_code`:
+
+   ```sql
+   SELECT b.slug, count(DISTINCT m.external_product_id) AS codes
+   FROM brands b JOIN products p ON p.brand_id = b.id AND p.active
+   JOIN skus s ON s.product_id = p.id
+   JOIN sku_supplier_mapping m ON m.sku_id = s.id AND m.supplier_slug = 'g2b' AND m.kind = 'game' AND m.is_active
+   GROUP BY b.slug HAVING count(DISTINCT m.external_product_id) > 1;
+   ```
+
+   Disagreeing check config — a brand whose active products' checkable form
+   fields (`required_fields` is `jsonb`) don't all name the same provider,
+   sibling server field and id-field key (Postgres 16; `jsonb_array_elements`
+   unnests the array, `jsonb_typeof(...) = 'object'` excludes both a field
+   with no `check` key at all and one whose `check` is JSON `null` — `->`
+   returns the JSON `null`, not SQL `NULL`, for the latter, so a plain
+   `IS NOT NULL` would false-positive on every unchecked field):
+
+   ```sql
+   SELECT b.slug,
+          count(DISTINCT (f.elem->'check'->>'provider',
+                           f.elem->'check'->>'server_field',
+                           f.elem->>'key')) AS distinct_configs
+   FROM brands b
+   JOIN products p ON p.brand_id = b.id AND p.active
+   CROSS JOIN LATERAL jsonb_array_elements(p.required_fields) AS f(elem)
+   WHERE jsonb_typeof(f.elem->'check') = 'object'
+   GROUP BY b.slug
+   HAVING count(DISTINCT (f.elem->'check'->>'provider',
+                           f.elem->'check'->>'server_field',
+                           f.elem->>'key')) > 1;
+   ```
+
+   Both run clean (zero rows) against the dev DB as of 2026-09-17.
+
 1. **Seed on prod, before deploying.** From the repo root, with the prod checkout on the commit that carries the seed:
    ```bash
    ssh -i ~/.ssh/id_ed25519 ubuntu@152.228.137.175 'cd /home/ubuntu/opt/yupay && docker compose -f docker-compose.prod.yml exec -T postgres psql -U yupay_app -d yupay -v ON_ERROR_STOP=1' < scripts/seed/2026-09-16_region_brands.sql
@@ -1357,4 +1399,5 @@ git commit -m "docs(adr): 0079 region brands and the brand-level player check; s
    Then: `curl -s -o /dev/null -w "%{http_code}\n" https://yupay.uz/store/mobile-legends-ru` → 200 within 5 min (ISR), same for `magic-chess-gogo-ru`; `GET https://api.yupay.uz/api/v1/catalog/brands` lists four; the old pages still check per product (old code).
 2. **Deploy** (push → Build images → `deploy.yml` production).
 3. **Verify:** `POST https://api.yupay.uz/api/v1/catalog/brands/pubg-mobile/check-player` with `{"player_id":"1"}` → 200 with `status` ∈ valid/invalid/error; the product route → 404; on `/store/pubg-mobile` the check button is enabled before a package is picked; on `/store/mobile-legends` the RU link renders and vice versa; a signed `validate/player {brand: "mobile-legends"}` answers 200 (use the merchant test's signing helper against prod credentials, or the Swagger UI).
-4. **Watch** the api logs for `player_check_brand_spans_games` for a day: any hit means a brand still spans two games.
+4. **Watch** the api logs for a day: `grep` for both `player_check_brand_spans_games` (a brand still spans two games) and `player_check_brand_config_mismatch` (a brand's products disagree on their check config) — either is a catalog problem, not a code bug.
+5. **Operator follow-up in the admin:** the global MLBB and MCGG brands' `description` / `short_description` / `highlights` and the remaining (pre-existing) FAQ entries still describe the old two-packages-on-one-page layout — the seed intentionally does not touch them (see §5's header comment). Revise them to describe the global/RU split now that each region has its own page.
