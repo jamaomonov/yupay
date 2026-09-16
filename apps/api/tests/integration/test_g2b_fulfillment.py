@@ -165,6 +165,10 @@ async def _seed_game_sku(db: AsyncSession) -> str:
 
 
 async def _set_g2b_force(client: AsyncClient, *, token: str, sku_id: str) -> None:
+    # Call after ``_create_mapping``: ``set_rule`` refuses ``force_supplier``
+    # onto G2B for a SKU with no active g2b mapping (MAPPING_REQUIRED_SUPPLIERS
+    # in integrations.models), because that rule would not route orders to
+    # G2B — it would fail each one with "no mapping".
     r = await client.put(
         f"/api/v1/admin/sourcing/rules/{sku_id}",
         headers={"Authorization": f"Bearer {token}"},
@@ -259,8 +263,8 @@ async def test_voucher_completed_delivers_codes(
     sku_id = await _seed_voucher_sku(db_session)
     admin = await _login_user(integration_client, tg_id=501)
     await _grant_admin(db_session, tg_id=501)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _create_mapping(db_session, sku_id=sku_id, kind="voucher", external_product_id="42")
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     purchase = respx.post(f"{G2B_BASE}/products/42/purchase").mock(
         return_value=httpx.Response(
@@ -315,8 +319,8 @@ async def test_voucher_pending_then_webhook_completes(
     sku_id = await _seed_voucher_sku(db_session)
     admin = await _login_user(integration_client, tg_id=511)
     await _grant_admin(db_session, tg_id=511)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _create_mapping(db_session, sku_id=sku_id, kind="voucher", external_product_id="42")
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     respx.post(f"{G2B_BASE}/products/42/purchase").mock(
         return_value=httpx.Response(
@@ -375,7 +379,6 @@ async def test_game_pending_then_webhook_completes(
     sku_id = await _seed_game_sku(db_session)
     admin = await _login_user(integration_client, tg_id=521)
     await _grant_admin(db_session, tg_id=521)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _create_mapping(
         db_session,
         sku_id=sku_id,
@@ -383,6 +386,7 @@ async def test_game_pending_then_webhook_completes(
         external_product_id="pubg_mobile",
         external_variant_id="60 UC",
     )
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     # The real G2B API wraps the order object under ``order`` (with a top-level
     # ``success``) — captured live from api.g2bulk.com. A flat mock here hid the
@@ -483,8 +487,8 @@ async def test_attempts_endpoint_filters_by_supplier(
     sku_id = await _seed_voucher_sku(db_session)
     admin = await _login_user(integration_client, tg_id=541)
     await _grant_admin(db_session, tg_id=541)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _create_mapping(db_session, sku_id=sku_id, kind="voucher", external_product_id="42")
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     respx.post(f"{G2B_BASE}/products/42/purchase").mock(
         return_value=httpx.Response(
@@ -526,8 +530,21 @@ async def test_missing_mapping_fails_task(
     sku_id = await _seed_voucher_sku(db_session)
     admin = await _login_user(integration_client, tg_id=531)
     await _grant_admin(db_session, tg_id=531)
+    # ``set_rule`` now refuses force_supplier=g2b outright without an active
+    # mapping (that's the case the four tests above fixed), so this test's
+    # "no mapping" scenario can no longer be reached by skipping the mapping
+    # step entirely. It is instead reached the way it happens in production:
+    # a mapping existed when the rule was set, then it was deactivated — the
+    # sourcing rule doesn't re-check, and the G2B fulfiller's own guard
+    # (``g2b.G2bFulfiller._load_mapping``) is what fails the task.
+    await _create_mapping(db_session, sku_id=sku_id, kind="voucher", external_product_id="42")
     await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
-    # NO mapping created.
+    await db_session.execute(
+        update(SkuSupplierMapping)
+        .where(SkuSupplierMapping.sku_id == sku_id)
+        .values(is_active=False)
+    )
+    await db_session.commit()
 
     customer = await _login_user(integration_client, tg_id=532)
     order_id = await _pay_order(
