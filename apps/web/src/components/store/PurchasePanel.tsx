@@ -1095,6 +1095,11 @@ export function PurchasePanel({
   // Keyed by brand: every package of a brand is the same game (ADR-0079), so
   // a verdict survives a package switch and dies only with the id or the
   // server.
+  //
+  // The single derivation behind both the field's pill and `canPay` below,
+  // evaluated in the render that changes either input, so no commit can show
+  // a verified pill next to a Pay button the same commit still considers
+  // payable.
   const currentFieldCheck = (f: FormField): PlayerCheckResult | null =>
     // The `!f.check` guard is not dead weight: both call sites pre-filter today,
     // but this file is queued for the same extraction the gift panel got, and a
