@@ -636,3 +636,30 @@ async def test_the_db_connection_is_released_before_the_supplier_call(
         f"{seen[0]} pool connection(s) were still checked out during the G2B call; "
         "a slow supplier therefore consumes the pool and takes the whole API down with it"
     )
+
+
+@respx.mock
+async def test_a_negative_g2b_verdict_is_not_served_from_cache(
+    client: httpx.AsyncClient, seed_g2b_product: Product
+) -> None:
+    """Same policy as the Waxpeer path, at the other cache write site.
+
+    First answer is a negative, second is a positive for the same id. Before
+    `_worth_caching` the second request never reached G2B: the `invalid` was
+    answered from Redis for 300 s, and `invalid` is the one verdict that blocks
+    Pay.
+    """
+    route = respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        side_effect=[
+            httpx.Response(400, json={"valid": "invalid", "name": ""}),
+            httpx.Response(200, json={"valid": "valid", "name": "Neo"}),
+        ]
+    )
+    url = f"/api/v1/catalog/products/{seed_g2b_product.id}/check-player"
+
+    first = await client.post(url, json={"player_id": "51234567", "server_id": None})
+    assert first.json()["status"] == "invalid"
+
+    second = await client.post(url, json={"player_id": "51234567", "server_id": None})
+    assert second.json() == {"status": "valid", "name": "Neo"}
+    assert route.call_count == 2, "the re-check reached G2B"

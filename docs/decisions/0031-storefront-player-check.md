@@ -252,8 +252,9 @@ resolve — the login itself is the lookup key) and proxies
 `PlayerCheckOut` contract (`valid`/`invalid`/`error`), with one difference:
 `name` is always `None` — Steam has no equivalent of G2B's account nickname
 resolution, so there is nothing to return on a `valid` hit. The result
-caches under `playercheck:waxpeer:{login_hash}` (300 s TTL, same as g2b —
-see `docs/architecture/cache-keys.md`), with `login_hash = _hash_short(steam_login)`
+caches a `valid` verdict under `playercheck:waxpeer:{login_hash}` (300 s TTL, same as
+g2b — see `docs/architecture/cache-keys.md`; negatives are never cached, see the
+amendment below), with `login_hash = _hash_short(steam_login)`
 so the raw login is never stored or logged, mirroring the `player_id`
 hashing rule below. See
 `apps/api/src/yupay/modules/integrations/player_check.py` for the
@@ -316,6 +317,7 @@ rule with one in-handler call to G2B. Justification:
 - **Redis-cached.** Repeat taps and abuse hit the cache
   (`playercheck:g2b:{game_code}:{server_id|-}:{player_id}`, 300s TTL — see
   `docs/architecture/cache-keys.md`) instead of G2B.
+  Only a `valid` verdict is cached (amendment 2026-09-16, below).
 - **Precedent already in production.** The admin check-player route
   (`GET /admin/integrations/g2b/games/{game_code}/check-player`, ADR-0019)
   already makes this exact synchronous call; this endpoint reuses the same
@@ -437,3 +439,20 @@ change to rows already seeded on prod/staging (same pattern as
 - `apps/api/src/yupay/modules/integrations/player_check.py` — service implementation
 - `apps/api/src/yupay/modules/integrations/routes.py` — public + admin routes
 - `apps/api/src/yupay/modules/catalog/schemas.py` — `FieldCheck` / `FormField`
+
+## Amendment — 2026-09-16: negatives are not cached
+
+The cache stored whatever verdict came back. Waxpeer answered `valid: false`
+for a login it accepted on the very next call — observed on the owner's own
+account — and the `invalid` was then served from Redis for 300 s. Since
+`invalid` is the one verdict that blocks Pay, a supplier hiccup became a
+five-minute dead checkout that a re-check could not clear: the storefront asked
+again and got the cached answer. G2B's `_map_response` yields `error` for a body
+it cannot read, and that was being cached too.
+
+So only `valid` is written (`_worth_caching`). A positive is safe to keep — a
+login that exists does not stop existing inside 300 s — and it is the case the
+cache was for. Negatives re-ask the supplier; the route's own rate bucket and
+the breaker already bound how often. Waxpeer's `msg` on a negative is now
+logged as `reason` (it is the supplier's text, not the login), because the flake
+had left no trace to tell "no such profile" from "try again".

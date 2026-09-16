@@ -35,6 +35,27 @@ logger = get_logger("yupay.integrations.player_check")
 
 _CACHE_TTL_SECONDS = 300
 
+
+def _worth_caching(out: PlayerCheckOut) -> bool:
+    """Only a ``valid`` verdict is remembered.
+
+    A verdict is the supplier's word at one instant, and the word is not
+    stable: Waxpeer has answered ``valid: false`` for a login it accepted on
+    the next call — observed on the owner's own account. ``invalid`` is the one
+    answer that blocks Pay, so caching a wrong one turned a supplier hiccup
+    into a five-minute dead checkout that a re-check could not clear: the
+    storefront asked again, and we answered from Redis. ``error`` is the same
+    shape with a different cause (G2B's ``_map_response`` yields it for a body
+    it cannot read, and that was being cached too).
+
+    A positive is safe to keep — a login that exists does not stop existing
+    inside 300 s — and it is the case the cache was for: repeat taps on a good
+    id stay off the supplier. Negatives re-ask; the route's own rate bucket and
+    the breaker already bound how often that can happen.
+    """
+    return out.status == "valid"
+
+
 #: Consecutive upstream failures that stop us calling G2B for a while, and how
 #: long that lasts. Tuned for an *advisory* check: three is short enough that a
 #: real outage is caught within a few customers, and 30s is short enough that a
@@ -237,7 +258,7 @@ async def _check_waxpeer_login(
         return PlayerCheckOut(status="error")
 
     try:
-        valid, _reason = await fulfiller._client().validate_login(steam_login)
+        valid, reason = await fulfiller._client().validate_login(steam_login)
     except Exception as exc:  # noqa: BLE001 — advisory; degrade, never 500
         logger.warning(
             "player_check_failed",
@@ -248,13 +269,18 @@ async def _check_waxpeer_login(
         return PlayerCheckOut(status="error")
 
     out = PlayerCheckOut(status="valid") if valid else PlayerCheckOut(status="invalid")
-    with contextlib.suppress(Exception):  # cache is best-effort
-        await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
+    if _worth_caching(out):
+        with contextlib.suppress(Exception):  # cache is best-effort
+            await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
+    # ``reason`` is Waxpeer's own ``msg`` on a negative — not the login, not
+    # PII. It was being discarded, which is why an intermittent ``false`` on a
+    # good login left no trace to tell "no such profile" from "try again".
     logger.info(
         "player_check",
         provider="waxpeer",
         player_id_hash=hash_short(steam_login),
         status=out.status,
+        reason=(reason or "")[:120] if not valid else None,
     )
     return out
 
@@ -426,8 +452,9 @@ async def _check_g2b_player(
     await breaker.record_success()
 
     out = _map_response(resp)
-    with contextlib.suppress(Exception):  # cache is best-effort
-        await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
+    if _worth_caching(out):
+        with contextlib.suppress(Exception):  # cache is best-effort
+            await redis.set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
     logger.info(
         "player_check",
         game_code=game_code,
