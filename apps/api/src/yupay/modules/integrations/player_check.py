@@ -13,7 +13,7 @@ storefront never hits an error boundary. See ADR-0031.
 from __future__ import annotations
 
 import contextlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from sqlalchemy import select
 
@@ -27,8 +27,6 @@ from yupay.modules.integrations.schemas import PlayerCheckOut
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
-
-    from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
 
 logger = get_logger("yupay.integrations.player_check")
 
@@ -278,8 +276,20 @@ async def _cached(key: str) -> PlayerCheckOut | None:
         return None
 
 
+class _LoginClient(Protocol):
+    """What ``_client()`` needs to return: a Waxpeer client's login check."""
+
+    async def validate_login(self, steam_login: str) -> tuple[bool, str | None]: ...
+
+
+class _LoginChecker(Protocol):
+    """What the check needs from a Waxpeer client; a Protocol so the unit test can script it."""
+
+    def _client(self) -> _LoginClient: ...
+
+
 async def _check_waxpeer_login(
-    fulfiller: WaxpeerFulfiller | None, *, steam_login: str
+    fulfiller: _LoginChecker | None, *, steam_login: str
 ) -> PlayerCheckOut:
     """Validate a Steam login via ``WaxpeerClient.validate_login``.
 
