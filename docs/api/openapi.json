@@ -12861,6 +12861,23 @@
         "title": "RatesOut",
         "type": "object"
       },
+      "ReassignTaskIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/fulfillment/tasks/{id}/reassign``.",
+        "properties": {
+          "supplier": {
+            "maxLength": 32,
+            "minLength": 2,
+            "title": "Supplier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier"
+        ],
+        "title": "ReassignTaskIn",
+        "type": "object"
+      },
       "RecentPaymentOut": {
         "description": "One payment row for the admin detail screen's recent list.\n\nDeliberately narrow \u2014 id/order_id/status/amount/currency/created_at only.\nNever include email/phone/user identifiers here (see AGENTS.md \u00a79).",
         "properties": {
@@ -21915,6 +21932,90 @@
           }
         },
         "summary": "Force-complete a non-manual task that the supplier rejected \u2014 typically used after a low-balance event when the admin topped up off-platform and delivered the code by hand.",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
+    "/api/v1/admin/fulfillment/tasks/{task_id}/reassign": {
+      "post": {
+        "operationId": "admin_reassign_task_api_v1_admin_fulfillment_tasks__task_id__reassign_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReassignTaskIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentTaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Move a failed / pending task to another supplier and run it there \u2014 for when the routed supplier errored or our balance with it ran dry",
         "tags": [
           "admin:fulfillment"
         ]

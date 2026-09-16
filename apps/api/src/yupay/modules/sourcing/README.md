@@ -61,6 +61,12 @@ PUT    /api/v1/admin/sourcing/rules/{sku_id}         — upsert
 DELETE /api/v1/admin/sourcing/rules/{sku_id}         — снять, SKU вернётся в `auto`
 ```
 
+`PUT` с `mode=force_supplier` на поставщика, которому нужен маппинг (G2B,
+G-Engine — `MAPPING_REQUIRED_SUPPLIERS` в `integrations.models`), отказывает, если
+у SKU нет активной строки `sku_supplier_mapping` на него. Иначе правило
+«применилось», а каждый заказ падает в inbox с `no active mapping` — по одному.
+Waxpeer маппинга не требует и не проверяется.
+
 ## Связь с `fulfillment`
 
 `fulfillment.service.start_for_order` зовёт `sourcing.resolve_for_sku(sku_id)`

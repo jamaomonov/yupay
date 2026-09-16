@@ -13,8 +13,8 @@
  * they were buried under a day and a half of "still in progress".
  */
 
-import { useQuery } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button, Select } from "@yupay/ui";
 import { ExternalLink, X } from "lucide-react";
 import { useEffect, useState } from "react";
 
@@ -22,7 +22,9 @@ import type { AttemptListOut, AttemptOut, TaskAdminOut } from "./types";
 
 import { CopyId } from "@/components/CopyId";
 import { StatusChip } from "@/components/StatusChip";
-import { apiGet } from "@/lib/api";
+import { useToast } from "@/components/Toast";
+import { FULFILMENT_ROUTES } from "@/features/integrations/types";
+import { type ApiError, apiGet, apiPost, formatApiError } from "@/lib/api";
 
 /** One screenful of log. Enough to see a failure's context, small enough that
  *  a 1641-attempt task opens as fast as a 3-attempt one. */
@@ -41,6 +43,34 @@ export function TaskDetailPanel({ task, onClose }: { task: TaskAdminOut; onClose
     setLimit(ATTEMPTS_PAGE);
     setFilter("all");
   }, [task.id]);
+
+  // Where a failed task can be moved. External suppliers only, minus the one
+  // it is on: the warehouse is not a supplier and the manual queue has its
+  // own intake (`mode="manual"`), and the API refuses both anyway — this just
+  // keeps the list honest before the operator clicks.
+  const targets = FULFILMENT_ROUTES.filter((r) => r.external && r.slug !== task.supplier);
+  const [target, setTarget] = useState<string>(targets[0]?.slug ?? "");
+  useEffect(() => {
+    setTarget(targets[0]?.slug ?? "");
+    // `targets` is derived from `task.supplier`; keying on that keeps the
+    // effect from re-running on every render for an array that never changed.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [task.id, task.supplier]);
+  const canMove = task.status === "failed" || task.status === "pending";
+
+  const qc = useQueryClient();
+  const toast = useToast();
+  const reassign = useMutation<TaskAdminOut, ApiError, string>({
+    mutationFn: (supplier) =>
+      apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${task.id}/reassign`, { supplier }),
+    onSuccess: (updated) => {
+      toast.success(`Задача переведена на ${updated.supplier} и запущена.`);
+      void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err));
+    },
+  });
 
   const attempts = useQuery<AttemptListOut>({
     queryKey: ["admin", "fulfillment", "attempts", task.id, filter, limit],
@@ -97,6 +127,52 @@ export function TaskDetailPanel({ task, onClose }: { task: TaskAdminOut; onClose
           <section>
             <FieldLabel>Последняя ошибка</FieldLabel>
             <p className="mt-1 break-words text-[var(--danger)]">{task.last_error}</p>
+          </section>
+        )}
+
+        {canMove && targets.length > 0 && (
+          <section className="border-[var(--border-default)]/60 rounded-md border p-3">
+            <FieldLabel>Сменить поставщика</FieldLabel>
+            {/* For the two cases retry cannot help with: the supplier answered
+                with an error, or our balance there ran dry. The sourcing rule
+                only governs orders not yet placed; this moves *this* one. */}
+            <p className="mb-2 mt-1 text-xs text-[var(--text-secondary)]">
+              Задача уйдёт на выбранного поставщика и запустится там сразу. Правило сорсинга при
+              этом не меняется — оно действует только на новые заказы.
+            </p>
+            <div className="flex flex-wrap items-end gap-2">
+              <div className="min-w-[12rem]">
+                <label
+                  htmlFor={`reassign-${task.id}`}
+                  className="text-xs text-[var(--text-secondary)]"
+                >
+                  Новый поставщик
+                </label>
+                <Select
+                  id={`reassign-${task.id}`}
+                  value={target}
+                  onChange={(e) => {
+                    setTarget(e.target.value);
+                  }}
+                  containerClassName="mt-1 w-full"
+                >
+                  {targets.map((r) => (
+                    <option key={r.slug} value={r.slug}>
+                      {r.label}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+              <Button
+                size="sm"
+                disabled={reassign.isPending || target === ""}
+                onClick={() => {
+                  reassign.mutate(target);
+                }}
+              >
+                {reassign.isPending ? "Переводим…" : "Сменить поставщика"}
+              </Button>
+            </div>
           </section>
         )}
 

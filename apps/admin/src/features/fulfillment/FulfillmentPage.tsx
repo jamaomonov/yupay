@@ -14,7 +14,7 @@ import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
 import { OrderRef } from "@/components/OrderRef";
 import { FULFILMENT_ROUTES } from "@/features/integrations/types";
-import { type ApiError, apiGet, apiPost } from "@/lib/api";
+import { type ApiError, apiGet, apiPost, formatApiError } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useSearchParamsState } from "@/lib/useSearchParamsState";
 import { useAdminRefs } from "@/lib/useAdminRefs";
@@ -323,9 +323,4 @@ export function FulfillmentPage() {
       </div>
     </div>
   );
-}
-
-function formatApiError(err: ApiError): string {
-  const body = err.body as { detail?: string; title?: string } | null;
-  return body?.detail ?? body?.title ?? err.message;
 }

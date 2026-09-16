@@ -219,3 +219,16 @@ export const apiPut = <T>(path: string, body: unknown, headers?: HeadersInit) =>
     ...(headers ? { headers } : {}),
   });
 export const apiDelete = (path: string) => api<void>(path, { method: "DELETE" });
+
+/**
+ * The one line of an API failure worth showing an operator.
+ *
+ * Errors arrive as RFC 7807 — `detail` is the sentence written for a human,
+ * `title` the fallback, and the status line only when the body says nothing.
+ * Four feature files each kept a private copy of exactly this; the fulfilment
+ * ones now share it, the rest can move when they are next touched.
+ */
+export function formatApiError(err: ApiError): string {
+  const body = err.body as { detail?: string; title?: string } | null;
+  return body?.detail ?? body?.title ?? err.message;
+}

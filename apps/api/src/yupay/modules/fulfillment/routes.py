@@ -37,6 +37,7 @@ from yupay.modules.fulfillment.schemas import (
     FulfillmentTaskOut,
     ManualCompleteIn,
     ManualFailIn,
+    ReassignTaskIn,
 )
 from yupay.modules.notifications.service import resend_guest_delivery_email
 from yupay.modules.orders.models import Order
@@ -293,6 +294,35 @@ async def admin_cancel_task(
         if cached is not None:
             return FulfillmentTaskOut.model_validate(cached.body)
     task = await svc.cancel_task(db, task_id=task_id)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.post(
+    "/tasks/{task_id}/reassign",
+    response_model=FulfillmentTaskOut,
+    status_code=status.HTTP_200_OK,
+    summary=(
+        "Move a failed / pending task to another supplier and run it there — "
+        "for when the routed supplier errored or our balance with it ran dry"
+    ),
+)
+async def admin_reassign_task(
+    task_id: str,
+    body: ReassignTaskIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.reassign_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
+    task = await svc.reassign_task(db, task_id=task_id, supplier=body.supplier, admin_id=admin.id)
     out = FulfillmentTaskOut.model_validate(task)
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))

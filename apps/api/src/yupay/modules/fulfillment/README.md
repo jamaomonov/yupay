@@ -382,9 +382,25 @@ GET  /api/v1/admin/fulfillment/tasks               — admin
 GET  /api/v1/admin/fulfillment/tasks/{id}          — admin detail + attempts
 POST /api/v1/admin/fulfillment/tasks/{id}/retry    — admin перезапуск failed
 POST /api/v1/admin/fulfillment/tasks/{id}/cancel   — admin отмена pending/failed
+POST /api/v1/admin/fulfillment/tasks/{id}/reassign — admin: перевести failed/pending на другого поставщика и запустить
 POST /api/v1/admin/fulfillment/tasks/{id}/complete — manual: создать Delivery, завершить
 POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить как failed с причиной
 ```
+
+## Смена поставщика на задаче (`/reassign`)
+
+Поставщик, на которого задача была смаршрутизирована, ответил ошибкой — или у нас
+кончился баланс у него. Правило сорсинга менять бесполезно: оно действует только
+на заказы, которых ещё нет. `POST /tasks/{id}/reassign {"supplier": "gengine"}`
+переводит **эту** задачу на другого поставщика и сразу запускает её там — те же
+условия (`failed` / `pending`) и та же денежная защита, что у `retry`.
+
+Отказывает заранее на том, что всё равно упало бы позже: неизвестный slug, склад
+и ручная очередь (у них свои входы), тот же поставщик, и поставщик, чьему адаптеру
+нужен маппинг, которого у SKU нет (`MAPPING_REQUIRED_SUPPLIERS` в
+`integrations.models`). Переключение пишется в лог попыток как `route_switch`
+с `from` / `reason=admin_reassign` / `admin_id` — тем же ключом, что и складской
+фолбэк, так что задача, сменившая руки, читается одинаково, кто бы её ни двигал.
 
 ## Ручная выдача (`supplier="manual"`)
 

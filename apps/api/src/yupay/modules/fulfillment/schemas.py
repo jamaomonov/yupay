@@ -150,6 +150,15 @@ class BulkRetryIn(BaseModel):
     task_ids: list[str] = Field(..., min_length=1, max_length=100)
 
 
+class ReassignTaskIn(BaseModel):
+    """Body of ``POST /admin/fulfillment/tasks/{id}/reassign``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Registry slug of the supplier to run the task through instead.
+    supplier: str = Field(..., min_length=2, max_length=32)
+
+
 class BulkRetrySkipped(BaseModel):
     """One task that bulk-retry decided not to replay."""
 

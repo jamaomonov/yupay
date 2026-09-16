@@ -96,3 +96,17 @@ it("still lists the interaction log for both", async () => {
 
   expect(await screen.findByText("Последние взаимодействия")).toBeInTheDocument();
 });
+
+it("offers the mapping tooling to a supplier that takes mappings but has no catalogue", async () => {
+  // G-Engine takes SKU mappings — typed by hand, since its catalogue is not
+  // mirrored — and this page hid the only doorway to that form behind the
+  // catalogue switch. The card is back; the catalogue tooling stays absent
+  // and the note still says why.
+  mockHealth("gengine");
+  renderAt("gengine");
+  await screen.findByRole("heading", { name: "G-Engine" });
+
+  expect(screen.getByText("Маппинг SKU")).toBeInTheDocument();
+  expect(screen.queryByText("Каталог поставщика")).not.toBeInTheDocument();
+  expect(screen.getByText(/service_id/)).toBeInTheDocument();
+});

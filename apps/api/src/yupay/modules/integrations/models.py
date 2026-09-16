@@ -34,6 +34,16 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from yupay.core.db import Base
 
+#: Suppliers whose adapter cannot place an order without a
+#: ``sku_supplier_mapping`` row for the SKU — G2B and G-Engine both look one up
+#: and raise ``FulfillerError`` when it is missing. Waxpeer needs none: it
+#: takes the Steam login off the order item. Lives beside the table it is a
+#: fact about, in a leaf module, so both ``sourcing`` (refusing a
+#: ``force_supplier`` rule that would fail every order) and ``fulfillment``
+#: (refusing to reassign a task the same way) can read it without an import
+#: cycle. Mirrors ``FULFILMENT_ROUTES[].mappings`` in the admin.
+MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine"})
+
 
 class SkuSupplierMapping(Base):
     """Mapping between one YuPay SKU and one supplier's external product id."""

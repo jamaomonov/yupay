@@ -27,7 +27,7 @@ from sqlalchemy.orm import selectinload
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import AppError, ConflictError, NotFoundError
+from yupay.core.errors import AppError, ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.models import (
@@ -1535,6 +1535,102 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     # money" from a replay. See that function.
     task.failed_at = None
     task.updated_at = now()
+    await db.flush()
+    task = await process_task(db, task_id=task_id)
+    await _settle_merchant_deposit(db, task_id=task_id)
+    await _try_settle_order(db, order_id=task.order_id)
+    await db.flush()
+    return task
+
+
+#: Routes an admin may move a task *onto*. The warehouse is not a supplier —
+#: ``process_task`` would try to issue a code and fall back again — and the
+#: manual queue has its own intake (``mode="manual"``) with its own inbox tab;
+#: an operator who wants a human to do it sets the rule, not the task.
+_NOT_REASSIGNABLE: frozenset[str] = frozenset({INVENTORY_ROUTE, "manual"})
+
+
+async def reassign_task(
+    db: AsyncSession, *, task_id: str, supplier: str, admin_id: str
+) -> FulfillmentTask:
+    """Move a failed task to another supplier and run it there.
+
+    The case this exists for: the supplier the task was routed to answered
+    with an error, or our balance there ran dry, and the operator wants the
+    *same* order out through the other channel now — not after editing the
+    sourcing rule (which only governs orders that have not been placed yet)
+    and not by hand.
+
+    Same preconditions and the same money guard as :func:`retry_task`, and the
+    switch is written into the attempt log in the shape the inventory
+    fallback already uses (``route_switch``), so a task that changed hands
+    reads the same way whoever moved it.
+
+    Refuses what would only fail later: an unknown slug, the warehouse or the
+    manual queue, the supplier it is already on, and a supplier whose adapter
+    needs a mapping row this SKU does not have.
+    """
+    slug = supplier.strip().lower()
+    task = await _load_task(db, task_id, for_update=True)
+    if task.status not in ("failed", "pending"):
+        raise ConflictError(
+            "task is not reassignable in its current state",
+            extra={"status": task.status},
+        )
+    if slug in _NOT_REASSIGNABLE:
+        raise ValidationError(
+            f"'{slug}' is not a supplier a task can be moved onto",
+            extra={"supplier": slug},
+        )
+    get_fulfiller(slug)  # NotFoundError on an unknown slug
+    if slug == task.supplier:
+        raise ConflictError("task is already routed to this supplier", extra={"supplier": slug})
+
+    # Lazy, like the adapters: ``integrations`` reaches back into this package
+    # for the registry, and a top-level import here would close that loop.
+    from yupay.modules.integrations.models import MAPPING_REQUIRED_SUPPLIERS, SkuSupplierMapping
+
+    if slug in MAPPING_REQUIRED_SUPPLIERS:
+        sku_id = (
+            await db.execute(select(OrderItem.sku_id).where(OrderItem.id == task.order_item_id))
+        ).scalar_one()
+        mapped = (
+            await db.execute(
+                select(SkuSupplierMapping.supplier_slug).where(
+                    SkuSupplierMapping.sku_id == sku_id,
+                    SkuSupplierMapping.supplier_slug == slug,
+                    SkuSupplierMapping.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if mapped is None:
+            raise ConflictError(
+                f"no active {slug} mapping for this SKU — create it under "
+                "Integrations → Mappings first",
+                extra={"supplier": slug, "sku_id": sku_id},
+            )
+
+    await _refuse_a_settled_merchant_order(db, task=task)
+
+    previous = task.supplier
+    task.supplier = slug
+    task.status = "pending"
+    task.last_error = None
+    # ``money_outcome`` stays, for the reason ``retry_task`` gives.
+    task.failed_at = None
+    task.updated_at = now()
+    await _record_attempt(
+        db,
+        task=task,
+        kind="fulfill",
+        status="ok",
+        payload={
+            "route_switch": slug,
+            "from": previous,
+            "reason": "admin_reassign",
+            "admin_id": admin_id,
+        },
+    )
     await db.flush()
     task = await process_task(db, task_id=task_id)
     await _settle_merchant_deposit(db, task_id=task_id)

@@ -169,6 +169,9 @@ async def _seed_mapping(
 
 
 async def _set_g2b_force(client: AsyncClient, *, token: str, sku_id: str) -> None:
+    # Call after ``_seed_mapping``: ``set_rule`` now refuses ``force_supplier``
+    # onto G2B for a SKU with no active g2b mapping, because that rule would
+    # not route orders to G2B — it would fail each one with "no mapping".
     r = await client.put(
         f"/api/v1/admin/sourcing/rules/{sku_id}",
         headers={"Authorization": f"Bearer {token}"},
@@ -238,8 +241,8 @@ async def test_low_balance_preflight_marks_task_failed_but_item_in_progress(
     sku_id = await _seed_game_sku(db_session, cost_usdt="5.00")
     admin = await _login_user(integration_client, tg_id=801)
     await _grant_admin(db_session, tg_id=801)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _seed_mapping(db_session, sku_id=sku_id)
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     # G2B reports balance below the SKU's cost — purchase should NOT
     # be attempted.
@@ -297,8 +300,8 @@ async def test_retry_after_top_up_walks_task_to_succeeded(
     sku_id = await _seed_game_sku(db_session, cost_usdt="5.00")
     admin = await _login_user(integration_client, tg_id=803)
     await _grant_admin(db_session, tg_id=803)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _seed_mapping(db_session, sku_id=sku_id)
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     # First /getMe call — pre-flight on the original purchase. Empty.
     # Second /getMe call — pre-flight on the retry. Topped up.
@@ -359,8 +362,8 @@ async def test_force_complete_accepts_g2b_low_balance_task(
     sku_id = await _seed_game_sku(db_session, cost_usdt="5.00")
     admin = await _login_user(integration_client, tg_id=805)
     await _grant_admin(db_session, tg_id=805)
-    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
     await _seed_mapping(db_session, sku_id=sku_id)
+    await _set_g2b_force(integration_client, token=admin, sku_id=sku_id)
 
     respx.get(f"{G2B_BASE}/getMe").mock(return_value=httpx.Response(200, json={"balance": 0.5}))
     # Specific BEFORE catch-all — respx matches in registration order.

@@ -666,3 +666,123 @@ async def test_refund_leaves_delivered_task_untouched(
 
     after = await _task_for_order(integration_client, admin, order_id)
     assert after["status"] == "succeeded"
+
+
+# ---------- reassign ----------
+
+
+async def _failed_on_waxpeer(
+    client: AsyncClient, db: AsyncSession, sku_id: str, *, tg_id: int, suffix: str
+) -> tuple[str, dict[str, str]]:
+    """A task that failed on Waxpeer, plus admin headers.
+
+    Waxpeer with no API key configured raises before it orders anything, which
+    is the shape of the two cases reassign exists for — the supplier answered
+    with an error, or refused us for balance — without needing either to
+    actually happen.
+    """
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    await db.execute(
+        update(SkuSourcingRule)
+        .where(SkuSourcingRule.sku_id == sku_id)
+        .values(supplier_slug="waxpeer")
+    )
+    await db.commit()
+    user = await _login_user(client, tg_id=tg_id)
+    order_id = await _pay_and_fulfill(client, token=user, sku_id=sku_id, key_suffix=suffix)
+    admin = await _login_user(client, tg_id=tg_id + 1)
+    await _grant_admin(db, tg_id=tg_id + 1)
+    headers = {"Authorization": f"Bearer {admin}"}
+    listing = await client.get(
+        "/api/v1/admin/fulfillment/tasks", headers=headers, params={"order_id": order_id}
+    )
+    task = listing.json()["items"][0]
+    assert task["supplier"] == "waxpeer"
+    assert task["status"] == "failed", task
+    return task["id"], headers
+
+
+async def test_admin_reassign_moves_a_failed_task_and_runs_it_there(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """The supplier errored; the operator wants *this* order out the other door.
+
+    Editing the sourcing rule would not do it — that governs orders not yet
+    placed. So the task changes hands, runs immediately on the new supplier,
+    and says so in its own log in the same shape the inventory fallback uses.
+    """
+    task_id, headers = await _failed_on_waxpeer(
+        integration_client, db_session, _seed_sku, tg_id=241, suffix="reassign-eeee"
+    )
+
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task_id}/reassign",
+        headers=headers,
+        json={"supplier": "mock"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["supplier"] == "mock"
+    assert body["status"] == "succeeded"
+    assert body["last_error"] is None
+
+    log = await integration_client.get(
+        "/api/v1/admin/fulfillment/attempts", headers=headers, params={"task_id": task_id}
+    )
+    switches = [a for a in log.json()["items"] if a["payload"].get("route_switch") == "mock"]
+    assert switches, log.json()
+    assert switches[0]["payload"]["from"] == "waxpeer"
+    assert switches[0]["payload"]["reason"] == "admin_reassign"
+    assert switches[0]["payload"]["admin_id"]
+
+
+async def test_admin_reassign_refuses_what_would_only_fail_later(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    task_id, headers = await _failed_on_waxpeer(
+        integration_client, db_session, _seed_sku, tg_id=251, suffix="reassign-ffff"
+    )
+    url = f"/api/v1/admin/fulfillment/tasks/{task_id}/reassign"
+
+    # G2B cannot place an order for a SKU it has no mapping for; saying so now
+    # beats a second failed task with "no mapping" in it.
+    r = await integration_client.post(url, headers=headers, json={"supplier": "g2b"})
+    assert r.status_code == 409, r.text
+    assert "mapping" in r.text.lower()
+
+    # Same supplier is not a move.
+    r = await integration_client.post(url, headers=headers, json={"supplier": "waxpeer"})
+    assert r.status_code == 409, r.text
+
+    # The warehouse is not a supplier, and the manual queue has its own intake.
+    for slug in ("inventory", "manual"):
+        r = await integration_client.post(url, headers=headers, json={"supplier": slug})
+        assert r.status_code == 422, (slug, r.text)
+
+    r = await integration_client.post(url, headers=headers, json={"supplier": "nope"})
+    assert r.status_code == 404, r.text
+
+
+async def test_admin_reassign_rejects_a_finished_task(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    # Moving a task that already delivered would buy the goods twice.
+    user = await _login_user(integration_client, tg_id=261)
+    order_id = await _pay_and_fulfill(
+        integration_client, token=user, sku_id=_seed_sku, key_suffix="reassign-gggg"
+    )
+    admin = await _login_user(integration_client, tg_id=262)
+    await _grant_admin(db_session, tg_id=262)
+    headers = {"Authorization": f"Bearer {admin}"}
+    listing = await integration_client.get(
+        "/api/v1/admin/fulfillment/tasks", headers=headers, params={"order_id": order_id}
+    )
+    task_id = listing.json()["items"][0]["id"]
+
+    r = await integration_client.post(
+        f"/api/v1/admin/fulfillment/tasks/{task_id}/reassign",
+        headers=headers,
+        json={"supplier": "waxpeer"},
+    )
+    assert r.status_code == 409, r.text

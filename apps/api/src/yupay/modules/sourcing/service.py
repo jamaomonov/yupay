@@ -171,6 +171,30 @@ async def set_rule(
     if mode != "force_supplier" and supplier_slug:
         # Tolerate but ignore — keep the row clean.
         supplier_slug = None
+    # Lazy for the reason ``resolve_for_sku`` gives: a top-level import of
+    # ``integrations`` from here closes a cycle.
+    from yupay.modules.integrations.models import MAPPING_REQUIRED_SUPPLIERS, SkuSupplierMapping
+
+    if mode == "force_supplier" and supplier_slug in MAPPING_REQUIRED_SUPPLIERS:
+        # Forcing a SKU onto G2B or G-Engine with no mapping row does not
+        # route it there — it fails every order that arrives, one at a time,
+        # with "no active mapping" in the inbox. The operator's intent was
+        # "use this supplier", and the honest answer is that it cannot be used
+        # yet, at the moment they say so rather than at the first sale.
+        mapped = (
+            await db.execute(
+                select(SkuSupplierMapping.supplier_slug).where(
+                    SkuSupplierMapping.sku_id == sku_id,
+                    SkuSupplierMapping.supplier_slug == supplier_slug,
+                    SkuSupplierMapping.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+        if mapped is None:
+            raise ValidationError(
+                f"no active {supplier_slug} mapping for this SKU — create it under "
+                "Integrations → Mappings before routing orders there"
+            )
 
     existing = (
         await db.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku_id))

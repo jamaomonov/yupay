@@ -1,4 +1,4 @@
-/** Per-supplier detail page (currently only G2B).
+/** Per-supplier detail page.
  *
  * Three concerns share one screen because operators treat them as one job:
  *  1. Connectivity / balance probe (calls ``/admin/integrations/g2b/health``).
@@ -15,6 +15,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { SupplierAttemptsTab } from "./SupplierAttemptsTab";
 import {
+  FULFILMENT_ROUTES,
   HEALTH_CHECK_TIMEOUT_MS,
   SUPPLIER_CAPABILITIES,
   SUPPLIER_LABELS,
@@ -43,6 +44,13 @@ export function SupplierDetailPage() {
   };
   const noCatalogueNote =
     SUPPLIER_NO_CATALOGUE_NOTE[slug as keyof typeof SUPPLIER_NO_CATALOGUE_NOTE] ?? null;
+  // "Takes SKU mappings" and "has a catalogue cache" are two different
+  // properties, and this page used one flag for both. G-Engine takes mappings
+  // (typed by hand — service_id, denomination_id) but mirrors no catalogue, so
+  // the only doorway to its mapping form was hidden behind the catalogue
+  // switch. Waxpeer has neither and stays as it was. Unknown slugs get the
+  // door, for the same reason `caps` defaults open above.
+  const canMap = FULFILMENT_ROUTES.find((r) => r.slug === slug)?.mappings ?? true;
 
   const health = useQuery<SupplierHealth>({
     queryKey: qk.integrationHealth(slug),
@@ -132,7 +140,7 @@ export function SupplierDetailPage() {
         <HealthSummary data={health.data} />
       )}
 
-      {caps.catalogue ? (
+      {canMap && (
         <section className="mt-6 grid grid-cols-1 gap-4 md:grid-cols-3">
           <ActionCard
             icon={ListTree}
@@ -141,46 +149,52 @@ export function SupplierDetailPage() {
             actionLabel="Открыть маппинги"
             to={`/integrations/mappings?supplier=${slug}`}
           />
-          <ActionCard
-            icon={Database}
-            title="Каталог поставщика"
-            description="Синхронизируйте список товаров / игр в локальный кэш. Используется для автокомплита в форме маппинга."
-            actionLabel={sync.isPending ? "Синхронизируем…" : "Синхронизировать"}
-            onClick={() => {
-              sync.mutate();
-            }}
-            actionDisabled={sync.isPending || !health.data?.available}
-            hint={
-              health.data?.available
-                ? null
-                : "Доступно только когда ключ настроен и подключение зелёное."
-            }
-          />
-          <ActionCard
-            icon={Database}
-            title="Просмотр каталога"
-            description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
-            actionLabel="Перейти к каталогу"
-            to={`/integrations/${slug}/catalog`}
-          />
-          <ActionCard
-            icon={TrendingUp}
-            title="Цены маппингов"
-            description="Прогнать все активные маппинги и обновить cost_usdt. То же делает воркер каждый час; кнопка для ручного запуска."
-            actionLabel={refreshPrices.isPending ? "Обновляем…" : "Обновить цены"}
-            onClick={() => {
-              refreshPrices.mutate();
-            }}
-            actionDisabled={refreshPrices.isPending || !health.data?.available}
-            hint={health.data?.available ? null : "Нужно настроенное и онлайн-подключение к G2B."}
-          />
+          {caps.catalogue && (
+            <>
+              <ActionCard
+                icon={Database}
+                title="Каталог поставщика"
+                description="Синхронизируйте список товаров / игр в локальный кэш. Используется для автокомплита в форме маппинга."
+                actionLabel={sync.isPending ? "Синхронизируем…" : "Синхронизировать"}
+                onClick={() => {
+                  sync.mutate();
+                }}
+                actionDisabled={sync.isPending || !health.data?.available}
+                hint={
+                  health.data?.available
+                    ? null
+                    : "Доступно только когда ключ настроен и подключение зелёное."
+                }
+              />
+              <ActionCard
+                icon={Database}
+                title="Просмотр каталога"
+                description="Откройте список игр поставщика и импортируйте игру как бренд с номиналами одним действием."
+                actionLabel="Перейти к каталогу"
+                to={`/integrations/${slug}/catalog`}
+              />
+              <ActionCard
+                icon={TrendingUp}
+                title="Цены маппингов"
+                description="Прогнать все активные маппинги и обновить cost_usdt. То же делает воркер каждый час; кнопка для ручного запуска."
+                actionLabel={refreshPrices.isPending ? "Обновляем…" : "Обновить цены"}
+                onClick={() => {
+                  refreshPrices.mutate();
+                }}
+                actionDisabled={refreshPrices.isPending || !health.data?.available}
+                hint={
+                  health.data?.available ? null : "Нужно настроенное и онлайн-подключение к G2B."
+                }
+              />
+            </>
+          )}
         </section>
-      ) : (
-        noCatalogueNote && (
-          <p className="mt-6 rounded-md border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]">
-            {noCatalogueNote}
-          </p>
-        )
+      )}
+
+      {!caps.catalogue && noCatalogueNote && (
+        <p className="mt-6 rounded-md border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]">
+          {noCatalogueNote}
+        </p>
       )}
 
       <section className="mt-8">

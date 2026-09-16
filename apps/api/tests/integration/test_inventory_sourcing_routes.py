@@ -701,3 +701,44 @@ async def test_upsert_rule_replays_pre_sku_code_body(
     )
     assert r.status_code == 200, r.text
     assert r.json()["sku_code"] == _seed_sku
+
+
+async def test_force_supplier_needs_a_mapping_when_the_adapter_does(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Routing a SKU onto G2B with no mapping row does not route it there.
+
+    It fails every order that arrives, one at a time, with "no active mapping"
+    in the inbox. The operator said "use this supplier"; the honest answer is
+    that it cannot be used yet — at the moment they say so, not at the first
+    sale. Waxpeer needs no mapping and is not checked.
+    """
+    from yupay.modules.integrations.models import SkuSupplierMapping
+
+    admin = await _login_user(integration_client, tg_id=341)
+    await _grant_admin(db_session, tg_id=341)
+    headers = {"Authorization": f"Bearer {admin}"}
+    url = f"/api/v1/admin/sourcing/rules/{_seed_sku}"
+
+    r = await integration_client.put(
+        url, headers=headers, json={"mode": "force_supplier", "supplier_slug": "g2b"}
+    )
+    assert r.status_code == 422, r.text
+    assert "mapping" in r.text.lower()
+
+    r = await integration_client.put(
+        url, headers=headers, json={"mode": "force_supplier", "supplier_slug": "waxpeer"}
+    )
+    assert r.status_code == 200, r.text
+
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=_seed_sku, supplier_slug="g2b", kind="game", external_product_id="game-1"
+        )
+    )
+    await db_session.commit()
+    r = await integration_client.put(
+        url, headers=headers, json={"mode": "force_supplier", "supplier_slug": "g2b"}
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["supplier_slug"] == "g2b"
