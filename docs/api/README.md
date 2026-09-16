@@ -852,12 +852,13 @@ such brand". Nothing reports whether an answer came from the cache: a cached
 verdict is still our best answer, and a caveat would only invite integrators to
 distrust a good one.
 
-The product lookup behind it selects **columns, not the entity**:
-`session.get(Product, …)` fanned out to nine or more statements per check
-through `Product`'s selectin relationships (and `Brand.products` in turn),
-which is a lot of retail catalog to drag through an advisory lookup at two
-calls a second. `test_the_check_does_not_fan_out_over_the_catalog` counts the
-statements.
+The brand lookup behind it selects **columns, not the entity**: `Brand.id`,
+`Brand.visible_b2b` plus a correlated `EXISTS` for a B2B-visible SKU — never
+`session.get(Product, …)`, which is what the product-scoped check this
+replaced used, and whose selectin relationships (and `Brand.products` in
+turn) fanned out to nine or more statements per check, a lot of retail
+catalog to drag through an advisory lookup at two calls a second.
+`test_the_check_does_not_fan_out_over_the_catalog` counts the statements.
 
 **Scoped to what the merchant can already see**: `brand.visible_b2b` **and**
 at least one B2B-visible SKU, exactly `/catalog`'s rule, so the endpoint

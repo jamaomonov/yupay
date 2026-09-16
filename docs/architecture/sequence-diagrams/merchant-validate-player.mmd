@@ -10,7 +10,7 @@ sequenceDiagram
     participant S as G2B / Waxpeer
     participant DB as Postgres
 
-    R->>API: POST {sku_id, player_id, server_id} (signed — body, never a URL)
+    R->>API: POST {brand, player_id, server_id} (signed — body, never a URL)
     Note over R,API: player_id is the reseller's END CUSTOMER's -- transit only,<br/>never in a query string, never in a log line (only hash_short)
     API->>API: merchant_auth: HMAC + freshness + merchant-api IP counter (600/60s)
     API->>G: guard_ip("merchant-validate") 120/60s per ADDRESS
@@ -20,30 +20,30 @@ sequenceDiagram
         G-->>R: 429 problem+json + Retry-After
     end
 
-    API->>V: check_player(sku_id, player_id, server_id)
-    V->>DB: SELECT products.id, products.required_fields,<br/>skus.visible_b2b, brands.visible_b2b WHERE skus.id = ?
-    Note over V,DB: scoped exactly as /catalog is -- a SKU they cannot see<br/>is not checkable, so this cannot enumerate withheld SKUs
+    API->>V: check_player(brand, player_id, server_id)
+    V->>DB: SELECT brands.id, brands.visible_b2b,<br/>EXISTS(visible SKU) WHERE slug = ?
+    Note over V,DB: scoped exactly as /merchant/v1/catalog is -- a brand they cannot see<br/>is not checkable, so this cannot enumerate withheld brands
     alt no row
-        V-->>R: 404 item_unavailable reason=unknown_sku
-    else not visible_b2b (SKU or brand)
+        V-->>R: 404 item_unavailable reason=unknown_brand
+    else not visible_b2b (brand or no visible SKU)
         V-->>R: 404 item_unavailable reason=not_b2b_visible
     end
 
-    V->>V: product_is_checkable(required_fields)?
-    alt no field declares check.provider
+    V->>P: brand_check_field(brand_id)
+    alt no product of the brand declares check.provider
         V-->>R: 200 {status: "unsupported"} -- permanent — order without a check
-        Note over V,R: NOT "valid" (that would approve nothing on purpose) and<br/>NOT a 404 (that would read as "no such SKU")
+        Note over V,R: NOT "valid" (that would approve nothing on purpose) and<br/>NOT a 404 (that would read as "no such brand")
     end
 
-    V->>P: check_player_for_product(product_id, ...)
+    V->>P: check_player_for_brand_id(brand_id, ...)
     P->>C: GET playercheck:*:<hash>
     alt cache hit
         C-->>R: 200 the stored verdict, unchanged and uncaveated
         Note over C,R: a cached answer is still our best answer —<br/>a "this was cached" flag would only invite distrust of a good one
     end
-    P->>DB: resolve g2b game_code from sku_supplier_mapping
+    P->>DB: resolve_g2b_game_code(brand_id)
     alt no active mapping, or two distinct codes
-        P-->>R: 200 {status: "error"} + player_check_no_game_mapping<br/>/ player_check_ambiguous_game_code
+        P-->>R: 200 {status: "error"} + player_check_no_game_mapping<br/>/ player_check_brand_spans_games
     end
     P->>B: is_open()?
     alt circuit open

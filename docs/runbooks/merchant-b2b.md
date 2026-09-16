@@ -845,7 +845,7 @@ if it did. Which one it is, in the order worth checking:
 
 1. **The brand has no active supplier mapping.** Check this one first: it is
    the likeliest, it is a routine state rather than an outage, and it is
-   permanent until somebody fixes it. A brand whose form declares
+   permanent until somebody fixes it. A brand one of whose products declares
    `check: {provider: "g2b"}` needs an **active** `sku_supplier_mapping`
    (`supplier_slug='g2b'`, `kind='game'`) on one of its SKUs to resolve a game
    code from; without one, every check answers `error` forever. The g2b import
@@ -878,6 +878,16 @@ check refuses rather than validate against the wrong region's game. A
 brand is meant to be one game (ADR-0079), so the catalog is mid-split; fix
 it by finishing the split — move the region's products to their own
 brand, with `sku_supplier_mapping` following them.
+
+1c. **The brand's products disagree on the check.** Also a misconfiguration,
+not an outage: `player_check_brand_config_mismatch` names the `brand_id` when
+two of its active products declare different `check` configs (provider,
+`server_field`, or the id field's key) — a brand is one game (ADR-0079), so a
+brand-level check has nothing to pick between them and answers as if there
+were no check at all. Symptom: the storefront's «Проверить» folds the
+resulting 422 into "couldn't check" forever, and `validate/player` answers
+`unsupported` rather than raising. Repair is data-only — make the products'
+`check` fields agree — no code change.
 
 2. **The supplier is unconfigured on this stack.** `G2B_API_KEY` (or
    `WAXPEER_API_KEY`) empty makes the adapter report itself unavailable and
