@@ -336,12 +336,12 @@ function CheckablePlayerField({
           </button>
         </div>
         {siblingHint && (
-          <a
+          <Link
             href={siblingHint.href}
             className="text-primary mt-2 inline-block text-[13px] underline-offset-4 hover:underline"
           >
             {t("checkTryRegion", { name: siblingHint.name })}
-          </a>
+          </Link>
         )}
       </div>
     );
