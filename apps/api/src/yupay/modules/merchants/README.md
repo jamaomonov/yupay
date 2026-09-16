@@ -1968,40 +1968,44 @@ only to say we have stopped delivering webhooks (see "Auto-disable").
 ### `POST /merchant/v1/validate/player`
 
 Check the identifier your customer gave you **before** you spend a deposit on
-it — a game player id, or a Steam login for a Steam top-up. Optional: no order
-consults it, and skipping it costs you nothing but the chance to catch a typo
-before the code is gone.
+it — a game player id, or a Steam login for a Steam top-up — against the
+**brand** you are about to order from. A brand, not a SKU: a brand is exactly
+one game (ADR-0079), so the id you check is the id every SKU of it credits,
+and you check it once regardless of which of the brand's SKUs you go on to
+buy. Optional: no order consults it, and skipping it costs you nothing but the
+chance to catch a typo before the code is gone.
 
 ```json
 POST /merchant/v1/validate/player
 {
-  "sku_id": "0198c3d0-11a2-7b31-9ac4-5f2b7d0e8c41",
+  "brand": "pubg-mobile",
   "player_id": "51234567",
   "server_id": null
 }
 ```
 
-| Field       | Required | Notes                                                                              |
-| ----------- | -------- | ---------------------------------------------------------------------------------- |
-| `sku_id`    | yes      | The SKU you are about to order, from `/catalog`. A UUID; anything else is a `422`. |
-| `player_id` | yes      | Your **customer's** identifier. 1–64 characters.                                   |
-| `server_id` | no       | The game server / zone, for the games whose form asks for one. `null` or omitted.  |
+| Field       | Required | Notes                                                                             |
+| ----------- | -------- | --------------------------------------------------------------------------------- |
+| `brand`     | yes      | The brand's slug, from `/catalog` (`brands[].slug`). 2–64 characters, lowercase.  |
+| `player_id` | yes      | Your **customer's** identifier. 1–64 characters.                                  |
+| `server_id` | no       | The game server / zone, for the games whose form asks for one. `null` or omitted. |
 
-A SKU, not a product, so the id you check is the id you buy. Unknown fields are
-rejected (`422`) rather than ignored — a typo'd `player_id` that we silently
-dropped would come back as "no check needed", which is the one answer you must
-not get by accident.
+Unknown fields are rejected (`422`) rather than ignored — a typo'd `player_id`
+that we silently dropped would come back as "no check needed", which is the
+one answer you must not get by accident. That includes `sku_id`: this body
+never took a SKU, and sending one is a `422` naming `brand`, not a check of
+nothing.
 
 ```json
 { "status": "valid", "name": "NeoUZ" }
 ```
 
-| `status`      | What it means                                                                   | What to do                                           |
-| ------------- | ------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `valid`       | The provider resolved the id. `name` is the account nickname when there is one. | Show the name back to your customer; order.          |
-| `invalid`     | The provider gave us a verdict we understand, and it is "no such player".       | The answer to show your customer as "check that id". |
-| `error`       | **We could not check.** Says nothing at all about the id.                       | Retry later, or order without a check. Never refuse. |
-| `unsupported` | This SKU has no player check configured, and will not grow one on its own.      | Order without a check. Do not retry.                 |
+| `status`      | What it means                                                                        | What to do                                           |
+| ------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| `valid`       | The provider resolved the id. `name` is the account nickname when there is one.      | Show the name back to your customer; order.          |
+| `invalid`     | The provider gave us a verdict we understand, and it is "no such player".            | The answer to show your customer as "check that id". |
+| `error`       | **We could not check.** Says nothing at all about the id.                            | Retry later, or order without a check. Never refuse. |
+| `unsupported` | No product of this brand declares a player check, and none will grow one on its own. | Order without a check. Do not retry.                 |
 
 > **`error` is not a verdict.** An upstream fault, a timeout, a credential of
 > ours that got rejected, or a circuit we opened after a run of failures all
@@ -2053,23 +2057,19 @@ so than let the numbers above read as a guarantee they are not.
 
 Errors:
 
-| Status | `code`              | Meaning                                                                                                                                        |
-| ------ | ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| 404    | `item_unavailable`  | `reason: unknown_sku` — no such SKU; `reason: not_b2b_visible` — withheld from B2B, so there is nothing to check.                              |
-| 404    | `product_not_found` | The SKU's product vanished between our two lookups. A race, and vanishingly rare; retry once.                                                  |
-| 422    | `invalid_request`   | The body did not parse — a `sku_id` that is not a UUID in any spelling, an empty `server_id`, a missing or unknown field. `errors` says which. |
-| 429    | —                   | Over any of the counters that apply here. Wait `Retry-After` seconds.                                                                          |
-
-Any spelling of a UUID your language emits is accepted and normalised — plain,
-uppercase, undashed, braced (`{0198…}`, which is .NET's `Guid.ToString("B")`),
-or `urn:uuid:…`. You never have to reformat an id you got from us.
+| Status | `code`             | Meaning                                                                                                                                                                                                                        |
+| ------ | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 404    | `item_unavailable` | `reason: unknown_brand` — no such brand; `reason: not_b2b_visible` — withheld from B2B, or with no B2B-visible SKU, so there is nothing to check. The identifier comes back under `brand`, the slug you sent — never `sku_id`. |
+| 422    | `invalid_request`  | The body did not parse — `brand` missing or the wrong shape, an empty `server_id`, a missing or unknown field (`sku_id` included). `errors` says which.                                                                        |
+| 429    | —                  | Over any of the counters that apply here. Wait `Retry-After` seconds.                                                                                                                                                          |
 
 Note what is **not** here. The order path's other refusals — `out_of_stock`,
 `not_for_sale`, `no_cost` — do not apply: stock and pricing move between a
 check and an order, and refusing to verify an id because a SKU is momentarily
-unbuyable would answer a question you did not ask. Visibility is the one
-condition that governs both, so a SKU you cannot see in `/catalog` is a SKU you
-cannot check.
+unbuyable would answer a question you did not ask. Visibility is the condition
+that governs both, and at brand scope it is two-part: `brand.visible_b2b` and
+at least one B2B-visible SKU under it — so a brand you cannot see in
+`/catalog` is a brand you cannot check.
 
 ## Outgoing webhooks
 
@@ -2596,8 +2596,8 @@ is percent-encoded and **the encoded form is what you sign**
 | The published contract (`GET /merchant/openapi.json`)       | `machine_openapi.py` — the app's schema narrowed to these six paths and the models they reach. **Unauthenticated, not limiter-exempt, and deliberately outside `/merchant/v1`** — that prefix means "signed", and four sweeps enumerate it to assert exactly that of everything in it                                                                                                                                                   |
 | The reference an integrator reads                           | `apps/merchant/src/app/[locale]/docs` — generated from `docs/api/merchant-openapi.json` at **build** time. Every field table, type label and example body is walked out of the schema, so a field added here appears there and cannot be forgotten                                                                                                                                                                                      |
 | The priced catalog read model                               | `price_list.py`                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift. Its `unavailable()` is the one `item_unavailable` refusal on this API; `validate.py` raises the same one.                                                                                                                                                                                                                                                                          |
-| The advisory player check (`/validate/player`)              | `validate.py` — resolves the SKU, decides `unsupported`, and hands the rest to `integrations.player_check`. It performs no check of its own and must never turn that module's `error` into anything friendlier.                                                                                                                                                                                                                         |
+| What may be ordered and at what price                       | `quote.py` — orderability, margin floor, ±2 % drift. `unavailable()` and its brand-keyed sibling `unavailable_brand()` are the only two `item_unavailable` refusals on this API — `validate.py` raises the latter, keyed `brand` rather than `sku_id`, because the identifier the caller sent must come back under the name they sent it.                                                                                               |
+| The advisory player check (`/validate/player`)              | `validate.py` — resolves the **brand**, decides `unsupported`, and hands the rest to `integrations.player_check`. It performs no check of its own and must never turn that module's `error` into anything friendlier.                                                                                                                                                                                                                   |
 | Reading one order back (status, code, refund mark)          | `order_status.py`                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | The deposit ledger page (`/transactions`)                   | `transactions.py` — cursor codec; the query is `deposit.py`'s                                                                                                                                                                                                                                                                                                                                                                           |
 | Order placement + the deposit charge                        | `orders.py`; the debit itself is `deposit.charge_deposit`, and the merchant's quote is recorded on the line by the same call (`orders.create_order`'s merchant-only `merchant_expected_price_usd=`, migration 0072)                                                                                                                                                                                                                     |

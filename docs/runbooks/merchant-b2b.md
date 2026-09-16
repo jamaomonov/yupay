@@ -872,8 +872,12 @@ if it did. Which one it is, in the order worth checking:
    dropping the `check` descriptor from the product's form — an honest
    `unsupported` beats a permanent `error`.
 
-1b. **The brand spans two G2B games** (`player_check_brand_spans_games`) — the
-catalog is mid-split; finish the split (ADR-0079).
+1b. **The brand spans two G2B games.** A misconfiguration, not an outage:
+`player_check_brand_spans_games` names the brand and both codes, and the
+check refuses rather than validate against the wrong region's game. A
+brand is meant to be one game (ADR-0079), so the catalog is mid-split; fix
+it by finishing the split — move the region's products to their own
+brand, with `sku_supplier_mapping` following them.
 
 2. **The supplier is unconfigured on this stack.** `G2B_API_KEY` (or
    `WAXPEER_API_KEY`) empty makes the adapter report itself unavailable and
@@ -887,12 +891,7 @@ catalog is mid-split; finish the split (ADR-0079).
    and the next call runs for real (ADR-0059).
 4. **The upstream is failing.** `player_check_failed` carries the game code and
    a truncated error, never the player id.
-5. **The product is mapped to two G2B game codes.** A misconfiguration, not an
-   outage: `player_check_ambiguous_game_code` names the product and the codes,
-   and the check refuses rather than validating against the wrong region's game
-   (ADR-0048). Fix the `sku_supplier_mapping` rows; region belongs to separate
-   products.
-6. **The supplier changed its wire format.**
+5. **The supplier changed its wire format.**
    `player_check_unrecognised_verdict` means we got an HTTP 200 whose `valid`
    field we could not read — the field renamed, or a token we do not know. This
    is the one cause that is an emergency of a different kind: **before

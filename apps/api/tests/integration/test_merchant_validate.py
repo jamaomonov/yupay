@@ -554,6 +554,8 @@ async def test_an_unknown_brand_is_refused_by_name(
     body = r.json()
     assert body["code"] == "item_unavailable"
     assert body["reason"] == "unknown_brand"
+    assert body["brand"] == "no-such-brand"
+    assert "sku_id" not in body
 
 
 async def test_a_brand_withheld_from_b2b_is_not_checkable(
@@ -564,7 +566,10 @@ async def test_a_brand_withheld_from_b2b_is_not_checkable(
     await db_session.commit()
     r = await _validate(integration_client, credentials, {"brand": brand.slug, "player_id": "1"})
     assert r.status_code == 404, r.text
-    assert r.json()["reason"] == "not_b2b_visible"
+    body = r.json()
+    assert body["reason"] == "not_b2b_visible"
+    assert body["brand"] == brand.slug
+    assert "sku_id" not in body
 
 
 async def test_an_unknown_body_field_is_refused(

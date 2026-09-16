@@ -862,8 +862,9 @@ statements.
 **Scoped to what the merchant can already see**: `brand.visible_b2b` **and**
 at least one B2B-visible SKU, exactly `/catalog`'s rule, so the endpoint
 cannot be used to enumerate brands withheld from B2B. The refusal is
-`quote.unavailable`'s — `404 item_unavailable` with `reason: unknown_brand` or
-`not_b2b_visible` — rather than a second vocabulary for the same idea. The
+`quote.unavailable_brand`'s — `404 item_unavailable` with `reason:
+unknown_brand` or `not_b2b_visible`, the identifier under `brand` (never
+`sku_id`) — rather than a second vocabulary for the same idea. The
 order path's _other_ reasons (`out_of_stock`, `not_for_sale`, `no_cost`)
 deliberately do not apply: stock and pricing move between a check and an order,
 and this call is the step before the order.

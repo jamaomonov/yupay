@@ -160,13 +160,13 @@ async def _checkable_brand(db: AsyncSession, *, brand_slug: str) -> str:
         )
     ).one_or_none()
     if row is None:
-        raise quote.unavailable(brand_slug, "unknown_brand")
+        raise quote.unavailable_brand(brand_slug, "unknown_brand")
     # SQLAlchemy's typed ``select()`` overloads do not infer past a correlated
     # ``Exists`` argument, so the row comes back untyped; the three-column
     # shape is fixed by the ``select()`` above.
     brand_id, visible, sku_visible = cast("tuple[str, bool, bool]", row)
     if not visible or not sku_visible:
-        raise quote.unavailable(brand_slug, "not_b2b_visible")
+        raise quote.unavailable_brand(brand_slug, "not_b2b_visible")
     return brand_id
 
 

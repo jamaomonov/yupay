@@ -68,9 +68,11 @@ def unavailable(sku_id: str, reason: str) -> NotFoundError:
     problems with three different answers, and a bare "not found" makes them
     all look like a bad id.
 
-    Public because ``validate.py`` refuses the same SKUs with the same words:
-    "you cannot have this SKU" is one answer on this API, and a second
-    spelling of it would be a second contract for integrators to switch on.
+    Public, and paired with :func:`unavailable_brand`: this API refuses a SKU
+    it cannot order and a brand it cannot check with the same `code` and
+    `reason` vocabulary, so an integrator switching on either sees one
+    contract — only the identifier's own key and wording differ, one per
+    caller-supplied id shape.
 
     Args:
         sku_id: The SKU asked for. Our own identifier, never PII.
@@ -83,6 +85,35 @@ def unavailable(sku_id: str, reason: str) -> NotFoundError:
         "this SKU cannot be ordered right now",
         code=CODE_ITEM_UNAVAILABLE,
         sku_id=sku_id,
+        reason=reason,
+    )
+
+
+def unavailable_brand(brand_slug: str, reason: str) -> NotFoundError:
+    """:func:`unavailable`'s sibling for a brand-scoped refusal.
+
+    Two functions rather than one generic one, because the identifier the
+    caller sent must come back under the name they sent it: a merchant who
+    posted ``{"brand": "no-such-brand"}`` and gets a 404 back with a bare
+    ``sku_id`` field has to guess whether that is their brand slug echoed
+    under the wrong key or a stray SKU id from somewhere else. Same
+    ``item_unavailable`` code and the same ``reason`` vocabulary as
+    :func:`unavailable` — ``validate.py``'s brand-scoped check is the only
+    caller today (``unknown_brand`` / ``not_b2b_visible``) — so an integrator
+    switching on ``code`` and ``reason`` sees one contract either way; only
+    the identifier's key and the message name what kind of id failed.
+
+    Args:
+        brand_slug: The brand asked for. Our own identifier, never PII.
+        reason: The discriminator — see the module README's table.
+
+    Returns:
+        The error to raise.
+    """
+    return NotFoundError(
+        "this brand cannot be ordered from",
+        code=CODE_ITEM_UNAVAILABLE,
+        brand=brand_slug,
         reason=reason,
     )
 
@@ -405,4 +436,5 @@ __all__ = [
     "resolve_quantity",
     "resolve_shape",
     "unavailable",
+    "unavailable_brand",
 ]
