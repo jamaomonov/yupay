@@ -69,12 +69,8 @@ _KNOWN_PROVIDERS = ("g2b", "waxpeer")
 
 def _checkable_provider(required_fields: list[dict[str, Any]]) -> str | None:
     """The ``check.provider`` of the product's first checkable field, if any."""
-    for f in required_fields:
-        if isinstance(f, dict) and isinstance(f.get("check"), dict):
-            provider = f["check"].get("provider")
-            if provider in _KNOWN_PROVIDERS:
-                return str(provider)
-    return None
+    f = _field_of(required_fields)
+    return str(f["check"]["provider"]) if f is not None else None
 
 
 def product_is_checkable(required_fields: list[dict[str, Any]]) -> bool:
@@ -197,6 +193,9 @@ async def resolve_g2b_game_code(session: AsyncSession, brand_id: str) -> str | N
     the catalog is mid-migration or misconfigured, and picking one would
     validate a player against the wrong region's game and answer "invalid"
     for a perfectly good id — so two codes is no check rather than a wrong one.
+    The scan covers active products only, same as :func:`brand_check_field`:
+    an inactive product cannot be bought, so its mapping's code is never a
+    candidate — a retired region left mapped stays retired here too.
     """
     stmt = (
         select(SkuSupplierMapping.external_product_id)
@@ -204,6 +203,7 @@ async def resolve_g2b_game_code(session: AsyncSession, brand_id: str) -> str | N
         .join(Product, Product.id == Sku.product_id)
         .where(
             Product.brand_id == brand_id,
+            Product.active.is_(True),
             SkuSupplierMapping.supplier_slug == "g2b",
             SkuSupplierMapping.kind == "game",
             SkuSupplierMapping.is_active.is_(True),

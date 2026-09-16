@@ -389,6 +389,101 @@ async def test_a_brand_spanning_two_games_checks_nothing(
     assert any(e["event"] == "player_check_brand_spans_games" for e in logs)
 
 
+@pytest.fixture
+async def seed_split_brand_with_retired_region(db_session: AsyncSession) -> str:
+    """Same shape as ``seed_split_brand``, but the second (retired) region's
+    product is ``active=False`` — its mapping is still active, the way a
+    catalog would look if the product were deactivated without also
+    deactivating the now-orphaned ``sku_supplier_mapping`` row. Only one game
+    code is a candidate here, so the brand must answer a real verdict."""
+    category = Category(
+        id=new_id(),
+        slug="games-split-retired-check",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Игры")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug="mlbb-split-retired-check",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="MLBB")],
+    )
+    field = [
+        {"key": "player_id", "label": {"ru": "ID"}, "type": "text", "check": {"provider": "g2b"}}
+    ]
+    products = [
+        Product(
+            id=new_id(),
+            slug=f"mlbb-{tag}-retired-check",
+            brand_id=brand.id,
+            kind="top_up",
+            sort_order=i,
+            active=(tag == "global"),
+            required_fields=field,
+            translations=[ProductTranslation(locale="ru", name=f"MLBB {tag}")],
+        )
+        for i, tag in enumerate(("global", "ru"))
+    ]
+    skus = [
+        Sku(
+            id=new_id(),
+            product_id=p.id,
+            sku_code=f"mlbb-{p.slug}-60",
+            denomination="60",
+            region="WW",
+            price_usd=Decimal("1.00"),
+            sort_order=1,
+            active=True,
+        )
+        for p in products
+    ]
+    db_session.add_all([category, brand, *products, *skus])
+    await db_session.commit()
+    db_session.add_all(
+        [
+            SkuSupplierMapping(
+                sku_id=skus[0].id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id="mlbb",
+                external_variant_id="60",
+                is_active=True,
+            ),
+            SkuSupplierMapping(
+                sku_id=skus[1].id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id="mlbb_ru",
+                external_variant_id="60",
+                is_active=True,
+            ),
+        ]
+    )
+    await db_session.commit()
+    return brand.slug
+
+
+@respx.mock
+async def test_a_retired_product_s_mapping_does_not_block_the_live_one(
+    client: httpx.AsyncClient, seed_split_brand_with_retired_region: str
+) -> None:
+    """A deactivated region product left with an active mapping must not make
+    the brand look ambiguous forever — only the live product's code counts."""
+    route = respx.post(url__regex=r".*/games/checkPlayerId").mock(
+        return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
+    )
+    r = await client.post(
+        f"/api/v1/catalog/brands/{seed_split_brand_with_retired_region}/check-player",
+        json={"player_id": "51234567"},
+    )
+    assert r.status_code == 200
+    assert r.json()["status"] == "valid"
+    assert route.call_count == 1
+
+
 async def test_not_checkable_product_422(client, seed_plain_product: Product) -> None:
     # NOTE: the task brief's global constraints and design spec both say "→ 400"
     # for a non-checkable brand. `player_check.check_player_for_brand_id` raises
