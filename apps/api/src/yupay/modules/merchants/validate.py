@@ -40,6 +40,14 @@ question the merchant did not ask. Visibility is the only permanent,
 per-merchant-surface property in that list, and it is the only one that
 governs enumeration.
 
+What this scoping does and does not hide, said plainly: the SKUs and prices
+of a withheld brand are never revealed to a merchant who cannot see it. The
+*existence* of an unlisted brand slug is — ``unknown_brand`` and
+``not_b2b_visible`` are two different answers, so a signed reseller who
+guesses a slug learns whether it names a real brand. Accepted, not closed:
+every active brand already has a public retail page, so a brand's existence
+is not a secret this endpoint would be the first to give away.
+
 ## PII
 
 ``player_id`` is the reseller's **end customer's** identifier (a game player
@@ -139,9 +147,12 @@ async def _checkable_brand(db: AsyncSession, *, brand_slug: str) -> str:
     a transient state that moves between a merchant's poll and their order, so
     filtering on it here would 404 a brand ``/catalog`` still lists as
     checkable. A brand withheld from B2B (or visible with no B2B-visible SKU)
-    is not checkable, so this endpoint cannot be used to enumerate what
-    ``/catalog`` hides — but it also cannot be *stricter* than what
-    ``/catalog`` shows.
+    is not checkable, and this cannot be *stricter* than what ``/catalog``
+    shows. It is not fully non-enumerating, though: ``unknown_brand`` vs.
+    ``not_b2b_visible`` still lets a signed reseller learn that a guessed
+    slug names a real (if withheld) brand — never its SKUs or prices. See
+    the module docstring's "What a merchant may check" for why that is
+    accepted.
 
     One statement, not two: the visible-SKU test rides along as a correlated
     ``EXISTS`` on the brand row rather than a second round trip — the same
