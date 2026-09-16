@@ -9,6 +9,7 @@ import time
 from datetime import datetime, timedelta
 from decimal import Decimal
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 import pytest
 from httpx import AsyncClient
@@ -695,3 +696,65 @@ async def test_provider_volume_counts_the_markup_on_a_steam_order(
 
     click = next(p for p in out.payments if p.provider == "click")
     assert click.volume_usd == Decimal("11.30"), "the markup is ours and belongs in the volume"
+
+
+async def test_a_day_cell_and_the_day_behind_it_are_the_same_day(
+    db_session: AsyncSession,
+) -> None:
+    """The calendar's cell and its click-through must cover one window.
+
+    `date_trunc('day', <timestamptz>)` cuts in the *session* timezone — UTC on
+    prod — while the calendar means the day an operator lives in, five hours
+    east. Observed: a cell read $674.43 for 6 September and opening it showed
+    $100.31, because the cell was a UTC day and the click asked for a Tashkent
+    one. Nothing on screen could tell you which you were reading.
+
+    Pinned with a sale at 21:00 Tashkent, which is 16:00 UTC the same day, and
+    one at 02:00 Tashkent, which is 21:00 UTC the day *before*. Bucketed in UTC
+    the two land on different dates; bucketed locally they land on one.
+    """
+    sku_with, _ = await _seed_catalog(db_session)
+    local = ZoneInfo("Asia/Tashkent")
+    evening = datetime(2026, 9, 6, 21, 0, tzinfo=local)
+    small_hours = datetime(2026, 9, 6, 2, 0, tzinfo=local)
+    for moment in (evening, small_hours):
+        order = Order(
+            id=new_id(),
+            user_id=None,
+            guest_email="g@example.com",
+            status="delivered",
+            currency="USD",
+            total_usd=Decimal("1.00"),
+            total_charged=Decimal("1.00"),
+            created_at=moment,
+            paid_at=moment,
+            expires_at=moment + timedelta(hours=1),
+        )
+        db_session.add(order)
+        await db_session.flush()
+        db_session.add(
+            OrderItem(
+                id=new_id(),
+                order_id=order.id,
+                sku_id=sku_with,
+                qty=1,
+                unit_price_usd=Decimal("1.00"),
+            )
+        )
+    await db_session.flush()
+
+    # Exactly the window the calendar sends when its 6 September cell is
+    # clicked: local midnight to local midnight, `until` exclusive.
+    out = await svc.build_business_analytics(
+        db_session,
+        since=datetime(2026, 9, 6, tzinfo=local),
+        until=datetime(2026, 9, 7, tzinfo=local),
+    )
+
+    assert [p.date.isoformat() for p in out.revenue_series] == ["2026-09-06"], (
+        "one local day is one bucket, not two"
+    )
+    point = out.revenue_series[0]
+    assert point.orders == 2
+    # And the cell agrees with the headline it opens into.
+    assert point.revenue_usd == out.summary.gmv_usd

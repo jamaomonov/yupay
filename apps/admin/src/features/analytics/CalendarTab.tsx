@@ -43,7 +43,15 @@ const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
 
 const DAY_MS = 86_400_000;
 
-/** Local midnight, formatted as the API's `since`/`until` expect. */
+/** Local midnight, formatted as the API's `since`/`until` expect.
+ *
+ *  "Local" is the *browser's* clock, and the server buckets its day series on
+ *  Asia/Tashkent (`_local_day` in `stats/analytics/business.py`). The two agree
+ *  for an operator sitting in Uzbekistan, which is every operator today, and
+ *  disagree by the offset for one who is not — the cell would again be a
+ *  different 24 hours from the window its click opens. If the admin ever has a
+ *  user outside UZ, this is the line that has to build Tashkent midnight
+ *  explicitly rather than trusting the host clock. */
 function isoAt(year: number, month: number, day: number): string {
   return new Date(year, month, day).toISOString();
 }

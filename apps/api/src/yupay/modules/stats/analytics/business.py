@@ -41,6 +41,22 @@ from yupay.modules.users.models import User
 _LOCAL_TZ = "Asia/Tashkent"
 
 
+def _local_day(column: InstrumentedAttribute[datetime | None]) -> ColumnElement[datetime]:
+    """``column`` truncated to a day on the clock the business runs on.
+
+    `date_trunc('day', <timestamptz>)` cuts in the *session* timezone, which is
+    UTC on prod. That is five hours off the day an operator means, and the
+    calendar made the gap visible: a cell said $674.43 for "6 сентября" because
+    it was showing the UTC day, while clicking it asked for the Tashkent day and
+    got $100.31. Same data, two different 24-hour windows, no way to tell from
+    the screen which one you were reading.
+
+    So every day bucket on this tab is cut here, in one place, the same way
+    `_hourly` already cut its hours.
+    """
+    return func.date_trunc("day", func.timezone(_LOCAL_TZ, column))
+
+
 @dataclass(frozen=True, slots=True)
 class Scope:
     """The period every figure on the business tab is computed over.
@@ -291,7 +307,7 @@ async def _revenue_series(db: AsyncSession, window: Scope) -> list[RevenuePoint]
     the number of lines on each order. They are joined by date in Python,
     where that cannot happen.
     """
-    day = func.date_trunc("day", Order.paid_at)
+    day = _local_day(Order.paid_at)
     # Same basis as the GMV headline — the two must not disagree.
     gross = order_charged_usd_subq()
     stmt = (
@@ -313,7 +329,7 @@ async def _revenue_series(db: AsyncSession, window: Scope) -> list[RevenuePoint]
     )
     rows = (await db.execute(stmt)).all()
 
-    item_day = func.date_trunc("day", Order.paid_at)
+    item_day = _local_day(Order.paid_at)
     margins = (
         select(item_day.label("d"), *_margin_parts())
         .select_from(OrderItem)
@@ -564,7 +580,7 @@ async def _top_skus(db: AsyncSession, window: Scope) -> list[SkuRevenueOut]:
 
 
 async def _customers(db: AsyncSession, window: Scope) -> CustomersOut:
-    day = func.date_trunc("day", User.created_at)
+    day = _local_day(User.created_at)
     new_rows = (
         await db.execute(
             select(day.label("d"), func.count())
