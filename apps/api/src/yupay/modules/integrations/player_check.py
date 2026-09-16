@@ -65,17 +65,6 @@ _BREAKER_COOLDOWN_SECONDS = 30
 _KNOWN_PROVIDERS = ("g2b", "waxpeer")
 
 
-def _checkable_provider(required_fields: list[dict[str, Any]]) -> str | None:
-    """The ``check.provider`` of the product's first checkable field, if any."""
-    f = _field_of(required_fields)
-    return str(f["check"]["provider"]) if f is not None else None
-
-
-def product_is_checkable(required_fields: list[dict[str, Any]]) -> bool:
-    """True when any form field opts into a supported (g2b or waxpeer) player check."""
-    return _checkable_provider(required_fields) is not None
-
-
 def _field_of(required_fields: list[dict[str, Any]]) -> dict[str, Any] | None:
     """The first form field that opts into a supported check, or ``None``."""
     for f in required_fields:

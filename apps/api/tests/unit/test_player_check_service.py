@@ -5,19 +5,10 @@ from __future__ import annotations
 from yupay.modules.integrations import player_check as pc
 
 
-def test_product_is_checkable_true_when_field_has_g2b_check() -> None:
-    fields = [
-        {"key": "player_id", "label": {"ru": "ID"}, "type": "text", "check": {"provider": "g2b"}}
-    ]
-    assert pc.product_is_checkable(fields) is True
-
-
-def test_product_is_checkable_false_without_check() -> None:
-    fields = [{"key": "player_id", "label": {"ru": "ID"}, "type": "text"}]
-    assert pc.product_is_checkable(fields) is False
-
-
-def test_product_is_checkable_true_when_field_has_waxpeer_check() -> None:
+def test_field_of_recognises_a_waxpeer_check_too() -> None:
+    """`_field_of`'s known-provider set is `{g2b, waxpeer}`, not just `g2b` —
+    the only assertion left that pins Waxpeer in once `product_is_checkable`
+    (and its `_checkable_provider` helper) were dropped as dead code."""
     fields = [
         {
             "key": "steam_login",
@@ -26,7 +17,9 @@ def test_product_is_checkable_true_when_field_has_waxpeer_check() -> None:
             "check": {"provider": "waxpeer"},
         }
     ]
-    assert pc.product_is_checkable(fields) is True
+    f = pc._field_of(fields)
+    assert f is not None
+    assert f["key"] == "steam_login"
 
 
 def test_map_g2b_response_valid() -> None:
