@@ -64,12 +64,13 @@ pair, or a near-miss, shows up.
 - A future two-game brand fails loudly (`error` + log) instead of quietly
   checking the wrong game.
 
-## Deferred
+## Declined
 
 The spec's §5.6 admin banner — the supplier detail page listing any brand
-whose active `g2b/game` mappings span two codes — is not built in this
-release. Until it is, the signals a brand mid-split (or simply
-misconfigured) are: the `player_check_brand_spans_games` and
+whose active `g2b/game` mappings span two codes — was declined by the owner
+on 2026-09-17 after the release shipped: no such brand exists on prod, and
+the case only arises from a mistaken mapping edit. The signals for a brand
+mid-split (or simply misconfigured) remain: the `player_check_brand_spans_games` and
 `player_check_brand_config_mismatch` warnings logged by
 `integrations/player_check.py`, and the pre-seed SQL checks in
 `docs/superpowers/plans/2026-09-16-brand-level-player-check.md`'s Rollout
