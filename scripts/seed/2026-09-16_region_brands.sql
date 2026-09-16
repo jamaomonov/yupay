@@ -12,27 +12,33 @@
 --
 -- Idempotent: brand rows are inserted only when the slug is absent, the
 -- product move is a no-op once done, translations upsert on (brand_id, locale),
--- FAQs on the NEW brands are rebuilt delete-then-insert, and the one FAQ added
--- to each GLOBAL brand is guarded by its question text. Wrapped in one
--- transaction. A no-op on a database that lacks the source brands (dev).
+-- FAQs on the NEW brands are rebuilt delete-then-insert — a re-run discards
+-- any admin edits to the RU brands' FAQs — and the one FAQ added to each
+-- GLOBAL brand is guarded by its question text. Wrapped in one transaction.
+-- A no-op on a database that lacks the source brands (dev).
 
 BEGIN;
 
 -- ---------------------------------------------------------------------------
--- 1. Brands. Every column copied from the source brand except slug, sort_order
---    (right after the source) and timestamps. `visible_b2b` is copied on
---    purpose: MLBB is B2B-visible with 38 SKUs, and the RU half must stay so.
+-- 1. Brands. Every column copied from the source brand except slug and
+--    timestamps. `visible_b2b` is copied on purpose: MLBB is B2B-visible with
+--    38 SKUs, and the RU half must stay so.
+--    `sort_order` is copied AS-IS, not `+ 1`: it is a consecutive index with
+--    no gaps, so `+ 1` collides with whatever brand already sits at the
+--    source's next slot. The catalog orders by `(sort_order, slug)`, and with
+--    an equal `sort_order` the slug tiebreak puts `<slug>-ru` immediately
+--    after `<slug>` by construction.
 -- ---------------------------------------------------------------------------
 
 INSERT INTO brands (id, slug, category_id, logo_url, hero_image_url, accent_color, sort_order, active, maintenance, visible_b2b)
 SELECT gen_random_uuid(), 'mobile-legends-ru', b.category_id, b.logo_url, b.hero_image_url, b.accent_color,
-       b.sort_order + 1, b.active, b.maintenance, b.visible_b2b
+       b.sort_order, b.active, b.maintenance, b.visible_b2b
 FROM brands b WHERE b.slug = 'mobile-legends'
   AND NOT EXISTS (SELECT 1 FROM brands WHERE slug = 'mobile-legends-ru');
 
 INSERT INTO brands (id, slug, category_id, logo_url, hero_image_url, accent_color, sort_order, active, maintenance, visible_b2b)
 SELECT gen_random_uuid(), 'magic-chess-gogo-ru', b.category_id, b.logo_url, b.hero_image_url, b.accent_color,
-       b.sort_order + 1, b.active, b.maintenance, b.visible_b2b
+       b.sort_order, b.active, b.maintenance, b.visible_b2b
 FROM brands b WHERE b.slug = 'magic-chess-gogo'
   AND NOT EXISTS (SELECT 1 FROM brands WHERE slug = 'magic-chess-gogo-ru');
 
@@ -214,11 +220,11 @@ FROM first_faq ff
 JOIN (
     VALUES
         ('ru', $q$У меня российский аккаунт — это та страница?$q$,
-            $a$Нет. Эта страница — для глобального аккаунта (цены в игре в долларах или другой валюте). Для российского аккаунта (цены в рублях) есть отдельная страница с пометкой RU — ссылка на неё рядом с полем ID. Пополнение с неверной страницы на аккаунт не попадёт.$a$),
+            $a$Нет. Эта страница — для глобального аккаунта (цены в игре в долларах или другой валюте). Для российского аккаунта (цены в рублях) есть отдельная страница с пометкой RU — ссылка на неё над списком пакетов, а если проверка ID не нашла игрока — подсказка прямо под полем. Пополнение с неверной страницы на аккаунт не попадёт.$a$),
         ('en', $q$I have a Russian account — is this the right page?$q$,
-            $a$No. This page is for a global account (in-game prices in dollars or another currency). A Russian account (rouble prices) has its own page marked RU — the link is next to the ID field. A top-up from the wrong page will not reach the account.$a$),
+            $a$No. This page is for a global account (in-game prices in dollars or another currency). A Russian account (rouble prices) has its own page marked RU — the link is above the package list, and if the ID check finds nobody, a hint appears right under the field. A top-up from the wrong page will not reach the account.$a$),
         ('uz', $q$Mening akkauntim Rossiya — bu oʻsha sahifami?$q$,
-            $a$Yoʻq. Bu sahifa global akkaunt uchun (oʻyindagi narxlar dollarda yoki boshqa valyutada). Rossiya akkaunti (rubl narxlari) uchun RU belgili alohida sahifa bor — havola ID maydoni yonida. Notoʻgʻri sahifadan toʻldirish akkauntga tushmaydi.$a$)
+            $a$Yoʻq. Bu sahifa global akkaunt uchun (oʻyindagi narxlar dollarda yoki boshqa valyutada). Rossiya akkaunti (rubl narxlari) uchun RU belgili alohida sahifa bor — havola paketlar roʻyxati ustida, agar ID tekshiruvi oʻyinchini topmasa — maydon ostida koʻrsatma. Notoʻgʻri sahifadan toʻldirish akkauntga tushmaydi.$a$)
 ) AS x(locale, question, answer) ON true;
 
 -- ---------------------------------------------------------------------------
