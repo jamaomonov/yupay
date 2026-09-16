@@ -222,8 +222,12 @@ JOIN (
 ) AS x(locale, question, answer) ON true;
 
 -- ---------------------------------------------------------------------------
--- 6. Blog: whatever guides are attached to the global brand also show on the
---    RU one. `blog_post_brands` PK is (post_id, brand_id).
+-- 6. Blog: the guides written for the global brand get the RU brand as a
+--    related brand, so a reader of the MLBB guide sees a chip to both pages.
+--    This does NOT put those guides on the RU brand page — the page's guide
+--    block reads `primary_brand_id` only (blog/service.py `_brand_page`); a
+--    guide for the RU page is a post of its own, or a re-primaried one.
+--    `blog_post_brands` PK is (post_id, brand_id).
 -- ---------------------------------------------------------------------------
 
 INSERT INTO blog_post_brands (post_id, brand_id)
