@@ -67,3 +67,16 @@ test("how-to markdown uses a guide title and step/price/faq sections", async () 
   expect(out).toContain("## Цены и номиналы");
   expect(out).toContain("## Частые вопросы");
 });
+
+test("keeps a numbered how-to as a list, not one run-on line", async () => {
+  // `oneLine` collapses every whitespace run, which is right for a one-line
+  // list description and wrong here: on prod the Steam gifts hub rendered
+  // "1. Найдите игру… 2. Выберите издание… 3. Вставьте ссылку…" as a single
+  // paragraph. The steps survived; the structure did not — and structure is
+  // the whole reason we serve Markdown to agents rather than stripped HTML.
+  const { brandMarkdown } = await import("./markdown");
+  const md = await brandMarkdown("ru", "steam");
+
+  expect(md).toContain("Шаг 1\nШаг 2");
+  expect(md).not.toContain("Шаг 1 Шаг 2");
+});

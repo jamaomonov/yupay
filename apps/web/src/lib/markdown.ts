@@ -24,6 +24,26 @@ const SUMMARY =
 
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
 
+/**
+ * A prose block, with its shape intact.
+ *
+ * `oneLine` is right for a list-item description and wrong for anything
+ * longer: `instructions` is a numbered how-to, and collapsing it produced one
+ * run-on paragraph reading "1. Найдите игру… 2. Выберите издание…" — the steps
+ * were still there, the structure was not, and Markdown is the format we chose
+ * precisely so a reader gets the structure.
+ *
+ * Only horizontal whitespace is squeezed; line breaks survive, so numbered
+ * lines stay list items, and runs of blank lines collapse to a single
+ * paragraph break.
+ */
+const block = (s: string): string =>
+  s
+    .replace(/[^\S\n]+/g, " ")
+    .replace(/[^\S\n]*\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
 function brandList(brands: BrandSummary[]): string {
   return brands
     .map((b) => {
@@ -112,9 +132,9 @@ export async function howToMarkdown(locale: string, slug: string): Promise<strin
 
   const out: string[] = [`# ${L.title(brand.name)}`, ``];
   const intro = firstNonEmpty(brand.short_description, brand.description);
-  if (intro) out.push(oneLine(intro), ``);
+  if (intro) out.push(block(intro), ``);
 
-  if (brand.instructions) out.push(`## ${L.steps}`, oneLine(brand.instructions), ``);
+  if (brand.instructions) out.push(`## ${L.steps}`, block(brand.instructions), ``);
 
   const products = await Promise.all(
     (brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY).catch(() => null)),
@@ -127,7 +147,7 @@ export async function howToMarkdown(locale: string, slug: string): Promise<strin
       break;
     }
   }
-  if (where) out.push(`## ${L.where}`, oneLine(where), ``);
+  if (where) out.push(`## ${L.where}`, block(where), ``);
 
   const priced = products.filter(
     (p): p is NonNullable<typeof p> => p !== null && p.skus.length > 0,
@@ -143,7 +163,7 @@ export async function howToMarkdown(locale: string, slug: string): Promise<strin
 
   if (brand.faqs && brand.faqs.length > 0) {
     out.push(`## ${L.faq}`);
-    for (const f of brand.faqs) out.push(``, `### ${f.question}`, oneLine(f.answer));
+    for (const f of brand.faqs) out.push(``, `### ${f.question}`, block(f.answer));
     out.push(``);
   }
 
@@ -159,7 +179,7 @@ export async function brandMarkdown(locale: string, slug: string): Promise<strin
 
   const out: string[] = [`# ${brand.name}`, ``];
   const desc = firstNonEmpty(brand.short_description, brand.description);
-  if (desc) out.push(oneLine(desc), ``);
+  if (desc) out.push(block(desc), ``);
   if (brand.highlights && brand.highlights.length > 0) {
     out.push(`**Преимущества:** ${brand.highlights.join(" · ")}`, ``);
   }
@@ -178,11 +198,11 @@ export async function brandMarkdown(locale: string, slug: string): Promise<strin
     out.push(``);
   }
 
-  if (brand.instructions) out.push(`## Как пополнить`, oneLine(brand.instructions), ``);
+  if (brand.instructions) out.push(`## Как пополнить`, block(brand.instructions), ``);
 
   if (brand.faqs && brand.faqs.length > 0) {
     out.push(`## Частые вопросы`);
-    for (const f of brand.faqs) out.push(``, `### ${f.question}`, oneLine(f.answer));
+    for (const f of brand.faqs) out.push(``, `### ${f.question}`, block(f.answer));
     out.push(``);
   }
 

@@ -1,4 +1,6 @@
 import { LOCALES } from "@yupay/i18n";
+
+import { markdownUrl } from "@/lib/markdown-paths";
 import { uzsWord } from "@yupay/utils";
 
 import type { Metadata } from "next";
@@ -102,7 +104,17 @@ export function alternates(locale: string, path = "") {
   const languages: Record<string, string> = {};
   for (const l of LOCALES) languages[l] = localeUrl(l, path);
   languages["x-default"] = localeUrl("ru", path);
-  return { canonical: localeUrl(locale, path), languages };
+  // `types` becomes `<link rel="alternate" type="text/markdown">`. The page
+  // already answers `Accept: text/markdown`, but an agent that arrived from a
+  // search result has no way to guess that — content negotiation is invisible
+  // once you already hold the HTML. `llms.txt` only names the entry points, so
+  // without this the Markdown view is reachable only by knowing it exists.
+  const md = markdownUrl(SITE, locale, path);
+  return {
+    canonical: localeUrl(locale, path),
+    languages,
+    ...(md ? { types: { "text/markdown": md } } : {}),
+  };
 }
 
 /** hreflang only for locales that have a blog translation row. */

@@ -2,28 +2,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import createMiddleware from "next-intl/middleware";
 
 import { routing } from "./i18n/routing";
+import { supportsMarkdown } from "./lib/markdown-paths";
 
 const intlMiddleware = createMiddleware(routing);
 
 /** `/ru`, `/ru/anything` — the prefix next-intl strips for the default locale. */
 const DEFAULT_PREFIX = new RegExp(`^/${routing.defaultLocale}(?=/|$)`);
-
-/**
- * Pages we can serve as Markdown for agents (after stripping an optional
- * locale prefix): home, store index, a brand page, its how-to, blog index,
- * and a published blog slug.
- */
-function supportsMarkdown(pathname: string): boolean {
-  const p = pathname.replace(/^\/(ru|en|uz)(?=\/|$)/, "") || "/";
-  return (
-    p === "/" ||
-    p === "/store" ||
-    p === "/blog" ||
-    /^\/store\/[^/]+$/.test(p) ||
-    /^\/store\/[^/]+\/how-to$/.test(p) ||
-    /^\/blog\/[^/]+$/.test(p)
-  );
-}
 
 /**
  * Is this a React Server Component payload request rather than a document?
