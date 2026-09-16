@@ -232,16 +232,26 @@ export default function TopUp() {
   useEffect(() => {
     setRegion(linkedRegion);
   }, [linkedRegion]);
-  const regions = hasRuTwin(baseId, gameSlugs);
+  const showRegionPicker = hasRuTwin(baseId, gameSlugs);
   const brandSlug = regionSlug(baseId, region);
 
   const game = gamesQuery.data?.find((g) => g.id === baseId);
   // `undefined` (not `brandSlug`) for the steam-gifts brand: the redirect
   // effect above is about to navigate away, so there's no point spending a
   // brand-summary fetch on a screen this route never actually renders.
-  // `useBrandSummary`'s own `enabled: Boolean(gameId)` gate picks this up.
+  // `useBrandSummary`'s own `enabled` gate — it disables itself whenever its
+  // argument is falsy — picks this up.
   const brandQuery = useBrandSummary(gameId === "steam-gifts" ? undefined : brandSlug);
   const products = brandQuery.data?.products ?? [];
+  // Reviews are the game's reviews, not the region's: the rating chip (and
+  // the sheet it opens, below) always read the BASE brand's summary. Only
+  // fetched as a second query when region and base diverge — when region is
+  // "global" `brandQuery` already *is* the base brand's summary, so this
+  // stays disabled and costs nothing.
+  const baseSummary = useBrandSummary(
+    showRegionPicker && brandSlug !== baseId ? baseId : undefined,
+  );
+  const gameRating = (baseSummary.data ?? brandQuery.data)?.rating;
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
   const [reviewsOpen, setReviewsOpen] = useState(false);
@@ -474,7 +484,17 @@ export default function TopUp() {
     return null;
   }
 
-  if (gamesQuery.isLoading || brandQuery.isLoading) {
+  // Gated on the *card* data (the games list), not the brand fetch: a region
+  // switch changes `brandQuery`'s query key with no placeholder data, so
+  // `brandQuery.isLoading` goes true again for the sibling brand's first
+  // fetch. Gating the full-page skeleton on that blanked the hero, the
+  // region chips the customer just tapped, and the filled id field. Once the
+  // games list itself has loaded, `game` is either found (render the page —
+  // the packages block below renders its own `PackagesSkeleton` while
+  // `productQuery`, which follows the brand, is loading) or genuinely absent
+  // (fall through to "not found" below) — neither case should keep showing
+  // this skeleton.
+  if (gamesQuery.isLoading) {
     return (
       <PageSkeleton
         slug={brandSlug}
@@ -1027,7 +1047,7 @@ export default function TopUp() {
                       {t(isVoucher ? "topup.autoIssue" : "topup.autoCredit")}
                     </span>
                   </div>
-                  {brandQuery.data?.rating && brandQuery.data.rating.count > 0 && (
+                  {gameRating && gameRating.count > 0 && (
                     <button
                       type="button"
                       onClick={() => {
@@ -1038,11 +1058,9 @@ export default function TopUp() {
                     >
                       <Star size={10} className="fill-amber-400 text-amber-400" />
                       <span className="text-[10px] font-semibold text-white">
-                        {brandQuery.data.rating.avg.toFixed(1)}
+                        {gameRating.avg.toFixed(1)}
                       </span>
-                      <span className="text-[10px] text-white/50">
-                        ({brandQuery.data.rating.count})
-                      </span>
+                      <span className="text-[10px] text-white/50">({gameRating.count})</span>
                     </button>
                   )}
                 </div>
@@ -1102,7 +1120,7 @@ export default function TopUp() {
             {/* Region picker — only for a brand with a `-ru` twin (ADR-0079).
                 Same chip styling as the product picker below, minus the
                 image slot: there's nothing to show but the region name. */}
-            {regions && (
+            {showRegionPicker && (
               <div>
                 <div className="mb-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">

@@ -147,7 +147,7 @@
   "topup.pickRegion": "Akkaunt mintaqasi",
   "topup.regionGlobal": "Global",
   "topup.regionRu": "Rossiya (RU)",
-  "topup.regionHint": "Oʻyinda narxlar rublda boʻlsa — RU ni tanlang",
+  "topup.regionHint": "O'yinda narxlar rublda bo'lsa — RU ni tanlang",
   "topup.optionsCount": {
     "one": "{count} ta variant",
     "few": "{count} ta variant",
