@@ -1,6 +1,6 @@
 # 0048. Sell Mobile Legends as two region products, and guard the choice
 
-- **Status**: Accepted
+- **Status**: Superseded by [0079](./0079-region-brands-and-brand-level-player-check.md)
 - **Date**: 2026-08-09
 - **Deciders**: @jamaomonov
 - **Tags**: catalog | product | integrations

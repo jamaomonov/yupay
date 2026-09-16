@@ -456,3 +456,10 @@ cache was for. Negatives re-ask the supplier; the route's own rate bucket and
 the breaker already bound how often. Waxpeer's `msg` on a negative is now
 logged as `reason` (it is the supplier's text, not the login), because the flake
 had left no trace to tell "no such profile" from "try again".
+
+## Amendment — 2026-09-16: the check is per brand
+
+`POST /catalog/products/{id}/check-player` is gone; the storefront and the
+reseller API both check per **brand** (`POST /catalog/brands/{slug}/check-player`,
+`validate/player {brand}`), because a brand is one supplier game — ADR-0079
+carries the reasoning and the MLBB/MCGG split that made it true.
