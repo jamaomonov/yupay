@@ -199,7 +199,6 @@
     "checkNickname": "Nickname: {name}",
     "checkFailed": "ID check is temporarily unavailable — make sure the ID is correct",
     "checkNeedsId": "Enter {label} first",
-    "checkNeedsSku": "Pick a package first — it decides which account we check",
     "checkNeedsServer": "Enter {label} first",
     "checkNotFound": "Player not found",
     "paymentTitle": "Payment method",

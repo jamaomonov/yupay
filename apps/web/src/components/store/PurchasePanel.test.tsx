@@ -9,6 +9,7 @@ import { PurchasePanel } from "./PurchasePanel";
 import type { ProductDetail } from "@/lib/catalog";
 
 import { AUTO_OPEN_PARAM } from "@/lib/payment-return";
+import * as playerCheck from "@/lib/player-check";
 import { formatUzs } from "@/lib/seo";
 
 vi.mock("next-intl", () => ({
@@ -653,48 +654,30 @@ it("keeps the check blocked when only the server id is filled in", async () => {
   expect(screen.getByText("checkNeedsId")).toBeInTheDocument();
 });
 
-it("will not check a region-split brand until a package is picked", async () => {
-  // Two products = one per account region (ADR-0048). The form renders from
-  // products[0] so it is usable immediately, but running the lookup against
-  // that arbitrary product verifies a Russian id against the global game and
-  // calls it not-found — the FAQ then sends the buyer to the wrong region.
+it("checks before a package is picked, however many products the brand sells", async () => {
+  // A brand is one game now (ADR-0079), so there is nothing a package choice
+  // could change about which account is checked. The old gate cost PUBG's
+  // five-product page a click for a distinction that only ever applied to
+  // MLBB — which is two brands today.
   mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
-  // Two SKUs each: a lone SKU auto-selects (see `skuId`'s initialiser), and
-  // the real products carry 13 and 10 denominations, so nothing is picked for
-  // the customer.
   const base = makeProduct();
-  const global: ProductDetail = {
-    ...base,
-    required_fields: MLBB_FIELDS,
-    skus: [
-      { ...base.skus[0]!, id: "sku-1", sku_code: "MLBB-86" },
-      { ...base.skus[0]!, id: "sku-1b", sku_code: "MLBB-172" },
-    ],
-  };
-  const ru: ProductDetail = {
-    ...global,
+  const uc: ProductDetail = { ...base, required_fields: MLBB_FIELDS };
+  const pass: ProductDetail = {
+    ...uc,
     id: "prod-2",
-    slug: "mlbb-diamonds-ru",
-    skus: [
-      { ...base.skus[0]!, id: "sku-2", sku_code: "MLBB-RU-86" },
-      { ...base.skus[0]!, id: "sku-2b", sku_code: "MLBB-RU-172" },
-    ],
+    slug: "pubg-royal-pass",
+    skus: [{ ...base.skus[0]!, id: "sku-2", sku_code: "PUBG-RP" }],
   };
-  renderPanel(<PurchasePanel products={[global, ru]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[uc, pass]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
-
   fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
     target: { value: "1313232551" },
   });
   fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
-
-  // Both ids present and still blocked: which product to ask is the open
-  // question, and no amount of typing answers it.
-  const checkBtn = screen.getByRole("button", { name: "check" });
-  expect(checkBtn).toHaveAttribute("aria-disabled", "true");
-  expect(screen.getByText("checkNeedsSku")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "check" })).toHaveAttribute("aria-disabled", "false");
+  expect(screen.queryByText("checkNeedsSku")).not.toBeInTheDocument();
 });
 
 it("checks straight away on a single-product brand", async () => {
@@ -715,6 +698,37 @@ it("checks straight away on a single-product brand", async () => {
 
   expect(screen.getByRole("button", { name: "check" })).toHaveAttribute("aria-disabled", "false");
   expect(screen.queryByText("checkNeedsSku")).not.toBeInTheDocument();
+});
+
+it("keeps the verdict when the customer switches package inside the brand", async () => {
+  // The verdict answers for the brand's game, and every package of the brand
+  // is that game — invalidating it on a package switch made the customer
+  // re-check the same id for nothing.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  vi.spyOn(playerCheck, "checkPlayer").mockResolvedValue({ status: "valid", name: "Neo" });
+  const base = makeProduct();
+  const a: ProductDetail = {
+    ...base,
+    required_fields: MLBB_FIELDS,
+    skus: [
+      // `denomination: null` so the tile falls back to `sku_code` (the file's
+      // fixture inherits `denomination: "$10"` from `makeProduct()`'s base
+      // SKU, which would make both tiles read identically and leave
+      // `getByText("A-2")` with nothing unique to find).
+      { ...base.skus[0]!, id: "sku-a", sku_code: "A-1", denomination: null },
+      { ...base.skus[0]!, id: "sku-b", sku_code: "A-2", denomination: null },
+    ],
+  };
+  renderPanel(<PurchasePanel products={[a]} locale="ru" />);
+  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
+    target: { value: "1313232551" },
+  });
+  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
+  fireEvent.click(screen.getByRole("button", { name: "check" }));
+  expect(await screen.findByText(/Neo/)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("A-2"));
+  expect(screen.getByText(/Neo/)).toBeInTheDocument();
 });
 
 it("keeps Pay disabled until the checkable field passes verification", async () => {
@@ -781,10 +795,15 @@ it("enables Pay once the checkable field's check comes back valid", async () => 
   expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
 });
 
-it("drops a confirmed nickname when the package switches to another product", async () => {
-  // Found on prod with Playwright: verify a Russian id, then pick a global
-  // package, and the green pill stayed — a nickname confirmed against the
-  // other region, shown as reassurance for the one about to be paid for.
+it("keeps a confirmed nickname when the package switches to another product of the same brand", async () => {
+  // Used to be "drops a confirmed nickname..." — found on prod with
+  // Playwright under ADR-0048, where a two-product brand meant one product
+  // per account region and switching products meant switching which account
+  // was in question. ADR-0079 retired that shape: a region split is two
+  // brands now, so every product on one brand's page is the same game, and a
+  // verdict keyed by brand must survive a product switch, not just a SKU
+  // switch inside one product (the case the state-level `currentCheck` tests
+  // and the gate test above already cover).
   mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
   vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
     // `RequestInfo` covers `Request`, which stringifies to "[object Object]".
@@ -803,32 +822,33 @@ it("drops a confirmed nickname when the package switches to another product", as
 
   const base = makeProduct();
   // Distinct denominations so each package button is uniquely addressable.
-  const ruSkus = [
-    { ...base.skus[0]!, id: "sku-ru-1", sku_code: "MLBB-RU-86", denomination: "RU 86" },
-    { ...base.skus[0]!, id: "sku-ru-2", sku_code: "MLBB-RU-172", denomination: "RU 172" },
+  const packASkus = [
+    { ...base.skus[0]!, id: "sku-a-1", sku_code: "MLBB-86", denomination: "Pack A 86" },
+    { ...base.skus[0]!, id: "sku-a-2", sku_code: "MLBB-172", denomination: "Pack A 172" },
   ];
-  const globalSkus = [
-    { ...base.skus[0]!, id: "sku-gl-1", sku_code: "MLBB-86", denomination: "GL 86" },
-    { ...base.skus[0]!, id: "sku-gl-2", sku_code: "MLBB-172", denomination: "GL 172" },
+  const packBSkus = [
+    { ...base.skus[0]!, id: "sku-b-1", sku_code: "MLBB-RP", denomination: "Pack B RP" },
   ];
-  const globalProduct: ProductDetail = {
+  // Two products, same brand (neither overrides `brand`) — the shape every
+  // real multi-product brand page renders today (e.g. PUBG's five products).
+  const productA: ProductDetail = {
     ...base,
     required_fields: MLBB_FIELDS,
-    skus: globalSkus,
+    skus: packASkus,
   };
-  const ruProduct: ProductDetail = {
-    ...globalProduct,
-    id: "prod-ru",
-    slug: "mlbb-diamonds-ru",
-    skus: ruSkus,
+  const productB: ProductDetail = {
+    ...productA,
+    id: "prod-b",
+    slug: "mlbb-royal-pass",
+    skus: packBSkus,
   };
-  renderPanel(<PurchasePanel products={[globalProduct, ruProduct]} locale="ru" />);
+  renderPanel(<PurchasePanel products={[productA, productB]} locale="ru" />);
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
   });
 
-  // Pick the RU package, fill both ids, verify.
-  fireEvent.click(screen.getByRole("button", { name: /RU 86/ }));
+  // Pick a package on product A, fill both ids, verify.
+  fireEvent.click(screen.getByRole("button", { name: /Pack A 86/ }));
   fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
     target: { value: "1313232551" },
   });
@@ -837,125 +857,10 @@ it("drops a confirmed nickname when the package switches to another product", as
 
   expect(await screen.findByText("blood moon")).toBeInTheDocument();
 
-  // Switch to a package belonging to the other product.
-  fireEvent.click(screen.getByRole("button", { name: /GL 86/ }));
+  // Switch to a package belonging to product B — same brand, same game.
+  fireEvent.click(screen.getByRole("button", { name: /Pack B RP/ }));
 
-  expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
-});
-
-/**
- * Let React render, and nothing more.
- *
- * React schedules the render for a click in a microtask, so a bare
- * `dispatchEvent` leaves the DOM untouched; passive effects go through the
- * scheduler instead, which needs a whole *task*. Draining only microtasks
- * therefore lands exactly on the commit the click produced — the one a real
- * browser can paint, and a real customer can click Pay in, before any effect
- * has run.
- */
-async function drainMicrotasks(): Promise<void> {
-  for (let i = 0; i < 5; i += 1) await Promise.resolve();
-}
-
-it("stops Pay dead in the commit the package switches product, not a frame later", async () => {
-  // The fail-open half of the test above. Dropping the pill used to be a
-  // passive effect, and reporting the verdict upward a second one, so the
-  // commit that switched product painted the green pill for the *other*
-  // region — and the panel still held its `valid`, leaving Pay live. Effects
-  // flush in a later scheduler task (the browser may paint first), and this
-  // panel runs a wallet query and a provider fetch alongside, so a long task
-  // stretches the window. What fits inside it is an order paid for one
-  // region against an id verified for the other, which the refund policy
-  // calls unrecoverable.
-  //
-  // `fireEvent` wraps events in `act`, which flushes passive effects before
-  // returning — it cannot see this commit at all. So the switch is dispatched
-  // natively, with the act environment off (React warns otherwise), and read
-  // back after `drainMicrotasks` (React renders the click in a microtask) but
-  // before the scheduler's next *task*, which is where passive effects run.
-  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
-  vi.spyOn(globalThis, "fetch").mockImplementation((input: RequestInfo | URL) => {
-    const url = input instanceof Request ? input.url : String(input);
-    if (url.includes("check-player")) {
-      return Promise.resolve(
-        new Response(JSON.stringify({ status: "valid", name: "blood moon" }), { status: 200 }),
-      );
-    }
-    return Promise.resolve(
-      new Response(JSON.stringify({ providers: ALL_PROVIDERS_ACTIVE }), {
-        status: 200,
-      }),
-    );
-  });
-
-  const base = makeProduct();
-  const globalProduct: ProductDetail = {
-    ...base,
-    required_fields: MLBB_FIELDS,
-    skus: [
-      { ...base.skus[0]!, id: "sku-gl-1", sku_code: "MLBB-86", denomination: "GL 86" },
-      { ...base.skus[0]!, id: "sku-gl-2", sku_code: "MLBB-172", denomination: "GL 172" },
-    ],
-  };
-  const ruProduct: ProductDetail = {
-    ...globalProduct,
-    id: "prod-ru",
-    slug: "mlbb-diamonds-ru",
-    skus: [
-      { ...base.skus[0]!, id: "sku-ru-1", sku_code: "MLBB-RU-86", denomination: "RU 86" },
-      { ...base.skus[0]!, id: "sku-ru-2", sku_code: "MLBB-RU-172", denomination: "RU 172" },
-    ],
-  };
-  renderPanel(<PurchasePanel products={[globalProduct, ruProduct]} locale="ru" />);
-  await waitFor(() => {
-    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
-  });
-
-  // Everything the RU package needs to be payable: both ids, an email, a
-  // verified nickname.
-  fireEvent.click(screen.getByRole("button", { name: /RU 86/ }));
-  fireEvent.change(screen.getByPlaceholderText("playerIdPlaceholder"), {
-    target: { value: "1313232551" },
-  });
-  fireEvent.change(screen.getByLabelText("ID сервера *"), { target: { value: "6618" } });
-  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
-    target: { value: "buyer@example.com" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "check" }));
-
-  expect(await screen.findByText("blood moon")).toBeInTheDocument();
-  // The premise, and only the premise: Pay is genuinely live before the
-  // switch, so what follows is about the switch and not about some other
-  // unmet condition. Settled with `waitFor` on purpose — the *timing* of this
-  // direction is the test above's job, and pinning it here too would have
-  // this one fail before it reached the case it exists for.
-  await waitFor(() => {
-    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
-  });
-
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", false);
-  screen
-    .getByRole("button", { name: /GL 86/ })
-    .dispatchEvent(new MouseEvent("click", { bubbles: true }));
-  await drainMicrotasks();
-
-  // The commit under test: the switch is on screen and no effect has run yet.
-  // The id standing behind Pay is now unverified for the product being bought,
-  // and `blocksCheckout(null)` is `true` for a top-up — so Pay is already
-  // dead here, not one flush later.
-  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
-  expect(screen.getAllByText("payHintVerify").length).toBeGreaterThan(0);
-  // ...and the reassurance is gone in that same commit, rather than standing
-  // over a package it was never checked against.
-  expect(screen.queryByText("blood moon")).not.toBeInTheDocument();
-
-  // Hand the act environment back and let anything React still has queued run
-  // inside it, so teardown isn't left holding a pending flush.
-  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-  await act(async () => {
-    await Promise.resolve();
-  });
-  expect(screen.getByRole("button", { name: /^pay ·/i })).toBeDisabled();
+  expect(screen.getByText("blood moon")).toBeInTheDocument();
 });
 
 it("files a late answer under the id it asked about, never the one now on screen", async () => {

@@ -142,13 +142,13 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  *  everything the answer is about. `PlayerCheckVerdict` is this plus the
  *  answer; `CheckablePlayerField` also holds it for the in-flight press. */
 interface Question {
-  productId: string;
+  brandSlug: string;
   playerId: string;
   serverId: string | null;
 }
 
 function sameQuestion(a: Question, b: Question): boolean {
-  return a.productId === b.productId && a.playerId === b.playerId && a.serverId === b.serverId;
+  return a.brandSlug === b.brandSlug && a.playerId === b.playerId && a.serverId === b.serverId;
 }
 
 /**
@@ -161,7 +161,7 @@ function sameQuestion(a: Question, b: Question): boolean {
  * fault never blocks checkout — the customer can pay regardless.
  */
 function CheckablePlayerField({
-  productId,
+  brandSlug,
   label,
   value,
   onChange,
@@ -169,14 +169,13 @@ function CheckablePlayerField({
   required,
   serverId,
   serverLabel,
-  productChosen,
   help,
   placeholder,
   check,
   onCheckResult,
   t,
 }: {
-  productId: string;
+  brandSlug: string;
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -187,13 +186,9 @@ function CheckablePlayerField({
    *  when `check.server_field` names one — doubles as "server is required
    *  for this check" and as the text for the "fill it in first" hint below. */
   serverLabel: string | null;
-  /** False while the brand still offers more than one product and none is
-   *  picked — the check would run against an arbitrary one. See
-   *  `checkBlocker`. */
-  productChosen: boolean;
   help: string | null;
   placeholder: string;
-  /** The verdict that currently applies to `value` under `productId`, or
+  /** The verdict that currently applies to `value` under `brandSlug`, or
    *  `null` when none does (`currentCheck`). Handed down rather than kept
    *  here — and reported back up from the check handler rather than mirrored
    *  with an effect — because the panel gates Pay on it: an effect lands a
@@ -217,7 +212,7 @@ function CheckablePlayerField({
   // disabled, on a lookup whose answer is already going to be discarded.
   const [asking, setAsking] = useState<Question | null>(null);
   const checking =
-    asking !== null && sameQuestion(asking, { productId, playerId: value, serverId });
+    asking !== null && sameQuestion(asking, { brandSlug, playerId: value, serverId });
   // The same value, readable from inside an in-flight check: `asking` there is
   // whatever this press captured, so only a ref can say whether a *later*
   // press has since superseded it. Written and cleared in lockstep with the
@@ -236,7 +231,6 @@ function CheckablePlayerField({
     value,
     pattern,
     server: { required: serverLabel !== null, id: serverId },
-    productChosen,
   });
   // Set when the customer presses a button that cannot fire yet. A dimmed
   // control that swallows the click teaches nothing; pressing it should say
@@ -252,18 +246,18 @@ function CheckablePlayerField({
       setAttempted(true);
       return;
     }
-    // What the answer will be filed under: the product, the id and the server
+    // What the answer will be filed under: the brand, the id and the server
     // as they are at the moment of the press, never as they are when it lands.
     // A check that comes back after the customer has retyped is then simply
     // not read back (`currentCheck`), instead of being shown against an id
     // they no longer mean.
-    const asked: Question = { productId, playerId: value, serverId };
+    const asked: Question = { brandSlug, playerId: value, serverId };
     latestAsk.current = asked;
     setAsking(asked);
     try {
       // `runPlayerCheck` folds every fault into a `result`, so it cannot
       // reject: this reports at most once, and never throws past the caller.
-      const result = await runPlayerCheck(productId, { playerId: value, serverId });
+      const result = await runPlayerCheck(brandSlug, { playerId: value, serverId });
       // Reported straight from here, not from an effect — this verdict is the
       // one thing Pay reasons about, and an effect lands a commit later — and
       // only if this press is still the latest. Two checks can be in flight
@@ -418,11 +412,9 @@ function CheckablePlayerField({
       )}
       {hint && (
         <p role="status" className="text-tx-dim mt-2 px-1 text-[13px]">
-          {hint === "product"
-            ? t("checkNeedsSku")
-            : hint === "serverId"
-              ? t("checkNeedsServer", { label: serverLabel ?? "" })
-              : t("checkNeedsId", { label })}
+          {hint === "serverId"
+            ? t("checkNeedsServer", { label: serverLabel ?? "" })
+            : t("checkNeedsId", { label })}
         </p>
       )}
     </div>
@@ -1100,19 +1092,9 @@ export function PurchasePanel({
    *  verdict would never read back. */
   const serverIdFor = (f: FormField): string | null =>
     f.check?.server_field ? (form[f.check.server_field] ?? null) : null;
-  /** The check verdict that currently applies to a checkable field, or `null`
-   *  when none does — because the id or the server has been edited, or because
-   *  the package now points at another product (ADR-0048: a region-split brand
-   *  has one product per region, and a nickname verified against the other one
-   *  is reassurance for an account nobody is paying for; verified on prod,
-   *  where checking a Russian id and then picking a global package left the
-   *  pill standing).
-   *
-   *  The single derivation behind both the field's pill and `canPay` below,
-   *  evaluated in the render that changes either input, so no commit can show
-   *  a verified pill next to a Pay button the same commit still considers
-   *  payable. The `?? ""` product id is unreachable: with no `fieldsProduct`
-   *  there are no `fields`, so nothing calls this. */
+  // Keyed by brand: every package of a brand is the same game (ADR-0079), so
+  // a verdict survives a package switch and dies only with the id or the
+  // server.
   const currentFieldCheck = (f: FormField): PlayerCheckResult | null =>
     // The `!f.check` guard is not dead weight: both call sites pre-filter today,
     // but this file is queued for the same extraction the gift panel got, and a
@@ -1122,7 +1104,7 @@ export function PurchasePanel({
       ? null
       : currentCheck(
           checkResults[f.key],
-          fieldsProduct?.id ?? "",
+          fieldsProduct?.brand.slug ?? "",
           form[f.key] ?? "",
           serverIdFor(f),
         );
@@ -1842,7 +1824,7 @@ export function PurchasePanel({
                   f.check && fieldsProduct ? (
                     <CheckablePlayerField
                       key={f.key}
-                      productId={fieldsProduct.id}
+                      brandSlug={fieldsProduct.brand.slug}
                       label={label(f.label)}
                       value={form[f.key] ?? ""}
                       onChange={(v) => {
@@ -1850,19 +1832,6 @@ export function PurchasePanel({
                       }}
                       pattern={f.pattern}
                       required={f.required}
-                      // `fieldsProduct` falls back to `products[0]` so the
-                      // form is usable before a package is picked. Fine for
-                      // rendering the fields, wrong for the check, which is
-                      // scoped to one product: on a brand that splits a game
-                      // across regions (ADR-0048) it would verify a Russian id
-                      // against the global game and report it not found.
-                      // Deliberately not narrowed to the region case — the
-                      // storefront cannot see the supplier game codes, so
-                      // "more than one product" is the honest test. Costs a
-                      // brand like PUBG (three products, one game) a click the
-                      // customer was going to make anyway, since the package
-                      // list sits above this form.
-                      productChosen={selProduct !== undefined || products.length <= 1}
                       serverId={serverIdFor(f)}
                       serverLabel={
                         f.check.server_field

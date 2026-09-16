@@ -10,7 +10,7 @@ import { checkPlayer, type PlayerCheckResult } from "@/lib/player-check";
  * Named rather than boolean so the UI can say what to do instead of just
  * dimming a button — a check that silently refuses to fire reads as broken.
  */
-export type CheckBlocker = "product" | "playerId" | "serverId";
+export type CheckBlocker = "playerId" | "serverId";
 
 /** Whether the check button is enabled: value non-empty and, if a pattern is
  *  provided, the value matches it. A malformed server-supplied pattern must
@@ -30,13 +30,14 @@ export function canCheck(
 /**
  * The first thing standing between the customer and a meaningful answer.
  *
- * Order matters, and `product` comes first on purpose: the check is scoped to
- * one product, and a brand that sells the same game per region (Mobile
- * Legends: global vs RU — ADR-0048) has one product per region. Until the
- * buyer picks a package we do not know which, and running the lookup against
- * an arbitrary one answers "no such player" for a perfectly good id — then the
- * FAQ tells them that means they need the *other* region, sending them the
- * wrong way. Filled-in ids cannot fix that, so it is reported before them.
+ * Used to check a `product` blocker first: a brand that sold the same game
+ * per region (Mobile Legends: global vs RU) modeled that as one product per
+ * region, and running the lookup against an arbitrary one before a package
+ * was picked answered "no such player" for a perfectly good id. ADR-0079
+ * retired that shape — a region split is two brands now, and a brand is
+ * exactly one game, so every product on a brand's page shares the one game
+ * the check is scoped to. There is nothing left a package choice could
+ * change about which account is checked, so nothing here blocks on it.
  */
 export function checkBlocker(input: {
   value: string;
@@ -45,11 +46,7 @@ export function checkBlocker(input: {
   // forward values that genuinely can be.
   pattern?: string | null | undefined;
   server?: { required: boolean; id: string | null | undefined } | null | undefined;
-  /** False only when the brand sells more than one product and none is picked
-   *  yet. A single-product brand is never ambiguous, so it never blocks. */
-  productChosen?: boolean | undefined;
 }): CheckBlocker | null {
-  if (input.productChosen === false) return "product";
   const v = input.value.trim();
   if (v.length === 0) return "playerId";
   if (input.pattern) {
@@ -66,12 +63,12 @@ export function checkBlocker(input: {
 /** Run the check, folding ANY error into an advisory soft-failure (never throws).
  *  `run` is injectable for testing; defaults to the real API wrapper. */
 export async function runPlayerCheck(
-  productId: string,
+  brandSlug: string,
   input: { playerId: string; serverId?: string | null },
   run: typeof checkPlayer = checkPlayer,
 ): Promise<PlayerCheckResult> {
   try {
-    return await run(productId, input);
+    return await run(brandSlug, input);
   } catch {
     // A thrown fetch (network, our 5xx, 429) is our/provider fault, not the
     // customer's — surface it as `error`, never `invalid`.
@@ -82,9 +79,10 @@ export async function runPlayerCheck(
 /**
  * One check outcome, kept together with the question it answers.
  *
- * The lookup is scoped to a product and an id, so the answer is only ever
- * about that pair — on a region-split brand (ADR-0048) the same id has one
- * product per region, and G2B answers about the one it was asked.
+ * The lookup is scoped to a brand and an id, so the answer is only ever about
+ * that pair — a brand is exactly one supplier game (ADR-0079), so every
+ * product on a brand's page shares one verdict and G2B answers about the game
+ * it was asked.
  *
  * `serverId` is part of it too, and has to be: G2B is asked for the id *on a
  * server*, and an id-only lookup against the wrong one just answers "no such
@@ -96,8 +94,8 @@ export async function runPlayerCheck(
  * review round 1).
  */
 export interface PlayerCheckVerdict {
-  /** The product the lookup was scoped to. */
-  productId: string;
+  /** The brand the lookup was scoped to — one game, so one verdict per brand. */
+  brandSlug: string;
   /** The id exactly as it was sent — not trimmed, not normalized, so the
    *  verdict answers for the literal text the field held. */
   playerId: string;
@@ -109,7 +107,7 @@ export interface PlayerCheckVerdict {
 
 /**
  * The verdict that currently applies to this exact question — the id, the
- * server it was asked on, and the product it was scoped to — or `null` when
+ * server it was asked on, and the brand it was scoped to — or `null` when
  * none does.
  *
  * Derived at render — by the field that draws the confirmation pill and by the
@@ -120,7 +118,9 @@ export interface PlayerCheckVerdict {
  * showing a nickname verified against the *other* product while Pay was still
  * enabled. Reading the stored answer back through the pair it was asked about
  * makes going stale a property of this render rather than of an effect that
- * has yet to run.
+ * has yet to run. Keyed by brand (ADR-0079) rather than product, so that
+ * switching packages inside a brand — the case the region split used to
+ * confuse with a game switch — no longer trips this at all.
  *
  * It also settles the late answer: a check that lands after the customer has
  * retyped is filed under what was asked, so it is simply never read back —
@@ -135,12 +135,12 @@ export interface PlayerCheckVerdict {
  */
 export function currentCheck(
   verdict: PlayerCheckVerdict | null | undefined,
-  productId: string,
+  brandSlug: string,
   playerId: string,
   serverId: string | null,
 ): PlayerCheckResult | null {
   if (verdict == null) return null;
-  return verdict.productId === productId &&
+  return verdict.brandSlug === brandSlug &&
     verdict.playerId === playerId &&
     verdict.serverId === serverId
     ? verdict.result

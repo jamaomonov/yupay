@@ -13,12 +13,15 @@ export interface PlayerCheckResult {
 }
 
 export function checkPlayer(
-  productId: string,
+  brandSlug: string,
   input: { playerId: string; serverId?: string | null },
 ): Promise<PlayerCheckResult> {
-  return apiFetch<PlayerCheckResult>(`/catalog/products/${productId}/check-player`, {
-    method: "POST",
-    body: { player_id: input.playerId, server_id: input.serverId ?? null },
-    anonymous: true,
-  });
+  return apiFetch<PlayerCheckResult>(
+    `/catalog/brands/${encodeURIComponent(brandSlug)}/check-player`,
+    {
+      method: "POST",
+      body: { player_id: input.playerId, server_id: input.serverId ?? null },
+      anonymous: true,
+    },
+  );
 }
