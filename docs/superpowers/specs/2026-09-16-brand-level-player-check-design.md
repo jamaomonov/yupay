@@ -62,7 +62,7 @@ One idempotent operator seed, `scripts/seed/2026-09-16_region_brands.sql`, appli
 
 ### 5.3 The check endpoint and the storefront
 
-- **New:** `POST /api/v1/catalog/brands/{slug}/check-player`, body `PlayerCheckIn` (`player_id`, `server_id`), response `PlayerCheckOut` — unchanged shapes. Resolves through §5.1. Same advisory rules, breaker, rate bucket and positive-only cache as today; cache key gains the brand: `playercheck:g2b:{game_code}:{server|-}:{player_id_hash}` is already per game, so no key change is needed.
+- **New:** `POST /api/v1/catalog/brands/{slug}/check-player`, body `PlayerCheckIn` (`player_id`, `server_id`), response `PlayerCheckOut` — unchanged shapes. Resolves through §5.1. Same advisory rules, breaker, rate bucket and positive-only cache as today. No cache-key change: `playercheck:g2b:{game_code}:{server|-}:{player_id_hash}` is keyed by the supplier game, which is exactly what a brand now resolves to.
 - **Removed in the same release:** `POST /api/v1/catalog/products/{product_id}/check-player`. Its only caller is our storefront, which ships in the same deploy. AGENTS.md §9's list of keyless advisory POSTs is updated to name the brand endpoint.
 - **Storefront (`PurchasePanel`, `player-check-state.ts`):** the check is available **before** a package is chosen on every brand — the `productChosen` gate is removed. Verdicts are keyed by `brandId` instead of `productId` and survive a package change within the brand; the ADR-0048 cross-product invalidation is deleted. A verdict never survives navigation to another brand (different page, different state — nothing to do). The cost the gate was protecting against no longer exists: a brand is one game.
 - The miniapp shares this component if it imports `PurchasePanel`; verify during implementation and apply the same change.
@@ -79,7 +79,7 @@ One idempotent operator seed, `scripts/seed/2026-09-16_region_brands.sql`, appli
 ADR-0048's three guard layers assumed one page. Replacements:
 
 1. Both brand cards sit adjacent in the catalog grid (`sort_order`), named unambiguously ("Mobile Legends" / "Mobile Legends RU").
-2. Each brand page shows a **sibling-region link** near the id field: "Аккаунт российский? → Mobile Legends RU" and the mirror. Data-driven: a small `region_sibling_slug` on `brand_translations`? No — that is a schema change for two brands. It is content: a highlighted line in `instructions`/FAQ plus a storefront rule that renders the link when the brand slug ends in `-ru` or a sibling `<slug>-ru` exists in the catalog list the page already fetched. No new column.
+2. Each brand page shows a **sibling-region link** near the id field: "Аккаунт российский? → Mobile Legends RU" and the mirror. No new column for two brands: the storefront derives the sibling from the slug convention — a brand `<slug>-ru` pairs with `<slug>`, and vice versa — looked up in `getBrands()`, which the page can fetch ISR-cached (the store index and `llms.txt` already do). The FAQ on both pages states the same thing in words.
 3. An `invalid` verdict on a region brand renders the hint "Не найден. Если аккаунт другого региона — проверьте на <sibling>" — the one place the customer learns about the split at the moment it matters.
 
 ### 5.6 Admin and observability
