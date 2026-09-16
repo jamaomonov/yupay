@@ -8,6 +8,7 @@ declaring success early.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import Any, ClassVar
 
 import pytest
@@ -959,3 +960,56 @@ async def test_a_variable_line_sends_the_amount_that_was_paid_for(
     )
 
     assert sent["params"]["Quantity"] == "500"
+
+
+async def test_a_money_denominated_variable_sku_sends_its_face_value(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Steam wallet in USD — G-Engine service 2, ``unfixed``, ``Quantity: Float``.
+
+    The SKU is ``variable_amount`` with no ``units_per_usd``: it is denominated
+    in money itself, so the quantity *is* the amount the customer chose, cents
+    kept. Before this branch the line fell through to ``item.qty *
+    mapping.quantity`` and a $37.50 top-up would have been ordered as ``1``.
+    """
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "2"
+        external_variant_id = None
+        quantity = 1
+
+    class Item:
+        sku_id = "sku-steam"
+        qty = 1
+        unit_price_usd = Decimal("37.50")
+        fulfillment_data: ClassVar[dict[str, str]] = {"steam_login": "jama"}
+
+    class Sku:
+        variable_amount = True
+        units_per_usd = None
+        amount_unit = None
+
+    sent = await _sent_params(monkeypatch, mapping=Mapping(), item=Item(), sku=Sku())
+
+    assert sent["params"] == {"Account": "jama", "Quantity": "37.50"}
+    assert sent["denomination_id"] is None
+
+
+async def test_a_money_denominated_line_of_nothing_is_refused() -> None:
+    from yupay.modules.fulfillment.suppliers.gengine import _quantity_for
+
+    class Mapping:
+        quantity = 1
+
+    class Item:
+        sku_id = "sku-steam"
+        qty = 1
+        unit_price_usd = Decimal("0.004")
+
+    class Sku:
+        variable_amount = True
+        units_per_usd = None
+
+    with pytest.raises(FulfillerError, match="resolves to nothing"):
+        await _quantity_for(_FakeDb(Sku()), item=Item(), mapping=Mapping())  # type: ignore[arg-type]
