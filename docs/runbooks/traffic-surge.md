@@ -56,7 +56,7 @@ and the three player/profile lookups. Those wait on G-Engine or Steam and are
 slow by design: measured on prod, `/gifts/catalog/hot` averages ~24s on a cold
 cache against ~0.25s for everything else, so one global quantile over both
 populations can only be wrong about one of them. If `ApiHighLatency` is firing,
-something _we_ own is slow. `ApiSupplierLatency` (p95 > 10s, 15m) is the other
+something _we_ own is slow. `ApiSupplierLatency` (p95 > 5s, 15m) is the other
 half and means an upstream is degraded — check the supplier before touching
 anything here.
 

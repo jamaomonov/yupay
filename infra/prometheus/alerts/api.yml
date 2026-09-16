@@ -85,8 +85,11 @@ groups:
 
       # The other half: the supplier-bound routes, watched on their own terms.
       # Not excluded from monitoring, just from a threshold built for our own
-      # database. 10s is the top finite bucket, so this fires only when the
-      # upstream is genuinely unwell rather than merely remote.
+      # database. The histogram's top finite bucket is 10s, and
+      # histogram_quantile can never report above the top bucket it has
+      # observations in — so a threshold at 10s is unreachable, not strict.
+      # 5s sits well above a healthy p95 for these short-timeout supplier
+      # calls while still being inside the histogram's range.
       - alert: ApiSupplierLatency
         expr: |
           histogram_quantile(
@@ -99,11 +102,11 @@ groups:
                 }[5m]
               )
             ) by (le)
-          ) > 10
+          ) > 5
         for: 15m
         labels: { severity: warn }
         annotations:
-          summary: "Supplier-bound routes p95 > 10s — upstream is degraded"
+          summary: "Supplier-bound routes p95 > 5s — upstream is degraded"
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
 
       # The pool is 20 connections per process and it is shared by every
