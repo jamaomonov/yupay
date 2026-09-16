@@ -4,6 +4,7 @@ import {
   Check,
   ChevronRight,
   ExternalLink,
+  Globe,
   Package as PackageIcon,
   Send,
   Settings,
@@ -48,6 +49,7 @@ import {
   type PlayerCheckVerdict,
 } from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
+import { hasRuTwin, regionSlug, splitRegion, type Region } from "@/lib/region";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -216,12 +218,29 @@ export default function TopUp() {
   }, [gameId, setLocation]);
 
   const gamesQuery = useGames();
-  const game = gamesQuery.data?.find((g) => g.id === gameId);
-  // `undefined` (not `gameId`) for the steam-gifts brand: the redirect
+  const gameSlugs = useMemo(() => (gamesQuery.data ?? []).map((g) => g.id), [gamesQuery.data]);
+  // The card is the base brand (Mobile Legends / Magic Chess: Go Go are two
+  // brands per region, ADR-0079); the region picker below decides which
+  // brand the page actually talks to. A route param may name either half of
+  // the pair (an old "recent" entry, a shared link) — `splitRegion` resolves
+  // it to the base card plus the region it meant.
+  const { base: baseId, region: linkedRegion } = splitRegion(gameId ?? "", gameSlugs);
+  const [region, setRegion] = useState<Region>(linkedRegion);
+  // `gamesQuery.data` can arrive after first paint, which flips
+  // `linkedRegion` from the "no twins known yet" fallback (`global`) to the
+  // deep link's real region (`ru`) — follow it.
+  useEffect(() => {
+    setRegion(linkedRegion);
+  }, [linkedRegion]);
+  const regions = hasRuTwin(baseId, gameSlugs);
+  const brandSlug = regionSlug(baseId, region);
+
+  const game = gamesQuery.data?.find((g) => g.id === baseId);
+  // `undefined` (not `brandSlug`) for the steam-gifts brand: the redirect
   // effect above is about to navigate away, so there's no point spending a
   // brand-summary fetch on a screen this route never actually renders.
   // `useBrandSummary`'s own `enabled: Boolean(gameId)` gate picks this up.
-  const brandQuery = useBrandSummary(gameId === "steam-gifts" ? undefined : gameId);
+  const brandQuery = useBrandSummary(gameId === "steam-gifts" ? undefined : brandSlug);
   const products = brandQuery.data?.products ?? [];
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
@@ -282,8 +301,8 @@ export default function TopUp() {
   // which is after the placeholder has already been drawn.
   useEffect(() => {
     if (packages.length === 0) return;
-    rememberBrandShape(gameId, isVariableProduct ? "amount" : "packages");
-  }, [gameId, packages.length, isVariableProduct]);
+    rememberBrandShape(brandSlug, isVariableProduct ? "amount" : "packages");
+  }, [brandSlug, packages.length, isVariableProduct]);
 
   const me = useMe();
   const checkout = useCheckout();
@@ -427,18 +446,27 @@ export default function TopUp() {
     setAmountInput("");
   }, [selectedProductSlug]);
 
-  // On every brand switch: start the form empty and load the last checkout's
-  // fields as *suggestions* only. Clearing inputs here prevents PUBG's
-  // player_id from bleeding into Steam's email when the user changes brand.
+  // On every route change to a different game: start the typed fields empty.
+  // Clearing inputs here prevents PUBG's player_id from bleeding into
+  // Steam's email when the user changes brand. A region switch (below) keeps
+  // the same route, so it does not run this — the customer's typed values
+  // survive it.
   useEffect(() => {
     setFulfillment({});
+  }, [gameId]);
+
+  // On every brand-slug change — a route change to a different game, or a
+  // region switch pointing the same card at its sibling brand — drop
+  // verdicts (they're keyed by brand, see player-check-state.ts) and load
+  // that brand's own last-remembered fields as *suggestions* only.
+  useEffect(() => {
     setCheckResults({});
-    if (!gameId) {
+    if (!brandSlug) {
       setSuggestions({});
       return;
     }
-    setSuggestions(getRecentFulfillment(gameId)?.fulfillment_data ?? {});
-  }, [gameId]);
+    setSuggestions(getRecentFulfillment(brandSlug)?.fulfillment_data ?? {});
+  }, [brandSlug]);
 
   // Redirect is in flight (the effect above) — render nothing rather than a
   // skeleton for a form this route is about to leave.
@@ -449,7 +477,7 @@ export default function TopUp() {
   if (gamesQuery.isLoading || brandQuery.isLoading) {
     return (
       <PageSkeleton
-        slug={gameId}
+        slug={brandSlug}
         onBack={() => {
           setLocation("/");
         }}
@@ -637,7 +665,7 @@ export default function TopUp() {
     if (!f.check) return false;
     const v = (fulfillment[f.key] ?? "").trim();
     if (v.length === 0) return false;
-    return blocksCheckout(currentFieldCheck(checkResults, gameId ?? "", fulfillment, f));
+    return blocksCheckout(currentFieldCheck(checkResults, brandSlug, fulfillment, f));
   })?.key;
 
   // One expression for the CTA's disabled state, used by both its styling and
@@ -681,7 +709,7 @@ export default function TopUp() {
       const value = fulfillment[f.key] ?? "";
       // The same derivation the gate above uses, so the review screen can
       // never show a nickname for an account the CTA no longer vouches for.
-      const checked = currentFieldCheck(checkResults, gameId ?? "", fulfillment, f);
+      const checked = currentFieldCheck(checkResults, brandSlug, fulfillment, f);
       return {
         key: f.key,
         label: pickLocalized(f.label, locale, f.key),
@@ -807,9 +835,9 @@ export default function TopUp() {
       // Remember the fulfilment payload only after the order was accepted by
       // the API — no point caching a half-typed player_id that came back
       // 400. Subsequent visits to this brand pick it back up automatically.
-      if (gameId) {
+      if (brandSlug) {
         rememberFulfillment(
-          gameId,
+          brandSlug,
           fulfillmentData,
           activePkg ? { id: activePkg.id, label: activePkg.label } : undefined,
         );
@@ -864,11 +892,22 @@ export default function TopUp() {
     window.scrollTo({ top: 0 });
   };
 
+  // Switching region points the card at the sibling brand: its own products,
+  // packages and player check. Clearing the product selection is enough —
+  // the same effects that clear a stale package/amount on a product switch
+  // (above) fire once `products` itself changes to the new brand's list.
+  // Typed `fulfillment` is untouched on purpose (see the reset effect above).
+  const pickRegion = (r: Region) => {
+    if (r === region) return;
+    setRegion(r);
+    setSelectedProductSlug("");
+  };
+
   return (
     <>
       {reviewsOpen && gameId && (
         <ReviewsSheet
-          brandSlug={gameId}
+          brandSlug={baseId}
           onClose={() => {
             setReviewsOpen(false);
           }}
@@ -1060,6 +1099,48 @@ export default function TopUp() {
         {/* ── Form ── */}
         {stage === "select" && (
           <div className="space-y-7 px-4 pt-5">
+            {/* Region picker — only for a brand with a `-ru` twin (ADR-0079).
+                Same chip styling as the product picker below, minus the
+                image slot: there's nothing to show but the region name. */}
+            {regions && (
+              <div>
+                <div className="mb-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Globe size={13} className="text-white/40" />
+                    <span className="text-xs font-semibold uppercase tracking-wide text-white/50">
+                      {t("topup.pickRegion")}
+                    </span>
+                  </div>
+                </div>
+                <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+                  {(["global", "ru"] as const).map((r) => {
+                    const active = r === region;
+                    return (
+                      <button
+                        key={r}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => {
+                          pickRegion(r);
+                        }}
+                        className="flex-shrink-0 whitespace-nowrap rounded-2xl px-3.5 py-1.5 text-xs font-semibold transition-all duration-150"
+                        style={{
+                          background: active ? "hsl(var(--surface-3))" : "hsl(var(--surface-2))",
+                          color: active ? "#fff" : "rgba(255,255,255,0.6)",
+                          border: active
+                            ? "1.5px solid hsl(var(--primary) / 0.7)"
+                            : "1px solid hsl(var(--border))",
+                        }}
+                      >
+                        {t(r === "ru" ? "topup.regionRu" : "topup.regionGlobal")}
+                      </button>
+                    );
+                  })}
+                </div>
+                <p className="mt-2 text-[11px] text-white/40">{t("topup.regionHint")}</p>
+              </div>
+            )}
+
             {/* Step 0 — Product picker (only when there's more than one product) */}
             {products.length > 1 && (
               <div>
@@ -1132,7 +1213,7 @@ export default function TopUp() {
                   sub={fillingHint}
                 />
                 <DynamicFields
-                  brandSlug={gameId ?? ""}
+                  brandSlug={brandSlug}
                   fields={requiredFields}
                   values={fulfillment}
                   suggestions={suggestions}
@@ -1165,7 +1246,7 @@ export default function TopUp() {
                 sub={t(isVoucher ? "topup.voucherDeliveryNote" : "topup.creditWithinMinutes")}
               />
 
-              {productQuery.isLoading && <PackagesSkeleton shape={getBrandShape(gameId)} />}
+              {productQuery.isLoading && <PackagesSkeleton shape={getBrandShape(brandSlug)} />}
               {!productQuery.isLoading && packages.length === 0 && (
                 <p className="rounded-2xl border border-dashed border-white/10 p-6 text-center text-sm text-white/40">
                   {t("topup.noPositions")}

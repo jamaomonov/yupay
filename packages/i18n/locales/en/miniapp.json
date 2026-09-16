@@ -144,6 +144,10 @@
   "topup.autoIssue": "Automatic delivery",
   "topup.tgBannerBody": "Payment is tied to your Telegram account. The catalog is browsable — orders can only be placed from the bot.",
   "topup.pickProduct": "Pick a product",
+  "topup.pickRegion": "Account region",
+  "topup.regionGlobal": "Global",
+  "topup.regionRu": "Russia (RU)",
+  "topup.regionHint": "Rouble prices in-game — pick RU",
   "topup.optionsCount": {
     "one": "{count} option",
     "few": "{count} options",

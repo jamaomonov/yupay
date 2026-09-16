@@ -53,12 +53,12 @@ is the slug convention `<slug>` ↔ `<slug>-ru`.
 
 ## Surfaces
 
-|                | Web (`PurchasePanel`)                             | Mini App (`DynamicFields`)      | Reseller API                                           |
-| -------------- | ------------------------------------------------- | ------------------------------- | ------------------------------------------------------ |
-| Trigger        | «Проверить» beside the id field, before a package | «Проверить» beside the id field | `POST /merchant/v1/validate/player {brand, player_id}` |
-| Verdict scope  | brand slug + id + server                          | brand slug + id + server        | per request; `unsupported` when the brand has no check |
-| Blocks Pay     | `invalid` only                                    | `invalid` only                  | never — advisory to the integrator                     |
-| Sibling region | link on the page + hint under a not-found verdict | —                               | —                                                      |
+|                | Web (`PurchasePanel`)                             | Mini App (`DynamicFields`)                           | Reseller API                                           |
+| -------------- | ------------------------------------------------- | ---------------------------------------------------- | ------------------------------------------------------ |
+| Trigger        | «Проверить» beside the id field, before a package | «Проверить» beside the id field                      | `POST /merchant/v1/validate/player {brand, player_id}` |
+| Verdict scope  | brand slug + id + server                          | brand slug + id + server                             | per request; `unsupported` when the brand has no check |
+| Blocks Pay     | `invalid` only                                    | `invalid` only                                       | never — advisory to the integrator                     |
+| Sibling region | link on the page + hint under a not-found verdict | region picker on the top-up page (one card per game) | —                                                      |
 
 See `docs/api/README.md` § `POST /merchant/v1/validate/player` for the
 reseller contract and `docs/runbooks/merchant-b2b.md` for the "keeps

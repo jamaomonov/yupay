@@ -144,6 +144,10 @@
   "topup.autoIssue": "Avtomatik yetkazish",
   "topup.tgBannerBody": "To'lov sizning Telegram akkauntingizga bog'langan. Katalogni ko'rish mumkin — buyurtmani faqat botdan rasmiylashtirish mumkin.",
   "topup.pickProduct": "Mahsulotni tanlang",
+  "topup.pickRegion": "Akkaunt mintaqasi",
+  "topup.regionGlobal": "Global",
+  "topup.regionRu": "Rossiya (RU)",
+  "topup.regionHint": "Oʻyinda narxlar rublda boʻlsa — RU ni tanlang",
   "topup.optionsCount": {
     "one": "{count} ta variant",
     "few": "{count} ta variant",

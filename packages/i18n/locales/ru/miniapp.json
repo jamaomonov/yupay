@@ -144,6 +144,10 @@
   "topup.autoIssue": "Автоматическая выдача",
   "topup.tgBannerBody": "Оплата привязана к вашему Telegram-аккаунту. Каталог доступен для просмотра — оформить заказ можно только из бота.",
   "topup.pickProduct": "Выберите продукт",
+  "topup.pickRegion": "Регион аккаунта",
+  "topup.regionGlobal": "Глобальный",
+  "topup.regionRu": "Россия (RU)",
+  "topup.regionHint": "Цены в игре в рублях — выбирайте RU",
   "topup.optionsCount": {
     "one": "{count} опция",
     "few": "{count} опции",
