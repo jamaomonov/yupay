@@ -1,6 +1,6 @@
-import { expect, test } from "vitest";
+import { describe, expect, it, test } from "vitest";
 
-import { formatUzs, truncate } from "./seo";
+import { alternates, blogAlternates, formatUzs, truncate } from "./seo";
 
 test("truncate leaves short strings untouched", () => {
   expect(truncate("Короткое описание")).toBe("Короткое описание");
@@ -52,4 +52,37 @@ test("formatUzs never leaves a bare Latin ISO code sitting in the ru output", ()
 test("formatUzs keeps the locale's own digit grouping", () => {
   expect(collapseNbsp(formatUzs("ru", 1_250_000))).toContain("1 250 000");
   expect(formatUzs("en", 1_250_000)).toContain("1,250,000");
+});
+
+describe("the Markdown alternate", () => {
+  it("is advertised on a blog post", () => {
+    // The blog builds hreflang from translated slugs and so has its own helper.
+    // That helper was the one place the Markdown link was missing — on prod,
+    // `/store/steam-gifts` advertised its view and `/blog/steam` did not, which
+    // is backwards: a post is what an agent is most often asked to read.
+    const a = blogAlternates("ru", { ru: "steam", en: "steam-en" });
+    expect(a.types?.["text/markdown"]).toBe("https://yupay.uz/md/blog/steam");
+  });
+
+  it("follows the locale into the path", () => {
+    const a = blogAlternates("en", { ru: "steam", en: "steam-en" });
+    expect(a.types?.["text/markdown"]).toBe("https://yupay.uz/md/en/blog/steam-en");
+  });
+
+  it("is absent when the post has no translation in this locale", () => {
+    // No slug means no post to serve, in HTML or Markdown; advertising one
+    // would point an agent at a 404.
+    const a = blogAlternates("uz", { ru: "steam", uz: "" });
+    expect(a.types).toBeUndefined();
+  });
+
+  it("is advertised on an ordinary page too", () => {
+    expect(alternates("ru", "/store/steam").types?.["text/markdown"]).toBe(
+      "https://yupay.uz/md/store/steam",
+    );
+  });
+
+  it("is absent on a page with no Markdown view", () => {
+    expect(alternates("ru", "/store/steam-gifts/3454300").types).toBeUndefined();
+  });
 });

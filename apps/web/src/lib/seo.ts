@@ -127,9 +127,15 @@ export function blogAlternates(locale: string, localeSlugs: Record<string, strin
   const ruSlug = localeSlugs.ru;
   if (ruSlug) languages["x-default"] = localeUrl("ru", `/blog/${ruSlug}`);
   const currentSlug = localeSlugs[locale];
+  // Same Markdown alternate `alternates()` adds. A post is the page an agent is
+  // most likely to be asked to summarise, and it was the one page not
+  // advertising its Markdown view — because the blog builds its hreflang set
+  // from translated slugs and so needed its own helper, which this was missing.
+  const md = currentSlug ? markdownUrl(SITE, locale, `/blog/${currentSlug}`) : null;
   return {
     canonical: currentSlug ? localeUrl(locale, `/blog/${currentSlug}`) : localeUrl(locale, "/blog"),
     languages,
+    ...(md ? { types: { "text/markdown": md } } : {}),
   };
 }
 
