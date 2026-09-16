@@ -639,16 +639,21 @@ class MerchantPlayerCheckIn(BaseModel):
     ``extra="forbid"``, for the same reason ``MerchantOrderCreateIn`` sets it:
     on a request, silently ignoring an unknown key is how a typo'd
     ``player_id`` becomes a check of nothing that answers ``unsupported`` and
-    gets read as "this SKU needs no verification".
+    gets read as "this brand needs no verification".
     """
 
     model_config = ConfigDict(extra="forbid")
 
-    sku_id: SkuId = Field(
+    brand: str = Field(
+        min_length=2,
+        max_length=64,
+        pattern=r"^[a-z0-9][a-z0-9-]*$",
         description=(
-            "The SKU you are about to order. A SKU and not a product, so the id you "
-            "check is the id you buy."
-        )
+            "The brand you are about to order from, by its slug as listed in "
+            "`GET /merchant/v1/catalog`. A brand and not a SKU, because a brand is one "
+            "game (ADR-0079): the id you check here is the id every SKU of the brand "
+            "credits."
+        ),
     )
     player_id: str = Field(
         min_length=1,

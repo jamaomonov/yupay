@@ -247,11 +247,13 @@ async def read_order(
 async def validate_player(
     body: MerchantPlayerCheckIn, merchant: AuthedMerchant, db: Db, request: Request
 ) -> MerchantPlayerCheckOut:
-    """Verify a player id (or Steam login) against the SKU you intend to buy.
+    """Verify a player id (or Steam login) for the brand you intend to buy
+    from — a brand is one game (ADR-0079), so the id you check is the id
+    every SKU of it credits.
 
     Advisory, and never a fake approver (spec §9.1): ``valid`` and ``invalid``
     are the provider's own verdict, ``error`` means we could not check and says
-    nothing about the id, and ``unsupported`` means this SKU has no checker at
+    nothing about the id, and ``unsupported`` means this brand has no checker at
     all. The rules, and why ``error`` may never render as ``valid``, are
     ``merchants.validate``'s; this parses and dispatches.
 
@@ -273,8 +275,8 @@ async def validate_player(
     """
     await guard_ip(request, bucket=merchants.VALIDATE_RATE_BUCKET)
     await merchants.charge_validate_quota(merchant.id)
-    return await merchants.check_player_for_sku(
-        db, sku_id=body.sku_id, player_id=body.player_id, server_id=body.server_id
+    return await merchants.check_player_for_brand(
+        db, brand=body.brand, player_id=body.player_id, server_id=body.server_id
     )
 
 

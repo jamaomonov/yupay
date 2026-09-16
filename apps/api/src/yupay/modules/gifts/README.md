@@ -179,7 +179,7 @@ so a `GET ...?invite_url=` would log a third party's identity from the one
 module that otherwise reduces that identifier to `hash_short()` before
 logging it. Filtering the edge log was rejected as undoable-by-accident; the
 body simply is not logged. It writes nothing and therefore takes no
-`Idempotency-Key`, same as `POST /catalog/products/{id}/check-player`. See
+`Idempotency-Key`, same as `POST /catalog/brands/{slug}/check-player`. See
 `GiftProfileIn` in `schemas.py`.
 
 Money on every public DTO is a `str`, not a `Decimal`: `price_usd` is our

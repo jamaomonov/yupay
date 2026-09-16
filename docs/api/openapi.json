@@ -7406,7 +7406,7 @@
         "type": "object"
       },
       "GiftProfileIn": {
-        "description": "The pasted Steam link to check, carried in the request body.\n\nA body, not a query string, and deliberately so: the recipient's profile\nlink *is* a third party's identity, and ``api.yupay.uz``'s Caddy site\nblock writes a JSON access log whose ``uri`` field records the query\nstring verbatim (``infra/caddy/Caddyfile.prod``), which promtail then\nships to Loki. A ``GET ...?invite_url=steamcommunity.com/id/{vanity}``\nwould therefore park that identifier in the logs \u2014 the very thing\n``gifts.profile`` reduces to an opaque ``hash_short()`` everywhere it\nlogs. Filtering the edge would work until the next unrelated Caddy edit\nundid it; not putting the identity in the URL cannot be undone by\naccident (2026-09-04 review).\n\nNothing is lost by the method change: this endpoint is not bookmarkable,\nhas no HTTP-caching story (its cache is server-side, in Redis), and is\nthe same class of advisory identity lookup as\n``POST /catalog/products/{id}/check-player``, which is already a POST\nfor the same reason. It writes nothing, so \u2014 like ``check-player`` \u2014 it\ntakes no ``Idempotency-Key``.",
+        "description": "The pasted Steam link to check, carried in the request body.\n\nA body, not a query string, and deliberately so: the recipient's profile\nlink *is* a third party's identity, and ``api.yupay.uz``'s Caddy site\nblock writes a JSON access log whose ``uri`` field records the query\nstring verbatim (``infra/caddy/Caddyfile.prod``), which promtail then\nships to Loki. A ``GET ...?invite_url=steamcommunity.com/id/{vanity}``\nwould therefore park that identifier in the logs \u2014 the very thing\n``gifts.profile`` reduces to an opaque ``hash_short()`` everywhere it\nlogs. Filtering the edge would work until the next unrelated Caddy edit\nundid it; not putting the identity in the URL cannot be undone by\naccident (2026-09-04 review).\n\nNothing is lost by the method change: this endpoint is not bookmarkable,\nhas no HTTP-caching story (its cache is server-side, in Redis), and is\nthe same class of advisory identity lookup as\n``POST /catalog/brands/{slug}/check-player``, which is already a POST\nfor the same reason. It writes nothing, so \u2014 like ``check-player`` \u2014 it\ntakes no ``Idempotency-Key``.",
         "properties": {
           "invite_url": {
             "maxLength": 200,
@@ -8548,8 +8548,16 @@
       },
       "MerchantPlayerCheckIn": {
         "additionalProperties": false,
-        "description": "Body of ``POST /merchant/v1/validate/player`` (spec \u00a79.1).\n\n``extra=\"forbid\"``, for the same reason ``MerchantOrderCreateIn`` sets it:\non a request, silently ignoring an unknown key is how a typo'd\n``player_id`` becomes a check of nothing that answers ``unsupported`` and\ngets read as \"this SKU needs no verification\".",
+        "description": "Body of ``POST /merchant/v1/validate/player`` (spec \u00a79.1).\n\n``extra=\"forbid\"``, for the same reason ``MerchantOrderCreateIn`` sets it:\non a request, silently ignoring an unknown key is how a typo'd\n``player_id`` becomes a check of nothing that answers ``unsupported`` and\ngets read as \"this brand needs no verification\".",
         "properties": {
+          "brand": {
+            "description": "The brand you are about to order from, by its slug as listed in `GET /merchant/v1/catalog`. A brand and not a SKU, because a brand is one game (ADR-0079): the id you check here is the id every SKU of the brand credits.",
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "title": "Brand",
+            "type": "string"
+          },
           "player_id": {
             "description": "Your **end customer's** identifier \u2014 the game's player id, or the Steam login. We hold it for the length of the request and never write it to a log or a URL, which is why this endpoint is a POST.",
             "maxLength": 64,
@@ -8570,15 +8578,10 @@
             ],
             "description": "The game server or zone, for the games that ask for one. Send what the SKU's product declares and omit it otherwise \u2014 an empty string is refused rather than taken as a third spelling of \"no server\".",
             "title": "Server Id"
-          },
-          "sku_id": {
-            "description": "The SKU you are about to order. A SKU and not a product, so the id you check is the id you buy.",
-            "title": "Sku Id",
-            "type": "string"
           }
         },
         "required": [
-          "sku_id",
+          "brand",
           "player_id"
         ],
         "title": "MerchantPlayerCheckIn",
@@ -30108,6 +30111,59 @@
         ]
       }
     },
+    "/api/v1/catalog/brands/{slug}/check-player": {
+      "post": {
+        "description": "Storefront-facing. Advisory \u2014 folds upstream errors into\n``status=\"error\"``; never blocks checkout. Rate-limited per IP. See\nADR-0031 and ADR-0079 (why a brand: a brand is one game).",
+        "operationId": "check_player_api_v1_catalog_brands__slug__check_player_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlayerCheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlayerCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verify a player id for a brand (advisory nickname lookup)",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
     "/api/v1/catalog/categories": {
       "get": {
         "description": "Localised category list for the storefront's navigation tree.",
@@ -30253,59 +30309,6 @@
           }
         },
         "summary": "List products, optionally filtered by category and/or brand",
-        "tags": [
-          "catalog"
-        ]
-      }
-    },
-    "/api/v1/catalog/products/{product_id}/check-player": {
-      "post": {
-        "description": "Storefront-facing. Advisory \u2014 folds upstream errors into\n``{valid: false}``; never blocks checkout. Rate-limited per IP. See ADR-0031.",
-        "operationId": "check_player_api_v1_catalog_products__product_id__check_player_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "product_id",
-            "required": true,
-            "schema": {
-              "title": "Product Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/PlayerCheckIn"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PlayerCheckOut"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Verify a player id for a product (advisory nickname lookup)",
         "tags": [
           "catalog"
         ]
@@ -34286,7 +34289,7 @@
     },
     "/merchant/v1/validate/player": {
       "post": {
-        "description": "Verify a player id (or Steam login) against the SKU you intend to buy.\n\nAdvisory, and never a fake approver (spec \u00a79.1): ``valid`` and ``invalid``\nare the provider's own verdict, ``error`` means we could not check and says\nnothing about the id, and ``unsupported`` means this SKU has no checker at\nall. The rules, and why ``error`` may never render as ``valid``, are\n``merchants.validate``'s; this parses and dispatches.\n\nA ``POST`` although it writes nothing \u2014 the identifier must not travel in a\nURL (spec \u00a79.2) \u2014 so it takes no ``Idempotency-Key``; see the module\ndocstring.\n\n**Two counters, both this endpoint's own**, charged after authentication\nbecause the prefix-wide IP counter in ``merchant_auth`` has already turned\naway anyone unauthenticated: one per source address, and one per\n*merchant*. The second is not redundant \u2014 the quota being rationed is a\nsupplier's, which a reseller spends per account rather than per egress\nnode, so an address counter alone hands a multi-node NAT pool one budget\neach. ``merchants.validate.charge_merchant_quota`` carries the argument.\n\n``merchant`` is used for that counter and for nothing else: what a merchant\nmay *check* is a property of the catalog row (``brand.visible_b2b AND\nsku.visible_b2b``), not of the caller.",
+        "description": "Verify a player id (or Steam login) for the brand you intend to buy\nfrom \u2014 a brand is one game (ADR-0079), so the id you check is the id\nevery SKU of it credits.\n\nAdvisory, and never a fake approver (spec \u00a79.1): ``valid`` and ``invalid``\nare the provider's own verdict, ``error`` means we could not check and says\nnothing about the id, and ``unsupported`` means this brand has no checker at\nall. The rules, and why ``error`` may never render as ``valid``, are\n``merchants.validate``'s; this parses and dispatches.\n\nA ``POST`` although it writes nothing \u2014 the identifier must not travel in a\nURL (spec \u00a79.2) \u2014 so it takes no ``Idempotency-Key``; see the module\ndocstring.\n\n**Two counters, both this endpoint's own**, charged after authentication\nbecause the prefix-wide IP counter in ``merchant_auth`` has already turned\naway anyone unauthenticated: one per source address, and one per\n*merchant*. The second is not redundant \u2014 the quota being rationed is a\nsupplier's, which a reseller spends per account rather than per egress\nnode, so an address counter alone hands a multi-node NAT pool one budget\neach. ``merchants.validate.charge_merchant_quota`` carries the argument.\n\n``merchant`` is used for that counter and for nothing else: what a merchant\nmay *check* is a property of the catalog row (``brand.visible_b2b AND\nsku.visible_b2b``), not of the caller.",
         "operationId": "validate_player_merchant_v1_validate_player_post",
         "requestBody": {
           "content": {

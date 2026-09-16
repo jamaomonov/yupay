@@ -111,7 +111,7 @@ class GiftProfileIn(BaseModel):
     Nothing is lost by the method change: this endpoint is not bookmarkable,
     has no HTTP-caching story (its cache is server-side, in Redis), and is
     the same class of advisory identity lookup as
-    ``POST /catalog/products/{id}/check-player``, which is already a POST
+    ``POST /catalog/brands/{slug}/check-player``, which is already a POST
     for the same reason. It writes nothing, so — like ``check-player`` — it
     takes no ``Idempotency-Key``.
     """

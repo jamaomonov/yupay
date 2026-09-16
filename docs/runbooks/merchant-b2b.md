@@ -843,15 +843,15 @@ is deliberately the same word for four different causes, because none of them
 says anything about the player id and a reseller must not act on any of them as
 if it did. Which one it is, in the order worth checking:
 
-1. **The product has no active supplier mapping.** Check this one first: it is
+1. **The brand has no active supplier mapping.** Check this one first: it is
    the likeliest, it is a routine state rather than an outage, and it is
-   permanent until somebody fixes it. A product whose form declares
+   permanent until somebody fixes it. A brand whose form declares
    `check: {provider: "g2b"}` needs an **active** `sku_supplier_mapping`
    (`supplier_slug='g2b'`, `kind='game'`) on one of its SKUs to resolve a game
    code from; without one, every check answers `error` forever. The g2b import
    queue ships the form field before the mapping, and a supplier switch
    deactivates mappings, so both directions happen. It logs
-   `player_check_no_game_mapping` with the `product_id`.
+   `player_check_no_game_mapping` with the `brand_id`.
 
    ```sql
    -- which of a brand's products declare a check but cannot resolve one
@@ -871,6 +871,9 @@ if it did. Which one it is, in the order worth checking:
    Zero in the second column is the fault. Fix it by adding the mapping, or by
    dropping the `check` descriptor from the product's form — an honest
    `unsupported` beats a permanent `error`.
+
+1b. **The brand spans two G2B games** (`player_check_brand_spans_games`) — the
+catalog is mid-split; finish the split (ADR-0079).
 
 2. **The supplier is unconfigured on this stack.** `G2B_API_KEY` (or
    `WAXPEER_API_KEY`) empty makes the adapter report itself unavailable and

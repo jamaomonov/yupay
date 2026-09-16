@@ -102,7 +102,7 @@ from yupay.modules.merchants.validate import (
     charge_merchant_quota as charge_validate_quota,
 )
 from yupay.modules.merchants.validate import (
-    check_player as check_player_for_sku,
+    check_player as check_player_for_brand,
 )
 from yupay.modules.merchants.webhook_delivery import drain_pending_deliveries
 from yupay.modules.merchants.webhooks import (
@@ -138,7 +138,7 @@ __all__ = [
     "canonical_message",
     "charge_deposit",
     "charge_validate_quota",
-    "check_player_for_sku",
+    "check_player_for_brand",
     "create_api_key",
     "create_merchant",
     "credit_deposit",

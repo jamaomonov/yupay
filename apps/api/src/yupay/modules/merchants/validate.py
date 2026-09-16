@@ -4,8 +4,8 @@
 real providers — the G2B nickname lookup and the Waxpeer Steam-login check —
 already live in :mod:`yupay.modules.integrations.player_check` behind one
 advisory three-way result, a circuit breaker and a 300 s cache. This module
-resolves *which* product a merchant's ``sku_id`` names, decides whether that
-product has a checker at all, and projects the answer onto the machine API's
+resolves *which* brand a merchant's ``brand`` slug names, decides whether that
+brand has a checker at all, and projects the answer onto the machine API's
 own wire contract.
 
 ## Never a fake approver
@@ -18,24 +18,24 @@ there would sell a top-up into a stranger's account. ``player_check`` already
 degrades every fault to ``error`` rather than raising, which is exactly the
 shape this surface needs; this module's job is to not undo it.
 
-The second half of the same rule is the SKU with **no** configured checker.
+The second half of the same rule is the brand with **no** configured checker.
 That is not ``valid`` (it approves nothing), and it is not a 404 (which reads
-as "no such SKU" and sends an integrator hunting an id that is fine). It is
+as "no such brand" and sends an integrator hunting an id that is fine). It is
 its own answer, ``status="unsupported"``: permanent, and worth branching on,
 because ``error`` is worth retrying and this never will be.
 
 ## What a merchant may check
 
 Exactly what they can see in ``GET /merchant/v1/catalog``: ``visible_b2b`` on
-both the brand and the SKU. A SKU withheld from B2B is not checkable, and the
-refusal is the order path's own ``item_unavailable`` — one word for "you
-cannot have this SKU", with the same ``reason`` vocabulary, rather than a
-second one invented here.
+both the brand and at least one of its SKUs. A brand withheld from B2B is not
+checkable, and the refusal is the order path's own ``item_unavailable`` — one
+word for "you cannot have this brand", with the same ``reason`` vocabulary,
+rather than a second one invented here.
 
 The *rest* of ``load_orderable_sku``'s rules are deliberately **not** applied.
 Stock, the active chain and the presence of a cost all move between a check
 and an order, and this call is the step *before* the order — refusing to
-verify a player id because the SKU is momentarily out of stock would answer a
+verify a player id because a SKU is momentarily out of stock would answer a
 question the merchant did not ask. Visibility is the only permanent,
 per-merchant-surface property in that list, and it is the only one that
 governs enumeration.
@@ -52,7 +52,7 @@ it (AGENTS.md §9).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Final
+from typing import TYPE_CHECKING, Final, cast
 
 from sqlalchemy import select
 
@@ -128,96 +128,62 @@ async def charge_merchant_quota(merchant_id: str) -> None:
         )
 
 
-async def _checkable_product(db: AsyncSession, *, sku_id: str) -> tuple[str, list[dict[str, Any]]]:
-    """Resolve a merchant-visible ``sku_id`` to its product and form schema.
+async def _checkable_brand(db: AsyncSession, *, brand_slug: str) -> str:
+    """Resolve a merchant-visible brand slug to its id.
 
-    Columns rather than entities: ``Product`` configures ``lazy="selectin"``
-    relationships for its translations, FAQs and whole SKU set — and
-    ``Brand.products`` is selectin too — so loading it as an entity to read one
-    JSONB column would drag the retail catalog along behind it.
+    The rule is ``/catalog``'s: the brand is ``visible_b2b`` and at least one of
+    its SKUs is. A brand withheld from B2B is not checkable, so this endpoint
+    cannot be used to enumerate what ``/catalog`` hides.
 
-    That claim was briefly only half true: ``player_check`` then re-read the
-    same product with ``session.get``, which fanned out to nine statements per
-    call and undid the saving one line later. It now selects the column as
-    well, so this rationale holds end to end and
-    ``test_the_check_does_not_fan_out_over_the_catalog`` keeps it that way.
-
-    Args:
-        db: Session. The caller owns the transaction.
-        sku_id: The SKU's id, already known to be a well-formed UUID — the
-            schema parses it, so this never reaches Postgres as
-            ``uuid = 'whatever'``, which is a ``DataError`` and a 500 where a
-            clean refusal belongs.
-
-    Returns:
-        ``(product_id, required_fields)`` for a SKU this merchant may see.
+    One statement, not two: the visible-SKU test rides along as a correlated
+    ``EXISTS`` on the brand row rather than a second round trip — the same
+    reason the SKU-scoped lookup this replaces read brand and SKU visibility
+    off one join (``test_the_check_does_not_fan_out_over_the_catalog`` pins
+    the total).
 
     Raises:
-        NotFoundError: ``item_unavailable`` with a ``reason`` — ``unknown_sku``
-            for an id that names nothing, ``not_b2b_visible`` for one they
-            cannot see in ``/catalog``. The two are distinguished because a
-            merchant can act on the difference: one is their bug, the other is
-            a message for support.
+        NotFoundError: ``item_unavailable`` with ``reason`` — ``unknown_brand``
+            for a slug that names nothing, ``not_b2b_visible`` for one the
+            merchant cannot see (withheld itself, or with no B2B-visible SKU).
     """
+    has_visible_sku = (
+        select(Sku.id)
+        .join(Product, Product.id == Sku.product_id)
+        .where(Product.brand_id == Brand.id, Sku.visible_b2b.is_(True), Sku.active.is_(True))
+        .exists()
+    )
     row = (
         await db.execute(
-            select(Product.id, Product.required_fields, Sku.visible_b2b, Brand.visible_b2b)
-            .join(Product, Product.id == Sku.product_id)
-            .join(Brand, Brand.id == Product.brand_id)
-            .where(Sku.id == sku_id)
+            select(Brand.id, Brand.visible_b2b, has_visible_sku).where(
+                Brand.slug == brand_slug, Brand.active.is_(True)
+            )
         )
     ).one_or_none()
     if row is None:
-        raise quote.unavailable(sku_id, "unknown_sku")
-    product_id, required_fields, sku_visible, brand_visible = row
-    if not sku_visible or not brand_visible:
-        raise quote.unavailable(sku_id, "not_b2b_visible")
-    return str(product_id), list(required_fields or [])
+        raise quote.unavailable(brand_slug, "unknown_brand")
+    # SQLAlchemy's typed ``select()`` overloads do not infer past a correlated
+    # ``Exists`` argument, so the row comes back untyped; the three-column
+    # shape is fixed by the ``select()`` above.
+    brand_id, visible, sku_visible = cast("tuple[str, bool, bool]", row)
+    if not visible or not sku_visible:
+        raise quote.unavailable(brand_slug, "not_b2b_visible")
+    return brand_id
 
 
 async def check_player(
-    db: AsyncSession, *, sku_id: str, player_id: str, server_id: str | None
+    db: AsyncSession, *, brand: str, player_id: str, server_id: str | None
 ) -> MerchantPlayerCheckOut:
-    """Verify an end customer's player id against the SKU they will be sold.
+    """Advisory player check for a reseller, scoped to a brand they can see.
 
-    Advisory, and honest about it: every outcome the providers can produce is
-    passed through unchanged, and the one outcome they cannot express — "this
-    product has no checker" — gets its own status rather than borrowing
-    ``valid``.
-
-    No ``merchant`` parameter, and none is needed: B2B visibility is a
-    property of the catalog row (``brand.visible_b2b AND sku.visible_b2b``),
-    not of the caller, so every merchant sees the same checkable set. A
-    per-merchant catalog would change that, and this is the function it would
-    change.
-
-    Note that :func:`player_check.check_player_for_product` ends the session's
-    transaction before its supplier round trip, so that a slow supplier does
-    not hold one of twenty pool connections. The only write in flight at that
-    point is ``merchant_auth``'s throttled ``last_used_at`` stamp, which is
-    explicitly best-effort and is re-attempted by the next request.
-
-    Args:
-        db: Session. The caller owns the transaction.
-        sku_id: The SKU the merchant intends to order, from ``/catalog``.
-        player_id: The end customer's identifier — a game player id, or a
-            Steam login for a Steam top-up. Never logged, never in a URL.
-        server_id: The game server / zone, where the game asks for one.
-
-    Returns:
-        ``valid`` (the id resolved; ``name`` carries the nickname where the
-        provider gives one), ``invalid`` (the provider answered and the id
-        does not exist), ``error`` (we could not check — retry later), or
-        ``unsupported`` (this SKU has no checker; order without one).
-
-    Raises:
-        NotFoundError: ``item_unavailable`` — see :func:`_checkable_product`.
+    Returns ``unsupported`` when no product of the brand declares a check — the
+    reseller orders without one — and otherwise the provider's own verdict
+    (``valid`` / ``invalid``) or ``error`` when we could not check.
     """
-    product_id, required_fields = await _checkable_product(db, sku_id=sku_id)
-    if not player_check.product_is_checkable(required_fields):
+    brand_id = await _checkable_brand(db, brand_slug=brand)
+    if await player_check.brand_check_field(db, brand_id) is None:
         return MerchantPlayerCheckOut(status=STATUS_UNSUPPORTED)
-    result = await player_check.check_player_for_product(
-        db, product_id=product_id, player_id=player_id, server_id=server_id
+    result = await player_check.check_player_for_brand_id(
+        db, brand_id=brand_id, player_id=player_id, server_id=server_id
     )
     return MerchantPlayerCheckOut(status=result.status, name=result.name)
 

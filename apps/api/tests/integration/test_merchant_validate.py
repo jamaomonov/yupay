@@ -10,8 +10,8 @@ The three rules this file exists to pin, in the order they matter:
 1. **``error`` never renders as ``valid``.** An upstream fault, a tripped
    breaker and an unconfigured supplier are all "we could not check", and a
    reseller acting on a cheerful default sells into a wrong account.
-2. **A SKU with no configured checker says so** — ``status="unsupported"``,
-   which is neither ``valid`` nor a 404 that reads as "no such SKU".
+2. **A brand with no configured checker says so** — ``status="unsupported"``,
+   which is neither ``valid`` nor a 404 that reads as "no such brand".
 3. **Our own confidence is reported honestly.** A cached verdict is still our
    best answer and carries no caveat; nothing here invents certainty the
    upstream did not give.
@@ -313,24 +313,6 @@ async def plain_sku_id(db_session: AsyncSession) -> str:
     return sku.id
 
 
-@pytest.fixture
-async def hidden_sku_id(db_session: AsyncSession) -> str:
-    """A checkable SKU that is **not** in this merchant's catalog."""
-    category, brand, product, sku = _tree(4, required_fields=_G2B_FIELD, sku_visible_b2b=False)
-    db_session.add_all([category, brand, product, sku])
-    await db_session.commit()
-    return sku.id
-
-
-@pytest.fixture
-async def hidden_brand_sku_id(db_session: AsyncSession) -> str:
-    """A checkable, visible SKU under a brand withheld from B2B."""
-    category, brand, product, sku = _tree(5, required_fields=_G2B_FIELD, brand_visible_b2b=False)
-    db_session.add_all([category, brand, product, sku])
-    await db_session.commit()
-    return sku.id
-
-
 # ---------- the verdict is the upstream's ----------
 
 
@@ -344,7 +326,7 @@ async def test_a_checkable_sku_returns_the_upstream_verdict(
     )
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
     )
 
     assert r.status_code == 200, r.text
@@ -362,7 +344,9 @@ async def test_an_id_the_supplier_rejects_is_invalid_not_error(
         return_value=httpx.Response(400, json={"valid": "invalid", "name": ""})
     )
 
-    r = await _validate(integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "9"})
+    r = await _validate(
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "9"}
+    )
 
     assert r.status_code == 200, r.text
     assert r.json() == {"status": "invalid", "name": None}
@@ -382,7 +366,7 @@ async def test_a_steam_login_is_checked_through_waxpeer(
     )
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": waxpeer_sku_id, "player_id": "gaben"}
+        integration_client, credentials, {"brand": "brand-validate-2", "player_id": "gaben"}
     )
 
     assert r.status_code == 200, r.text
@@ -407,7 +391,7 @@ async def test_an_upstream_fault_is_error_never_valid(
     )
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
     )
 
     assert r.status_code == 200, r.text
@@ -425,7 +409,7 @@ async def test_a_rejected_credential_is_error_never_valid(
     )
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
     )
 
     assert r.status_code == 200, r.text
@@ -449,7 +433,7 @@ async def test_a_tripped_breaker_is_error_never_valid(
     )
     for _ in range(3):  # ``player_check._BREAKER_THRESHOLD``
         opening = await _validate(
-            integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+            integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
         )
         assert opening.json()["status"] == "error", opening.text
 
@@ -457,7 +441,7 @@ async def test_a_tripped_breaker_is_error_never_valid(
         return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "77777777"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "77777777"}
     )
 
     assert r.status_code == 200, r.text
@@ -481,7 +465,7 @@ async def test_a_verdict_we_cannot_read_is_error_never_invalid(
     )
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
     )
 
     assert r.status_code == 200, r.text
@@ -498,7 +482,7 @@ async def test_a_steam_verdict_we_cannot_read_is_error_never_invalid(
     )
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": waxpeer_sku_id, "player_id": "gaben"}
+        integration_client, credentials, {"brand": "brand-validate-2", "player_id": "gaben"}
     )
 
     assert r.status_code == 200, r.text
@@ -516,7 +500,7 @@ async def test_an_unconfigured_supplier_is_error_never_valid(
     cfg.get_settings.cache_clear()
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
     )
 
     assert r.status_code == 200, r.text
@@ -538,7 +522,7 @@ async def test_a_sku_with_no_checker_is_unsupported_not_valid(
     checkable.
     """
     r = await _validate(
-        integration_client, credentials, {"sku_id": plain_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"brand": "brand-validate-3", "player_id": "51234567"}
     )
 
     assert r.status_code == 200, r.text
@@ -548,60 +532,39 @@ async def test_a_sku_with_no_checker_is_unsupported_not_valid(
 # ---------- scoping: no enumeration of what they cannot buy ----------
 
 
-async def test_a_sku_hidden_from_b2b_is_not_checkable(
-    integration_client: AsyncClient, credentials: tuple[str, str], hidden_sku_id: str
+async def test_a_sku_id_is_no_longer_accepted(
+    integration_client: AsyncClient, credentials: tuple[str, str], g2b_sku_id: str
 ) -> None:
-    """Ruling 2: a SKU they cannot see in ``/catalog`` is not checkable, and
-    the answer is the one the order path already gives for it."""
+    """The body is a brand now. `extra="forbid"` turns the old field into a
+    422 that names it, instead of a check of nothing."""
     r = await _validate(
-        integration_client, credentials, {"sku_id": hidden_sku_id, "player_id": "51234567"}
+        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
     )
+    assert r.status_code == 422, r.text
+    assert "brand" in r.text
 
+
+async def test_an_unknown_brand_is_refused_by_name(
+    integration_client: AsyncClient, credentials: tuple[str, str]
+) -> None:
+    r = await _validate(
+        integration_client, credentials, {"brand": "no-such-brand", "player_id": "1"}
+    )
     assert r.status_code == 404, r.text
     body = r.json()
     assert body["code"] == "item_unavailable"
-    assert body["reason"] == "not_b2b_visible"
+    assert body["reason"] == "unknown_brand"
 
 
-async def test_a_sku_under_a_hidden_brand_is_not_checkable(
-    integration_client: AsyncClient, credentials: tuple[str, str], hidden_brand_sku_id: str
+async def test_a_brand_withheld_from_b2b_is_not_checkable(
+    integration_client: AsyncClient, credentials: tuple[str, str], db_session: AsyncSession
 ) -> None:
-    """Visibility is ``brand.visible_b2b AND sku.visible_b2b``, exactly as the
-    catalog and the order path compute it."""
-    r = await _validate(
-        integration_client, credentials, {"sku_id": hidden_brand_sku_id, "player_id": "51234567"}
-    )
-
+    category, brand, product, sku = _tree(7, required_fields=_G2B_FIELD, brand_visible_b2b=False)
+    db_session.add_all([category, brand, product, sku])
+    await db_session.commit()
+    r = await _validate(integration_client, credentials, {"brand": brand.slug, "player_id": "1"})
     assert r.status_code == 404, r.text
     assert r.json()["reason"] == "not_b2b_visible"
-
-
-async def test_an_unknown_sku_is_a_documented_404(
-    integration_client: AsyncClient, credentials: tuple[str, str]
-) -> None:
-    r = await _validate(
-        integration_client,
-        credentials,
-        {"sku_id": "00000000-0000-0000-0000-000000000000", "player_id": "1"},
-    )
-
-    assert r.status_code == 404, r.text
-    body = r.json()
-    assert body["code"] == "item_unavailable"
-    assert body["reason"] == "unknown_sku"
-    assert r.headers["content-type"].startswith("application/problem+json")
-
-
-async def test_a_non_uuid_sku_id_is_refused_at_the_schema(
-    integration_client: AsyncClient, credentials: tuple[str, str]
-) -> None:
-    """Parsed as a UUID at the boundary, like ``POST /orders`` — otherwise it
-    reaches Postgres as ``uuid = 'whatever'`` and 500s where a refusal belongs."""
-    r = await _validate(integration_client, credentials, {"sku_id": "not-a-uuid", "player_id": "1"})
-
-    assert r.status_code == 422, r.text
-    assert r.json()["code"] == "invalid_request"
-    assert r.headers["content-type"].startswith("application/problem+json")
 
 
 async def test_an_unknown_body_field_is_refused(
@@ -611,7 +574,7 @@ async def test_an_unknown_body_field_is_refused(
     r = await _validate(
         integration_client,
         credentials,
-        {"sku_id": g2b_sku_id, "playerid": "51234567"},
+        {"brand": "brand-validate-1", "playerid": "51234567"},
     )
 
     assert r.status_code == 422, r.text
@@ -634,7 +597,7 @@ async def test_a_cached_verdict_is_returned_unchanged(
         return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
     first = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "31313131"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "31313131"}
     )
     assert first.json() == {"status": "valid", "name": "Neo"}
 
@@ -642,7 +605,7 @@ async def test_a_cached_verdict_is_returned_unchanged(
         return_value=httpx.Response(401, json={"message": "unauthorized"})
     )
     second = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "31313131"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "31313131"}
     )
 
     assert second.status_code == 200, second.text
@@ -665,7 +628,7 @@ async def test_an_error_is_never_cached(
         return_value=httpx.Response(401, json={"message": "unauthorized"})
     )
     broken = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "24242424"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "24242424"}
     )
     assert broken.json()["status"] == "error"
 
@@ -673,7 +636,7 @@ async def test_an_error_is_never_cached(
         return_value=httpx.Response(200, json={"valid": "valid", "name": "Neo"})
     )
     repaired = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "24242424"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "24242424"}
     )
 
     assert repaired.json() == {"status": "valid", "name": "Neo"}
@@ -701,47 +664,12 @@ async def test_the_check_does_not_fan_out_over_the_catalog(
     before = sql_counter["n"]
 
     r = await _validate(
-        integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "61616161"}
+        integration_client, credentials, {"brand": "brand-validate-1", "player_id": "61616161"}
     )
 
     assert r.status_code == 200, r.text
     spent = sql_counter["n"] - before
     assert spent <= 6, f"{spent} statements for one check — the entity fan-out is back"
-
-
-@pytest.mark.parametrize(
-    "spelling",
-    ["braced", "urn", "undashed", "upper"],
-)
-async def test_every_uuid_spelling_python_accepts_reaches_postgres(
-    integration_client: AsyncClient,
-    credentials: tuple[str, str],
-    plain_sku_id: str,
-    spelling: str,
-) -> None:
-    """``UUID()`` takes four spellings; Postgres takes two. Normalise, or 500.
-
-    A .NET client formatting ids with ``Guid.ToString("B")`` sends the braced
-    form. Before the schema returned ``str(UUID(value))`` that reached
-    ``where(Sku.id == "{0198…}")``, raised ``DataError``, and — with no handler
-    registered for ``DBAPIError`` — came back as Starlette's plain-text 500,
-    from the very validator whose docstring promised it could not. Our own
-    README calls a 500 safe to retry, so the client would have retried forever.
-
-    ``plain_sku_id`` is used so a pass is unambiguous: the answer is a
-    ``200 unsupported``, which only a SKU that was actually **found** can give.
-    """
-    written = {
-        "braced": "{" + plain_sku_id + "}",
-        "urn": f"urn:uuid:{plain_sku_id}",
-        "undashed": plain_sku_id.replace("-", ""),
-        "upper": plain_sku_id.upper(),
-    }[spelling]
-
-    r = await _validate(integration_client, credentials, {"sku_id": written, "player_id": "1"})
-
-    assert r.status_code == 200, r.text
-    assert r.json()["status"] == "unsupported"
 
 
 # ---------- rate limiting ----------
@@ -783,7 +711,7 @@ async def test_the_bucket_throttles_with_a_retry_after(
     last: Response | None = None
     for _ in range(6):
         last = await _validate(
-            integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+            integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
         )
     assert last is not None
 
@@ -818,7 +746,7 @@ async def test_the_merchant_axis_throttles_across_addresses(
     last: Response | None = None
     for _ in range(6):
         last = await _validate(
-            integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": "51234567"}
+            integration_client, credentials, {"brand": "brand-validate-1", "player_id": "51234567"}
         )
     assert last is not None
 
@@ -849,9 +777,13 @@ async def test_one_merchants_checks_do_not_spend_anothers_quota(
         integration_client, admin_headers, await _new_merchant(integration_client, admin_headers)
     )
     for _ in range(4):
-        await _validate(integration_client, noisy, {"sku_id": g2b_sku_id, "player_id": "51234567"})
+        await _validate(
+            integration_client, noisy, {"brand": "brand-validate-1", "player_id": "51234567"}
+        )
 
-    r = await _validate(integration_client, quiet, {"sku_id": g2b_sku_id, "player_id": "51234567"})
+    r = await _validate(
+        integration_client, quiet, {"brand": "brand-validate-1", "player_id": "51234567"}
+    )
 
     assert r.status_code == 200, r.text
     cfg.get_settings.cache_clear()
@@ -878,7 +810,7 @@ async def test_a_frozen_merchant_is_refused(
     assert frozen.status_code == 200, frozen.text
 
     r = await _validate(
-        integration_client, (key_id, secret), {"sku_id": g2b_sku_id, "player_id": "1"}
+        integration_client, (key_id, secret), {"brand": "brand-validate-1", "player_id": "1"}
     )
 
     assert r.status_code == 403, r.text
@@ -900,7 +832,7 @@ async def test_the_players_identifier_is_never_logged(
 
     with structlog.testing.capture_logs() as captured:
         r = await _validate(
-            integration_client, credentials, {"sku_id": g2b_sku_id, "player_id": secret_id}
+            integration_client, credentials, {"brand": "brand-validate-1", "player_id": secret_id}
         )
 
     assert r.status_code == 200, r.text

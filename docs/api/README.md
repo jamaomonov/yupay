@@ -188,7 +188,7 @@ of its way to log only a hash of that identifier. Filtering at the edge was
 rejected: an unrelated Caddy edit undoes it silently, and it only ever covers
 the place we remembered. Nothing is lost — the endpoint is not bookmarkable
 and its caching is server-side in Redis. It writes nothing, so like
-`POST /catalog/products/{id}/check-player` (the other advisory identity
+`POST /catalog/brands/{slug}/check-player` (the other advisory identity
 lookup here) it takes **no** `Idempotency-Key`.
 
 `invite_url` is validated and
@@ -823,8 +823,8 @@ Spec §9.1's sixth row, and the only endpoint here that calls a supplier while
 the caller waits. It exposes `integrations.player_check` — the storefront's own
 G2B nickname lookup and Waxpeer Steam-login check, with their circuit breaker
 and 300 s cache — to a reseller who wants to verify an end customer's id before
-spending a deposit on it. `merchants/validate.py` resolves the SKU and projects
-the result; it performs no check of its own.
+spending a deposit on it. `merchants/validate.py` resolves the **brand** and
+projects the result; it performs no check of its own.
 
 **The rule is "never a fake approver", and it decides the response shape.**
 `player_check` already folds every fault into `status: "error"` rather than
@@ -845,10 +845,10 @@ as an amendment in ADR-0031.
 Rendering any of those as `valid` would have a reseller sell a top-up into a
 stranger's account, which is the failure the endpoint exists to prevent. The
 wire contract therefore has **four** statuses, not three: `valid`, `invalid`,
-`error`, and `unsupported` for a SKU whose product has no checker configured —
+`error`, and `unsupported` for a brand whose products declare no checker —
 distinct from `error` because that one is worth retrying and this one never
 is, and distinct from a `404` because "no check exists" must not read as "no
-such SKU". Nothing reports whether an answer came from the cache: a cached
+such brand". Nothing reports whether an answer came from the cache: a cached
 verdict is still our best answer, and a caveat would only invite integrators to
 distrust a good one.
 
@@ -859,19 +859,23 @@ which is a lot of retail catalog to drag through an advisory lookup at two
 calls a second. `test_the_check_does_not_fan_out_over_the_catalog` counts the
 statements.
 
-**Scoped to what the merchant can already see**: `brand.visible_b2b AND
-sku.visible_b2b`, exactly `/catalog`'s rule, so the endpoint cannot be used to
-enumerate SKUs withheld from B2B. The refusal is `quote.unavailable`'s —
-`404 item_unavailable` with `reason: unknown_sku` or `not_b2b_visible`, the same
-words the order path uses — rather than a second vocabulary for the same idea.
-The order path's _other_ reasons (`out_of_stock`, `not_for_sale`, `no_cost`)
+**Scoped to what the merchant can already see**: `brand.visible_b2b` **and**
+at least one B2B-visible SKU, exactly `/catalog`'s rule, so the endpoint
+cannot be used to enumerate brands withheld from B2B. The refusal is
+`quote.unavailable`'s — `404 item_unavailable` with `reason: unknown_brand` or
+`not_b2b_visible` — rather than a second vocabulary for the same idea. The
+order path's _other_ reasons (`out_of_stock`, `not_for_sale`, `no_cost`)
 deliberately do not apply: stock and pricing move between a check and an order,
 and this call is the step before the order.
+
+The body takes a brand, not a SKU: a brand is exactly one game (ADR-0079), so
+the id checked is the id every SKU of the brand credits — and it is how every
+other reseller API in this market is shaped.
 
 **A `POST` that writes nothing, and no `Idempotency-Key`.** `player_id`
 identifies the reseller's end customer, so it must not travel in a URL — the
 `api.yupay.uz` site block logs query strings verbatim (spec §9.2) — which is
-the same reason `POST /catalog/products/{id}/check-player` and
+the same reason `POST /catalog/brands/{slug}/check-player` and
 `POST /gifts/steam-profile` are POSTs. It is transit-only and never logged;
 `player_check` logs `hash_short` of it and nothing else.
 
