@@ -8,13 +8,13 @@ not hold and is worse than showing nothing.
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from yupay.core.clock import now
+from yupay.core.clock import now, reset_clock, set_clock
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
@@ -306,3 +306,38 @@ async def test_both_halves_of_the_business_are_always_named(db_session: AsyncSes
     assert set(by_channel) == {"retail", "b2b"}
     assert by_channel["retail"].orders == 1
     assert by_channel["b2b"].orders == 0
+
+
+async def test_the_sparkline_buckets_days_on_the_local_clock(
+    db_session: AsyncSession,
+) -> None:
+    """Buckets and zero-fill keys have to agree about what a day is.
+
+    `date_trunc` cuts in the session timezone (UTC on prod) while the array is
+    filled by date string. Move one without the other and every key misses its
+    bucket — the sparkline goes flat and empty, with no error anywhere.
+
+    The clock is frozen at 21:30 UTC, which is 02:30 the *next* day in
+    Tashkent, because that is the only window where the two calendars disagree;
+    run at any other hour this test passes whatever the code does, which is how
+    the first draft of it passed against the bug it was written for.
+    """
+    known, _ = await _seed_skus(db_session)
+    frozen = datetime(2026, 9, 6, 21, 30, tzinfo=UTC)
+    set_clock(lambda: frozen)
+    try:
+        # 30 minutes earlier: still 6 September in UTC, already the 7th locally.
+        await _order(
+            db_session, sku_id=known, qty=1, unit="10.00", created_ago=timedelta(minutes=30)
+        )
+
+        out = await build_dashboard(db_session, window_hours=24)
+
+        dates = [b.date for b in out.orders_last_7_days]
+        assert len(dates) == 7, "a fixed-width series, zero-filled"
+        assert dates[-1] == "2026-09-07", f"the last slot is today *locally*, got {dates}"
+        slot = next(b for b in out.orders_last_7_days if b.date == "2026-09-07")
+        assert slot.count >= 1, "the sale landed in the local day it happened on"
+        assert not any(b.date == "2026-09-06" and b.count >= 1 for b in out.orders_last_7_days)
+    finally:
+        reset_clock()

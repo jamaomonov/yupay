@@ -50,16 +50,61 @@ groups:
       # Only meaningful since the histogram gained buckets past 1s. It used to
       # be dead code: the buckets were (0.1, 0.5, 1, +Inf), so the quantile
       # could never exceed 1.0 and this threshold of 1.5 was unreachable.
+      #
+      # Supplier-bound handlers are excluded, and that is the point of the
+      # rule rather than an excuse. They are slow *by design* — they wait on
+      # G-Engine or Steam — and mixing them into one global quantile means a
+      # burst of catalog browsing pages somebody about a checkout that was
+      # never slow. Measured on prod: `/gifts/catalog/hot` averages ~24s on a
+      # cold cache and `/gifts/catalog` ~2.4s, against ~0.25s for everything
+      # else. One alert over both populations can only be wrong about one of
+      # them. See `ApiSupplierLatency` below for the other half.
+      #
+      # The list mirrors the four advisory pre-purchase lookups named in
+      # AGENTS.md §10 plus the gifts catalog proxy. Adding a fifth
+      # supplier-touching route means adding it here too, or this alert starts
+      # crying wolf again.
       - alert: ApiHighLatency
         expr: |
           histogram_quantile(
             0.95,
-            sum(rate(http_request_duration_seconds_bucket{job="api"}[5m])) by (le)
+            sum(
+              rate(
+                http_request_duration_seconds_bucket{
+                  job="api",
+                  handler!~".*(/gifts/catalog.*|/check-player|/steam-profile|/validate/player)"
+                }[5m]
+              )
+            ) by (le)
           ) > 1.5
         for: 10m
         labels: { severity: warn }
         annotations:
-          summary: "API p95 latency > 1.5s"
+          summary: "API p95 latency > 1.5s (excluding supplier-bound routes)"
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
+
+      # The other half: the supplier-bound routes, watched on their own terms.
+      # Not excluded from monitoring, just from a threshold built for our own
+      # database. 10s is the top finite bucket, so this fires only when the
+      # upstream is genuinely unwell rather than merely remote.
+      - alert: ApiSupplierLatency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum(
+              rate(
+                http_request_duration_seconds_bucket{
+                  job="api",
+                  handler=~".*(/gifts/catalog.*|/check-player|/steam-profile|/validate/player)"
+                }[5m]
+              )
+            ) by (le)
+          ) > 10
+        for: 15m
+        labels: { severity: warn }
+        annotations:
+          summary: "Supplier-bound routes p95 > 10s — upstream is degraded"
+          runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/traffic-surge.md"
 
       # The pool is 20 connections per process and it is shared by every
       # request; a supplier call holds one for its whole round trip. Exhaustion

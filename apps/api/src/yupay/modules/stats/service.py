@@ -27,6 +27,7 @@ from yupay.modules.orders.revenue import (
 )
 from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.payments.models import Payment
+from yupay.modules.stats._time import local_date_of, local_day
 from yupay.modules.stats.schemas import (
     CurrencyAmount,
     DashboardChannel,
@@ -321,9 +322,15 @@ async def _inventory_summary(db: AsyncSession) -> InventorySummary:
 
 
 async def _orders_last_7_days(db: AsyncSession, anchor: datetime) -> list[DayBucket]:
-    """Day-bucketed orders + revenue for the last 7 days (UTC)."""
+    """Day-bucketed orders + revenue for the last 7 days, on the local clock.
+
+    Buckets and zero-fill keys have to move together: the fill builds the fixed
+    seven-slot array by date string, so grouping locally while filling from UTC
+    dates would miss every bucket and draw a flat empty sparkline. Both go
+    through ``stats._time`` for that reason.
+    """
     seven_days_ago = anchor - timedelta(days=7)
-    day = func.date_trunc("day", Order.created_at)
+    day = local_day(Order.created_at)
     # `charged_usd`, not `total_usd` — the latter is a Steam order's face value
     # and undercounts revenue by the whole markup. See `orders.revenue`.
     gross = order_charged_usd_subq()
@@ -352,7 +359,7 @@ async def _orders_last_7_days(db: AsyncSession, anchor: datetime) -> list[DayBuc
         by_date[iso] = (int(c or 0), Decimal(str(rev or 0)))
     out: list[DayBucket] = []
     for i in range(6, -1, -1):
-        bucket_date = (anchor - timedelta(days=i)).date().isoformat()
+        bucket_date = local_date_of(anchor - timedelta(days=i))
         c, rev = by_date.get(bucket_date, (0, Decimal(0)))
         out.append(DayBucket(date=bucket_date, count=c, revenue_usd=rev))
     return out

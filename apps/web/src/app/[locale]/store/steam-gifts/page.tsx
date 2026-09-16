@@ -9,6 +9,7 @@ import { GiftsBrowser } from "@/components/gifts/GiftsBrowser";
 import { HotOffers } from "@/components/gifts/HotOffers";
 import { JsonLd } from "@/components/JsonLd";
 import { AboutText } from "@/components/store/AboutText";
+import { HighlightChips } from "@/components/store/HighlightChips";
 import { routing } from "@/i18n/routing";
 import { getBrandDetail } from "@/lib/catalog";
 import { getGiftsHot, getGiftsPage } from "@/lib/gifts";
@@ -81,6 +82,7 @@ export default async function SteamGiftsPage({ params }: { params: Promise<{ loc
   const isDark = hot.length === 0 && firstPage.items.length === 0;
 
   const tStore = await getTranslations("web.store");
+  const highlights = brand?.highlights ?? [];
   const about = firstNonEmpty(brand?.description, brand?.short_description);
   const faqs = brand?.faqs ?? [];
   const hasHowTo = (brand?.instructions ?? "").trim() !== "";
@@ -132,6 +134,14 @@ export default async function SteamGiftsPage({ params }: { params: Promise<{ loc
         <p className="text-tx-mute mt-5 max-w-[620px] text-base leading-relaxed sm:text-lg">
           {t("hero.subtitle")}
         </p>
+
+        {/* `on-surface`: this hub has no hero photograph, and the over-image
+            styling the brand pages use is white-on-white here in light mode. */}
+        {highlights.length > 0 && (
+          <div className="mt-6 flex flex-wrap gap-2">
+            <HighlightChips items={highlights} variant="on-surface" />
+          </div>
+        )}
 
         <section className="mt-10">
           <h2 className="font-display text-lg font-bold tracking-[-0.02em]">

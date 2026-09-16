@@ -17,6 +17,7 @@ from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.orders.revenue import margin_usd_expr, order_charged_usd_subq
 from yupay.modules.orders.scope import IS_SALE
+from yupay.modules.stats._time import LOCAL_TZ, local_day
 from yupay.modules.stats.analytics._common import _PAID_LIKE
 from yupay.modules.stats.schemas import (
     AnalyticsChannel,
@@ -35,26 +36,6 @@ from yupay.modules.stats.schemas import (
     range_to_days,
 )
 from yupay.modules.users.models import User
-
-#: The clock an operator reads. `paid_at` is UTC and Uzbekistan is +5, so an
-#: hourly chart built on the raw column puts the evening peak at lunchtime.
-_LOCAL_TZ = "Asia/Tashkent"
-
-
-def _local_day(column: InstrumentedAttribute[datetime | None]) -> ColumnElement[datetime]:
-    """``column`` truncated to a day on the clock the business runs on.
-
-    `date_trunc('day', <timestamptz>)` cuts in the *session* timezone, which is
-    UTC on prod. That is five hours off the day an operator means, and the
-    calendar made the gap visible: a cell said $674.43 for "6 сентября" because
-    it was showing the UTC day, while clicking it asked for the Tashkent day and
-    got $100.31. Same data, two different 24-hour windows, no way to tell from
-    the screen which one you were reading.
-
-    So every day bucket on this tab is cut here, in one place, the same way
-    `_hourly` already cut its hours.
-    """
-    return func.date_trunc("day", func.timezone(_LOCAL_TZ, column))
 
 
 @dataclass(frozen=True, slots=True)
@@ -307,7 +288,7 @@ async def _revenue_series(db: AsyncSession, window: Scope) -> list[RevenuePoint]
     the number of lines on each order. They are joined by date in Python,
     where that cannot happen.
     """
-    day = _local_day(Order.paid_at)
+    day = local_day(Order.paid_at)
     # Same basis as the GMV headline — the two must not disagree.
     gross = order_charged_usd_subq()
     stmt = (
@@ -329,7 +310,7 @@ async def _revenue_series(db: AsyncSession, window: Scope) -> list[RevenuePoint]
     )
     rows = (await db.execute(stmt)).all()
 
-    item_day = _local_day(Order.paid_at)
+    item_day = local_day(Order.paid_at)
     margins = (
         select(item_day.label("d"), *_margin_parts())
         .select_from(OrderItem)
@@ -438,7 +419,7 @@ async def _hourly(db: AsyncSession, window: Scope) -> list[HourPoint]:
     hours. Postgres converts, so the hour is the one an operator recognises.
     """
     gross = order_charged_usd_subq()
-    hour = func.extract("hour", func.timezone(_LOCAL_TZ, Order.paid_at))
+    hour = func.extract("hour", func.timezone(LOCAL_TZ, Order.paid_at))
     stmt = (
         select(
             hour.label("h"),
@@ -580,7 +561,7 @@ async def _top_skus(db: AsyncSession, window: Scope) -> list[SkuRevenueOut]:
 
 
 async def _customers(db: AsyncSession, window: Scope) -> CustomersOut:
-    day = _local_day(User.created_at)
+    day = local_day(User.created_at)
     new_rows = (
         await db.execute(
             select(day.label("d"), func.count())

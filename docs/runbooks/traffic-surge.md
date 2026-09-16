@@ -41,9 +41,28 @@ In order:
 4. **429 rate.** A spike means our own limiter is shedding real customers —
    check which bucket before raising anything.
 
-Note the latency histogram cannot see past one second: buckets are
-`0.1 / 0.5 / 1.0 / +Inf`, so a p95 of "1000 ms" means "somewhere above a
-second, unmeasurable". Do not size anything on it.
+5. **Latency.** The histogram reaches 10s — buckets are
+   `0.025 / 0.05 / 0.1 / 0.25 / 0.5 / 1 / 2.5 / 5 / 10`, set explicitly in
+   `bootstrap._LATENCY_BUCKETS`. This paragraph used to say the opposite, and
+   said it for long enough to matter: on the library default of
+   `0.1 / 0.5 / 1` the quantile could not exceed 1.0, several handlers reported
+   a flat "1000 ms" meaning "unmeasurable", and `ApiHighLatency` was dead code
+   because it fires above 1.5. Both were fixed; the note was not. **You can
+   size on this metric now.**
+
+**Two latency alerts, and which one you have.** `ApiHighLatency` (p95 > 1.5s,
+10m) deliberately **excludes** supplier-bound routes — the gifts catalog proxy
+and the three player/profile lookups. Those wait on G-Engine or Steam and are
+slow by design: measured on prod, `/gifts/catalog/hot` averages ~24s on a cold
+cache against ~0.25s for everything else, so one global quantile over both
+populations can only be wrong about one of them. If `ApiHighLatency` is firing,
+something _we_ own is slow. `ApiSupplierLatency` (p95 > 10s, 15m) is the other
+half and means an upstream is degraded — check the supplier before touching
+anything here.
+
+A burst of catalog browsing used to trip the global rule on its own. If you see
+a latency alert alongside a spike in `/gifts/catalog*` traffic and nothing else
+looks wrong, that was the old shape of this alert and should no longer happen.
 
 ## Rate limits, and which one is biting
 

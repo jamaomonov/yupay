@@ -6,12 +6,11 @@ import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Suspense } from "react";
 
-import { HighlightChips } from "./HighlightChips";
-
 import type { Metadata } from "next";
 
 import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
 import { JsonLd } from "@/components/JsonLd";
+import { HighlightChips } from "@/components/store/HighlightChips";
 import { AboutText } from "@/components/store/AboutText";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { RatingChip } from "@/components/store/RatingChip";
