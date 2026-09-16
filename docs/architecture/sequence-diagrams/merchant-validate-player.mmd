@@ -22,7 +22,7 @@ sequenceDiagram
 
     API->>V: check_player(brand, player_id, server_id)
     V->>DB: SELECT brands.id, brands.visible_b2b,<br/>EXISTS(visible SKU) WHERE slug = ?
-    Note over V,DB: scoped exactly as /merchant/v1/catalog is -- a brand they cannot see<br/>is not checkable, so this cannot enumerate withheld brands
+    Note over V,DB: scoped exactly as /merchant/v1/catalog is -- a brand they cannot see<br/>is not checkable; withheld brand → not_b2b_visible (existence visible, SKUs/prices not)
     alt no row
         V-->>R: 404 item_unavailable reason=unknown_brand
     else not visible_b2b (brand or no visible SKU)
