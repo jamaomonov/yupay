@@ -1,4 +1,4 @@
-"""check_player_for_product: mapping resolution, response shaping, cache, PII."""
+"""check_player_for_brand: mapping resolution, response shaping, cache, PII."""
 
 from __future__ import annotations
 
@@ -203,3 +203,19 @@ async def test_a_positive_waxpeer_verdict_is_remembered(monkeypatch) -> None:  #
     assert len(fake.store) == 1
     assert (await pc._check_waxpeer_login(supplier, steam_login="jama")).status == "valid"
     assert supplier.calls == 1, "served from the cache"
+
+
+def test_brand_check_field_needs_a_check_on_some_product() -> None:
+    assert pc._field_of([{"key": "email", "type": "text"}]) is None
+    f = pc._field_of([{"key": "player_id", "type": "text", "check": {"provider": "g2b"}}])
+    assert f is not None
+    assert f["key"] == "player_id"
+
+
+def test_brand_check_fields_must_agree_across_products() -> None:
+    """Two products of one brand declaring different checks is a misconfiguration:
+    a brand-level check would have to pick one, and picking is guessing."""
+    a = {"key": "player_id", "type": "text", "check": {"provider": "g2b"}}
+    b = {"key": "player_id", "type": "text", "check": {"provider": "g2b", "server_field": "server"}}
+    assert pc._agreed_field([a, a]) is a
+    assert pc._agreed_field([a, b]) is None

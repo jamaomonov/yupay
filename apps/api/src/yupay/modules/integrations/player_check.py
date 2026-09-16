@@ -1,7 +1,7 @@
 """Storefront player-id verification (G2B nickname lookup / Waxpeer Steam
 login check).
 
-Advisory: for a ``g2b``-checked field, resolves the product's G2B
+Advisory: for a ``g2b``-checked field, resolves the brand's G2B
 ``game_code`` from its supplier mapping and proxies ``games_check_player``.
 For a ``waxpeer``-checked field, proxies ``WaxpeerClient.validate_login`` —
 Steam has no game_code/mapping to resolve, the login itself is the lookup
@@ -13,7 +13,6 @@ storefront never hits an error boundary. See ADR-0031.
 from __future__ import annotations
 
 import contextlib
-import uuid
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -21,7 +20,7 @@ from sqlalchemy import select
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.logging import get_logger, hash_short
 from yupay.core.redis import get_redis
-from yupay.modules.catalog.models import Product, Sku
+from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.integrations.breaker import SupplierBreaker
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.schemas import PlayerCheckOut
@@ -67,13 +66,6 @@ _BREAKER_COOLDOWN_SECONDS = 30
 
 _KNOWN_PROVIDERS = ("g2b", "waxpeer")
 
-#: RFC 7807 ``code`` on the 404 an unknown ``product_id`` answers with. Every
-#: other 4xx on ``/merchant/v1`` carries one and its published table says to
-#: switch on it; this one is reachable there only as a race (a product deleted
-#: between the SKU lookup and the check), which is exactly the kind of rarity
-#: that gets shipped untyped and then cannot be handled.
-CODE_PRODUCT_NOT_FOUND = "product_not_found"
-
 
 def _checkable_provider(required_fields: list[dict[str, Any]]) -> str | None:
     """The ``check.provider`` of the product's first checkable field, if any."""
@@ -88,6 +80,66 @@ def _checkable_provider(required_fields: list[dict[str, Any]]) -> str | None:
 def product_is_checkable(required_fields: list[dict[str, Any]]) -> bool:
     """True when any form field opts into a supported (g2b or waxpeer) player check."""
     return _checkable_provider(required_fields) is not None
+
+
+def _field_of(required_fields: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """The first form field that opts into a supported check, or ``None``."""
+    for f in required_fields:
+        if (
+            isinstance(f, dict)
+            and isinstance(f.get("check"), dict)
+            and f["check"].get("provider") in _KNOWN_PROVIDERS
+        ):
+            return f
+    return None
+
+
+def _agreed_field(fields: list[dict[str, Any]]) -> dict[str, Any] | None:
+    """One check config every product of a brand agrees on, or ``None``.
+
+    Agreement is on the three things the check actually reads: provider, the
+    sibling server field and the id field's key. Anything else differing
+    between products (labels, patterns) does not change what is checked.
+    """
+    if not fields:
+        return None
+    first = fields[0]
+
+    def _sig(f: dict[str, Any]) -> tuple[Any, Any, Any]:
+        return (f["check"].get("provider"), f["check"].get("server_field"), f.get("key"))
+
+    return first if all(_sig(f) == _sig(first) for f in fields[1:]) else None
+
+
+async def brand_check_field(session: AsyncSession, brand_id: str) -> dict[str, Any] | None:
+    """The check-bearing form field of a brand, or ``None``.
+
+    ``None`` covers both "no product of this brand declares a check" and
+    "its products disagree on the check" — the second is logged, because it is
+    a catalog mistake someone has to fix, not a brand that never wanted one.
+
+    Columns, not entities: ``Product`` configures selectin relationships that
+    would drag the whole retail subtree through an advisory lookup.
+    """
+    rows = (
+        await session.execute(
+            select(Product.required_fields).where(
+                Product.brand_id == brand_id, Product.active.is_(True)
+            )
+        )
+    ).all()
+    fields = [f for (rf,) in rows if (f := _field_of(list(rf or []))) is not None]
+    if not fields:
+        return None
+    agreed = _agreed_field(fields)
+    if agreed is None:
+        logger.warning(
+            "player_check_brand_config_mismatch",
+            brand_id=brand_id,
+            hint="the brand's products declare different `check` configs; a brand "
+            "is one game (ADR-0079), so they must agree — no check until they do",
+        )
+    return agreed
 
 
 #: The only two things G2B's ``valid`` field is allowed to say. Anything else
@@ -137,54 +189,46 @@ def _map_response(resp: dict[str, Any]) -> PlayerCheckOut:
     return PlayerCheckOut(status="invalid")
 
 
-async def resolve_g2b_game_code(session: AsyncSession, product_id: str) -> str | None:
-    """The G2B game_code for a product = external_product_id of its active g2b
-    game mappings.
+async def resolve_g2b_game_code(session: AsyncSession, brand_id: str) -> str | None:
+    """The G2B game_code for a brand = the one ``external_product_id`` across
+    its active ``g2b/game`` mappings.
 
-    A product's game SKUs are meant to share one code — region is split across
-    *products* (ADR-0048), not across the SKUs of one. If that ever stops being
-    true, picking one arbitrarily would validate a player against the wrong
-    region's game and answer "invalid" for a perfectly good id, so two distinct
-    codes is treated as a misconfiguration: no check rather than a wrong one.
+    A brand is exactly one supplier game (ADR-0079). Two distinct codes means
+    the catalog is mid-migration or misconfigured, and picking one would
+    validate a player against the wrong region's game and answer "invalid"
+    for a perfectly good id — so two codes is no check rather than a wrong one.
     """
     stmt = (
         select(SkuSupplierMapping.external_product_id)
         .join(Sku, Sku.id == SkuSupplierMapping.sku_id)
+        .join(Product, Product.id == Sku.product_id)
         .where(
-            Sku.product_id == product_id,
+            Product.brand_id == brand_id,
             SkuSupplierMapping.supplier_slug == "g2b",
             SkuSupplierMapping.kind == "game",
             SkuSupplierMapping.is_active.is_(True),
         )
         .distinct()
-        # Two is all it takes to know the answer is ambiguous; no need to drag
-        # back one row per SKU.
         .limit(2)
     )
     codes = list((await session.execute(stmt)).scalars().all())
     if len(codes) > 1:
-        logger.error(
-            "player_check_ambiguous_game_code",
-            product_id=product_id,
+        logger.warning(
+            "player_check_brand_spans_games",
+            brand_id=brand_id,
             codes=sorted(codes),
+            hint="one brand maps to two G2B games; split it (see ADR-0079) — "
+            "every check on it answers `error` until then",
         )
         return None
     if not codes:
-        # The likeliest cause of a product that answers ``error`` forever, and
-        # until now the only one that logged nothing at all: the form field
-        # declares ``check.provider == "g2b"`` but no active g2b/game mapping
-        # exists to resolve a game code from. Routine rather than exotic — the
-        # import queue ships the field before the mapping, or a mapping is
-        # deactivated during a supplier switch — and indistinguishable from an
-        # unconfigured supplier without this line. ``product_id`` is our own
-        # identifier, never PII, and naming it is the only way to find the row.
         logger.warning(
             "player_check_no_game_mapping",
-            product_id=product_id,
-            hint="this product's form declares a g2b player check but has no active "
-            "sku_supplier_mapping (supplier_slug='g2b', kind='game') on any of its "
-            "SKUs, so every check answers `error`; add the mapping or drop the "
-            "check descriptor",
+            brand_id=brand_id,
+            hint="this brand's form declares a g2b player check but no active "
+            "sku_supplier_mapping (supplier_slug='g2b', kind='game') exists on any "
+            "of its SKUs, so every check answers `error`; add the mapping or drop the "
+            "check from the form",
         )
         return None
     return codes[0]
@@ -324,80 +368,79 @@ def _breaker_for_g2b() -> SupplierBreaker:
     )
 
 
-async def check_player_for_product(
+CODE_BRAND_NOT_FOUND = "brand_not_found"
+
+
+async def check_player_for_brand(
     session: AsyncSession,
     *,
-    product_id: str,
+    brand_slug: str,
     player_id: str,
     server_id: str | None,
 ) -> PlayerCheckOut:
-    """Verify a player id (or Steam login) for a product. Never raises on
-    upstream failure — folds it into ``status="error"``.
+    """Verify a player id (or Steam login) for a brand. Never raises on a
+    supplier fault; raises only for a brand that does not exist or is not
+    checkable, which are the caller's mistakes.
 
-    A malformed (non-UUID) ``product_id`` is treated as "not found" rather
-    than propagating the driver's ``DBAPIError`` — see ADR-0031: unknown
-    product -> 404, and this endpoint never 5xx's.
+    Args:
+        session: Session. Rolled back before a Waxpeer call, as before.
+        brand_slug: The brand's public slug, as in ``/catalog/brands``.
+        player_id: The customer's identifier — never logged, only hashed.
+        server_id: The sibling server value, where the form declares one.
+
+    Returns:
+        The three-way advisory verdict.
     """
-    from yupay.modules.integrations.routes import _waxpeer_fulfiller_or_none
-
-    try:
-        uuid.UUID(product_id)
-    except ValueError as exc:
-        raise NotFoundError("product not found", code=CODE_PRODUCT_NOT_FOUND) from exc
-
-    # One column, not the entity. ``session.get(Product, …)`` here fanned out to
-    # **nine statements per check**: ``Product`` configures ``lazy="selectin"``
-    # for its translations, FAQs, SKU set and its brand, and ``Brand.products``
-    # is selectin too — so an advisory lookup dragged the brand's whole product
-    # subtree back with it, at up to two checks a second. All this path reads is
-    # ``required_fields``. Selecting the column also removes the loader question
-    # entirely rather than answering it with ``load_only``/``raiseload``, which
-    # a later hand could weaken without noticing. Pinned by
-    # ``test_the_check_does_not_fan_out_over_the_catalog``.
-    # ``id`` is selected alongside so that "no such product" is the absence of
-    # a row and nothing else: ``required_fields`` is NOT NULL, but a JSONB
-    # column can still hold the JSON literal ``null``, which would come back as
-    # Python ``None`` and turn a checkable product into a 404.
     row = (
         await session.execute(
-            select(Product.id, Product.required_fields).where(Product.id == product_id)
+            select(Brand.id).where(Brand.slug == brand_slug, Brand.active.is_(True))
         )
     ).one_or_none()
     if row is None:
-        raise NotFoundError("product not found", code=CODE_PRODUCT_NOT_FOUND)
-    provider = _checkable_provider(list(row.required_fields or []))
-    if provider is None:
-        raise ValidationError("product is not checkable")
+        raise NotFoundError("brand not found", code=CODE_BRAND_NOT_FOUND)
+    return await check_player_for_brand_id(
+        session, brand_id=row.id, player_id=player_id, server_id=server_id
+    )
 
-    if provider == "waxpeer":
-        # Same reason as the g2b branch below: the product lookup above checked
-        # out a pool connection, and `_check_waxpeer_login` needs no database at
-        # all — so holding it across a Steam round trip buys nothing and costs
-        # one of twenty.
+
+async def check_player_for_brand_id(
+    session: AsyncSession,
+    *,
+    brand_id: str,
+    player_id: str,
+    server_id: str | None,
+) -> PlayerCheckOut:
+    """As :func:`check_player_for_brand`, for a caller that already has the id."""
+    from yupay.modules.integrations.routes import _waxpeer_fulfiller_or_none
+
+    field = await brand_check_field(session, brand_id)
+    if field is None:
+        raise ValidationError("brand is not checkable")
+    if field["check"]["provider"] == "waxpeer":
         await session.rollback()
         return await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
     return await _check_g2b_player(
-        session, product_id=product_id, player_id=player_id, server_id=server_id
+        session, brand_id=brand_id, player_id=player_id, server_id=server_id
     )
 
 
 async def _check_g2b_player(
     session: AsyncSession,
     *,
-    product_id: str,
+    brand_id: str,
     player_id: str,
     server_id: str | None,
 ) -> PlayerCheckOut:
     """The G2B half of the check: game code, cache, circuit, upstream call.
 
-    Split out of ``check_player_for_product`` so that function stays a
+    Split out of ``check_player_for_brand`` so that function stays a
     provider dispatcher. Every exit here is an advisory verdict — this never
     raises, because a lookup the customer did not ask to be blocked on must
     not be able to fail their checkout.
     """
     from yupay.modules.integrations.routes import _g2b_fulfiller_or_none
 
-    game_code = await resolve_g2b_game_code(session, product_id)
+    game_code = await resolve_g2b_game_code(session, brand_id)
     if game_code is None:
         return PlayerCheckOut(status="error")
 
