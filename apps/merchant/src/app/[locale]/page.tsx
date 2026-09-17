@@ -1,86 +1,103 @@
-import { ArrowRight, Braces, KeyRound, ShoppingCart, UserPlus } from "lucide-react";
+import {
+  ArrowRight,
+  Braces,
+  Check,
+  Repeat2,
+  RotateCcw,
+  Search,
+  Smartphone,
+  Ticket,
+  UserPlus,
+  UserSearch,
+  Webhook,
+  Zap,
+} from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import { CodeWindow } from "@/components/CodeWindow";
-import { LocaleSwitcher } from "@/components/LocaleSwitcher";
-import { Mark } from "@/components/Mark";
+import { CabinetMock } from "@/components/landing/CabinetMock";
+import { PageFrame } from "@/components/landing/PageFrame";
 import { countBrands } from "@/lib/brands";
 import { pathFor } from "@/lib/locale-href";
 
 export const revalidate = 3600;
 
-/** The window's title: the request the body below belongs to. */
-const SNIPPET_TITLE = "POST /merchant/v1/orders";
+/** The machine-readable contract. Linked, never pasted into the page. */
+const OPENAPI_URL = "https://api.yupay.uz/merchant/openapi.json";
 
-/** Kept verbatim rather than built from strings: it is a code sample, and the
- *  moment it is templated somebody will template a field name too. */
-const SNIPPET = `{
-  "merchant_order_id": "shop-10482",
-  "sku_id": "01a042ce-7bf4-...",
-  "expected_price": "8.91",
-  "fulfillment_data": { "player_id": "1313232551" }
-}
-
-201 -> { "status": "paid", "price_usd": "8.91" }`;
+const SECTION_HEADING = "font-display text-2xl font-semibold tracking-tight";
+const CARD = "border-border bg-card rounded-xl border p-5";
 
 export default async function Landing({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
   const t = await getTranslations("merchant.landing");
-  const tOffer = await getTranslations("merchant.offer");
+  // The five questions the landing shows come from the same namespace the
+  // `/faq` page reads, so the two can never answer the same question
+  // differently.
+  const tFaq = await getTranslations("merchant.faq");
+  // The mock-up claims to be a picture of the cabinet, so its words are the
+  // cabinet's own — renaming a section there renames it in the picture.
+  const tCabinet = await getTranslations("merchant.cabinet");
+  const tOrders = await getTranslations("merchant.orders");
   const brands = await countBrands();
 
   const steps = [
     { icon: UserPlus, title: t("step1Title"), body: t("step1Body") },
-    { icon: KeyRound, title: t("step2Title"), body: t("step2Body") },
-    { icon: ShoppingCart, title: t("step3Title"), body: t("step3Body") },
+    { icon: Search, title: t("step2Title"), body: t("step2Body") },
+    { icon: Ticket, title: t("step3Title"), body: t("step3Body") },
   ];
 
-  return (
-    <>
-      <header className="border-border border-b">
-        <div className="mx-auto flex w-full max-w-5xl flex-wrap items-center justify-between gap-4 px-5 py-4">
-          <span className="flex items-center gap-2.5">
-            <Mark />
-            <span className="font-display text-[15px] font-semibold tracking-[0.02em]">
-              YUPAY <span className="text-tx-dim font-sans text-xs font-medium">reseller</span>
-            </span>
-          </span>
-          <nav className="text-tx-mute flex flex-wrap items-center gap-5 text-[13.5px]">
-            <LocaleSwitcher />
-            <Link href={pathFor(locale, "/docs")}>{t("navDocs")}</Link>
-            <Link
-              href={pathFor(locale, "/login")}
-              className="border-border rounded-btn text-foreground border px-4 py-2 font-semibold"
-            >
-              {t("login")}
-            </Link>
-            <Link
-              href={pathFor(locale, "/register")}
-              className="bg-primary text-primary-foreground rounded-btn px-4 py-2 font-bold"
-            >
-              {t("ctaPrimary")}
-            </Link>
-          </nav>
-        </div>
-      </header>
+  const promises = [
+    { icon: Zap, title: t("dev1Title"), body: t("dev1Body") },
+    { icon: Repeat2, title: t("dev2Title"), body: t("dev2Body") },
+    { icon: Webhook, title: t("dev3Title"), body: t("dev3Body") },
+    { icon: UserSearch, title: t("dev4Title"), body: t("dev4Body") },
+    { icon: RotateCcw, title: t("dev5Title"), body: t("dev5Body") },
+  ];
 
-      <main className="mx-auto w-full max-w-5xl px-5 py-16 sm:py-20">
-        <section className="grid items-center gap-10 lg:grid-cols-[1fr_26rem]">
+  const docsLinks = [
+    { href: "/docs/quickstart", label: t("devQuickstart") },
+    { href: "/docs/authentication", label: t("devAuth") },
+    { href: "/docs/webhooks", label: t("devWebhooks") },
+    { href: "/docs/errors", label: t("devErrors") },
+  ];
+
+  // String suffixes, not numbers: the key is built by concatenation and a
+  // number in a template literal is a lint warning the repo does not carry.
+  const faq = ["1", "2", "3", "4", "5"].map((n) => ({ q: tFaq(`q${n}`), a: tFaq(`a${n}`) }));
+
+  return (
+    <PageFrame locale={locale}>
+      <main className="mx-auto w-full max-w-5xl px-5 py-14 sm:py-20">
+        <section className="grid items-center gap-10 lg:grid-cols-[1fr_24rem]">
           <div>
-            {/* The display face, on the one headline on the site that should carry
-                the brand. Unbounded was on 20px cabinet titles and not on this. */}
+            {/* The display face, on the one headline on the site that should
+                carry the brand. */}
             <h1 className="font-display max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
               {t("heading")}
             </h1>
             <p className="text-tx-mute mt-5 max-w-2xl text-lg leading-relaxed">{t("subheading")}</p>
-            <div className="text-tx-dim mt-6 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px]">
-              {/* Brands, never SKUs — the landing-copy rule. A count of
-                  denominations reads as inventory padding and is not what a
-                  reseller is choosing between. Omitted entirely when the
-                  catalog cannot be reached: a made-up number on a page about
-                  wholesale is worse than no number. */}
+            <p className="text-tx-dim mt-4 text-[12.5px]">{t("micro")}</p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              <Link
+                href={pathFor(locale, "/register")}
+                className="bg-primary text-primary-foreground rounded-btn inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold"
+              >
+                {t("ctaPrimary")}
+                <ArrowRight size={16} />
+              </Link>
+              <a
+                href="#how"
+                className="border-border rounded-btn inline-flex items-center border px-5 py-3 text-sm font-semibold"
+              >
+                {t("ctaSecondary")}
+              </a>
+            </div>
+            <div className="text-tx-dim mt-7 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px]">
+              {/* Brands, never SKUs — the landing-copy rule. Omitted entirely
+                  when the catalog cannot be reached: a made-up number on a
+                  page about wholesale is worse than no number. */}
               {brands !== null && (
                 <span>
                   <span className="text-primary-ink font-mono">{brands}+</span> {t("metricBrands")}
@@ -92,50 +109,74 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
                 </span>{" "}
                 {t("metricAuto")}
               </span>
-              <span>
-                <span className="text-primary-ink font-mono">USD</span> {t("metricUsd")}
+              <span className="inline-flex items-center gap-1.5">
+                <Check size={13} aria-hidden="true" className="text-primary-ink" />
+                {t("metricCheck")}
               </span>
-            </div>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link
-                href={pathFor(locale, "/register")}
-                className="bg-primary text-primary-foreground rounded-btn inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold"
-              >
-                {t("ctaPrimary")}
-                <ArrowRight size={16} />
-              </Link>
-              <Link
-                href={pathFor(locale, "/docs")}
-                className="border-border rounded-btn inline-flex items-center border px-5 py-3 text-sm font-semibold"
-              >
-                {t("ctaSecondary")}
-              </Link>
             </div>
           </div>
 
-          {/* The request a reseller's server will actually make. It is the
-            fastest way to answer "what is this" for the person deciding, and
-            it is real — the field names are the ones `POST /merchant/v1/orders`
-            takes. */}
-          <CodeWindow icon={Braces} title={SNIPPET_TITLE}>
-            <pre
-              tabIndex={0}
-              role="region"
-              aria-label={SNIPPET_TITLE}
-              className="text-tx-mute overflow-x-auto p-5 font-mono text-[12.5px] leading-[1.75]"
-            >
-              <code>{SNIPPET}</code>
-            </pre>
-          </CodeWindow>
+          <CabinetMock
+            caption={t("mockCaption")}
+            labels={{
+              catalog: tCabinet("navCatalog"),
+              orders: tCabinet("navOrders"),
+              settings: tCabinet("navSettings"),
+              account: t("mockAccount"),
+              delivered: tOrders("statusDelivered"),
+            }}
+          />
         </section>
 
-        <section className="mt-20">
-          <h2 className="font-display text-2xl font-semibold tracking-tight">
-            {t("stepsHeading")}
-          </h2>
+        {/* The paragraph an assistant lifts whole. It stays directly under the
+            hero and before every other block: the first prose on the page is
+            what gets quoted, and a page that buries its own description gets
+            described by somebody else. */}
+        <p className="text-tx-mute mt-14 max-w-3xl text-[15px] leading-relaxed">{t("answer")}</p>
+
+        <section className="mt-16">
+          <h2 className={SECTION_HEADING}>{t("forWhoHeading")}</h2>
+          <div className="mt-6 grid gap-4 sm:grid-cols-2">
+            {[
+              {
+                icon: Smartphone,
+                title: t("forWhoTgTitle"),
+                body: t("forWhoTgBody"),
+                cta: t("forWhoTgCta"),
+                // The channel admin stays on this page; the developer leaves
+                // for the page written for them.
+                href: "#how",
+              },
+              {
+                icon: Braces,
+                title: t("forWhoDevTitle"),
+                body: t("forWhoDevBody"),
+                cta: t("forWhoDevCta"),
+                href: "/api",
+              },
+            ].map(({ icon: Icon, title, body, cta, href }) => (
+              <div key={title} className={CARD}>
+                <div className="text-primary-ink">
+                  <Icon size={20} />
+                </div>
+                <h3 className="mt-3 text-lg font-semibold">{title}</h3>
+                <p className="text-tx-mute mt-2 text-sm leading-relaxed">{body}</p>
+                <Link
+                  href={href.startsWith("#") ? href : pathFor(locale, href)}
+                  className="text-primary-ink mt-4 inline-flex items-center gap-1.5 text-sm font-semibold"
+                >
+                  {cta} <ArrowRight size={14} />
+                </Link>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section id="how" className="mt-20 scroll-mt-8">
+          <h2 className={SECTION_HEADING}>{t("stepsHeading")}</h2>
           <ol className="mt-7 grid gap-4 sm:grid-cols-3">
             {steps.map(({ icon: Icon, title, body }, index) => (
-              <li key={title} className="border-border bg-card rounded-xl border p-5">
+              <li key={title} className={CARD}>
                 <div className="text-primary-ink flex items-center gap-2">
                   <Icon size={18} />
                   <span className="font-mono text-xs">{String(index + 1).padStart(2, "0")}</span>
@@ -148,9 +189,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
         </section>
 
         <section className="mt-20">
-          <h2 className="font-display text-2xl font-semibold tracking-tight">
-            {t("sectionsHeading")}
-          </h2>
+          <h2 className={SECTION_HEADING}>{t("sectionsHeading")}</h2>
           <div className="mt-6 grid gap-4 sm:grid-cols-3">
             {[
               { name: t("sectionTopups"), body: t("sectionTopupsBody"), soon: false },
@@ -159,10 +198,8 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
             ].map(({ name, body, soon }) => (
               // No `opacity` on the "soon" card: it multiplies against
               // `tx-dim`/`tx-mute`, which pass AA on their own, and dropped
-              // the badge to 2.74:1 and the copy to 3.96:1 — the one
-              // dark-theme text failure in the app, and the kind pure token
-              // maths never catches. The badge and the dimmer ground already
-              // say "not yet".
+              // the badge to 2.74:1 and the copy to 3.96:1. The badge and the
+              // dimmer ground already say "not yet".
               <div
                 key={name}
                 className={`rounded-xl border p-5 ${soon ? "border-border bg-card-2" : "border-border bg-card"}`}
@@ -182,6 +219,80 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
         </section>
 
         <section className="border-border bg-card mt-20 rounded-2xl border p-8">
+          <h2 className="text-xl font-semibold tracking-tight">{t("wrongIdHeading")}</h2>
+          <p className="text-tx-mute mt-3 max-w-3xl text-sm leading-relaxed">{t("wrongIdBody")}</p>
+        </section>
+
+        <section id="developers" className="mt-20 scroll-mt-8">
+          <h2 className={SECTION_HEADING}>{t("devHeading")}</h2>
+          <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {promises.map(({ icon: Icon, title, body }) => (
+              <div key={title} className={CARD}>
+                <div className="text-primary-ink">
+                  <Icon size={18} />
+                </div>
+                <h3 className="mt-3 font-semibold">{title}</h3>
+                <p className="text-tx-mute mt-2 text-[13px] leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
+          <p className="text-tx-dim mt-5 text-[13px]">{t("devTest")}</p>
+          <div className="text-tx-mute mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
+            <a href={OPENAPI_URL} className="text-primary-ink font-semibold">
+              {t("devSpec")}
+            </a>
+            {docsLinks.map(({ href, label }) => (
+              <Link key={href} href={pathFor(locale, href)}>
+                {label}
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        <section className="mt-20">
+          <h2 className={SECTION_HEADING}>{t("compareHeading")}</h2>
+          <ul className="mt-6 grid gap-3 sm:grid-cols-2">
+            {["1", "2", "3", "4", "5", "6"].map((n) => (
+              <li key={n} className="text-tx-mute flex gap-2.5 text-sm leading-relaxed">
+                <Check size={16} aria-hidden="true" className="text-primary-ink mt-0.5 shrink-0" />
+                {t(`compare${n}`)}
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        <section id="faq" className="mt-20 scroll-mt-8">
+          <h2 className={SECTION_HEADING}>{t("faqHeading")}</h2>
+          <div className="mt-6 space-y-2">
+            {faq.map(({ q, a }) => (
+              <details key={q} className="border-border bg-card group rounded-xl border p-5">
+                <summary className="cursor-pointer list-none font-semibold">{q}</summary>
+                <p className="text-tx-mute mt-3 text-sm leading-relaxed">{a}</p>
+              </details>
+            ))}
+          </div>
+          <Link
+            href={pathFor(locale, "/faq")}
+            className="text-primary-ink mt-5 inline-flex items-center gap-1.5 text-sm font-semibold"
+          >
+            {t("faqAll")} <ArrowRight size={14} />
+          </Link>
+        </section>
+
+        <section className="mt-20">
+          <h2 className={SECTION_HEADING}>{t("trustHeading")}</h2>
+          <p className="text-tx-mute mt-4 max-w-3xl text-sm leading-relaxed">{t("trustRetail")}</p>
+          <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
+            <a href="https://yupay.uz" className="text-primary-ink font-semibold">
+              yupay.uz
+            </a>
+            <Link href={pathFor(locale, "/offer")} className="text-tx-mute">
+              {t("trustOffer")}
+            </Link>
+          </div>
+        </section>
+
+        <section className="border-border bg-card mt-20 rounded-2xl border p-8">
           <h2 className="text-xl font-semibold tracking-tight">{t("supportHeading")}</h2>
           <p className="text-tx-mute mt-2 text-sm">{t("supportBody")}</p>
           <a
@@ -192,16 +303,6 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           </a>
         </section>
       </main>
-
-      <footer className="border-border text-tx-dim mx-auto mt-16 flex w-full max-w-5xl flex-wrap items-center justify-between gap-3 border-t px-5 py-7 text-xs">
-        <span>© YuPay · reseller.yupay.uz</span>
-        <span className="flex gap-4">
-          <Link href={pathFor(locale, "/offer")}>{tOffer("title")}</Link>
-          <a href="https://t.me/yupay_support">{t("supportCta")}</a>
-        </span>
-      </footer>
-    </>
+    </PageFrame>
   );
 }
-
-/** The storefront's mark. */
