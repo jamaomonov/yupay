@@ -15,9 +15,9 @@
 const CONTENT_SIGNAL = "Content-Signal: search=yes, ai-input=yes, ai-train=no";
 
 /** AI assistant / answer-engine crawlers we explicitly welcome to the public
- *  pages (never /api), so the program can be surfaced and cited. The cabinet
- *  is crawlable-but-`noindex`, not disallowed — see the comment on
- *  `DISALLOW` below. */
+ *  pages, so the program can be surfaced and cited. The cabinet is
+ *  crawlable-but-`noindex`, not disallowed — see the comment on `DISALLOW`
+ *  below. */
 const AI_CRAWLERS = [
   "GPTBot",
   "OAI-SearchBot",
@@ -54,9 +54,16 @@ const AI_CRAWLERS = [
  * and `/register` carry no token but get the same treatment for consistency
  * with their siblings. Each has a wildcard twin (a leading `*`) covering the
  * locale prefixes; ru has none.
+ *
+ * `/api/` is gone from this list as of the intent pages. It was the reflex
+ * carried over from an app that serves Route Handlers; this one serves none,
+ * and `/api` is now a marketing page listed in `SEO_PATHS`. The rule never
+ * blocked `/api` itself — robots prefixes are literal, and the trailing slash
+ * meant it only ever matched `/api/…` — but it did block `/api/`, the
+ * trailing-slash variant an external link may well carry and that Next
+ * 308s to the page. A crawler that is disallowed never reads the redirect.
  */
 const DISALLOW = [
-  "/api/",
   "/login",
   "*/login",
   "/register",

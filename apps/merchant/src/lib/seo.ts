@@ -12,6 +12,16 @@ import type { Metadata } from "next";
 export const SITE = "https://reseller.yupay.uz";
 
 /**
+ * The machine-readable contract: the live Merchant API schema.
+ *
+ * Linked, never pasted into a page. It lives here rather than beside the one
+ * page that shows it because `/api` also advertises it in its `<head>` as an
+ * `application/json` alternate — the same URL in two roles, and two literals
+ * would be one edit away from disagreeing.
+ */
+export const OPENAPI_URL = "https://api.yupay.uz/merchant/openapi.json";
+
+/**
  * Shared robots directives. Beyond index/follow we opt into the LARGEST
  * previews Google allows — same rationale as the storefront's own `ROBOTS`
  * (see `apps/web/src/lib/seo.ts`).

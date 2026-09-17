@@ -6,6 +6,15 @@ vi.mock("next-intl/middleware", () => ({
 
 import middleware, { config } from "./middleware";
 
+/**
+ * `config.matcher` as a full-path regex — what Next applies *before* the
+ * middleware function is invoked, so it is the thing to assert against for
+ * any path that should or should not reach it. `[0]` is `string | undefined`
+ * under `noUncheckedIndexedAccess`; the fallback keeps the template literal
+ * honest rather than asserting non-null.
+ */
+const MATCHER = new RegExp(`^${config.matcher[0] ?? ""}$`);
+
 function request(url: string, headers: Record<string, string> = {}) {
   const nextUrl = new URL(url) as URL & { clone: () => URL };
   nextUrl.clone = () => new URL(url);
@@ -45,12 +54,19 @@ describe("the intl middleware is wired up", () => {
  */
 describe("the matcher leaves the new SEO routes alone", () => {
   test("robots.txt, sitemap.xml and llms.txt never reach the middleware", () => {
-    const matcher = new RegExp(`^${config.matcher[0]}$`);
     for (const path of ["/robots.txt", "/sitemap.xml", "/llms.txt"]) {
-      expect(matcher.test(path)).toBe(false);
+      expect(MATCHER.test(path)).toBe(false);
     }
     // A contrast case: an ordinary route has no dot and does match.
-    expect(matcher.test("/cabinet")).toBe(true);
+    expect(MATCHER.test("/cabinet")).toBe(true);
+  });
+
+  test("the /api page does reach the middleware", () => {
+    // This app has no Route Handlers, and `/api` is a marketing page under
+    // `app/[locale]/`. While the matcher excluded `api`, the unprefixed RU
+    // canonical 404'd and only `/uz/api` and `/en/api` resolved.
+    expect(MATCHER.test("/api")).toBe(true);
+    expect(MATCHER.test("/uz/api")).toBe(true);
   });
 });
 

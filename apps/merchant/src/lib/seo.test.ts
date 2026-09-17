@@ -18,6 +18,13 @@ describe("reseller seo helpers", () => {
       "x-default": "https://reseller.yupay.uz/telegram",
     });
   });
+  it("lists the three intent pages", () => {
+    // They exist now — `/telegram`, `/api` and `/faq` are real routes, and
+    // `sitemap.ts` plus `llms.txt` are built off this list alone. A path
+    // dropped from here silently disappears from both.
+    expect(SEO_PATHS).toEqual(expect.arrayContaining(["/telegram", "/api", "/faq"]));
+  });
+
   it("never lists the cabinet or auth pages", () => {
     expect(
       SEO_PATHS.some((p) => p.startsWith("/cabinet") || p === "/login" || p === "/register"),

@@ -73,6 +73,17 @@ describe("jsonld builders", () => {
       dateModified: "2026-09-17T00:00:00.000Z",
     });
     expect(withoutDesc).not.toHaveProperty("description");
+    expect(withoutDesc).not.toHaveProperty("about");
     expect(withoutDesc["@type"]).toBe("TechArticle");
+  });
+
+  it("techArticle carries `about` when the page has a subject", () => {
+    const node = techArticle({
+      headline: "API",
+      about: "Game top-up API",
+      url: "https://reseller.yupay.uz/api",
+      dateModified: "2026-09-17T00:00:00.000Z",
+    });
+    expect(node.about).toBe("Game top-up API");
   });
 });

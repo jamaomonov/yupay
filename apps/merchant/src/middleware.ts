@@ -64,6 +64,19 @@ export default function middleware(req: NextRequest): NextResponse {
   return res;
 }
 
+/**
+ * Everything but Next's own internals and anything with a file extension.
+ *
+ * Note what is **not** excluded: `api`. The sibling apps exclude it because
+ * they serve Route Handlers from `app/api/*`; this app serves none — `/api`
+ * here is a marketing page under `app/[locale]/api`. With `api` in the
+ * lookahead the unprefixed `/api` never reached next-intl, so the RU
+ * canonical 404'd while `/uz/api` and `/en/api` answered 200: the same
+ * failure the site root had before this file existed.
+ *
+ * If a Route Handler is ever added to this app, put its own prefix back in
+ * the lookahead — not the word `api`, which is now a page.
+ */
 export const config = {
-  matcher: ["/((?!api|_next|_vercel|.*\\..*).*)"],
+  matcher: ["/((?!_next|_vercel|.*\\..*).*)"],
 };

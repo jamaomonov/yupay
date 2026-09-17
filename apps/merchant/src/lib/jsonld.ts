@@ -93,6 +93,10 @@ export function breadcrumbs(items: BreadcrumbItem[]): Record<string, unknown> {
 export interface TechArticleParams {
   headline: string;
   description?: string;
+  /** What the article is about, as a plain subject name (schema.org `about`
+   *  also accepts a Thing; a string is what a marketing page can honestly
+   *  assert). Omitted when there is nothing more specific than the headline. */
+  about?: string;
   url: string;
   /** ISO 8601. The build's own timestamp — there is no per-page content
    *  timestamp to draw from, same limitation the sitemap's `lastModified` has. */
@@ -107,6 +111,7 @@ export function techArticle(params: TechArticleParams): Record<string, unknown> 
     "@type": "TechArticle",
     headline: params.headline,
     ...(params.description !== undefined ? { description: params.description } : {}),
+    ...(params.about !== undefined ? { about: params.about } : {}),
     url: params.url,
     dateModified: params.dateModified,
   };

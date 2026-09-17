@@ -18,12 +18,13 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
-import { CabinetMock } from "@/components/landing/CabinetMock";
+import { Faq } from "@/components/landing/Faq";
+import { Hero } from "@/components/landing/Hero";
 import { PageFrame } from "@/components/landing/PageFrame";
-import { countBrands } from "@/lib/brands";
+import { CARD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
 import { faqPage, organization, service, website } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, ROBOTS, SITE } from "@/lib/seo";
+import { alternates, OPENAPI_URL, ROBOTS, SITE } from "@/lib/seo";
 
 export const revalidate = 3600;
 
@@ -42,12 +43,6 @@ export async function generateMetadata({
   };
 }
 
-/** The machine-readable contract. Linked, never pasted into the page. */
-const OPENAPI_URL = "https://api.yupay.uz/merchant/openapi.json";
-
-const SECTION_HEADING = "font-display text-2xl font-semibold tracking-tight";
-const CARD = "border-border bg-card rounded-xl border p-5";
-
 export default async function Landing({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
   setRequestLocale(locale);
@@ -56,11 +51,6 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
   // `/faq` page reads, so the two can never answer the same question
   // differently.
   const tFaq = await getTranslations("merchant.faq");
-  // The mock-up claims to be a picture of the cabinet, so its words are the
-  // cabinet's own — renaming a section there renames it in the picture.
-  const tCabinet = await getTranslations("merchant.cabinet");
-  const tOrders = await getTranslations("merchant.orders");
-  const brands = await countBrands();
 
   const steps = [
     { icon: UserPlus, title: t("step1Title"), body: t("step1Body") },
@@ -99,64 +89,8 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
           "@graph": [organization(), website(SITE), service(SITE), faqPage(faq)],
         }}
       />
-      <main className="mx-auto w-full max-w-5xl px-5 py-14 sm:py-20">
-        <section className="grid items-center gap-10 lg:grid-cols-[1fr_24rem]">
-          <div>
-            {/* The display face, on the one headline on the site that should
-                carry the brand. */}
-            <h1 className="font-display max-w-3xl text-4xl font-bold leading-tight tracking-tight sm:text-5xl">
-              {t("heading")}
-            </h1>
-            <p className="text-tx-mute mt-5 max-w-2xl text-lg leading-relaxed">{t("subheading")}</p>
-            <p className="text-tx-dim mt-4 text-[12.5px]">{t("micro")}</p>
-            <div className="mt-7 flex flex-wrap gap-3">
-              <Link
-                href={pathFor(locale, "/register")}
-                className="bg-primary text-primary-foreground rounded-btn inline-flex items-center gap-2 px-5 py-3 text-sm font-semibold"
-              >
-                {t("ctaPrimary")}
-                <ArrowRight size={16} />
-              </Link>
-              <a
-                href="#how"
-                className="border-border rounded-btn inline-flex items-center border px-5 py-3 text-sm font-semibold"
-              >
-                {t("ctaSecondary")}
-              </a>
-            </div>
-            <div className="text-tx-dim mt-7 flex flex-wrap gap-x-6 gap-y-2 text-[12.5px]">
-              {/* Brands, never SKUs — the landing-copy rule. Omitted entirely
-                  when the catalog cannot be reached: a made-up number on a
-                  page about wholesale is worse than no number. */}
-              {brands !== null && (
-                <span>
-                  <span className="text-primary-ink font-mono">{brands}+</span> {t("metricBrands")}
-                </span>
-              )}
-              <span>
-                <span aria-hidden="true" className="text-primary-ink">
-                  ●
-                </span>{" "}
-                {t("metricAuto")}
-              </span>
-              <span className="inline-flex items-center gap-1.5">
-                <Check size={13} aria-hidden="true" className="text-primary-ink" />
-                {t("metricCheck")}
-              </span>
-            </div>
-          </div>
-
-          <CabinetMock
-            caption={t("mockCaption")}
-            labels={{
-              catalog: tCabinet("navCatalog"),
-              orders: tCabinet("navOrders"),
-              settings: tCabinet("navSettings"),
-              account: t("mockAccount"),
-              delivered: tOrders("statusDelivered"),
-            }}
-          />
-        </section>
+      <main className={PAGE_MAIN}>
+        <Hero locale={locale} />
 
         {/* The paragraph an assistant lifts whole. It stays directly under the
             hero and before every other block: the first prose on the page is
@@ -293,14 +227,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
 
         <section id="faq" className="mt-20 scroll-mt-8">
           <h2 className={SECTION_HEADING}>{t("faqHeading")}</h2>
-          <div className="mt-6 space-y-2">
-            {faq.map(({ q, a }) => (
-              <details key={q} className="border-border bg-card group rounded-xl border p-5">
-                <summary className="cursor-pointer list-none font-semibold">{q}</summary>
-                <p className="text-tx-mute mt-3 text-sm leading-relaxed">{a}</p>
-              </details>
-            ))}
-          </div>
+          <Faq items={faq} className="mt-6" />
           <Link
             href={pathFor(locale, "/faq")}
             className="text-primary-ink mt-5 inline-flex items-center gap-1.5 text-sm font-semibold"
