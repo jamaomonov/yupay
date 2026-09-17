@@ -50,33 +50,82 @@ UPDATED_BY = "seed:2026-09-17_nova_mappings"
 
 BRAND_CATEGORIES: dict[str, str] = {
     # our brand slug -> their TOP-UP category id (not the validate namespace)
+    #
+    # What to expect from each, measured against their live catalogue on
+    # 2026-09-17 — so that an operator reading a long unmatched table knows
+    # whether the script is working or the catalogues simply differ:
+    #
+    # - `mobile_legends_ru` is our RU ladder exactly: all nine denominations
+    #   match, and only the two passes are left by hand.
+    # - `mobile_legends_global` is a DIFFERENT ladder. They sell 14/42/70/140/
+    #   284/355/429/716/1446…, we sell 86/172/257/275/344/429/514… — `429
+    #   Diamonds` is the only number in both. Expect one match and twenty-six
+    #   lines to read. Their global catalogue does carry our pass SKUs by name
+    #   (Weekly Elite Pack, Twilight Pass, Monthly Elite Pack), which is a
+    #   by-hand mapping worth making.
+    # - `pubg_mobile_auto` sells UC *and* WOW Coins under one category, with
+    #   the same numbers on both ladders. That pair is exactly why the matcher
+    #   below keys on the unit as well as the number.
     "mobile-legends-ru": "mobile_legends_ru",
     "mobile-legends": "mobile_legends_global",
     "pubg-mobile": "pubg_mobile_auto",
 }
 
-_NUM = re.compile(r"\d+")
+#: A denomination label: a number, then the unit it counts.
+_DENOM = re.compile(r"^\s*(\d+)\s*(.*)$")
+
+#: What a denomination sells: how many, and of what. Both halves are the key.
+_Denomination = tuple[int, frozenset[str]]
 
 
-def _amount_of(text: str | None) -> int | None:
-    """The leading integer in a denomination label, or ``None``.
+def _denomination(text: str | None) -> _Denomination | None:
+    """A label's number and its unit words, or ``None`` if it is not a denomination.
 
-    "275 Diamonds" -> 275, "1800 UC" -> 1800, "Weekly Pass" -> None. A label
-    with no number is never matched: two passes with no denomination are not
-    the same product just because neither has a number.
+    ``"275 Diamonds"`` -> ``(275, {"diamonds"})``;
+    ``"1800 WOW Coins"`` -> ``(1800, {"wow", "coins"})``;
+    ``"Weekly Elite Pack"`` -> ``None``.
+
+    **The number must start the label, and the unit is part of the key.** Both
+    halves of that rule were paid for by real rows in our own catalogue:
+
+    - Without the anchor, ``"Elite Pass LV1-100"`` parses as ``1`` and
+      ``"Prime (1 Month)"`` as ``1``, and either would map a subscription onto
+      whatever offer happens to sell one of something. Every real denomination
+      we sell reads ``"<n> <unit>"``; every pack reads as words.
+    - Without the unit, ``"1800 UC"`` and ``"1800 WOW Coins"`` — both live
+      under the ``pubg-mobile`` brand — are the same key, and NOVA's
+      ``"1800 UC"`` would have been written onto both. A customer buying WOW
+      Coins would have been sent UC.
+
+    A unit spelled differently on the two sides (their ``"275 Diamond"``
+    against our ``"275 Diamonds"``) simply does not match, and lands in the
+    unmatched table for a human. That is the direction to be wrong in.
     """
     if not text:
         return None
-    m = _NUM.search(text)
-    return int(m.group(0)) if m else None
+    m = _DENOM.match(text)
+    if m is None:
+        return None
+    units = frozenset(w for w in re.split(r"[^0-9a-z]+", m.group(2).lower()) if w)
+    return (int(m.group(1)), units)
 
 
-def _sku_amount(sku: Any) -> int | None:  # Any: accepts a Sku ORM row here.
-    """What this SKU sells, as a number. `units` first — it is the one field
-    that was set on purpose — then the labels."""
-    if sku.units:
-        return int(sku.units)
-    return _amount_of(sku.denomination) or _amount_of(sku.sku_code)
+def _label(denom: _Denomination) -> str:
+    """A denomination as an operator reads it: ``"1800 uc"``."""
+    amount, units = denom
+    return f"{amount} {' '.join(sorted(units))}".strip()
+
+
+def _sku_denomination(sku: Any) -> _Denomination | None:  # Any: a Sku ORM row.
+    """What this SKU sells, as a number and a unit.
+
+    ``denomination`` is the only field consulted: it is the operator-facing
+    label and the one that carries the unit. ``units`` holds a bare number with
+    no unit beside it, so it cannot answer the half of the question that keeps
+    UC out of a WOW Coins SKU, and ``sku_code`` is an identifier rather than a
+    label.
+    """
+    return _denomination(sku.denomination)
 
 
 @dataclass(frozen=True)
@@ -115,14 +164,16 @@ async def _load_skus(session: AsyncSession, *, brand_slug: str) -> list[Sku]:
     )
 
 
-def _offers_by_amount(offers: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
-    """Group offers by their parsed denomination, dropping offers with none."""
-    by_amount: dict[int, list[dict[str, Any]]] = {}
+def _offers_by_denomination(
+    offers: list[dict[str, Any]],
+) -> dict[_Denomination, list[dict[str, Any]]]:
+    """Group offers by number *and* unit, dropping offers that are not denominations."""
+    by_denom: dict[_Denomination, list[dict[str, Any]]] = {}
     for offer in offers:
-        amount = _amount_of(str(offer.get("name") or ""))
-        if amount is not None:
-            by_amount.setdefault(amount, []).append(offer)
-    return by_amount
+        denom = _denomination(str(offer.get("name") or ""))
+        if denom is not None:
+            by_denom.setdefault(denom, []).append(offer)
+    return by_denom
 
 
 def _upsert_stmt(*, sku_id: str, category_id: str, offer_id: str) -> Any:
@@ -172,30 +223,30 @@ async def _match_brand(
         raise SystemExit(f"cannot reach NOVA: {exc}") from exc
 
     offers = [o for o in (body.get("offers") or []) if isinstance(o, dict)]
-    by_amount = _offers_by_amount(offers)
+    by_denom = _offers_by_denomination(offers)
     print(f"{brand_slug} ({category_id}): {len(skus)} sku(s), {len(offers)} nova offer(s)")
 
     matched: list[_Matched] = []
     unmatched: list[_Unmatched] = []
     for sku in skus:
-        amount = _sku_amount(sku)
-        if amount is None:
+        denom = _sku_denomination(sku)
+        if denom is None:
             unmatched.append(
                 _Unmatched(
                     sku.sku_code,
                     sku.denomination,
-                    "no denomination number found on the SKU — map it by hand",
+                    "not a denomination label (a pack or a subscription) — map it by hand",
                 )
             )
             continue
 
-        candidates = by_amount.get(amount, [])
+        candidates = by_denom.get(denom, [])
         if not candidates:
             unmatched.append(
                 _Unmatched(
                     sku.sku_code,
                     sku.denomination,
-                    f"no NOVA offer for {amount} in {category_id} — map it by hand",
+                    f"no NOVA offer for {_label(denom)} in {category_id} — map it by hand",
                 )
             )
             continue
@@ -205,7 +256,8 @@ async def _match_brand(
                 _Unmatched(
                     sku.sku_code,
                     sku.denomination,
-                    f"{amount} matches {len(candidates)} nova offers ({names}) — pick one by hand",
+                    f"{_label(denom)} matches {len(candidates)} nova offers ({names})"
+                    " — pick one by hand",
                 )
             )
             continue
