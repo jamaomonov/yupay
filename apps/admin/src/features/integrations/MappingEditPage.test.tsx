@@ -81,6 +81,9 @@ it("offers the suppliers that actually consume a mapping", async () => {
   const slugs = [...picker.querySelectorAll("option")].map((o) => o.getAttribute("value"));
 
   expect(slugs).toContain("gengine");
+  // NOVA is a reserve supplier — an operator hand-switches a SKU to it via
+  // `force_supplier` — but it still consumes a mapping row like G-Engine.
+  expect(slugs).toContain("nova");
   // Waxpeer derives a Steam top-up from the order itself and needs no mapping
   // row; listing it would offer to save a row nothing ever reads.
   expect(slugs).not.toContain("waxpeer");

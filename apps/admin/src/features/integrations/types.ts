@@ -155,13 +155,14 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine"] as const;
+export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine", "nova"] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   g2b: "G2Bulk",
   waxpeer: "Waxpeer",
   gengine: "G-Engine",
+  nova: "NOVA",
 };
 
 /**
@@ -185,6 +186,9 @@ export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> 
   // Its catalogue lives behind `/recharge/services`, which the import
   // wizard does not speak yet — the mapping is hand-entered for now.
   gengine: { catalogue: false },
+  // No sync-catalogue endpoint for NOVA in this branch — the mapping is
+  // hand-entered, same as G-Engine's.
+  nova: { catalogue: false },
 };
 
 /**
@@ -236,6 +240,13 @@ export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
     note: "игры + подарочные карты",
   },
   {
+    slug: "nova",
+    label: "NOVA",
+    external: true,
+    mappings: true,
+    note: "резерв: пополнения игр",
+  },
+  {
     slug: "mock",
     label: "Mock (dev)",
     external: false,
@@ -275,6 +286,11 @@ export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> 
   waxpeer:
     "Waxpeer пополняет Steam-кошелёк на введённую сумму — у него нет списка товаров, " +
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
+  nova:
+    "Каталог NOVA пока не импортируется мастером — маппинг SKU заводится вручную: " +
+    "id категории NOVA (например, mobile_legends_ru) в external_product_id, " +
+    "id оффера в external_variant_id. NOVA — резерв: заказ уходит туда, только если " +
+    "SKU переключили на неё вручную через force_supplier.",
 };
 
 export interface GameImportDenom {

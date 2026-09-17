@@ -36,8 +36,8 @@ const STATUSES: { value: TaskStatus | ""; label: string }[] = [
 // typo silently returns zero rows.
 // Built from the shared route table. The hand-written list this replaced had
 // drifted badly: it offered steam/riot/pubg/spotify/apple — stubs that have
-// never produced a task — while omitting waxpeer and gengine, which produce
-// all of them.
+// never produced a task — while omitting waxpeer, gengine and nova, which
+// produce all of them (nova only when an order is hand-switched to it).
 const ROUTES: { value: string; label: string }[] = [
   { value: "", label: "Все маршруты" },
   ...FULFILMENT_ROUTES.map((r) => ({ value: r.slug, label: r.label })),
