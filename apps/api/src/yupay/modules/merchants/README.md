@@ -16,6 +16,23 @@ the known gaps a pilot integrator will meet
 Acquirers call **us** the merchant (Click/Payme `merchant_id` credentials);
 in this module the merchant is the reseller.
 
+## The public site (`apps/merchant`)
+
+The program's public site (`reseller.yupay.uz`) speaks to **two** audiences:
+Telegram-channel resellers who fulfil orders by hand (the larger group, and
+first on the page) and developers integrating `/merchant/v1` (second, below
+the fold). Three server-rendered intent pages carry the answer-engine copy:
+`/telegram`, `/api`, `/faq`. A SEO layer ported from the storefront —
+`lib/seo.ts`, `robots.txt` (welcoming the AI crawlers), `sitemap.ts` with
+hreflang, per-page metadata, `JsonLd` (`FAQPage`/`BreadcrumbList`/
+`TechArticle`) — makes it indexable; the cabinet itself stays `noindex`. Owner
+rulings constrain every word of the copy: no mention of deposit/balance
+top-up, no discounts/percentages/prices (no `/prices` page), and never
+«партнёры» for this program — the affiliate program (partners.yupay.uz) is
+named by its real name only in `faq.q11`/`a11` and in `llms.txt`. See
+[ADR-0080](../../../../../../docs/decisions/0080-reseller-site-for-non-technical-resellers.md)
+and `docs/superpowers/specs/2026-09-17-reseller-seo-design.md`.
+
 ## Tables
 
 - `merchants` — the reseller account: `title`, `status` (`active`/`frozen`),

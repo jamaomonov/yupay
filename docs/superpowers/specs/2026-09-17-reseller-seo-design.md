@@ -1,5 +1,12 @@
 # reseller.yupay.uz — план SEO и AEO
 
+> Owner rulings 2026-09-17 (override this doc): no deposit/top-up mentions; no
+> discounts, percentages or prices; no `/prices` page; copy «без воды»; header
+> badge stays `reseller`; the affiliate program is named by its real name only
+> in `faq.q11/a11` and `llms.txt`. The implementation plan
+> (`docs/superpowers/plans/2026-09-17-reseller-audience-seo.md`) carries the
+> final strings.
+
 Дата: 2026-09-17. Продолжение `merchant-audience-review.md` (§1–3 не повторяю, дополняю). Всё по коду и по живым сайтам конкурентов, ничего не менялось.
 
 ---
