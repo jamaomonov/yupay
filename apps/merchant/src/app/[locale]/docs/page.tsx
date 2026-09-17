@@ -30,7 +30,10 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "merchant.docs" });
   return {
-    title: `${t("introTitle")} — YuPay Merchant API`,
+    // No " — YuPay Merchant API" suffix here: `introTitle` is already that
+    // literal string, and every other docs page's suffix formula would
+    // double it up into "YuPay Merchant API — YuPay Merchant API".
+    title: t("introTitle"),
     alternates: alternates(locale, "/docs"),
   };
 }

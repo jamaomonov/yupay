@@ -15,7 +15,9 @@
 const CONTENT_SIGNAL = "Content-Signal: search=yes, ai-input=yes, ai-train=no";
 
 /** AI assistant / answer-engine crawlers we explicitly welcome to the public
- *  pages (never /api or /cabinet), so the program can be surfaced and cited. */
+ *  pages (never /api), so the program can be surfaced and cited. The cabinet
+ *  is crawlable-but-`noindex`, not disallowed — see the comment on
+ *  `DISALLOW` below. */
 const AI_CRAWLERS = [
   "GPTBot",
   "OAI-SearchBot",
@@ -35,19 +37,26 @@ const AI_CRAWLERS = [
 ];
 
 /**
- * `/cabinet/` is disallowed outright rather than merely `noindex`ed: it is a
- * signed-in, client-rendered area with nothing for a crawler to read, so
- * there is no reason to spend crawl budget fetching it. The auth screens
- * (`/login`, `/register`, `/reset`, `/forgot`, `/confirm`) carry the same
- * treatment as the storefront's `/auth/` — `/reset` and `/confirm` in
- * particular carry a single-use token in the query string, and a bot that
- * renders JS would spend it before the real recipient could. Each has a
- * wildcard twin (a leading `*`) covering the locale prefixes; ru has none.
+ * `/cabinet/` is deliberately NOT listed here, same reasoning the
+ * storefront's own `robots.txt` gives for `/account/`/`/orders/`: it is
+ * private, but it is handled with `noindex` (`cabinet/layout.tsx` sets
+ * `robots: NOINDEX`), which requires the page to stay crawlable. Blocking it
+ * here instead would leave any already-indexed cabinet URL stuck in the
+ * index with the directive unread — and the cabinet *was* indexable until
+ * today's blanket `robots: { index: true, follow: true }` on the locale
+ * layout was removed, so that is not a hypothetical.
+ *
+ * The auth screens (`/login`, `/register`, `/reset`, `/forgot`, `/confirm`)
+ * are a different case and stay disallowed: `/reset` and `/confirm` carry a
+ * single-use token in the query string, and a bot that renders JS would
+ * spend it before the real recipient could — the same reason the storefront
+ * disallows `/auth/` outright rather than merely `noindex`ing it. `/login`
+ * and `/register` carry no token but get the same treatment for consistency
+ * with their siblings. Each has a wildcard twin (a leading `*`) covering the
+ * locale prefixes; ru has none.
  */
 const DISALLOW = [
   "/api/",
-  "/cabinet/",
-  "*/cabinet/",
   "/login",
   "*/login",
   "/register",
