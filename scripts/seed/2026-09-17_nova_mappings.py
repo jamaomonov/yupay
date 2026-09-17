@@ -1,0 +1,299 @@
+"""Match our SKUs to NOVA offers and write `nova` supplier mappings.
+
+Run inside the api container so it can reach both the database and NOVA:
+
+    docker compose -f docker-compose.prod.yml exec -T api \
+        python - < scripts/seed/2026-09-17_nova_mappings.py
+
+It matches on the denomination number only — `Sku.units` when set, otherwise
+the leading integer of `Sku.denomination` or `sku_code` — and writes a mapping
+only on an exact match. Everything it could not match is printed for an
+operator to finish in the admin: guessing which of "275 Diamonds" and "275
+Diamonds + Bonus" a SKU meant is not a thing a script should do with money.
+
+Mappings are written ACTIVE. That is safe because sourcing picks the oldest
+active mapping (see `sourcing.service._resolve_auto`), so an order keeps going
+to the incumbent supplier until somebody sets `force_supplier = nova`.
+
+`pubg_mobile_auto` below is one of NOVA's four speed tiers for PUBG Mobile
+(`_auto`, `_fast`, `_manual`, `_reserve` — same game, different fulfilment
+speed and price); this script picks `_auto` on a hunch. Confirm that pick
+against the price table this script prints (its `price_usd` column) before
+trusting the mapping, and repoint the entry below if a different tier is the
+one we actually mean to sell.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import re
+from dataclasses import dataclass
+from decimal import Decimal
+from typing import Any
+
+from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.config import get_settings
+from yupay.core.db import get_session_factory
+from yupay.modules.catalog.models import Brand, Product, Sku
+from yupay.modules.fulfillment.suppliers.nova_client import (
+    NovaClient,
+    NovaError,
+    NovaUnavailableError,
+)
+from yupay.modules.integrations.models import SkuSupplierMapping
+
+SUPPLIER_SLUG = "nova"
+#: `updated_by` audit value written on every mapping row this script touches.
+UPDATED_BY = "seed:2026-09-17_nova_mappings"
+
+BRAND_CATEGORIES: dict[str, str] = {
+    # our brand slug -> their TOP-UP category id (not the validate namespace)
+    "mobile-legends-ru": "mobile_legends_ru",
+    "mobile-legends": "mobile_legends_global",
+    "pubg-mobile": "pubg_mobile_auto",
+}
+
+_NUM = re.compile(r"\d+")
+
+
+def _amount_of(text: str | None) -> int | None:
+    """The leading integer in a denomination label, or ``None``.
+
+    "275 Diamonds" -> 275, "1800 UC" -> 1800, "Weekly Pass" -> None. A label
+    with no number is never matched: two passes with no denomination are not
+    the same product just because neither has a number.
+    """
+    if not text:
+        return None
+    m = _NUM.search(text)
+    return int(m.group(0)) if m else None
+
+
+def _sku_amount(sku: Any) -> int | None:  # Any: accepts a Sku ORM row here.
+    """What this SKU sells, as a number. `units` first — it is the one field
+    that was set on purpose — then the labels."""
+    if sku.units:
+        return int(sku.units)
+    return _amount_of(sku.denomination) or _amount_of(sku.sku_code)
+
+
+@dataclass(frozen=True)
+class _Matched:
+    """One SKU that landed on exactly one NOVA offer."""
+
+    sku_code: str
+    offer_name: str
+    cost_usdt: Decimal | None
+    price_usd: str
+
+
+@dataclass(frozen=True)
+class _Unmatched:
+    """One SKU a human has to finish mapping in the admin."""
+
+    sku_code: str
+    denomination: str | None
+    reason: str
+
+
+async def _load_skus(session: AsyncSession, *, brand_slug: str) -> list[Sku]:
+    """Every SKU of every active product under ``brand_slug``."""
+    return list(
+        (
+            await session.execute(
+                select(Sku)
+                .join(Product, Product.id == Sku.product_id)
+                .join(Brand, Brand.id == Product.brand_id)
+                .where(Brand.slug == brand_slug, Product.active.is_(True))
+                .order_by(Sku.sku_code)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def _offers_by_amount(offers: list[dict[str, Any]]) -> dict[int, list[dict[str, Any]]]:
+    """Group offers by their parsed denomination, dropping offers with none."""
+    by_amount: dict[int, list[dict[str, Any]]] = {}
+    for offer in offers:
+        amount = _amount_of(str(offer.get("name") or ""))
+        if amount is not None:
+            by_amount.setdefault(amount, []).append(offer)
+    return by_amount
+
+
+def _upsert_stmt(*, sku_id: str, category_id: str, offer_id: str) -> Any:
+    """The ``ON CONFLICT (sku_id, supplier_slug) DO UPDATE`` for one mapping."""
+    return (
+        pg_insert(SkuSupplierMapping)
+        .values(
+            sku_id=sku_id,
+            supplier_slug=SUPPLIER_SLUG,
+            kind="game",
+            external_product_id=category_id,
+            external_variant_id=offer_id,
+            is_active=True,
+            updated_by=UPDATED_BY,
+        )
+        .on_conflict_do_update(
+            index_elements=[SkuSupplierMapping.sku_id, SkuSupplierMapping.supplier_slug],
+            set_={
+                "kind": "game",
+                "external_product_id": category_id,
+                "external_variant_id": offer_id,
+                "is_active": True,
+                "updated_by": UPDATED_BY,
+            },
+        )
+    )
+
+
+async def _match_brand(
+    session: AsyncSession, client: NovaClient, *, brand_slug: str, category_id: str
+) -> tuple[list[_Matched], list[_Unmatched]]:
+    """Load one brand's SKUs, fetch NOVA's offers, pair them, upsert the matches.
+
+    A denomination that matches more than one offer is reported as unmatched,
+    never guessed — see the module docstring.
+    """
+    skus = await _load_skus(session, brand_slug=brand_slug)
+    if not skus:
+        print(f"{brand_slug} ({category_id}): no active SKUs — skipping")
+        return [], []
+
+    try:
+        body = await client.get_offers(category_id)
+    except NovaUnavailableError as exc:
+        raise SystemExit(f"cannot reach NOVA: {exc}") from exc
+    except NovaError as exc:
+        raise SystemExit(f"cannot reach NOVA: {exc}") from exc
+
+    offers = [o for o in (body.get("offers") or []) if isinstance(o, dict)]
+    by_amount = _offers_by_amount(offers)
+    print(f"{brand_slug} ({category_id}): {len(skus)} sku(s), {len(offers)} nova offer(s)")
+
+    matched: list[_Matched] = []
+    unmatched: list[_Unmatched] = []
+    for sku in skus:
+        amount = _sku_amount(sku)
+        if amount is None:
+            unmatched.append(
+                _Unmatched(
+                    sku.sku_code,
+                    sku.denomination,
+                    "no denomination number found on the SKU — map it by hand",
+                )
+            )
+            continue
+
+        candidates = by_amount.get(amount, [])
+        if not candidates:
+            unmatched.append(
+                _Unmatched(
+                    sku.sku_code,
+                    sku.denomination,
+                    f"no NOVA offer for {amount} in {category_id} — map it by hand",
+                )
+            )
+            continue
+        if len(candidates) > 1:
+            names = ", ".join(str(c.get("name")) for c in candidates)
+            unmatched.append(
+                _Unmatched(
+                    sku.sku_code,
+                    sku.denomination,
+                    f"{amount} matches {len(candidates)} nova offers ({names}) — pick one by hand",
+                )
+            )
+            continue
+
+        offer = candidates[0]
+        offer_id = str(offer.get("offer_id") or "").strip()
+        offer_name = str(offer.get("name") or "")
+        if not offer_id:
+            unmatched.append(
+                _Unmatched(
+                    sku.sku_code,
+                    sku.denomination,
+                    f"matched offer {offer_name!r} has no offer_id — map it by hand",
+                )
+            )
+            continue
+
+        await session.execute(
+            _upsert_stmt(sku_id=sku.id, category_id=category_id, offer_id=offer_id)
+        )
+        matched.append(
+            _Matched(sku.sku_code, offer_name, sku.cost_usdt, str(offer.get("price_usd") or ""))
+        )
+
+    return matched, unmatched
+
+
+def _print_matched(rows: list[_Matched]) -> None:
+    print(f"\nmatched ({len(rows)}):")
+    if not rows:
+        print("  (none)")
+        return
+    sku_w = max(len("sku_code"), *(len(r.sku_code) for r in rows))
+    offer_w = max(len("nova offer"), *(len(r.offer_name) for r in rows))
+    print(
+        f"  {'sku_code'.ljust(sku_w)}  {'nova offer'.ljust(offer_w)}  {'cost_usdt':>10}  price_usd"
+    )
+    for r in rows:
+        cost = str(r.cost_usdt) if r.cost_usdt is not None else "-"
+        print(
+            f"  {r.sku_code.ljust(sku_w)}  {r.offer_name.ljust(offer_w)}  {cost:>10}  {r.price_usd}"
+        )
+
+
+def _print_unmatched(rows: list[_Unmatched]) -> None:
+    print(f"\nunmatched ({len(rows)}) — finish these in the admin:")
+    if not rows:
+        print("  (none)")
+        return
+    sku_w = max(len("sku_code"), *(len(r.sku_code) for r in rows))
+    denom_w = max(len("denomination"), *(len(r.denomination or "-") for r in rows))
+    print(f"  {'sku_code'.ljust(sku_w)}  {'denomination'.ljust(denom_w)}  why")
+    for r in rows:
+        denom = r.denomination or "-"
+        print(f"  {r.sku_code.ljust(sku_w)}  {denom.ljust(denom_w)}  {r.reason}")
+
+
+async def main() -> None:
+    settings = get_settings()
+    if not settings.nova_api_key:
+        raise SystemExit("no NOVA API key configured — set NOVA_API_KEY and retry")
+
+    client = NovaClient(
+        api_key=settings.nova_api_key,
+        base_url=settings.nova_base_url,
+        timeout_seconds=settings.nova_request_timeout_seconds,
+    )
+
+    all_matched: list[_Matched] = []
+    all_unmatched: list[_Unmatched] = []
+
+    async with get_session_factory()() as session:
+        for brand_slug, category_id in BRAND_CATEGORIES.items():
+            matched, unmatched = await _match_brand(
+                session, client, brand_slug=brand_slug, category_id=category_id
+            )
+            all_matched += matched
+            all_unmatched += unmatched
+
+        _print_matched(all_matched)
+        _print_unmatched(all_unmatched)
+
+        await session.commit()
+
+    print(
+        f"\n{len(all_matched)} mapping(s) written, {len(all_unmatched)} sku(s) left for the admin"
+    )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
