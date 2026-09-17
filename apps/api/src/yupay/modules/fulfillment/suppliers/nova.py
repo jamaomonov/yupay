@@ -223,13 +223,22 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
             money_outcome=MoneyOutcome.RETURNED,
         )
     if status in _FAILED:
+        # `fail_reason` is a real field on their order (null on a healthy one,
+        # observed on the first live order) and it is the only thing that tells
+        # an operator *why* — without it the inbox says "nova order failed" and
+        # the next step is a shell.
+        reason = str(obj.get("fail_reason") or "").strip()
         return FulfillResult(
             outcome="failed",
             external_order_id=order_id,
             artifact_kind=None,
             artifact=None,
-            error=f"nova order {status}",
-            extra_metadata={**_meta(status), "needs_reconciliation": True},
+            error=f"nova order {status}" + (f": {reason}" if reason else ""),
+            extra_metadata={
+                **_meta(status),
+                "needs_reconciliation": True,
+                **({"nova_fail_reason": reason} if reason else {}),
+            },
             money_outcome=_MAY_HAVE_SPENT,
         )
     if status and status not in _IN_FLIGHT:

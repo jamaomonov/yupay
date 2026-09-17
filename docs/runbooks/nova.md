@@ -128,43 +128,97 @@ don't exist yet. Reassign the one stuck task instead: Fulfilment
 "nova"}`, which is refused the same way (no mapping, unknown slug, same
 supplier) and otherwise runs the order on NOVA immediately.
 
-## The first live order (do this once, after funding)
+## The first live order — done, 2026-09-17
 
-Nothing in this integration has ever placed a real NOVA order — the balance
-was `$0.0000` at every point during development, and no test does either
-(see ADR-0081's Validation). Their order object is untyped in their own
-OpenAPI, so the status table in `nova.py` and this repo's reading of their
-idempotency contract are both educated guesses until one real order proves
-or corrects them.
+**It has been placed.** One 60 UC top-up for PUBG Mobile, on the owner's own
+test account, against `pubg_mobile_auto`. It completed in **8 seconds**. What
+follows is not a form to fill in any more; it is what their API actually does,
+and it corrected two things this integration had guessed.
 
-1. Fund the NOVA balance (see "Funding" above).
-2. Pick the cheapest matched SKU from a seed run's printed table (e.g. the
-   smallest Mobile Legends RU diamond pack).
-3. Switch it to NOVA ("Switching a SKU" above).
-4. Complete one real checkout for it — this spends real money at NOVA, on
-   purpose, once.
-5. Watch the task through `/fulfillment`, or the api/worker logs for
-   `nova.request` and (if it stalls) `nova.unknown_order_status` /
-   `nova.order_without_status` / `nova.order_without_id`.
-6. **Record what actually happened, right here:**
+```
+Order id:      "ord-1372576"       (key: `id`, a prefixed string, not a number)
+Charged:       $0.901476 on create — balance 10.0000 -> 9.0985
+Statuses:      created -> processing -> completed      (8s end to end)
+```
 
-   ```
-   Date:                        ____________________
-   Order object — real keys:    ____________________  (expected: id/order_id/public_id/uuid, status/state)
-   Statuses observed, in order: ____________________
-   Retried with the same Idempotency-Key — result:
-     [ ] returned the original order        [ ] 409 rejected        [ ] not tested
-   Anything nova.py's status allow-list got wrong:  ____________________
-   ```
+The order object, in full, is the shape `nova.py` reads:
 
-7. Switch the SKU back once satisfied (or leave it on NOVA deliberately —
-   that's an operator call, not this runbook's).
+- `id`, `status`, `kind`, `title` — plus `category_id`, `offer_id`,
+  `offer_name`, `category_name`, `fields` (our submitted `player_id`),
+  `price_usd`, `total_usd`, `created_at`, `completed_at`.
+- **`fail_reason`** — `null` on a healthy order. On a failure this is the only
+  thing that says _why_, which is why `nova.py` copies it into `task.last_error`
+  and into `nova_fail_reason` on the task's metadata.
+- **`status_history`** — `[{status, at}, …]`, the whole path. Useful when an
+  order sat somewhere: it timestamps each step.
+- The `GET` adds money fields the create response does not carry
+  (`amountUsd`, `chargedUsd`, `charged_usd`, `customerAmountUsd`,
+  `novaAmountUsd`, `totalUsd`) — all equal to the price here, and none of them
+  read by our adapter.
 
-Until this section has real values in it, treat any
-`nova.unknown_order_status` warning in the logs as the expected first
-signal that a guess needs correcting, not as a bug to chase blind — the
-warning names the unrecognised status and says which of the four sets
-(in-flight / success / refunded / failure) to add it to.
+**All three observed statuses were already in the allow-list** (`created` and
+`processing` in-flight, `completed` success), so no correction was needed
+there.
+
+### What it corrected
+
+**1. A reused `Idempotency-Key` is refused, not replayed.** Their endpoint
+description says a repeat "returns the original order instead of
+charging/fulfilling again"; their parameter description says it "is rejected".
+The parameter description is the true one:
+
+```
+409  {"message":"This Idempotency-Key was already used for a purchase. Create a
+      new key for a new purchase.","error":"Conflict","statusCode":409}
+```
+
+So **a create is never safely retried under the same key** — which is what
+`nova.py` already assumed by grading a 409 `UNKNOWN`. It also means a create
+whose response we lost cannot be recovered by replaying it: find the order in
+`GET /api/v2/orders` instead, matching `fields.player_id`, `offer_id` and
+`created_at`, and settle the task by hand.
+
+The header is genuinely **required** — without it, `400 Idempotency-Key header
+is required for purchase requests`.
+
+**2. Their real error envelope is not the documented one.** Their OpenAPI
+describes `{"ok": false, "error": "…", "code": "…"}`. A live 400/409/502
+returns `{"message": "…", "error": "<status name>", "statusCode": N}` — no
+`ok`, and `error` holding the word "Conflict" rather than the reason. The
+client reads `message` first for exactly this reason (`_message_of`);
+otherwise `task.last_error` would have said "Conflict" and nothing more.
+
+**3. A bad `offer_id` answers `502`, not `404`.**
+`{"message":"Unable to determine the current product price","error":"Bad
+Gateway","statusCode":502}` — and the balance does **not** move. `nova.py`
+grades a 502 `UNKNOWN`, so a mistyped mapping produces one task asking a human
+to chase money that was never spent. That is the safe direction and it is
+deliberate: no status alone can tell "they refused before charging" from "they
+broke while charging". If you see that sentence in the inbox, the fix is the
+mapping, not the money.
+
+### While you are there: the PUBG tier
+
+NOVA sells PUBG under four tiers. Measured 60 UC, same day:
+
+| tier                  | 60 UC     |
+| --------------------- | --------- |
+| `pubg_mobile_auto`    | $0.901476 |
+| `pubg_mobile_reserve` | $0.901476 |
+| `pubg_mobile_manual`  | $0.915552 |
+| `pubg_mobile_fast`    | $0.924222 |
+
+`_auto` is the cheapest and it delivered in 8 seconds, so the seed's default
+is confirmed rather than guessed. `_fast` costs 2.5% more for no observed
+benefit at this denomination.
+
+### Repeating this for another game
+
+Place it the same way — through a switched SKU and a real checkout, not by
+hand — and add a line here if the game behaves differently. A game whose
+fulfilment is slower is the case most likely to show a status we have not
+seen; `nova.unknown_order_status` in the logs names it and says which of the
+four sets to add it to.
 
 ## The check fallback
 

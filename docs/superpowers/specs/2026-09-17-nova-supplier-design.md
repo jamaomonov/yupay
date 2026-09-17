@@ -379,6 +379,15 @@ the first funded order has to confirm.
 
 ## 10. Open questions
 
+> **Three of these were answered on 2026-09-17** by the first live order (one
+> 60 UC PUBG Mobile top-up, completed in 8 s). The answers, and the two
+> corrections they forced, are in `docs/runbooks/nova.md` § "The first live
+> order". In short: the order object's id key is `id`, the statuses are
+> `created -> processing -> completed` and were all already in our allow-list,
+> a reused `Idempotency-Key` is **refused** with a 409 rather than replayed,
+> and their live error envelope is not the one their OpenAPI documents. The
+> region question below is still open.
+
 - **What does `region` mean for `mobile_legends`?** The one observed answer was `region: "Russia"`
   for an account that validates against our RU brand. Whether their single category also validates
   global accounts — and what `region` says for one — is unknown, and it is why the global MLBB

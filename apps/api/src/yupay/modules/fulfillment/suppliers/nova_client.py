@@ -3,12 +3,20 @@
 Transport only: it speaks the wire format and raises on refusals. Order state
 interpretation lives in the fulfiller that wraps this client.
 
-Three things about this API drive the shape below, all verified against the
-live service on 2026-09-17:
+Four things about this API drive the shape below, all verified against the
+live service on 2026-09-17 — the last two by placing a real order:
 
 * Auth is an ``X-API-Key`` header (``ng_…``).
-* **Every response carries ``ok``.** A refusal can arrive as an HTTP 200 with
-  ``ok: false``, so the status code alone never decides whether a call worked.
+* **A success carries ``ok``, and a refusal may not.** ``ok: false`` can arrive
+  on an HTTP 200, so the status code alone never decides whether a call worked;
+  and their real 4xx/5xx bodies use a second, undocumented envelope where the
+  useful sentence is in ``message`` (see :func:`_message_of`).
+* **A reused ``Idempotency-Key`` is refused, not replayed.** Their endpoint
+  description says a repeat "returns the original order"; the live API answers
+  ``409 This Idempotency-Key was already used for a purchase``. The parameter
+  description, which says the opposite of the endpoint description, is the one
+  that is true — so a create is never safely retried under the same key, and
+  the header is genuinely required (without it: ``400``).
 * **Validate ids and top-up ids are different namespaces.** ``mobile_legends``
   validates a player; ``mobile_legends_global`` and ``mobile_legends_ru`` sell
   to one. Nothing in the API links them, and passing one where the other
@@ -41,7 +49,7 @@ class NovaError(Exception):
     """NOVA refused the call (transport fine, business failure).
 
     Args:
-        message: Their ``error`` string, or a synthesised one.
+        message: The most useful sentence they sent — see :func:`_message_of`.
         status: HTTP status. ``200`` when the refusal came as ``ok: false``.
         code: Their machine-readable ``code``, when they sent one. It is
             optional in their schema, so no caller may require it.
@@ -76,6 +84,26 @@ class NovaValidation:
     valid: bool
     player_name: str | None
     region: str | None
+
+
+def _message_of(body: dict[str, Any], status: int) -> str:
+    """The most useful sentence in a refusal.
+
+    **They have two error envelopes and only one of them is documented.** Their
+    OpenAPI describes `{"ok": false, "error": "…", "code": "…"}`; what a real
+    409/400/502 returns is `{"message": "This Idempotency-Key was already used
+    …", "error": "Conflict", "statusCode": 409}` — observed live on
+    2026-09-17. In that second shape `error` holds the *status name*, so
+    reading it first turns an actionable sentence into the word "Conflict",
+    which is what lands in `task.last_error` for a human to act on.
+
+    So: `message` when there is one, then `error`, then the status.
+    """
+    for key in ("message", "error"):
+        value = body.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return f"nova HTTP {status}"
 
 
 class NovaClient:
@@ -124,7 +152,7 @@ class NovaClient:
             raise NovaError("nova returned non-JSON", status=resp.status_code, body=text)
         if resp.status_code >= 400 or body.get("ok") is not True:
             raise NovaError(
-                str(body.get("error") or f"nova HTTP {resp.status_code}"),
+                _message_of(body, resp.status_code),
                 status=resp.status_code,
                 code=str(body.get("code") or ""),
                 body=text,

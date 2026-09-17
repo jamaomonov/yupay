@@ -43,9 +43,13 @@ only ever soften an `error` — the only defensible starting posture.
   second way to reach that verdict on evidence nobody has validated yet.
 - NOVA's own docs contradict themselves on what a reused `Idempotency-Key`
   does (one description says the original order is returned, the other that
-  the request is rejected), and with a zero balance we cannot find out which
-  is true before this ships. Whatever we build must be safe under either
-  answer.
+  the request is rejected), and with a zero balance we could not find out
+  which was true before this shipped. Whatever we built had to be safe under
+  either answer. **Settled since, by the first live order on 2026-09-17: the
+  request is rejected** with a `409`, so a create is never safely retried
+  under the same key — which is what the adapter already assumed by grading a
+  409 `UNKNOWN`. The endpoint description is simply wrong; the parameter
+  description is right.
 - `sourcing._resolve_auto` was written when every top-up SKU had exactly one
   active supplier mapping. NOVA is the first thing that legitimately gives a
   SKU two, and the existing code's behaviour under that condition had never
@@ -242,9 +246,17 @@ one SKU) real; they are recorded here so they stay findable.
   bad task never stops the sweep, and another supplier's tasks are ignored.
 - **Money-outcome matrix** (`apps/api/tests/unit/test_supplier_money_outcome.py`):
   NOVA's grading added alongside G2B/G-Engine/Waxpeer's.
-- No test places a real order: the balance is zero and the order object is
-  unverified. The first live order (`docs/runbooks/nova.md`) is what
-  actually validates the status allow-list and the idempotency assumption.
+- No test places a real order, and none should: a test that spends money at a
+  supplier is a test nobody can run twice. That validation happened once, by
+  hand, and is written down in `docs/runbooks/nova.md` — one 60 UC PUBG
+  Mobile top-up on 2026-09-17, completed in 8 seconds, `created -> processing
+-> completed`, order id `ord-1372576` under the key `id`, charged on create.
+  It confirmed the status allow-list unchanged and corrected three things the
+  documentation had us believe: a reused idempotency key is refused rather
+  than replayed, their live error envelope is not the documented one (the
+  useful sentence is in `message`), and a bad `offer_id` answers `502` with
+  the balance untouched. Each correction is pinned by a contract or unit test
+  so it cannot quietly regress.
 
 ## References
 

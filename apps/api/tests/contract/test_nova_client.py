@@ -236,3 +236,52 @@ async def test_an_order_response_without_an_order_is_an_empty_dict() -> None:
         return_value=httpx.Response(200, json={"ok": True, "order": None})
     )
     assert await _client().get_order("ord_1") == {}
+
+
+@respx.mock
+async def test_a_real_refusal_keeps_its_sentence_not_its_status_name() -> None:
+    """Their live error envelope is not the one their OpenAPI documents.
+
+    Observed on 2026-09-17: a reused Idempotency-Key answers
+    `{"message": "This Idempotency-Key was already used for a purchase…",
+      "error": "Conflict", "statusCode": 409}` — no `ok`, and `error` holding
+    the status name rather than the reason. Reading `error` first would put the
+    word "Conflict" in `task.last_error` and throw away the only sentence that
+    tells an operator what happened.
+    """
+    respx.post(f"{BASE}/api/v2/topups/order").mock(
+        return_value=httpx.Response(
+            409,
+            json={
+                "message": (
+                    "This Idempotency-Key was already used for a purchase. "
+                    "Create a new key for a new purchase."
+                ),
+                "error": "Conflict",
+                "statusCode": 409,
+            },
+        )
+    )
+    with pytest.raises(NovaError) as excinfo:
+        await _client().create_topup_order(
+            category_id="pubg_mobile_auto",
+            offer_id="60_uc",
+            fields={"player_id": "1"},
+            idempotency_key="used-before",
+        )
+    assert excinfo.value.status == 409
+    assert "Idempotency-Key was already used" in str(excinfo.value)
+
+
+@respx.mock
+async def test_the_documented_envelope_still_works() -> None:
+    """The shape their OpenAPI describes has to keep working too — it is what
+    their 403 for a blocked account uses, and `error` is the only text there."""
+    respx.get(f"{BASE}/api/v2/balance").mock(
+        return_value=httpx.Response(
+            403, json={"ok": False, "error": "subscription inactive", "code": "x"}
+        )
+    )
+    with pytest.raises(NovaError) as excinfo:
+        await _client().get_balance()
+    assert "subscription inactive" in str(excinfo.value)

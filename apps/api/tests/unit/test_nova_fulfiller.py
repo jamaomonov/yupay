@@ -418,3 +418,17 @@ async def test_a_create_with_no_readable_id_fails_loudly(
     assert "no id" in str(excinfo.value)
     # It still went out — the money question is open precisely because it did.
     assert len(client.calls) == 1
+
+
+async def test_a_failure_carries_their_reason(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`fail_reason` is a real field on their order, and it is the only thing
+    that tells an operator why — without it the inbox says "nova order failed"
+    and the next step is a shell."""
+    client = _FakeClient(
+        order={"id": "ord_1", "status": "failed", "fail_reason": "player not eligible"}
+    )
+    result = await _fulfill(client, monkeypatch)
+    assert result.outcome == "failed"
+    assert "player not eligible" in str(result.error)
+    assert result.extra_metadata["nova_fail_reason"] == "player not eligible"
+    assert result.money_outcome is MoneyOutcome.UNKNOWN
