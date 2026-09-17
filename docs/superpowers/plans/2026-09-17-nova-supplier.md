@@ -1827,6 +1827,17 @@ Sections, all of them operational:
 - `docs/architecture/module-map.md`: `nova` beside the other suppliers, and `player_check_nova` under `integrations`.
 - `fulfillment/README.md`: NOVA in the supplier table, with the one-line money rule (charges on create).
 - `sourcing/README.md`: the oldest-mapping rule from Task 4, and `nova` in the `MAPPING_REQUIRED_SUPPLIERS` sentence.
+- `AGENTS.md` §10: the two player-check endpoints on its advisory-lookup exception list may now
+  make **two** supplier calls, not one — the primary, then NOVA when the primary could not answer.
+  §10 demands that every deviation name itself there, so add a sentence saying the second call
+  carries its own tighter timeout (`nova_check_timeout_seconds`, 4 s), its own breaker
+  (`nova:player_check`), and its own cache namespace, and that it can only ever _lower_ the wait by
+  short-circuiting, never raise a verdict the primary refused. No new endpoint is added, which is
+  why this is a sentence and not a new list entry.
+- `AGENTS.md` §14 / the branch's follow-ups: `player_check.py` is now 550 lines, past the "split
+  before 500" line in §6. It was already 506 before this branch and the split is its own piece of
+  work — record it where the next person will find it (the ADR's consequences section), not as a
+  bare TODO.
 - `docs/runbooks/merchant-b2b.md`: one line in the `validate/player` section — the check now survives a G2B outage for some brands, and can answer "could not check" where it once answered nothing.
 
 - [ ] **Step 4: Check formatting and links**
