@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 if TYPE_CHECKING:
     from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
     from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
 
 from yupay.api.v1.deps import db_session
@@ -340,6 +341,21 @@ def _waxpeer_fulfiller_or_none() -> WaxpeerFulfiller | None:
 
     fulfiller = REGISTRY.get("waxpeer")
     if isinstance(fulfiller, WaxpeerFulfiller) and fulfiller.available:
+        return fulfiller
+    return None
+
+
+def _nova_fulfiller_or_none() -> NovaFulfiller | None:
+    """Return the registered NOVA adapter iff ``NOVA_API_KEY`` is set.
+
+    Mirrors the two above — used by the player-check fallback in
+    ``integrations.player_check_nova``.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+
+    fulfiller = REGISTRY.get("nova")
+    if isinstance(fulfiller, NovaFulfiller) and fulfiller.available:
         return fulfiller
     return None
 

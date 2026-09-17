@@ -55,6 +55,10 @@ from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineUnavailableError,
 )
 from yupay.modules.fulfillment.suppliers.gengine_gifts import _map_gift_order
+from yupay.modules.fulfillment.suppliers.nova import LOW_BALANCE_ERROR as NOVA_LOW_BALANCE_ERROR
+from yupay.modules.fulfillment.suppliers.nova import _refusal_money
+from yupay.modules.fulfillment.suppliers.nova import _result as _nova_result
+from yupay.modules.fulfillment.suppliers.nova_client import NovaError
 from yupay.modules.fulfillment.suppliers.waxpeer import (
     _money_for,
     _reconcile,
@@ -516,6 +520,57 @@ def test_waxpeers_mapping_is_total_by_construction() -> None:
 
     # And the under-delivery, which is terminal without a terminal status.
     assert _money_for(outcome="failed", status="completed", shortfall=1) is MoneyOutcome.SPENT
+
+
+# ---------- NOVA: charges on create, like Waxpeer ----------
+
+
+def test_nova_refusal_money_is_graded_by_status() -> None:
+    """400/403/404 are refusals of the request itself, before anything is
+    charged; 409 (their own idempotency refusal, which their two documents
+    describe two different ways) and 5xx leave the charge undecided. Pinned
+    here at the pure function the grading lives in — the fulfiller's own
+    tests exercise the same table end to end."""
+    for status in (400, 403, 404):
+        assert _refusal_money(NovaError("no", status=status)) is MoneyOutcome.RETURNED
+    for status in (409, 500):
+        assert _refusal_money(NovaError("no", status=status)) is MoneyOutcome.UNKNOWN
+
+
+def test_nova_a_refunded_status_returns_our_money() -> None:
+    result = _nova_result({"id": "ord_1", "status": "refunded"})
+
+    assert result.outcome == "failed"
+    assert result.money_outcome is MoneyOutcome.RETURNED
+
+
+def test_nova_a_failed_status_without_a_refund_is_unknown() -> None:
+    """NOVA exposes no refund field on the order object at all — a failure
+    with no evidence it was undone stays the open question G2B answers the
+    same way for the same reason: no field, no promise we have checked."""
+    result = _nova_result({"id": "ord_1", "status": "failed"})
+
+    assert result.outcome == "failed"
+    assert result.money_outcome is MoneyOutcome.UNKNOWN
+
+
+def test_nova_an_unrecognised_status_never_answers_the_money_question() -> None:
+    """Their order object is untyped in their own OpenAPI (``order: {}``), so
+    a status word never seen before must stay open in both directions — not
+    just the outcome, the money question too."""
+    result = _nova_result({"id": "ord_1", "status": "half_done"})
+
+    assert result.outcome == "in_progress"
+    assert result.money_outcome is None
+
+
+def test_nova_low_balance_sentinel_matches_the_saga() -> None:
+    """The fulfiller's sentinel MUST equal the string the saga keys on, or a
+    low-balance failure would be treated as a hard one (customer sees an
+    error, no alert)."""
+    from yupay.modules.fulfillment import service as fsvc
+
+    assert NOVA_LOW_BALANCE_ERROR == fsvc._LOW_BALANCE_ERROR
 
 
 # ---------- G2B: a promise, plus one rejection the owner graded ----------

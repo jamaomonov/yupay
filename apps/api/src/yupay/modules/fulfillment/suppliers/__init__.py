@@ -25,6 +25,7 @@ from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
 from yupay.modules.fulfillment.suppliers.manual import ManualFulfiller
 from yupay.modules.fulfillment.suppliers.mock import MockFulfiller
+from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
 from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
 
 REGISTRY: dict[str, Fulfiller] = {
@@ -44,6 +45,10 @@ REGISTRY: dict[str, Fulfiller] = {
     # exactly, so `sourcing` can fall back to it when the primary route is out
     # of stock. Same hot-reload rule — `available` reads the key per call.
     "gengine": GEngineFulfiller(),
+    # Reserve for game top-ups: covers nearly the whole catalogue, routed to
+    # only by an explicit `force_supplier` rule. Same hot-reload rule —
+    # `available` reads the key per call.
+    "nova": NovaFulfiller(),
     "steam": StubFulfiller(
         supplier="steam",
         todo_message="Steam supplier not integrated yet; see ADR-0013.",
@@ -98,6 +103,7 @@ __all__ = [
     "ManualFulfiller",
     "MockFulfiller",
     "MoneyOutcome",
+    "NovaFulfiller",
     "StubFulfiller",
     "WaxpeerFulfiller",
     "available_suppliers",
