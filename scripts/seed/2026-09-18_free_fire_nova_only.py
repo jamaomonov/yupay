@@ -50,7 +50,7 @@ from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import get_settings
@@ -195,10 +195,12 @@ NEW_SKUS: tuple[_NewSku, ...] = (
 
 #: Where the "packs" SKUs land in the new product's own ladder (0-indexed,
 #: insertion order == the price-ascending order the table is already in).
-#: Where the "membership" SKUs land in `free-fire-membership`'s ladder:
-#: appended after its current three (sort_order 0..2 as seeded), never
-#: renumbering the SKUs already there.
-_MEMBERSHIP_SORT_ORDER_START = 3
+#: Where the "membership" SKUs land in `free-fire-membership`'s ladder: after
+#: whatever is there now, never renumbering it. Read from the database rather
+#: than assumed — it was three when this was written, and a seed that hardcodes
+#: today's count silently stacks two SKUs on one position the day somebody adds
+#: a fourth. Nothing breaks (there is no uniqueness on `(product_id,
+#: sort_order)`), it just quietly stops sorting the way the operator expects.
 
 
 def _ceil_to_cent(amount: Decimal) -> Decimal:
@@ -260,8 +262,7 @@ def _resolve_live_costs(offers: list[dict[str, Any]]) -> tuple[dict[str, Decimal
             costs[row.sku_code] = Decimal(str(raw_price))
         except (InvalidOperation, TypeError):
             problems.append(
-                f"{row.sku_code}: offer {row.offer_id!r} has no readable price_usd "
-                f"({raw_price!r})"
+                f"{row.sku_code}: offer {row.offer_id!r} has no readable price_usd ({raw_price!r})"
             )
     return costs, problems
 
@@ -454,9 +455,9 @@ async def _create_rows(
     """
     required_fields = (
         await db.execute(
-            select(Product.required_fields).join(Brand).where(
-                Brand.slug == "free-fire", Product.slug == DIAMONDS_PRODUCT_SLUG
-            )
+            select(Product.required_fields)
+            .join(Brand)
+            .where(Brand.slug == "free-fire", Product.slug == DIAMONDS_PRODUCT_SLUG)
         )
     ).scalar_one()
 
@@ -479,8 +480,17 @@ async def _create_rows(
     written: list[tuple[_NewSku, Decimal, Decimal]] = []
     # `NEW_SKUS` is already in ladder (price-ascending) order within each
     # product, so a running counter per product doubles as `sort_order`:
-    # 0.. for the brand-new `free-fire-packs`, and `_MEMBERSHIP_SORT_ORDER_START`..
-    # appended after `free-fire-membership`'s existing three (never renumbered).
+    # 0.. for the brand-new `free-fire-packs`, and one past whatever
+    # `free-fire-membership` currently ends at (never renumbering it).
+    membership_start = int(
+        (
+            await db.execute(
+                select(func.coalesce(func.max(Sku.sort_order), -1) + 1).where(
+                    Sku.product_id == membership.id
+                )
+            )
+        ).scalar_one()
+    )
     packs_seen = 0
     evo_seen = 0
     for row in NEW_SKUS:
@@ -490,7 +500,7 @@ async def _create_rows(
             packs_seen += 1
         else:
             product_id = membership.id
-            sort_order = _MEMBERSHIP_SORT_ORDER_START + evo_seen
+            sort_order = membership_start + evo_seen
             evo_seen += 1
 
         cost = costs[row.sku_code]
