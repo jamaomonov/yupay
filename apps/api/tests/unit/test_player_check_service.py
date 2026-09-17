@@ -257,7 +257,7 @@ class _FakeSlugSession:
         self.in_transaction = False
 
 
-def _fixed_field(field: dict):  # type: ignore[no-untyped-def]
+def _fixed_field(field: dict[str, object]):  # type: ignore[no-untyped-def]
     """A ``brand_check_field`` stand-in that always answers the same field,
     so these tests exercise only the ``error`` dispatch, not mapping lookup."""
 
@@ -282,7 +282,10 @@ async def test_primary_valid_never_consults_nova(monkeypatch) -> None:  # type: 
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
     out = await pc.check_player_for_brand_id(
-        _FakeSlugSession("mobile-legends-ru"), brand_id="b1", player_id="p1", server_id=None
+        _FakeSlugSession("mobile-legends-ru"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="p1",
+        server_id=None,
     )
 
     assert out.status == "valid"
@@ -306,7 +309,10 @@ async def test_primary_invalid_never_consults_nova(monkeypatch) -> None:  # type
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
     out = await pc.check_player_for_brand_id(
-        _FakeSlugSession("mobile-legends-ru"), brand_id="b1", player_id="p1", server_id=None
+        _FakeSlugSession("mobile-legends-ru"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="p1",
+        server_id=None,
     )
 
     assert out.status == "invalid"
@@ -343,7 +349,12 @@ async def test_the_fallback_is_not_called_holding_a_connection(monkeypatch) -> N
     monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
-    await pc.check_player_for_brand_id(session, brand_id="b1", player_id="p1", server_id=None)
+    await pc.check_player_for_brand_id(
+        session,  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="p1",
+        server_id=None,
+    )
 
     assert seen["in_transaction"] is False, (
         "the brand-slug read reopened a transaction and the NOVA call was made "
@@ -374,7 +385,12 @@ async def test_the_fallback_releases_even_when_g2b_returned_early(monkeypatch) -
     monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
-    await pc.check_player_for_brand_id(session, brand_id="b1", player_id="p1", server_id=None)
+    await pc.check_player_for_brand_id(
+        session,  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="p1",
+        server_id=None,
+    )
 
     assert seen["in_transaction"] is False
 
@@ -407,7 +423,10 @@ async def test_a_steam_login_error_consults_nova_too(monkeypatch) -> None:  # ty
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
     out = await pc.check_player_for_brand_id(
-        _FakeSlugSession("steam"), brand_id="b1", player_id="someone", server_id=None
+        _FakeSlugSession("steam"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="someone",
+        server_id=None,
     )
 
     assert out.status == "valid"
@@ -432,7 +451,10 @@ async def test_a_steam_login_verdict_is_never_second_guessed(monkeypatch) -> Non
     monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
 
     out = await pc.check_player_for_brand_id(
-        _FakeSlugSession("steam"), brand_id="b1", player_id="someone", server_id=None
+        _FakeSlugSession("steam"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="someone",
+        server_id=None,
     )
 
     assert out.status == "invalid"
@@ -456,7 +478,10 @@ async def test_primary_error_consults_nova_once_and_its_valid_wins(monkeypatch) 
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
     out = await pc.check_player_for_brand_id(
-        _FakeSlugSession("mobile-legends-ru"), brand_id="b1", player_id="p1", server_id=None
+        _FakeSlugSession("mobile-legends-ru"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="p1",
+        server_id=None,
     )
 
     assert out.status == "valid"
