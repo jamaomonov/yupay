@@ -3,8 +3,12 @@
 NOVA is a **reserve** supplier for game top-ups and a **fallback** for the
 player-id check. It never receives an order or a check on its own — an
 operator switches a SKU to it, or the primary check has already failed.
-Design: [ADR-0081](../decisions/0081-nova-reserve-supplier.md). Code:
+Design: [ADR-0081](../decisions/0081-nova-reserve-supplier.md) (the reserve
+pattern) and [ADR-0082](../decisions/0082-nova-steam-and-real-cost-basis.md)
+(the Steam wallet reserve, the real cost basis for margin, and switching
+Free Fire CIS). Code:
 `apps/api/src/yupay/modules/fulfillment/suppliers/nova.py` (fulfiller),
+`nova_grading.py` (pure order-reading + money grading, split out of `nova.py`),
 `nova_client.py` (transport), `apps/api/src/yupay/modules/integrations/player_check_nova.py`
 (check fallback), `apps/scheduler/src/yupay_scheduler/jobs/nova_reconcile.py`
 (reconcile job).
@@ -23,9 +27,12 @@ answers `error`. Nothing routes to NOVA automatically in either role — see
 NOVA quotes its balance in USD (`GET /api/v2/balance` →
 `{"ok":true,"balance":"…","currency":"USD"}`); how the owner actually funds
 it (bank, card, USDT) is between them and NOVA, not something this repo
-does. **As of 2026-09-17 the balance is `$0.0000` and no order has ever been
-placed on this key** — the adapter is wired but cannot fulfil anything until
-someone funds it and runs the first live order below.
+does. **The balance was `$0.0000` and no order had ever been placed on this
+key as of the morning of 2026-09-17** — the adapter was wired but could not
+fulfil anything until the wallet was funded. It has since been topped up to
+$10 and the first live order (a PUBG Mobile top-up, same day) took the
+balance to `$9.0985` — see "The first live order" below. Steam's own first
+live order is still outstanding; see the Steam section further down.
 
 **Where to look:** Admin → Интеграции → NOVA. The card probes
 `GET /api/v1/admin/integrations/nova/health`, which calls
@@ -220,6 +227,220 @@ fulfilment is slower is the case most likely to show a status we have not
 seen; `nova.unknown_order_status` in the logs names it and says which of the
 four sets to add it to.
 
+## Steam wallet top-ups (a reserve — never gone live)
+
+Design: [ADR-0082](../decisions/0082-nova-steam-and-real-cost-basis.md). Code:
+`NovaFulfiller._fulfill_steam` and `STEAM_SENTINEL` in `nova.py`,
+`NovaClient.create_steam_order` in `nova_client.py`.
+
+There is exactly one Steam SKU: brand `steam`, product `steam-wallet`,
+`sku_code = "steam-wallet-usd"` — `variable_amount`, so `unit_price_usd` is
+whatever dollar amount the customer typed at checkout, not a denomination
+picked from a list. It routes to **Waxpeer** today, forced there by an
+explicit `SkuSourcingRule` (`force_supplier = waxpeer`) rather than a
+mapping — Waxpeer sells one thing and needs no `sku_supplier_mapping` row at
+all (`docs/runbooks/waxpeer-troubleshooting.md`). NOVA is a second option,
+wired since 2026-09-17, and like every reserve it is inert until an operator
+switches this one SKU.
+
+**No live order has ever gone through NOVA's Steam endpoint.** Everything
+below the money-shape facts is a documented guess, exactly like the games
+path was before its first live order (above) — see "The first live order"
+subsection here for what to do about that before trusting it with volume.
+
+### A different endpoint, and it costs less than what it sends
+
+`POST /api/v2/steam-topup/order` takes `{steamLogin, currency, amount}` — no
+category, no offer — and answers **201**, not the games endpoint's 200.
+`amount_usd` is quantized to at most two decimals, rounded half-up, before it
+is sent.
+
+**The amount we send is the face value the customer bought — what NOVA
+charges us for it is less.** NOVA states "according to your plan"
+(`bronze|silver|gold`); observed nowhere yet on this endpoint specifically,
+but the design's working number from their account page is a $10 top-up
+costing us $9.80 — a 2% plan discount. We still send the full face value:
+the customer receives that many dollars of wallet, full stop. What changes
+is what we record ourselves as having paid for it.
+
+### Where the discount shows up
+
+NOVA folds what it actually charged into the order object — `novaDebit.amountUsd`
+on the create response, `chargedUsd`/`charged_usd` on a later `GET` — and
+`nova_grading._meta` copies it onto the fulfilment task as
+`extra_metadata["supplier_charged_usd"]`. `fulfillment.service._record_supplier_charge`
+reads that key once (never on a later poll if the create already wrote it)
+and, only when it is a positive finite number, freezes it onto
+`OrderItem.cost_usdt` for that line. A `0` or `NaN` is logged
+(`fulfillment.supplier_charge_not_a_cost`) and dropped instead of written —
+the order still delivers; see ADR-0082 §2 for why.
+
+From there, `orders.revenue.margin_usd_expr` reads `cost_usdt` when it is
+present instead of assuming a dollar of wallet costs a dollar. Nothing
+displays "the NOVA discount" as its own figure anywhere; it is the gap
+between `charged_usd_expr` (what the customer paid, from `unit_price_usd ×
+rate_multiplier`) and `cost_usdt` (what NOVA took), both queryable per line
+once a real order exists to look at.
+
+### Switching Steam to NOVA and back
+
+Same mechanism as "Switching a SKU to NOVA and back" above, with two
+Steam-specific catches an operator following that section by rote would
+trip on.
+
+**1. Creating the mapping through the admin form needs a workaround.** The
+Steam sentinel mapping is `external_product_id = "steam-topup"`,
+`kind = "game"`, and `_fulfill_steam` never reads `external_variant_id` — but
+the admin wizard (and the backend's `upsert_mapping`) still refuses to save
+any `kind="game"` mapping with an empty "Номинал" unless the supplier is in
+`_AMOUNT_PRICED_SUPPLIERS` (`integrations/service.py`), which today holds
+only `{"gengine"}`. NOVA isn't on it. This is a real gap in the current admin
+form, not a step this runbook invented — recorded in ADR-0082's Decision 1.
+
+- Admin → Интеграции → Маппинги → Создать
+- Шаг 1 (SKU): `steam-wallet-usd`
+- Шаг 2 (Тип): «Игровой топ-ап»
+- Шаг 3 (Поставщик + продукт): NOVA; «ID сервиса у поставщика» (typed by
+  hand — NOVA has no catalogue cache) = `steam-topup`
+- Шаг 4 (Номинал): type **anything** — e.g. `n/a` — to satisfy the form.
+  The value is written to `external_variant_id` but the Steam branch never
+  reads it.
+- Шаг 5: quantity `1`, Активен, Сохранить. The save toast will say
+  `cost_usdt не обновлён (cost sync supported only for g2b today)` — that is
+  expected for every non-G2B supplier, not a failure.
+
+**2. Switching _back_ is not "Авто".** For a game SKU with a real G2B
+mapping, «Авто» correctly falls back to the incumbent. For
+`steam-wallet-usd` it would not: Waxpeer has **no mapping row at all** (by
+design — see above), so with the NOVA rule removed, `_resolve_auto` would
+find no non-reserve mapping and route the SKU to the **manual queue**, not
+back to Waxpeer. Switch back explicitly instead:
+
+- Admin → **Sourcing** (`/sourcing`) → `steam-wallet-usd` → «Только
+  поставщик» → **Waxpeer** → Save.
+
+Switching _to_ NOVA is ordinary: same page, «Только поставщик» → **NOVA** →
+Save, once the mapping above exists. Every new Steam order routes to NOVA
+from that point; nothing already in flight moves.
+
+### The first live order — not yet done
+
+Nobody has bought Steam wallet credit through NOVA. Before trusting this
+path with real volume, place one small top-up through a switched
+`steam-wallet-usd` and a real checkout — the same way the games path's first
+order was placed — and record here, in this shape:
+
+```
+Order id:
+Sent (face value, what the customer received):
+Charged (novaDebit.amountUsd / chargedUsd — what NOVA actually took):
+Statuses walked:
+Time end to end:
+```
+
+Specifically check and correct this section if any of these differ from
+what is written above or in ADR-0082:
+
+- Whether `chargedUsd` is genuinely lower than the sent amount, and by how
+  much — the 2% figure above is the design's working number, not a
+  measurement.
+- Whether a refusal on this endpoint really does carry `availablePlans` and
+  `balanceUsd` the way the design doc describes, and what `_message_of`
+  surfaces for it.
+- Whether any status appears outside `nova.py`'s allow-list —
+  `nova.unknown_order_status` in the logs is the signal, same as for games.
+- Whether `_record_supplier_charge` actually froze a figure onto
+  `OrderItem.cost_usdt` — check the order's `order_items` row after the
+  order settles.
+
+## Free Fire CIS (switched to NOVA)
+
+Design: [ADR-0082](../decisions/0082-nova-steam-and-real-cost-basis.md) §3–4.
+Two seeds decide what is actually live here, and until both have been run
+with `APPLY=1` against a deployed copy of this branch, nothing about Free
+Fire's sourcing or catalogue has changed — the seeds are the switch, landing
+the code is not.
+
+### The nine existing SKUs
+
+`scripts/seed/2026-09-17_nova_mappings.py` maps `free-fire` (NOVA category
+`free_fire_cis`) alongside Mobile Legends and PUBG, but `free-fire` is the
+**only** brand in the script's `SWITCH_TO_NOVA` set — so it is the only one
+this run actually moves live orders for. Mobile Legends and PUBG get a
+mapping and stay on their incumbent, exactly as before.
+
+```bash
+# dry run — prints the tables, writes nothing
+docker compose -f docker-compose.prod.yml exec -T api \
+  python - < scripts/seed/2026-09-17_nova_mappings.py
+
+# read the tables, then commit
+docker compose -f docker-compose.prod.yml exec -T -e APPLY=1 api \
+  python - < scripts/seed/2026-09-17_nova_mappings.py
+```
+
+It prints **three** tables, and they answer three different questions —
+reading only the first is reading half the story:
+
+- **matched** — `sku_code`, NOVA's offer name, our `cost_usdt`, NOVA's
+  `price_usd`. A mapping, not yet a switch: compare the last two columns
+  before trusting it.
+- **switched to nova** — the subset of `matched` whose brand is in
+  `SWITCH_TO_NOVA` (`free-fire` only) and therefore also got a
+  `force_supplier = nova` rule in the same transaction. This is the table
+  that says whose live orders actually moved — everything else in `matched`
+  is a mapping sitting in reserve, same as Mobile Legends and PUBG.
+- **unmatched** — `sku_code`, `denomination`, and why. Finish these by hand
+  in Admin → Интеграции → Маппинги.
+
+The three memberships (Weekly Lite, Weekly Membership, Monthly Membership)
+carry no denomination number, so the usual number-and-unit matcher can't
+place them; they are paired instead through an explicit `SKU_OFFER_OVERRIDES`
+table in the script (`freefire_cis-weekly-lite → weekly_lite`, etc.), read
+once by a human rather than fuzzy-matched by name.
+
+### The ten NOVA-only SKUs
+
+`scripts/seed/2026-09-18_free_fire_nova_only.py` creates six Level Up
+Packages plus a Newbie Bundle under a new `free-fire-packs` product, and
+three Evo Access durations joining the existing `free-fire-membership` — all
+priced at cost × 1.10 ceiled to the cent, all NOVA-only (there is no G2B
+equivalent), each with its own `force_supplier = nova` rule written in the
+same transaction as its mapping.
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T api \
+  python - < scripts/seed/2026-09-18_free_fire_nova_only.py
+
+docker compose -f docker-compose.prod.yml exec -T -e APPLY=1 api \
+  python - < scripts/seed/2026-09-18_free_fire_nova_only.py
+```
+
+It refuses to write **anything** — even in the dry run, it just exits with a
+non-zero status — if NOVA's live price has drifted more than 10% from the
+table frozen in the script, or if a smaller move still crosses a cent
+boundary the table didn't predict. Either is read as a catalogue change for
+a human to look at, not a number to seed past. Its one printed table is
+`sku_code`, `denomination`, `offer_id`, `cost_usdt`, `price_usd` — all ten
+rows or none, since the whole run is one transaction.
+
+### If NOVA's Free Fire price moves above G2B's
+
+**The nine existing SKUs** have a real fallback: Admin → **Sourcing** → the
+SKU → «Авто» removes the `force_supplier` rule, and `_resolve_auto`
+(ADR-0081 Decision 4) falls back to the oldest remaining active mapping —
+the G2B incumbent, since the switch never deleted or deactivated it. Do this
+per SKU, or for all nine if the whole category's price moved. No re-seeding
+needed either way.
+
+**The ten NOVA-only SKUs have no fallback supplier** — NOVA is the only
+mapping that exists for them. Each carries `margin_percent = 10`, so the
+hourly supplier-price job keeps re-deriving `price_usd` as NOVA's cost
+moves — a price _rise_ alone does not erode margin. If NOVA's cost rises
+enough that the retail price stops being worth selling at all, the fix is
+Admin → Catalog → the SKU → turn off «Активен» until a cheaper supplier
+turns up; there is no supplier to fail over to in the meantime.
+
 ## The check fallback
 
 Fires **only** when the primary check (G2B for a game, Waxpeer for Steam)
@@ -300,6 +521,10 @@ unexplained create failure.
 
 - [ADR-0081](../decisions/0081-nova-reserve-supplier.md) — design and the
   four decisions this runbook assumes.
+- [ADR-0082](../decisions/0082-nova-steam-and-real-cost-basis.md) — the
+  Steam sentinel mapping, the real-cost-basis margin branch
+  (`OrderItem.cost_usdt` / `orders.revenue.margin_usd_expr`), and the Free
+  Fire CIS switch this runbook's Steam and Free Fire sections describe.
 - [ADR-0031](../decisions/0031-storefront-player-check.md),
   [ADR-0052](../decisions/0052-g-engine-as-a-second-source.md),
   [ADR-0079](../decisions/0079-region-brands-and-brand-level-player-check.md)
@@ -311,6 +536,11 @@ unexplained create failure.
 answering error` — the reseller-facing side of the same fallback.
 - `docs/runbooks/g2b-troubleshooting.md` — the primary this fallback stands
   behind; its breaker section is the template this one follows.
+- `docs/runbooks/waxpeer-troubleshooting.md` — Steam's incumbent supplier;
+  `steam-wallet-usd`'s own sourcing rule and inbox live there today.
 - `apps/api/src/yupay/modules/fulfillment/README.md` § Поставщики,
   `apps/api/src/yupay/modules/sourcing/README.md` — the sourcing/fulfilment
   mechanics this runbook operates, in more detail.
+- `apps/api/src/yupay/modules/orders/revenue.py` — `margin_usd_expr` and
+  `charged_usd_expr`, the module this runbook's Steam section describes the
+  new branch of.
