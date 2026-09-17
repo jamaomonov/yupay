@@ -69,7 +69,7 @@ export default function OrderDetailPage() {
 
       {order !== null && (
         <>
-          <h1 className="mt-4 break-all text-2xl font-semibold tracking-tight">
+          <h1 className="mt-4 break-words text-2xl font-semibold tracking-tight">
             {/* «Заказ», singular — this screen is one order, not the list. */}
             {orderTitle(order, t("colOrder"))}
           </h1>
