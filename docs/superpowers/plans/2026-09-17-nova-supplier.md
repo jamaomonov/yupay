@@ -787,6 +787,26 @@ async def test_check_status_that_cannot_read_says_unknown(
     assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
 
 
+async def test_the_same_task_always_sends_the_same_key_and_never_retries_itself(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The idempotent re-call leg AGENTS.md §8 requires of a supplier adapter.
+
+    Their two descriptions of a reused `Idempotency-Key` disagree — one says it
+    returns the original order, the other says it is rejected — so the only
+    behaviour we can assert, and the only one that is safe under either, is
+    this: one `fulfill` call makes exactly one create, and a second `fulfill`
+    for the same task sends the same key rather than a fresh one. A retry that
+    minted a new key would be a second purchase whichever way their server
+    behaves.
+    """
+    client = _FakeClient(order={"id": "ord_1", "status": "processing"})
+    await _fulfill(client, monkeypatch)
+    await _fulfill(client, monkeypatch)
+    assert len(client.calls) == 2
+    assert {c["idempotency_key"] for c in client.calls} == {"task-42"}
+
+
 async def test_check_status_reads_a_finished_order(monkeypatch: pytest.MonkeyPatch) -> None:
     task = SimpleNamespace(external_order_id="ord_1", extra_metadata={})
     client = _FakeClient(order={"id": "ord_1", "status": "completed"})
