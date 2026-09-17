@@ -39,6 +39,7 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.integrations.models import (
+    NOVA_STEAM_SENTINEL,
     SkuSupplierMapping,
     SupplierPriceHistory,
 )
@@ -48,6 +49,7 @@ pytestmark = pytest.mark.asyncio
 
 BOT_TOKEN = "123456:TEST"
 G2B_BASE = "https://g2b.test/v1"
+NOVA_BASE = "https://nova.test"
 ALERT_BOT_TOKEN = "alert-bot-token"
 ALERT_CHAT_ID = "555000"
 
@@ -56,6 +58,8 @@ ALERT_CHAT_ID = "555000"
 def _env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("G2B_API_KEY", "test-key")
     monkeypatch.setenv("G2B_BASE_URL", G2B_BASE)
+    monkeypatch.setenv("NOVA_API_KEY", "test-nova-key")
+    monkeypatch.setenv("NOVA_BASE_URL", NOVA_BASE)
     monkeypatch.setenv("TG_ALERT_BOT_TOKEN", ALERT_BOT_TOKEN)
     monkeypatch.setenv("TG_ALERT_CHAT_ID", ALERT_CHAT_ID)
     monkeypatch.setenv("PRICE_ALERT_THRESHOLD_PCT", "5")
@@ -160,6 +164,241 @@ async def _seed_mapping(
     db.add(row)
     await db.commit()
     return row
+
+
+async def _seed_nova_mapping(
+    db: AsyncSession,
+    *,
+    sku_id: str,
+    category_id: str,
+    offer_id: str | None,
+) -> SkuSupplierMapping:
+    row = SkuSupplierMapping(
+        sku_id=sku_id,
+        supplier_slug="nova",
+        kind="game",
+        external_product_id=category_id,
+        external_variant_id=offer_id,
+        quantity=1,
+        extra={},
+        is_active=True,
+    )
+    db.add(row)
+    await db.commit()
+    return row
+
+
+async def _seed_two_mapping_sku(
+    db: AsyncSession,
+    *,
+    slug_suffix: str,
+    initial_g2b_cost: str,
+) -> tuple[str, SkuSupplierMapping, SkuSupplierMapping]:
+    """A SKU with **two** active mappings (G2B + NOVA), sourcing forced onto
+    NOVA — the exact shape 22 production SKUs now have (Free Fire's switch)
+    and the scenario the routed-supplier rule exists for. Returns
+    ``(sku_id, g2b_mapping, nova_mapping)``.
+    """
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _seed_sku(db, slug_suffix=slug_suffix, initial_cost=initial_g2b_cost)
+    g2b_mapping = await _seed_mapping(db, sku_id=sku_id, game_code="pubgm", denom="60")
+    nova_mapping = await _seed_nova_mapping(
+        db, sku_id=sku_id, category_id="pubg_mobile_auto", offer_id="offer-60uc"
+    )
+    await sourcing_svc.set_rule(
+        db, sku_id=sku_id, mode="force_supplier", supplier_slug="nova", admin_id="test"
+    )
+    await db.commit()
+    return sku_id, g2b_mapping, nova_mapping
+
+
+# ---------- routed-supplier rule (per-supplier costs, §4) ----------
+
+
+async def test_routed_supplier_writes_cost_and_history(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Two active mappings, sourcing forced onto NOVA. Refreshing the
+    **routed** mapping (NOVA) writes both ``Sku.cost_usdt`` and a history
+    row."""
+    from yupay.modules.integrations import service as svc
+
+    sku_id, _g2b_mapping, nova_mapping = await _seed_two_mapping_sku(
+        db_session, slug_suffix="routed-nova", initial_g2b_cost="0.82"
+    )
+
+    outcome = await svc.refresh_sku_cost_for_mapping(
+        db_session,
+        mapping=nova_mapping,
+        nova_offers_cache={
+            "pubg_mobile_auto": {
+                "ok": True,
+                "offers": [{"offer_id": "offer-60uc", "name": "60 UC", "price_usd": 0.79}],
+            }
+        },
+    )
+    await db_session.commit()
+
+    assert outcome.wrote_cost is True
+    assert outcome.updated is True
+    assert outcome.new_cost == Decimal("0.79")
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.79")
+
+    history = (
+        (
+            await db_session.execute(
+                select(SupplierPriceHistory).where(
+                    SupplierPriceHistory.sku_id == sku_id,
+                    SupplierPriceHistory.supplier_slug == "nova",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(history) == 1
+    assert history[0].cost_usdt == Decimal("0.79")
+
+
+@respx.mock
+async def test_non_routed_supplier_writes_history_only(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The **other** mapping (G2B, while sourcing is forced onto NOVA)
+    records a history row and must leave ``Sku.cost_usdt`` exactly as it
+    was — asserted against the old value itself, not merely "not the new
+    G2B price"."""
+    from yupay.modules.integrations import service as svc
+
+    sku_id, g2b_mapping, _nova_mapping = await _seed_two_mapping_sku(
+        db_session, slug_suffix="non-routed-g2b", initial_g2b_cost="0.82"
+    )
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200,
+            json={"catalogues": [{"id": 1, "name": "60", "amount": 0.95}]},
+        )
+    )
+
+    outcome = await svc.refresh_sku_cost_for_mapping(db_session, mapping=g2b_mapping)
+    await db_session.commit()
+
+    assert outcome.wrote_cost is False
+    assert outcome.updated is False
+    assert outcome.new_cost == Decimal("0.95")
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.82")  # the OLD value — never touched by G2B here
+
+    history = (
+        (
+            await db_session.execute(
+                select(SupplierPriceHistory).where(
+                    SupplierPriceHistory.sku_id == sku_id,
+                    SupplierPriceHistory.supplier_slug == "g2b",
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(history) == 1
+    assert history[0].cost_usdt == Decimal("0.95")
+
+
+@respx.mock
+async def test_both_suppliers_history_queryable_with_correct_supplier_slug(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """After refreshing both mappings once, the per-supplier comparison the
+    admin screen reads has one history row per supplier, each correctly
+    attributed — and only the routed supplier's number survives on the
+    SKU itself."""
+    from yupay.modules.integrations import service as svc
+
+    sku_id, g2b_mapping, nova_mapping = await _seed_two_mapping_sku(
+        db_session, slug_suffix="both-history", initial_g2b_cost="0.82"
+    )
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200, json={"catalogues": [{"id": 1, "name": "60", "amount": 0.95}]}
+        )
+    )
+
+    await svc.refresh_sku_cost_for_mapping(
+        db_session,
+        mapping=nova_mapping,
+        nova_offers_cache={
+            "pubg_mobile_auto": {
+                "ok": True,
+                "offers": [{"offer_id": "offer-60uc", "name": "60 UC", "price_usd": 0.79}],
+            }
+        },
+    )
+    await svc.refresh_sku_cost_for_mapping(db_session, mapping=g2b_mapping)
+    await db_session.commit()
+
+    history = (
+        (
+            await db_session.execute(
+                select(SupplierPriceHistory)
+                .where(SupplierPriceHistory.sku_id == sku_id)
+                .order_by(SupplierPriceHistory.supplier_slug)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert [(h.supplier_slug, h.cost_usdt) for h in history] == [
+        ("g2b", Decimal("0.95")),
+        ("nova", Decimal("0.79")),
+    ]
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.79")  # only the routed supplier's write survives
+
+
+async def test_nova_steam_mapping_is_skipped_entirely(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A NOVA mapping whose ``external_product_id`` is the Steam sentinel
+    has no catalogue price — it is reported with a reason and writes
+    nothing at all, not even history."""
+    from yupay.modules.integrations import service as svc
+
+    sku_id = await _seed_sku(db_session, slug_suffix="nova-steam", initial_cost="1.00")
+    steam_mapping = await _seed_nova_mapping(
+        db_session, sku_id=sku_id, category_id=NOVA_STEAM_SENTINEL, offer_id=None
+    )
+
+    outcome = await svc.refresh_sku_cost_for_mapping(db_session, mapping=steam_mapping)
+    await db_session.commit()
+
+    assert outcome.wrote_cost is False
+    assert outcome.updated is False
+    assert outcome.new_cost is None
+    assert outcome.reason is not None
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("1.00")
+
+    history = (
+        (
+            await db_session.execute(
+                select(SupplierPriceHistory).where(SupplierPriceHistory.sku_id == sku_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert history == []
 
 
 # ---------- worker ----------
