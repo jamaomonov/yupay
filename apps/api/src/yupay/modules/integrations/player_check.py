@@ -1,5 +1,5 @@
 """Storefront player-id verification (G2B nickname lookup / Waxpeer Steam
-login check).
+login check), with a NOVA second opinion when the primary answers ``error``.
 
 Advisory: for a ``g2b``-checked field, resolves the brand's G2B
 ``game_code`` from its supplier mapping and proxies ``games_check_player``.
@@ -8,6 +8,12 @@ Steam has no game_code/mapping to resolve, the login itself is the lookup
 key. Either way the result carries the same three-way ``status``
 (``valid``/``invalid``/``error``); faults degrade to ``status="error"`` so the
 storefront never hits an error boundary. See ADR-0031.
+
+An ``error`` from either provider — G2B rate-limited us, refused, or could not
+be reached, or the same for Waxpeer — is retried once against NOVA
+(``player_check_nova``) before it reaches the caller. The fallback can turn
+that ``error`` into ``valid``; it never turns anything into ``invalid`` — only
+the primary's own verdict may block Pay.
 """
 
 from __future__ import annotations
@@ -409,18 +415,56 @@ async def check_player_for_brand_id(
     player_id: str,
     server_id: str | None,
 ) -> PlayerCheckOut:
-    """As :func:`check_player_for_brand`, for a caller that already has the id."""
+    """As :func:`check_player_for_brand`, for a caller that already has the id.
+
+    An ``error`` from either provider is retried once against NOVA before it
+    reaches the caller; see the module docstring and ``player_check_nova``.
+    """
     from yupay.modules.integrations.routes import _waxpeer_fulfiller_or_none
 
     field = await brand_check_field(session, brand_id)
     if field is None:
         raise ValidationError("brand is not checkable")
+
     if field["check"]["provider"] == "waxpeer":
         await session.rollback()
-        return await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
-    return await _check_g2b_player(
+        out = await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
+        return out if out.status != "error" else await _nova_steam(player_id)
+
+    out = await _check_g2b_player(
         session, brand_id=brand_id, player_id=player_id, server_id=server_id
     )
+    if out.status != "error":
+        return out
+
+    # Only read on this path, not up front: `_check_g2b_player` rolls the
+    # session back before its supplier round trip, but a rollback ends the
+    # transaction, not the session — it "simply begins a new transaction if
+    # anything asks it to" (see that function's own comment) — so asking here
+    # is exactly as safe as asking earlier would have been, and asking only
+    # here keeps the common `valid`/`invalid` path at the query count
+    # `test_the_check_does_not_fan_out_over_the_catalog` pins; this query
+    # runs only on the `error` path that reaches for NOVA anyway.
+    brand_slug = (
+        await session.execute(select(Brand.slug).where(Brand.id == brand_id))
+    ).scalar_one_or_none()
+    return await _nova_brand(brand_slug, player_id, server_id)
+
+
+async def _nova_brand(
+    brand_slug: str | None, player_id: str, server_id: str | None
+) -> PlayerCheckOut:
+    """Second opinion when the primary could not answer. Never ``invalid``."""
+    from yupay.modules.integrations.player_check_nova import fallback_for_brand
+
+    return await fallback_for_brand(brand_slug=brand_slug, player_id=player_id, server_id=server_id)
+
+
+async def _nova_steam(steam_login: str) -> PlayerCheckOut:
+    """As :func:`_nova_brand`, for the Steam-login branch."""
+    from yupay.modules.integrations.player_check_nova import fallback_for_steam
+
+    return await fallback_for_steam(steam_login=steam_login)
 
 
 async def _check_g2b_player(

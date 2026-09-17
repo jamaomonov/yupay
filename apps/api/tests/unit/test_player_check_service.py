@@ -212,3 +212,104 @@ def test_brand_check_fields_must_agree_across_products() -> None:
     b = {"key": "player_id", "type": "text", "check": {"provider": "g2b", "server_field": "server"}}
     assert pc._agreed_field([a, a]) is a
     assert pc._agreed_field([a, b]) is None
+
+
+# --- wiring the NOVA fallback into check_player_for_brand_id -----------------
+
+
+class _FakeSlugSession:
+    """Just enough of ``AsyncSession`` for the ``Brand.slug`` read
+    ``check_player_for_brand_id`` does before the supplier round trip."""
+
+    def __init__(self, slug: str | None) -> None:
+        self._slug = slug
+
+    async def execute(self, _stmt: object) -> _FakeSlugSession:
+        return self
+
+    def scalar_one_or_none(self) -> str | None:
+        return self._slug
+
+    async def rollback(self) -> None:
+        pass
+
+
+def _fixed_field(field: dict):  # type: ignore[no-untyped-def]
+    """A ``brand_check_field`` stand-in that always answers the same field,
+    so these tests exercise only the ``error`` dispatch, not mapping lookup."""
+
+    async def _f(session: object, brand_id: str) -> dict:  # type: ignore[type-arg]
+        return field
+
+    return _f
+
+
+async def test_primary_valid_never_consults_nova(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "g2b"}}))
+    calls = {"nova": 0}
+
+    async def fake_g2b(session, *, brand_id, player_id, server_id):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="valid", name="Neo")
+
+    async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
+        calls["nova"] += 1
+        return pc.PlayerCheckOut(status="valid")
+
+    monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
+    monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("mobile-legends-ru"), brand_id="b1", player_id="p1", server_id=None
+    )
+
+    assert out.status == "valid"
+    assert out.name == "Neo"
+    assert calls["nova"] == 0, "a real verdict is never second-guessed"
+
+
+async def test_primary_invalid_never_consults_nova(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The customer's mistake is already known; NOVA has nothing to add."""
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "g2b"}}))
+    calls = {"nova": 0}
+
+    async def fake_g2b(session, *, brand_id, player_id, server_id):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="invalid")
+
+    async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
+        calls["nova"] += 1
+        return pc.PlayerCheckOut(status="valid")
+
+    monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
+    monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("mobile-legends-ru"), brand_id="b1", player_id="p1", server_id=None
+    )
+
+    assert out.status == "invalid"
+    assert calls["nova"] == 0
+
+
+async def test_primary_error_consults_nova_once_and_its_valid_wins(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The one case the fallback exists for: no verdict at all from the primary."""
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "g2b"}}))
+    calls = {"nova": 0}
+
+    async def fake_g2b(session, *, brand_id, player_id, server_id):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="error")
+
+    async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
+        calls["nova"] += 1
+        assert brand_slug == "mobile-legends-ru", "the slug is read before the round trip"
+        return pc.PlayerCheckOut(status="valid", name="blood moon")
+
+    monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
+    monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("mobile-legends-ru"), brand_id="b1", player_id="p1", server_id=None
+    )
+
+    assert out.status == "valid"
+    assert out.name == "blood moon"
+    assert calls["nova"] == 1
