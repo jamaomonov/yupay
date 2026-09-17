@@ -182,3 +182,57 @@ async def test_non_json_is_a_refusal_with_the_body_kept() -> None:
     with pytest.raises(NovaError) as excinfo:
         await _client().get_balance()
     assert "nginx" in excinfo.value.body
+
+
+@respx.mock
+async def test_offers_are_asked_for_by_category() -> None:
+    """The category travels as a query param, and the body comes back whole.
+
+    Untested until now, and it is one of the two shapes the mapping seed and
+    the fulfiller are built on: `offer_id` + `category_id` is the pair their
+    order endpoint requires.
+    """
+    route = respx.get(f"{BASE}/api/v2/topups/offers").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "kind": "topup",
+                "category_id": "mobile_legends_ru",
+                "name": "Mobile Legends (RU)",
+                "offers": [
+                    {"offer_id": "275_diamonds", "name": "275 Diamonds", "price_usd": "4.720152"}
+                ],
+                "fields": [
+                    {"key": "player_id", "label": "Player ID", "type": "text"},
+                    {"key": "server_id", "label": "Server ID", "type": "text"},
+                ],
+            },
+        )
+    )
+    body = await _client().get_offers("mobile_legends_ru")
+    assert route.calls.last.request.url.params["category_id"] == "mobile_legends_ru"
+    assert body["offers"][0]["offer_id"] == "275_diamonds"
+    # Their ORDER field key is `server_id`; their VALIDATE field key is
+    # `zone_id`. Crossing the two is silent, so the shape is pinned here.
+    assert [f["key"] for f in body["fields"]] == ["player_id", "server_id"]
+
+
+@respx.mock
+async def test_one_order_is_fetched_by_its_public_id_and_unwrapped() -> None:
+    respx.get(f"{BASE}/api/v2/orders/ord_1").mock(
+        return_value=httpx.Response(
+            200, json={"ok": True, "order": {"id": "ord_1", "status": "completed"}}
+        )
+    )
+    assert await _client().get_order("ord_1") == {"id": "ord_1", "status": "completed"}
+
+
+@respx.mock
+async def test_an_order_response_without_an_order_is_an_empty_dict() -> None:
+    """Their order object is untyped in their own spec, so the client refuses
+    to hand a non-dict to the fulfiller — which reads a status out of it."""
+    respx.get(f"{BASE}/api/v2/orders/ord_1").mock(
+        return_value=httpx.Response(200, json={"ok": True, "order": None})
+    )
+    assert await _client().get_order("ord_1") == {}

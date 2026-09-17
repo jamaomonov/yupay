@@ -31,6 +31,11 @@ log = get_logger("yupay.fulfillment.nova")
 #: Their own ceiling on ``limit``.
 MAX_PAGE = 100
 
+#: How many cursor pages one catalogue walk will follow before giving up. At
+#: their 100-per-page ceiling that is 5,000 categories against the 306 they
+#: publish — a guard against a cursor that never terminates, not a limit.
+_MAX_PAGES = 50
+
 
 class NovaError(Exception):
     """NOVA refused the call (transport fine, business failure).
@@ -138,7 +143,7 @@ class NovaClient:
         """Every top-up category, walking their cursor to the end."""
         items: list[dict[str, Any]] = []
         cursor: str | None = None
-        for _page in range(50):
+        for _page in range(_MAX_PAGES):
             params: dict[str, Any] = {"limit": MAX_PAGE}
             if cursor:
                 params["cursor"] = cursor
@@ -147,6 +152,13 @@ class NovaClient:
             cursor = ((body.get("meta") or {}).get("next_cursor")) or None
             if not cursor:
                 break
+        else:
+            # Their catalogue was 306 categories when this was written, so the
+            # ceiling is a runaway-cursor guard rather than a real limit. Say so
+            # when it trips: a silently short catalogue reads as "they dropped
+            # the game we sell", and the seed that consumes this would then
+            # report perfectly good SKUs as unmatched.
+            log.warning("nova.topups_page_limit_hit", pages=_MAX_PAGES, collected=len(items))
         return items
 
     async def get_offers(self, category_id: str) -> dict[str, Any]:
