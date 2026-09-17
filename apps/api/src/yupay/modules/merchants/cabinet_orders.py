@@ -15,20 +15,37 @@ busy morning would see rows twice and miss others.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Final
+from typing import TYPE_CHECKING, Final
 
-from sqlalchemy import Select, String, cast, select
+from sqlalchemy import Select, String, and_, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from yupay.core.errors import ValidationError
-from yupay.modules.catalog.models import Sku
-from yupay.modules.merchants import deposit, transactions
-from yupay.modules.merchants.cabinet_schemas import CabinetOrderRowOut, CabinetOrdersOut
+from yupay.modules.catalog.models import Brand, BrandTranslation, Product, Sku
+from yupay.modules.merchants import deposit, order_status, transactions
+from yupay.modules.merchants.cabinet_schemas import (
+    CabinetOrderDetailOut,
+    CabinetOrderRowOut,
+    CabinetOrdersOut,
+)
 from yupay.modules.orders.models import Order, OrderItem
+
+if TYPE_CHECKING:  # pragma: no cover -- type hints only
+    from yupay.modules.merchants.models import Merchant
 
 #: An order with no charge posting has taken nothing, which is a real
 #: answer for a row that failed before the debit.
 _ZERO: Final = Decimal("0")
+
+#: What ``_sku_labels`` falls back to when a brand has no translation in the
+#: requested locale. The cabinet has no ``Accept-Language`` plumbing today —
+#: unlike ``catalog.service``, which resolves the caller's locale from the
+#: request — so both call sites below pass this same value as ``locale``,
+#: making the fallback join a no-op until that plumbing exists. It stays a
+#: real parameter rather than being folded away so that day is a one-line
+#: change here, not a new query.
+DEFAULT_LOCALE: Final = "ru"
 
 #: Statuses the cabinet offers as a filter. Anything else is refused rather
 #: than silently ignored: a filter that quietly matches everything is worse
@@ -120,24 +137,28 @@ async def build(
     charged = await deposit.charged_for_orders(db, pairs=pairs)
     refunded = await deposit.refunded_for_orders(db, pairs=pairs)
 
-    codes = await _sku_codes(db, [order.id for order in page])
+    labels = await _sku_labels(db, [order.id for order in page], DEFAULT_LOCALE)
 
-    items = [
-        CabinetOrderRowOut(
-            merchant_order_id=order.idempotency_key or "",
-            order_id=order.id,
-            status=order.status,
-            sku_code=codes.get(order.id, ""),
-            # The ledger, not the line: two of the three SKU shapes put a rate
-            # or a face value on the line and the money somewhere else. Same
-            # authority ``_out`` and ``order_status`` read.
-            price_usd=charged.get(order.id, _ZERO),
-            refunded_usd=refunded.get(order.id, _ZERO),
-            created_at=order.created_at,
-            delivered_at=order.delivered_at,
+    items = []
+    for order in page:
+        sku_code, sku_name, brand_name = labels.get(order.id, ("", None, None))
+        items.append(
+            CabinetOrderRowOut(
+                merchant_order_id=order.idempotency_key or "",
+                order_id=order.id,
+                status=order.status,
+                sku_code=sku_code,
+                sku_name=sku_name,
+                brand_name=brand_name,
+                # The ledger, not the line: two of the three SKU shapes put a
+                # rate or a face value on the line and the money somewhere
+                # else. Same authority ``_out`` and ``order_status`` read.
+                price_usd=charged.get(order.id, _ZERO),
+                refunded_usd=refunded.get(order.id, _ZERO),
+                created_at=order.created_at,
+                delivered_at=order.delivered_at,
+            )
         )
-        for order in page
-    ]
     next_cursor = (
         transactions.encode_cursor(page[-1].created_at, page[-1].id)
         if len(rows) > limit and page
@@ -146,25 +167,116 @@ async def build(
     return CabinetOrdersOut(items=items, next_cursor=next_cursor)
 
 
-async def _sku_codes(db: AsyncSession, order_ids: list[str]) -> dict[str, str]:
-    """A human handle per order, in one query.
+async def read_detail(
+    db: AsyncSession, *, merchant: Merchant, merchant_order_id: str
+) -> CabinetOrderDetailOut:
+    """One order in full, named.
+
+    ``order_status.read`` is the reader — the same one the machine API polls,
+    so the cabinet and a reseller's own polling never describe one order two
+    ways (its own docstring). This wraps that call and adds the one thing a
+    person's screen wants and a signed API caller does not: the product's
+    name, from :func:`_sku_labels`.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        merchant: The authenticated, non-frozen merchant — ``order_status.read``'s
+            only source of scope.
+        merchant_order_id: The reseller's id for the order (``manual-<uuid>``
+            for a cabinet-placed one), already percent-decoded by the router.
+
+    Returns:
+        The order, with ``sku_code``, ``sku_name`` and ``brand_name`` filled
+        in alongside everything ``order_status.read`` already carries.
+
+    Raises:
+        NotFoundError: ``order_not_found`` — propagated from ``order_status.read``.
+    """
+    status = await order_status.read(db, merchant=merchant, merchant_order_id=merchant_order_id)
+    labels = await _sku_labels(db, [status.order_id], DEFAULT_LOCALE)
+    sku_code, sku_name, brand_name = labels.get(status.order_id, ("", None, None))
+    return CabinetOrderDetailOut(
+        merchant_order_id=status.merchant_order_id,
+        order_id=status.order_id,
+        status=status.status,
+        sku_id=status.sku_id,
+        sku_code=sku_code,
+        sku_name=sku_name,
+        brand_name=brand_name,
+        price_usd=status.price_usd,
+        refunded_usd=status.refunded_usd,
+        created_at=status.created_at,
+        paid_at=status.paid_at,
+        delivered_at=status.delivered_at,
+        failure_reason=status.failure_reason,
+        delivery=status.delivery,
+        timeline=status.timeline,
+    )
+
+
+async def _sku_labels(
+    db: AsyncSession, order_ids: list[str], locale: str
+) -> dict[str, tuple[str, str | None, str | None]]:
+    """A human handle per order, in one query: ``(sku_code, sku_name, brand_name)``.
 
     Explicit rather than walking ``OrderItem.sku``, which is ``lazy="raise"``
     on purpose — the repo's answer to N+1 is to make the accidental version
     impossible rather than to notice it in a query-count test later. A merchant
     order has exactly one line (``merchants.orders`` builds it that way), so a
     plain join is the whole answer and no grouping is needed.
+
+    ``sku_name`` is ``Sku.denomination`` — nullable on the model, so a SKU
+    with none on file answers ``None`` there rather than an empty string.
+    ``brand_name`` is the brand's :class:`BrandTranslation` in ``locale``,
+    falling back to :data:`DEFAULT_LOCALE` when that row is missing — two
+    outer joins on the same table, keyed ``(brand_id, locale)``, rather than a
+    second round trip or a Python-side pick over a preloaded list (the way
+    ``catalog.service`` does it): this module has no request-scoped list of
+    translations to pick from, and a second query per page would be the N+1
+    the docstring above is written to avoid.
+
+    ``OrderItem.sku_id`` is ``ON DELETE RESTRICT`` and every join above it is
+    an inner join, so an order actually missing from the returned mapping
+    would mean its ``OrderItem`` row itself is missing — which does not
+    happen for a stored merchant order. Callers still default it (``("",
+    None, None)``): a defensive fallback costs one line and cannot go stale.
+
+    Args:
+        db: Session. The caller owns the transaction.
+        order_ids: Orders to label. Scoping is the caller's — both current
+            callers already start from a query filtered to one merchant.
+        locale: Preferred locale for ``brand_name``.
+
+    Returns:
+        ``order_id -> (sku_code, sku_name, brand_name)``.
     """
     if not order_ids:
         return {}
+    wanted = aliased(BrandTranslation)
+    fallback = aliased(BrandTranslation)
     rows = (
         await db.execute(
-            select(OrderItem.order_id, Sku.sku_code)
+            select(
+                OrderItem.order_id,
+                Sku.sku_code,
+                Sku.denomination,
+                func.coalesce(wanted.name, fallback.name),
+            )
             .join(Sku, Sku.id == OrderItem.sku_id)
+            .join(Product, Product.id == Sku.product_id)
+            .join(Brand, Brand.id == Product.brand_id)
+            .outerjoin(wanted, and_(wanted.brand_id == Brand.id, wanted.locale == locale))
+            .outerjoin(
+                fallback,
+                and_(fallback.brand_id == Brand.id, fallback.locale == DEFAULT_LOCALE),
+            )
             .where(OrderItem.order_id.in_(order_ids))
         )
     ).all()
-    return {order_id: code for order_id, code in rows}
+    return {
+        order_id: (sku_code, denomination, brand_name)
+        for order_id, sku_code, denomination, brand_name in rows
+    }
 
 
-__all__ = ["FILTERS", "build"]
+__all__ = ["DEFAULT_LOCALE", "FILTERS", "build", "read_detail"]

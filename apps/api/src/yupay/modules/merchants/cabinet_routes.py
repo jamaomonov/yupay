@@ -37,7 +37,6 @@ from yupay.modules.merchants import (
     cabinet_summary,
     credentials,
     deposit,
-    order_status,
     orders,
     price_list,
     transactions,
@@ -47,6 +46,7 @@ from yupay.modules.merchants.cabinet_schemas import (
     CabinetApiKeyCreateIn,
     CabinetApiKeyOut,
     CabinetIssuedKeyOut,
+    CabinetOrderDetailOut,
     CabinetOrderIn,
     CabinetOrdersOut,
     CabinetProfileOut,
@@ -57,7 +57,6 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantCatalogOut,
     MerchantOrderCreateIn,
     MerchantOrderOut,
-    MerchantOrderStatusOut,
     MerchantTransactionsOut,
 )
 
@@ -201,13 +200,18 @@ async def list_orders(
 
 @router.get(
     "/orders/{merchant_order_id:path}",
-    response_model=MerchantOrderStatusOut,
+    response_model=CabinetOrderDetailOut,
     summary="One order, by the id it was placed with",
 )
-async def read_order(merchant_order_id: str, user: CurrentUser, db: Db) -> MerchantOrderStatusOut:
-    """The same reader the machine API serves, so the cabinet and a reseller's
-    own polling can never describe one order two ways."""
-    return await order_status.read(
+async def read_order(merchant_order_id: str, user: CurrentUser, db: Db) -> CabinetOrderDetailOut:
+    """The same reader the machine API serves, plus the product's name.
+
+    ``cabinet_orders.read_detail`` calls the identical ``order_status.read``
+    the machine API polls — the cabinet and a reseller's own polling still
+    describe an order's status, timeline and delivery the same way — and adds
+    ``sku_code``/``sku_name``/``brand_name`` on top, for the screen only.
+    """
+    return await cabinet_orders.read_detail(
         db, merchant=await merchant_of(db, user), merchant_order_id=merchant_order_id
     )
 

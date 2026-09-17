@@ -16,7 +16,13 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from yupay.modules.merchants.allowlist import MAX_ENTRIES, normalize_allowlist
-from yupay.modules.merchants.machine_schemas import UsdAmount, UsdBalance
+from yupay.modules.merchants.machine_schemas import (
+    MerchantDeliveryOut,
+    MerchantOrderEventOut,
+    UsdAmount,
+    UsdBalance,
+    UsdPrice,
+)
 from yupay.modules.merchants.models import WEBHOOK_URL_MAX
 
 #: Long enough to resist a guess, short enough that a real person will use a
@@ -208,6 +214,16 @@ class CabinetOrderRowOut(BaseModel):
     order_id: str
     status: str
     sku_code: str
+    #: The product's denomination (``Sku.denomination``) — "660 UC", "Любое
+    #: количество" — for a screen that wants to say what was bought, not just
+    #: which row it was. ``None`` alongside ``brand_name`` only when the SKU
+    #: could not be joined; in practice that cannot happen for a stored order
+    #: (``OrderItem.sku_id`` is ``ON DELETE RESTRICT``), so this is a defensive
+    #: ``None`` rather than one seen in production.
+    sku_name: str | None
+    #: The brand's name, localised (see :func:`cabinet_orders._sku_labels`).
+    #: ``None`` under the same condition as ``sku_name``.
+    brand_name: str | None
     price_usd: UsdAmount
     refunded_usd: UsdAmount
     created_at: datetime
@@ -219,6 +235,39 @@ class CabinetOrdersOut(BaseModel):
     #: Present only while older rows remain. Keyset, not an offset: an offset
     #: page shifts under a merchant whose orders keep arriving.
     next_cursor: str | None
+
+
+class CabinetOrderDetailOut(BaseModel):
+    """``GET /merchant/cabinet/orders/{merchant_order_id}`` — one order in full.
+
+    Carries exactly what ``order_status.read`` returns for the machine API's
+    twin endpoint — the cabinet and a reseller's own polling still describe
+    one order the same way — plus the product identity a screen needs to
+    title itself with: ``sku_code``, ``sku_name`` and ``brand_name``. Kept as
+    its own model rather than growing ``MerchantOrderStatusOut``: that one is
+    a **frozen third-party contract** (``machine_schemas`` module docstring),
+    and a field this browser wants is not a field a reseller's server should
+    have to parse and never see filled in.
+    """
+
+    merchant_order_id: str
+    order_id: str
+    status: str
+    sku_id: str
+    #: See :attr:`CabinetOrderRowOut.sku_code`.
+    sku_code: str
+    #: See :attr:`CabinetOrderRowOut.sku_name`.
+    sku_name: str | None
+    #: See :attr:`CabinetOrderRowOut.brand_name`.
+    brand_name: str | None
+    price_usd: UsdPrice
+    refunded_usd: UsdAmount
+    created_at: datetime
+    paid_at: datetime | None
+    delivered_at: datetime | None
+    failure_reason: str | None
+    delivery: MerchantDeliveryOut | None
+    timeline: list[MerchantOrderEventOut]
 
 
 class CabinetApiKeyOut(BaseModel):
@@ -365,6 +414,7 @@ __all__ = [
     "CabinetEmailIn",
     "CabinetIssuedKeyOut",
     "CabinetLoginIn",
+    "CabinetOrderDetailOut",
     "CabinetOrderIn",
     "CabinetOrderRowOut",
     "CabinetOrdersOut",

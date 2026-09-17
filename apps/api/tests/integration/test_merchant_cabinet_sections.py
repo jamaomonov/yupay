@@ -221,8 +221,50 @@ async def test_the_orders_list_shows_what_the_deposit_paid_not_the_line(
     assert rows[0]["price_usd"] == "16.54"
     assert rows[0]["refunded_usd"] == "0.00"
     assert rows[0]["sku_code"] == "stars-unit"
+    # The product's name, not just its technical code — what lets the
+    # cabinet's `orderTitle` show "Бренд · Любое количество" instead of
+    # "stars-unit".
+    assert rows[0]["sku_name"] == "Любое количество"
+    assert rows[0]["brand_name"] == "Бренд"
     # The cabinet minted it, and it is visibly not a reseller's own id.
     assert rows[0]["merchant_order_id"].startswith("manual-")
+
+
+async def test_the_order_detail_names_the_product_too(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """``GET /orders/{id}`` carries the same naming the list row does.
+
+    The detail is built from a different reader (`order_status.read`, shared
+    with the machine API) than the list — a second place the join could have
+    been forgotten.
+    """
+    access, merchant_id = await _signed_up(integration_client, sent, "detail@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+
+    placed = await integration_client.post(
+        f"{BASE}/orders",
+        headers=_auth(access),
+        json={"sku_id": sku_id, "quantity": 1000, "expected_price": "16.54"},
+    )
+    assert placed.status_code == 201, placed.text
+    merchant_order_id = placed.json()["merchant_order_id"]
+
+    detail = await integration_client.get(
+        f"{BASE}/orders/{merchant_order_id}", headers=_auth(access)
+    )
+
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    assert body["sku_id"] == sku_id
+    assert body["sku_code"] == "stars-unit"
+    assert body["sku_name"] == "Любое количество"
+    assert body["brand_name"] == "Бренд"
 
 
 async def test_search_finds_an_order_by_either_id(

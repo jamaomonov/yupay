@@ -70,12 +70,8 @@ export default function OrderDetailPage() {
       {order !== null && (
         <>
           <h1 className="mt-4 break-all text-2xl font-semibold tracking-tight">
-            {/* `OrderDetail` carries only the opaque `sku_id` — not the
-                `sku_code`/`sku_name`/`brand_name` `OrderRow` has — so
-                `orderTitle` has nothing to fall back to but the generic
-                title until `cabinet_orders.py`'s detail response grows a
-                code (out of scope here). The call stays wired for that day. */}
-            {orderTitle({ sku_code: "" }, t("title"))}
+            {/* «Заказ», singular — this screen is one order, not the list. */}
+            {orderTitle(order, t("colOrder"))}
           </h1>
           {!order.merchant_order_id.startsWith("manual-") && (
             <p className="text-tx-dim mt-1 text-xs">

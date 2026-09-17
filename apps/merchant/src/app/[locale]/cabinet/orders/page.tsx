@@ -172,7 +172,7 @@ export default function OrdersList() {
                         <p className="text-tx-dim mt-0.5 text-xs">{row.merchant_order_id}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3">{row.sku_code}</td>
+                    <td className="text-tx-dim px-4 py-3 font-mono text-xs">{row.sku_code}</td>
                     <td className="px-4 py-3">
                       <span
                         className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${orderStatusTone(

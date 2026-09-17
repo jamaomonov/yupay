@@ -81,6 +81,10 @@ export interface OrderRow {
   order_id: string;
   status: string;
   sku_code: string;
+  /** The product's denomination. `null` only if the SKU could not be joined. */
+  sku_name: string | null;
+  /** The brand's name, localized. `null` under the same condition as `sku_name`. */
+  brand_name: string | null;
   price_usd: string;
   refunded_usd: string;
   created_at: string;
@@ -109,6 +113,11 @@ export interface OrderDetail {
   order_id: string;
   status: string;
   sku_id: string;
+  sku_code: string;
+  /** See `OrderRow.sku_name`. */
+  sku_name: string | null;
+  /** See `OrderRow.brand_name`. */
+  brand_name: string | null;
   price_usd: string;
   refunded_usd: string;
   created_at: string;

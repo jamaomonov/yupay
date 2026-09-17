@@ -3825,6 +3825,139 @@
         "title": "CabinetLoginIn",
         "type": "object"
       },
+      "CabinetOrderDetailOut": {
+        "description": "``GET /merchant/cabinet/orders/{merchant_order_id}`` \u2014 one order in full.\n\nCarries exactly what ``order_status.read`` returns for the machine API's\ntwin endpoint \u2014 the cabinet and a reseller's own polling still describe\none order the same way \u2014 plus the product identity a screen needs to\ntitle itself with: ``sku_code``, ``sku_name`` and ``brand_name``. Kept as\nits own model rather than growing ``MerchantOrderStatusOut``: that one is\na **frozen third-party contract** (``machine_schemas`` module docstring),\nand a field this browser wants is not a field a reseller's server should\nhave to parse and never see filled in.",
+        "properties": {
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "delivery": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MerchantDeliveryOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "merchant_order_id": {
+            "title": "Merchant Order Id",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "refunded_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Refunded Usd",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "sku_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "timeline": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantOrderEventOut"
+            },
+            "title": "Timeline",
+            "type": "array"
+          }
+        },
+        "required": [
+          "merchant_order_id",
+          "order_id",
+          "status",
+          "sku_id",
+          "sku_code",
+          "sku_name",
+          "brand_name",
+          "price_usd",
+          "refunded_usd",
+          "created_at",
+          "paid_at",
+          "delivered_at",
+          "failure_reason",
+          "delivery",
+          "timeline"
+        ],
+        "title": "CabinetOrderDetailOut",
+        "type": "object"
+      },
       "CabinetOrderIn": {
         "additionalProperties": false,
         "description": "Ordering from the catalog page, without a ``merchant_order_id``.\n\nThe cabinet mints one (``manual-<uuid>``, spec \u00a711) rather than asking a\nperson to invent an idempotency key. Everything else is the machine API's\nbody, because this order must walk the identical pricing, validation and\ndeposit path \u2014 one flow, so a cabinet order and an API order are the same\nkind of thing in history, in the ledger and in a dispute.",
@@ -3890,6 +4023,17 @@
       "CabinetOrderRowOut": {
         "description": "One line of the Orders list.\n\nMoney comes from the ledger, not from the order line: two of the three SKU\nshapes put a per-unit rate or a face value there and the money elsewhere,\nso a list built off the line would show $0.016537 against an order that\ncost $16.54.",
         "properties": {
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -3929,6 +4073,17 @@
             "title": "Sku Code",
             "type": "string"
           },
+          "sku_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sku Name"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -3939,6 +4094,8 @@
           "order_id",
           "status",
           "sku_code",
+          "sku_name",
+          "brand_name",
           "price_usd",
           "refunded_usd",
           "created_at",
@@ -33067,7 +33224,7 @@
     },
     "/merchant/cabinet/orders/{merchant_order_id}": {
       "get": {
-        "description": "The same reader the machine API serves, so the cabinet and a reseller's\nown polling can never describe one order two ways.",
+        "description": "The same reader the machine API serves, plus the product's name.\n\n``cabinet_orders.read_detail`` calls the identical ``order_status.read``\nthe machine API polls \u2014 the cabinet and a reseller's own polling still\ndescribe an order's status, timeline and delivery the same way \u2014 and adds\n``sku_code``/``sku_name``/``brand_name`` on top, for the screen only.",
         "operationId": "read_order_merchant_cabinet_orders__merchant_order_id__get",
         "parameters": [
           {
@@ -33101,7 +33258,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MerchantOrderStatusOut"
+                  "$ref": "#/components/schemas/CabinetOrderDetailOut"
                 }
               }
             },

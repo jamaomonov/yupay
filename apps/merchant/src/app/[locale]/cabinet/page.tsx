@@ -12,7 +12,7 @@ import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { TodayStats } from "@/components/TodayStats";
 import { api } from "@/lib/api";
-import { orderStatusLabel, orderStatusTone } from "@/lib/labels";
+import { orderStatusLabel, orderStatusTone, orderTitle } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -103,15 +103,20 @@ export default function Dashboard() {
           <ul className="mt-3 space-y-2.5">
             {(recent ?? []).map((row) => (
               <li key={row.order_id} className="flex items-baseline justify-between gap-3 text-sm">
-                <Link
-                  href={pathFor(
-                    locale,
-                    `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                <div className="min-w-0">
+                  <Link
+                    href={pathFor(
+                      locale,
+                      `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                    )}
+                    className="block truncate underline-offset-4 hover:underline"
+                  >
+                    {orderTitle(row, tOrders("colOrder"))}
+                  </Link>
+                  {!row.merchant_order_id.startsWith("manual-") && (
+                    <p className="text-tx-dim truncate text-xs">{row.merchant_order_id}</p>
                   )}
-                  className="min-w-0 truncate underline-offset-4 hover:underline"
-                >
-                  {row.merchant_order_id}
-                </Link>
+                </div>
                 <span
                   className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(row.status)}`}
                 >
