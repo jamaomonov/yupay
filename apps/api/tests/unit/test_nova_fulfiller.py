@@ -332,3 +332,31 @@ async def test_mapping_for_with_no_row_is_refused() -> None:
     with pytest.raises(FulfillerError) as excinfo:
         await _mapping_for(_FakeDb(None), sku_id="sku-1")  # type: ignore[arg-type]
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
+
+
+async def test_a_mapping_without_a_category_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The sibling of the missing-offer case: both ids are required, and
+    neither may reach a call that spends."""
+    client = _FakeClient()
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(client, monkeypatch, mapping=_mapping(external_product_id=""))
+    assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
+    assert client.calls == []
+
+
+async def test_their_refusal_never_carries_back_the_player_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`task.last_error` is read by humans and written to logs (§9).
+
+    A supplier that echoes the id it could not find would put a customer's
+    identifier there, so everything we submitted is taken back out of their
+    message — while the part that makes the refusal actionable survives.
+    """
+    client = _FakeClient(raises=NovaError("player 1313232551 not found on server 6618", status=400))
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(client, monkeypatch)
+    message = str(excinfo.value)
+    assert "1313232551" not in message
+    assert "6618" not in message
+    assert "not found" in message

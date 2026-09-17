@@ -159,6 +159,31 @@ def _meta(status: str) -> dict[str, Any]:
     return {"supplier": "nova", "nova_status": status}
 
 
+def _without_our_inputs(text: str, fields: dict[str, str]) -> str:
+    """Their refusal text with everything we submitted taken back out.
+
+    Their message is the one thing that makes a refusal actionable — "offer not
+    available for this category" is worth putting in front of an operator. But
+    it travels into ``task.last_error`` and the attempt log, and a supplier's
+    "player 1313232551 not found" would put a customer's id there, which §9
+    forbids. We know the exact values we sent, so this is an exact redaction
+    rather than a guess at what an identifier looks like.
+
+    Args:
+        text: The refusal as the client reported it.
+        fields: Exactly what we sent them, by their field name.
+
+    Returns:
+        The same text with each submitted value replaced by an ellipsis. Values
+        shorter than three characters are left alone — they are server ids like
+        ``"1"`` whose substring would blank half the sentence.
+    """
+    for value in fields.values():
+        if len(value) >= 3:
+            text = text.replace(value, "…")
+    return text
+
+
 def _low_balance_result() -> FulfillResult:
     """A soft low-balance failure the saga parks in the inbox and alerts on."""
     return FulfillResult(
@@ -206,6 +231,19 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
             error=f"nova order {status}",
             extra_metadata={**_meta(status), "needs_reconciliation": True},
             money_outcome=_MAY_HAVE_SPENT,
+        )
+    if status and status not in _IN_FLIGHT:
+        # The one signal that our allow-list is out of date. Their order object
+        # is untyped in their own spec, so these four sets are a guess made from
+        # their prose — this line is what turns the guess into a fact the first
+        # time a real order walks a word we did not anticipate, and it is what
+        # the runbook's "first live order" step reads. Still `in_progress`
+        # either way: an unknown word must not end a task in either direction.
+        log.warning(
+            "nova.unknown_order_status",
+            status=status,
+            hint="not in nova.py's status allow-list; treating it as still in "
+            "flight. Add it to the right set once its meaning is known.",
         )
     # Everything else, including a status we have never seen: still moving.
     return FulfillResult(
@@ -287,8 +325,12 @@ class NovaFulfiller(Fulfiller):
         except NovaError as exc:
             if _looks_like_low_balance(exc):
                 return _low_balance_result()
-            raise FulfillerError(str(exc), money_outcome=_refusal_money(exc)) from exc
+            raise FulfillerError(
+                _without_our_inputs(str(exc), fields), money_outcome=_refusal_money(exc)
+            ) from exc
         except NovaUnavailableError as exc:
+            # A transport failure carries no body, so there is nothing of ours
+            # in it to take back out.
             raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
 
         return _result(obj)
