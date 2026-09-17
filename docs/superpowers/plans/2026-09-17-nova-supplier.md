@@ -569,13 +569,15 @@ from typing import Any
 
 import pytest
 from yupay.modules.fulfillment.suppliers.base import FulfillerError, MoneyOutcome
-from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+from yupay.modules.fulfillment.suppliers.nova import LOW_BALANCE_ERROR, NovaFulfiller
 from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
 
 pytestmark = pytest.mark.asyncio
 
 
 class _FakeClient:
+    """Records what was called, so "did it order at all" is answerable."""
+
     def __init__(self, *, order: dict[str, Any] | None = None, raises: Exception | None = None):
         self._order = order or {}
         self._raises = raises
@@ -587,20 +589,10 @@ class _FakeClient:
             raise self._raises
         return self._order
 
-    async def get_order(self, order_id: str) -> dict[str, Any]:
+    async def get_order(self, order_id: str) -> dict[str, Any]:  # noqa: ARG002
         if self._raises is not None:
             raise self._raises
         return self._order
-
-
-class _FakeSession:
-    """Answers the one mapping query the fulfiller makes."""
-
-    def __init__(self, mapping: Any) -> None:
-        self._mapping = mapping
-
-    async def execute(self, _stmt: Any) -> Any:
-        return SimpleNamespace(scalar_one_or_none=lambda: self._mapping)
 
 
 def _mapping(**over: Any) -> Any:
@@ -623,58 +615,83 @@ def _item(**over: Any) -> Any:
     return SimpleNamespace(**base)
 
 
-def _fulfiller(client: _FakeClient) -> NovaFulfiller:
-    f = NovaFulfiller(client=client)  # type: ignore[arg-type]
-    return f
+def _fulfiller(
+    client: _FakeClient, monkeypatch: pytest.MonkeyPatch, *, available: bool = True
+) -> NovaFulfiller:
+    """The adapter with its key faked in.
+
+    ``available`` reads settings, and settings are cached for the process, so
+    the house pattern (see ``test_gengine_fulfiller.py``) patches the property
+    rather than the environment.
+    """
+    monkeypatch.setattr(NovaFulfiller, "available", property(lambda _self: available))
+    return NovaFulfiller(client=client)  # type: ignore[arg-type]
 
 
-async def _fulfill(client: _FakeClient, *, item: Any = None, mapping: Any = None) -> Any:
-    return await _fulfiller(client).fulfill(
-        db=_FakeSession(mapping if mapping is not None else _mapping()),  # type: ignore[arg-type]
+async def _fulfill(
+    client: _FakeClient,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    item: Any = None,
+    mapping: Any = None,
+    available: bool = True,
+) -> Any:
+    """Run ``fulfill`` with the mapping lookup stubbed, so ``db`` is never touched."""
+    import yupay.modules.fulfillment.suppliers.nova as mod
+
+    row = mapping if mapping is not None else _mapping()
+
+    async def _mapping_for(_db: Any, *, sku_id: str) -> Any:  # noqa: ARG001
+        return row
+
+    monkeypatch.setattr(mod, "_mapping_for", _mapping_for)
+    return await _fulfiller(client, monkeypatch, available=available).fulfill(
+        db=None,  # type: ignore[arg-type]
         order=SimpleNamespace(),  # type: ignore[arg-type]
         item=item if item is not None else _item(),
         idempotency_key="task-42",
     )
 
 
-async def test_a_created_order_is_in_progress_and_keeps_its_id(monkeypatch) -> None:
+async def test_a_created_order_is_in_progress_and_keeps_its_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = _FakeClient(order={"id": "ord_1", "status": "processing"})
-    monkeypatch.setenv("NOVA_API_KEY", "k")
-    result = await _fulfill(client)
+    result = await _fulfill(client, monkeypatch)
     assert result.outcome == "in_progress"
     assert result.external_order_id == "ord_1"
     assert result.money_outcome is None
-    # Our own fields are renamed to theirs: `server` -> `server_id`.
+    # Our own field names are renamed to theirs: `server` -> `server_id`.
     assert client.calls[0]["fields"] == {"player_id": "1313232551", "server_id": "6618"}
     assert client.calls[0]["idempotency_key"] == "task-42"
+    assert client.calls[0]["category_id"] == "mobile_legends_ru"
+    assert client.calls[0]["offer_id"] == "275_diamonds"
 
 
-async def test_a_completed_order_delivers_a_receipt(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
-    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "completed"}))
+async def test_a_completed_order_delivers_a_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "completed"}), monkeypatch)
     assert result.outcome == "succeeded"
     assert result.artifact_kind == "topup_receipt"
     assert result.money_outcome is None
 
 
-async def test_an_unknown_status_stays_in_progress(monkeypatch) -> None:
+async def test_an_unknown_status_stays_in_progress(monkeypatch: pytest.MonkeyPatch) -> None:
     """Their order object is untyped; a word we have never seen must not end
     the task in either direction."""
-    monkeypatch.setenv("NOVA_API_KEY", "k")
-    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "half_done"}))
+    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "half_done"}), monkeypatch)
     assert result.outcome == "in_progress"
 
 
-async def test_a_refunded_order_says_the_money_came_back(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
-    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "refunded"}))
+async def test_a_refunded_order_says_the_money_came_back(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "refunded"}), monkeypatch)
     assert result.outcome == "failed"
     assert result.money_outcome is MoneyOutcome.RETURNED
 
 
-async def test_a_failed_order_without_a_refund_is_unknown(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
-    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "failed"}))
+async def test_a_failed_order_without_a_refund_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "failed"}), monkeypatch)
     assert result.outcome == "failed"
     assert result.money_outcome is MoneyOutcome.UNKNOWN
 
@@ -689,90 +706,102 @@ async def test_a_failed_order_without_a_refund_is_unknown(monkeypatch) -> None:
         (500, MoneyOutcome.UNKNOWN),
     ],
 )
-async def test_refusals_are_graded_by_status(monkeypatch, status: int, money: MoneyOutcome) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
+async def test_refusals_are_graded_by_status(
+    monkeypatch: pytest.MonkeyPatch, status: int, money: MoneyOutcome
+) -> None:
     client = _FakeClient(raises=NovaError("no", status=status))
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client)
+        await _fulfill(client, monkeypatch)
     assert excinfo.value.money_outcome is money
 
 
-async def test_unreachable_on_the_create_may_have_spent(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
+async def test_unreachable_on_the_create_may_have_spent(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient(raises=NovaUnavailableError("boom"))
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client)
+        await _fulfill(client, monkeypatch)
     assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
 
 
-async def test_low_balance_is_a_stall_not_a_failure(monkeypatch) -> None:
+async def test_low_balance_is_a_stall_not_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     """The saga keys on this exact string to park the task and alert ops."""
-    from yupay.modules.fulfillment.suppliers.nova import LOW_BALANCE_ERROR
-
-    monkeypatch.setenv("NOVA_API_KEY", "k")
     client = _FakeClient(raises=NovaError("insufficient balance", status=400))
-    result = await _fulfill(client)
+    result = await _fulfill(client, monkeypatch)
     assert result.outcome == "failed"
     assert result.error == LOW_BALANCE_ERROR
     assert result.money_outcome is None
 
 
-async def test_a_multi_quantity_item_is_refused_before_any_call(monkeypatch) -> None:
+async def test_a_multi_quantity_item_is_refused_before_any_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """One call buys one offer: their order endpoint has no quantity."""
-    monkeypatch.setenv("NOVA_API_KEY", "k")
     client = _FakeClient(order={"id": "ord_1", "status": "processing"})
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client, item=_item(qty=2))
+        await _fulfill(client, monkeypatch, item=_item(qty=2))
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
     assert client.calls == []
 
 
-async def test_a_mapping_without_an_offer_is_refused(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
+async def test_a_mapping_without_an_offer_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client, mapping=_mapping(external_variant_id=None))
+        await _fulfill(client, monkeypatch, mapping=_mapping(external_variant_id=None))
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
     assert client.calls == []
 
 
-async def test_no_usable_fields_is_refused(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
+async def test_no_usable_fields_is_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client, item=_item(fulfillment_data={"email": "a@b.c"}))
+        await _fulfill(client, monkeypatch, item=_item(fulfillment_data={"email": "a@b.c"}))
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
     assert client.calls == []
 
 
-async def test_an_unconfigured_key_never_calls(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "")
+async def test_an_unconfigured_key_never_calls(monkeypatch: pytest.MonkeyPatch) -> None:
     client = _FakeClient()
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client)
+        await _fulfill(client, monkeypatch, available=False)
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
+    assert client.calls == []
 
 
-async def test_check_status_without_an_id_stays_in_progress(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
+async def test_check_status_without_an_id_stays_in_progress(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     task = SimpleNamespace(external_order_id=None, extra_metadata={})
-    status = await _fulfiller(_FakeClient()).check_status(
+    status = await _fulfiller(_FakeClient(), monkeypatch).check_status(
         db=None,  # type: ignore[arg-type]
         task=task,  # type: ignore[arg-type]
     )
     assert status.outcome == "in_progress"
 
 
-async def test_check_status_that_cannot_read_says_unknown(monkeypatch) -> None:
-    monkeypatch.setenv("NOVA_API_KEY", "k")
+async def test_check_status_that_cannot_read_says_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     task = SimpleNamespace(external_order_id="ord_1", extra_metadata={})
     client = _FakeClient(raises=NovaUnavailableError("boom"))
     with pytest.raises(FulfillerError) as excinfo:
-        await _fulfiller(client).check_status(db=None, task=task)  # type: ignore[arg-type]
+        await _fulfiller(client, monkeypatch).check_status(db=None, task=task)  # type: ignore[arg-type]
     assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
+
+
+async def test_check_status_reads_a_finished_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    task = SimpleNamespace(external_order_id="ord_1", extra_metadata={})
+    client = _FakeClient(order={"id": "ord_1", "status": "completed"})
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=None,  # type: ignore[arg-type]
+        task=task,  # type: ignore[arg-type]
+    )
+    assert status.outcome == "succeeded"
+    assert status.artifact_kind == "topup_receipt"
 ```
 
-`get_settings` is cached — if `monkeypatch.setenv` does not reach it, clear the cache the way the existing supplier tests do (`get_settings.cache_clear()`); follow whatever `tests/unit/test_waxpeer_fulfiller.py` already does rather than inventing a second pattern.
+The fixture pattern above is the one `tests/unit/test_gengine_fulfiller.py` already uses
+(`monkeypatch.setattr(GEngineFulfiller, "available", property(...))` plus a patched
+`_mapping_for`). Do not invent a second one, and do not reach for `monkeypatch.setenv`:
+settings are cached for the whole process, so an env var set inside a test never reaches `available`.
 
 - [ ] **Step 2: Run them and watch them fail**
 
@@ -1161,7 +1190,7 @@ git commit -m "feat(scheduler): poll in-flight NOVA top-ups every 60s"
 **Files:**
 
 - Modify: `apps/api/src/yupay/modules/sourcing/service.py` (the `mapping_slug` query in `_resolve_auto`, ~line 118)
-- Test: `apps/api/tests/integration/test_sourcing.py` (or the existing sourcing test module — find it with `rg -l "_resolve_auto|resolve_for_sku" apps/api/tests`)
+- Test: `apps/api/tests/integration/test_inventory_sourcing_routes.py` — it already covers both `resolve_for_sku` and `set_rule`
 
 **Interfaces:**
 
@@ -1189,7 +1218,7 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(db) -> None:
 
 - [ ] **Step 2: Run it**
 
-Run: `cd apps/api && uv run pytest <the sourcing test file> -q -k reserve`
+Run: `cd apps/api && uv run pytest tests/integration/test_inventory_sourcing_routes.py -q -k reserve`
 Expected: it may pass by luck. Run it twice; it proves nothing until the fix lands, which is the point of the comment above.
 
 - [ ] **Step 3: Make it deterministic**
@@ -1297,7 +1326,7 @@ Cases:
 11. `fallback_for_steam`: `can_refill: true` → `valid`; `can_refill: false` → `error`; a raise → `error`.
 12. No log line carries the raw `player_id` or `steam_login` — assert it with whatever capture helper the existing player-check tests already use (`rg -n "caplog|capture_logs" apps/api/tests/unit | head`), not a new one.
 
-Then, in `apps/api/tests/unit/` (or wherever the existing brand-check unit test lives — find it with `rg -l check_player_for_brand apps/api/tests`), three wiring cases:
+Then, in `apps/api/tests/unit/test_player_check_service.py` (the existing brand-check unit suite), three wiring cases:
 
 13. Primary `valid` → NOVA never consulted.
 14. Primary `invalid` → NOVA never consulted (the customer's mistake is already known).
