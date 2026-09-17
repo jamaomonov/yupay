@@ -288,8 +288,8 @@ export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> 
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
   nova:
     "Каталог NOVA пока не импортируется мастером — маппинг SKU заводится вручную: " +
-    "id категории NOVA (например, mobile_legends_ru) в external_product_id, " +
-    "id оффера в external_variant_id. NOVA — резерв: заказ уходит туда, только если " +
+    "category_id (например, mobile_legends_ru) в external_product_id, " +
+    "offer_id в external_variant_id. NOVA — резерв: заказ уходит туда, только если " +
     "SKU переключили на неё вручную через force_supplier.",
 };
 
