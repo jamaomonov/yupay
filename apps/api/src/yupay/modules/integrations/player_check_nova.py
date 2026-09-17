@@ -38,6 +38,7 @@ from typing import TYPE_CHECKING
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger, hash_short
 from yupay.core.redis import get_redis
+from yupay.modules.fulfillment.suppliers.nova_client import NovaError
 from yupay.modules.integrations.breaker import SupplierBreaker
 from yupay.modules.integrations.schemas import PlayerCheckOut
 
@@ -104,6 +105,51 @@ def _breaker() -> SupplierBreaker:
         threshold=_BREAKER_THRESHOLD,
         cooldown_seconds=_BREAKER_COOLDOWN_SECONDS,
     )
+
+
+def _counts_against_supplier(exc: BaseException) -> bool:
+    """Whether ``exc`` says something about NOVA's *health*.
+
+    The primary check asks the same question fifty lines away, for the same
+    reason (``player_check._counts_against_supplier``): the circuit is shared
+    across the supplier, so counting a refusal that is really about *our
+    request* lets one bad input silence the check for every brand.
+
+    Here the exposure is larger than it is for G2B, because the client raises
+    on everything: a ``422`` is their "could not confirm this id", which is
+    what a customer mistyping their player id looks like, and a ``404`` is a
+    ``category_id`` typo in :data:`NOVA_VALIDATE`. Three of either would open
+    the circuit for thirty seconds — during a G2B outage, which is the only
+    time this code runs at all.
+
+    So: a transport failure counts (nothing was decided, and the client has
+    already spent its patience), a 5xx counts (their side is unwell), and 401
+    or 403 count because a rejected key or a disabled subscription will not fix
+    itself and every further call is a wasted round trip on a customer's
+    spinner. Everything else — 400, 404, 409, 422 — is about what we sent.
+    """
+    if isinstance(exc, NovaError):
+        return exc.status >= 500 or exc.status in (401, 403)
+    return True
+
+
+def _redacted(text: str, *ours: str | None) -> str:
+    """Their message with anything we submitted taken back out.
+
+    Their error string is theirs, not ours: an API that answers "player
+    51234567 not found" would put a customer's id in our logs (§9). We know
+    exactly what we sent, so the redaction is exact. The fulfiller does the
+    same thing for the same reason — see ``suppliers/nova.py``'s
+    ``_without_our_inputs`` — but the two live on opposite sides of a module
+    boundary and neither is worth a shared home yet.
+
+    Values shorter than three characters are left alone: a server id like
+    ``"1"`` would blank half the sentence.
+    """
+    for value in ours:
+        if value and len(value) >= 3:
+            text = text.replace(value, "…")
+    return text
 
 
 def _cache_key(category_id: str, player_id: str, server_id: str | None) -> str:
@@ -206,13 +252,14 @@ async def fallback_for_brand(
             timeout=settings.nova_check_timeout_seconds,
         )
     except Exception as exc:  # noqa: BLE001 — advisory; degrade, never 500
-        await breaker.record_failure()
+        if _counts_against_supplier(exc):
+            await breaker.record_failure()
         logger.warning(
             "player_check_failed",
             provider="nova",
             category_id=target.category_id,
             player_id_hash=hash_short(player_id),
-            error=str(exc)[:200],
+            error=_redacted(str(exc), player_id, server_id)[:200],
         )
         return PlayerCheckOut(status="error")
 
@@ -268,13 +315,14 @@ async def fallback_for_steam(*, steam_login: str) -> PlayerCheckOut:
             steam_login, timeout=settings.nova_check_timeout_seconds
         )
     except Exception as exc:  # noqa: BLE001 — advisory; degrade, never 500
-        await breaker.record_failure()
+        if _counts_against_supplier(exc):
+            await breaker.record_failure()
         logger.warning(
             "player_check_failed",
             provider="nova",
             category_id="steam",
             player_id_hash=hash_short(steam_login),
-            error=str(exc)[:200],
+            error=_redacted(str(exc), steam_login)[:200],
         )
         return PlayerCheckOut(status="error")
 

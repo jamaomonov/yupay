@@ -361,3 +361,66 @@ async def test_no_log_line_carries_the_raw_identifier(env: _Env) -> None:
     rendered = env.recorder.rendered()
     assert "51234567" not in rendered
     assert "a-secret-steam-login" not in rendered
+
+
+async def test_a_customer_typo_does_not_open_the_circuit(env: _Env) -> None:
+    """Their ``422`` is "could not confirm this id" — a mistyped player id.
+
+    The client raises on it, so without discrimination three typos in a row
+    would silence the fallback for every brand, during the G2B outage that is
+    the only time this code runs at all. The same goes for a ``404``, which is
+    a wrong `category_id` in our own table.
+    """
+    from yupay.modules.fulfillment.suppliers.nova_client import NovaError
+
+    for status in (400, 404, 409, 422):
+        env.redis.store.clear()
+        client = _ScriptedNovaClient(raises=NovaError("could not confirm", status=status))
+        env.set_fulfiller(_FakeNovaFulfiller(client))
+
+        out = await fallback_for_brand(brand_slug="pubg-mobile", player_id="p1", server_id=None)
+
+        assert out.status == "error"
+        assert env.redis.store.get("breaker:nova:player_check:fails") is None, status
+
+
+async def test_their_own_outage_does_open_the_circuit(env: _Env) -> None:
+    """A 5xx, a rejected key and a disabled subscription all count: none of
+    them will fix itself inside the next call, and each is a wasted round trip
+    on a customer's spinner."""
+    from yupay.modules.fulfillment.suppliers.nova_client import NovaError
+
+    for status in (500, 503, 401, 403):
+        env.redis.store.clear()
+        client = _ScriptedNovaClient(raises=NovaError("upstream", status=status))
+        env.set_fulfiller(_FakeNovaFulfiller(client))
+
+        out = await fallback_for_brand(brand_slug="pubg-mobile", player_id="p1", server_id=None)
+
+        assert out.status == "error"
+        assert env.redis.store.get("breaker:nova:player_check:fails") == "1", status
+
+
+async def test_their_error_text_never_carries_back_the_identifier(env: _Env) -> None:
+    """Their message is theirs, not ours.
+
+    An API that answers "player 51234567 not found" would put a customer's id
+    in our log through the error field (§9). We know exactly what we sent, so
+    it comes back out.
+    """
+    from yupay.modules.fulfillment.suppliers.nova_client import NovaError
+
+    client = _ScriptedNovaClient(
+        raises=NovaError("player 51234567 not found on zone 6618", status=422)
+    )
+    env.set_fulfiller(_FakeNovaFulfiller(client))
+
+    out = await fallback_for_brand(
+        brand_slug="mobile-legends-ru", player_id="51234567", server_id="6618"
+    )
+
+    assert out.status == "error"
+    rendered = env.recorder.rendered()
+    assert "51234567" not in rendered
+    assert "6618" not in rendered
+    assert "not found" in rendered

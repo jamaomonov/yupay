@@ -2,6 +2,17 @@
 
 from __future__ import annotations
 
+# Imported first, and as a package rather than reaching straight for
+# `integrations.routes`: `check_player_for_brand_id` resolves its supplier
+# adapters through a lazy `from ...integrations.routes import ...`, and that
+# module's own top-level import of `yupay.api.v1.deps` walks back through
+# `yupay.api.v1` -> `integrations.api` -> `integrations.routes` for
+# `admin_router`. Whichever test touches that path first pays for the cycle,
+# and without this line it is a bare ImportError when this file runs alone —
+# green in a full-suite run only because a neighbouring module happened to
+# import `yupay.api.v1` earlier. `test_player_check_nova.py` carries the same
+# line for the same reason.
+import yupay.api.v1  # noqa: F401
 from yupay.modules.integrations import player_check as pc
 
 
@@ -219,7 +230,14 @@ def test_brand_check_fields_must_agree_across_products() -> None:
 
 class _FakeSlugSession:
     """Just enough of ``AsyncSession`` for the ``Brand.slug`` read
-    ``check_player_for_brand_id`` does before the supplier round trip."""
+    ``check_player_for_brand_id`` does.
+
+    That read happens **after** the G2B round trip, on the ``error`` branch
+    only: reading it up front costs a query on every check and broke a pinned
+    SQL-count regression. The session is still usable there — the rollback
+    before the supplier call returns the connection, and SQLAlchemy simply
+    begins a new transaction when this asks it to.
+    """
 
     def __init__(self, slug: str | None) -> None:
         self._slug = slug
@@ -290,6 +308,66 @@ async def test_primary_invalid_never_consults_nova(monkeypatch) -> None:  # type
     assert calls["nova"] == 0
 
 
+async def test_a_steam_login_error_consults_nova_too(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The Waxpeer half of the same dispatch.
+
+    `fallback_for_steam` has unit tests of its own, but the one line that
+    reaches it had none — and a `return out` there would have left the suite
+    green while the Steam fallback never ran.
+    """
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "waxpeer"}}))
+    calls = {"nova": 0, "brand": 0}
+
+    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="error")
+
+    async def fake_nova_steam(steam_login):  # type: ignore[no-untyped-def]
+        calls["nova"] += 1
+        assert steam_login == "someone"
+        return pc.PlayerCheckOut(status="valid")
+
+    async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
+        calls["brand"] += 1
+        return pc.PlayerCheckOut(status="error")
+
+    monkeypatch.setattr(pc, "_check_waxpeer_login", fake_waxpeer)
+    monkeypatch.setattr(pc, "_waxpeer_fulfiller_or_none", lambda: None, raising=False)
+    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
+    monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("steam"), brand_id="b1", player_id="someone", server_id=None
+    )
+
+    assert out.status == "valid"
+    assert calls["nova"] == 1
+    # The brand fallback is for a game brand; a Steam login must not reach it.
+    assert calls["brand"] == 0
+
+
+async def test_a_steam_login_verdict_is_never_second_guessed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "waxpeer"}}))
+    calls = {"nova": 0}
+
+    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="invalid")
+
+    async def fake_nova_steam(steam_login):  # type: ignore[no-untyped-def]
+        calls["nova"] += 1
+        return pc.PlayerCheckOut(status="valid")
+
+    monkeypatch.setattr(pc, "_check_waxpeer_login", fake_waxpeer)
+    monkeypatch.setattr(pc, "_waxpeer_fulfiller_or_none", lambda: None, raising=False)
+    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("steam"), brand_id="b1", player_id="someone", server_id=None
+    )
+
+    assert out.status == "invalid"
+    assert calls["nova"] == 0
+
+
 async def test_primary_error_consults_nova_once_and_its_valid_wins(monkeypatch) -> None:  # type: ignore[no-untyped-def]
     """The one case the fallback exists for: no verdict at all from the primary."""
     monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "g2b"}}))
@@ -300,7 +378,7 @@ async def test_primary_error_consults_nova_once_and_its_valid_wins(monkeypatch) 
 
     async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
         calls["nova"] += 1
-        assert brand_slug == "mobile-legends-ru", "the slug is read before the round trip"
+        assert brand_slug == "mobile-legends-ru", "the fallback is keyed by brand"
         return pc.PlayerCheckOut(status="valid", name="blood moon")
 
     monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
