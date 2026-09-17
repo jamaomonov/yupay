@@ -20,7 +20,7 @@
 - **Never log the API key, a `player_id`, a `steam_login` or a customer nickname.** Player identifiers are hashed with `hash_short` exactly as `player_check.py` does today.
 - `ruff` line-length 100, `mypy --strict`, Google docstrings on every public function. Supplier adapters carry a ≥95 % coverage gate (AGENTS.md §8).
 - Python files: soft limit 400 LOC. `player_check.py` is already 506 — **do not add to it beyond the small dispatch hooks named in Task 5.**
-- Every task ends green on `make lint typecheck` for the files it touched and on its own tests.
+- Every task ends green on `make lint typecheck` for the files it touched and on its own tests. **Run `mypy` from the repo root** (`uv run mypy apps/api/src/...`): invoked from `apps/api` it resolves `yupay.core.logging` as untyped and reports import errors on files that are already clean, which cost Task 1 a round of confusion.
 - No pushing, no deploying, no prod database writes. The branch is `feat/nova-supplier`.
 
 ---
@@ -1117,7 +1117,10 @@ Expected: ≥95 %. Add cases for whatever is missed — do not lower the gate.
 - [ ] **Step 7: Lint, typecheck, commit**
 
 ```bash
-cd apps/api && uv run ruff format src/yupay/modules/fulfillment/suppliers/nova.py && uv run ruff check src/yupay/modules/fulfillment/suppliers/nova.py && uv run mypy src/yupay/modules/fulfillment/suppliers/nova.py
+cd apps/api && uv run ruff format src/yupay/modules/fulfillment/suppliers/nova.py && uv run ruff check src/yupay/modules/fulfillment/suppliers/nova.py
+# mypy runs from the REPO ROOT — from apps/api it resolves `yupay.core.logging`
+# as untyped and reports import errors on files that are already clean.
+cd /Users/macbook_uz/Projects/yupay && uv run mypy apps/api/src/yupay/modules/fulfillment/suppliers/nova.py
 git add apps/api/src/yupay/modules/fulfillment/suppliers apps/api/src/yupay/modules/integrations/models.py apps/api/src/yupay/modules/integrations/routes.py apps/api/tests/unit
 git commit -m "feat(api/fulfillment): add the NOVA fulfiller for game top-ups"
 ```
@@ -1614,7 +1617,9 @@ Expected: all pass, including the existing brand-check suite unchanged.
 - [ ] **Step 6: Lint, typecheck, commit**
 
 ```bash
-cd apps/api && uv run ruff format src/yupay/modules/integrations tests/unit/test_player_check_nova.py && uv run ruff check src/yupay/modules/integrations && uv run mypy src/yupay/modules/integrations/player_check_nova.py src/yupay/modules/integrations/player_check.py
+cd apps/api && uv run ruff format src/yupay/modules/integrations tests/unit/test_player_check_nova.py && uv run ruff check src/yupay/modules/integrations
+# mypy runs from the REPO ROOT — see Task 2's note.
+cd /Users/macbook_uz/Projects/yupay && uv run mypy apps/api/src/yupay/modules/integrations/player_check_nova.py apps/api/src/yupay/modules/integrations/player_check.py
 git add apps/api/src/yupay/modules/integrations apps/api/tests/unit
 git commit -m "feat(api/integrations): fall back to NOVA when the player check errors"
 ```
