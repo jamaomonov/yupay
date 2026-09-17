@@ -19,6 +19,12 @@ mapping, which would leave a SKU with no incumbent routing itself to NOVA. An
 order goes to NOVA when somebody sets `force_supplier = nova`, and at no other
 time.
 
+This script is now one of those somebodies, for brands listed in
+`SWITCH_TO_NOVA`: it writes `force_supplier = nova` for every SKU it maps in
+those brands, in the same transaction as the mapping. Every other mapped
+brand — Mobile Legends, PUBG — stays reserve-only: mapped, routable by hand
+later, but not switched by this run.
+
 `pubg_mobile_auto` below is one of NOVA's four speed tiers for PUBG Mobile
 (`_auto`, `_fast`, `_manual`, `_reserve` — same game, different fulfilment
 speed and price); this script picks `_auto` on a hunch. Confirm that pick
@@ -47,6 +53,7 @@ from yupay.modules.fulfillment.suppliers.nova_client import (
     NovaUnavailableError,
 )
 from yupay.modules.integrations.models import SkuSupplierMapping
+from yupay.modules.sourcing.models import SkuSourcingRule
 
 SUPPLIER_SLUG = "nova"
 #: `updated_by` audit value written on every mapping row this script touches.
@@ -70,10 +77,40 @@ BRAND_CATEGORIES: dict[str, str] = {
     # - `pubg_mobile_auto` sells UC *and* WOW Coins under one category, with
     #   the same numbers on both ladders. That pair is exactly why the matcher
     #   below keys on the unit as well as the number.
+    # - `free_fire_cis` matches on the six diamond denominations exactly like
+    #   the others; the three memberships (Weekly Lite, Weekly Membership,
+    #   Monthly Membership) carry no number at all, so they are paired by hand
+    #   in `SKU_OFFER_OVERRIDES` instead of matched here. Measured against
+    #   NOVA's live catalogue on 2026-09-17, NOVA is cheaper on all nine of our
+    #   SKUs (0.8-3.6%), which is why this brand is also in `SWITCH_TO_NOVA`.
     "mobile-legends-ru": "mobile_legends_ru",
     "mobile-legends": "mobile_legends_global",
     "pubg-mobile": "pubg_mobile_auto",
+    "free-fire": "free_fire_cis",
 }
+
+#: SKUs whose label is a name rather than a denomination, paired by hand.
+#:
+#: The matcher keys on a number and a unit, which is what makes it safe — and
+#: a membership has neither. Pairing these by *name* instead would be fuzzy
+#: matching on the one axis where a wrong answer routes money to the wrong
+#: product, so they are listed here, read once by a human, or not mapped at all.
+SKU_OFFER_OVERRIDES: dict[str, str] = {
+    "freefire_cis-weekly-lite": "weekly_lite",
+    "freefire_cis-weekly-membership": "weekly_membership",
+    "freefire_cis-monthly-membership": "monthly_membership",
+}
+
+#: Brands whose mapped SKUs also get their live sourcing switched to NOVA.
+#:
+#: NOVA is a reserve supplier (`RESERVE_SUPPLIERS`): auto sourcing never picks
+#: it, so a mapping alone moves nothing — only a `force_supplier` rule does.
+#: This seed writes one for every SKU it maps in a brand listed here.
+#:
+#: Mobile Legends and PUBG are deliberately absent: their mappings stay a
+#: reserve, exactly as today. A seed that switched them too would move live
+#: traffic nobody asked to move.
+SWITCH_TO_NOVA: frozenset[str] = frozenset({"free-fire"})
 
 #: A denomination label: a number, then the unit it counts.
 _DENOM = re.compile(r"^\s*(\d+)\s*(.*)$")
@@ -189,6 +226,16 @@ def _offers_by_denomination(
     return by_denom
 
 
+def _offers_by_id(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Index offers by ``offer_id``, for the by-hand pairs in `SKU_OFFER_OVERRIDES`."""
+    by_id: dict[str, dict[str, Any]] = {}
+    for offer in offers:
+        offer_id = str(offer.get("offer_id") or "").strip()
+        if offer_id:
+            by_id.setdefault(offer_id, offer)
+    return by_id
+
+
 def _upsert_stmt(  # Any: an Insert whose generic parameters SQLAlchemy does not export.
     *, sku_id: str, category_id: str, offer_id: str
 ) -> Any:
@@ -217,18 +264,126 @@ def _upsert_stmt(  # Any: an Insert whose generic parameters SQLAlchemy does not
     )
 
 
+def _upsert_switch_stmt(*, sku_id: str) -> Any:  # Any: see `_upsert_stmt` above.
+    """The ``ON CONFLICT (sku_id) DO UPDATE`` that forces one SKU's sourcing onto NOVA.
+
+    NOVA is a reserve supplier (`RESERVE_SUPPLIERS`): auto sourcing never picks
+    it, however old its mapping. Writing this row is the only thing that does
+    — and it is only ever called for a SKU already mapped above, and only for
+    a brand in `SWITCH_TO_NOVA`.
+    """
+    return (
+        pg_insert(SkuSourcingRule)
+        .values(
+            sku_id=sku_id,
+            mode="force_supplier",
+            supplier_slug=SUPPLIER_SLUG,
+            updated_by=UPDATED_BY,
+        )
+        .on_conflict_do_update(
+            index_elements=[SkuSourcingRule.sku_id],
+            set_={
+                "mode": "force_supplier",
+                "supplier_slug": SUPPLIER_SLUG,
+                "updated_by": UPDATED_BY,
+            },
+        )
+    )
+
+
+def _override_claim(
+    sku: Any,  # Any: a Sku ORM row.
+    *,
+    by_id: dict[str, dict[str, Any]],
+    category_id: str,
+) -> dict[str, Any] | _Unmatched | None:
+    """This SKU's `SKU_OFFER_OVERRIDES` entry resolved against NOVA's offers.
+
+    ``None`` means the SKU has no override — fall through to the number-and-
+    unit matcher. Anything else — an offer or an `_Unmatched` — is final: an
+    override is a human's answer, not a hint for the matcher to double-check.
+    """
+    override_offer_id = SKU_OFFER_OVERRIDES.get(sku.sku_code)
+    if override_offer_id is None:
+        return None
+    offer = by_id.get(override_offer_id)
+    if offer is None:
+        return _Unmatched(
+            sku.sku_code,
+            sku.denomination,
+            f"override offer_id {override_offer_id!r} not found in nova's"
+            f" {category_id} offers — check SKU_OFFER_OVERRIDES or map it by hand",
+        )
+    return offer
+
+
+def _claim_for_sku(
+    sku: Any,  # Any: a Sku ORM row.
+    *,
+    by_denom: dict[_Denomination, list[dict[str, Any]]],
+    by_id: dict[str, dict[str, Any]],
+    category_id: str,
+) -> dict[str, Any] | _Unmatched:
+    """This SKU's one candidate NOVA offer, or the reason it has none.
+
+    `SKU_OFFER_OVERRIDES` is consulted first via `_override_claim` — see the
+    module docstring for why a membership is paired by hand instead of by the
+    matcher below. Either way the result still passes through
+    `_match_brand`'s claims-and-collisions pass, so an override cannot
+    double-claim an offer any more than a denomination match can.
+    """
+    override = _override_claim(sku, by_id=by_id, category_id=category_id)
+    if override is not None:
+        return override
+
+    denom = _sku_denomination(sku)
+    if denom is None:
+        return _Unmatched(
+            sku.sku_code,
+            sku.denomination,
+            "not a denomination label (a pack or a subscription) — map it by hand",
+        )
+
+    candidates = by_denom.get(denom, [])
+    if not candidates:
+        return _Unmatched(
+            sku.sku_code,
+            sku.denomination,
+            f"no NOVA offer for {_label(denom)} in {category_id} — map it by hand",
+        )
+    if len(candidates) > 1:
+        names = ", ".join(str(c.get("name")) for c in candidates)
+        return _Unmatched(
+            sku.sku_code,
+            sku.denomination,
+            f"{_label(denom)} matches {len(candidates)} nova offers ({names}) — pick one by hand",
+        )
+
+    offer = candidates[0]
+    if not str(offer.get("offer_id") or "").strip():
+        offer_name = str(offer.get("name") or "")
+        return _Unmatched(
+            sku.sku_code,
+            sku.denomination,
+            f"matched offer {offer_name!r} has no offer_id — map it by hand",
+        )
+    return offer
+
+
 async def _match_brand(
     session: AsyncSession, client: NovaClient, *, brand_slug: str, category_id: str
-) -> tuple[list[_Matched], list[_Unmatched]]:
+) -> tuple[list[_Matched], list[_Unmatched], list[str]]:
     """Load one brand's SKUs, fetch NOVA's offers, pair them, upsert the matches.
 
-    A denomination that matches more than one offer is reported as unmatched,
-    never guessed — see the module docstring.
+    Pairing itself (override or denomination) is `_claim_for_sku`. When
+    `brand_slug` is in `SWITCH_TO_NOVA`, every SKU this writes a mapping for
+    also gets its sourcing forced onto NOVA; the third return value lists
+    which SKUs that was.
     """
     skus = await _load_skus(session, brand_slug=brand_slug)
     if not skus:
         print(f"{brand_slug} ({category_id}): no active SKUs — skipping")
-        return [], []
+        return [], [], []
 
     try:
         body = await client.get_offers(category_id)
@@ -237,6 +392,7 @@ async def _match_brand(
 
     offers = [o for o in (body.get("offers") or []) if isinstance(o, dict)]
     by_denom = _offers_by_denomination(offers)
+    by_id = _offers_by_id(offers)
     print(f"{brand_slug} ({category_id}): {len(skus)} sku(s), {len(offers)} nova offer(s)")
 
     # Two passes on purpose. The first decides; the second writes. Nothing is
@@ -246,54 +402,13 @@ async def _match_brand(
     claims: list[tuple[Any, dict[str, Any]]] = []
     matched: list[_Matched] = []
     unmatched: list[_Unmatched] = []
+    switched: list[str] = []
     for sku in skus:
-        denom = _sku_denomination(sku)
-        if denom is None:
-            unmatched.append(
-                _Unmatched(
-                    sku.sku_code,
-                    sku.denomination,
-                    "not a denomination label (a pack or a subscription) — map it by hand",
-                )
-            )
+        claim = _claim_for_sku(sku, by_denom=by_denom, by_id=by_id, category_id=category_id)
+        if isinstance(claim, _Unmatched):
+            unmatched.append(claim)
             continue
-
-        candidates = by_denom.get(denom, [])
-        if not candidates:
-            unmatched.append(
-                _Unmatched(
-                    sku.sku_code,
-                    sku.denomination,
-                    f"no NOVA offer for {_label(denom)} in {category_id} — map it by hand",
-                )
-            )
-            continue
-        if len(candidates) > 1:
-            names = ", ".join(str(c.get("name")) for c in candidates)
-            unmatched.append(
-                _Unmatched(
-                    sku.sku_code,
-                    sku.denomination,
-                    f"{_label(denom)} matches {len(candidates)} nova offers ({names})"
-                    " — pick one by hand",
-                )
-            )
-            continue
-
-        offer = candidates[0]
-        offer_id = str(offer.get("offer_id") or "").strip()
-        offer_name = str(offer.get("name") or "")
-        if not offer_id:
-            unmatched.append(
-                _Unmatched(
-                    sku.sku_code,
-                    sku.denomination,
-                    f"matched offer {offer_name!r} has no offer_id — map it by hand",
-                )
-            )
-            continue
-
-        claims.append((sku, offer))
+        claims.append((sku, claim))
 
     # The mirror of the guard above, on our side of the pairing. NOVA's catalogue
     # is not the only one that can be ambiguous: a legacy row, a duplicate, or a
@@ -325,8 +440,13 @@ async def _match_brand(
         matched.append(
             _Matched(sku.sku_code, offer_name, sku.cost_usdt, str(offer.get("price_usd") or ""))
         )
+        if brand_slug in SWITCH_TO_NOVA:
+            # Switching is what moves money — only for a SKU this run just
+            # mapped, and only for a brand an operator put in the set above.
+            await session.execute(_upsert_switch_stmt(sku_id=sku.id))
+            switched.append(sku.sku_code)
 
-    return matched, unmatched
+    return matched, unmatched, switched
 
 
 def _print_matched(rows: list[_Matched]) -> None:
@@ -359,6 +479,22 @@ def _print_unmatched(rows: list[_Unmatched]) -> None:
         print(f"  {r.sku_code.ljust(sku_w)}  {denom.ljust(denom_w)}  {r.reason}")
 
 
+def _print_switched(rows: list[str]) -> None:
+    """SKUs whose sourcing now forces NOVA — printed apart from `matched`.
+
+    Mapping and switching are different acts with different consequences: a
+    mapping is inert until something forces a SKU onto it, switching is the
+    act that moves live orders. An operator should not have to infer which of
+    the printed tables did which.
+    """
+    print(f"\nswitched to nova ({len(rows)}):")
+    if not rows:
+        print("  (none)")
+        return
+    for sku_code in rows:
+        print(f"  {sku_code}")
+
+
 async def main() -> None:
     settings = get_settings()
     if not settings.nova_api_key:
@@ -372,22 +508,26 @@ async def main() -> None:
 
     all_matched: list[_Matched] = []
     all_unmatched: list[_Unmatched] = []
+    all_switched: list[str] = []
 
     async with get_session_factory()() as session:
         for brand_slug, category_id in BRAND_CATEGORIES.items():
-            matched, unmatched = await _match_brand(
+            matched, unmatched, switched = await _match_brand(
                 session, client, brand_slug=brand_slug, category_id=category_id
             )
             all_matched += matched
             all_unmatched += unmatched
+            all_switched += switched
 
         _print_matched(all_matched)
+        _print_switched(all_switched)
         _print_unmatched(all_unmatched)
 
         await session.commit()
 
     print(
-        f"\n{len(all_matched)} mapping(s) written, {len(all_unmatched)} sku(s) left for the admin"
+        f"\n{len(all_matched)} mapping(s) written, {len(all_switched)} switched to nova,"
+        f" {len(all_unmatched)} sku(s) left for the admin"
     )
 
 
