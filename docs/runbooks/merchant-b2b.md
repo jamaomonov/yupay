@@ -839,7 +839,7 @@ notice.
 ## `POST /merchant/v1/validate/player` keeps answering `error`
 
 `error` on that endpoint means one thing only — **we could not check** — and it
-is deliberately the same word for four different causes, because none of them
+is deliberately the same word for five different causes, because none of them
 says anything about the player id and a reseller must not act on any of them as
 if it did. Which one it is, in the order worth checking:
 
