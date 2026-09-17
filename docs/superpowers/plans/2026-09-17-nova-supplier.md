@@ -138,17 +138,9 @@ async def test_blocked_account_keeps_its_code() -> None:
 
 @respx.mock
 async def test_topups_are_walked_by_cursor() -> None:
-    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
-        return_value=httpx.Response(
-            200,
-            json={
-                "ok": True,
-                "kind": "topup",
-                "items": [{"category_id": "mobile_legends_ru", "name": "Mobile Legends (RU)"}],
-                "meta": {"total": 2, "limit": 100, "next_cursor": "c2", "has_more": True},
-            },
-        )
-    )
+    # The cursor route is registered FIRST on purpose: respx matches params as
+    # a subset, so a route keyed on `limit` alone would also swallow the
+    # second request and the walk would never terminate.
     respx.get(f"{BASE}/api/v2/topups", params={"limit": "100", "cursor": "c2"}).mock(
         return_value=httpx.Response(
             200,
@@ -157,6 +149,17 @@ async def test_topups_are_walked_by_cursor() -> None:
                 "kind": "topup",
                 "items": [{"category_id": "pubg_mobile_auto", "name": "PUBG Mobile (Auto)"}],
                 "meta": {"total": 2, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "kind": "topup",
+                "items": [{"category_id": "mobile_legends_ru", "name": "Mobile Legends (RU)"}],
+                "meta": {"total": 2, "limit": 100, "next_cursor": "c2", "has_more": True},
             },
         )
     )
@@ -1292,7 +1295,7 @@ Cases:
 9. A `valid` result is cached under `playercheck:nova:…` and a second call answers from the cache without a second request; an `error` result is not cached.
 10. The zone value travels as `zone_id` (their validate field key), not `server_id` (their _order_ field key) — assert the request payload.
 11. `fallback_for_steam`: `can_refill: true` → `valid`; `can_refill: false` → `error`; a raise → `error`.
-12. No log line carries the raw `player_id` or `steam_login` — assert the emitted event kwargs contain only `player_id_hash`.
+12. No log line carries the raw `player_id` or `steam_login` — assert it with whatever capture helper the existing player-check tests already use (`rg -n "caplog|capture_logs" apps/api/tests/unit | head`), not a new one.
 
 Then, in `apps/api/tests/unit/` (or wherever the existing brand-check unit test lives — find it with `rg -l check_player_for_brand apps/api/tests`), three wiring cases:
 
