@@ -83,10 +83,11 @@ export function ogLocale(locale: string): { locale: string; alternate: string[] 
 /**
  * Every path the reseller site wants indexed. `sitemap.ts` and
  * `llms.txt/route.ts` both build off this single list, so the two can never
- * drift. `/telegram`, `/api` and `/faq` do not exist yet — a later task adds
- * them — so they are listed here already and neither file needs a further
- * edit once they land. The cabinet and every auth screen are deliberately
- * absent; `seo.test.ts` pins that.
+ * drift. `/telegram`, `/api` and `/faq` are the intent pages — one per way
+ * somebody arrives — and they exist: a path dropped from here disappears
+ * from the sitemap and from `llms.txt` at once, which `seo.test.ts` pins.
+ * The cabinet and every auth screen are deliberately absent; the same test
+ * pins that too.
  */
 export const SEO_PATHS: string[] = [
   "",

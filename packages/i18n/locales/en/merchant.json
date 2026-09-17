@@ -110,8 +110,8 @@
     "a9": "No. An email and the accepted offer.",
     "q10": "How fast does the item arrive?",
     "a10": "Usually 1–2 minutes. The status is in the cabinet and in a webhook.",
-    "q11": "How is the wholesale programme different from the referral one?",
-    "a11": "In the wholesale programme you buy the goods and sell them yourself. In the referral one you bring buyers to yupay.uz.",
+    "q11": "How is the wholesale program different from the affiliate one?",
+    "a11": "Wholesale — you buy and resell. The affiliate program (partners.yupay.uz) pays a reward on the orders of buyers you bring.",
     "q12": "Can I work without code, from the cabinet only?",
     "a12": "Yes. The cabinet holds the catalog, the order form and the history. The API is only for a site or a bot."
   },

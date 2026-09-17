@@ -50,6 +50,10 @@ const FAQ_KEYS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"]
  * The `FAQPage` markup covers the whole list because the whole list is
  * visible: no accordion hides an answer from a crawler, `<details>` content
  * is in the DOM whether it is open or not.
+ *
+ * It is also the one page that renders the questions as real `<h2>`s. There
+ * is no section heading above them to belong to — the questions *are* the
+ * outline — where on `/`, `/telegram` and `/api` they sit under one.
  */
 export default async function FaqPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -81,7 +85,7 @@ export default async function FaqPage({ params }: { params: Promise<{ locale: st
         </h1>
         <p className={LEAD}>{t("answer")}</p>
 
-        <Faq items={items} className="mt-10" />
+        <Faq items={items} className="mt-10" questionTag="h2" />
 
         <div className="mt-12 flex flex-wrap items-center gap-x-5 gap-y-3 text-sm">
           <Link
