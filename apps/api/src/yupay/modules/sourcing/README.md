@@ -52,6 +52,18 @@ async def delete_rule(db, sku_id) -> None: ...
 `set_rule` валидирует: `force_supplier` требует `supplier_slug`. На других режимах
 переданный `supplier_slug` молча обнуляется, чтобы строка не несла мусора.
 
+**`auto` теперь детерминирован, когда у SKU два активных маппинга.** До
+ADR-0081 `_resolve_auto` брал первую строку `sku_supplier_mapping` без
+`ORDER BY` — сходило с рук, пока у каждого top_up SKU был ровно один
+активный маппинг. NOVA — первый **резервный** поставщик, и с ним у SKU
+законно появляются два (например, `g2b` и `nova`) сразу. Без сортировки
+ответ зависел бы от порядка, в котором Postgres решил вернуть строки, — он
+может измениться после `VACUUM`, и ничто бы об этом не сообщило. Теперь
+запрос сортируется `created_at ASC, supplier_slug ASC`: побеждает **самый
+старый** активный маппинг — то есть действующий маршрут, — а резерв,
+добавленный позже, никогда не может перехватить его самим фактом появления.
+Переключение остаётся явным действием оператора (`force_supplier`).
+
 ## HTTP (admin only)
 
 ```
@@ -62,7 +74,7 @@ DELETE /api/v1/admin/sourcing/rules/{sku_id}         — снять, SKU вер�
 ```
 
 `PUT` с `mode=force_supplier` на поставщика, которому нужен маппинг (G2B,
-G-Engine — `MAPPING_REQUIRED_SUPPLIERS` в `integrations.models`), отказывает, если
+G-Engine, NOVA — `MAPPING_REQUIRED_SUPPLIERS` в `integrations.models`), отказывает, если
 у SKU нет активной строки `sku_supplier_mapping` на него. Иначе правило
 «применилось», а каждый заказ падает в inbox с `no active mapping` — по одному.
 Waxpeer маппинга не требует и не проверяется.

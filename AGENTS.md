@@ -290,9 +290,17 @@ yupay/
   predates this list and clears some of ADR-0031's conditions (advisory, off the order
   path, short timeout, Redis-cached, own bucket) but not the breaker. That gap is real and
   is recorded here rather than left to be rediscovered; closing it means either an ADR
-  saying why a breaker is unnecessary there, or a breaker. If you add a fifth, it needs an
-  ADR entry saying why it clears those conditions and a line here. A rule that does not name its exceptions stops being
-  read as a rule: this one was silently deviated from three times before the list existed.
+  saying why a breaker is unnecessary there, or a breaker. Since ADR-0081, the two
+  ADR-0031 endpoints may make a **second** supplier call in the same request, not a second
+  endpoint: when the primary answers `error`, a NOVA fallback (`player_check_nova.py`) runs
+  before the response goes out, with its own tighter timeout
+  (`nova_check_timeout_seconds`, 4 s), its own breaker (`nova:player_check`), and its own
+  cache namespace — and it can only ever _lower_ the wait, by short-circuiting on a cache
+  hit or an open breaker, never raise a verdict the primary refused. No new endpoint
+  exists, which is why this is a sentence and not a fifth list entry. If you add a fifth
+  endpoint, it needs an ADR entry saying why it clears those conditions and a line here. A
+  rule that does not name its exceptions stops being read as a rule: this one was silently
+  deviated from three times before the list existed.
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
 - DB indices are added in the same migration as the query that needs them.

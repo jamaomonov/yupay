@@ -16,6 +16,7 @@ sequenceDiagram
     participant API as FastAPI
     participant R as Redis
     participant G as G2B / Waxpeer
+    participant N as NOVA (ADR-0081)
 
     C->>S: player id (+ server id), «Проверить»
     S->>API: POST /catalog/brands/{slug}/check-player {player_id, server_id}
@@ -27,6 +28,16 @@ sequenceDiagram
         API->>G: checkPlayerId(game, id, server) (short timeout, breaker)
         G-->>API: valid + name | invalid | fault
         API->>R: SET only when valid
+        opt G2B/Waxpeer answered error (fault, rate-limit, no mapping, unconfigured…)
+            API->>R: GET playercheck:nova:{...}:{hash(id)}
+            alt cached valid
+                R-->>API: name
+            else brand in NOVA_VALIDATE and breaker closed
+                API->>N: validate-id / check-login (4s timeout, own breaker)
+                N-->>API: valid + name | negative | fault
+                API->>R: SET playercheck:nova:* only when valid
+            end
+        end
     end
     API-->>S: {status: valid|invalid|error, name}
     alt valid
@@ -41,6 +52,17 @@ sequenceDiagram
 
 Only `invalid` blocks Pay. `error` means our side or the supplier failed and
 the customer is not made to pay for it with a blocked button.
+
+**NOVA has no `invalid` edge into this diagram.** It runs only inside the
+`error` branch — after the primary has already failed, not instead of it —
+and from there it can turn that `error` into `valid`, never into `invalid`.
+A NOVA "not found" answer, a brand outside `NOVA_VALIDATE` (five of our
+games; global Mobile Legends is deliberately not one of them), or the
+breaker being open all fall back to the same `error` the primary would have
+produced on its own. The reason is ADR-0031, not a NOVA quirk: `invalid` is
+the one verdict that blocks Pay, so it may only come from a check we have
+validated against our own brand namespaces — and NOVA, added as a second
+opinion for an outage, has not earned that.
 
 ## Region-split brands
 

@@ -843,6 +843,20 @@ is deliberately the same word for four different causes, because none of them
 says anything about the player id and a reseller must not act on any of them as
 if it did. Which one it is, in the order worth checking:
 
+**Since ADR-0081, "keeps answering `error`" is no longer forever for five
+brands** (`mobile-legends-ru`, `pubg-mobile`, `free-fire`, `magic-chess-gogo`,
+`magic-chess-gogo-ru` — see `NOVA_VALIDATE` in `player_check_nova.py`; global
+Mobile Legends is not one of them). Any of the five causes below still
+produces a primary `error`, but before it reaches the reseller it is retried
+once against NOVA, which can turn it into `valid` — never into `invalid` — so
+the check now survives a G2B outage, or an unconfigured key, or an open
+breaker, for those brands specifically. This is the one place cause 2
+("logs **nothing at all**") stops being silent: a NOVA attempt logs
+`player_check`, `player_check_failed`, or `player_check_fallback_short_circuited`
+with `provider=nova` even when G2B never made a call at all. See
+`docs/runbooks/nova.md`'s "The check fallback" section to turn it off
+(`NOVA_PLAYER_CHECK_ENABLED=false`) without touching top-ups.
+
 1. **The brand has no active supplier mapping.** Check this one first: it is
    the likeliest, it is a routine state rather than an outage, and it is
    permanent until somebody fixes it. A brand one of whose products declares
