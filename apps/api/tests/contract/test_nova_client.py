@@ -362,3 +362,52 @@ async def test_the_documented_envelope_still_works() -> None:
     with pytest.raises(NovaError) as excinfo:
         await _client().get_balance()
     assert "subscription inactive" in str(excinfo.value)
+
+
+@respx.mock
+async def test_a_games_create_folds_its_debit_in_too() -> None:
+    """The games path returns through the same helper as the Steam one.
+
+    For a game the debit and the price are the same number, so folding it in
+    changes nothing an operator would notice — which is exactly why it needs a
+    test: nothing else would catch the day their games envelope starts
+    reporting a charge that differs from the price.
+    """
+    respx.post(f"{BASE}/api/v2/topups/order").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "order": {"id": "ord-1", "status": "created", "price_usd": "0.901476"},
+                "novaDebit": {"amountUsd": "0.901476", "balanceUsd": "9.098524"},
+            },
+        )
+    )
+    order = await _client().create_topup_order(
+        category_id="pubg_mobile_auto",
+        offer_id="60_uc",
+        fields={"player_id": "1"},
+        idempotency_key="k",
+    )
+    assert order["chargedUsd"] == "0.901476"
+
+
+@respx.mock
+async def test_an_order_without_a_debit_gains_no_charge_key() -> None:
+    """Absent is not zero, and it is not null either.
+
+    A `chargedUsd: None` would reach `_charged_usd`, which tests `not in (None,
+    "")` — so it would still be read as "they said nothing". But it would also
+    travel into `supplier_charged_usd` handling as a key that exists, and the
+    saga's rule is that a cost is recorded only when a supplier states one.
+    """
+    respx.post(f"{BASE}/api/v2/topups/order").mock(
+        return_value=httpx.Response(200, json={"ok": True, "order": {"id": "ord-1"}})
+    )
+    order = await _client().create_topup_order(
+        category_id="pubg_mobile_auto",
+        offer_id="60_uc",
+        fields={"player_id": "1"},
+        idempotency_key="k",
+    )
+    assert "chargedUsd" not in order

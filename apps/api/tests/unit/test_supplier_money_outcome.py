@@ -55,10 +55,12 @@ from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineUnavailableError,
 )
 from yupay.modules.fulfillment.suppliers.gengine_gifts import _map_gift_order
-from yupay.modules.fulfillment.suppliers.nova import LOW_BALANCE_ERROR as NOVA_LOW_BALANCE_ERROR
-from yupay.modules.fulfillment.suppliers.nova import _refusal_money
-from yupay.modules.fulfillment.suppliers.nova import _result as _nova_result
 from yupay.modules.fulfillment.suppliers.nova_client import NovaError
+from yupay.modules.fulfillment.suppliers.nova_grading import (
+    LOW_BALANCE_ERROR as NOVA_LOW_BALANCE_ERROR,
+)
+from yupay.modules.fulfillment.suppliers.nova_grading import _refusal_money
+from yupay.modules.fulfillment.suppliers.nova_grading import _result as _nova_result
 from yupay.modules.fulfillment.suppliers.waxpeer import (
     _money_for,
     _reconcile,

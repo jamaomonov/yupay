@@ -19,14 +19,16 @@ from yupay.modules.fulfillment.suppliers.base import (
     MoneyOutcome,
 )
 from yupay.modules.fulfillment.suppliers.nova import (
-    LOW_BALANCE_ERROR,
     STEAM_SENTINEL,
     NovaFulfiller,
     _mapping_for,
+)
+from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
+from yupay.modules.fulfillment.suppliers.nova_grading import (
+    LOW_BALANCE_ERROR,
     _order_id_of,
     _status_of,
 )
-from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
 
 pytestmark = pytest.mark.asyncio
 
