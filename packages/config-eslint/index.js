@@ -15,6 +15,13 @@ export default tseslint.config(
       "**/node_modules/**",
       "**/coverage/**",
       "**/generated/**",
+      // Vendored third-party bundles served as static assets. They live outside
+      // every tsconfig, so the type-aware rules cannot resolve them and eslint
+      // fails with a parsing error rather than a lint finding — and linting a
+      // pinned upstream copy would be pointless anyway, since the only correct
+      // edit to it is replacing it wholesale (see
+      // docs/runbooks/miniapp-telegram-script.md).
+      "**/public/js/**",
       // Config files live outside tsconfig's include and aren't worth typechecking.
       "**/eslint.config.{js,mjs,cjs}",
       "**/vitest.config.{ts,js,mjs}",
