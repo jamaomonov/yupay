@@ -1,11 +1,29 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import type { Metadata } from "next";
+
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Code, DocsPage, Section, Table } from "@/components/docs/Page";
+import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
+import { techArticle } from "@/lib/jsonld";
+import { alternates, localeUrl } from "@/lib/seo";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "merchant.docs" });
+  return {
+    title: `${t("errorsTitle")} — YuPay Merchant API`,
+    alternates: alternates(locale, "/docs/errors"),
+  };
 }
 
 /**
@@ -74,20 +92,30 @@ export default async function ErrorsPage({ params }: { params: Promise<{ locale:
   );
 
   return (
-    <DocsPage eyebrow={t("groupStart")} title={t("errorsTitle")} lead={t("errorsLead")}>
-      <Section id="shape" title={t("errorsShape")}>
-        <CodeTabs
-          copyLabel={t("copy")}
-          copiedLabel={t("copied")}
-          tabs={[{ id: "json", label: "JSON", code: SHAPE }]}
-        />
-      </Section>
-      <Section id="shared" title={t("errorsShared")}>
-        {table(SHARED)}
-      </Section>
-      <Section id="orders" title={t("errorsOrder")}>
-        {table(ORDERS)}
-      </Section>
-    </DocsPage>
+    <>
+      <JsonLd
+        data={techArticle({
+          headline: t("errorsTitle"),
+          description: t("errorsLead"),
+          url: localeUrl(locale, "/docs/errors"),
+          dateModified: new Date().toISOString(),
+        })}
+      />
+      <DocsPage eyebrow={t("groupStart")} title={t("errorsTitle")} lead={t("errorsLead")}>
+        <Section id="shape" title={t("errorsShape")}>
+          <CodeTabs
+            copyLabel={t("copy")}
+            copiedLabel={t("copied")}
+            tabs={[{ id: "json", label: "JSON", code: SHAPE }]}
+          />
+        </Section>
+        <Section id="shared" title={t("errorsShared")}>
+          {table(SHARED)}
+        </Section>
+        <Section id="orders" title={t("errorsOrder")}>
+          {table(ORDERS)}
+        </Section>
+      </DocsPage>
+    </>
   );
 }

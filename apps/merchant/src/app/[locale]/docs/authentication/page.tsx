@@ -1,14 +1,32 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import type { Metadata } from "next";
+
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Code, DocsPage, Section, Table } from "@/components/docs/Page";
 import { Prose } from "@/components/docs/Prose";
+import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { apiBaseUrl, contract } from "@/lib/contract";
+import { techArticle } from "@/lib/jsonld";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
+import { alternates, localeUrl } from "@/lib/seo";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "merchant.docs" });
+  return {
+    title: `${t("authTitle")} — YuPay Merchant API`,
+    alternates: alternates(locale, "/docs/authentication"),
+  };
 }
 
 const CANONICAL = `{timestamp}
@@ -40,55 +58,65 @@ export default async function AuthenticationPage({
   };
 
   return (
-    <DocsPage eyebrow={t("groupStart")} title={t("authTitle")} lead={t("authLead")}>
-      <Section id="headers" title={t("authHeaders")}>
-        <Table
-          head={[t("colHeader"), t("colValue"), t("colDescription")]}
-          rows={[
-            ...Object.values(schemes).map((scheme) => [
-              <Code key="h">{scheme.name ?? ""}</Code>,
-              <span key="v" className="text-tx-dim font-mono text-xs">
-                {scheme.name === "X-Merchant-Key" ? "ypm_…" : "hex"}
-              </span>,
-              <Prose key="d" text={scheme.description ?? ""} lang="en" />,
-            ]),
-            [
-              <Code key="h">X-Merchant-Timestamp</Code>,
-              <span key="v" className="text-tx-dim font-mono text-xs">
-                1789454994
-              </span>,
-              <span key="d">Unix seconds, digits only. ±300 s of ours.</span>,
-            ],
-          ]}
-        />
-      </Section>
+    <>
+      <JsonLd
+        data={techArticle({
+          headline: t("authTitle"),
+          description: t("authLead"),
+          url: localeUrl(locale, "/docs/authentication"),
+          dateModified: new Date().toISOString(),
+        })}
+      />
+      <DocsPage eyebrow={t("groupStart")} title={t("authTitle")} lead={t("authLead")}>
+        <Section id="headers" title={t("authHeaders")}>
+          <Table
+            head={[t("colHeader"), t("colValue"), t("colDescription")]}
+            rows={[
+              ...Object.values(schemes).map((scheme) => [
+                <Code key="h">{scheme.name ?? ""}</Code>,
+                <span key="v" className="text-tx-dim font-mono text-xs">
+                  {scheme.name === "X-Merchant-Key" ? "ypm_…" : "hex"}
+                </span>,
+                <Prose key="d" text={scheme.description ?? ""} lang="en" />,
+              ]),
+              [
+                <Code key="h">X-Merchant-Timestamp</Code>,
+                <span key="v" className="text-tx-dim font-mono text-xs">
+                  1789454994
+                </span>,
+                <span key="d">Unix seconds, digits only. ±300 s of ours.</span>,
+              ],
+            ]}
+          />
+        </Section>
 
-      <Section id="canonical" title={t("authCanonical")}>
-        <Prose text={t("authCanonicalBody")} className="text-tx-mute text-sm" />
-        <CodeTabs
-          copyLabel={t("copy")}
-          copiedLabel={t("copied")}
-          tabs={[{ id: "canonical", label: "canonical", code: CANONICAL }]}
-        />
-        <CodeTabs
-          label={t("requestSample")}
-          copyLabel={t("copy")}
-          copiedLabel={t("copied")}
-          tabs={LANGUAGES.map((language) => ({
-            id: language.id,
-            label: language.label,
-            code: sampleFor(language.id, sample),
-          }))}
-        />
-      </Section>
+        <Section id="canonical" title={t("authCanonical")}>
+          <Prose text={t("authCanonicalBody")} className="text-tx-mute text-sm" />
+          <CodeTabs
+            copyLabel={t("copy")}
+            copiedLabel={t("copied")}
+            tabs={[{ id: "canonical", label: "canonical", code: CANONICAL }]}
+          />
+          <CodeTabs
+            label={t("requestSample")}
+            copyLabel={t("copy")}
+            copiedLabel={t("copied")}
+            tabs={LANGUAGES.map((language) => ({
+              id: language.id,
+              label: language.label,
+              code: sampleFor(language.id, sample),
+            }))}
+          />
+        </Section>
 
-      <Section id="window" title={t("authWindow")}>
-        <Prose text={t("authWindowBody")} className="text-tx-mute text-sm" />
-      </Section>
+        <Section id="window" title={t("authWindow")}>
+          <Prose text={t("authWindowBody")} className="text-tx-mute text-sm" />
+        </Section>
 
-      <Section id="keys" title={t("authKeys")}>
-        <Prose text={t("authKeysBody")} className="text-tx-mute text-sm" />
-      </Section>
-    </DocsPage>
+        <Section id="keys" title={t("authKeys")}>
+          <Prose text={t("authKeysBody")} className="text-tx-mute text-sm" />
+        </Section>
+      </DocsPage>
+    </>
   );
 }

@@ -67,7 +67,7 @@ export default async function DocsLayout({
   const groups = [guides, ...[...byTag.values()].filter((g) => g.items.length > 0), schemas];
 
   return (
-    <DocsShell groups={groups} brand={pathFor(locale, "")}>
+    <DocsShell groups={groups} brand={pathFor(locale, "")} apiOverview={pathFor(locale, "/api")}>
       {children}
     </DocsShell>
   );

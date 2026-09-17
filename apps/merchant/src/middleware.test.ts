@@ -4,7 +4,7 @@ vi.mock("next-intl/middleware", () => ({
   default: () => () => new Response(null, { status: 200 }) as never,
 }));
 
-import middleware from "./middleware";
+import middleware, { config } from "./middleware";
 
 function request(url: string, headers: Record<string, string> = {}) {
   const nextUrl = new URL(url) as URL & { clone: () => URL };
@@ -33,6 +33,24 @@ describe("the intl middleware is wired up", () => {
     for (const path of ["/_next/static/chunk.js", "/favicon.ico", "/icon.svg"]) {
       expect(path).toMatch(/^\/_next\/|\./);
     }
+  });
+});
+
+/**
+ * The new SEO surface — `robots.txt`, `sitemap.xml`, `llms.txt` — lives
+ * outside `app/[locale]/`, same as `favicon.ico`/`icon.svg` above. This does
+ * not call `middleware()`: Next applies `config.matcher` *before* invoking
+ * the function at all, so the thing to prove is that the matcher's own
+ * pattern excludes these paths, not that the (mocked) function handles them.
+ */
+describe("the matcher leaves the new SEO routes alone", () => {
+  test("robots.txt, sitemap.xml and llms.txt never reach the middleware", () => {
+    const matcher = new RegExp(`^${config.matcher[0]}$`);
+    for (const path of ["/robots.txt", "/sitemap.xml", "/llms.txt"]) {
+      expect(matcher.test(path)).toBe(false);
+    }
+    // A contrast case: an ordinary route has no dot and does match.
+    expect(matcher.test("/cabinet")).toBe(true);
   });
 });
 

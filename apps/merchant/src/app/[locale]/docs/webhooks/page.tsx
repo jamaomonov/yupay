@@ -1,12 +1,30 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import type { Metadata } from "next";
+
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Code, DocsPage, Section, Table } from "@/components/docs/Page";
 import { Prose } from "@/components/docs/Prose";
+import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
+import { techArticle } from "@/lib/jsonld";
+import { alternates, localeUrl } from "@/lib/seo";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "merchant.docs" });
+  return {
+    title: `${t("webhooksTitle")} — YuPay Merchant API`,
+    alternates: alternates(locale, "/docs/webhooks"),
+  };
 }
 
 /**
@@ -65,43 +83,53 @@ export default async function WebhooksPage({ params }: { params: Promise<{ local
   const t = await getTranslations("merchant.docs");
 
   return (
-    <DocsPage eyebrow={t("groupStart")} title={t("webhooksTitle")} lead={t("webhooksLead")}>
-      <Section id="headers" title={t("authHeaders")}>
-        <Table
-          head={[t("colHeader"), t("colDescription")]}
-          rows={[
-            [<Code key="h">X-Yupay-Timestamp</Code>, <span key="d">Unix seconds, as sent.</span>],
-            [
-              <Code key="h">X-Yupay-Delivery</Code>,
-              <span key="d">
-                Stable across every retry of the same event. Dedupe on this — delivery is
-                at-least-once.
-              </span>,
-            ],
-            [<Code key="h">X-Yupay-Event</Code>, <span key="d">The event type.</span>],
-            [
-              <Code key="h">X-Yupay-Signature</Code>,
-              <span key="d">Lowercase hex HMAC-SHA256 of the four fields below.</span>,
-            ],
-          ]}
-        />
-      </Section>
+    <>
+      <JsonLd
+        data={techArticle({
+          headline: t("webhooksTitle"),
+          description: t("webhooksLead"),
+          url: localeUrl(locale, "/docs/webhooks"),
+          dateModified: new Date().toISOString(),
+        })}
+      />
+      <DocsPage eyebrow={t("groupStart")} title={t("webhooksTitle")} lead={t("webhooksLead")}>
+        <Section id="headers" title={t("authHeaders")}>
+          <Table
+            head={[t("colHeader"), t("colDescription")]}
+            rows={[
+              [<Code key="h">X-Yupay-Timestamp</Code>, <span key="d">Unix seconds, as sent.</span>],
+              [
+                <Code key="h">X-Yupay-Delivery</Code>,
+                <span key="d">
+                  Stable across every retry of the same event. Dedupe on this — delivery is
+                  at-least-once.
+                </span>,
+              ],
+              [<Code key="h">X-Yupay-Event</Code>, <span key="d">The event type.</span>],
+              [
+                <Code key="h">X-Yupay-Signature</Code>,
+                <span key="d">Lowercase hex HMAC-SHA256 of the four fields below.</span>,
+              ],
+            ]}
+          />
+        </Section>
 
-      <Section id="verify" title={t("webhooksVerify")}>
-        <Prose text={t("webhooksVerifyBody")} className="text-tx-mute text-sm" />
-        <CodeTabs
-          copyLabel={t("copy")}
-          copiedLabel={t("copied")}
-          tabs={[
-            { id: "python", label: "Python", code: PYTHON },
-            { id: "node", label: "Node.js", code: NODE },
-          ]}
-        />
-      </Section>
+        <Section id="verify" title={t("webhooksVerify")}>
+          <Prose text={t("webhooksVerifyBody")} className="text-tx-mute text-sm" />
+          <CodeTabs
+            copyLabel={t("copy")}
+            copiedLabel={t("copied")}
+            tabs={[
+              { id: "python", label: "Python", code: PYTHON },
+              { id: "node", label: "Node.js", code: NODE },
+            ]}
+          />
+        </Section>
 
-      <Section id="no-code" title={t("webhooksNoCode")}>
-        <Prose text={t("webhooksNoCodeBody")} className="text-tx-mute text-sm" />
-      </Section>
-    </DocsPage>
+        <Section id="no-code" title={t("webhooksNoCode")}>
+          <Prose text={t("webhooksNoCodeBody")} className="text-tx-mute text-sm" />
+        </Section>
+      </DocsPage>
+    </>
   );
 }

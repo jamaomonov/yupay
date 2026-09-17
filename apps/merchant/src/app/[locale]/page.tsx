@@ -15,12 +15,32 @@ import {
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import type { Metadata } from "next";
+
+import { JsonLd } from "@/components/JsonLd";
 import { CabinetMock } from "@/components/landing/CabinetMock";
 import { PageFrame } from "@/components/landing/PageFrame";
 import { countBrands } from "@/lib/brands";
+import { faqPage, organization, service, website } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
+import { alternates, ROBOTS, SITE } from "@/lib/seo";
 
 export const revalidate = 3600;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "merchant.meta" });
+  return {
+    title: t("title"),
+    description: t("description"),
+    alternates: alternates(locale, ""),
+    robots: ROBOTS,
+  };
+}
 
 /** The machine-readable contract. Linked, never pasted into the page. */
 const OPENAPI_URL = "https://api.yupay.uz/merchant/openapi.json";
@@ -69,6 +89,16 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
 
   return (
     <PageFrame locale={locale}>
+      {/* Site-wide structured data for the landing, one script carrying all
+          four nodes via @graph. Organization points back at the storefront's
+          own record by `@id` rather than redeclaring it — this is a B2B
+          surface of the same business, not a second one. */}
+      <JsonLd
+        data={{
+          "@context": "https://schema.org",
+          "@graph": [organization(), website(SITE), service(SITE), faqPage(faq)],
+        }}
+      />
       <main className="mx-auto w-full max-w-5xl px-5 py-14 sm:py-20">
         <section className="grid items-center gap-10 lg:grid-cols-[1fr_24rem]">
           <div>

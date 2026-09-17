@@ -1,13 +1,18 @@
 import { notFound } from "next/navigation";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import type { Metadata } from "next";
+
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Prose } from "@/components/docs/Prose";
 import { SchemaTable } from "@/components/docs/SchemaTable";
+import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { contract, endpoints } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
+import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
+import { alternates, localeUrl } from "@/lib/seo";
 
 export const dynamicParams = false;
 
@@ -15,6 +20,20 @@ export function generateStaticParams() {
   return routing.locales.flatMap((locale) =>
     Object.keys(contract().components.schemas).map((name) => ({ locale, name })),
   );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; name: string }>;
+}): Promise<Metadata> {
+  const { locale, name } = await params;
+  const node = contract().components.schemas[name];
+  if (node === undefined) return {};
+  return {
+    title: `${name} — YuPay Merchant API`,
+    alternates: alternates(locale, `/docs/schemas/${name}`),
+  };
 }
 
 export default async function SchemaPage({
@@ -37,6 +56,14 @@ export default async function SchemaPage({
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-8">
+      <JsonLd
+        data={techArticle({
+          headline: name,
+          ...(node.description !== undefined ? { description: node.description } : {}),
+          url: localeUrl(locale, `/docs/schemas/${name}`),
+          dateModified: new Date().toISOString(),
+        })}
+      />
       <p className="text-tx-dim text-[11px] font-semibold tracking-[0.09em]">{t("groupSchemas")}</p>
       <h1 className="font-display mt-1.5 text-2xl font-semibold tracking-tight">{name}</h1>
       {node.description !== undefined && (

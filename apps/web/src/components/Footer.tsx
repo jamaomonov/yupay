@@ -14,6 +14,9 @@ import { pathFor } from "@/lib/seo";
 /** The affiliate site. Its own host, and configurable so a staging storefront
  *  does not link visitors at production. */
 const PARTNERS_URL = process.env.NEXT_PUBLIC_PARTNERS_URL ?? "https://partners.yupay.uz";
+/** The B2B wholesale program — a different product from the affiliate site
+ *  above: reselling the catalog at wholesale prices, not a 2% referral fee. */
+const RESELLER_URL = process.env.NEXT_PUBLIC_RESELLER_URL ?? "https://reseller.yupay.uz";
 
 const SOCIALS = [
   { href: "https://instagram.com/yupay.app", label: "Instagram", src: "/social/instagram.svg" },
@@ -80,6 +83,9 @@ export async function Footer({ locale }: { locale: string }) {
                 build. */}
             <FooterLink href={PARTNERS_URL} external>
               {t("partners")}
+            </FooterLink>
+            <FooterLink href={RESELLER_URL} external>
+              {t("wholesale")}
             </FooterLink>
           </FooterCol>
 

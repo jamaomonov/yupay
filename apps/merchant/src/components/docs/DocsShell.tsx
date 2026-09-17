@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  ArrowLeft,
   BookOpen,
   KeyRound,
   Rocket,
@@ -80,10 +81,14 @@ const METHOD_TONE: Record<string, string> = {
 export function DocsShell({
   groups,
   brand,
+  apiOverview,
   children,
 }: {
   groups: NavGroup[];
   brand: string;
+  /** Link back to the `/api` marketing page — the door a developer came in
+   *  through, one level up from the reference itself. */
+  apiOverview: string;
   children: React.ReactNode;
 }) {
   const t = useTranslations("merchant.docs");
@@ -146,6 +151,13 @@ export function DocsShell({
         <div className="px-5 pb-4 pt-5">
           <Link href={brand} className="font-display text-[15px] font-semibold tracking-[0.02em]">
             {t("title")}
+          </Link>
+          <Link
+            href={apiOverview}
+            className="text-tx-dim hover:text-foreground mt-1 flex items-center gap-1 text-[12px] transition"
+          >
+            <ArrowLeft size={12} aria-hidden="true" />
+            {t("apiOverview")}
           </Link>
         </div>
         <div className="px-4 pb-3">

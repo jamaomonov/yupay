@@ -5,9 +5,26 @@ import { AlertTriangle } from "lucide-react";
 import Link from "next/link";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
+import type { Metadata } from "next";
+
 import { pathFor } from "@/lib/locale-href";
+import { alternates, ROBOTS } from "@/lib/seo";
 
 export const revalidate = 3600;
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string }>;
+}): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "merchant.offer" });
+  return {
+    title: t("title"),
+    alternates: alternates(locale, "/offer"),
+    robots: ROBOTS,
+  };
+}
 
 /**
  * The B2B offer a merchant ticks at registration.

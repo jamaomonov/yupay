@@ -6,6 +6,7 @@ import { getMessages, getTranslations, setRequestLocale } from "next-intl/server
 import type { Metadata } from "next";
 
 import { routing } from "@/i18n/routing";
+import { alternates, localeUrl, ogLocale, SITE } from "@/lib/seo";
 import { THEME_BOOTSTRAP } from "@/lib/theme";
 
 import "../globals.css";
@@ -48,10 +49,26 @@ export async function generateMetadata({
   const { locale } = await params;
   const t = await getTranslations({ locale, namespace: "merchant.meta" });
   return {
+    // Absolute base so every relative metadata URL (alternates, OG) resolves
+    // to https://reseller.yupay.uz/... — search consoles reject relative
+    // hreflang/canonical.
+    metadataBase: new URL(SITE),
     title: t("title"),
     description: t("description"),
-    // The cabinet must never be indexed; the landing is handled per route.
-    robots: { index: true, follow: true },
+    // Absolute canonical + hreflang (incl. x-default), ru without a prefix.
+    alternates: alternates(locale),
+    openGraph: {
+      type: "website",
+      siteName: "YuPay",
+      url: localeUrl(locale),
+      ...ogLocale(locale),
+    },
+    // No blanket `robots` here any more: the cabinet layout sets `NOINDEX`,
+    // the auth-screen layouts do too (see `login/layout.tsx` and its
+    // siblings), and every indexable page sets `ROBOTS` itself — see
+    // `lib/seo.ts`. Inheriting `index: true` here previously meant every
+    // route was indexable by default, cabinet included, until its own
+    // layout overrode it.
   };
 }
 

@@ -3,15 +3,19 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import type { ResponsePanel } from "@/components/docs/ResponseTabs";
 import type { Parameter } from "@/lib/contract";
+import type { Metadata } from "next";
 
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Prose } from "@/components/docs/Prose";
 import { ResponseTabs } from "@/components/docs/ResponseTabs";
 import { SchemaTable } from "@/components/docs/SchemaTable";
+import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { apiBaseUrl, bodySchema, contract, endpoints, typeLabel } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
+import { techArticle } from "@/lib/jsonld";
 import { LANGUAGES, canonicalString, sampleFor } from "@/lib/samples";
+import { alternates, localeUrl } from "@/lib/seo";
 
 export const dynamicParams = false;
 
@@ -21,6 +25,21 @@ export function generateStaticParams() {
   return routing.locales.flatMap((locale) =>
     endpoints().map((endpoint) => ({ locale, operation: endpoint.id })),
   );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ locale: string; operation: string }>;
+}): Promise<Metadata> {
+  const { locale, operation: slug } = await params;
+  const endpoint = endpoints().find((entry) => entry.id === slug);
+  if (endpoint === undefined) return {};
+  const title = endpoint.operation.summary ?? endpoint.path;
+  return {
+    title: `${title} — YuPay Merchant API`,
+    alternates: alternates(locale, `/docs/api/${slug}`),
+  };
 }
 
 const METHOD_TONE: Record<string, string> = {
@@ -87,6 +106,14 @@ export default async function OperationPage({
 
   return (
     <div className="mx-auto grid w-full max-w-[1400px] gap-10 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(0,1fr)_28rem]">
+      <JsonLd
+        data={techArticle({
+          headline: operation.summary ?? path,
+          ...(operation.description !== undefined ? { description: operation.description } : {}),
+          url: localeUrl(locale, `/docs/api/${slug}`),
+          dateModified: new Date().toISOString(),
+        })}
+      />
       <article className="min-w-0">
         <h1 className="font-display text-2xl font-semibold tracking-tight sm:text-3xl">
           <span lang="en">{operation.summary ?? path}</span>

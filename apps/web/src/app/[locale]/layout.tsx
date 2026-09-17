@@ -108,6 +108,9 @@ export default async function LocaleLayout({
   const organizationLd = {
     "@context": "https://schema.org",
     "@type": "Organization",
+    // Stable id other JSON-LD blocks reference instead of redeclaring this
+    // node — the reseller site's `provider`/`sameAs` chain points back here.
+    "@id": "https://yupay.uz/#organization",
     name: "YuPay",
     url: SITE,
     logo: `${SITE}/logo/icon.svg`,
