@@ -18,6 +18,13 @@ exactly one of our SKUs claims it. Everything else is printed for an operator
 to finish in the admin: guessing which of "250 Coins" and "250 Coins + Epic
 Box" a SKU meant is not a thing a script should do with money.
 
+**A re-run re-asserts everything it wrote.** If an operator has since moved a
+SKU back with Admin -> Sourcing -> «Авто», the next `APPLY=1` run puts
+`force_supplier = nova` back on it. That is the right default for a seed — it
+is how you fix a half-finished run — but it means a deliberate rollback and a
+re-run disagree, and the re-run wins. The "switched to nova" table prints
+before anything is committed, so read it.
+
 Mappings are written ACTIVE. That is safe because auto sourcing skips reserve
 suppliers entirely (`RESERVE_SUPPLIERS` in `integrations.models`, read by
 `sourcing.service._resolve_auto`) — not merely because it prefers the oldest
@@ -48,7 +55,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import get_settings
@@ -233,6 +240,27 @@ def _offers_by_denomination(
     return by_denom
 
 
+#: The keys the adapter knows how to send, as the *values* of its own field map
+#: — those are NOVA's names, which is what a category declares.
+#:
+#: Checked rather than assumed because the cost of being wrong is total and
+#: silent until the first order: a category asking for a key we do not send gets
+#: a refusal on **every** order, and a dry run would not show it, because the
+#: dry run pairs SKUs with offers and never builds a payload. `free_fire_cis`
+#: turned out to ask for `player_id` alone (verified live on 2026-09-18) — but
+#: it was verified, and the next brand added here will not be unless this
+#: check does it.
+_ADAPTER_FIELD_KEYS = frozenset({"player_id", "server_id"})
+
+
+def _declared_field_keys(body: dict[str, Any]) -> set[str]:
+    """The input keys a category says it needs, from `GET /topups/offers`."""
+    fields = body.get("fields")
+    if not isinstance(fields, list):
+        return set()
+    return {str(f.get("key") or "").strip() for f in fields if isinstance(f, dict) and f.get("key")}
+
+
 def _offers_by_id(offers: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Index offers by ``offer_id``, for the by-hand pairs in `SKU_OFFER_OVERRIDES`.
 
@@ -275,6 +303,11 @@ def _upsert_stmt(  # Any: an Insert whose generic parameters SQLAlchemy does not
                 "external_variant_id": offer_id,
                 "is_active": True,
                 "updated_by": UPDATED_BY,
+                # The column has a server default but no `onupdate`, so a
+                # second write would otherwise keep the first one's timestamp —
+                # and "when did this SKU move to NOVA?" is exactly the question
+                # an audit asks of a row this script wrote.
+                "updated_at": func.now(),
             },
         )
     )
@@ -302,6 +335,11 @@ def _upsert_switch_stmt(*, sku_id: str) -> Any:  # Any: see `_upsert_stmt` above
                 "mode": "force_supplier",
                 "supplier_slug": SUPPLIER_SLUG,
                 "updated_by": UPDATED_BY,
+                # The column has a server default but no `onupdate`, so a
+                # second write would otherwise keep the first one's timestamp —
+                # and "when did this SKU move to NOVA?" is exactly the question
+                # an audit asks of a row this script wrote.
+                "updated_at": func.now(),
             },
         )
     )
@@ -417,7 +455,19 @@ async def _match_brand(
     offers = [o for o in (body.get("offers") or []) if isinstance(o, dict)]
     by_denom = _offers_by_denomination(offers)
     by_id = _offers_by_id(offers)
-    print(f"{brand_slug} ({category_id}): {len(skus)} sku(s), {len(offers)} nova offer(s)")
+    keys = _declared_field_keys(body)
+    print(
+        f"{brand_slug} ({category_id}): {len(skus)} sku(s), {len(offers)} nova offer(s),"
+        f" fields {sorted(keys) or '(none declared)'}"
+    )
+    unknown = sorted(k for k in keys if k not in _ADAPTER_FIELD_KEYS)
+    if unknown:
+        raise SystemExit(
+            f"{category_id} asks for input we cannot send: {unknown}. The adapter builds NOVA's"
+            f" `fields` from {sorted(_ADAPTER_FIELD_KEYS)} only (`_FIELD_MAP` in"
+            " fulfillment/suppliers/nova.py), so every order on this category would be refused."
+            " Teach the adapter that key first, or drop this brand from BRAND_CATEGORIES."
+        )
 
     # Two passes on purpose. The first decides; the second writes. Nothing is
     # upserted until every SKU of the brand has been resolved, because the last
@@ -540,6 +590,15 @@ async def main() -> None:
         base_url=settings.nova_base_url,
         timeout_seconds=settings.nova_request_timeout_seconds,
     )
+
+    # Printed first, because switching a brand to NOVA is a promise their wallet
+    # has to keep. A SKU that costs more than the balance does not fail at the
+    # seed; it fails at a customer's checkout, which is a worse place to find out.
+    try:
+        balance = (await client.get_balance()).get("balance")
+        print(f"nova balance: ${balance}")
+    except (NovaError, NovaUnavailableError) as exc:
+        raise SystemExit(f"cannot reach NOVA: {exc}") from exc
 
     all_matched: list[_Matched] = []
     all_unmatched: list[_Unmatched] = []

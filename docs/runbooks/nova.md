@@ -158,10 +158,14 @@ The order object, in full, is the shape `nova.py` reads:
   and into `nova_fail_reason` on the task's metadata.
 - **`status_history`** — `[{status, at}, …]`, the whole path. Useful when an
   order sat somewhere: it timestamps each step.
-- The `GET` adds money fields the create response does not carry
-  (`amountUsd`, `chargedUsd`, `charged_usd`, `customerAmountUsd`,
-  `novaAmountUsd`, `totalUsd`) — all equal to the price here, and none of them
-  read by our adapter.
+- The `GET` adds money fields (`amountUsd`, `chargedUsd`, `charged_usd`,
+  `customerAmountUsd`, `novaAmountUsd`, `totalUsd`), all equal to the price for
+  a game. **`chargedUsd` and `charged_usd` are read** — they are what
+  `nova_grading._charged_usd` freezes onto the order line as the real cost, and
+  for an order whose create came back without a `novaDebit` block they are the
+  only place that figure ever appears. The create reports the same number under
+  `novaDebit.amountUsd`, which the client folds in so one key answers on both
+  paths. For Steam these are **not** the price: that is the whole point.
 
 **All three observed statuses were already in the allow-list** (`created` and
 `processing` in-flight, `completed` success), so no correction was needed
@@ -357,6 +361,21 @@ Two seeds decide what is actually live here, and until both have been run
 with `APPLY=1` against a deployed copy of this branch, nothing about Free
 Fire's sourcing or catalogue has changed — the seeds are the switch, landing
 the code is not.
+
+> **Fund the wallet before you run them.** Switching a brand to NOVA is a
+> promise their balance has to keep, and the top Free Fire SKU alone costs
+> **$39.78** (6160 Diamonds). The balance was **$9.10** when this was written.
+> A SKU priced above the balance does not fail at the seed — it fails at a
+> customer's checkout, which is a worse place to find out. Both seeds print
+> `nova balance: $…` as their first line for this reason.
+>
+> What a short wallet looks like when it happens: NOVA answers
+> `400 "Insufficient internal balance"`, the adapter recognises it as a
+> low-balance refusal and **stalls** the order (`supplier_low_balance`) rather
+> than failing it — the customer stays on "в обработке", ops is alerted, and
+> topping up and retrying completes the order. That sentence is theirs,
+> observed on 2026-09-18 by asking for a $39.78 top-up against the $9.10
+> wallet; the refusal costs nothing, which is why it could be checked at all.
 
 ### The nine existing SKUs
 

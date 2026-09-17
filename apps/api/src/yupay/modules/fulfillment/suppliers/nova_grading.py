@@ -41,7 +41,23 @@ log = get_logger("yupay.fulfillment.nova")
 LOW_BALANCE_ERROR = "supplier_low_balance"
 
 
-_LOW_BALANCE_HINTS = ("not enough balance", "insufficient balance", "insufficient funds")
+#: Phrases that mean "top up your wallet", matched against their refusal text.
+#:
+#: **Observed, not guessed**: NOVA answers `400 "Insufficient internal balance"`
+#: — confirmed on 2026-09-18 by asking for a $39.78 top-up against a $9.10
+#: wallet, which costs nothing because it is refused. The three substrings this
+#: started with were copied from Waxpeer's sniffer and **none of them match
+#: that sentence**: "insufficient balance" is not in "insufficient internal
+#: balance". So the first time a Free Fire order outran the wallet, the refusal
+#: would have been graded `RETURNED` and the order hard-failed — a customer
+#: blocked, where the whole point of this path is to park the order and page
+#: ops for a top-up.
+#:
+#: Hence a pair rule rather than a phrase list: "balance" plus a word that says
+#: there is not enough of it. A false positive only demotes a hard failure to a
+#: retryable stall, which is the safer mistake.
+_LOW_BALANCE_WORDS = ("insufficient", "not enough", "too low")
+_LOW_BALANCE_PHRASES = ("insufficient funds", "no funds")
 
 _IN_FLIGHT = frozenset(
     {
@@ -91,9 +107,16 @@ def _order_id_of(obj: dict[str, Any]) -> str | None:
 
 
 def _looks_like_low_balance(exc: NovaError) -> bool:
-    """Whether a refusal is a "top up your balance" one."""
+    """Whether a refusal is a "top up your balance" one.
+
+    They document no code for it, so the message is all there is. See
+    :data:`_LOW_BALANCE_WORDS` for why this is a pair rule and not a list of
+    whole phrases — the phrase list it replaced missed their real sentence.
+    """
     text = f"{exc} {exc.body} {exc.code}".lower()
-    return any(hint in text for hint in _LOW_BALANCE_HINTS)
+    if any(phrase in text for phrase in _LOW_BALANCE_PHRASES):
+        return True
+    return "balance" in text and any(word in text for word in _LOW_BALANCE_WORDS)
 
 
 def _refusal_money(exc: NovaError) -> MoneyOutcome:

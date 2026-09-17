@@ -341,3 +341,48 @@ async def test_a_charge_that_is_not_a_cost_is_ignored_not_written(
     # And the order is still delivered: refusing the figure must not cost the
     # customer their top-up.
     assert task.status == "succeeded"
+
+
+async def test_the_figure_the_saga_writes_is_the_figure_the_margin_reads(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The seam between the two halves of this change, run end to end.
+
+    One test file proves the saga writes `cost_usdt`; another proves the SQL
+    reads a hand-set one. Nothing ran them together, and the seam is semantic:
+    `_record_supplier_charge` freezes what the supplier charged for **the whole
+    line**, while `margin_usd_expr` computes `qty * cost_usdt` — a **per-unit**
+    reading. They agree only because checkout pins `qty == 1` on every
+    variable-amount line, a fact that lives in a third module and is referenced
+    by neither side.
+
+    So this writes through the real helper and reads through the real
+    expressions, and asserts the invariant against the number NOVA stated:
+    what the customer paid, minus what we kept, is what the supplier took. The
+    day `qty` stops being pinned, a two-unit line reports twice the cost it
+    incurred and both of the other tests stay green — this one does not.
+    """
+    from yupay.modules.orders.revenue import charged_usd_expr, margin_usd_expr
+
+    sku_id = await _seed_sku(db_session, "endtoend", variable=True)
+    task = await _seed_task(db_session, sku_id=sku_id, tag="endtoend")
+    fake = _FakeFulfiller(fulfill_result=_result(extra={"supplier_charged_usd": "9.80"}))
+    monkeypatch.setattr(ff_svc, "get_fulfiller", lambda slug: fake)
+
+    await ff_svc.process_task(db_session, task_id=task.id)
+    await db_session.commit()
+
+    stmt = (
+        select(charged_usd_expr(), margin_usd_expr())
+        .select_from(OrderItem)
+        .join(Sku, Sku.id == OrderItem.sku_id)
+        .join(Order, Order.id == OrderItem.order_id)
+        .where(OrderItem.id == task.order_item_id)
+    )
+    gross_raw, margin_raw = (await db_session.execute(stmt)).one()
+    gross, margin = Decimal(str(gross_raw)), Decimal(str(margin_raw))
+
+    # $10 of wallet at a 1.10 markup, bought for $9.80.
+    assert gross == Decimal("11.00")
+    assert margin == Decimal("1.20")
+    assert gross - margin == Decimal("9.80"), "the supplier's own figure, end to end"

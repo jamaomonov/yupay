@@ -553,3 +553,40 @@ async def test_a_failure_carries_their_reason(monkeypatch: pytest.MonkeyPatch) -
     assert "player not eligible" in str(result.error)
     assert result.extra_metadata["nova_fail_reason"] == "player not eligible"
     assert result.money_outcome is MoneyOutcome.UNKNOWN
+
+
+@pytest.mark.parametrize(
+    "sentence",
+    [
+        "Insufficient internal balance",  # their real one, observed 2026-09-18
+        "insufficient balance",
+        "not enough balance",
+        "Insufficient funds",
+        "your balance is too low",
+    ],
+)
+async def test_every_way_they_say_top_up_your_wallet_is_a_stall(
+    monkeypatch: pytest.MonkeyPatch, sentence: str
+) -> None:
+    """The refusal that must never hard-fail an order.
+
+    Their real sentence is "Insufficient internal balance", and the phrase list
+    this started with — copied from Waxpeer — did not contain it: "insufficient
+    balance" is not a substring of "insufficient internal balance". So the first
+    Free Fire order to outrun the wallet would have been graded RETURNED and
+    failed, blocking a customer, where this path exists to park the order and
+    page ops instead.
+    """
+    client = _FakeClient(raises=NovaError(sentence, status=400))
+    result = await _fulfill(client, monkeypatch)
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.money_outcome is None
+
+
+async def test_an_ordinary_refusal_is_still_a_refusal(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The pair rule stays narrow: a message has to be about a balance AND
+    about there not being enough of it."""
+    client = _FakeClient(raises=NovaError("offer not available in this region", status=400))
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(client, monkeypatch)
+    assert excinfo.value.money_outcome is MoneyOutcome.RETURNED

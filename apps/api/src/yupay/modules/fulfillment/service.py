@@ -669,7 +669,11 @@ async def _record_supplier_charge(
         value = Decimal(charged)
     except InvalidOperation:
         return
-    if not value.is_finite() or value <= 0:
+    # `Numeric(20, 6)` — fourteen integer digits. A finite, positive figure can
+    # still overflow the column, and the overflow would land exactly where the
+    # check below exists to stop it landing: after the supplier was paid and the
+    # goods delivered.
+    if not value.is_finite() or value <= 0 or value >= Decimal("1e14"):
         log.warning(
             "fulfillment.supplier_charge_not_a_cost",
             order_item_id=item.id,

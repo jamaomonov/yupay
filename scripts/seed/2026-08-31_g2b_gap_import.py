@@ -224,18 +224,20 @@ async def _product(session: Any, slug: str) -> Product:
 
 async def _existing_codes(session: Any, codes: list[str]) -> set[str]:
     return set(
-        (await session.execute(select(Sku.sku_code).where(Sku.sku_code.in_(codes))))
-        .scalars()
-        .all()
+        (await session.execute(select(Sku.sku_code).where(Sku.sku_code.in_(codes)))).scalars().all()
     )
 
 
 async def _sibling_region(session: Any, product_id: str) -> str:
     row = (
-        await session.execute(
-            select(Sku.region).where(Sku.product_id == product_id).order_by(Sku.sort_order)
+        (
+            await session.execute(
+                select(Sku.region).where(Sku.product_id == product_id).order_by(Sku.sort_order)
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
     return row or "GLOBAL"
 
 
@@ -340,9 +342,7 @@ async def main() -> None:
 
         # -- 3. discounted-UC switch: repoint mapping, take the discount as margin
         for sku_code, variant, cost in SWITCH_DISCOUNT:
-            sku = (
-                await session.execute(select(Sku).where(Sku.sku_code == sku_code))
-            ).scalar_one()
+            sku = (await session.execute(select(Sku).where(Sku.sku_code == sku_code))).scalar_one()
             new_cost = Decimal(cost)
             # margin chosen so price_usd stays exactly where it is; quantized to
             # the column's 4dp so the hourly refresh recomputes the same price.

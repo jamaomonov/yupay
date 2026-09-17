@@ -225,6 +225,9 @@ def _self_check_price_table() -> None:
             )
 
 
+# Verbatim in `2026-09-17_nova_mappings.py`, and deliberately so: both scripts
+# are run as `python - < script` through stdin, so neither can import the other.
+# Change one, change both.
 def _offers_by_id(offers: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     """Index NOVA's offers by `offer_id`. A **list** per id: an id two offers
     share is an ambiguity to report, not to resolve by picking the first —
@@ -410,6 +413,11 @@ def _upsert_mapping_stmt(*, sku_id: str, offer_id: str) -> Any:  # Any: see abov
                 "external_variant_id": offer_id,
                 "is_active": True,
                 "updated_by": UPDATED_BY,
+                # The column has a server default but no `onupdate`, so a
+                # second write would otherwise keep the first one's timestamp —
+                # and "when did this SKU move to NOVA?" is exactly the question
+                # an audit asks of a row this script wrote.
+                "updated_at": func.now(),
             },
         )
     )
@@ -437,6 +445,11 @@ def _upsert_sourcing_rule_stmt(*, sku_id: str) -> Any:  # Any: see above.
                 "mode": "force_supplier",
                 "supplier_slug": SUPPLIER_SLUG,
                 "updated_by": UPDATED_BY,
+                # The column has a server default but no `onupdate`, so a
+                # second write would otherwise keep the first one's timestamp —
+                # and "when did this SKU move to NOVA?" is exactly the question
+                # an audit asks of a row this script wrote.
+                "updated_at": func.now(),
             },
         )
     )
