@@ -654,6 +654,12 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
     bug — so it inserts the reserve (nova) mapping first in *insert* order
     but with a newer ``created_at`` than the incumbent (g2b), and asserts
     that the ``created_at`` order wins, not insertion order.
+
+    This pairing alone cannot tell ``created_at`` ordering from alphabetical
+    ordering — ``g2b`` is both the older row and the earlier slug — so the
+    test below it inverts the two and is what actually falsifies a
+    slug-only implementation. Both are kept: this one is the realistic
+    shape, that one is the proof.
     """
     from yupay.modules.integrations.models import SkuSupplierMapping
     from yupay.modules.sourcing import service as sourcing_svc
@@ -689,6 +695,55 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
 
     decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
     assert decision.primary == "supplier:g2b"
+    assert decision.fallback == "supplier:manual"
+
+
+async def test_auto_prefers_the_older_mapping_over_the_earlier_slug(
+    db_session: AsyncSession,
+) -> None:
+    """``created_at`` decides, and the slug only breaks a tie.
+
+    The test above pairs an older ``g2b`` with a newer ``nova``, where the
+    chronological and the alphabetical answer happen to agree — so an
+    implementation that sorted by ``supplier_slug`` alone would pass it while
+    getting the rule exactly wrong. This one inverts the pairing: the
+    incumbent is ``nova`` and the newcomer is ``g2b``, so the two orderings
+    disagree and only the chronological one gives the answer asserted here.
+    """
+    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _make_topup_sku(db_session)
+    db_session.add_all(
+        [
+            SkuSupplierMapping(
+                sku_id=sku_id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id="mlbb",
+                external_variant_id="100",
+                quantity=1,
+                extra={},
+                is_active=True,
+                created_at=datetime(2026, 9, 17, tzinfo=UTC),
+            ),
+            SkuSupplierMapping(
+                sku_id=sku_id,
+                supplier_slug="nova",
+                kind="game",
+                external_product_id="mobile_legends_ru",
+                external_variant_id="275_diamonds",
+                quantity=1,
+                extra={},
+                is_active=True,
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
+    assert decision.primary == "supplier:nova"
     assert decision.fallback == "supplier:manual"
 
 
