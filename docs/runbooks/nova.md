@@ -27,13 +27,15 @@ does. **As of 2026-09-17 the balance is `$0.0000` and no order has ever been
 placed on this key** — the adapter is wired but cannot fulfil anything until
 someone funds it and runs the first live order below.
 
-**Do not trust the admin integrations health card for NOVA.** It will show
-"Не настроен" (`reason: unknown supplier`) regardless of whether
-`NOVA_API_KEY` is actually set: `GET /api/v1/admin/integrations/nova/health`
-checks the slug against `_KNOWN_SUPPLIERS` in `integrations/routes.py`,
-which does not include `"nova"`, and `NovaFulfiller` defines no `health()`
-method for that route to call (unlike `g2b`/`gengine`/`waxpeer` — see
-ADR-0081's consequences). Check funding directly instead:
+**Where to look:** Admin → Интеграции → NOVA. The card probes
+`GET /api/v1/admin/integrations/nova/health`, which calls
+`NovaFulfiller.health()` and reports three things in one line — whether the
+key is set, whether NOVA accepted it, and the balance behind it. That probe
+exists because NOVA is a reserve: nothing routes to it on an ordinary day, so
+a dead key or an empty balance would otherwise be discovered at the moment
+somebody needs to switch a SKU to it.
+
+The same answer from a shell, when the admin is not to hand:
 
 ```bash
 curl -s https://nova-gifts.com/api/v2/balance -H "X-API-Key: $NOVA_API_KEY"

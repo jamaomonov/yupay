@@ -579,3 +579,35 @@ async def test_waxpeer_health_is_reachable(
     assert body["available"] is False
     assert "not configured" in (body.get("reason") or "").lower()
     assert body.get("reason") != "no health probe defined"
+
+
+async def test_nova_health_answers_from_the_adapter(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NOVA is a reserve, so nothing routes to it on an ordinary day.
+
+    That is exactly why the probe has to work: the key being dead or the
+    balance being empty would otherwise be discovered at the moment somebody
+    needs to switch a SKU to it.
+    """
+    from yupay.core import config as cfg
+
+    monkeypatch.setenv("NOVA_API_KEY", "")
+    cfg.get_settings.cache_clear()
+
+    admin = await _login_user(integration_client, tg_id=411)
+    await _grant_admin(db_session, tg_id=411)
+    r = await integration_client.get(
+        "/api/v1/admin/integrations/nova/health",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["supplier"] == "nova"
+    assert body["available"] is False
+    assert "not configured" in (body.get("reason") or "").lower()
+    # Not "unknown supplier" and not "no health probe defined": both would mean
+    # the page cannot answer for NOVA at all.
+    assert body.get("reason") != "no health probe defined"

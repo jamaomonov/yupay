@@ -186,21 +186,18 @@ mappings on one SKU) real; it is recorded here so it stays findable.
   `player_check.py` today — that import direction would simply invert. This
   is scoped as its own piece of work rather than folded into this branch,
   and is recorded here rather than left as a bare `TODO` per AGENTS.md §13.
-- **The admin integrations health probe does not cover NOVA.**
-  `GET /api/v1/admin/integrations/{supplier_slug}/health` (`integrations/routes.py`)
-  checks `supplier_slug` against a module-level `_KNOWN_SUPPLIERS = {"g2b", "waxpeer", "gengine"}`
-  before resolving a fulfiller, and `NovaFulfiller` (unlike `G2bFulfiller`,
-  `GEngineFulfiller`, `WaxpeerFulfiller`) defines no `health()` method at
-  all. The admin's supplier list (`KNOWN_SUPPLIERS` in the frontend's
-  `integrations/types.ts`) already includes `nova` and will call that route
-  for it, so the health card will show "Не настроен" / "unknown supplier"
-  **regardless of whether `NOVA_API_KEY` is actually set** — this was not
-  wired up by the task that added NOVA to the admin's supplier lists (its
-  scope was the mapping wizard and the supplier note, not the health
-  probe). `docs/runbooks/nova.md` documents the working alternative (a
-  direct call to their `/api/v2/balance`) so nobody trusts the broken card.
-  Closing this needs a `health()` method on `NovaFulfiller` (the other three
-  adapters show the shape) and adding `"nova"` to `_KNOWN_SUPPLIERS`.
+- **The admin health probe covers NOVA, and it was written because this
+  document nearly recorded that it did not.** Writing these consequences
+  surfaced that `GET /api/v1/admin/integrations/{supplier_slug}/health` checks
+  the slug against `_KNOWN_SUPPLIERS` in `integrations/routes.py` and then
+  calls the adapter's own `health()` — and that NOVA was in neither. The
+  admin's frontend list already carried `nova`, so its card would have read
+  "unknown supplier" whether or not the key was set. That is the wrong thing
+  to be wrong about for a **reserve**: nothing routes to NOVA on an ordinary
+  day, so a dead key or an empty balance is discovered at the moment somebody
+  needs it, and the probe is what moves that discovery earlier.
+  `NovaFulfiller.health()` now answers with the key's validity and the wallet
+  balance from `GET /api/v2/balance`, the same shape G-Engine and Waxpeer use.
 
 ## Validation
 

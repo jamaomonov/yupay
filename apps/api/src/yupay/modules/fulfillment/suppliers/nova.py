@@ -387,6 +387,33 @@ class NovaFulfiller(Fulfiller):
             "nova exposes no cancel endpoint", money_outcome=MoneyOutcome.UNKNOWN
         )
 
+    async def health(self) -> dict[str, Any]:
+        """Connectivity, key validity and wallet balance, in one call.
+
+        ``GET /admin/integrations/nova/health`` reads this. It matters more
+        here than for the other suppliers: NOVA is a reserve, so nothing routes
+        to it on an ordinary day, and the first thing anyone asks before
+        switching a SKU to it is whether the key still works and whether there
+        is money behind it. Without this the answer needed a shell.
+
+        Never raises: an operator opening the integrations page must not meet
+        an error boundary because a supplier is down.
+        """
+        if not self.available:
+            return {"available": False, "reason": "NOVA_API_KEY is not configured"}
+        try:
+            data = await self._client().get_balance()
+        except Exception as exc:  # noqa: BLE001 -- a probe must not crash the page
+            return {"available": False, "reason": str(exc)[:200]}
+        balance = data.get("balance")
+        return {
+            "available": True,
+            # Their balance is a decimal string ("0.0000"); the page wants the
+            # two places everything else on it shows.
+            "balance": f"{float(balance):.2f}" if balance is not None else None,
+            "currency": data.get("currency"),
+        }
+
 
 # ---------- helpers ----------
 

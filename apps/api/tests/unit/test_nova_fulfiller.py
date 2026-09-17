@@ -360,3 +360,41 @@ async def test_their_refusal_never_carries_back_the_player_id(
     assert "1313232551" not in message
     assert "6618" not in message
     assert "not found" in message
+
+
+async def test_health_reports_the_balance(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The admin page's probe, and the answer to "can we switch a SKU to NOVA".
+
+    NOVA is a reserve, so nothing routes to it on an ordinary day — the key
+    being dead or the balance being empty is discovered at the moment somebody
+    needs it, unless the page can say so first.
+    """
+
+    class _Balance:
+        async def get_balance(self) -> dict[str, Any]:
+            return {"ok": True, "balance": "12.3456", "currency": "USD"}
+
+    f = NovaFulfiller(client=_Balance())  # type: ignore[arg-type]
+    monkeypatch.setattr(NovaFulfiller, "available", property(lambda _self: True))
+    assert await f.health() == {"available": True, "balance": "12.35", "currency": "USD"}
+
+
+async def test_health_never_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    class _Broken:
+        async def get_balance(self) -> dict[str, Any]:
+            raise NovaUnavailableError("boom")
+
+    f = NovaFulfiller(client=_Broken())  # type: ignore[arg-type]
+    monkeypatch.setattr(NovaFulfiller, "available", property(lambda _self: True))
+    out = await f.health()
+    assert out["available"] is False
+    assert "boom" in str(out["reason"])
+
+
+async def test_health_without_a_key_says_so(monkeypatch: pytest.MonkeyPatch) -> None:
+    f = NovaFulfiller(client=_FakeClient())  # type: ignore[arg-type]
+    monkeypatch.setattr(NovaFulfiller, "available", property(lambda _self: False))
+    assert await f.health() == {
+        "available": False,
+        "reason": "NOVA_API_KEY is not configured",
+    }
