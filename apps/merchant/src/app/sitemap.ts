@@ -6,8 +6,12 @@ import { dayStamp, localeUrl, SEO_PATHS } from "@/lib/seo";
 
 /**
  * Locale-aware sitemap, built off the single `SEO_PATHS` list `seo.ts`
- * exports — so a path added there needs no second edit here, and
- * `llms.txt/route.ts` can never list a page this file does not.
+ * exports — so a path added there needs no second edit here.
+ *
+ * `llms.txt/route.ts` is **not** derived from that list: it curates its own
+ * links, because its grouping and prose do not map onto a flat set of paths.
+ * `seo.test.ts` is what keeps the two honest — one test per side, each
+ * asserting the paths it names resolve to a real page.
  */
 function languagesFor(path: string): Record<string, string> {
   return Object.fromEntries(LOCALES.map((l) => [l, localeUrl(l, path)]));
