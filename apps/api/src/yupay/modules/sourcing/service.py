@@ -113,9 +113,14 @@ async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) ->
     product: Product | None = sku.product if sku is not None else None
     kind = product.kind if product is not None else "voucher"
 
-    # Active mappings — order doesn't matter; we only need to know if
-    # there's at least one usable supplier slug. For voucher this picks
-    # the fallback supplier; for top_up it picks the primary.
+    # Order matters, and it did not used to. A top-up SKU with a reserve
+    # supplier carries two active mappings, and `.limit(1)` with no ORDER BY
+    # picks whichever row Postgres happens to return — which can change after a
+    # VACUUM, silently moving somebody's orders to a different supplier. The
+    # oldest active mapping is the incumbent: it is where orders have been
+    # going, so it keeps the route, and a reserve added later can never take it
+    # by being added. Switching suppliers stays an explicit `force_supplier`
+    # decision. `supplier_slug` breaks a created_at tie so the answer is total.
     mapping_slug: str | None = (
         await db.execute(
             select(SkuSupplierMapping.supplier_slug)
@@ -123,6 +128,7 @@ async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) ->
                 SkuSupplierMapping.sku_id == sku_id,
                 SkuSupplierMapping.is_active.is_(True),
             )
+            .order_by(SkuSupplierMapping.created_at.asc(), SkuSupplierMapping.supplier_slug.asc())
             .limit(1)
         )
     ).scalar_one_or_none()

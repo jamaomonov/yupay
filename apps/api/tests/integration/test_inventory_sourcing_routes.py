@@ -18,6 +18,7 @@ import hashlib
 import hmac
 import json
 import time
+from datetime import UTC, datetime
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -25,6 +26,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
@@ -642,6 +644,54 @@ async def test_topup_with_mapping_routes_to_supplier(db_session: AsyncSession) -
     assert decision.strict is False
 
 
+async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
+    db_session: AsyncSession,
+) -> None:
+    """A reserve mapping must never take the route by being added.
+
+    The older row is the incumbent: it is the one orders have been going to.
+    Without an explicit order this test is a coin flip, which is exactly the
+    bug — so it inserts the reserve (nova) mapping first in *insert* order
+    but with a newer ``created_at`` than the incumbent (g2b), and asserts
+    that the ``created_at`` order wins, not insertion order.
+    """
+    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _make_topup_sku(db_session)
+    db_session.add_all(
+        [
+            SkuSupplierMapping(
+                sku_id=sku_id,
+                supplier_slug="nova",
+                kind="game",
+                external_product_id="mlbb",
+                external_variant_id="100",
+                quantity=1,
+                extra={},
+                is_active=True,
+                created_at=datetime(2026, 9, 17, tzinfo=UTC),
+            ),
+            SkuSupplierMapping(
+                sku_id=sku_id,
+                supplier_slug="g2b",
+                kind="game",
+                external_product_id="mlbb",
+                external_variant_id="100",
+                quantity=1,
+                extra={},
+                is_active=True,
+                created_at=datetime(2026, 1, 1, tzinfo=UTC),
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
+    assert decision.primary == "supplier:g2b"
+    assert decision.fallback == "supplier:manual"
+
+
 async def test_voucher_with_mapping_prefers_supplier_over_mock(
     db_session: AsyncSession, _seed_sku: str
 ) -> None:
@@ -742,3 +792,51 @@ async def test_force_supplier_needs_a_mapping_when_the_adapter_does(
     )
     assert r.status_code == 200, r.text
     assert r.json()["supplier_slug"] == "g2b"
+
+
+async def test_force_supplier_nova_needs_an_active_mapping(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """``nova`` joined ``MAPPING_REQUIRED_SUPPLIERS`` — forcing a SKU onto it
+    with no active mapping must be refused the same way g2b/gengine are."""
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    with pytest.raises(ValidationError):
+        await sourcing_svc.set_rule(
+            db_session,
+            sku_id=_seed_sku,
+            mode="force_supplier",
+            supplier_slug="nova",
+            admin_id="admin-1",
+        )
+
+
+async def test_force_supplier_nova_accepted_with_an_active_mapping(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Once an active nova mapping exists, forcing the SKU onto it succeeds."""
+    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=_seed_sku,
+            supplier_slug="nova",
+            kind="voucher",
+            external_product_id="42",
+            external_variant_id=None,
+            quantity=1,
+            extra={},
+            is_active=True,
+        )
+    )
+    await db_session.commit()
+
+    rule = await sourcing_svc.set_rule(
+        db_session,
+        sku_id=_seed_sku,
+        mode="force_supplier",
+        supplier_slug="nova",
+        admin_id="admin-1",
+    )
+    assert rule.supplier_slug == "nova"
