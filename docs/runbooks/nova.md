@@ -82,9 +82,26 @@ Mappings before routing orders there`
 
 Create it at **Admin → Integrations → Mappings** — `category_id` (e.g.
 `mobile_legends_ru`) into `external_product_id`, `offer_id` into
-`external_variant_id` — or run the seed (`scripts/seed/2026-09-17_nova_mappings.py`,
-inside the api container so it can reach NOVA) to bulk-match a brand's
-offers by denomination and print what it could not match.
+`external_variant_id` — or run the seed for a whole brand at once:
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T api \
+  python - < scripts/seed/2026-09-17_nova_mappings.py
+```
+
+It matches on denomination number only and writes ACTIVE mappings only on an
+exact match, then prints two tables: `matched` (`sku_code`, NOVA's offer
+name, our `cost_usdt` beside their `price_usd` — compare before trusting a
+margin) and `unmatched` (`sku_code`, `denomination`, why) for an operator to
+finish by hand in the admin. Writing mappings active is safe on its own —
+sourcing still picks the **oldest** active mapping (see "Switch it back"
+below), so nothing routes to NOVA until `force_supplier` says so.
+
+**PUBG Mobile is a guess, check it before trusting it.** NOVA sells PUBG
+under four speed tiers (`pubg_mobile_auto`/`_fast`/`_manual`/`_reserve`,
+same game, different fulfilment speed and price); the seed picks `_auto`
+on a hunch. Confirm that's the right tier against the `matched` table's
+price column, and edit the mapping by hand if not.
 
 **Switch it on:** Admin → **Sourcing** (`/sourcing`) → pick the SKU → mode
 **"Только поставщик"** (`force_supplier`) → choose **NOVA** → Save. Every
