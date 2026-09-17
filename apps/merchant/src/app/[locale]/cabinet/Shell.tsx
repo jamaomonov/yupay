@@ -165,6 +165,12 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
           aria-label={t("navLabel")}
           className="border-border flex gap-2 overflow-x-auto border-b px-4 py-2.5 md:hidden"
         >
+          <MobileLink
+            href={pathFor(locale, "/cabinet")}
+            label={t("navDashboard")}
+            icon={LayoutDashboard}
+            active={here === "/cabinet"}
+          />
           <MobileLink href={catalogHref(null)} label={t("navCatalog")} active={onCatalog} />
           {ACCOUNT.map(({ key, path, icon }) => (
             <MobileLink
