@@ -84,7 +84,7 @@ async def run_nova_reconcile() -> None:
     """One scheduler tick: reconcile every in_progress nova task.
 
     Failures are isolated per task — logged (task id + error only, never
-    PII like ``steam_login``) and skipped — so a single bad row can't stop
+    PII like ``player_id``) and skipped — so a single bad row can't stop
     the rest of the backlog from being swept.
     """
     task_ids = await _list_stuck_task_ids()
