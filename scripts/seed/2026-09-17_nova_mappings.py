@@ -74,6 +74,11 @@ BRAND_CATEGORIES: dict[str, str] = {
 #: A denomination label: a number, then the unit it counts.
 _DENOM = re.compile(r"^\s*(\d+)\s*(.*)$")
 
+#: A digit-grouping separator, and only that: a comma or a space with a digit on
+#: each side. Matched this narrowly on purpose — a blanket space strip would
+#: join a number to whatever followed it.
+_GROUPING = re.compile(r"(?<=\d)[\s,\u00a0](?=\d)")
+
 #: What a denomination sells: how many, and of what. Both halves are the key.
 _Denomination = tuple[int, frozenset[str]]
 
@@ -103,7 +108,11 @@ def _denomination(text: str | None) -> _Denomination | None:
     """
     if not text:
         return None
-    m = _DENOM.match(text)
+    # "1,800 UC" and "1 800 UC" are the same denomination as "1800 UC". Without
+    # this the number would stop at the separator and the remainder would leak
+    # into the unit set, which fails safe (nothing matches) but puts a baffling
+    # line in the unmatched table.
+    m = _DENOM.match(_GROUPING.sub("", text))
     if m is None:
         return None
     units = frozenset(w for w in re.split(r"[^0-9a-z]+", m.group(2).lower()) if w)
@@ -176,7 +185,9 @@ def _offers_by_denomination(
     return by_denom
 
 
-def _upsert_stmt(*, sku_id: str, category_id: str, offer_id: str) -> Any:
+def _upsert_stmt(  # Any: an Insert whose generic parameters SQLAlchemy does not export.
+    *, sku_id: str, category_id: str, offer_id: str
+) -> Any:
     """The ``ON CONFLICT (sku_id, supplier_slug) DO UPDATE`` for one mapping."""
     return (
         pg_insert(SkuSupplierMapping)
@@ -217,15 +228,18 @@ async def _match_brand(
 
     try:
         body = await client.get_offers(category_id)
-    except NovaUnavailableError as exc:
-        raise SystemExit(f"cannot reach NOVA: {exc}") from exc
-    except NovaError as exc:
+    except (NovaError, NovaUnavailableError) as exc:
         raise SystemExit(f"cannot reach NOVA: {exc}") from exc
 
     offers = [o for o in (body.get("offers") or []) if isinstance(o, dict)]
     by_denom = _offers_by_denomination(offers)
     print(f"{brand_slug} ({category_id}): {len(skus)} sku(s), {len(offers)} nova offer(s)")
 
+    # Two passes on purpose. The first decides; the second writes. Nothing is
+    # upserted until every SKU of the brand has been resolved, because the last
+    # guard below can only be applied once they all have: two of OUR SKUs can
+    # land on one offer, and neither of them may be written when they do.
+    claims: list[tuple[Any, dict[str, Any]]] = []
     matched: list[_Matched] = []
     unmatched: list[_Unmatched] = []
     for sku in skus:
@@ -275,6 +289,32 @@ async def _match_brand(
             )
             continue
 
+        claims.append((sku, offer))
+
+    # The mirror of the guard above, on our side of the pairing. NOVA's catalogue
+    # is not the only one that can be ambiguous: a legacy row, a duplicate, or a
+    # product whose label happens to read like a plain top-up can leave two of
+    # our active SKUs claiming one offer. Writing both would send two different
+    # products to the same thing, and the only trace would be two rows with the
+    # same offer name in a table nobody reads twice. So neither is written.
+    claimants: dict[str, list[str]] = {}
+    for sku, offer in claims:
+        claimants.setdefault(str(offer.get("offer_id") or "").strip(), []).append(sku.sku_code)
+
+    for sku, offer in claims:
+        offer_id = str(offer.get("offer_id") or "").strip()
+        offer_name = str(offer.get("name") or "")
+        rivals = claimants[offer_id]
+        if len(rivals) > 1:
+            others = ", ".join(c for c in rivals if c != sku.sku_code)
+            unmatched.append(
+                _Unmatched(
+                    sku.sku_code,
+                    sku.denomination,
+                    f"{len(rivals)} of our SKUs claim {offer_name!r} ({others}) — map them by hand",
+                )
+            )
+            continue
         await session.execute(
             _upsert_stmt(sku_id=sku.id, category_id=category_id, offer_id=offer_id)
         )
