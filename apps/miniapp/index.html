@@ -11,7 +11,27 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#121927" />
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <!-- Telegram's own bridge, served from OUR origin instead of
+         `https://telegram.org/js/telegram-web-app.js`.
+
+         It used to be a plain blocking `<script>` on that third-party domain,
+         and that is what «Не удалось загрузить YuPay» was: telegram.org is
+         blocked or throttled by some Uzbek carriers — the Telegram *app* keeps
+         working, because it talks to its own data centres and not to the
+         website — and a blocking script in `<head>` that never answers stops
+         the parser before `<body>` exists. Measured with the domain dropped:
+         our HTML arrived in 184 ms and the page painted nothing for 25 s.
+         Telegram's webview calls that a failed load, so the user is told the
+         mini app is broken while the server is idle and healthy.
+
+         `defer` keeps the execution order (deferred scripts run in document
+         order, before the module below) without holding the parser, and the
+         copy lives in `public/js/` so the bytes come from the origin the user
+         has already reached. Refreshing it is a documented step in
+         `docs/runbooks/miniapp-telegram-script.md`; the API surface this app
+         uses (`initData`, `expand`, `BackButton`, `MainButton`, themes) has
+         been stable for years, so a pinned copy ages slowly. -->
+    <script defer src="/js/telegram-web-app.js"></script>
     <!-- Rubik replaces Inter as the UI font. Picked for: full native
          Cyrillic (RU/UZ), mild rounded corners (warmer than Inter without
          going kid-app), 400–700 weight range matching the existing hierarchy,
@@ -27,7 +47,95 @@
          thing, done by hand, because the mini app is a plain Vite build. -->
   </head>
   <body>
-    <div id="root"></div>
+    <!-- The boot screen, inline on purpose.
+
+         `#root` was empty, so until ~220 KB of JS had arrived and run there
+         was nothing on screen at all — and a mini app that shows nothing is a
+         mini app Telegram reports as broken. This markup costs under a
+         kilobyte, travels inside the HTML, and needs neither our stylesheet
+         nor our bundle, so the slowest connection still gets a page that is
+         visibly loading. React's `createRoot` clears the container on its
+         first commit, which is what removes all of this — no cleanup code and
+         nothing to forget.
+
+         Written in ES5 with inline styles for the same reason the rest of this
+         file is careful: the devices that hit the failure hardest are the old
+         ones. -->
+    <div id="root">
+      <div
+        style="
+          display: flex;
+          min-height: 100vh;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 14px;
+          padding: 24px;
+          background: #121927;
+          color: #e8edf7;
+          font-family:
+            Rubik,
+            -apple-system,
+            BlinkMacSystemFont,
+            &quot;Segoe UI&quot;,
+            Roboto,
+            sans-serif;
+          text-align: center;
+        "
+      >
+        <div
+          style="
+            width: 26px;
+            height: 26px;
+            border: 2px solid rgba(232, 237, 247, 0.25);
+            border-top-color: #e8edf7;
+            border-radius: 50%;
+            animation: yp-spin 0.9s linear infinite;
+          "
+        ></div>
+        <div style="font-size: 15px; opacity: 0.75">Загружаем…</div>
+        <button
+          id="boot-retry"
+          type="button"
+          onclick="location.reload()"
+          style="
+            display: none;
+            margin-top: 4px;
+            padding: 10px 18px;
+            border: 0;
+            border-radius: 10px;
+            background: #cdfb45;
+            color: #121927;
+            font-size: 14px;
+            font-weight: 600;
+          "
+        >
+          Обновить
+        </button>
+        <div id="boot-hint" style="display: none; max-width: 280px; font-size: 12px; opacity: 0.5">
+          Если не открывается — проверьте связь и нажмите «Обновить».
+        </div>
+      </div>
+    </div>
+    <style>
+      @keyframes yp-spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+    </style>
+    <script>
+      // Ten seconds is past every healthy load and short of the webview's own
+      // patience, so the offer to retry arrives while the user is still
+      // looking. If React has mounted by then the nodes are gone and these
+      // lookups simply find nothing.
+      setTimeout(function () {
+        var retry = document.getElementById("boot-retry");
+        var hint = document.getElementById("boot-hint");
+        if (retry) retry.style.display = "inline-block";
+        if (hint) hint.style.display = "block";
+      }, 10000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
