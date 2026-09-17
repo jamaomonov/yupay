@@ -14,10 +14,12 @@ API stays the same either way (ADR-0064).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import html
 import sys
 from collections.abc import Coroutine, Iterable
+from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
 from sqlalchemy import Row, func, select, text
@@ -617,6 +619,39 @@ async def _inventory_fulfill(db: AsyncSession, *, task: FulfillmentTask, item: O
     return True
 
 
+async def _record_supplier_charge(
+    db: AsyncSession, *, item: OrderItem, extra: dict[str, Any]
+) -> None:
+    """Freeze what the supplier actually took onto a variable-amount line.
+
+    Only variable-amount SKUs, and only when the supplier states a figure.
+
+    A fixed SKU already froze its cost at checkout from the catalogue
+    (ADR-0053), and overwriting that with a supplier's own number would change
+    how every fixed line reports — a different decision, not this one. A
+    variable line froze nothing, because until now there was nothing to freeze:
+    ``margin_usd_expr`` assumed a dollar of wallet costs a dollar. NOVA's Steam
+    is the first supplier for which that is false, and a number we were charged
+    beats an assumption about what we would be.
+
+    Written once and never overwritten: the first statement is the create's,
+    and a later poll restating it must not move a figure the margin has already
+    been reported against.
+    """
+    from yupay.modules.catalog.models import Sku
+
+    charged = str(extra.get("supplier_charged_usd") or "").strip()
+    if not charged or item.cost_usdt is not None:
+        return
+    variable = (
+        await db.execute(select(Sku.variable_amount).where(Sku.id == item.sku_id))
+    ).scalar_one_or_none()
+    if not variable:
+        return
+    with contextlib.suppress(InvalidOperation):
+        item.cost_usdt = Decimal(charged)
+
+
 async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     """Run a single task and persist the outcome.
 
@@ -704,6 +739,7 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     task.external_order_id = result.external_order_id
     if result.extra_metadata:
         task.extra_metadata = {**task.extra_metadata, **result.extra_metadata}
+        await _record_supplier_charge(db, item=item, extra=result.extra_metadata)
 
     await _record_attempt(
         db,
@@ -2240,6 +2276,7 @@ async def process_webhook_update(
     # does with FulfillResult.extra_metadata.
     if status.extra_metadata:
         task.extra_metadata = {**(task.extra_metadata or {}), **status.extra_metadata}
+        await _record_supplier_charge(db, item=item, extra=status.extra_metadata)
 
     if status.outcome == "succeeded":
         task.status = "succeeded"

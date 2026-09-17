@@ -42,7 +42,7 @@ from __future__ import annotations
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
-from sqlalchemy import Case, ColumnElement, ScalarSelect, Subquery, case, func, select
+from sqlalchemy import Case, ColumnElement, ScalarSelect, Subquery, and_, case, func, select
 
 from yupay.modules.catalog.models import Sku
 from yupay.modules.integrations.models import SupplierPriceHistory
@@ -126,6 +126,20 @@ def margin_usd_expr() -> Case[Any]:
     ``qty * unit_price_usd * (multiplier - 1)``. See
     ``docs/superpowers/specs/2026-08-04-steam-margin-analytics-design.md``.
 
+    That ``(multiplier - 1)`` shape encodes an assumption: a dollar of wallet
+    costs a dollar, so the markup *is* the margin. True of Waxpeer and
+    G-Engine, which charge face value. False of NOVA, whose Steam wallet is
+    bought at a plan discount — $10 of wallet costs us $9.80 — so a line
+    fulfilled through it that reports margin this way understates it by the
+    discount. Once ``fulfillment.service._record_supplier_charge`` has frozen
+    what NOVA actually took onto ``OrderItem.cost_usdt`` (only ever from a
+    figure the supplier itself stated, never inferred from a rate), a
+    variable line that knows its cost uses it instead:
+    ``qty * unit_price_usd * multiplier - qty * cost_usdt``, which is the
+    same gross with the real cost subtracted rather than the assumed one. A
+    line that does not know its cost keeps the assumption it was written
+    under.
+
     Fixed SKUs without a known cost evaluate to ``NULL``, so ``func.sum`` skips
     them rather than valuing them at zero — an unknown cost must not read as a
     100% margin. Callers that show the total are expected to count those units
@@ -159,6 +173,12 @@ def margin_usd_expr() -> Case[Any]:
     """
     variable_multiplier = func.coalesce(OrderItem.rate_multiplier, Sku.rate_multiplier)
     return case(
+        (
+            and_(Sku.variable_amount.is_(True), OrderItem.cost_usdt.isnot(None)),
+            OrderItem.qty * OrderItem.unit_price_usd * variable_multiplier
+            - OrderItem.qty * OrderItem.cost_usdt
+            - _line_discount(),
+        ),
         (
             Sku.variable_amount.is_(True),
             OrderItem.qty * OrderItem.unit_price_usd * (variable_multiplier - 1) - _line_discount(),
