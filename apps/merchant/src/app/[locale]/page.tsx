@@ -282,7 +282,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
         <section className="mt-20">
           <h2 className={SECTION_HEADING}>{t("compareHeading")}</h2>
           <ul className="mt-6 grid gap-3 sm:grid-cols-2">
-            {["1", "2", "3", "4", "5", "6"].map((n) => (
+            {["1", "2", "3", "4", "5"].map((n) => (
               <li key={n} className="text-tx-mute flex gap-2.5 text-sm leading-relaxed">
                 <Check size={16} aria-hidden="true" className="text-primary-ink mt-0.5 shrink-0" />
                 {t(`compare${n}`)}
@@ -311,10 +311,12 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
 
         <section className="mt-20">
           <h2 className={SECTION_HEADING}>{t("trustHeading")}</h2>
-          <p className="text-tx-mute mt-4 max-w-3xl text-sm leading-relaxed">{t("trustRetail")}</p>
+          {/* Two links, no paragraph: the retail store is the claim, and a
+              sentence explaining that it is the same catalog said nothing the
+              link does not. */}
           <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-[13px]">
             <a href="https://yupay.uz" className="text-primary-ink font-semibold">
-              yupay.uz
+              {t("trustRetail")}
             </a>
             <Link href={pathFor(locale, "/offer")} className="text-tx-mute">
               {t("trustOffer")}
