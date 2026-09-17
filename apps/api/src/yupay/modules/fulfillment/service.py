@@ -14,7 +14,6 @@ API stays the same either way (ADR-0064).
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import hashlib
 import html
 import sys
@@ -636,20 +635,60 @@ async def _record_supplier_charge(
 
     Written once and never overwritten: the first statement is the create's,
     and a later poll restating it must not move a figure the margin has already
-    been reported against.
+    been reported against. The create is not always the one that states it —
+    a NOVA create that comes back without its debit block carries no charge at
+    all, and for those orders the poll is the *only* recording path.
+
+    "Once" is enforced by the read below rather than by the column, and that is
+    safe because both callers hold the task row for update before they get
+    here (``_load_task(..., for_update=True)`` on the poll path, and the
+    ``in_progress`` flush on the fulfil path). Relax either and this needs a
+    different guard.
+
+    **A figure has to be a positive, finite number to be a cost.** Their zero
+    is not "free" and their ``NaN`` is not a number: ``cost_usdt`` carries a
+    positive check (``ck_order_items_cost_usdt_positive``), so a ``0`` written
+    here raises an ``IntegrityError`` *after* the supplier was already paid and
+    the goods already delivered — the saga rolls the task back and reports a
+    delivered top-up as a failure needing a human. ``NaN`` is worse for being
+    quiet: Postgres sorts it above every numeric, so the check passes and every
+    margin sum over that window reads ``NaN`` afterwards. Neither is a cost, so
+    neither is recorded.
+
+    A refunded order's charge is still frozen here. That is deliberate: it is
+    what they took, and what they gave back is a separate fact the refund path
+    owns. A line whose money came back should not be in a margin window at all,
+    which is a question about order status rather than about this column.
     """
     from yupay.modules.catalog.models import Sku
 
     charged = str(extra.get("supplier_charged_usd") or "").strip()
     if not charged or item.cost_usdt is not None:
         return
+    try:
+        value = Decimal(charged)
+    except InvalidOperation:
+        return
+    if not value.is_finite() or value <= 0:
+        log.warning(
+            "fulfillment.supplier_charge_not_a_cost",
+            order_item_id=item.id,
+            charged=charged[:32],
+            hint="a supplier stated a charge that is not a positive finite "
+            "number; not recording it, because the column refuses it and the "
+            "refusal would land on an order that was already delivered",
+        )
+        return
+    # Read rather than `item.sku`: the poll path loads the item bare, and one
+    # helper that works on both beats two that differ by which caller reached
+    # it. The guard above returns first, so a supplier that states nothing
+    # never pays for this query.
     variable = (
         await db.execute(select(Sku.variable_amount).where(Sku.id == item.sku_id))
     ).scalar_one_or_none()
     if not variable:
         return
-    with contextlib.suppress(InvalidOperation):
-        item.cost_usdt = Decimal(charged)
+    item.cost_usdt = value
 
 
 async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:

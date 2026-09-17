@@ -210,12 +210,27 @@ class OrderItem(Base):
     # recorded", which ``orders.revenue`` resolves against the SKU.
     rate_multiplier: Mapped[Decimal | None] = mapped_column(Numeric(10, 4), nullable=True)
     fx_rate: Mapped[Decimal | None] = mapped_column(Numeric(20, 10), nullable=True)
-    # What this line cost us, frozen at checkout — the same treatment ADR-0051
-    # gave ``rate_multiplier``, on the column it did not cover. ``Sku.cost_usdt``
-    # is live: the hourly supplier-price job rewrites it as upstream prices
-    # move, so valuing a sale against it re-priced every past order of that SKU
-    # every time the supplier moved. NULL on rows written before this column
-    # existed, which ``orders.revenue`` resolves against the price history.
+    # What this line cost us. Two kinds of line fill it in two ways, and the
+    # difference matters to anyone reading a margin.
+    #
+    # A **fixed** line freezes it at checkout from the catalogue — the same
+    # treatment ADR-0051 gave ``rate_multiplier``, on the column it did not
+    # cover. ``Sku.cost_usdt`` is live: the hourly supplier-price job rewrites
+    # it as upstream prices move, so valuing a sale against it re-priced every
+    # past order of that SKU every time the supplier moved. NULL there means
+    # "written before this column existed", which ``orders.revenue`` resolves
+    # against the price history.
+    #
+    # A **variable-amount** line (Steam) freezes nothing at checkout, because
+    # at checkout there is nothing to freeze: what a dollar of wallet costs
+    # depends on which supplier ends up filling it. It is written *after*
+    # checkout instead, by ``fulfillment.service._record_supplier_charge``,
+    # from what the supplier itself said it took — once, never overwritten.
+    # NULL there means "no supplier stated a charge", **not** "an old row", and
+    # it is never resolved against the price history: ``margin_usd_expr``'s
+    # variable branches answer before that lookup is reached. A line with no
+    # figure keeps the older assumption that a dollar of wallet costs a dollar,
+    # which is true of Waxpeer and G-Engine and false of NOVA.
     #
     # INTERNAL. Never add this to an ``*Out`` schema that a customer can reach:
     # it is our purchase price, and the order response it would ride on is

@@ -201,3 +201,58 @@ async def test_a_discounted_variable_line_keeps_the_invariant(db_session: AsyncS
     assert gross == Decimal("10.00")
     assert margin == Decimal("0.20")
     assert gross - margin == Decimal("9.80")
+
+
+async def test_the_new_branch_falls_back_to_the_sku_multiplier_like_the_gross_does(
+    db_session: AsyncSession,
+) -> None:
+    """The property `margin_usd_expr`'s docstring calls the way the invariant
+    "quietly stops holding", asserted rather than described.
+
+    The gross prefers the multiplier frozen on the line and falls back to the
+    live SKU only for rows written before that column existed (ADR-0051). The
+    margin has to resolve it the *same* way: read the live SKU while the gross
+    reads the frozen one and the two stop agreeing the first time somebody
+    edits a SKU's markup. Every other case here pins the line's own multiplier,
+    so this is the only one that exercises the fallback — and it is the one a
+    future edit swapping the coalesce for `Sku.rate_multiplier` would pass
+    while breaking the others.
+    """
+    sku_id = await _seed_sku(db_session, "nova-fallback", variable=True, sku_multiplier="1.20")
+    item_id = await _line(
+        db_session, sku_id=sku_id, unit="10.00", pinned_multiplier=None, cost="9.80"
+    )
+
+    gross, margin = await _figures(db_session, item_id)
+
+    assert gross == Decimal("12.00")
+    assert margin == Decimal("2.20")
+    assert gross - margin == Decimal("9.80")
+
+
+async def test_the_frozen_multiplier_beats_the_live_one_in_both_expressions(
+    db_session: AsyncSession,
+) -> None:
+    """The case where the two answers actually disagree.
+
+    The test above proves the fallback is reached when the line froze nothing;
+    it cannot prove the *precedence*, because a SKU whose multiplier equals the
+    line's gives the same number either way. Here they differ — the line froze
+    1.10, the SKU has since been edited to 1.20 — so an expression reading the
+    live SKU produces 12.00/2.20 and one honouring ADR-0051's freeze produces
+    11.00/1.20. Only the second is right: an admin editing a markup must not
+    revalue orders already taken.
+
+    Verified by mutation: replacing the coalesce with `Sku.rate_multiplier`
+    leaves every other case in this file green and fails this one.
+    """
+    sku_id = await _seed_sku(db_session, "nova-frozen-wins", variable=True, sku_multiplier="1.20")
+    item_id = await _line(
+        db_session, sku_id=sku_id, unit="10.00", pinned_multiplier="1.10", cost="9.80"
+    )
+
+    gross, margin = await _figures(db_session, item_id)
+
+    assert gross == Decimal("11.00"), "the gross must use the rate frozen at checkout"
+    assert margin == Decimal("1.20"), "and so must the margin, or the two stop agreeing"
+    assert gross - margin == Decimal("9.80")

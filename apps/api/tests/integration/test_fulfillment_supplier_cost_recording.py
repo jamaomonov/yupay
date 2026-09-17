@@ -277,3 +277,67 @@ async def test_a_later_poll_never_moves_a_cost_the_create_already_wrote(
 
     item = await _reload_item(db_session, task.order_item_id)
     assert item.cost_usdt == Decimal("9.80"), "the create's figure must survive the poll"
+
+
+async def test_the_poll_records_a_charge_the_create_never_stated(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """For some orders the poll is the ONLY recording path.
+
+    A NOVA create that answers without its debit block carries no charge at
+    all — pinned on the client side by "an order without a debit gains no
+    charge key". Those orders learn what they cost on a later poll, and if the
+    poll path were unwired, or wired and then deleted, they would never record
+    one. The test above this cannot see that: it asserts the value the create
+    already wrote, which a poll that does nothing whatsoever also satisfies.
+    """
+    sku_id = await _seed_sku(db_session, "poll-only", variable=True)
+    task = await _seed_task(db_session, sku_id=sku_id, tag="poll-only")
+    # The create states nothing — the shape their API actually produces when
+    # `novaDebit` is absent.
+    fake = _FakeFulfiller(fulfill_result=_result(extra={"nova_status": "processing"}))
+    monkeypatch.setattr(ff_svc, "get_fulfiller", lambda slug: fake)
+    await ff_svc.process_task(db_session, task_id=task.id)
+    await db_session.commit()
+
+    item = await _reload_item(db_session, task.order_item_id)
+    assert item.cost_usdt is None, "nothing was stated, so nothing may be recorded"
+
+    task.status = "in_progress"
+    await db_session.commit()
+    fake.status_result = _status(extra={"supplier_charged_usd": "9.80"})
+
+    await ff_svc.process_webhook_update(db_session, task_id=task.id)
+    await db_session.commit()
+
+    item = await _reload_item(db_session, task.order_item_id)
+    assert item.cost_usdt == Decimal("9.80")
+
+
+@pytest.mark.parametrize("stated", ["0", "0.00", "-1.00", "NaN", "not a number"])
+async def test_a_charge_that_is_not_a_cost_is_ignored_not_written(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch, stated: str
+) -> None:
+    """A zero, a negative and a NaN are not costs, and writing one is worse
+    than dropping it.
+
+    `cost_usdt` carries a positive check, so a `0` reaches the database as an
+    IntegrityError *after* the supplier was paid and the goods delivered — the
+    saga rolls the task back and reports a delivered top-up as a failure for a
+    human to settle. `NaN` is quieter and worse: Postgres sorts it above every
+    numeric so the check passes, and every margin sum over that window reads
+    NaN afterwards.
+    """
+    sku_id = await _seed_sku(db_session, f"bad-{stated}", variable=True)
+    task = await _seed_task(db_session, sku_id=sku_id, tag=f"bad-{stated}")
+    fake = _FakeFulfiller(fulfill_result=_result(extra={"supplier_charged_usd": stated}))
+    monkeypatch.setattr(ff_svc, "get_fulfiller", lambda slug: fake)
+
+    task = await ff_svc.process_task(db_session, task_id=task.id)
+    await db_session.commit()
+
+    item = await _reload_item(db_session, task.order_item_id)
+    assert item.cost_usdt is None
+    # And the order is still delivered: refusing the figure must not cost the
+    # customer their top-up.
+    assert task.status == "succeeded"

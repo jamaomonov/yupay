@@ -1,8 +1,19 @@
 # Design — Steam (variable-amount) margin in business analytics
 
 **Date:** 2026-08-04
-**Status:** Approved (brainstorm), focused fix
+**Status:** Approved (brainstorm), focused fix — **superseded in part on
+2026-09-17**, see below
 **Scope:** `apps/api/src/yupay/modules/stats/analytics.py` (business analytics margin) + tests
+
+> **Superseded in part.** This document's answer — a variable line's cost is
+> the face value, so margin is `qty × unit_price_usd × (multiplier − 1)` — was
+> right while every Steam supplier charged face value, which Waxpeer and
+> G-Engine do. NOVA does not: its Steam wallet carries a plan discount, so $10
+> of wallet costs $9.80. Since `docs/superpowers/specs/2026-09-17-nova-steam-and-free-fire-design.md`
+> §4, a variable line that knows what it actually cost reports against that
+> figure, and only a line with no recorded cost keeps the rule below. Every row
+> written before that change has none, so everything this document describes is
+> still exactly how those rows report.
 
 ## Problem
 

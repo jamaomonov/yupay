@@ -935,9 +935,12 @@ async def create_order(
                 # hourly supplier-price job rewrites ``Sku.cost_usdt`` as
                 # upstream prices move, so reporting that read it live
                 # re-valued every past sale of this SKU whenever the supplier
-                # moved. ``None`` on a variable line is not an omission — its
-                # cost is the face value the customer chose, which
-                # ``unit_price_usd`` already records.
+                # moved. ``None`` on a variable line is not an omission — at
+                # checkout nobody knows what that line will cost, because it
+                # depends on which supplier fills it. Fulfilment writes it when
+                # the supplier says (``_record_supplier_charge``); until then
+                # reporting falls back to the face value the customer chose,
+                # which ``unit_price_usd`` already records.
                 cost_usdt=None if sku.variable_amount else sku.cost_usdt,
                 # The merchant's own quote, recorded and never consulted —
                 # ``None`` on every retail line, which is what makes the
