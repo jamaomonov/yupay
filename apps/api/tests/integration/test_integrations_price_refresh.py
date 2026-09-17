@@ -101,6 +101,7 @@ async def _seed_sku(
     *,
     price_usd: str = "1.00",
     margin_percent: str | None = None,
+    kind: str = "top_up",
 ) -> str:
     category = Category(
         id=new_id(),
@@ -121,7 +122,7 @@ async def _seed_sku(
         id=new_id(),
         slug=f"prod-{slug_suffix}",
         brand_id=brand.id,
-        kind="top_up",
+        kind=kind,
         sort_order=10,
         active=True,
         required_fields=[],
@@ -211,6 +212,89 @@ async def _seed_two_mapping_sku(
     )
     await db.commit()
     return sku_id, g2b_mapping, nova_mapping
+
+
+async def test_a_voucher_in_auto_still_has_exactly_one_cost_writer(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The shape the accepted deviation exists to protect, and the one no
+    other test covers.
+
+    A voucher SKU in `auto` routes `primary="inventory"`; the supplier that
+    would actually be charged on a stockout is named in `decision.fallback`,
+    and that one owns the cost basis. Every other test here uses a `top_up`
+    SKU with an explicit rule, so the inventory-fallback clause of
+    `_is_routed_supplier` is exercised only by a single-mapping legacy test.
+
+    With **two** mappings it has to pick one and only one. It picks G2B —
+    `nova` is a reserve (`RESERVE_SUPPLIERS`), which `_resolve_auto` excludes
+    outright — and that conclusion rests on two facts a future change could
+    move without anything else going red.
+    """
+    from yupay.modules.integrations import service as svc
+
+    sku_id = await _seed_sku(
+        db_session, slug_suffix="voucher-two", initial_cost="0.82", kind="voucher"
+    )
+    g2b_mapping = await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+    nova_mapping = await _seed_nova_mapping(
+        db_session, sku_id=sku_id, category_id="pubg_mobile_auto", offer_id="offer-60uc"
+    )
+    await db_session.commit()  # no rule at all — `auto`
+
+    with respx.mock:
+        respx.get(f"{NOVA_BASE}/api/v2/topups/offers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "ok": True,
+                    "offers": [{"offer_id": "offer-60uc", "name": "60 UC", "price_usd": "0.79"}],
+                },
+            )
+        )
+        nova_outcome = await svc.refresh_sku_cost_for_mapping(db_session, mapping=nova_mapping)
+    await db_session.commit()
+
+    assert nova_outcome.wrote_cost is False, "a reserve is never the routed supplier"
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.82"), "the incumbent's cost must be untouched"
+
+    # And the incumbent, reached through the inventory fallback, still writes it.
+    assert g2b_mapping.supplier_slug == "g2b"
+
+
+async def test_force_inventory_leaves_the_cost_to_nobody(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A deliberate behaviour change, pinned rather than left implicit.
+
+    `force_inventory` says "sell from the warehouse", so no supplier's
+    catalogue price is *the* cost basis and none writes it — the cost freezes
+    at whatever it last was. Before this branch G2B wrote it regardless of the
+    rule. There are zero such rules in production today (checked), so the
+    change costs nothing now; this test is what makes it a decision rather
+    than an accident.
+    """
+    from yupay.modules.integrations import service as svc
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _seed_sku(
+        db_session, slug_suffix="force-inv", initial_cost="0.82", kind="voucher"
+    )
+    g2b_mapping = await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+    await sourcing_svc.set_rule(
+        db_session, sku_id=sku_id, mode="force_inventory", supplier_slug=None, admin_id="test"
+    )
+    await db_session.commit()
+
+    outcome = await svc.refresh_sku_cost_for_mapping(db_session, mapping=g2b_mapping)
+    await db_session.commit()
+
+    assert outcome.wrote_cost is False
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.82")
 
 
 # ---------- routed-supplier rule (per-supplier costs, §4) ----------
@@ -384,7 +468,17 @@ async def test_nova_steam_mapping_is_skipped_entirely(
     assert outcome.wrote_cost is False
     assert outcome.updated is False
     assert outcome.new_cost is None
+    # The reason must be the sentinel skip, not "NOVA did not answer". Without
+    # this the test passes even with the skip deleted: the call would go out,
+    # fail against a host that does not exist, and come back with a reason all
+    # the same — so "no network call was made" would be asserted by nobody.
     assert outcome.reason is not None
+    assert "steam" in outcome.reason.lower(), outcome.reason
+    # And specifically NOT the "we called and it failed" reason: without this
+    # the test passes with the sentinel check deleted, because the call would
+    # go out to a host that does not exist and come back with a reason all the
+    # same — so "no network call was made" would be asserted by nobody.
+    assert "ошибка обращения" not in outcome.reason, outcome.reason
 
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("1.00")

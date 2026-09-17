@@ -43,8 +43,14 @@ second implementation: a mapping's `external_product_id` is their `category_id` 
 `external_variant_id` is the `offer_id`, so one `GET /topups/offers` answers every SKU of that
 category — the fetch is cached per category for the run rather than repeated per SKU.
 
-Every active mapping gets a `supplier_price_history` row on every refresh, whoever the supplier is.
-That table is the comparison: it already has the shape, it has simply never been given the data.
+Every active mapping records into `supplier_price_history`, whoever the supplier is — that table is
+the comparison, and it already has the shape, it has simply never been given the data.
+
+**On a change, not on every tick.** The table's existing contract is one row per price _transition_,
+and hourly rows for every mapping would add roughly 4,800 a day to say nothing happened. The cost of
+keeping it: a recorded price carries the date it was captured rather than the date it was last
+checked, so the screen shows `captured_at` beside the number and a three-week-old price looks like
+one instead of like today's.
 
 **Steam is excluded.** A NOVA Steam mapping carries the `steam-topup` sentinel and no offer, and its
 cost is a percentage of a face value the customer chooses rather than a catalogue number. There is

@@ -55,6 +55,13 @@ flowchart TB
     sourcing --> catalog
     sourcing --> inventory
     sourcing --> integrations
+    %% Mutual, and both directions are lazy imports inside functions:
+    %% sourcing reads mappings to decide a route, and cost_refresh asks
+    %% sourcing which supplier owns a SKU's cost basis. Neither module
+    %% imports the other at module level, so there is no cycle at import
+    %% time — see integrations/cost_refresh.py for why the question has
+    %% to be asked at all.
+    integrations --> sourcing
     orders --> catalog
     orders --> users
     orders --> sourcing
