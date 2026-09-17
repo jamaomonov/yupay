@@ -74,8 +74,15 @@ UPDATED_BY = "seed:2026-09-18_free_fire_nova_only"
 MARKUP = Decimal("1.10")
 
 #: Saved on every SKU so the hourly cost refresh (`integrations.price_refresh`)
-#: keeps re-deriving price_usd at this margin as NOVA's cost moves, instead of
-#: freezing the shelf price the day this script ran.
+#: keeps price_usd tracking NOVA's cost at this margin, instead of freezing the
+#: shelf price the day this script ran.
+#:
+#: "Tracking" is one-directional since ADR-0083: the automatic path raises a
+#: price and never lowers one, so a cost *rise* still protects this margin while
+#: a *drop* widens it. And because the prices below are ceiled to the cent while
+#: the refresh re-derives with half-up rounding, all ten of these start one cent
+#: — or zero — above what the margin implies, so their first automatic refresh
+#: changes no price at all. That is the intended direction to be wrong in.
 MARGIN_PERCENT = Decimal("10")
 
 #: How far NOVA's live cost may drift from the table below before this script

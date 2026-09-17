@@ -299,6 +299,9 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
     if new_price is not None:
         price_line = f"\nЦена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
     elif price_drop_blocked:
+        # Reachable only on a cost *drop* — `set_sku_cost_usdt` no longer sets
+        # the flag on a rise, precisely so this sentence cannot appear under a
+        # line saying the cost went up.
         price_line = (
             "\nЦена USD: <b>не снижена</b> — при автоматической синхронизации "
             "цена не опускается, себестоимость обновлена, наценка выросла"

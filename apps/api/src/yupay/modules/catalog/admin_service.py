@@ -427,7 +427,9 @@ async def set_sku_cost_usdt(
     allow_price_drop: bool = True,
 ) -> CostUpdateResult:
     """Replace ``Sku.cost_usdt`` and, when a margin is on file, re-derive
-    ``price_usd`` from it so the sale price tracks the new cost.
+    ``price_usd`` from it — subject to ``allow_price_drop``, which the
+    automatic path sets to ``False`` so a cheaper supplier widens the margin
+    instead of cutting the shelf price.
 
     Refuses to write a non-positive cost; mirrors the
     ``ck_skus_cost_usdt_positive`` check at the DB layer with a clearer
@@ -483,7 +485,21 @@ async def set_sku_cost_usdt(
                 sku.price_usd = candidate
                 new_price = candidate
                 margin = sku.margin_percent
-            else:
+            elif previous_cost is not None and new_cost < previous_cost:
+                # "Blocked" means a *cost drop* whose price cut we declined —
+                # and the discriminator is the cost's direction, not the
+                # price's. A rise can also leave the price alone, whenever the
+                # candidate still lands under a price parked above it by
+                # earlier savings, and reporting that as a blocked drop prints
+                # "наценка выросла" directly under "себестоимость выросла".
+                # Comparing candidate to price does not separate them: in that
+                # rise the candidate is below the price too.
+                #
+                # `previous_cost is None` is a SKU getting its first cost ever:
+                # nothing dropped, because there was nothing to drop from. The
+                # enclosing `previous_cost != new_cost` is true in that case,
+                # so without the guard this comparison raises — mypy caught it,
+                # and it would have been a real crash rather than a type nit.
                 price_drop_blocked = True
 
     sku.updated_at = now()

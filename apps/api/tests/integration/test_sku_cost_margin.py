@@ -34,7 +34,7 @@ async def _seed_sku(
     db: AsyncSession,
     slug_suffix: str,
     *,
-    cost_usdt: str,
+    cost_usdt: str | None,
     price_usd: str,
     margin_percent: str | None,
 ) -> str:
@@ -70,7 +70,7 @@ async def _seed_sku(
         denomination="60",
         region="WW",
         price_usd=Decimal(price_usd),
-        cost_usdt=Decimal(cost_usdt),
+        cost_usdt=Decimal(cost_usdt) if cost_usdt else None,
         margin_percent=Decimal(margin_percent) if margin_percent else None,
         sort_order=10,
         active=True,
@@ -292,3 +292,56 @@ async def test_refuses_a_margin_that_would_zero_out_the_price(db_session: AsyncS
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("13")
     assert sku.price_usd == Decimal("12.00")
+
+
+async def test_a_rise_parked_under_the_price_is_not_reported_as_a_blocked_drop(
+    db_session: AsyncSession,
+) -> None:
+    """The sentence this flag selects has to match what happened.
+
+    A price parked above its margin — which is what this whole design
+    accumulates — means a cost **rise** can still produce a candidate at or
+    below it. The assignment correctly leaves the price alone, but calling that
+    a blocked *drop* prints "наценка выросла" directly under "себестоимость
+    выросла", which is the one alert the rise-half exists to make legible.
+    """
+    sku_id = await _seed_sku(
+        db_session,
+        slug_suffix="rise-under-park",
+        cost_usdt="0.79",
+        price_usd="0.90",
+        margin_percent="10",
+    )
+
+    # Cost rises 0.79 -> 0.81; candidate 0.89 is still under the parked 0.90.
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("0.81"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.81"), "the cost still syncs"
+    assert sku.price_usd == Decimal("0.90"), "and the price is still left alone"
+    assert result.price_drop_blocked is False, "but nothing was being dropped"
+
+
+async def test_a_first_ever_cost_is_not_a_blocked_drop(db_session: AsyncSession) -> None:
+    """A SKU that never had a cost is not a SKU whose cost fell.
+
+    The enclosing condition is `previous_cost != new_cost`, which is true when
+    the previous cost is `None` — so this branch is reachable on the very first
+    sync of a SKU, and comparing a Decimal to None there is a crash rather than
+    a wrong answer.
+    """
+    sku_id = await _seed_sku(
+        db_session, "first-cost", cost_usdt=None, price_usd="0.90", margin_percent="10"
+    )
+
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("0.79"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.price_drop_blocked is False
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.79")
