@@ -1,4 +1,4 @@
-"""``Fulfiller`` for NOVA (nova-gifts.com) game top-ups.
+"""``Fulfiller`` for NOVA (nova-gifts.com) game and Steam wallet top-ups.
 
 NOVA is a **reserve**: its catalogue covers essentially every game brand we
 sell, and it earns its place as somewhere to send an order when G2B is out of
@@ -22,6 +22,7 @@ Two facts from their API shape this adapter:
 
 from __future__ import annotations
 
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
@@ -66,6 +67,17 @@ _FIELD_MAP: dict[str, str] = {
 #: admin inbox and alert ops instead of failing the order. A guard test locks
 #: the match (see ``test_supplier_money_outcome.py``).
 LOW_BALANCE_ERROR = "supplier_low_balance"
+
+#: A mapping whose ``external_product_id`` is this is a Steam wallet top-up,
+#: not a game: their Steam endpoint takes a login and an amount and has no
+#: category at all, so there is no real id to put here.
+#:
+#: A sentinel rather than a fourth ``kind`` for the reason ADR-0081 gives about
+#: the validate namespace: ``ck_sku_supplier_mapping_kind`` allows only
+#: ``voucher|game|gift``, and the admin's mapping wizard coerces whatever it
+#: loads to ``voucher|game`` when an operator saves the page. A sentinel in a
+#: column the wizard round-trips untouched survives that; a new kind does not.
+STEAM_SENTINEL = "steam-topup"
 
 #: They document no code for it, so we sniff the message. A false positive only
 #: demotes a hard failure to a retryable one, which is the safer mistake.
@@ -155,8 +167,28 @@ def _receipt(order_id: str | None, status: str) -> dict[str, Any]:
     return {"supplier": "nova", "external_order_id": order_id, "status": status}
 
 
-def _meta(status: str) -> dict[str, Any]:
-    return {"supplier": "nova", "nova_status": status}
+def _charged_usd(obj: dict[str, Any]) -> str | None:
+    """What they say they took, as a decimal string, or ``None``.
+
+    ``chargedUsd`` is what a fetched order carries and what the client folds a
+    create's ``novaDebit`` into; ``charged_usd`` is the snake-case twin their
+    API also returns. For a game these equal the price; for Steam they do not,
+    which is the whole point of recording them.
+    """
+    for key in ("chargedUsd", "charged_usd"):
+        value = obj.get(key)
+        if value not in (None, ""):
+            return str(value)
+    return None
+
+
+def _meta(status: str, obj: dict[str, Any]) -> dict[str, Any]:
+    charged = _charged_usd(obj)
+    return {
+        "supplier": "nova",
+        "nova_status": status,
+        **({"supplier_charged_usd": charged} if charged else {}),
+    }
 
 
 def _without_our_inputs(text: str, fields: dict[str, str]) -> str:
@@ -209,7 +241,7 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
             artifact_kind="topup_receipt",
             artifact=_receipt(order_id, status),
             error=None,
-            extra_metadata=_meta(status),
+            extra_metadata=_meta(status, obj),
             money_outcome=None,
         )
     if status in _REFUNDED:
@@ -219,7 +251,7 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
             artifact_kind=None,
             artifact=None,
             error=f"nova refunded the order ({status})",
-            extra_metadata={**_meta(status), "supplier_refunded": True},
+            extra_metadata={**_meta(status, obj), "supplier_refunded": True},
             money_outcome=MoneyOutcome.RETURNED,
         )
     if status in _FAILED:
@@ -235,7 +267,7 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
             artifact=None,
             error=f"nova order {status}" + (f": {reason}" if reason else ""),
             extra_metadata={
-                **_meta(status),
+                **_meta(status, obj),
                 "needs_reconciliation": True,
                 **({"nova_fail_reason": reason} if reason else {}),
             },
@@ -261,9 +293,32 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
         artifact_kind=None,
         artifact=None,
         error=None,
-        extra_metadata=_meta(status),
+        extra_metadata=_meta(status, obj),
         money_outcome=None,
     )
+
+
+def _finish(obj: dict[str, Any]) -> FulfillResult:
+    """``_result`` plus the guard both create paths need.
+
+    Their create spends. An id-less "still moving" result would be a task
+    nothing can ever finish: ``check_status`` has nothing to look the order up
+    with, so it answers ``in_progress`` forever, the reconciler re-runs it
+    every sixty seconds without changing anything, and the customer sits on
+    "в обработке" while NOVA keeps the money. Their order object is untyped in
+    their own spec, so this is not hypothetical — it is what an unread
+    envelope looks like. Fail loudly instead: the inbox is where a human can
+    chase it, and ``UNKNOWN`` is the honest grade because the charge may well
+    have landed.
+    """
+    result = _result(obj)
+    if result.outcome == "in_progress" and result.external_order_id is None:
+        raise FulfillerError(
+            "nova accepted the order but returned no id we could read — "
+            "the charge may have landed; reconcile it by hand",
+            money_outcome=_MAY_HAVE_SPENT,
+        )
+    return result
 
 
 class NovaFulfiller(Fulfiller):
@@ -311,6 +366,9 @@ class NovaFulfiller(Fulfiller):
 
         mapping = await _mapping_for(db, sku_id=item.sku_id)
         category_id = str(mapping.external_product_id or "").strip()
+        if category_id == STEAM_SENTINEL:
+            return await self._fulfill_steam(item=item, idempotency_key=idempotency_key)
+
         offer_id = str(mapping.external_variant_id or "").strip()
         if not category_id or not offer_id:
             raise FulfillerError(
@@ -342,24 +400,40 @@ class NovaFulfiller(Fulfiller):
             # in it to take back out.
             raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
 
-        result = _result(obj)
-        if result.outcome == "in_progress" and result.external_order_id is None:
-            # Their create spends. An id-less "still moving" result would be a
-            # task nothing can ever finish: `check_status` has nothing to look
-            # the order up with, so it answers `in_progress` forever, the
-            # reconciler re-runs it every sixty seconds without changing
-            # anything, and the customer sits on "в обработке" while NOVA keeps
-            # the money. Their order object is untyped in their own spec, so
-            # this is not hypothetical — it is what an unread envelope looks
-            # like. Fail loudly instead: the inbox is where a human can chase
-            # it, and `UNKNOWN` is the honest grade because the charge may well
-            # have landed.
+        return _finish(obj)
+
+    async def _fulfill_steam(self, *, item: OrderItem, idempotency_key: str) -> FulfillResult:
+        """The Steam wallet branch. Mirrors the games path above exactly on
+        money grading — same client, same exceptions, same guard — because a
+        different endpoint is not a different money story.
+
+        ``item.qty > 1`` is already refused by :meth:`fulfill` before the
+        mapping is even loaded, so it is not repeated here.
+        """
+        steam_login = str((item.fulfillment_data or {}).get("steam_login") or "").strip()
+        if not steam_login:
             raise FulfillerError(
-                "nova accepted the order but returned no id we could read — "
-                "the charge may have landed; reconcile it by hand",
-                money_outcome=_MAY_HAVE_SPENT,
+                "order item is missing fulfillment_data.steam_login",
+                money_outcome=_NOTHING_SPENT,
             )
-        return result
+
+        try:
+            obj = await self._client().create_steam_order(
+                steam_login=steam_login,
+                amount_usd=Decimal(str(item.unit_price_usd)),
+                idempotency_key=idempotency_key,
+            )
+        except NovaError as exc:
+            if _looks_like_low_balance(exc):
+                return _low_balance_result()
+            raise FulfillerError(
+                _without_our_inputs(str(exc), {"steam_login": steam_login}),
+                money_outcome=_refusal_money(exc),
+            ) from exc
+        except NovaUnavailableError as exc:
+            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+
+        return _finish(obj)
 
     async def check_status(
         self,

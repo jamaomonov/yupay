@@ -8,6 +8,7 @@ money being unaccounted for.
 
 from __future__ import annotations
 
+from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
 
@@ -19,6 +20,7 @@ from yupay.modules.fulfillment.suppliers.base import (
 )
 from yupay.modules.fulfillment.suppliers.nova import (
     LOW_BALANCE_ERROR,
+    STEAM_SENTINEL,
     NovaFulfiller,
     _mapping_for,
     _order_id_of,
@@ -32,16 +34,30 @@ pytestmark = pytest.mark.asyncio
 class _FakeClient:
     """Records what was called, so "did it order at all" is answerable."""
 
-    def __init__(self, *, order: dict[str, Any] | None = None, raises: Exception | None = None):
+    def __init__(
+        self,
+        *,
+        order: dict[str, Any] | None = None,
+        steam_order: dict[str, Any] | None = None,
+        raises: Exception | None = None,
+    ):
         self._order = order or {}
+        self._steam_order = steam_order if steam_order is not None else (order or {})
         self._raises = raises
         self.calls: list[dict[str, Any]] = []
+        self.steam_calls: list[dict[str, Any]] = []
 
     async def create_topup_order(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
         if self._raises is not None:
             raise self._raises
         return self._order
+
+    async def create_steam_order(self, **kwargs: Any) -> dict[str, Any]:
+        self.steam_calls.append(kwargs)
+        if self._raises is not None:
+            raise self._raises
+        return self._steam_order
 
     async def get_order(self, order_id: str) -> dict[str, Any]:
         if self._raises is not None:
@@ -64,6 +80,7 @@ def _item(**over: Any) -> Any:
         "sku_id": "sku-1",
         "qty": 1,
         "fulfillment_data": {"player_id": "1313232551", "server": "6618"},
+        "unit_price_usd": Decimal("10"),
     }
     base.update(over)
     return SimpleNamespace(**base)
@@ -342,6 +359,108 @@ async def test_a_mapping_without_a_category_is_refused(monkeypatch: pytest.Monke
         await _fulfill(client, monkeypatch, mapping=_mapping(external_product_id=""))
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
     assert client.calls == []
+
+
+async def test_a_steam_mapping_sends_the_login_and_the_line_amount(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sentinel routes to the Steam call, not the games one, and it never
+    reads `offer_id` — there isn't one."""
+    client = _FakeClient(steam_order={"id": "ord-9", "status": "processing"})
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=_item(fulfillment_data={"steam_login": "someone"}, unit_price_usd=Decimal("10")),
+        mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+    )
+    assert result.outcome == "in_progress"
+    assert result.external_order_id == "ord-9"
+    assert client.steam_calls[0]["steam_login"] == "someone"
+    assert client.steam_calls[0]["amount_usd"] == Decimal("10")
+    assert client.steam_calls[0]["idempotency_key"] == "task-42"
+    assert client.calls == []
+
+
+async def test_a_games_mapping_never_reaches_the_steam_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default mapping is a games one — it must take the games path only."""
+    client = _FakeClient(order={"id": "ord_1", "status": "processing"})
+    await _fulfill(client, monkeypatch)
+    assert len(client.calls) == 1
+    assert client.steam_calls == []
+
+
+async def test_a_steam_line_without_a_login_is_refused_before_any_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient()
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(
+            client,
+            monkeypatch,
+            item=_item(fulfillment_data={}),
+            mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+        )
+    assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
+    assert client.calls == []
+    assert client.steam_calls == []
+
+
+async def test_a_steam_refusal_is_graded_and_redacted(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The Steam branch grades a refusal exactly like the games one and
+    redacts the login the same way `_without_our_inputs` redacts a player id."""
+    client = _FakeClient(raises=NovaError("steam login someone-secret not found", status=400))
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(
+            client,
+            monkeypatch,
+            item=_item(fulfillment_data={"steam_login": "someone-secret"}),
+            mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+        )
+    assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
+    message = str(excinfo.value)
+    assert "someone-secret" not in message
+    assert "not found" in message
+
+
+async def test_a_steam_low_balance_is_a_stall_not_a_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient(raises=NovaError("insufficient balance", status=400))
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=_item(fulfillment_data={"steam_login": "someone"}),
+        mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+    )
+    assert result.outcome == "failed"
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.money_outcome is None
+
+
+async def test_a_steam_call_unreachable_may_have_spent(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = _FakeClient(raises=NovaUnavailableError("boom"))
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(
+            client,
+            monkeypatch,
+            item=_item(fulfillment_data={"steam_login": "someone"}),
+            mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+        )
+    assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
+
+
+async def test_the_steam_charge_reaches_extra_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """What NOVA actually took is not the face value for Steam — it is the
+    number Task 2's margin report reads."""
+    result = await _fulfill(
+        _FakeClient(steam_order={"id": "ord-9", "status": "completed", "chargedUsd": "9.80"}),
+        monkeypatch,
+        item=_item(fulfillment_data={"steam_login": "someone"}),
+        mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+    )
+    assert result.extra_metadata["supplier_charged_usd"] == "9.80"
 
 
 async def test_their_refusal_never_carries_back_the_player_id(

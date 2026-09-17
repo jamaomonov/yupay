@@ -12,6 +12,9 @@ get wrong here and impossible to notice until an order is lost:
 
 from __future__ import annotations
 
+import json
+from decimal import Decimal
+
 import httpx
 import pytest
 import respx
@@ -271,6 +274,80 @@ async def test_a_real_refusal_keeps_its_sentence_not_its_status_name() -> None:
         )
     assert excinfo.value.status == 409
     assert "Idempotency-Key was already used" in str(excinfo.value)
+
+
+@respx.mock
+async def test_a_steam_order_is_a_different_endpoint_and_answers_201() -> None:
+    """Their Steam top-up is not their games top-up: no category, no offer, a
+    login and an amount — and a `201`, where the games one answers `200`."""
+    route = respx.post(f"{BASE}/api/v2/steam-topup/order").mock(
+        return_value=httpx.Response(
+            201,
+            json={
+                "ok": True,
+                "order": {"id": "ord-9", "status": "created"},
+                "novaDebit": {"amountUsd": "9.80", "balanceUsd": "90.20"},
+            },
+        )
+    )
+    order = await _client().create_steam_order(
+        steam_login="someone", amount_usd=Decimal("10"), idempotency_key="task-7"
+    )
+    sent = json.loads(route.calls.last.request.content)
+    assert sent == {"steamLogin": "someone", "currency": "USD", "amount": "10.00"}
+    assert route.calls.last.request.headers["Idempotency-Key"] == "task-7"
+    assert order["id"] == "ord-9"
+    # What we were charged is theirs to state and ours to record: it arrives
+    # beside the order, not inside it, and one shape has to answer it.
+    assert order["chargedUsd"] == "9.80"
+
+
+@respx.mock
+async def test_a_steam_amount_carries_at_most_two_decimals() -> None:
+    """Their schema refuses more, and a request refused for a formatting
+    reason is a customer waiting on nothing."""
+    route = respx.post(f"{BASE}/api/v2/steam-topup/order").mock(
+        return_value=httpx.Response(201, json={"ok": True, "order": {"id": "ord-9"}})
+    )
+    await _client().create_steam_order(
+        steam_login="someone", amount_usd=Decimal("10.005"), idempotency_key="k"
+    )
+    assert json.loads(route.calls.last.request.content)["amount"] == "10.01"
+
+
+@respx.mock
+async def test_a_steam_plan_refusal_keeps_its_sentence() -> None:
+    respx.post(f"{BASE}/api/v2/steam-topup/order").mock(
+        return_value=httpx.Response(
+            400,
+            json={
+                "ok": False,
+                "error": "plan does not allow this amount",
+                "availablePlans": ["silver", "gold"],
+                "balanceUsd": "9.10",
+            },
+        )
+    )
+    with pytest.raises(NovaError) as excinfo:
+        await _client().create_steam_order(
+            steam_login="someone", amount_usd=Decimal("500"), idempotency_key="k"
+        )
+    assert excinfo.value.status == 400
+    assert "plan does not allow" in str(excinfo.value)
+
+
+@respx.mock
+async def test_a_steam_create_without_an_order_is_an_empty_dict() -> None:
+    """The same guard `get_order` has, shared through `_order_with_debit`:
+    their order object is untyped, so a create that answers `ok` with no
+    `order` at all must not hand the fulfiller something to crash on."""
+    respx.post(f"{BASE}/api/v2/steam-topup/order").mock(
+        return_value=httpx.Response(201, json={"ok": True})
+    )
+    order = await _client().create_steam_order(
+        steam_login="someone", amount_usd=Decimal("10"), idempotency_key="k"
+    )
+    assert order == {}
 
 
 @respx.mock

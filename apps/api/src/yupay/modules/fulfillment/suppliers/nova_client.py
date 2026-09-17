@@ -28,6 +28,7 @@ from __future__ import annotations
 import contextlib
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 import httpx
@@ -104,6 +105,24 @@ def _message_of(body: dict[str, Any], status: int) -> str:
         if isinstance(value, str) and value.strip():
             return value.strip()
     return f"nova HTTP {status}"
+
+
+def _order_with_debit(body: dict[str, Any]) -> dict[str, Any]:
+    """Their order, with what they charged us folded in.
+
+    A create answers ``{ok, order, novaDebit}``: the order says what was bought
+    and ``novaDebit.amountUsd`` says what it cost us, and those are different
+    numbers for Steam, where a plan discount applies. A later ``GET`` of the
+    same order carries ``chargedUsd`` instead. One key has to answer "what were
+    we charged" on both paths or the caller needs to know which call it is
+    holding — so the create's debit is written under the name the ``GET`` uses.
+    """
+    order = body.get("order")
+    if not isinstance(order, dict):
+        return {}
+    debit = body.get("novaDebit")
+    amount = debit.get("amountUsd") if isinstance(debit, dict) else None
+    return {**order, "chargedUsd": amount} if amount is not None else dict(order)
 
 
 class NovaClient:
@@ -212,6 +231,10 @@ class NovaClient:
         be a second purchase. Their two descriptions disagree on what a *reused*
         key does (returns the original, or is rejected), which is why the
         fulfiller grades a 409 as undecided rather than as a free retry.
+
+        Returned through :func:`_order_with_debit` like :meth:`create_steam_order`
+        — for a game order the debit equals the price, so folding it in changes
+        nothing here, but one shape answers "what were we charged" on both paths.
         """
         body = await self._request(
             "POST",
@@ -219,8 +242,35 @@ class NovaClient:
             json={"category_id": category_id, "offer_id": offer_id, "fields": fields},
             headers={"Idempotency-Key": idempotency_key[:255]},
         )
-        order = body.get("order")
-        return order if isinstance(order, dict) else {}
+        return _order_with_debit(body)
+
+    async def create_steam_order(
+        self, *, steam_login: str, amount_usd: Decimal, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Top up a Steam wallet. Their Steam endpoint, not the games one.
+
+        Different in three ways that all matter: it takes a login and an amount
+        rather than a category and an offer, it answers ``201``, and what it
+        charges us is **not** the amount — their plan discount applies, which is
+        why the debit they report beside the order is folded in below.
+
+        Args:
+            steam_login: The customer's login. Never logged.
+            amount_usd: Face value in dollars — what the customer receives. Sent
+                with at most two decimals, which their schema requires; rounding
+                is half-up so a fraction of a cent is never taken off what was
+                bought.
+            idempotency_key: Required, as on every purchase of theirs. A reused
+                key is refused with a ``409``, never replayed.
+        """
+        amount = amount_usd.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+        body = await self._request(
+            "POST",
+            "/api/v2/steam-topup/order",
+            json={"steamLogin": steam_login, "currency": "USD", "amount": f"{amount}"},
+            headers={"Idempotency-Key": idempotency_key[:255]},
+        )
+        return _order_with_debit(body)
 
     async def get_order(self, order_id: str) -> dict[str, Any]:
         """One order by their public id."""
