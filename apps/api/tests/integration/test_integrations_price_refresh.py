@@ -649,6 +649,7 @@ async def test_refresh_recomputes_price_from_saved_margin(
     assert "Цена USD" in sent["text"]
     assert "$15.60" in sent["text"]
     assert "наценка 20" in sent["text"]
+    assert "выросла" in sent["text"], "a rise must say so, not just carry a bare +% sign"
 
 
 @respx.mock
@@ -687,6 +688,115 @@ async def test_refresh_leaves_price_alone_without_a_saved_margin(
 
     sent = json.loads(tg_route.calls.last.request.content)
     assert "Цена USD" not in sent["text"]
+
+
+# ---------- allow_price_drop — the ratchet (§5 of the sourcing-by-brand design) ----------
+
+
+@respx.mock
+async def test_refresh_all_leaves_price_alone_on_a_cost_drop(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The behavioural proof that ``refresh_all_mappings`` — the hourly
+    scheduler and the on-demand "refresh all" button both funnel through
+    here — passes ``allow_price_drop=False``: a cost drop still updates
+    ``cost_usdt`` (the margin report should tell the truth) but must not
+    touch ``price_usd``, asserted byte-identical against the seeded price.
+    Free Fire's switch to NOVA is exactly this shape."""
+    sku_id = await _seed_sku(
+        db_session,
+        slug_suffix="hourly-drop",
+        initial_cost="10.00",
+        price_usd="12.00",
+        margin_percent="20",
+    )
+    await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200,
+            json={"catalogues": [{"id": 1, "name": "60", "amount": 8.00}]},
+        )
+    )
+    tg_route = respx.post(f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+
+    from yupay.modules.integrations.price_refresh import refresh_all_mappings
+
+    report = await refresh_all_mappings()
+    assert report.moved == 1
+    assert report.alerts_sent == 1
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("8.00"), "cost must still move — the margin report must widen"
+    assert sku.price_usd == Decimal("12.00"), "price must be byte-identical to the seeded value"
+
+    sent = json.loads(tg_route.calls.last.request.content)
+    # Direction, in words — not just a sign an operator can miss on a
+    # phone — and an explicit note that the price was deliberately left
+    # alone, distinct from "no margin on file" (which also has no price
+    # line, but for an unrelated reason).
+    assert "снизилась" in sent["text"]
+    assert "не снижена" in sent["text"]
+
+
+async def test_one_fetch_per_nova_category(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Two SKUs mapped to the *same* NOVA category (the Free Fire shape —
+    nineteen SKUs, one category) must cost exactly one ``GET
+    /topups/offers`` call, not one per SKU."""
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_a = await _seed_sku(db_session, slug_suffix="cat-a", initial_cost="1.00")
+    sku_b = await _seed_sku(db_session, slug_suffix="cat-b", initial_cost="1.00")
+    mapping_a = await _seed_nova_mapping(
+        db_session, sku_id=sku_a, category_id="pubg_mobile_auto", offer_id="offer-60uc"
+    )
+    mapping_b = await _seed_nova_mapping(
+        db_session, sku_id=sku_b, category_id="pubg_mobile_auto", offer_id="offer-325uc"
+    )
+    await sourcing_svc.set_rule(
+        db_session, sku_id=sku_a, mode="force_supplier", supplier_slug="nova", admin_id="test"
+    )
+    await sourcing_svc.set_rule(
+        db_session, sku_id=sku_b, mode="force_supplier", supplier_slug="nova", admin_id="test"
+    )
+    await db_session.commit()
+    assert mapping_a.external_product_id == mapping_b.external_product_id
+
+    with respx.mock:
+        offers_route = respx.get(f"{NOVA_BASE}/api/v2/topups/offers").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "ok": True,
+                    "offers": [
+                        {"offer_id": "offer-60uc", "name": "60 UC", "price_usd": "0.79"},
+                        {"offer_id": "offer-325uc", "name": "325 UC", "price_usd": "3.99"},
+                    ],
+                },
+            )
+        )
+        respx.post(f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+
+        from yupay.modules.integrations.price_refresh import refresh_all_mappings
+
+        report = await refresh_all_mappings()
+
+    assert offers_route.call_count == 1, "one fetch per category, not one per mapping"
+    assert report.checked == 2
+    assert report.moved == 2
+
+    sku_a_row = (await db_session.execute(select(Sku).where(Sku.id == sku_a))).scalar_one()
+    sku_b_row = (await db_session.execute(select(Sku).where(Sku.id == sku_b))).scalar_one()
+    assert sku_a_row.cost_usdt == Decimal("0.79")
+    assert sku_b_row.cost_usdt == Decimal("3.99")
 
 
 # ---------- admin endpoints ----------

@@ -16,6 +16,14 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   (`catalog.admin_service.set_sku_cost_usdt`) so a SKU nobody is actively
   re-pricing never starts selling below cost — see
   [ADR-0050](../../../../../../docs/decisions/0050-sku-margin-percent.md).
+  **The price only ratchets up on the automatic path.** `set_sku_cost_usdt`
+  takes `allow_price_drop` (default `True`); the hourly/on-demand
+  refresh-all path (`price_refresh.refresh_all_mappings`) is the one caller
+  that passes `False`, so a supplier cost drop widens the margin instead of
+  quietly handing the saving to the customer. A cost rise still raises the
+  price either way. The mapping-save route (an operator's own action)
+  keeps the default and can still lower a price on purpose. See
+  [the sourcing-by-brand design, §5](../../../../../../docs/superpowers/specs/2026-09-18-sourcing-by-brand-design.md).
 - Probe supplier connectivity (`GET /{slug}/health`).
 - Resolve a player id to a nickname for the storefront (`player_check.py`),
   behind a per-supplier circuit breaker (`breaker.py`) so a G2B outage costs

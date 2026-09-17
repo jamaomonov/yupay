@@ -6,6 +6,15 @@ Invoked from two places:
   (``apps/scheduler/.../jobs/refresh_supplier_prices.py``).
 - The on-demand admin button (``POST /admin/integrations/refresh-all-prices``).
 
+Both are the *automatic* path: nobody typed a number, the run just re-pulls
+whatever the supplier is quoting today. So every call into
+``svc.refresh_sku_cost_for_mapping`` below passes ``allow_price_drop=False``
+— a cost drop still updates ``Sku.cost_usdt``, but the margin-derived price
+is left alone rather than quietly handed to the customer as a lower shelf
+price. A cost rise still raises it. See ``catalog.admin_service.
+set_sku_cost_usdt`` for the rule and why an operator editing a mapping by
+hand (``integrations.routes._refresh_sku_cost``) keeps the opposite default.
+
 Each mapping is processed in its own transaction so a single failure
 doesn't roll back the rest. Price moves that cross
 ``settings.price_alert_threshold_pct`` trigger a Telegram alert via the
@@ -17,12 +26,17 @@ from __future__ import annotations
 import html
 from dataclasses import dataclass
 from decimal import Decimal
+from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
 from yupay.modules.integrations import service as svc
+from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
 from yupay.modules.notifications import api as notifications
+
+if TYPE_CHECKING:
+    from yupay.modules.integrations.models import SkuSupplierMapping
 
 log = get_logger("yupay.integrations.price_refresh")
 
@@ -37,12 +51,72 @@ class PriceRefreshReport:
     errors: int = 0
 
 
+async def _fetch_nova_offers_cache(
+    mappings: list[SkuSupplierMapping],
+) -> dict[str, dict[str, Any]]:
+    """Fetch every distinct NOVA category's ``get_offers()`` exactly once.
+
+    Nineteen Free Fire SKUs mapped to the same NOVA category used to mean
+    nineteen ``GET /topups/offers`` calls, one per mapping, each made
+    inside that mapping's own open transaction with a 20-second timeout
+    and no retry — the kind of pattern that gets an integration
+    rate-limited. Grouping by category fixes both problems: one call per
+    category, made before any per-mapping transaction opens rather than
+    inside one.
+
+    Keyed on the *stripped* ``external_product_id`` — the same
+    normalisation :func:`_nova_raw_price` applies before checking the
+    cache — so every mapping in a category actually hits it instead of
+    silently missing and falling back to its own live call. Only NOVA
+    mappings are considered; ``g2b`` ignores this cache entirely. The
+    Steam sentinel has no catalogue to fetch and is excluded up front.
+
+    A category whose fetch fails is simply left out of the returned map:
+    :func:`_nova_raw_price` treats a cache miss as "fetch it live", so one
+    bad category degrades to its old per-mapping behaviour instead of
+    failing the whole run.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+
+    fulfiller = REGISTRY.get("nova")
+    if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
+        return {}
+
+    category_ids: set[str] = set()
+    for mapping in mappings:
+        if mapping.supplier_slug != "nova":
+            continue
+        category_id = mapping.external_product_id.strip()
+        if category_id and category_id != NOVA_STEAM_SENTINEL:
+            category_ids.add(category_id)
+
+    cache: dict[str, dict[str, Any]] = {}
+    client = fulfiller._client()
+    for category_id in category_ids:
+        try:
+            cache[category_id] = await client.get_offers(category_id)
+        except Exception as exc:  # noqa: BLE001 -- best effort; a miss falls back to a live per-mapping call
+            log.warning(
+                "integrations.price_refresh.category_fetch_failed",
+                category_id=category_id,
+                error=str(exc),
+            )
+    return cache
+
+
 async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefreshReport:
     """Re-price every active mapping and dispatch alerts on significant moves.
 
     Uses its own session per mapping — a runtime error refreshing one
     SKU never blocks the rest of the queue. Returns a per-run summary
     the admin button echoes back to the UI.
+
+    Passes ``allow_price_drop=False`` to every refresh: this runner is the
+    automatic path (hourly tick or the on-demand "refresh all" button, not
+    an operator editing one mapping by hand), so a cost drop widens the
+    margin instead of silently lowering the shelf price. See
+    ``catalog.admin_service.set_sku_cost_usdt``.
     """
     factory = get_session_factory()
     threshold = float(get_settings().price_alert_threshold_pct)
@@ -54,6 +128,10 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
 
     if not mappings:
         return PriceRefreshReport()
+
+    # One fetch per NOVA category, done up front — before any per-mapping
+    # transaction is even open — instead of once per mapping.
+    nova_offers_cache = await _fetch_nova_offers_cache(mappings)
 
     checked = 0
     moved = 0
@@ -68,7 +146,12 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
                 # closed; merge brings it back into this session so
                 # the FK lookups inside refresh work.
                 attached = await session.merge(mapping)
-                outcome = await svc.refresh_sku_cost_for_mapping(session, mapping=attached)
+                outcome = await svc.refresh_sku_cost_for_mapping(
+                    session,
+                    mapping=attached,
+                    nova_offers_cache=nova_offers_cache,
+                    allow_price_drop=False,
+                )
         except Exception as exc:  # noqa: BLE001
             errors += 1
             log.warning(
@@ -184,25 +267,42 @@ def _format_alert(*, mapping: object, outcome: object) -> str:
     old = getattr(outcome, "old_cost", None)
     new = getattr(outcome, "new_cost", None)
 
+    # Explicit direction in words, not just a sign an operator can miss
+    # skimming on a phone: "cost moved 3.6%" alone doesn't say whether that
+    # was a saving or a squeeze.
     delta_line = ""
     if old is not None and new is not None and old not in (0, Decimal("0")):
         delta = (Decimal(str(new)) - Decimal(str(old))) / Decimal(str(old)) * Decimal("100")
-        sign = "+" if delta >= 0 else ""
-        delta_line = f"\n<i>Изменение: {sign}{delta:.2f}%</i>"
+        if delta > 0:
+            sign, direction = "+", "выросла"
+        elif delta < 0:
+            sign, direction = "", "снизилась"
+        else:
+            sign, direction = "", "не изменилась"
+        delta_line = f"\n<i>Себестоимость {direction}: {sign}{delta:.2f}%</i>"
 
     variant_line = f" · <code>{html.escape(str(variant))}</code>" if variant else ""
     old_str = f"${old}" if old is not None else "—"
 
-    # Only present when the SKU had a saved margin, so price_usd moved
-    # alongside cost_usdt — see CostRefreshOutcome / set_sku_cost_usdt. A
-    # SKU with no margin on file gets no price line, same as it got no
-    # price change.
+    # Present when the SKU had a saved margin *and* the re-derived price was
+    # actually written — see CostRefreshOutcome / set_sku_cost_usdt. A SKU
+    # with no margin on file gets no price line, same as it got no price
+    # change. A margin that *would* have lowered the price, refused by
+    # allow_price_drop=False, gets its own line instead — otherwise it reads
+    # identically to "no margin at all", and an operator can't tell a
+    # deliberate save from an unrelated SKU.
     old_price = getattr(outcome, "old_price", None)
     new_price = getattr(outcome, "new_price", None)
     margin = getattr(outcome, "margin_percent", None)
+    price_drop_blocked = bool(getattr(outcome, "price_drop_blocked", False))
     price_line = ""
     if new_price is not None:
         price_line = f"\nЦена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
+    elif price_drop_blocked:
+        price_line = (
+            "\nЦена USD: <b>не снижена</b> — при автоматической синхронизации "
+            "цена не опускается, себестоимость обновлена, наценка выросла"
+        )
 
     return (
         f"<b>💰 Цена поставщика изменилась</b>\n"

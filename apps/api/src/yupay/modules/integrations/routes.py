@@ -186,11 +186,18 @@ async def _refresh_sku_cost(db: AsyncSession, mapping: object) -> CostSyncResult
     reuse it from a background actor; this wrapper exists only to map
     the strongly-typed ``CostRefreshOutcome`` back into the DTO the
     admin SPA expects.
+
+    ``allow_price_drop=True``, explicitly: an operator just chose this
+    mapping in the admin UI, so a cost drop it uncovers may lower the
+    shelf price, same as before ``allow_price_drop`` existed. The hourly/
+    on-demand bulk refresh (``price_refresh.refresh_all_mappings``) is the
+    one caller that passes ``False`` — see that function and
+    ``set_sku_cost_usdt`` for the rule.
     """
     from yupay.modules.integrations.models import SkuSupplierMapping
 
     assert isinstance(mapping, SkuSupplierMapping)
-    outcome = await svc.refresh_sku_cost_for_mapping(db, mapping=mapping)
+    outcome = await svc.refresh_sku_cost_for_mapping(db, mapping=mapping, allow_price_drop=True)
     return CostSyncResult(
         updated=outcome.updated,
         old_cost=str(outcome.old_cost) if outcome.old_cost is not None else None,

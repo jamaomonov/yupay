@@ -58,9 +58,16 @@ class CostRefreshOutcome:
     (network failure, catalogue/offer miss, not configured, the NOVA Steam
     sentinel, ...) to give the admin UI / scheduler logs something to
     surface. ``old_price``/``new_price``/``margin_percent`` are populated
-    only when ``wrote_cost`` is true *and* the SKU had a saved margin, so
-    ``price_usd`` was re-derived alongside the cost — see
-    ``catalog.admin_service.set_sku_cost_usdt``.
+    only when ``wrote_cost`` is true *and* the SKU had a saved margin *and*
+    the re-derived price was actually written, so ``price_usd`` moved
+    alongside the cost — see ``catalog.admin_service.set_sku_cost_usdt``.
+
+    ``price_drop_blocked`` is the other half of that same margin/moved
+    case: true when a margin was on file, the cost moved *down*, and
+    ``allow_price_drop=False`` refused to write the lower candidate price.
+    Cost still updates; ``price_usd`` does not. Kept distinct from "no
+    margin on file" so the alert built from this outcome can say the price
+    was deliberately left alone instead of reading as unrelated silence.
     """
 
     updated: bool
@@ -72,6 +79,7 @@ class CostRefreshOutcome:
     old_price: Any | None = None
     new_price: Any | None = None
     margin_percent: Any | None = None
+    price_drop_blocked: bool = False
 
 
 @dataclass(frozen=True)
@@ -296,6 +304,7 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     mapping: SkuSupplierMapping,
     record_history: bool = True,
     nova_offers_cache: dict[str, dict[str, Any]] | None = None,
+    allow_price_drop: bool = True,
 ) -> CostRefreshOutcome:
     """Pull the upstream price for ``mapping`` and persist it.
 
@@ -336,6 +345,14 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
             category (e.g. a whole brand) fetches it once instead of once
             per SKU. Ignored for ``g2b`` mappings. Building the cache is
             the caller's job — this function only reads it.
+        allow_price_drop: Forwarded verbatim to
+            ``catalog.admin_service.set_sku_cost_usdt`` — whether a
+            margin-derived price *lower* than the SKU's current price may
+            be written. Defaults to ``True`` (today's behaviour); the
+            hourly/on-demand price-refresh runner is the one caller that
+            passes ``False`` so an automatic sync never hands a supplier's
+            cheaper cost to the customer as a lower shelf price. See that
+            function's docstring for the full rule.
 
     Returns:
         A :class:`CostRefreshOutcome`. Never raises — every failure mode is
@@ -433,7 +450,7 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
 
     try:
         cost_update = await catalog_svc.set_sku_cost_usdt(
-            db, sku_id=mapping.sku_id, new_cost=new_cost
+            db, sku_id=mapping.sku_id, new_cost=new_cost, allow_price_drop=allow_price_drop
         )
     except Exception as exc:  # noqa: BLE001
         return CostRefreshOutcome(
@@ -474,4 +491,5 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
         old_price=cost_update.previous_price,
         new_price=cost_update.new_price,
         margin_percent=cost_update.margin_percent,
+        price_drop_blocked=cost_update.price_drop_blocked,
     )
