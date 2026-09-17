@@ -123,13 +123,15 @@ def _counts_against_supplier(exc: BaseException) -> bool:
     time this code runs at all.
 
     So: a transport failure counts (nothing was decided, and the client has
-    already spent its patience), a 5xx counts (their side is unwell), and 401
-    or 403 count because a rejected key or a disabled subscription will not fix
+    already spent its patience), a 5xx counts (their side is unwell), 401 or
+    403 count because a rejected key or a disabled subscription will not fix
     itself and every further call is a wasted round trip on a customer's
-    spinner. Everything else — 400, 404, 409, 422 — is about what we sent.
+    spinner, and 429 counts because backing off is the entire point of a rate
+    limit — this whole module exists because the primary hit one. Everything
+    else — 400, 404, 409, 422 — is about what we sent.
     """
     if isinstance(exc, NovaError):
-        return exc.status >= 500 or exc.status in (401, 403)
+        return exc.status >= 500 or exc.status in (401, 403, 429)
     return True
 
 

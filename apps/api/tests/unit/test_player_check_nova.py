@@ -385,12 +385,13 @@ async def test_a_customer_typo_does_not_open_the_circuit(env: _Env) -> None:
 
 
 async def test_their_own_outage_does_open_the_circuit(env: _Env) -> None:
-    """A 5xx, a rejected key and a disabled subscription all count: none of
-    them will fix itself inside the next call, and each is a wasted round trip
-    on a customer's spinner."""
+    """A 5xx, a rejected key, a disabled subscription and a rate limit all
+    count: none of them will fix itself inside the next call, each is a wasted
+    round trip on a customer's spinner, and backing off is the whole point of
+    a 429 — this module exists because the primary hit one."""
     from yupay.modules.fulfillment.suppliers.nova_client import NovaError
 
-    for status in (500, 503, 401, 403):
+    for status in (500, 503, 401, 403, 429):
         env.redis.store.clear()
         client = _ScriptedNovaClient(raises=NovaError("upstream", status=status))
         env.set_fulfiller(_FakeNovaFulfiller(client))
