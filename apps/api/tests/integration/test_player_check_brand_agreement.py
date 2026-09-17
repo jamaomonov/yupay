@@ -127,9 +127,7 @@ async def test_brand_check_field_none_and_logs_when_the_copy_disagrees(
     )
     drifted = copy.deepcopy(_CHECK_FIELD)
     drifted["check"]["server_field"] = "server_id"  # the one field flipped
-    second = _product(
-        brand_id=brand.id, slug="ff-agreement-diff-packs", required_fields=[drifted]
-    )
+    second = _product(brand_id=brand.id, slug="ff-agreement-diff-packs", required_fields=[drifted])
     db_session.add_all([first, second])
     await db_session.commit()
 
