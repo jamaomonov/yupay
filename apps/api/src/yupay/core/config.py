@@ -769,6 +769,20 @@ class Settings(BaseSettings):
     gengine_base_url: str = Field(default="https://api.g-engine.net/v2.1")
     gengine_request_timeout_seconds: float = Field(default=20.0)
 
+    # NOVA (nova-gifts.com) — reserve source for game top-ups, and the fallback
+    # for the player check when G2B errors or rate-limits us. Same
+    # empty-key-disables rule as the three above. Two timeouts, not one: the
+    # advisory check runs with a customer watching a spinner and must not
+    # double the wait a healthy G2B check already costs (830ms-4.9s measured),
+    # while an order may take as long as the others do.
+    nova_api_key: str = Field(default="")
+    nova_base_url: str = Field(default="https://nova-gifts.com")
+    nova_request_timeout_seconds: float = Field(default=20.0)
+    nova_check_timeout_seconds: float = Field(default=4.0)
+    # Kill switch for the fallback check alone: clearing the key disables
+    # everything, this leaves top-ups working while the check is off.
+    nova_player_check_enabled: bool = Field(default=True)
+
     # --- Steam Gifts ---
     # Region-priced Steam gift packages, fulfilled through the G-Engine gifts
     # endpoints (see ``integrations.adapters.gengine``). ``steam_gifts_enabled``
