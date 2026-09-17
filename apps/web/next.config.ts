@@ -10,6 +10,17 @@ const nextConfig: NextConfig = {
   // Lint runs separately via `make lint` / CI. Don't gate Docker builds on ESLint —
   // it duplicates work and conflates lint failures with build failures.
   eslint: { ignoreDuringBuilds: true },
+  experimental: {
+    // Prerendering fetches the **deployed** API for some 200 brand and blog
+    // pages, so one slow reply from `api.yupay.uz` ended the whole production
+    // build with `ETIMEDOUT` and left no image at all — which is how the
+    // 2026-09-17 reseller deploy became a two-step affair. So: give a page
+    // another go before failing the build on it, and hold fewer sockets open
+    // at once (Next's default is 8). A build is a burst of traffic against our
+    // own API and it is not in a hurry; a build that dies on one blip is.
+    staticGenerationRetryCount: 3,
+    staticGenerationMaxConcurrency: 4,
+  },
   images: {
     remotePatterns: [
       // First-party: the storefront domain itself + the R2-backed CDN
