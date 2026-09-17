@@ -10,6 +10,7 @@ import type { PlacedOrder, Product, Sku } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { ApiError, api } from "@/lib/api";
+import { orderStatusLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { fixedTotal, formatUsd, scaledTotal, toCents } from "@/lib/money";
 
@@ -176,9 +177,6 @@ export default function BrandPage() {
                           </span>
                         )}
                       </p>
-                      <p className="text-tx-dim mt-1.5 font-mono text-[11px]">
-                        {t("apiId")}: {sku.sku_id.slice(0, 8)}…
-                      </p>
                     </button>
                   );
                 })}
@@ -251,7 +249,7 @@ export default function BrandPage() {
               )}
               {placed && (
                 <p role="status" className="text-primary-ink mt-3 text-sm">
-                  {t("created")} · <span className="font-mono">{placed.status}</span>
+                  {t("created")} · {orderStatusLabel(placed.status, tOrders)}
                   {" · "}
                   <Link
                     href={pathFor(
@@ -280,9 +278,7 @@ export default function BrandPage() {
                     : `${t("createOrder")} · $${formatUsd(total)}`}
               </button>
 
-              <p className="text-tx-dim mt-3 break-all font-mono text-[11px]">
-                {t("apiHint")}: sku_id {selected.sku_id}
-              </p>
+              <p className="text-tx-dim mt-3 text-[12px] leading-relaxed">{t("whatsNext")}</p>
             </div>
           )}
         </aside>

@@ -113,6 +113,7 @@
     "topUp": "+ Toʻldirish",
     "groupCatalog": "MAHSULOTLAR",
     "groupAccount": "HISOB",
+    "groupDevelopers": "DASTURCHILAR UCHUN",
     "navAllBrands": "Barcha brendlar"
   },
   "catalog": {
@@ -133,10 +134,9 @@
     "created": "Buyurtma yaratildi",
     "notEnough": "Depozitda mablagʻ yetarli emas",
     "orderFailed": "Buyurtma yaratib boʻlmadi",
-    "apiId": "API uchun ID",
     "priceBefore": "Hozirgi balans",
     "selected": "tanlandi",
-    "apiHint": "API orqali — aynan shu"
+    "whatsNext": "Kod yoki tasdiq shu yerda va «Buyurtmalar»da paydo boʻladi — odatda 1–2 daqiqada. Chiqmasa, yechilgan pul depozitga oʻzi qaytadi."
   },
   "docs": {
     "title": "Hujjatlar",
@@ -253,6 +253,8 @@
     "statusRefunded": "Qaytarildi",
     "back": "Buyurtmalarga",
     "notFound": "Buyurtma topilmadi",
+    "idLabel": "Buyurtma raqami",
+    "technical": "Texnik maʼlumotlar",
     "ourId": "Bizning ID",
     "sku": "SKU",
     "timeline": "Tarix",

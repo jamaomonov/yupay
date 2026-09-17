@@ -14,7 +14,7 @@ import { PageHeading } from "@/components/PageHeading";
 import { TodayStats } from "@/components/TodayStats";
 import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
-import { ORDER_FILTERS, orderStatusLabel, orderStatusTone } from "@/lib/labels";
+import { ORDER_FILTERS, orderStatusLabel, orderStatusTone, orderTitle } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -164,10 +164,13 @@ export default function OrdersList() {
                           locale,
                           `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
                         )}
-                        className="font-mono text-xs font-medium underline-offset-4 hover:underline"
+                        className="font-semibold underline-offset-4 hover:underline"
                       >
-                        {row.merchant_order_id}
+                        {orderTitle(row, t("title"))}
                       </Link>
+                      {!row.merchant_order_id.startsWith("manual-") && (
+                        <p className="text-tx-dim mt-0.5 text-xs">{row.merchant_order_id}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3">{row.sku_code}</td>
                     <td className="px-4 py-3">

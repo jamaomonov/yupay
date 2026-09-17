@@ -11,7 +11,7 @@ import type { OrderDetail } from "@/lib/types";
 import { CopyButton } from "@/components/CopyButton";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
-import { failureLabel, orderStatusLabel } from "@/lib/labels";
+import { failureLabel, orderStatusLabel, orderTitle } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -70,8 +70,18 @@ export default function OrderDetailPage() {
       {order !== null && (
         <>
           <h1 className="mt-4 break-all text-2xl font-semibold tracking-tight">
-            {order.merchant_order_id}
+            {/* `OrderDetail` carries only the opaque `sku_id` — not the
+                `sku_code`/`sku_name`/`brand_name` `OrderRow` has — so
+                `orderTitle` has nothing to fall back to but the generic
+                title until `cabinet_orders.py`'s detail response grows a
+                code (out of scope here). The call stays wired for that day. */}
+            {orderTitle({ sku_code: "" }, t("title"))}
           </h1>
+          {!order.merchant_order_id.startsWith("manual-") && (
+            <p className="text-tx-dim mt-1 text-xs">
+              {t("idLabel")}: {order.merchant_order_id}
+            </p>
+          )}
 
           <section className="border-border bg-card mt-6 rounded-xl border p-6">
             <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
@@ -92,17 +102,6 @@ export default function OrderDetailPage() {
                 </div>
               )}
               <div>
-                <dt className="text-tx-mute text-sm">{t("ourId")}</dt>
-                <dd className="mt-1 flex items-center gap-2">
-                  <span className="break-all font-mono text-xs">{order.order_id}</span>
-                  <CopyButton value={order.order_id} label={t("copy")} done={t("copied")} />
-                </dd>
-              </div>
-              <div>
-                <dt className="text-tx-mute text-sm">{t("sku")}</dt>
-                <dd className="mt-0.5 break-all font-mono text-xs">{order.sku_id}</dd>
-              </div>
-              <div>
                 <dt className="text-tx-mute text-sm">{t("colCreated")}</dt>
                 <dd className="mt-0.5">{formatMoment(order.created_at, locale)}</dd>
               </div>
@@ -119,6 +118,25 @@ export default function OrderDetailPage() {
                 {failureLabel(order.failure_reason, t)}
               </p>
             )}
+
+            <details className="border-border mt-5 border-t pt-5 text-sm">
+              <summary className="text-tx-mute cursor-pointer select-none">
+                {t("technical")}
+              </summary>
+              <dl className="mt-3 grid gap-x-8 gap-y-4 sm:grid-cols-2">
+                <div>
+                  <dt className="text-tx-mute text-sm">{t("ourId")}</dt>
+                  <dd className="mt-1 flex items-center gap-2">
+                    <span className="break-all font-mono text-xs">{order.order_id}</span>
+                    <CopyButton value={order.order_id} label={t("copy")} done={t("copied")} />
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-tx-mute text-sm">{t("sku")}</dt>
+                  <dd className="mt-0.5 break-all font-mono text-xs">{order.sku_id}</dd>
+                </div>
+              </dl>
+            </details>
           </section>
 
           {order.delivery !== null && (

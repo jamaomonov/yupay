@@ -85,3 +85,16 @@ const ORDER_TONE: Record<string, string> = {
 export function orderStatusTone(status: string): string {
   return ORDER_TONE[status] ?? "text-tx-mute bg-tx-mute/10";
 }
+
+/** The human name of an order: brand and package when the API sent them,
+ *  the SKU code when it did not, the caller's fallback when even that is
+ *  empty. A cabinet order's `merchant_order_id` is `manual-<uuid>` — a key,
+ *  not a name — so it never appears as a title. */
+export function orderTitle(
+  row: { sku_code: string; sku_name?: string | null; brand_name?: string | null },
+  fallback: string,
+): string {
+  const parts = [row.brand_name, row.sku_name].filter((p): p is string => Boolean(p));
+  if (parts.length > 0) return parts.join(" · ");
+  return row.sku_code || fallback;
+}
