@@ -8,7 +8,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { pathFor } from "@/lib/locale-href";
-import { alternates, ROBOTS } from "@/lib/seo";
+import { alternates, NOINDEX } from "@/lib/seo";
 
 export const revalidate = 3600;
 
@@ -22,7 +22,9 @@ export async function generateMetadata({
   return {
     title: t("title"),
     alternates: alternates(locale, "/offer"),
-    robots: ROBOTS,
+    // A draft must not be quoted as our contract — flip to ROBOTS and re-add
+    // "/offer" to SEO_PATHS once the legal text is final.
+    robots: NOINDEX,
   };
 }
 
