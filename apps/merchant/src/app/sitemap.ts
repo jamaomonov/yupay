@@ -2,7 +2,7 @@ import { LOCALES } from "@yupay/i18n";
 
 import type { MetadataRoute } from "next";
 
-import { localeUrl, SEO_PATHS } from "@/lib/seo";
+import { dayStamp, localeUrl, SEO_PATHS } from "@/lib/seo";
 
 /**
  * Locale-aware sitemap, built off the single `SEO_PATHS` list `seo.ts`
@@ -22,12 +22,7 @@ function languagesFor(path: string): Record<string, string> {
 export const revalidate = 3600;
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  // No per-page content timestamp is available, so this is the generation
-  // date truncated to the day — see the storefront's own sitemap for why:
-  // a `lastmod` that moves on every regeneration without the content
-  // changing teaches a crawler to ignore the field.
-  const lastModified = new Date();
-  lastModified.setUTCHours(0, 0, 0, 0);
+  const lastModified = dayStamp();
 
   const entries: MetadataRoute.Sitemap = [];
   for (const path of SEO_PATHS) {

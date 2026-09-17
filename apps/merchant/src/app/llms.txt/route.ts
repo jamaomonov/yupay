@@ -1,4 +1,4 @@
-import { SITE } from "@/lib/seo";
+import { OPENAPI_URL, SITE } from "@/lib/seo";
 
 /**
  * /llms.txt — a machine-readable guide for LLMs and AI assistants (see
@@ -58,7 +58,7 @@ export function GET(): Response {
     `- [Авторизация: HMAC-SHA256](${SITE}/docs/authentication)`,
     `- [Вебхуки](${SITE}/docs/webhooks)`,
     `- [Ошибки: RFC 7807](${SITE}/docs/errors)`,
-    "- OpenAPI 3.1: https://api.yupay.uz/merchant/openapi.json",
+    `- OpenAPI 3.1: ${OPENAPI_URL}`,
     "- Эндпоинты: GET /merchant/v1/me · GET /catalog · POST /orders · GET /orders/{merchant_order_id} · POST /validate/player · GET /transactions",
     "",
     "## Ключевые страницы",

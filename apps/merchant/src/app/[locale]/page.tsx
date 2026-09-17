@@ -86,7 +86,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
       <JsonLd
         data={{
           "@context": "https://schema.org",
-          "@graph": [organization(), website(SITE), service(SITE), faqPage(faq)],
+          "@graph": [organization(), website(SITE), service(SITE, t("programName")), faqPage(faq)],
         }}
       />
       <main className={PAGE_MAIN}>

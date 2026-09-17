@@ -15,7 +15,7 @@ import { apiBaseUrl, bodySchema, contract, endpoints, typeLabel } from "@/lib/co
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { LANGUAGES, canonicalString, sampleFor } from "@/lib/samples";
-import { alternates, localeUrl } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export const dynamicParams = false;
 
@@ -39,6 +39,7 @@ export async function generateMetadata({
   return {
     title: `${title} — YuPay Merchant API`,
     alternates: alternates(locale, `/docs/api/${slug}`),
+    robots: ROBOTS,
   };
 }
 
@@ -111,7 +112,7 @@ export default async function OperationPage({
           headline: operation.summary ?? path,
           ...(operation.description !== undefined ? { description: operation.description } : {}),
           url: localeUrl(locale, `/docs/api/${slug}`),
-          dateModified: new Date().toISOString(),
+          dateModified: dayStamp().toISOString(),
         })}
       />
       <article className="min-w-0">

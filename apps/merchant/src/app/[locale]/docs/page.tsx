@@ -11,7 +11,7 @@ import { routing } from "@/i18n/routing";
 import { contract, endpoints } from "@/lib/contract";
 import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, localeUrl } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export const revalidate = 3600;
 
@@ -35,6 +35,7 @@ export async function generateMetadata({
     // double it up into "YuPay Merchant API — YuPay Merchant API".
     title: t("introTitle"),
     alternates: alternates(locale, "/docs"),
+    robots: ROBOTS,
   };
 }
 
@@ -55,7 +56,7 @@ export default async function IntroductionPage({
           headline: t("introTitle"),
           description: t("introLead"),
           url: localeUrl(locale, "/docs"),
-          dateModified: new Date().toISOString(),
+          dateModified: dayStamp().toISOString(),
         })}
       />
       <DocsPage title={t("introTitle")} lead={t("introLead")}>

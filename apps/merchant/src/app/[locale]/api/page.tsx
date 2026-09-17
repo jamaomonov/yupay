@@ -10,7 +10,7 @@ import { PageFrame } from "@/components/landing/PageFrame";
 import { LEAD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
 import { breadcrumbs, faqPage, techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, localeUrl, ogLocale, OPENAPI_URL, ROBOTS } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ogLocale, OPENAPI_URL, ROBOTS } from "@/lib/seo";
 
 const PATH = "/api";
 
@@ -82,11 +82,9 @@ export default async function ApiPage({ params }: { params: Promise<{ locale: st
 
   const items = FAQ_KEYS.map((n) => ({ q: tFaq(`q${n}`), a: tFaq(`a${n}`) }));
 
-  // Truncated to the day, like the sitemap's `lastModified`: a timestamp that
-  // moves on every hourly regeneration without the words changing teaches a
-  // crawler to ignore the field.
-  const dateModified = new Date();
-  dateModified.setUTCHours(0, 0, 0, 0);
+  // Same truncated-to-the-day stamp the sitemap's `lastModified` uses — see
+  // `dayStamp()`'s doc for why.
+  const dateModified = dayStamp();
 
   const sections = [
     { heading: t("h2Is"), body: t("bodyIs") },

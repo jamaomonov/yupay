@@ -166,7 +166,7 @@ export default function OrdersList() {
                         )}
                         className="font-semibold underline-offset-4 hover:underline"
                       >
-                        {orderTitle(row, t("title"))}
+                        {orderTitle(row, t("colOrder"))}
                       </Link>
                       {!row.merchant_order_id.startsWith("manual-") && (
                         <p className="text-tx-dim mt-0.5 text-xs">{row.merchant_order_id}</p>

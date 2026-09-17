@@ -73,11 +73,28 @@ export function alternates(locale: string, path = "") {
   return { canonical: localeUrl(locale, path), languages };
 }
 
-export function ogLocale(locale: string): { locale: string; alternate: string[] } {
+export function ogLocale(locale: string): { locale: string; alternateLocale: string[] } {
   return {
     locale: OG_LOCALE[locale] ?? "ru_RU",
-    alternate: LOCALES.filter((l) => l !== locale).map((l) => OG_LOCALE[l] ?? "ru_RU"),
+    // Next's OpenGraph type names this field `alternateLocale`, not
+    // `alternate` — the typo shipped silently because `Metadata["openGraph"]`
+    // accepts (and drops) unknown keys instead of rejecting them.
+    alternateLocale: LOCALES.filter((l) => l !== locale).map((l) => OG_LOCALE[l] ?? "ru_RU"),
   };
+}
+
+/**
+ * Today at UTC midnight — the generation timestamp truncated to the day.
+ *
+ * No page here has a real per-content timestamp to draw from, so every
+ * sitemap `lastModified` and JSON-LD `dateModified` uses this instead of the
+ * literal build time: a timestamp that moves on every hourly regeneration
+ * without the content changing teaches a crawler to ignore the field.
+ */
+export function dayStamp(): Date {
+  const d = new Date();
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
 }
 
 /**

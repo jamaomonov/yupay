@@ -12,7 +12,7 @@ import { contract, endpoints } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, localeUrl } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export const dynamicParams = false;
 
@@ -33,6 +33,7 @@ export async function generateMetadata({
   return {
     title: `${name} — YuPay Merchant API`,
     alternates: alternates(locale, `/docs/schemas/${name}`),
+    robots: ROBOTS,
   };
 }
 
@@ -61,7 +62,7 @@ export default async function SchemaPage({
           headline: name,
           ...(node.description !== undefined ? { description: node.description } : {}),
           url: localeUrl(locale, `/docs/schemas/${name}`),
-          dateModified: new Date().toISOString(),
+          dateModified: dayStamp().toISOString(),
         })}
       />
       <p className="text-tx-dim text-[11px] font-semibold tracking-[0.09em]">{t("groupSchemas")}</p>

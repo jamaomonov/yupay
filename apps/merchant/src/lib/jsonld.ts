@@ -37,12 +37,15 @@ export function website(site: string): Record<string, unknown> {
   };
 }
 
-/** The wholesale program itself, as a Service offered by the Organization. */
-export function service(site: string): Record<string, unknown> {
+/** The wholesale program itself, as a Service offered by the Organization.
+ *  `name` is locale-appropriate copy from the caller — "YuPay Оптом" (ru),
+ *  "YuPay Wholesale" (en) or "YuPay Optom" (uz) — never hardcoded here, so
+ *  a ru-only name cannot leak into the en/uz pages' structured data. */
+export function service(site: string, name: string): Record<string, unknown> {
   return {
     "@context": "https://schema.org",
     "@type": "Service",
-    name: "YuPay Оптом",
+    name,
     serviceType: "Wholesale digital goods supply",
     areaServed: ["UZ", "RU", "KZ"],
     provider: { "@id": ORGANIZATION_ID },

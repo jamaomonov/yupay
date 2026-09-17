@@ -13,7 +13,7 @@ import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
-import { alternates, localeUrl } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -29,6 +29,7 @@ export async function generateMetadata({
   return {
     title: `${t("quickTitle")} — YuPay Merchant API`,
     alternates: alternates(locale, "/docs/quickstart"),
+    robots: ROBOTS,
   };
 }
 
@@ -74,7 +75,7 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
           headline: t("quickTitle"),
           description: t("quickLead"),
           url: localeUrl(locale, "/docs/quickstart"),
-          dateModified: new Date().toISOString(),
+          dateModified: dayStamp().toISOString(),
         })}
       />
       <DocsPage eyebrow={t("groupStart")} title={t("quickTitle")} lead={t("quickLead")}>

@@ -139,10 +139,13 @@ export function blogAlternates(locale: string, localeSlugs: Record<string, strin
   };
 }
 
-export function ogLocale(locale: string) {
+export function ogLocale(locale: string): { locale: string; alternateLocale: string[] } {
   return {
     locale: OG_LOCALE[locale] ?? "ru_RU",
-    alternate: LOCALES.filter((l) => l !== locale).map((l) => OG_LOCALE[l] ?? "ru_RU"),
+    // Next's OpenGraph type names this field `alternateLocale`, not
+    // `alternate` — the typo shipped silently because `Metadata["openGraph"]`
+    // accepts (and drops) unknown keys instead of rejecting them.
+    alternateLocale: LOCALES.filter((l) => l !== locale).map((l) => OG_LOCALE[l] ?? "ru_RU"),
   };
 }
 

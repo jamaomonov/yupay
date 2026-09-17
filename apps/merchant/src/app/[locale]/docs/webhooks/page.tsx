@@ -8,7 +8,7 @@ import { Prose } from "@/components/docs/Prose";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
 import { techArticle } from "@/lib/jsonld";
-import { alternates, localeUrl } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -24,6 +24,7 @@ export async function generateMetadata({
   return {
     title: `${t("webhooksTitle")} — YuPay Merchant API`,
     alternates: alternates(locale, "/docs/webhooks"),
+    robots: ROBOTS,
   };
 }
 
@@ -89,7 +90,7 @@ export default async function WebhooksPage({ params }: { params: Promise<{ local
           headline: t("webhooksTitle"),
           description: t("webhooksLead"),
           url: localeUrl(locale, "/docs/webhooks"),
-          dateModified: new Date().toISOString(),
+          dateModified: dayStamp().toISOString(),
         })}
       />
       <DocsPage eyebrow={t("groupStart")} title={t("webhooksTitle")} lead={t("webhooksLead")}>

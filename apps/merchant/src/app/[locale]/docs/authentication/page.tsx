@@ -10,7 +10,7 @@ import { routing } from "@/i18n/routing";
 import { apiBaseUrl, contract } from "@/lib/contract";
 import { techArticle } from "@/lib/jsonld";
 import { LANGUAGES, sampleFor } from "@/lib/samples";
-import { alternates, localeUrl } from "@/lib/seo";
+import { alternates, dayStamp, localeUrl, ROBOTS } from "@/lib/seo";
 
 export function generateStaticParams() {
   return routing.locales.map((locale) => ({ locale }));
@@ -26,6 +26,7 @@ export async function generateMetadata({
   return {
     title: `${t("authTitle")} — YuPay Merchant API`,
     alternates: alternates(locale, "/docs/authentication"),
+    robots: ROBOTS,
   };
 }
 
@@ -64,7 +65,7 @@ export default async function AuthenticationPage({
           headline: t("authTitle"),
           description: t("authLead"),
           url: localeUrl(locale, "/docs/authentication"),
-          dateModified: new Date().toISOString(),
+          dateModified: dayStamp().toISOString(),
         })}
       />
       <DocsPage eyebrow={t("groupStart")} title={t("authTitle")} lead={t("authLead")}>
