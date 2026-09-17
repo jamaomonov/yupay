@@ -5,6 +5,12 @@ Run inside the api container so it can reach both the database and NOVA:
     docker compose -f docker-compose.prod.yml exec -T api \
         python - < scripts/seed/2026-09-17_nova_mappings.py
 
+It is a **dry run** like that: it prints what it would write and saves nothing.
+Read the tables, then run it again to commit:
+
+    docker compose -f docker-compose.prod.yml exec -T -e APPLY=1 api \
+        python - < scripts/seed/2026-09-17_nova_mappings.py
+
 It pairs `Sku.denomination` with a NOVA offer name on **both** the number and
 the unit — "1800 UC" is not "1800 WOW Coins", and NOVA sells both under one
 PUBG category — and writes a mapping only when exactly one offer matches and
@@ -36,6 +42,7 @@ one we actually mean to sell.
 from __future__ import annotations
 
 import asyncio
+import os
 import re
 from dataclasses import dataclass
 from decimal import Decimal
@@ -226,13 +233,22 @@ def _offers_by_denomination(
     return by_denom
 
 
-def _offers_by_id(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Index offers by ``offer_id``, for the by-hand pairs in `SKU_OFFER_OVERRIDES`."""
-    by_id: dict[str, dict[str, Any]] = {}
+def _offers_by_id(offers: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """Index offers by ``offer_id``, for the by-hand pairs in `SKU_OFFER_OVERRIDES`.
+
+    A **list** per id, like :func:`_offers_by_denomination`, and for the same
+    reason: an id that two offers share is an ambiguity, and this script's rule
+    is that an ambiguity is reported rather than resolved. Keeping only the
+    first would bind an override to whichever offer NOVA happened to list
+    first, silently, in the one script whose output decides where a customer's
+    money goes. Their catalogue has never done this; the guard costs one line
+    and removes the need to keep believing that.
+    """
+    by_id: dict[str, list[dict[str, Any]]] = {}
     for offer in offers:
         offer_id = str(offer.get("offer_id") or "").strip()
         if offer_id:
-            by_id.setdefault(offer_id, offer)
+            by_id.setdefault(offer_id, []).append(offer)
     return by_id
 
 
@@ -294,7 +310,7 @@ def _upsert_switch_stmt(*, sku_id: str) -> Any:  # Any: see `_upsert_stmt` above
 def _override_claim(
     sku: Any,  # Any: a Sku ORM row.
     *,
-    by_id: dict[str, dict[str, Any]],
+    by_id: dict[str, list[dict[str, Any]]],
     category_id: str,
 ) -> dict[str, Any] | _Unmatched | None:
     """This SKU's `SKU_OFFER_OVERRIDES` entry resolved against NOVA's offers.
@@ -306,22 +322,30 @@ def _override_claim(
     override_offer_id = SKU_OFFER_OVERRIDES.get(sku.sku_code)
     if override_offer_id is None:
         return None
-    offer = by_id.get(override_offer_id)
-    if offer is None:
+    candidates = by_id.get(override_offer_id, [])
+    if not candidates:
         return _Unmatched(
             sku.sku_code,
             sku.denomination,
             f"override offer_id {override_offer_id!r} not found in nova's"
             f" {category_id} offers — check SKU_OFFER_OVERRIDES or map it by hand",
         )
-    return offer
+    if len(candidates) > 1:
+        names = ", ".join(str(c.get("name")) for c in candidates)
+        return _Unmatched(
+            sku.sku_code,
+            sku.denomination,
+            f"override offer_id {override_offer_id!r} matches {len(candidates)} nova"
+            f" offers ({names}) — their catalogue is ambiguous here, pick one by hand",
+        )
+    return candidates[0]
 
 
 def _claim_for_sku(
     sku: Any,  # Any: a Sku ORM row.
     *,
     by_denom: dict[_Denomination, list[dict[str, Any]]],
-    by_id: dict[str, dict[str, Any]],
+    by_id: dict[str, list[dict[str, Any]]],
     category_id: str,
 ) -> dict[str, Any] | _Unmatched:
     """This SKU's one candidate NOVA offer, or the reason it has none.
@@ -496,6 +520,17 @@ def _print_switched(rows: list[str]) -> None:
 
 
 async def main() -> None:
+    """Pair our SKUs with NOVA's offers, print what that would do, and — only
+    when told to — write it.
+
+    **A dry run by default.** This script stopped being a mapping seed the day
+    it started writing ``force_supplier`` rules: a mapping is inert until
+    somebody routes to it, but a rule moves the next customer's order. Printing
+    the tables and committing in the same breath left "check the output" as
+    something an operator does *after* the routing changed. Now the tables come
+    first and `APPLY=1` is the second step.
+    """
+    apply = os.environ.get("APPLY", "").strip().lower() in {"1", "true", "yes"}
     settings = get_settings()
     if not settings.nova_api_key:
         raise SystemExit("no NOVA API key configured — set NOVA_API_KEY and retry")
@@ -523,12 +558,21 @@ async def main() -> None:
         _print_switched(all_switched)
         _print_unmatched(all_unmatched)
 
-        await session.commit()
+        if apply:
+            await session.commit()
+        else:
+            await session.rollback()
 
+    verb = "written" if apply else "would be written"
     print(
-        f"\n{len(all_matched)} mapping(s) written, {len(all_switched)} switched to nova,"
+        f"\n{len(all_matched)} mapping(s) {verb}, {len(all_switched)} switched to nova,"
         f" {len(all_unmatched)} sku(s) left for the admin"
     )
+    if not apply:
+        print(
+            "\nDRY RUN — nothing was saved. Read the tables above, then re-run with"
+            " APPLY=1 to commit."
+        )
 
 
 if __name__ == "__main__":
