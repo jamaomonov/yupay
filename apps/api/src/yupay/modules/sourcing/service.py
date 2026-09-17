@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,12 @@ from sqlalchemy.orm import selectinload
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.sourcing.models import SkuSourcingRule
+
+if TYPE_CHECKING:
+    # Type-only — a real import at module load would close the same cycle the
+    # lazy imports below exist to avoid (catalog/integrations sit "above"
+    # sourcing; see the comment on ``_resolve_auto``).
+    from yupay.modules.integrations.models import SkuSupplierMapping
 
 Mode = Literal["auto", "force_inventory", "force_supplier", "manual"]
 DEFAULT_FALLBACK_SUPPLIER = "mock"
@@ -89,57 +95,69 @@ def _resolve_explicit_rule(rule: SkuSourcingRule, *, sku_id: str) -> Decision:
     )
 
 
-async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) -> Decision:
-    """Kind-aware default for SKUs without an explicit rule.
+def _pick_auto_mapping_slug(mappings: Iterable[SkuSupplierMapping]) -> str | None:
+    """Which supplier the auto-routing rule treats as one SKU's route.
+
+    The single definition of "which supplier wins": ``_resolve_auto`` (one
+    query, one SKU) and the batched ``sourcing.brand_overview`` (one query
+    for every SKU of a brand) both narrow a SKU's mapping rows down and
+    hand them to this function instead of each re-encoding the filter and
+    the tie-break. A divergence between the two would mean the brand
+    overview screen reports a route an order would never actually take —
+    exactly the failure mode splitting this out exists to rule out.
+
+    Two rules here, and neither used to exist.
+
+    A reserve supplier is never picked automatically, whatever its mapping's
+    age (`RESERVE_SUPPLIERS`, ADR-0081). Ordering alone would have made
+    "reserve" an accident: it keeps the incumbent's route only while an
+    incumbent exists, and a top-up SKU that never got one — or whose only
+    mapping an operator deactivated mid-switch — would silently start buying
+    from a supplier nobody chose. Reaching a reserve stays an explicit
+    `force_supplier` decision, which is the only thing that should move
+    somebody's orders.
+
+    Among the rest, the oldest active mapping wins — the oldest is the
+    incumbent, the one orders have been going to, not an accident of
+    iteration order. `supplier_slug` breaks a `created_at` tie so the
+    answer is total.
+
+    Args:
+        mappings: A single SKU's mapping rows, any mix of active/inactive
+            and any supplier — the filtering happens in here.
+
+    Returns:
+        The winning supplier's slug, or ``None`` if no active, non-reserve
+        mapping exists.
+    """
+    from yupay.modules.integrations.models import RESERVE_SUPPLIERS
+
+    best: SkuSupplierMapping | None = None
+    for mapping in mappings:
+        if not mapping.is_active or mapping.supplier_slug in RESERVE_SUPPLIERS:
+            continue
+        if best is None or (mapping.created_at, mapping.supplier_slug) < (
+            best.created_at,
+            best.supplier_slug,
+        ):
+            best = mapping
+    return best.supplier_slug if best is not None else None
+
+
+def _auto_decision(*, kind: str, mapping_slug: str | None, rule_present: bool) -> Decision:
+    """Kind-aware ``Decision`` given already-resolved inputs.
+
+    The pure, return-value half of ``_resolve_auto`` — split out so
+    ``sourcing.brand_overview`` can reach the identical decision from
+    batch-loaded data (no query per SKU) instead of duplicating this
+    branching. See ``_resolve_auto`` for how ``kind``/``mapping_slug`` are
+    read on the single-SKU path.
 
     ``top_up`` routes to the supplier (or ``manual`` if no mapping is
     set up yet); ``voucher`` keeps the historical inventory-first
     behaviour but prefers a real configured supplier over ``mock`` for
     the fallback when one is available.
     """
-    # Late imports — these modules sit "above" sourcing in the
-    # dependency graph (catalog is leaf, integrations imports
-    # sourcing through service). Pulling them at module load creates
-    # a cycle; resolving them lazily here doesn't.
-    from yupay.modules.catalog.models import Product, Sku
-    from yupay.modules.integrations.models import RESERVE_SUPPLIERS, SkuSupplierMapping
-
-    sku = (
-        await db.execute(select(Sku).options(selectinload(Sku.product)).where(Sku.id == sku_id))
-    ).scalar_one_or_none()
-    # SKU might not exist at the call-site (e.g. test harness); fall
-    # back to the pre-refactor behaviour rather than raising — the
-    # downstream saga will surface the real "sku not found" error.
-    product: Product | None = sku.product if sku is not None else None
-    kind = product.kind if product is not None else "voucher"
-
-    # Two rules here, and neither used to exist.
-    #
-    # A reserve supplier is never picked automatically, whatever its mapping's
-    # age (`RESERVE_SUPPLIERS`). Ordering alone would have made "reserve" an
-    # accident: it keeps the incumbent's route only while an incumbent exists,
-    # and a top-up SKU that never got one — or whose only mapping an operator
-    # deactivated mid-switch — would silently start buying from a supplier
-    # nobody chose. Reaching a reserve stays an explicit `force_supplier`
-    # decision, which is the only thing that should move somebody's orders.
-    #
-    # Among the rest, the oldest active mapping wins. `.limit(1)` with no ORDER
-    # BY picks whichever row Postgres happens to return, which can change after
-    # a VACUUM; the oldest is the incumbent, the one orders have been going to.
-    # `supplier_slug` breaks a created_at tie so the answer is total.
-    mapping_slug: str | None = (
-        await db.execute(
-            select(SkuSupplierMapping.supplier_slug)
-            .where(
-                SkuSupplierMapping.sku_id == sku_id,
-                SkuSupplierMapping.is_active.is_(True),
-                SkuSupplierMapping.supplier_slug.not_in(RESERVE_SUPPLIERS),
-            )
-            .order_by(SkuSupplierMapping.created_at.asc(), SkuSupplierMapping.supplier_slug.asc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-
     if kind == "top_up":
         if mapping_slug is None:
             # No mapping → no automated path. Route to the manual
@@ -169,6 +187,41 @@ async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) ->
         strict=False,
         rule_present=rule_present,
     )
+
+
+async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) -> Decision:
+    """Kind-aware default for SKUs without an explicit rule.
+
+    Reads the two inputs ``_auto_decision`` needs for a single SKU — the
+    product kind and the winning active mapping
+    (:func:`_pick_auto_mapping_slug`) — then hands them to the same pure
+    decision function the batched brand-overview uses, so the two paths
+    cannot disagree about which supplier wins.
+    """
+    # Late imports — these modules sit "above" sourcing in the
+    # dependency graph (catalog is leaf, integrations imports
+    # sourcing through service). Pulling them at module load creates
+    # a cycle; resolving them lazily here doesn't.
+    from yupay.modules.catalog.models import Product, Sku
+    from yupay.modules.integrations.models import SkuSupplierMapping
+
+    sku = (
+        await db.execute(select(Sku).options(selectinload(Sku.product)).where(Sku.id == sku_id))
+    ).scalar_one_or_none()
+    # SKU might not exist at the call-site (e.g. test harness); fall
+    # back to the pre-refactor behaviour rather than raising — the
+    # downstream saga will surface the real "sku not found" error.
+    product: Product | None = sku.product if sku is not None else None
+    kind = product.kind if product is not None else "voucher"
+
+    mappings = (
+        (await db.execute(select(SkuSupplierMapping).where(SkuSupplierMapping.sku_id == sku_id)))
+        .scalars()
+        .all()
+    )
+    mapping_slug = _pick_auto_mapping_slug(mappings)
+
+    return _auto_decision(kind=kind, mapping_slug=mapping_slug, rule_present=rule_present)
 
 
 async def set_rule(

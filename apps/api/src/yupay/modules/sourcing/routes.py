@@ -16,9 +16,11 @@ from yupay.core.idempotency import (
 )
 from yupay.modules.admin.api import require_admin
 from yupay.modules.inventory import service as inv_svc
+from yupay.modules.sourcing import brand_overview as brand_overview_svc
 from yupay.modules.sourcing import service as svc
 from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.sourcing.schemas import (
+    SourcingBrandOverviewOut,
     SourcingDecisionOut,
     SourcingRuleIn,
     SourcingRuleListOut,
@@ -51,6 +53,19 @@ async def list_rules(
     return SourcingRuleListOut(
         items=[_rule_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rules]
     )
+
+
+@admin_router.get(
+    "/brands/{brand_slug}",
+    response_model=SourcingBrandOverviewOut,
+    summary="Sourcing overview for every active SKU of a brand",
+)
+async def brand_overview(
+    brand_slug: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> SourcingBrandOverviewOut:
+    return await brand_overview_svc.get_brand_overview(db, brand_slug)
 
 
 @admin_router.get(
