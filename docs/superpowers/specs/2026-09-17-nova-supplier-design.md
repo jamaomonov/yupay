@@ -134,15 +134,24 @@ form we have not taught this adapter about than something NOVA wants.
 completed/refund." So unlike G-Engine, **the create spends**, and this adapter follows Waxpeer's
 grading rather than G-Engine's:
 
-| Exit                                                                                                  | `MoneyOutcome` |
-| ----------------------------------------------------------------------------------------------------- | -------------- |
-| Key missing, no mapping, no usable fields — refusals before any call                                  | `RETURNED`     |
-| `NovaError` with status 400/404 and a `code` that names our input (unknown category/offer, bad field) | `RETURNED`     |
-| `NovaError` 403 `subscription_inactive` / blocked account                                             | `RETURNED`     |
-| `NovaError` 409 (their idempotency refusal, whichever way it means it)                                | `UNKNOWN`      |
-| `NovaError` 5xx, or `NovaUnavailableError`, on the create                                             | `UNKNOWN`      |
-| Order reported `refunded`                                                                             | `RETURNED`     |
-| Order reported `failed` / `error` / `cancelled` with no refund marker                                 | `UNKNOWN`      |
+| Exit                                                                                                                                       | `MoneyOutcome`                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| Key missing, no mapping, no usable fields — refusals before any call                                                                       | `RETURNED`                                                     |
+| `NovaError` 400/403/404 — a refusal of the request itself (unknown category or offer, bad field, `subscription_inactive`, blocked account) | `RETURNED`                                                     |
+| `NovaError` 409 (their idempotency refusal, whichever way it means it)                                                                     | `UNKNOWN`                                                      |
+| Their refusal reads as "not enough balance"                                                                                                | not a failure — the saga's `supplier_low_balance` stall, below |
+| `NovaError` 5xx, or `NovaUnavailableError`, on the create                                                                                  | `UNKNOWN`                                                      |
+| Order reported `refunded`                                                                                                                  | `RETURNED`                                                     |
+| Order reported `failed` / `error` / `cancelled` with no refund marker                                                                      | `UNKNOWN`                                                      |
+
+**Low balance is a stall, not a failure.** Our NOVA balance is `$0.0000`, so the first order will
+be refused for exactly that reason. Waxpeer's precedent applies unchanged: a refusal whose text
+reads as "insufficient balance" returns `fulfillment.service`'s `supplier_low_balance` sentinel
+with no money outcome, which keeps the customer on "в обработке", parks the task in the admin
+inbox and alerts ops, instead of failing an order that a top-up would have completed.
+
+**Quantity.** Their order endpoint has no quantity field: one call buys one offer. An item with
+`qty > 1` is refused before any call (`RETURNED`) rather than silently under-delivering.
 
 The 409 line is the contradiction from §2 made harmless: if a reused key returns the original
 order we never see a 409; if it is rejected we do, and "rejected" does not tell us whether the
