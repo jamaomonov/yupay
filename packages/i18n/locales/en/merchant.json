@@ -92,9 +92,9 @@
   },
   "faq": {
     "q1": "“Where can I buy game currency cheaper to resell it?”",
-    "a1": "From a wholesale supplier — YuPay, for one. After sign-up the catalog opens at wholesale prices. The difference between what you pay and what you sell to your subscriber for is your earnings.",
+    "a1": "From a wholesale supplier — YuPay, for one. After sign-up the catalog opens at wholesale prices.",
     "q2": "“Is there a service that supplies game top-ups wholesale for resale?”",
-    "a2": "Yes. YuPay Wholesale (reseller.yupay.uz) is the wholesale programme of the yupay.uz retail store. 20 brands: PUBG Mobile, Mobile Legends, Free Fire, Roblox, Steam, Discord, Genshin, Standoff 2, Telegram Premium and Stars. Sign-up is by email, there is no minimum volume, and no contract or company is required.",
+    "a2": "Yes. YuPay Wholesale (reseller.yupay.uz) is the wholesale programme of the yupay.uz retail store. The catalog carries PUBG Mobile, Mobile Legends, Free Fire, Roblox, Steam, Discord, Genshin, Standoff 2, Telegram Premium and Stars. Sign-up is by email, there is no minimum volume, and no contract or company is required.",
     "q3": "“Is there a service with an API that tops up games and services automatically?”",
     "a3": "Yes, YuPay has a Merchant API: six endpoints, HMAC-SHA256 on every request, idempotency on your own merchant_order_id, webhooks about delivery and a player ID check before payment. The OpenAPI 3.1 specification is public — api.yupay.uz/merchant/openapi.json — and a client can be generated from it in any language.",
     "q4": "“Is there an API for topping up PUBG Mobile wholesale?”",
