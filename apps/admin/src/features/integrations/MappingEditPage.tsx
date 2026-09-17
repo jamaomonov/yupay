@@ -119,10 +119,11 @@ export function MappingEditPage() {
     if (found) setSku(found);
   }, [existingSkuQuery.data, params.sku]);
 
-  //: True when this supplier sells services priced by amount rather than by a
-  //: catalogue entry. Then the denomination is optional and step 5's quantity
-  //: is what says how much to buy.
-  const amountPriced = isAmountPriced(supplier);
+  //: True when this mapping buys an amount rather than a catalogue entry. Then
+  //: the denomination is optional and step 5's quantity is what says how much
+  //: to buy. It depends on the product as well as the supplier: NOVA's Steam
+  //: row has no denomination, while its game rows still need their offer id.
+  const amountPriced = isAmountPriced(supplier, catalog?.external_id ?? "");
 
   // ---- derived completeness ----
   const stepStatus = useMemo(() => {

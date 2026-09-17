@@ -103,6 +103,15 @@ order endpoints a line belongs to, and the mapping validator, to know which sing
 variant. One definition, or they drift and the admin starts refusing a mapping the adapter would
 have used.
 
+**And a third caller, which the first attempt at this fix forgot.** The admin wizard keeps its own
+copy of the rule in `apps/admin/src/features/integrations/types.ts` — the backend decides what it
+will accept, the wizard decides whether Save is even clickable. Fixing only the backend left the
+Steam reserve exactly as unreachable as before, with a runbook confidently describing a step that
+ended at a disabled button. The frontend gate now takes the product id as well as the supplier and
+mirrors the same narrow rule, its docstring says the mirror is the point, and a wizard test asserts
+both halves. The lesson generalises past this branch: a validation rule that exists on both sides of
+the API has two homes, and a change to one is a change to both.
+
 ### 2. Margin reads what the supplier actually charged, not an assumed dollar-for-dollar cost
 
 `orders.revenue.margin_usd_expr` gained a new leading branch: for a variable-amount SKU with a

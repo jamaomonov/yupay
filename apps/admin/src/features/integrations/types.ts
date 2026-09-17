@@ -255,12 +255,25 @@ export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
   },
 ];
 
-/** Suppliers whose catalogue includes **amount-priced** services — ones with no
- *  denominations, where what to buy is a quantity. G-Engine calls them
- *  `unfixed`; Telegram Stars is one. Mirrors `_AMOUNT_PRICED_SUPPLIERS` in
- *  `integrations/service.py`, which is what actually accepts the null variant. */
-export function isAmountPriced(slug: string): boolean {
-  return slug === "gengine";
+/** NOVA's Steam wallet mapping: no category upstream, so no denomination. */
+export const NOVA_STEAM_SENTINEL = "steam-topup";
+
+/** Whether this mapping buys an **amount** rather than a catalogue entry, so
+ *  the denomination is optional and step 5's quantity says how much to buy.
+ *
+ *  Two shapes qualify, and the second is one row rather than a supplier:
+ *  G-Engine's `unfixed` services (Telegram Stars is one), and NOVA's Steam
+ *  mapping specifically. A NOVA *game* mapping still needs its offer id.
+ *
+ *  **This mirrors `_is_amount_priced` in `integrations/service.py`, and the
+ *  mirror is the point.** The backend is what actually accepts a null variant;
+ *  this gate only decides whether the wizard lets you try. When the two
+ *  disagree the Save button stays disabled on a mapping the API would have
+ *  accepted — which is how NOVA's Steam reserve was briefly unreachable from
+ *  the admin while its API call worked fine. Change one, change both. */
+export function isAmountPriced(slug: string, externalProductId = ""): boolean {
+  if (slug === "gengine") return true;
+  return slug === "nova" && externalProductId.trim() === NOVA_STEAM_SENTINEL;
 }
 
 /** Suppliers whose catalogue is cached locally, so a mapping can be picked

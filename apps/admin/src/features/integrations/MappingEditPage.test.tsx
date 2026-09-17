@@ -148,6 +148,33 @@ it("can save an amount-priced service that has no denomination", async () => {
   });
 });
 
+it("saves NOVA's Steam mapping with no denomination, but still demands one for a game", async () => {
+  // Their Steam endpoint takes a login and an amount — no category, no
+  // denomination — so the mapping that reaches it carries a sentinel product
+  // id and nothing in the номинал field. This gate is a mirror of the API's
+  // own; when the two disagreed, Save stayed disabled on a mapping the API
+  // would have accepted and the Steam reserve could not be created at all.
+  renderPage();
+  const picker = await reachSupplierStep();
+
+  fireEvent.change(picker, { target: { value: "nova" } });
+  fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), {
+    target: { value: "steam-topup" },
+  });
+  fireEvent.change(screen.getByLabelText("Количество"), { target: { value: "1" } });
+
+  const save = screen.getByRole("button", { name: "Сохранить" });
+  expect(save).toBeEnabled();
+
+  // And the narrowness: the same supplier with a real category is a game
+  // mapping, which is useless without its offer id and must not save without
+  // one — a mistake caught at the form beats one caught at a customer's order.
+  fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), {
+    target: { value: "pubg_mobile_auto" },
+  });
+  expect(screen.getByRole("button", { name: "Сохранить" })).toBeDisabled();
+});
+
 it("drops the ids when the supplier changes", async () => {
   // Ids are per-supplier. Carrying one over would point G-Engine at a product
   // id that means something else in their catalogue — and it would save
