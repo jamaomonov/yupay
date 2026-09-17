@@ -50,6 +50,7 @@ from yupay.modules.fulfillment.suppliers.nova_grading import (
     _result,
     _without_our_inputs,
 )
+from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -72,16 +73,10 @@ _FIELD_MAP: dict[str, str] = {
     "zone_id": "server_id",
 }
 
-#: A mapping whose ``external_product_id`` is this is a Steam wallet top-up,
-#: not a game: their Steam endpoint takes a login and an amount and has no
-#: category at all, so there is no real id to put here.
-#:
-#: A sentinel rather than a fourth ``kind`` for the reason ADR-0081 gives about
-#: the validate namespace: ``ck_sku_supplier_mapping_kind`` allows only
-#: ``voucher|game|gift``, and the admin's mapping wizard coerces whatever it
-#: loads to ``voucher|game`` when an operator saves the page. A sentinel in a
-#: column the wizard round-trips untouched survives that; a new kind does not.
-STEAM_SENTINEL = "steam-topup"
+#: Re-exported so this module reads as one story; the fact itself lives in
+#: ``integrations.models`` because the admin's mapping validator needs the same
+#: one. See it there for why a sentinel rather than a fourth ``kind``.
+STEAM_SENTINEL = NOVA_STEAM_SENTINEL
 
 
 #: They document no code for it, so we sniff the message. A false positive only

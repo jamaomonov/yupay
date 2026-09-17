@@ -81,18 +81,27 @@ Steam paths cannot cross — both directions are asserted by test
 (`test_a_games_mapping_never_reaches_the_steam_call`,
 `test_a_steam_mapping_sends_the_login_and_the_line_amount`).
 
-**A gap this decision leaves, found while writing the runbook and not fixed in this branch:** the
+**A gap this decision nearly left, found while writing the runbook and fixed here instead.** The
 admin mapping wizard requires a non-empty "Номинал" (`external_variant_id`) for any `kind="game"`
-mapping unless the supplier is in `_AMOUNT_PRICED_SUPPLIERS` (`integrations/service.py`), which
-today holds only `{"gengine"}`. NOVA is not on it, so creating the Steam sentinel mapping through
-the admin form — or through `PUT /admin/integrations/mappings/{sku_id}` directly — is refused with
-`external_variant_id is required for kind='game'` unless the operator types _something_ into that
-field. `_fulfill_steam` never reads `external_variant_id`, so any placeholder works and is
-harmless — but "no variant" in the design doc describes what the adapter needs, not what the form
-will currently accept. Documented as a known rough edge in the runbook's Steam section rather than
-silently worked around, because a maintainer reading "no variant" in this ADR and then hitting that
-validation error should not have to rediscover why. Adding `nova` to `_AMOUNT_PRICED_SUPPLIERS` is
-the natural fix and is left for whoever runs the first live Steam order.
+mapping unless the supplier is amount-priced, and that check knew only about G-Engine's `unfixed`
+services. NOVA was not on the list, so the Steam sentinel mapping could not be created from the
+admin at all — the reserve would have shipped unreachable, with the runbook telling an operator to
+type a placeholder into a field the adapter never reads.
+
+The fix is deliberately narrow. `_is_amount_priced` (`integrations/service.py`) now also admits a
+`nova` mapping whose `external_product_id` is the Steam sentinel, and nothing else: a NOVA **game**
+mapping still requires its offer id and still refuses to save without one. Adding `nova` to the set
+outright was the obvious move and the wrong one — it would let an operator save a game mapping with
+no offer, and the first order on it would fail at our own guard instead of at the form, moving the
+feedback from the moment of the mistake to the moment it costs a customer their order. Both halves
+are asserted (`test_novas_steam_mapping_needs_no_variant`,
+`test_a_nova_game_mapping_still_needs_its_offer`).
+
+The sentinel itself moved to `integrations/models.py` beside `RESERVE_SUPPLIERS` for the same
+reason: two unrelated callers now need the same fact — the adapter, to know which of NOVA's two
+order endpoints a line belongs to, and the mapping validator, to know which single row may carry no
+variant. One definition, or they drift and the admin starts refusing a mapping the adapter would
+have used.
 
 ### 2. Margin reads what the supplier actually charged, not an assumed dollar-for-dollar cost
 
@@ -220,10 +229,10 @@ Same dry-run-by-default shape as the mapping seed, for the same reason: this see
   corrected three things the documentation had wrong. The Steam path should get the same treatment
   before it is trusted with real volume, and the runbook records what that first order needs to
   capture.
-- The admin mapping wizard's "Номинал is required" gap (Decision 1) is real and unfixed — an
-  operator following only the design doc's "no variant" line would be confused by the validation
-  error. The runbook gives the literal workaround; fixing `_AMOUNT_PRICED_SUPPLIERS` properly is
-  left for whoever runs that first live order.
+- The mapping validator now has a second reason to allow an empty variant, and it is keyed on one
+  supplier plus one literal id (Decision 1). That is a narrow exception on purpose, but it is still
+  an exception: a third amount-priced shape should widen `_is_amount_priced` deliberately rather
+  than by pattern-matching another sentinel into it.
 - Free Fire's price advantage at NOVA is a snapshot from 2026-09-17. Nothing in this branch alerts
   if NOVA's price rises back above G2B's — an operator has to notice, the same as any other
   supplier-price comparison in this codebase. The rollback is cheap (Decision 3) but not automatic.

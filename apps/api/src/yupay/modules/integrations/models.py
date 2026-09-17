@@ -62,6 +62,24 @@ MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova"
 #: an import cycle.
 RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova"})
 
+#: A ``nova`` mapping whose ``external_product_id`` is this buys a **Steam
+#: wallet top-up**, not a game. Their Steam endpoint takes a login and an
+#: amount and has no category at all, so there is no real id to put in that
+#: column, and no denomination to put in the variant one.
+#:
+#: A sentinel rather than a fourth mapping ``kind``, for the reason ADR-0081
+#: records about the validate namespace: ``ck_sku_supplier_mapping_kind``
+#: allows only ``voucher|game|gift``, and the admin's wizard coerces whatever
+#: it loads to ``voucher|game`` when an operator saves the page. A sentinel in
+#: a column the wizard round-trips untouched survives that; a new kind does not.
+#:
+#: It lives here rather than in the adapter because two unrelated places need
+#: the same fact: the adapter, to know which of NOVA's two order endpoints a
+#: line belongs to, and ``integrations.service.upsert_mapping``, to know that
+#: this one mapping is allowed to carry no variant. One definition, or they
+#: drift and the admin starts refusing a mapping the adapter would have used.
+NOVA_STEAM_SENTINEL = "steam-topup"
+
 
 class SkuSupplierMapping(Base):
     """Mapping between one YuPay SKU and one supplier's external product id."""

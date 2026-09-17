@@ -235,6 +235,64 @@ async def test_an_amount_priced_service_needs_no_variant(
     assert body["mapping"]["quantity"] == 250
 
 
+async def test_novas_steam_mapping_needs_no_variant(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """NOVA's Steam row is amount-priced the same way, and it is one row rather
+    than a supplier.
+
+    Their Steam endpoint takes a login and an amount; there is no category and
+    no denomination anywhere in it, which is what the sentinel
+    ``external_product_id`` says. Without this the reserve could not be created
+    from the admin at all — the feature would ship unreachable.
+    """
+    admin = await _login_user(integration_client, tg_id=417)
+    await _grant_admin(db_session, tg_id=417)
+    headers = {"Authorization": f"Bearer {admin}"}
+    r = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{_seed_sku}",
+        headers=headers,
+        json={
+            "supplier_slug": "nova",
+            "kind": "game",
+            "external_product_id": "steam-topup",
+            "quantity": 1,
+        },
+    )
+    assert r.status_code in (200, 201), r.text
+    assert r.json()["mapping"]["external_variant_id"] is None
+
+
+async def test_a_nova_game_mapping_still_needs_its_offer(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _seed_sku: str,
+) -> None:
+    """The narrowness of the exception above, asserted.
+
+    Letting NOVA off the variant rule wholesale would let an operator save a
+    game mapping with no offer id, and the first order on it would fail at our
+    own guard rather than at this form — feedback moved from the moment of the
+    mistake to the moment it costs a customer their order.
+    """
+    admin = await _login_user(integration_client, tg_id=418)
+    await _grant_admin(db_session, tg_id=418)
+    headers = {"Authorization": f"Bearer {admin}"}
+    r = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{_seed_sku}",
+        headers=headers,
+        json={
+            "supplier_slug": "nova",
+            "kind": "game",
+            "external_product_id": "pubg_mobile_auto",
+            "quantity": 1,
+        },
+    )
+    assert r.status_code == 422, r.text
+
+
 async def test_list_filters_by_supplier(
     integration_client: AsyncClient,
     db_session: AsyncSession,

@@ -288,23 +288,20 @@ Same mechanism as "Switching a SKU to NOVA and back" above, with two
 Steam-specific catches an operator following that section by rote would
 trip on.
 
-**1. Creating the mapping through the admin form needs a workaround.** The
-Steam sentinel mapping is `external_product_id = "steam-topup"`,
-`kind = "game"`, and `_fulfill_steam` never reads `external_variant_id` — but
-the admin wizard (and the backend's `upsert_mapping`) still refuses to save
-any `kind="game"` mapping with an empty "Номинал" unless the supplier is in
-`_AMOUNT_PRICED_SUPPLIERS` (`integrations/service.py`), which today holds
-only `{"gengine"}`. NOVA isn't on it. This is a real gap in the current admin
-form, not a step this runbook invented — recorded in ADR-0082's Decision 1.
+**1. Creating the mapping.** The Steam sentinel mapping is
+`external_product_id = "steam-topup"`, `kind = "game"`, and **no номинал** —
+their Steam endpoint takes a login and an amount, so there is no denomination
+to name. `upsert_mapping` allows an empty variant for exactly this one row
+(`_is_amount_priced`, `integrations/service.py`), the same way it already does
+for G-Engine's amount-priced services. A NOVA **game** mapping still requires
+its offer id, and still refuses to save without one.
 
 - Admin → Интеграции → Маппинги → Создать
 - Шаг 1 (SKU): `steam-wallet-usd`
 - Шаг 2 (Тип): «Игровой топ-ап»
 - Шаг 3 (Поставщик + продукт): NOVA; «ID сервиса у поставщика» (typed by
   hand — NOVA has no catalogue cache) = `steam-topup`
-- Шаг 4 (Номинал): type **anything** — e.g. `n/a` — to satisfy the form.
-  The value is written to `external_variant_id` but the Steam branch never
-  reads it.
+- Шаг 4 (Номинал): leave it empty.
 - Шаг 5: quantity `1`, Активен, Сохранить. The save toast will say
   `cost_usdt не обновлён (cost sync supported only for g2b today)` — that is
   expected for every non-G2B supplier, not a failure.

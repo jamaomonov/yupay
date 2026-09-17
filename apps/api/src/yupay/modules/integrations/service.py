@@ -20,7 +20,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.image_url_safety import validate_optional_public_image_url
-from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
+from yupay.modules.integrations.models import (
+    NOVA_STEAM_SENTINEL,
+    SkuSupplierMapping,
+    SupplierCatalogCache,
+)
 
 if TYPE_CHECKING:
     from yupay.modules.integrations.schemas import DenomImportIn, GameImportIn
@@ -127,6 +131,34 @@ async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, s
 _AMOUNT_PRICED_SUPPLIERS = frozenset({"gengine"})
 
 
+def _is_amount_priced(payload: MappingUpsert) -> bool:
+    """Whether this mapping buys an amount rather than a catalogue entry.
+
+    Two shapes qualify, and they qualify for the same reason: upstream has no
+    denomination id to name, so demanding one would make the SKU unmappable
+    from the admin form and from every seed.
+
+    - a supplier whose whole game catalogue is amount-priced
+      (:data:`_AMOUNT_PRICED_SUPPLIERS` — G-Engine's ``unfixed`` services);
+    - NOVA's **Steam** mapping specifically
+      (:data:`NOVA_STEAM_SENTINEL`), which is one row rather than a supplier:
+      their Steam endpoint takes a login and an amount, while their games
+      endpoint still needs an ``offer_id`` and is still checked for one.
+
+    That second case is narrow on purpose. Adding ``nova`` to the set outright
+    would also let an operator save a NOVA *game* mapping with no offer, and
+    the first order on it would fail at our own guard instead of at the form —
+    feedback moved from the moment of the mistake to the moment it costs a
+    customer their order.
+    """
+    if payload.supplier_slug in _AMOUNT_PRICED_SUPPLIERS:
+        return True
+    return (
+        payload.supplier_slug == "nova"
+        and payload.external_product_id.strip() == NOVA_STEAM_SENTINEL
+    )
+
+
 async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplierMapping:
     """Create or overwrite the mapping row for ``(sku_id, supplier_slug)``."""
     if not payload.external_product_id.strip():
@@ -136,7 +168,7 @@ async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplie
     if (
         payload.kind == "game"
         and not payload.external_variant_id
-        and payload.supplier_slug not in _AMOUNT_PRICED_SUPPLIERS
+        and not _is_amount_priced(payload)
     ):
         # Game orders need a catalogue_name / denom id — voucher orders don't.
         raise ValidationError(
