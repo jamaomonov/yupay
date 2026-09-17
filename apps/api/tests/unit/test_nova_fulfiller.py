@@ -398,3 +398,23 @@ async def test_health_without_a_key_says_so(monkeypatch: pytest.MonkeyPatch) -> 
         "available": False,
         "reason": "NOVA_API_KEY is not configured",
     }
+
+
+async def test_a_create_with_no_readable_id_fails_loudly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An id-less "still moving" result is a task nothing can ever finish.
+
+    `check_status` would have nothing to look the order up with, so it answers
+    `in_progress` forever while the reconciler re-runs it every sixty seconds
+    and NOVA keeps the money. Their order object is untyped in their own spec,
+    so an unread envelope is the likeliest thing to go wrong on the first live
+    order — the one a human places deliberately.
+    """
+    client = _FakeClient(order={"weird": "shape"})
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfill(client, monkeypatch)
+    assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
+    assert "no id" in str(excinfo.value)
+    # It still went out — the money question is open precisely because it did.
+    assert len(client.calls) == 1

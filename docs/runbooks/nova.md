@@ -91,13 +91,16 @@ docker compose -f docker-compose.prod.yml exec -T api \
   python - < scripts/seed/2026-09-17_nova_mappings.py
 ```
 
-It matches on denomination number only and writes ACTIVE mappings only on an
-exact match, then prints two tables: `matched` (`sku_code`, NOVA's offer
+It pairs our `denomination` with a NOVA offer name on both the number and the
+unit ("1800 UC" is not "1800 WOW Coins", and NOVA sells both under one PUBG
+category), writes an ACTIVE mapping only where exactly one offer matches and
+exactly one of our SKUs claims it, then prints two tables: `matched` (`sku_code`, NOVA's offer
 name, our `cost_usdt` beside their `price_usd` — compare before trusting a
 margin) and `unmatched` (`sku_code`, `denomination`, why) for an operator to
 finish by hand in the admin. Writing mappings active is safe on its own —
-sourcing still picks the **oldest** active mapping (see "Switch it back"
-below), so nothing routes to NOVA until `force_supplier` says so.
+auto sourcing skips reserve suppliers entirely (`RESERVE_SUPPLIERS`), so
+nothing routes to NOVA until `force_supplier` says so, whatever else changes
+about the SKU's other mappings.
 
 **PUBG Mobile is a guess, check it before trusting it.** NOVA sells PUBG
 under four speed tiers (`pubg_mobile_auto`/`_fast`/`_manual`/`_reserve`,
@@ -110,10 +113,12 @@ price column, and edit the mapping by hand if not.
 new order for that SKU now routes to NOVA; nothing already in flight moves.
 
 **Switch it back:** same page — either pick **"Авто"** (deletes the rule;
-the SKU falls back to `sourcing._resolve_auto`, which now deterministically
-picks the **oldest** active mapping, i.e. the original incumbent, per
-ADR-0081 — nothing to double-check), or force it onto a specific supplier
-again.
+the SKU falls back to `sourcing._resolve_auto`, which skips NOVA as a reserve
+and picks the **oldest** of its remaining active mappings, i.e. the original
+incumbent, per ADR-0081 — nothing to double-check), or force it onto a
+specific supplier again. A SKU whose only active mapping was NOVA lands in
+the manual queue rather than back on NOVA, which is the intended answer: a
+reserve is never the automatic route.
 
 **A task that already failed elsewhere** (G2B out of stock, low balance,
 etc.) does not need a sourcing-rule change — that only affects orders that

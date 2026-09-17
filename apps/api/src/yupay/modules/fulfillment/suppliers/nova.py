@@ -333,7 +333,24 @@ class NovaFulfiller(Fulfiller):
             # in it to take back out.
             raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
 
-        return _result(obj)
+        result = _result(obj)
+        if result.outcome == "in_progress" and result.external_order_id is None:
+            # Their create spends. An id-less "still moving" result would be a
+            # task nothing can ever finish: `check_status` has nothing to look
+            # the order up with, so it answers `in_progress` forever, the
+            # reconciler re-runs it every sixty seconds without changing
+            # anything, and the customer sits on "в обработке" while NOVA keeps
+            # the money. Their order object is untyped in their own spec, so
+            # this is not hypothetical — it is what an unread envelope looks
+            # like. Fail loudly instead: the inbox is where a human can chase
+            # it, and `UNKNOWN` is the honest grade because the charge may well
+            # have landed.
+            raise FulfillerError(
+                "nova accepted the order but returned no id we could read — "
+                "the charge may have landed; reconcile it by hand",
+                money_outcome=_MAY_HAVE_SPENT,
+            )
+        return result
 
     async def check_status(
         self,
@@ -428,12 +445,20 @@ async def _mapping_for(db: AsyncSession, *, sku_id: str) -> Any:
             select(SkuSupplierMapping).where(
                 SkuSupplierMapping.sku_id == sku_id,
                 SkuSupplierMapping.supplier_slug == "nova",
+                # A NOVA row of any other kind is not a top-up route. The
+                # composite primary key makes a second row impossible, so this
+                # is not about ambiguity: it is about failing at our own guard,
+                # with a message an operator can act on, rather than at NOVA
+                # with whatever they say about an id from the wrong namespace.
+                SkuSupplierMapping.kind == "game",
                 SkuSupplierMapping.is_active.is_(True),
             )
         )
     ).scalar_one_or_none()
     if row is None:
-        raise FulfillerError("no active nova mapping for this SKU", money_outcome=_NOTHING_SPENT)
+        raise FulfillerError(
+            "no active nova game mapping for this SKU", money_outcome=_NOTHING_SPENT
+        )
     return row
 
 

@@ -135,7 +135,7 @@ costs a deploy to extend rather than an admin edit — which is correct here,
 because adding a brand also means someone has to think about what its
 `region` word means (Decision 2).
 
-### 4. Auto sourcing now picks the oldest active mapping
+### 4. Auto sourcing never picks a reserve, and otherwise picks the oldest mapping
 
 `sourcing.service._resolve_auto` used to pick a top-up SKU's active
 `sku_supplier_mapping` with `.limit(1)` and **no `ORDER BY`**. That was
@@ -146,13 +146,31 @@ the first legitimate way for a SKU to carry two active mappings at once
 row Postgres happens to return first — which can change after a `VACUUM`,
 silently moving orders to a different supplier with nothing to announce it.
 
-Fixed by ordering the query `created_at ASC, supplier_slug ASC`. The
-incumbent mapping is the older row, so every SKU's routing today is
-unchanged, and a reserve mapping added later can never take the route by
-being added — only an explicit `force_supplier` rule (Decision 1) moves
-volume. This is a behaviour change to an existing function, made because
-this branch is what first makes the previously-impossible case (two active
-mappings on one SKU) real; it is recorded here so it stays findable.
+Fixed in two parts, and the second was missed on the first pass.
+
+Ordering the query `created_at ASC, supplier_slug ASC` makes the choice
+deterministic: the incumbent mapping is the older row, so every SKU's
+routing today is unchanged.
+
+But ordering alone makes "reserve" an accident rather than a rule. It keeps
+the incumbent's route only while an incumbent **exists** — and for a top-up
+SKU that never got a G2B mapping (the likeliest state for a brand, per
+`docs/runbooks/merchant-b2b.md`), or one whose only mapping an operator
+deactivated mid-switch, NOVA's mapping _is_ the oldest. That SKU would have
+started buying from a supplier nobody chose. With the key unset it is worse
+than quiet: the adapter refuses before calling, graded `RETURNED`, so orders
+that used to wait in the manual queue would fail and refund instead.
+
+So `RESERVE_SUPPLIERS` (`integrations/models.py`) names the suppliers auto
+sourcing skips entirely, whatever a mapping's age or provenance — a seed
+run, an admin edit, a deactivated incumbent. Reaching NOVA is an explicit
+`force_supplier` decision (Decision 1) and nothing else.
+`test_auto_never_routes_to_a_reserve_supplier` is where that is true rather
+than asserted.
+
+Both are behaviour changes to an existing function, made because this branch
+is what first makes the previously-impossible case (two active mappings on
+one SKU) real; they are recorded here so they stay findable.
 
 ### Positive consequences
 

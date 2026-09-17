@@ -18,3 +18,9 @@ docs/api/merchant-openapi.json
 .superpowers/
 .agents/
 .claude/
+
+# Vendored third-party bundles served as static assets. Reformatting a pinned
+# upstream copy would make every refresh of it a noisy diff, and the only
+# correct edit to one is replacing it wholesale — see
+# docs/runbooks/miniapp-telegram-script.md.
+**/public/js/

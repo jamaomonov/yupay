@@ -241,15 +241,20 @@ class _FakeSlugSession:
 
     def __init__(self, slug: str | None) -> None:
         self._slug = slug
+        #: Whether a transaction is open right now. A query autobegins one; only
+        #: a rollback ends it. Modelling that is the whole point of this double
+        #: — see `test_the_fallback_is_not_called_holding_a_connection`.
+        self.in_transaction = False
 
     async def execute(self, _stmt: object) -> _FakeSlugSession:
+        self.in_transaction = True
         return self
 
     def scalar_one_or_none(self) -> str | None:
         return self._slug
 
     async def rollback(self) -> None:
-        pass
+        self.in_transaction = False
 
 
 def _fixed_field(field: dict):  # type: ignore[no-untyped-def]
@@ -306,6 +311,72 @@ async def test_primary_invalid_never_consults_nova(monkeypatch) -> None:  # type
 
     assert out.status == "invalid"
     assert calls["nova"] == 0
+
+
+async def test_the_fallback_is_not_called_holding_a_connection(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The property the rollback before a supplier call exists to protect.
+
+    The pool is twenty connections for the whole process and a healthy check
+    takes up to five seconds, so a supplier call made while holding one is how
+    a slow supplier becomes an outage — the reasoning `_check_g2b_player`
+    already writes down at its own rollback. The brand-slug read on the error
+    branch autobegins a *new* transaction after that rollback, so the fallback
+    would have run holding a connection unless the branch hands it back too.
+
+    Nothing else catches this: the query-count regression test only counts
+    statements on the happy path, and no test in this repo asserted the
+    rollback property for any supplier.
+    """
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "g2b"}}))
+    session = _FakeSlugSession("mobile-legends-ru")
+    seen: dict[str, bool] = {}
+
+    async def fake_g2b(session_, *, brand_id, player_id, server_id):  # type: ignore[no-untyped-def]
+        # The real one rolls back before its own supplier call; model that.
+        await session_.rollback()
+        return pc.PlayerCheckOut(status="error")
+
+    async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
+        seen["in_transaction"] = session.in_transaction
+        return pc.PlayerCheckOut(status="valid", name="blood moon")
+
+    monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
+    monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
+
+    await pc.check_player_for_brand_id(session, brand_id="b1", player_id="p1", server_id=None)
+
+    assert seen["in_transaction"] is False, (
+        "the brand-slug read reopened a transaction and the NOVA call was made "
+        "while holding the connection"
+    )
+
+
+async def test_the_fallback_releases_even_when_g2b_returned_early(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The exits that never reach `_check_g2b_player`'s own rollback.
+
+    It answers `error` immediately when the brand has no active G2B mapping or
+    when the adapter is unconfigured, and the first of those is a routine,
+    permanent state for a brand — not an outage-only path. So the release on
+    this branch has to stand on its own rather than lean on that one.
+    """
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "g2b"}}))
+    session = _FakeSlugSession("mobile-legends-ru")
+    session.in_transaction = True  # as if a caller's read left one open
+    seen: dict[str, bool] = {}
+
+    async def fake_g2b(session_, *, brand_id, player_id, server_id):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="error")  # early exit: no rollback
+
+    async def fake_nova_brand(brand_slug, player_id, server_id):  # type: ignore[no-untyped-def]
+        seen["in_transaction"] = session.in_transaction
+        return pc.PlayerCheckOut(status="error")
+
+    monkeypatch.setattr(pc, "_check_g2b_player", fake_g2b)
+    monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
+
+    await pc.check_player_for_brand_id(session, brand_id="b1", player_id="p1", server_id=None)
+
+    assert seen["in_transaction"] is False
 
 
 async def test_a_steam_login_error_consults_nova_too(monkeypatch) -> None:  # type: ignore[no-untyped-def]

@@ -5,15 +5,19 @@ Run inside the api container so it can reach both the database and NOVA:
     docker compose -f docker-compose.prod.yml exec -T api \
         python - < scripts/seed/2026-09-17_nova_mappings.py
 
-It matches on the denomination number only — `Sku.units` when set, otherwise
-the leading integer of `Sku.denomination` or `sku_code` — and writes a mapping
-only on an exact match. Everything it could not match is printed for an
-operator to finish in the admin: guessing which of "275 Diamonds" and "275
-Diamonds + Bonus" a SKU meant is not a thing a script should do with money.
+It pairs `Sku.denomination` with a NOVA offer name on **both** the number and
+the unit — "1800 UC" is not "1800 WOW Coins", and NOVA sells both under one
+PUBG category — and writes a mapping only when exactly one offer matches and
+exactly one of our SKUs claims it. Everything else is printed for an operator
+to finish in the admin: guessing which of "250 Coins" and "250 Coins + Epic
+Box" a SKU meant is not a thing a script should do with money.
 
-Mappings are written ACTIVE. That is safe because sourcing picks the oldest
-active mapping (see `sourcing.service._resolve_auto`), so an order keeps going
-to the incumbent supplier until somebody sets `force_supplier = nova`.
+Mappings are written ACTIVE. That is safe because auto sourcing skips reserve
+suppliers entirely (`RESERVE_SUPPLIERS` in `integrations.models`, read by
+`sourcing.service._resolve_auto`) — not merely because it prefers the oldest
+mapping, which would leave a SKU with no incumbent routing itself to NOVA. An
+order goes to NOVA when somebody sets `force_supplier = nova`, and at no other
+time.
 
 `pubg_mobile_auto` below is one of NOVA's four speed tiers for PUBG Mobile
 (`_auto`, `_fast`, `_manual`, `_reserve` — same game, different fulfilment

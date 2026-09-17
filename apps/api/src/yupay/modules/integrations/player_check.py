@@ -437,17 +437,27 @@ async def check_player_for_brand_id(
     if out.status != "error":
         return out
 
-    # Only read on this path, not up front: `_check_g2b_player` rolls the
-    # session back before its supplier round trip, but a rollback ends the
-    # transaction, not the session — it "simply begins a new transaction if
-    # anything asks it to" (see that function's own comment) — so asking here
-    # is exactly as safe as asking earlier would have been, and asking only
-    # here keeps the common `valid`/`invalid` path at the query count
-    # `test_the_check_does_not_fan_out_over_the_catalog` pins; this query
-    # runs only on the `error` path that reaches for NOVA anyway.
+    # Only read on this path, not up front: this query runs solely on the
+    # `error` branch that reaches for NOVA anyway, which keeps the common
+    # `valid`/`invalid` path at the query count
+    # `test_the_check_does_not_fan_out_over_the_catalog` pins.
     brand_slug = (
         await session.execute(select(Brand.slug).where(Brand.id == brand_id))
     ).scalar_one_or_none()
+    # And then hand the connection back, for the reason `_check_g2b_player`
+    # gives at its own rollback: the pool is twenty connections for the whole
+    # process, and a supplier call made while holding one is how a slow
+    # supplier becomes an outage. The read above *autobegins* a transaction —
+    # a rollback ends a transaction, not the session, so the session happily
+    # starts a new one — which means without this line the NOVA round trip
+    # below would run holding a connection the G2B call had just released.
+    #
+    # It also covers the two exits above that never reached that rollback at
+    # all: `_check_g2b_player` returns `error` early when the brand has no
+    # active G2B mapping and when the adapter is unconfigured, and the first
+    # of those is a routine, permanent state for a brand rather than an
+    # outage-only one.
+    await session.rollback()
     return await _nova_brand(brand_slug, player_id, server_id)
 
 

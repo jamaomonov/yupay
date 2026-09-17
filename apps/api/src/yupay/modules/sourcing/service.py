@@ -102,7 +102,7 @@ async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) ->
     # sourcing through service). Pulling them at module load creates
     # a cycle; resolving them lazily here doesn't.
     from yupay.modules.catalog.models import Product, Sku
-    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.integrations.models import RESERVE_SUPPLIERS, SkuSupplierMapping
 
     sku = (
         await db.execute(select(Sku).options(selectinload(Sku.product)).where(Sku.id == sku_id))
@@ -113,20 +113,27 @@ async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) ->
     product: Product | None = sku.product if sku is not None else None
     kind = product.kind if product is not None else "voucher"
 
-    # Order matters, and it did not used to. A top-up SKU with a reserve
-    # supplier carries two active mappings, and `.limit(1)` with no ORDER BY
-    # picks whichever row Postgres happens to return — which can change after a
-    # VACUUM, silently moving somebody's orders to a different supplier. The
-    # oldest active mapping is the incumbent: it is where orders have been
-    # going, so it keeps the route, and a reserve added later can never take it
-    # by being added. Switching suppliers stays an explicit `force_supplier`
-    # decision. `supplier_slug` breaks a created_at tie so the answer is total.
+    # Two rules here, and neither used to exist.
+    #
+    # A reserve supplier is never picked automatically, whatever its mapping's
+    # age (`RESERVE_SUPPLIERS`). Ordering alone would have made "reserve" an
+    # accident: it keeps the incumbent's route only while an incumbent exists,
+    # and a top-up SKU that never got one — or whose only mapping an operator
+    # deactivated mid-switch — would silently start buying from a supplier
+    # nobody chose. Reaching a reserve stays an explicit `force_supplier`
+    # decision, which is the only thing that should move somebody's orders.
+    #
+    # Among the rest, the oldest active mapping wins. `.limit(1)` with no ORDER
+    # BY picks whichever row Postgres happens to return, which can change after
+    # a VACUUM; the oldest is the incumbent, the one orders have been going to.
+    # `supplier_slug` breaks a created_at tie so the answer is total.
     mapping_slug: str | None = (
         await db.execute(
             select(SkuSupplierMapping.supplier_slug)
             .where(
                 SkuSupplierMapping.sku_id == sku_id,
                 SkuSupplierMapping.is_active.is_(True),
+                SkuSupplierMapping.supplier_slug.not_in(RESERVE_SUPPLIERS),
             )
             .order_by(SkuSupplierMapping.created_at.asc(), SkuSupplierMapping.supplier_slug.asc())
             .limit(1)

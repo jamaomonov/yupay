@@ -295,9 +295,12 @@ yupay/
   endpoint: when the primary answers `error`, a NOVA fallback (`player_check_nova.py`) runs
   before the response goes out, with its own tighter timeout
   (`nova_check_timeout_seconds`, 4 s), its own breaker (`nova:player_check`), and its own
-  cache namespace — and it can only ever _lower_ the wait, by short-circuiting on a cache
-  hit or an open breaker, never raise a verdict the primary refused. No new endpoint
-  exists, which is why this is a sentence and not a fifth list entry. If you add a fifth
+  cache namespace. Be plain about the cost: on the `error` path those two endpoints now
+  make a call they did not make before, so their p95 can grow by up to that timeout — and
+  because `httpx` applies a scalar timeout to connect, read, write and pool separately, a
+  bad tail can exceed 4 s. A cache hit or an open breaker short-circuits it; neither is
+  guaranteed. What the fallback can never do is raise a verdict the primary refused. No new
+  endpoint exists, which is why this is a sentence and not a fifth list entry. If you add a fifth
   endpoint, it needs an ADR entry saying why it clears those conditions and a line here. A
   rule that does not name its exceptions stops being read as a rule: this one was silently
   deviated from three times before the list existed.

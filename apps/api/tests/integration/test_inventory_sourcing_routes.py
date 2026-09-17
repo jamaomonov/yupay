@@ -651,7 +651,7 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
 
     The older row is the incumbent: it is the one orders have been going to.
     Without an explicit order this test is a coin flip, which is exactly the
-    bug — so it inserts the reserve (nova) mapping first in *insert* order
+    bug — so it inserts the newcomer (gengine) mapping first in *insert* order
     but with a newer ``created_at`` than the incumbent (g2b), and asserts
     that the ``created_at`` order wins, not insertion order.
 
@@ -660,6 +660,10 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
     test below it inverts the two and is what actually falsifies a
     slug-only implementation. Both are kept: this one is the realistic
     shape, that one is the proof.
+
+    The newcomer here is ``gengine`` rather than a reserve supplier, because a
+    reserve is excluded from this choice altogether and would prove nothing
+    about ordering.
     """
     from yupay.modules.integrations.models import SkuSupplierMapping
     from yupay.modules.sourcing import service as sourcing_svc
@@ -669,9 +673,9 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
         [
             SkuSupplierMapping(
                 sku_id=sku_id,
-                supplier_slug="nova",
+                supplier_slug="gengine",
                 kind="game",
-                external_product_id="mlbb",
+                external_product_id="2",
                 external_variant_id="100",
                 quantity=1,
                 extra={},
@@ -698,17 +702,59 @@ async def test_auto_keeps_the_older_mapping_when_a_reserve_is_added(
     assert decision.fallback == "supplier:manual"
 
 
+async def test_auto_never_routes_to_a_reserve_supplier(
+    db_session: AsyncSession,
+) -> None:
+    """A reserve is reached by an operator's decision, never by an accident.
+
+    The oldest-mapping rule keeps the incumbent's route only while there IS an
+    incumbent. A top-up SKU that never got one — or whose only mapping an
+    operator deactivated during a switch — would otherwise have the reserve's
+    mapping as its oldest, and would quietly start buying from a supplier
+    nobody chose. With the key unset it is worse than quiet: the adapter
+    refuses before calling, graded RETURNED, so orders that used to wait in the
+    manual queue would fail and refund instead.
+
+    Four documents assert this cannot happen. This is where it is true.
+    """
+    from yupay.modules.integrations.models import SkuSupplierMapping
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _make_topup_sku(db_session)
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=sku_id,
+            supplier_slug="nova",
+            kind="game",
+            external_product_id="mobile_legends_ru",
+            external_variant_id="275_diamonds",
+            quantity=1,
+            extra={},
+            is_active=True,
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+    )
+    await db_session.commit()
+
+    decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
+    assert decision.primary == "supplier:manual"
+    assert decision.strict is True
+
+
 async def test_auto_prefers_the_older_mapping_over_the_earlier_slug(
     db_session: AsyncSession,
 ) -> None:
     """``created_at`` decides, and the slug only breaks a tie.
 
-    The test above pairs an older ``g2b`` with a newer ``nova``, where the
+    The test above pairs an older ``g2b`` with a newer ``gengine``, where the
     chronological and the alphabetical answer happen to agree — so an
     implementation that sorted by ``supplier_slug`` alone would pass it while
-    getting the rule exactly wrong. This one inverts the pairing: the
-    incumbent is ``nova`` and the newcomer is ``g2b``, so the two orderings
-    disagree and only the chronological one gives the answer asserted here.
+    getting the rule exactly wrong. This one inverts the pairing: the incumbent
+    is ``gengine`` and the newcomer is ``g2b``, so the two orderings disagree
+    and only the chronological one gives the answer asserted here.
+
+    Neither side may be a reserve supplier, which is excluded from this choice
+    entirely — see ``test_auto_never_routes_to_a_reserve_supplier``.
     """
     from yupay.modules.integrations.models import SkuSupplierMapping
     from yupay.modules.sourcing import service as sourcing_svc
@@ -729,10 +775,10 @@ async def test_auto_prefers_the_older_mapping_over_the_earlier_slug(
             ),
             SkuSupplierMapping(
                 sku_id=sku_id,
-                supplier_slug="nova",
+                supplier_slug="gengine",
                 kind="game",
-                external_product_id="mobile_legends_ru",
-                external_variant_id="275_diamonds",
+                external_product_id="2",
+                external_variant_id="100",
                 quantity=1,
                 extra={},
                 is_active=True,
@@ -743,7 +789,7 @@ async def test_auto_prefers_the_older_mapping_over_the_earlier_slug(
     await db_session.commit()
 
     decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
-    assert decision.primary == "supplier:nova"
+    assert decision.primary == "supplier:gengine"
     assert decision.fallback == "supplier:manual"
 
 

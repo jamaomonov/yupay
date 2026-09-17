@@ -44,6 +44,24 @@ from yupay.core.db import Base
 #: cycle. Mirrors ``FULFILMENT_ROUTES[].mappings`` in the admin.
 MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova"})
 
+#: Suppliers a SKU is never routed to **automatically**, however its mapping got
+#: there. A reserve exists to be switched to on purpose: an operator sets
+#: ``force_supplier`` when the incumbent is out of stock, short on balance, or
+#: down, and switches back the same way.
+#:
+#: Without this, "reserve" rested on an accident of ordering.
+#: ``sourcing._resolve_auto`` picks the oldest active mapping, which keeps the
+#: incumbent's route only while an incumbent exists — for a top-up SKU that
+#: never got one, or whose only mapping an operator deactivated during a
+#: switch, the reserve's mapping *is* the oldest, and the SKU would quietly
+#: start buying from a supplier nobody chose. With the key unset it is worse
+#: than quiet: the adapter refuses before calling, graded ``RETURNED``, so
+#: orders that used to wait in the manual queue would fail and refund instead.
+#:
+#: Same leaf-module reasoning as the set above: ``sourcing`` reads it without
+#: an import cycle.
+RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova"})
+
 
 class SkuSupplierMapping(Base):
     """Mapping between one YuPay SKU and one supplier's external product id."""
