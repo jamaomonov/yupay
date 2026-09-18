@@ -265,15 +265,26 @@ export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> 
 
 /**
  * Looks up a slug's capabilities the way every caller reading a slug from the
- * URL should: an unknown slug gets every action offered rather than a blank
- * page — better to offer tooling that might fail than to silently hide it
- * from a supplier someone just added and hasn't listed here yet. Known
- * suppliers get the narrower truth from `SUPPLIER_CAPABILITIES` above.
+ * URL should. Known suppliers get the truth from `SUPPLIER_CAPABILITIES`
+ * above; an unknown one — a supplier someone just added and hasn't listed
+ * here yet — gets the two defaults decided by what a wrong guess costs.
+ *
+ * `catalogueSync` defaults **true**: the route it drives is typed
+ * `Literal[...]` on the backend, so an unsupported slug comes back as a clean
+ * 422 the operator can read. Offering a button that might answer "not
+ * supported" beats hiding tooling that does work.
+ *
+ * `gameImport` defaults **false**, and the asymmetry is the point. That link
+ * posts to `/g2b/import`, hardcoded — for any other supplier it would not
+ * fail, it would *succeed at the wrong thing*, importing a G2B game while the
+ * operator is looking at someone else's catalogue. A silent wrong action is
+ * worse than a missing button, so an unknown supplier does not get offered
+ * one.
  */
 export function capabilitiesFor(slug: string): SupplierCapabilities {
   return isKnownSupplier(slug)
     ? SUPPLIER_CAPABILITIES[slug]
-    : { catalogueSync: true, gameImport: true };
+    : { catalogueSync: true, gameImport: false };
 }
 
 /**
