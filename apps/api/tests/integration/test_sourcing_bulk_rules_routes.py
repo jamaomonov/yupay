@@ -11,6 +11,13 @@ Covers:
 - a missing SKU is a per-item failure, not a 404 for the whole request
 - Idempotency-Key replay
 - 403 for non-admin
+- the per-item SAVEPOINT actually rolls back a write that precedes a later
+  failure (not just failures that happen to precede any write)
+- a genuine DB-level error (a unique-constraint race) is a per-item failure,
+  not a request-wide 500
+- ``mode="auto"`` through this endpoint never *automatically* routes a SKU
+  onto a reserve supplier (ADR-0081) — only an explicit ``force_supplier`` can
+- an unregistered ``supplier_slug`` (a typo) is rejected, not written
 """
 
 from __future__ import annotations
@@ -234,6 +241,180 @@ async def test_bulk_partial_failure_writes_the_rest_and_names_the_failure(
     assert failed_row is None
 
 
+async def test_bulk_savepoint_rolls_back_a_write_that_precedes_a_later_failure(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Proves the per-item ``SAVEPOINT`` is load-bearing, not incidental.
+
+    Every failure the *other* tests in this file reach is raised from a
+    ``SELECT``, before any write for that SKU — so all nine of them (as of
+    this endpoint's first version) would keep passing under a bare
+    ``try/except`` with no ``begin_nested()`` at all, because there is never
+    anything flushed left to roll back. That would make the savepoint dead
+    code nothing here could catch regressing.
+
+    This test monkeypatches ``bulk_rules.set_rule`` so that for exactly one
+    SKU it performs a real write (``db.add`` + ``flush``) and *then* raises
+    ``ValidationError`` — the shape of a validation check added after a write,
+    or a genuine DB-level error surfacing mid-item. Bare ``try/except``
+    would leave that flush sitting in the session for the outer commit to
+    persist even though the item is reported ``ok: false``; only rolling
+    back to a savepoint removes it.
+    """
+    from yupay.core.errors import ValidationError as SvcValidationError
+    from yupay.modules.sourcing import bulk_rules as bulk_rules_mod
+    from yupay.modules.sourcing.service import Mode
+
+    sku_ids = await _seed_brand_with_skus(db_session, n=3, slug_prefix="bulk-savepoint")
+    bad_sku = sku_ids[1]
+
+    # Not ``bulk_rules_mod.set_rule`` directly — mypy flags a re-exported
+    # name that isn't in the module's ``__all__`` as ``attr-defined``, even
+    # though it's a perfectly ordinary module attribute at runtime.
+    real_set_rule = getattr(bulk_rules_mod, "set_rule")  # noqa: B009
+
+    async def fake_set_rule(
+        db: AsyncSession,
+        *,
+        sku_id: str,
+        mode: Mode,
+        supplier_slug: str | None,
+        admin_id: str,
+    ) -> SkuSourcingRule:
+        if sku_id == bad_sku:
+            row = SkuSourcingRule(
+                sku_id=sku_id,
+                mode="force_inventory",
+                supplier_slug=None,
+                updated_by=admin_id,
+            )
+            db.add(row)
+            await db.flush()
+            raise SvcValidationError("simulated failure after a real write")
+        return await real_set_rule(  # type: ignore[no-any-return]
+            db, sku_id=sku_id, mode=mode, supplier_slug=supplier_slug, admin_id=admin_id
+        )
+
+    monkeypatch.setattr(bulk_rules_mod, "set_rule", fake_set_rule)
+
+    r = await integration_client.put(
+        BULK_URL,
+        headers=_admin_headers,
+        json={"sku_ids": sku_ids, "mode": "force_inventory", "supplier_slug": None},
+    )
+    assert r.status_code == 200, r.text
+    by_sku = {item["sku_id"]: item for item in r.json()["items"]}
+
+    assert by_sku[bad_sku]["ok"] is False
+
+    good_skus = [s for s in sku_ids if s != bad_sku]
+    for sku_id in good_skus:
+        assert by_sku[sku_id]["ok"] is True, by_sku[sku_id]
+
+    rows = (
+        (
+            await db_session.execute(
+                select(SkuSourcingRule).where(SkuSourcingRule.sku_id.in_(sku_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {row.sku_id: row for row in rows}
+    # The load-bearing assertion: the failed SKU's flush must not have
+    # survived to the outer commit.
+    assert bad_sku not in by_id, (
+        "the failed SKU's write leaked past its reported failure — the "
+        "savepoint did not roll it back"
+    )
+    assert set(by_id) == set(good_skus)
+
+
+async def test_bulk_integrity_error_is_a_per_item_failure_not_a_500(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A genuine DB-level error — a unique-constraint violation on
+    ``sku_sourcing_rules``'s primary key, the shape two admins racing an
+    overlapping bulk selection actually hit, since ``set_rule`` is
+    SELECT-then-INSERT with no ``ON CONFLICT`` — must be caught per item and
+    reported by name, not escape ``bulk_set_rules`` and fail the whole
+    request.
+
+    Simulated deterministically: a rule row for ``bad_sku`` already exists
+    (committed before the request, standing in for the concurrent winner's
+    INSERT), and the monkeypatched ``set_rule`` blindly INSERTs a second row
+    for the same ``sku_id`` instead of doing its normal SELECT-then-upsert —
+    exactly what a concurrent request's INSERT looks like from this one's
+    savepoint.
+    """
+    from yupay.modules.sourcing import bulk_rules as bulk_rules_mod
+    from yupay.modules.sourcing import service as sourcing_svc
+    from yupay.modules.sourcing.service import Mode
+
+    sku_ids = await _seed_brand_with_skus(db_session, n=3, slug_prefix="bulk-integrity")
+    bad_sku = sku_ids[1]
+    db_session.add(SkuSourcingRule(sku_id=bad_sku, mode="force_inventory", supplier_slug=None))
+    await db_session.commit()
+
+    real_set_rule = sourcing_svc.set_rule
+
+    async def fake_set_rule(
+        db: AsyncSession,
+        *,
+        sku_id: str,
+        mode: Mode,
+        supplier_slug: str | None,
+        admin_id: str,
+    ) -> SkuSourcingRule:
+        if sku_id == bad_sku:
+            row = SkuSourcingRule(
+                sku_id=sku_id,
+                mode="force_inventory",
+                supplier_slug=None,
+                updated_by=admin_id,
+            )
+            db.add(row)
+            await db.flush()  # duplicate primary key -> IntegrityError
+            return row
+        return await real_set_rule(  # type: ignore[no-any-return]
+            db, sku_id=sku_id, mode=mode, supplier_slug=supplier_slug, admin_id=admin_id
+        )
+
+    monkeypatch.setattr(bulk_rules_mod, "set_rule", fake_set_rule)
+
+    r = await integration_client.put(
+        BULK_URL,
+        headers=_admin_headers,
+        json={"sku_ids": sku_ids, "mode": "force_inventory", "supplier_slug": None},
+    )
+    assert r.status_code == 200, r.text
+    by_sku = {item["sku_id"]: item for item in r.json()["items"]}
+
+    assert by_sku[bad_sku]["ok"] is False
+    assert by_sku[bad_sku]["error"] is not None
+
+    good_skus = [s for s in sku_ids if s != bad_sku]
+    for sku_id in good_skus:
+        assert by_sku[sku_id]["ok"] is True, by_sku[sku_id]
+
+    rows = (
+        (
+            await db_session.execute(
+                select(SkuSourcingRule).where(SkuSourcingRule.sku_id.in_(good_skus))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert len(rows) == 2
+
+
 async def test_bulk_force_supplier_accepts_a_reserve_supplier_with_active_mapping(
     integration_client: AsyncClient,
     db_session: AsyncSession,
@@ -262,6 +443,37 @@ async def test_bulk_force_supplier_accepts_a_reserve_supplier_with_active_mappin
     decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
     assert decision.primary == "supplier:nova"
     assert decision.strict is True
+
+
+async def test_bulk_auto_never_automatically_routes_onto_a_reserve_supplier(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """The other half of the ADR-0081 reserve guard, which the accepts-nova
+    test above does not touch: a reserve supplier is never picked by *auto*
+    routing, however active its mapping. A SKU whose only active mapping is
+    ``nova`` reaching ``mode="auto"`` through the bulk endpoint must resolve
+    to the manual queue (``supplier:manual``), not to ``supplier:nova`` —
+    reaching a reserve stays an explicit ``force_supplier`` decision.
+    """
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_ids = await _seed_brand_with_skus(db_session, n=1, slug_prefix="bulk-auto-reserve")
+    sku_id = sku_ids[0]
+    await _add_mapping(db_session, sku_id=sku_id, supplier_slug="nova")
+
+    r = await integration_client.put(
+        BULK_URL,
+        headers=_admin_headers,
+        json={"sku_ids": [sku_id], "mode": "auto", "supplier_slug": None},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["items"][0]["ok"] is True
+
+    decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
+    assert decision.primary != "supplier:nova"
+    assert decision.primary == "supplier:manual"
 
 
 async def test_bulk_mode_auto_deletes_existing_rules(
@@ -351,6 +563,43 @@ async def test_bulk_missing_sku_is_a_per_item_failure_not_a_404(
         assert by_sku[sku_id]["ok"] is True, by_sku[sku_id]
 
 
+async def test_bulk_force_supplier_rejects_an_unregistered_supplier_slug(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """A typo'd supplier slug (``"waxpeeer"``) is not a real fulfilment
+    supplier — ``set_rule`` must refuse it rather than write a rule that
+    would fail every order routed through it, one at a time. This endpoint
+    multiplies that risk across up to 100 SKUs at once.
+    """
+    sku_ids = await _seed_brand_with_skus(db_session, n=2, slug_prefix="bulk-bad-slug")
+
+    r = await integration_client.put(
+        BULK_URL,
+        headers=_admin_headers,
+        json={"sku_ids": sku_ids, "mode": "force_supplier", "supplier_slug": "waxpeeer"},
+    )
+    assert r.status_code == 200, r.text
+    by_sku = {item["sku_id"]: item for item in r.json()["items"]}
+
+    for sku_id in sku_ids:
+        assert by_sku[sku_id]["ok"] is False, by_sku[sku_id]
+        assert by_sku[sku_id]["error"] is not None
+        assert "waxpeeer" in by_sku[sku_id]["error"]
+
+    rows = (
+        (
+            await db_session.execute(
+                select(SkuSourcingRule).where(SkuSourcingRule.sku_id.in_(sku_ids))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert rows == []
+
+
 async def test_bulk_capped_at_100_skus(
     integration_client: AsyncClient,
     db_session: AsyncSession,
@@ -363,6 +612,12 @@ async def test_bulk_capped_at_100_skus(
         json={"sku_ids": too_many, "mode": "auto", "supplier_slug": None},
     )
     assert r.status_code == 422, r.text
+    body = r.json()
+    # Not just "any 422" — the cap itself, by name, so this test cannot pass
+    # on an unrelated body-validation rejection.
+    assert "100" in body["detail"], body
+    assert body["extra"]["max"] == 100, body
+    assert body["extra"]["got"] == 101, body
 
 
 async def test_bulk_idempotency_key_replays_cached_response(
