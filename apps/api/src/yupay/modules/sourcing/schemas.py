@@ -46,13 +46,18 @@ class SourcingDecisionOut(BaseModel):
 class SourcingBrandSupplierOut(BaseModel):
     """One candidate supplier's mapping + latest cost for a single SKU.
 
-    The candidate set the brand-overview endpoint reports is fixed to
-    ``MAPPING_REQUIRED_SUPPLIERS`` (g2b, gengine, nova) — the suppliers a
-    SKU can actually be routed to via a ``sku_supplier_mapping`` row
-    (``integrations.models``, ADR-0019). A supplier the SKU has never been
-    mapped to still gets a row here, with ``has_active_mapping=False`` and
-    no cost, so an operator comparing suppliers can see it as a switch
-    target rather than it silently being absent.
+    The candidate set the brand-overview endpoint reports is
+    ``MAPPING_REQUIRED_SUPPLIERS`` (g2b, gengine, nova) *union* every
+    supplier that actually has a mapping row among the brand's SKUs
+    (``integrations.models``, ADR-0019). The fixed half means a supplier
+    the SKU has never been mapped to still gets a row here, with
+    ``has_active_mapping=False`` and no cost, so an operator comparing
+    suppliers can see it as a switch target rather than it silently being
+    absent. The union half means a supplier outside that fixed set (e.g.
+    waxpeer) that actually won the live route via a mapping still appears
+    here — otherwise the reported ``primary`` could name a supplier absent
+    from its own comparison list, which is the invariant this list exists
+    to uphold. Sorted alphabetically for a stable order.
 
     ``latest_cost_usdt`` is a string (mirrors
     ``integrations.schemas.PricePointOut.cost_usdt``, the other DTO that

@@ -402,6 +402,53 @@ async def test_overview_supplier_comparison_list(
     assert sku2_suppliers["nova"]["has_active_mapping"] is False
 
 
+async def test_overview_primary_names_a_supplier_present_in_its_own_suppliers_list(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """The invariant the defect broke: ``primary`` must never name a
+    supplier absent from that same SKU's ``suppliers`` comparison list.
+
+    Before the fix, the comparison list's candidate set was fixed to
+    ``MAPPING_REQUIRED_SUPPLIERS`` (g2b, gengine, nova). ``waxpeer`` is a
+    real, live supplier in the fulfilment ``REGISTRY`` that sits outside
+    that set, and a SKU whose only active mapping is to waxpeer still
+    auto-routes to it via ``_pick_auto_mapping_slug`` (it is not a
+    reserve). So the endpoint reported ``primary == "supplier:waxpeer"``
+    next to a ``suppliers`` list that never contained a "waxpeer" entry at
+    all — a route whose supplier is missing from its own comparison.
+    """
+    brand_slug = "waxpeer-overview-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session, brand_id=brand_id, slug="waxpeer-overview-product-test", kind="top_up"
+    )
+    sku_id = await _make_sku(db_session, product_id=product_id, sku_code="waxpeer-sku-test")
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="waxpeer")
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+
+    suppliers_by_slug = {s["supplier_slug"]: s for s in row["suppliers"]}
+    assert "waxpeer" in suppliers_by_slug, "waxpeer missing from the comparison list entirely"
+    assert suppliers_by_slug["waxpeer"]["has_active_mapping"] is True
+
+    assert row["primary"] == "supplier:waxpeer"
+    primary_slug = row["primary"].removeprefix("supplier:")
+    assert primary_slug in suppliers_by_slug, (
+        f"primary names {primary_slug!r} but it is absent from the SKU's own "
+        f"suppliers list: {sorted(suppliers_by_slug)}"
+    )
+
+
 async def test_overview_sku_fields(
     integration_client: AsyncClient,
     db_session: AsyncSession,

@@ -114,6 +114,21 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
     for mapping in mapping_rows:
         mappings_by_sku[mapping.sku_id].append(mapping)
 
+    # The comparison list's candidate set: the fixed suppliers that always
+    # appear (so a supplier the brand has never mapped still shows up as a
+    # switch target, ``has_active_mapping=False``, no cost) *union* every
+    # supplier that actually has a mapping row among the SKUs being
+    # returned. The fixed half alone can omit a supplier that is the SKU's
+    # live route right now — a mapping onto a supplier outside
+    # ``MAPPING_REQUIRED_SUPPLIERS`` (waxpeer, say) still wins
+    # ``_pick_auto_mapping_slug`` when it is the oldest active,
+    # non-reserve mapping, and the reported ``primary`` must always name a
+    # supplier present in this same list. The union costs no extra query —
+    # ``mapping_rows`` is already loaded above. Sorted for a stable,
+    # deterministic order across requests (not insertion order, which
+    # would vary with how mappings were created).
+    candidate_slugs = sorted(MAPPING_REQUIRED_SUPPLIERS | {m.supplier_slug for m in mapping_rows})
+
     # Latest history row per (sku_id, supplier_slug) — Postgres DISTINCT ON,
     # not a loop: same technique as ``fx.refresh_cycle.latest_history_rates``
     # and ``admin.service.get_refs``'s order-line lookup. Scoped to the
@@ -128,7 +143,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         )
         .where(
             SupplierPriceHistory.sku_id.in_(sku_ids),
-            SupplierPriceHistory.supplier_slug.in_(MAPPING_REQUIRED_SUPPLIERS),
+            SupplierPriceHistory.supplier_slug.in_(candidate_slugs),
         )
         .distinct(SupplierPriceHistory.sku_id, SupplierPriceHistory.supplier_slug)
         .order_by(
@@ -142,8 +157,6 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         (sku_id, supplier_slug): (cost_usdt, captured_at)
         for sku_id, supplier_slug, cost_usdt, captured_at in history_rows
     }
-
-    candidate_slugs = sorted(MAPPING_REQUIRED_SUPPLIERS)
     items: list[SourcingBrandSkuOut] = []
     for sku, product in sku_rows:
         rule = rules_by_sku.get(sku.id)
