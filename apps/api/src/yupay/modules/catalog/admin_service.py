@@ -334,8 +334,82 @@ async def create_product(db: AsyncSession, body: ProductCreate) -> Product:
     return row
 
 
+async def _reject_top_up_flip_with_stock_or_force_inventory(
+    db: AsyncSession, *, product_id: str
+) -> None:
+    """Refuse flipping a product to ``kind="top_up"`` while any of its SKUs
+    still carries the state the two sourcing/inventory guards exist to keep
+    off a top_up SKU in the first place: stocked ``inventory_codes`` rows,
+    or an explicit ``force_inventory`` sourcing rule.
+
+    Those two guards (``sourcing.service.set_rule``'s ``force_inventory``
+    refusal and ``inventory.service._reject_top_up_sku``'s ``bulk_upload``
+    refusal) each stop a *new* mistake at the moment it's made. Neither
+    stops a ``voucher`` product that already carries one — or both — from
+    being flipped to ``top_up`` after the fact, which reaches the exact
+    state they exist to prevent: a ``force_inventory`` rule on a top_up SKU
+    is a guaranteed ``NoStockError`` with no fallback
+    (``Decision(primary="inventory", fallback=None, strict=True)``), and
+    stocked codes on a top_up SKU can fulfil nothing.
+
+    Lazy imports: ``inventory`` and ``sourcing`` both sit "above" `catalog`
+    in the dependency graph (they import ``catalog``, never the reverse) —
+    a top-level import here would close the cycle their own lazy imports of
+    ``catalog`` already work around (see ``inventory.service.
+    _reject_top_up_sku`` and ``sourcing.service._resolve_auto``).
+
+    Args:
+        db: Active session.
+        product_id: The product about to be flipped to ``top_up``.
+
+    Raises:
+        ValidationError: Naming which of the two blockers fired (or both)
+            and how many SKUs each affects, so an operator knows what to
+            clear before retrying.
+    """
+    from yupay.modules.inventory.models import InventoryCode
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    sku_ids_subq = select(Sku.id).where(Sku.product_id == product_id).scalar_subquery()
+
+    stocked_sku_count = (
+        await db.execute(
+            select(func.count(func.distinct(InventoryCode.sku_id))).where(
+                InventoryCode.sku_id.in_(sku_ids_subq)
+            )
+        )
+    ).scalar_one()
+    forced_sku_count = (
+        await db.execute(
+            select(func.count()).where(
+                SkuSourcingRule.sku_id.in_(sku_ids_subq),
+                SkuSourcingRule.mode == "force_inventory",
+            )
+        )
+    ).scalar_one()
+
+    if not stocked_sku_count and not forced_sku_count:
+        return
+
+    reasons = []
+    if stocked_sku_count:
+        reasons.append(f"{stocked_sku_count} SKU(s) still have inventory codes in the warehouse")
+    if forced_sku_count:
+        reasons.append(f"{forced_sku_count} SKU(s) carry a force_inventory sourcing rule")
+    raise ValidationError(
+        "cannot change product kind to top_up: "
+        + "; ".join(reasons)
+        + " — clear these before flipping kind",
+        product_id=product_id,
+        stocked_sku_count=stocked_sku_count,
+        force_inventory_sku_count=forced_sku_count,
+    )
+
+
 async def update_product(db: AsyncSession, product_id: str, body: ProductUpdate) -> Product:
     row = await get_product(db, product_id)
+    if body.kind == "top_up" and row.kind != "top_up":
+        await _reject_top_up_flip_with_stock_or_force_inventory(db, product_id=product_id)
     if body.brand_id is not None:
         await get_brand(db, body.brand_id)
         row.brand_id = body.brand_id
