@@ -484,7 +484,9 @@ async def list_price_history(
 # it from here. See that module for the rule it holds.
 from yupay.modules.integrations.cost_refresh import (  # noqa: E402
     CostRefreshOutcome,
+    is_routed_supplier,
     refresh_sku_cost_for_mapping,
+    supports_price_collection,
 )
 
 
@@ -534,6 +536,7 @@ __all__ = [
     "delete_mapping",
     "get_mapping",
     "import_game",
+    "is_routed_supplier",
     "list_active_mappings",
     "list_catalog",
     "list_mappings",
@@ -541,6 +544,7 @@ __all__ = [
     "mapped_external_product_ids",
     "refresh_sku_cost_for_mapping",
     "sku_codes_for",
+    "supports_price_collection",
     "upsert_catalog_entry",
     "upsert_mapping",
 ]

@@ -225,7 +225,7 @@ async def test_a_voucher_in_auto_still_has_exactly_one_cost_writer(
     would actually be charged on a stockout is named in `decision.fallback`,
     and that one owns the cost basis. Every other test here uses a `top_up`
     SKU with an explicit rule, so the inventory-fallback clause of
-    `_is_routed_supplier` is exercised only by a single-mapping legacy test.
+    `is_routed_supplier` is exercised only by a single-mapping legacy test.
 
     With **two** mappings it has to pick one and only one. It picks G2B —
     `nova` is a reserve (`RESERVE_SUPPLIERS`), which `_resolve_auto` excludes
@@ -308,7 +308,7 @@ async def test_unpriced_routed_supplier_leaves_no_automatic_writer(
     a supplier it cannot price (``gengine`` here) that *also* carries an
     active ``g2b`` mapping has no automatic writer at all: gengine's own
     refresh isn't implemented, and g2b's refresh is non-routed —
-    ``_is_routed_supplier`` correctly refuses to let it write
+    ``is_routed_supplier`` correctly refuses to let it write
     ``Sku.cost_usdt`` because gengine, not g2b, is the route — so the cost
     freezes silently instead of following either supplier. No production SKU
     is in this shape today (every SKU routed to an unpriced supplier has

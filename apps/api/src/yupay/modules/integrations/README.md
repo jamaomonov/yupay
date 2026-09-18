@@ -27,7 +27,7 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   an order line freezes it at checkout, the margin report subtracts it, so
   two suppliers writing it on the same SKU would flip that SKU's retail
   price every refresh depending on which one ran last. The check is
-  `_is_routed_supplier(decision, mapping.supplier_slug)` against
+  `is_routed_supplier(decision, mapping.supplier_slug)` against
   `sourcing.resolve_for_sku`'s answer — see
   [ADR-0083](../../../../../../docs/decisions/0083-routed-supplier-cost-and-price-ratchet.md)
   for why, and for the 22 production SKUs (after the Free Fire→NOVA switch,

@@ -94,7 +94,39 @@ def _route_label(decision: Decision) -> str:
     return primary
 
 
-def _is_routed_supplier(decision: Decision, supplier_slug: str) -> bool:
+#: Suppliers ``refresh_sku_cost_for_mapping`` can actually pull a live price
+#: for — the two branches of its dispatch below. Anything else gets the
+#: "сбор цен не поддержан" reason and never reaches ``cost_lookup``. Defined
+#: once, as a set the dispatch itself checks (see ``supports_price_collection``),
+#: rather than duplicated as a second hardcoded list elsewhere — a SKU
+#: force-routed to a supplier outside this set has no live price to call
+#: "current", however recently `Sku.cost_usdt` was written by a *previous*
+#: routed supplier.
+PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "nova"})
+
+
+def supports_price_collection(supplier_slug: str) -> bool:
+    """Whether :func:`refresh_sku_cost_for_mapping` can pull a live price for this supplier.
+
+    Only g2b and nova have a ``cost_lookup`` implementation today; every
+    other supplier's mapping is refreshed with a "not supported" reason
+    instead of a price (see the dispatch in
+    :func:`refresh_sku_cost_for_mapping`). ``sourcing.brand_overview`` reads
+    this too, to decide whether a routed supplier's ``cost_source`` can
+    honestly be reported as ``"current"`` — a SKU routed to a supplier this
+    function refuses has no live number behind it, whatever
+    ``Sku.cost_usdt`` happens to hold.
+
+    Args:
+        supplier_slug: The supplier to check.
+
+    Returns:
+        ``True`` for g2b and nova; ``False`` for everything else.
+    """
+    return supplier_slug in PRICE_COLLECTION_SUPPORTED_SUPPLIERS
+
+
+def is_routed_supplier(decision: Decision, supplier_slug: str) -> bool:
     """Whether ``supplier_slug`` is the supplier this SKU actually buys from.
 
     Matches the two shapes ``sourcing.resolve_for_sku`` answers in:
@@ -176,7 +208,7 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     SKUs already carry two active mappings (G2B and NOVA) on this branch.
     So exactly one supplier may write it: the one
     ``sourcing.resolve_for_sku`` says this SKU actually routes to (see
-    :func:`_is_routed_supplier`). Every other active mapping records
+    :func:`is_routed_supplier`). Every other active mapping records
     history and touches nothing else.
 
     Centralised here (instead of inside the upsert route) so the
@@ -218,15 +250,15 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     # no business loading just to resolve one SKU's route.
     from yupay.modules.sourcing import service as sourcing_api
 
-    if mapping.supplier_slug == "g2b":
-        lookup = await _g2b_raw_price(db, mapping)
-    elif mapping.supplier_slug == "nova":
-        lookup = await _nova_raw_price(mapping, offers_cache=nova_offers_cache)
-    else:
+    if not supports_price_collection(mapping.supplier_slug):
         return CostRefreshOutcome(
             updated=False,
             reason=f"сбор цен не поддержан для поставщика «{mapping.supplier_slug}»",
         )
+    if mapping.supplier_slug == "g2b":
+        lookup = await _g2b_raw_price(db, mapping)
+    else:  # nova — the only other slug supports_price_collection allows through
+        lookup = await _nova_raw_price(mapping, offers_cache=nova_offers_cache)
 
     if lookup.reason is not None:
         return CostRefreshOutcome(updated=False, reason=lookup.reason, source=lookup.source or None)
@@ -257,7 +289,7 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     # history read is a query like any other.
     try:
         decision = await sourcing_api.resolve_for_sku(db, mapping.sku_id)
-        routed = _is_routed_supplier(decision, mapping.supplier_slug)
+        routed = is_routed_supplier(decision, mapping.supplier_slug)
         previous_for_supplier = await _last_history_cost(
             db, sku_id=mapping.sku_id, supplier_slug=mapping.supplier_slug
         )
