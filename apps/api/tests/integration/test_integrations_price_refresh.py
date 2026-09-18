@@ -297,6 +297,66 @@ async def test_force_inventory_leaves_the_cost_to_nobody(
     assert sku.cost_usdt == Decimal("0.82")
 
 
+@respx.mock
+async def test_unpriced_routed_supplier_leaves_no_automatic_writer(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """ADR-0083's documented gap, pinned rather than left hypothetical.
+
+    ``cost_refresh`` only dispatches ``g2b`` and ``nova``. A SKU forced onto
+    a supplier it cannot price (``gengine`` here) that *also* carries an
+    active ``g2b`` mapping has no automatic writer at all: gengine's own
+    refresh isn't implemented, and g2b's refresh is non-routed —
+    ``_is_routed_supplier`` correctly refuses to let it write
+    ``Sku.cost_usdt`` because gengine, not g2b, is the route — so the cost
+    freezes silently instead of following either supplier. No production SKU
+    is in this shape today (every SKU routed to an unpriced supplier has
+    that supplier as its *only* active mapping); this test is what makes the
+    day one is created a documented behaviour instead of a surprise.
+    """
+    from yupay.modules.integrations import service as svc
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _seed_sku(db_session, slug_suffix="unpriced-route", initial_cost="0.82")
+    g2b_mapping = await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+    db_session.add(
+        SkuSupplierMapping(
+            sku_id=sku_id,
+            supplier_slug="gengine",
+            kind="game",
+            external_product_id="ext-gengine",
+            external_variant_id=None,
+            quantity=1,
+            extra={},
+            is_active=True,
+        )
+    )
+    await db_session.commit()
+    await sourcing_svc.set_rule(
+        db_session,
+        sku_id=sku_id,
+        mode="force_supplier",
+        supplier_slug="gengine",
+        admin_id="test",
+    )
+    await db_session.commit()
+
+    # g2b answers with a real, moved price — proving the freeze is the
+    # routing rule refusing the write, not a network/lookup failure.
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200, json={"catalogues": [{"id": 1, "name": "60", "amount": 0.50}]}
+        )
+    )
+    outcome = await svc.refresh_sku_cost_for_mapping(db_session, mapping=g2b_mapping)
+    await db_session.commit()
+
+    assert outcome.wrote_cost is False
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("0.82"), "no writer exists for this SKU's route"
+
+
 # ---------- routed-supplier rule (per-supplier costs, §4) ----------
 
 

@@ -183,6 +183,24 @@ look identical on the comparison screen unless an operator reads `captured_at` b
   `decision.primary`. That is one more shape the routing rule has to get right, verified by
   `test_cost_sync_voucher_uses_cache_unit_price`, but it is still a second code path inside a
   function whose job is "pick exactly one writer."
+- **A SKU can end up with no automatic cost writer at all — not just one.** `cost_refresh` only
+  dispatches `g2b` and `nova` (`_g2b_raw_price` / `_nova_raw_price`); a SKU routed to `gengine`,
+  `waxpeer`, `mock`, or `manual` has no automatic writer, which is the same "nobody prices it"
+  shape `force_inventory` is _deliberately_ built to leave the cost basis in, above — the
+  difference is that this one would be an accident of routing, not a decision, the day it happens
+  to a SKU that still carries a `g2b` or `nova` mapping too: that mapping's own refresh would keep
+  running and keep writing history, but `_is_routed_supplier` would correctly refuse to let it
+  write `Sku.cost_usdt`, because the unpriced supplier — not g2b or nova — is the route. The cost
+  would freeze silently instead of visibly, same as it used to move silently (and wrongly) before
+  this branch's routed-supplier rule existed. Checked against production at the time of this
+  branch: no SKU is in that state today. Five SKUs route to an unpriced supplier — four Standoff 2
+  Gold SKUs on `gengine` and `steam-wallet-usd` on `waxpeer` — and every one of them has that
+  supplier as its _only_ active mapping, so none of them had an automatic writer before this branch
+  either; this branch changes nothing about their behaviour. The shape is created the day someone
+  routes a SKU onto an unpriced supplier while it still keeps a `g2b` or `nova` mapping active —
+  pinned by `test_unpriced_routed_supplier_leaves_no_automatic_writer`
+  (`apps/api/tests/integration/test_integrations_price_refresh.py`) so that day's behaviour is at
+  least the one documented here, not a surprise.
 - `supplier_price_history` now grows for suppliers nobody has switched to yet — every reserve
   mapping (NOVA on Mobile Legends, PUBG) accumulates comparison data whether or not anyone reads
   it, which is the point, but it is more rows written for no immediate operational reason.
