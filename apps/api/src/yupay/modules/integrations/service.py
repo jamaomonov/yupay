@@ -398,18 +398,26 @@ async def upsert_catalog_entry(
     external_id: str,
     title: str,
     raw: dict[str, Any],
+    parent_external_id: str | None = None,
+    price_usdt: Decimal | None = None,
 ) -> None:
     """Persist a single catalog cache row, replacing any existing entry.
 
     ON CONFLICT DO UPDATE keeps the table small and the latest snapshot
     authoritative — we don't keep historical versions because the supplier
     catalog drifts continuously.
+
+    ``parent_external_id``/``price_usdt`` matter only for a ``game_denom``
+    row (the game it belongs to, and the supplier's own price for it, when
+    reported) — every other kind leaves them ``None``.
     """
     stmt = pg_insert(SupplierCatalogCache).values(
         supplier_slug=supplier_slug,
         kind=kind,
         external_id=external_id,
         title=title,
+        parent_external_id=parent_external_id,
+        price_usdt=price_usdt,
         raw=raw,
         fetched_at=now(),
     )
@@ -417,6 +425,8 @@ async def upsert_catalog_entry(
         index_elements=["supplier_slug", "kind", "external_id"],
         set_={
             "title": stmt.excluded.title,
+            "parent_external_id": stmt.excluded.parent_external_id,
+            "price_usdt": stmt.excluded.price_usdt,
             "raw": stmt.excluded.raw,
             "fetched_at": stmt.excluded.fetched_at,
         },
@@ -430,9 +440,15 @@ async def list_catalog(
     supplier_slug: str,
     kind: CatalogKind | None = None,
     search: str | None = None,
+    parent_external_id: str | None = None,
     limit: int = 100,
 ) -> list[SupplierCatalogCache]:
-    """List cached catalog rows for autocomplete."""
+    """List cached catalog rows for autocomplete.
+
+    ``parent_external_id``, when given, narrows a ``game_denom`` listing down
+    to one game's denominations — the admin picker's second step once an
+    operator has chosen the game in the first.
+    """
     stmt = (
         select(SupplierCatalogCache)
         .where(SupplierCatalogCache.supplier_slug == supplier_slug)
@@ -441,6 +457,8 @@ async def list_catalog(
     )
     if kind is not None:
         stmt = stmt.where(SupplierCatalogCache.kind == kind)
+    if parent_external_id is not None:
+        stmt = stmt.where(SupplierCatalogCache.parent_external_id == parent_external_id)
     if search:
         needle = f"%{search.strip().lower()}%"
         from sqlalchemy import func

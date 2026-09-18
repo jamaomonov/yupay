@@ -125,9 +125,13 @@ class SkuSupplierMapping(Base):
 class SupplierCatalogCache(Base):
     """Cached snapshot of a supplier's external catalog item.
 
-    Populated by ``POST /admin/integrations/{supplier}/sync-catalog``;
-    used as autocomplete in the mapping UI. Not used in the order-fulfilment
-    path — never trust this for live prices.
+    Populated by ``POST /admin/integrations/{supplier}/sync-catalog`` (every
+    ``kind`` but ``game_denom``, whole-catalogue) and
+    ``POST /admin/integrations/{supplier}/games/{game_id}/sync-denominations``
+    (``game_denom`` rows, one game at a time — see migration 0082 for why
+    denominations are not swept wholesale); used as autocomplete in the
+    mapping UI. Not used in the order-fulfilment path — never trust this for
+    live prices.
     """
 
     __tablename__ = "supplier_catalog_cache"
@@ -136,6 +140,17 @@ class SupplierCatalogCache(Base):
     kind: Mapped[str] = mapped_column(String(16), primary_key=True)
     external_id: Mapped[str] = mapped_column(String(128), primary_key=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    #: For a ``game_denom`` row, the game's own ``external_id`` — what the
+    #: admin picker filters on to show one game's denominations rather than
+    #: every denomination of every supplier game at once. ``NULL`` for a
+    #: flat ``voucher``/``game`` row, which has no parent.
+    parent_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: The supplier's own price for this row, when it reports one at catalog
+    #: time (NOVA's ``price_usd`` per offer, G-Engine's ``price`` per
+    #: denomination). Stored as ``Decimal`` here per AGENTS.md §9; the admin
+    #: DTO (``CatalogEntryOut.price_usdt``) renders it as a string. Not a
+    #: cost basis — that stays ``Sku.cost_usdt``, refreshed separately.
+    price_usdt: Mapped[Any | None] = mapped_column(Numeric(20, 6), nullable=True)
     raw: Mapped[dict[str, Any]] = mapped_column(
         JSONB, nullable=False, server_default=text("'{}'::jsonb")
     )
@@ -147,6 +162,12 @@ class SupplierCatalogCache(Base):
         CheckConstraint(
             "kind IN ('voucher','game','game_denom')",
             name="ck_supplier_catalog_cache_kind",
+        ),
+        Index(
+            "ix_supplier_catalog_cache_parent",
+            "supplier_slug",
+            "kind",
+            "parent_external_id",
         ),
     )
 
