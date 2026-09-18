@@ -80,12 +80,34 @@ class SourcingBrandSupplierOut(BaseModel):
     used for the SKU's own ``price_usd``/``cost_usdt`` below — those two
     are ``Sku`` columns exposed the way ``catalog.admin_schemas.AdminSkuOut``
     already exposes them.
+
+    ``cost_source`` says where ``latest_cost_usdt`` came from, because
+    ``supplier_price_history`` records a price *change*, not a current
+    state — a supplier whose cost has simply never moved since the mapping
+    was created has zero history rows even though its price is known and
+    live on ``Sku.cost_usdt`` (every Free Fire SKU in production is exactly
+    this: zero g2b history rows, g2b's price sitting in ``cost_usdt`` to
+    the cent). Rendering that as "not captured" would be false for the one
+    supplier the SKU is actually buying from:
+
+    - ``"history"`` — a ``supplier_price_history`` row exists for this
+      (sku, supplier); ``latest_cost_usdt``/``captured_at`` are that row's.
+    - ``"current"`` — no history row, but this supplier is the one the SKU
+      routes to (``integrations.cost_refresh._is_routed_supplier`` — the
+      same routed-supplier test ``cost_refresh`` itself uses to decide who
+      may write ``Sku.cost_usdt``, ADR-0083 Decision 1), so
+      ``latest_cost_usdt`` is ``Sku.cost_usdt`` and ``captured_at`` is
+      ``None`` (it is not a point-in-time capture).
+    - ``None`` — no history and not the routed supplier: this supplier's
+      price is genuinely unknown to us. ``latest_cost_usdt`` stays
+      ``None``, same as before this field existed.
     """
 
     supplier_slug: str
     has_active_mapping: bool
     latest_cost_usdt: str | None
     captured_at: datetime | None
+    cost_source: Literal["history", "current"] | None
 
 
 class SourcingBrandSkuOut(BaseModel):
@@ -98,12 +120,27 @@ class SourcingBrandSkuOut(BaseModel):
     "supplier:<slug>"`` as "<slug> owns this SKU's ``Sku.cost_usdt``"
     (ADR-0083 Decision 1). Without it here, this screen — built to show who
     owns a SKU's cost — could not show that for any voucher SKU.
+
+    ``product_kind`` exists so the brand-overview screen can stop *offering*
+    an action the backend will refuse anyway: ``sourcing.service.set_rule``
+    rejects ``mode="force_inventory"`` on a ``top_up`` SKU (Task 3's guard —
+    a top_up SKU has nothing to deliver from the code warehouse), but this
+    row previously carried no kind signal at all, and ``primary``/
+    ``fallback`` cannot substitute for one. Under ``mode="auto"`` a top_up
+    SKU never reports ``primary == "inventory"`` (``_auto_decision`` only
+    ever gives it ``supplier:<slug>`` or ``supplier:manual``) — so
+    ``primary == "inventory"`` on a top_up row can only mean a pre-existing
+    bad rule, not something the UI can use to infer a SKU is a voucher. The
+    backend rejection in ``set_rule`` stays the real guard; this field only
+    lets the per-row "склад" control and the bulk "Только склад" mode
+    disable themselves for a ``top_up`` row instead of round-tripping a 422.
     """
 
     sku_id: str
     sku_code: str
     denomination: str | None
     product_slug: str
+    product_kind: str
     price_usd: Decimal
     cost_usdt: Decimal | None
     primary: str
