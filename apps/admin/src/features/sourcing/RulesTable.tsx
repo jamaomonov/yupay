@@ -46,8 +46,14 @@ const MODE_LABELS: Record<SourcingMode, string> = {
 
 export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
   const [search, setSearch] = useState("");
+  // `supplierFilter` stays a bare `string`, not a narrower union: its
+  // options come from `supplierOptions` below, itself derived at runtime
+  // from whatever `rule.supplier_slug` values are actually present — the
+  // field it filters (`SourcingRuleOut.supplier_slug`) is already typed
+  // `string | null` at its source, so there is no closed union to narrow
+  // to without inventing one the data model doesn't have.
   const [supplierFilter, setSupplierFilter] = useState("");
-  const [modeFilter, setModeFilter] = useState("");
+  const [modeFilter, setModeFilter] = useState<SourcingMode | "">("");
 
   const skusQuery = useQuery<Sku[]>({
     queryKey: qk.skus(),
@@ -206,7 +212,11 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
             id="sourcing-rules-mode-filter"
             value={modeFilter}
             onChange={(e) => {
-              setModeFilter(e.target.value);
+              // Narrowing a DOM value: every <option> below is either "" or
+              // a literal SourcingMode, so the select can never produce
+              // anything else (same precedent as BrandSourcingPage's mode
+              // select).
+              setModeFilter(e.target.value as SourcingMode | "");
             }}
             containerClassName="w-44"
           >

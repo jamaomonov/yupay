@@ -18,6 +18,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { RulesTable } from "./RulesTable";
+import { SUPPLIER_OPTIONS } from "./supplierOptions";
 
 import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
@@ -29,12 +30,6 @@ import { SkuPicker } from "@/features/integrations/pickers";
 import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
-
-// Suppliers that make sense as a ``force_supplier`` target. Derived from the
-// shared route table so a newly integrated supplier shows up here without a
-// second edit — the list used to be G2B-only, which quietly made every other
-// supplier unreachable from this screen.
-const SUPPLIER_OPTIONS = FULFILMENT_ROUTES.filter((r) => r.external || r.slug === "mock");
 
 interface ModeCard {
   value: SourcingMode;
@@ -131,13 +126,21 @@ export function SourcingPage() {
   }, [sku?.id, rulesQuery.data]);
 
   const save = useMutation<unknown, ApiError>({
+    // AGENTS.md §9: every state-changing request carries a fresh
+    // Idempotency-Key, minted per attempt (here, inside mutationFn — same
+    // "per attempt, never reused" policy `bulkSwitch.ts` documents, just
+    // for a single-SKU write instead of a chunked one).
     mutationFn: () => {
       if (mode === "auto") {
         // "Авто" === no explicit rule. Saving auto deletes any override.
-        return api(`/api/v1/admin/sourcing/rules/${sku?.id ?? ""}`, { method: "DELETE" });
+        return api(`/api/v1/admin/sourcing/rules/${sku?.id ?? ""}`, {
+          method: "DELETE",
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+        });
       }
       return api(`/api/v1/admin/sourcing/rules/${sku?.id ?? ""}`, {
         method: "PUT",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({
           mode,
           supplier_slug: mode === "force_supplier" ? supplierSlug : null,
@@ -155,7 +158,12 @@ export function SourcingPage() {
   });
 
   const remove = useMutation<void, ApiError, string>({
-    mutationFn: (skuId) => api<void>(`/api/v1/admin/sourcing/rules/${skuId}`, { method: "DELETE" }),
+    // Same gap, same file, same rule — see the comment on `save` above.
+    mutationFn: (skuId) =>
+      api<void>(`/api/v1/admin/sourcing/rules/${skuId}`, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }),
     onSuccess: () => {
       toast.success("Правило удалено — SKU вернулся в авто");
       void qc.invalidateQueries({ queryKey: qk.sourcingRules() });
