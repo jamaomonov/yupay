@@ -9,8 +9,11 @@
  * page rather than a replacement for this table. */
 
 import { useQuery } from "@tanstack/react-query";
-import { Button, Input, Select } from "@yupay/ui";
+import { Button } from "@yupay/ui";
 import { useMemo, useState } from "react";
+
+import { RulesTableFilters } from "./RulesTableFilters";
+import { RulesTableGroups } from "./RulesTableGroups";
 
 import type { SourcingMode, SourcingRuleOut } from "./types";
 import type { Brand, Product, Sku } from "@/features/catalog/types";
@@ -107,6 +110,25 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
     });
   }, [enriched, search, modeFilter, supplierFilter]);
 
+  // One group per brand, each carrying its own rule count — the filters
+  // above run first (on `enriched`, producing `filtered`), so a group here
+  // only ever holds rows that already passed every active filter, and a
+  // brand with nothing left after filtering simply has no group at all
+  // rather than an empty one. Sorted alphabetically for a stable order,
+  // same precedent as `supplierOptions` above.
+  const groups = useMemo<{ label: string; rows: EnrichedRule[] }[]>(() => {
+    const bySlug = new Map<string, EnrichedRule[]>();
+    for (const r of filtered) {
+      const label = r.brandName || "Без бренда";
+      const rows = bySlug.get(label);
+      if (rows) rows.push(r);
+      else bySlug.set(label, [r]);
+    }
+    return [...bySlug.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([label, rows]) => ({ label, rows }));
+  }, [filtered]);
+
   const columns: Column<EnrichedRule>[] = [
     {
       key: "sku",
@@ -123,16 +145,14 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
       sortAccessor: (r) => r.sku_code,
     },
     {
-      key: "brand",
-      header: "Бренд / товар",
-      render: (r) => (
-        <div className="flex flex-col">
-          <span>{r.brandName || "—"}</span>
-          <span className="text-[10px] text-[var(--text-tertiary)]">{r.productSlug}</span>
-        </div>
-      ),
+      // Brand no longer repeats per row — it is now the group heading above
+      // each table — so this column carries only the product, not "Бренд /
+      // товар" as before.
+      key: "product",
+      header: "Товар",
+      render: (r) => <span>{r.productSlug || "—"}</span>,
       className: "w-44",
-      sortAccessor: (r) => r.brandName,
+      sortAccessor: (r) => r.productSlug,
     },
     {
       key: "mode",
@@ -188,82 +208,32 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-end gap-3">
-        <div className="min-w-48 flex-1">
-          <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
-            Поиск
-          </label>
-          <Input
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-            }}
-            placeholder="Бренд, товар, код, номинал…"
-          />
-        </div>
-        <div>
-          <label
-            htmlFor="sourcing-rules-mode-filter"
-            className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]"
-          >
-            Режим
-          </label>
-          <Select
-            id="sourcing-rules-mode-filter"
-            value={modeFilter}
-            onChange={(e) => {
-              // Narrowing a DOM value: every <option> below is either "" or
-              // a literal SourcingMode, so the select can never produce
-              // anything else (same precedent as BrandSourcingPage's mode
-              // select).
-              setModeFilter(e.target.value as SourcingMode | "");
-            }}
-            containerClassName="w-44"
-          >
-            <option value="">Все режимы</option>
-            {(Object.keys(MODE_LABELS) as SourcingMode[]).map((m) => (
-              <option key={m} value={m}>
-                {MODE_LABELS[m]}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <label
-            htmlFor="sourcing-rules-supplier-filter"
-            className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]"
-          >
-            Поставщик
-          </label>
-          <Select
-            id="sourcing-rules-supplier-filter"
-            value={supplierFilter}
-            onChange={(e) => {
-              setSupplierFilter(e.target.value);
-            }}
-            containerClassName="w-40"
-          >
-            <option value="">Все поставщики</option>
-            {supplierOptions.map((slug) => (
-              <option key={slug} value={slug}>
-                {slug}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-
-      <DataTable
-        rows={filtered}
-        columns={columns}
-        rowKey={(r) => r.sku_id}
-        loading={loading}
-        empty={
-          rules.length === 0
-            ? "Явных правил нет — все SKU работают в режиме авто."
-            : "Ничего не найдено по этому фильтру."
-        }
+      <RulesTableFilters
+        search={search}
+        onSearchChange={setSearch}
+        modeFilter={modeFilter}
+        onModeFilterChange={setModeFilter}
+        modeLabels={MODE_LABELS}
+        supplierFilter={supplierFilter}
+        onSupplierFilterChange={setSupplierFilter}
+        supplierOptions={supplierOptions}
       />
+
+      {loading || filtered.length === 0 ? (
+        <DataTable
+          rows={[]}
+          columns={columns}
+          rowKey={(r) => r.sku_id}
+          loading={loading}
+          empty={
+            rules.length === 0
+              ? "Явных правил нет — все SKU работают в режиме авто."
+              : "Ничего не найдено по этому фильтру."
+          }
+        />
+      ) : (
+        <RulesTableGroups groups={groups} columns={columns} rowKey={(r) => r.sku_id} />
+      )}
     </div>
   );
 }

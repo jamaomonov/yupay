@@ -18,6 +18,9 @@ const mockedApiGet = vi.mocked(apiGet);
 const SKUS = [
   { id: "sku-1", product_id: "prod-1", sku_code: "MLBB-100", denomination: "100" },
   { id: "sku-2", product_id: "prod-2", sku_code: "PUBG-60", denomination: "60" },
+  // Second SKU of the same product/brand as sku-1 — used only by the
+  // grouping tests below, to get a brand with more than one rule under it.
+  { id: "sku-3", product_id: "prod-1", sku_code: "MLBB-500", denomination: "500" },
 ];
 const PRODUCTS = [
   { id: "prod-1", slug: "mobile-legends", brand_id: "brand-1" },
@@ -47,6 +50,22 @@ const RULES: SourcingRuleOut[] = [
   },
 ];
 
+// Three rules across the same two brands as `RULES` — sku-3 adds a second
+// Mobile Legends rule, so Mobile Legends holds 2 and PUBG Mobile holds 1.
+// Only used by the grouping tests below; every other test keeps using the
+// two-rule `RULES` fixture unchanged.
+const RULES_GROUPED: SourcingRuleOut[] = [
+  ...RULES,
+  {
+    sku_id: "sku-3",
+    sku_code: "MLBB-500",
+    mode: "force_inventory",
+    supplier_slug: null,
+    updated_by: "admin-1",
+    updated_at: "2026-09-12T00:00:00Z",
+  },
+];
+
 beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiGet.mockImplementation((path: string) => {
@@ -57,13 +76,13 @@ beforeEach(() => {
   });
 });
 
-function renderTable(onDelete = vi.fn()) {
+function renderTable(rules: SourcingRuleOut[] = RULES, onDelete = vi.fn()) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return {
     onDelete,
     ...render(
       <QueryClientProvider client={qc}>
-        <RulesTable rules={RULES} loading={false} onDelete={onDelete} />
+        <RulesTable rules={rules} loading={false} onDelete={onDelete} />
       </QueryClientProvider>,
     ),
   };
@@ -132,4 +151,30 @@ it("calls onDelete with the sku id after confirmation", async () => {
   fireEvent.click(deleteButtons[0]!);
 
   expect(onDelete).toHaveBeenCalledWith("sku-1");
+});
+
+it("groups rules under their brand, each group naming its own rule count", async () => {
+  renderTable(RULES_GROUPED);
+
+  // sku-1 and sku-3 are both Mobile Legends (2 rules); sku-2 is the only
+  // PUBG Mobile rule.
+  await screen.findByRole("region", { name: "Mobile Legends (2)" });
+  expect(screen.getByRole("region", { name: "PUBG Mobile (1)" })).toBeInTheDocument();
+});
+
+it("keeps the free-text filter working across groups — a group with nothing left disappears", async () => {
+  renderTable(RULES_GROUPED);
+  await screen.findByRole("region", { name: "Mobile Legends (2)" });
+
+  fireEvent.change(screen.getByPlaceholderText("Бренд, товар, код, номинал…"), {
+    target: { value: "500" },
+  });
+
+  await waitFor(() => {
+    expect(screen.queryByRole("region", { name: /PUBG Mobile/ })).not.toBeInTheDocument();
+  });
+  // Only sku-3 (denomination 500) still matches — Mobile Legends' own count
+  // drops from 2 to 1, proving the filter narrows rows inside a group too,
+  // not just which groups appear.
+  expect(screen.getByRole("region", { name: "Mobile Legends (1)" })).toBeInTheDocument();
 });
