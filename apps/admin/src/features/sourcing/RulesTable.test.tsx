@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { RulesTable } from "./RulesTable";
@@ -29,6 +29,42 @@ const PRODUCTS = [
 const BRANDS = [
   { id: "brand-1", slug: "mlbb", translations: [{ locale: "ru", name: "Mobile Legends" }] },
   { id: "brand-2", slug: "pubg", translations: [{ locale: "ru", name: "PUBG Mobile" }] },
+];
+
+// Two distinct brands that happen to share the exact same Russian display
+// name — the region rollout's real-world near miss ("Mobile Legends" vs.
+// "Mobile Legends RU"), pushed one step further so the names collide
+// exactly. Grouping on `brandName` would collapse these into one section
+// with one count and one React key; grouping on `brandId` must not.
+const SKUS_NAME_COLLISION = [
+  { id: "sku-a", product_id: "prod-a", sku_code: "MLBB-A", denomination: null },
+  { id: "sku-b", product_id: "prod-b", sku_code: "MLBB-B", denomination: null },
+];
+const PRODUCTS_NAME_COLLISION = [
+  { id: "prod-a", slug: "mobile-legends", brand_id: "brand-a" },
+  { id: "prod-b", slug: "mobile-legends-ru", brand_id: "brand-b" },
+];
+const BRANDS_NAME_COLLISION = [
+  { id: "brand-a", slug: "mlbb", translations: [{ locale: "ru", name: "Mobile Legends" }] },
+  { id: "brand-b", slug: "mlbb-ru", translations: [{ locale: "ru", name: "Mobile Legends" }] },
+];
+const RULES_NAME_COLLISION: SourcingRuleOut[] = [
+  {
+    sku_id: "sku-a",
+    sku_code: "MLBB-A",
+    mode: "force_supplier",
+    supplier_slug: "g2b",
+    updated_by: "admin-1",
+    updated_at: "2026-09-10T00:00:00Z",
+  },
+  {
+    sku_id: "sku-b",
+    sku_code: "MLBB-B",
+    mode: "manual",
+    supplier_slug: null,
+    updated_by: "admin-1",
+    updated_at: "2026-09-11T00:00:00Z",
+  },
 ];
 
 const RULES: SourcingRuleOut[] = [
@@ -177,4 +213,34 @@ it("keeps the free-text filter working across groups — a group with nothing le
   // drops from 2 to 1, proving the filter narrows rows inside a group too,
   // not just which groups appear.
   expect(screen.getByRole("region", { name: "Mobile Legends (1)" })).toBeInTheDocument();
+});
+
+it("keeps two different brands that share a display name in separate groups", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/skus")) return Promise.resolve(SKUS_NAME_COLLISION);
+    if (path.includes("/catalog/products")) return Promise.resolve(PRODUCTS_NAME_COLLISION);
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS_NAME_COLLISION);
+    return Promise.resolve([]);
+  });
+
+  renderTable(RULES_NAME_COLLISION);
+  // Wait for the catalog joins (skus/products/brands) to resolve, not just
+  // for the rule's own sku_code to appear — that renders straight from the
+  // ungrouped `rules` prop and would let this assertion race the async
+  // enrichment that grouping actually depends on. Wait on the heading text
+  // itself (present whether the rows land in one merged group or two) so
+  // the wait doesn't assume the very outcome under test.
+  await waitFor(() => {
+    expect(screen.queryAllByText("Mobile Legends").length).toBeGreaterThan(0);
+  });
+
+  // Grouping on the display name would merge brand-a and brand-b into one
+  // "Mobile Legends (2)" section. Grouping on brand id keeps two sections,
+  // each with its own count of 1 — and each row still lands under its own
+  // brand's table, not the other one's.
+  const groupedRegions = screen.getAllByRole("region", { name: "Mobile Legends (1)" });
+  expect(groupedRegions).toHaveLength(2);
+  expect(screen.queryByRole("region", { name: "Mobile Legends (2)" })).not.toBeInTheDocument();
+  expect(within(groupedRegions[0] as HTMLElement).getByText(/MLBB-A|MLBB-B/)).toBeInTheDocument();
+  expect(within(groupedRegions[1] as HTMLElement).getByText(/MLBB-A|MLBB-B/)).toBeInTheDocument();
 });

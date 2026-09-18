@@ -684,6 +684,35 @@ it("reports the top-up rows a bulk force_inventory switch cannot apply to, inste
   expect(screen.getByLabelText("Выбрать GIFT-10")).not.toBeChecked();
 });
 
+it("confirms with the applicable count for a mixed force_inventory selection, not the whole ticked selection (Important #5)", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(MIXED_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+  renderPage();
+  await screen.findByText(/TOPUP-1/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать TOPUP-1"));
+  fireEvent.click(screen.getByLabelText("Выбрать GIFT-10"));
+  fireEvent.change(screen.getByLabelText("Режим для 2 SKU"), {
+    target: { value: "force_inventory" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 2/ }));
+
+  expect(confirmSpy).toHaveBeenCalledTimes(1);
+  const message = confirmSpy.mock.calls[0]?.[0] ?? "";
+  // Two SKUs are ticked, but sku-top is a top_up — force_inventory can
+  // never apply to it, so only sku-gift will actually be attempted. The
+  // confirmation must name that count, not the size of the whole
+  // selection.
+  expect(message).toMatch(/1 SKU/);
+  expect(message).not.toMatch(/2 SKU/);
+  expect(mockedApiPut).not.toHaveBeenCalled();
+});
+
 it("resolves a force_inventory switch locally, with no network call, when every ticked row is a top-up", async () => {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);

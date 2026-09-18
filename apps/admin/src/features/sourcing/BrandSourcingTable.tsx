@@ -166,7 +166,7 @@ export function BrandSourcingTable({
                         // operator from round-tripping a 422 to find out.
                         <span
                           className="text-[11px] text-[var(--text-tertiary)]"
-                          title="sourcing.service.set_rule отклоняет force_inventory для топ-апов"
+                          title="Топ-ап нельзя выдать со склада кодов — там нет кодов, которые можно списать за пополнение"
                         >
                           склад: {inventoryDisabledReason}
                         </span>

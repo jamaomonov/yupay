@@ -9,6 +9,11 @@ import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
 
 export interface RuleGroup<T> {
+  /** Stable React key — the brand id (or a sentinel for "no brand"), never
+   *  the display `label`: two brands can share a Russian name, and two
+   *  identically-labelled sections would otherwise collide on the same
+   *  React key (whole-branch review #3). */
+  key: string;
   label: string;
   rows: T[];
 }
@@ -26,7 +31,7 @@ export function RulesTableGroups<T>({
     <div className="space-y-4">
       {groups.map((group) => (
         <section
-          key={group.label}
+          key={group.key}
           aria-label={`${group.label} (${group.rows.length.toString()})`}
           className="space-y-2"
         >

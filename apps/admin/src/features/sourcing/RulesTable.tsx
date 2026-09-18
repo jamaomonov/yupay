@@ -29,6 +29,17 @@ function rname(obj: { translations: { locale: string; name: string }[] } | undef
 }
 
 interface EnrichedRule extends SourcingRuleOut {
+  /** `null` when the SKU, product or brand behind this rule is missing from
+   *  the three catalog lists — every such rule shares that one `null` key
+   *  and lands in the same "Без бренда" group below, same as before. A real
+   *  brand id, by contrast, is only ever shared by rules that really are
+   *  the same brand — unlike `brandName`, which two differently-id'd brands
+   *  can share (the region rollout named two "Mobile Legends" and "Mobile
+   *  Legends RU" today; nothing stops a future pair from matching
+   *  exactly). Grouping on this instead of `brandName` is what keeps such a
+   *  pair in two sections instead of one merged section with one count and
+   *  one (colliding) React key. */
+  brandId: string | null;
   brandName: string;
   productSlug: string;
   denomination: string | null;
@@ -81,6 +92,7 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
       const brand = product ? brandById.get(product.brand_id) : undefined;
       return {
         ...rule,
+        brandId: brand?.id ?? null,
         brandName: rname(brand),
         productSlug: product?.slug ?? "",
         denomination: sku?.denomination ?? null,
@@ -110,23 +122,30 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
     });
   }, [enriched, search, modeFilter, supplierFilter]);
 
-  // One group per brand, each carrying its own rule count — the filters
-  // above run first (on `enriched`, producing `filtered`), so a group here
-  // only ever holds rows that already passed every active filter, and a
-  // brand with nothing left after filtering simply has no group at all
-  // rather than an empty one. Sorted alphabetically for a stable order,
-  // same precedent as `supplierOptions` above.
-  const groups = useMemo<{ label: string; rows: EnrichedRule[] }[]>(() => {
-    const bySlug = new Map<string, EnrichedRule[]>();
+  // One group per brand *id*, each carrying its own rule count and label —
+  // the filters above run first (on `enriched`, producing `filtered`), so a
+  // group here only ever holds rows that already passed every active
+  // filter, and a brand with nothing left after filtering simply has no
+  // group at all rather than an empty one. Sorted alphabetically by label
+  // for a stable order, same precedent as `supplierOptions` above.
+  //
+  // Keyed on `brandId`, not `brandName`: two brands can share a display
+  // name (whole-branch review #3) — grouping on the name would merge them
+  // into one section with one count and one React key. `null` (SKU/product/
+  // brand missing from the catalog lists) still collapses into a single
+  // "Без бренда" group, same as before — every such row genuinely shares
+  // nothing else to group by either.
+  const groups = useMemo<{ key: string; label: string; rows: EnrichedRule[] }[]>(() => {
+    const byId = new Map<string | null, { label: string; rows: EnrichedRule[] }>();
     for (const r of filtered) {
       const label = r.brandName || "Без бренда";
-      const rows = bySlug.get(label);
-      if (rows) rows.push(r);
-      else bySlug.set(label, [r]);
+      const group = byId.get(r.brandId);
+      if (group) group.rows.push(r);
+      else byId.set(r.brandId, { label, rows: [r] });
     }
-    return [...bySlug.entries()]
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([label, rows]) => ({ label, rows }));
+    return [...byId.entries()]
+      .sort(([, a], [, b]) => a.label.localeCompare(b.label))
+      .map(([id, { label, rows }]) => ({ key: id ?? "__no_brand__", label, rows }));
   }, [filtered]);
 
   const columns: Column<EnrichedRule>[] = [

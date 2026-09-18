@@ -34,17 +34,27 @@ export function forceInventoryDisabledReason(productKind: string): string | null
  *  and would otherwise wait on an unrelated row). The caller sends
  *  `applicable` over the wire and reports `blocked` the same way a real
  *  per-SKU rejection is reported — see `BrandSourcingPage`'s
- *  `switchMutation`. */
+ *  `switchMutation`.
+ *
+ *  Iterates the *selection*, not `items` — a ticked id can outlive the
+ *  overview row it came from (deactivated between load and apply; the
+ *  selection survives a refetch), and iterating `items` instead used to
+ *  leave such an id neither applicable nor blocked: never sent, never
+ *  reported, permanently ticked (whole-branch review #4). An id with no
+ *  matching row is treated as applicable so the server gets a chance to
+ *  answer for it, the same per-item "not found" every other mode already
+ *  relies on. */
 export function partitionForceInventorySelection(
   items: readonly Pick<SourcingBrandSkuOut, "sku_id" | "product_kind">[],
   selected: ReadonlySet<string>,
 ): { applicable: string[]; blocked: string[] } {
+  const itemBySku = new Map(items.map((item) => [item.sku_id, item]));
   const applicable: string[] = [];
   const blocked: string[] = [];
-  for (const item of items) {
-    if (!selected.has(item.sku_id)) continue;
-    if (item.product_kind === "top_up") blocked.push(item.sku_id);
-    else applicable.push(item.sku_id);
+  for (const skuId of selected) {
+    const item = itemBySku.get(skuId);
+    if (item?.product_kind === "top_up") blocked.push(skuId);
+    else applicable.push(skuId);
   }
   return { applicable, blocked };
 }

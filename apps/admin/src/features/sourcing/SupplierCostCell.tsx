@@ -82,20 +82,28 @@ export function SupplierCell({
             below would otherwise just vanish, leaving a captured-looking
             number with no visible difference from a real capture. Say what
             it actually is instead: the SKU's own `cost_usdt`, not a
-            point-in-time price snapshot. */}
-        {supplier.cost_source === "current" ? (
-          <span className="text-[10px] text-[var(--text-tertiary)]">текущая цена SKU</span>
-        ) : (
-          supplier.captured_at && (
-            <span className="text-[10px] text-[var(--text-tertiary)]">
-              {new Date(supplier.captured_at).toLocaleDateString("ru", {
-                day: "2-digit",
-                month: "2-digit",
-                year: "2-digit",
-              })}
-            </span>
-          )
-        )}
+            point-in-time price snapshot.
+
+            Gated on `cost !== null`: the backend contract pairs
+            `cost_source: "current"` with a non-null `latest_cost_usdt`, but
+            this cell still has to render *something* sane if that
+            combination ever slips through anyway — and "текущая цена SKU"
+            right under "цена не снята" would claim a current price the
+            cell isn't showing. */}
+        {cost !== null &&
+          (supplier.cost_source === "current" ? (
+            <span className="text-[10px] text-[var(--text-tertiary)]">текущая цена SKU</span>
+          ) : (
+            supplier.captured_at && (
+              <span className="text-[10px] text-[var(--text-tertiary)]">
+                {new Date(supplier.captured_at).toLocaleDateString("ru", {
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "2-digit",
+                })}
+              </span>
+            )
+          ))}
         {isCurrentRoute ? (
           <span className="text-[10px] text-[var(--accent)]">
             {isFallbackRoute ? "текущий (запасной, после склада)" : "текущий"}

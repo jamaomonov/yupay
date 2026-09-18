@@ -8,6 +8,7 @@ import {
   inventoryRoutedCount,
   isCurrentSupplierRoute,
   marginPercent,
+  partitionForceInventorySelection,
   supplierLabel,
 } from "./brandSourcingFormat";
 
@@ -115,6 +116,26 @@ it("treats a `current` cost exactly like a captured one in the cheapest comparis
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b"]));
+});
+
+it("treats a selected id no longer in the loaded overview as applicable, not silently dropped (Important #4)", () => {
+  const items = [
+    { sku_id: "sku-1", product_kind: "voucher" },
+    { sku_id: "sku-2", product_kind: "top_up" },
+  ];
+  // sku-3 was ticked before the brand overview refetched without it —
+  // deactivated between load and apply. The selection survives a refetch
+  // (`BrandSourcingPage` never prunes `selected` against `items`), so it
+  // stays ticked even though `items` no longer carries it. It must land in
+  // `applicable` so the server answers for it with its own per-item "not
+  // found", the same way every other mode already sends and reports it —
+  // not vanish from both lists while staying ticked forever.
+  const { applicable, blocked } = partitionForceInventorySelection(
+    items,
+    new Set(["sku-1", "sku-2", "sku-3"]),
+  );
+  expect(applicable.sort()).toEqual(["sku-1", "sku-3"]);
+  expect(blocked).toEqual(["sku-2"]);
 });
 
 it("marks a supplier current when it's the primary route", () => {

@@ -222,9 +222,20 @@ export function BrandSourcingPage() {
   // bigger (up to hundreds of SKUs) and had no confirmation at all. Also
   // names the warehouse-bypass consequence when it applies (Important #1) —
   // see `bulkConfirmMessage`.
+  //
+  // `force_inventory` counts its *applicable* SKUs, not the whole ticked
+  // selection (whole-branch review #5): a mixed selection sends only the
+  // voucher rows (`partitionForceInventorySelection`), so confirming with
+  // `selected.size` would ask "Переключить 2 SKU" when only 1 is ever
+  // attempted. Every other mode sends the full selection as-is, so
+  // `selected.size` stays correct for them.
   const confirmBulkApply = (): boolean => {
+    const count =
+      bulkMode === "force_inventory"
+        ? partitionForceInventorySelection(items, selected).applicable.length
+        : selected.size;
     const message = bulkConfirmMessage(
-      selected.size,
+      count,
       bulkMode,
       bulkSupplier,
       inventoryRoutedCount(items, selected),
