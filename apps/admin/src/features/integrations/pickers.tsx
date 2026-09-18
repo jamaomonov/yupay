@@ -186,6 +186,17 @@ export function CatalogPicker({
   );
 }
 
+/** Trims the trailing zeros a `NUMERIC(20,6)` price round-trips with as a
+ *  string — `"0.601800"` → `"0.6018"`, `"22.520000"` → `"22.52"`,
+ *  `"5.000000"` → `"5"` — so the picker doesn't show six decimals nobody
+ *  asked for. Pure string manipulation, never `Number()`/`parseFloat`: §9
+ *  says money is a string in TS, and a supplier price can matter down to the
+ *  sixth decimal, so display must not risk a float round-trip either. */
+function trimTrailingZeros(value: string): string {
+  if (!value.includes(".")) return value;
+  return value.replace(/0+$/, "").replace(/\.$/, "");
+}
+
 /** Row renderer shared by `CatalogPicker` (voucher/game) and
  *  `DenomCatalogPicker` (game_denom) — one visual language for every
  *  supplier-catalog row, regardless of which cache level it comes from. */
@@ -204,11 +215,12 @@ export function CatalogRow({
   // Prefer the typed `price_usdt` the backend now reports; fall back to the
   // untyped `raw.unit_price` some older cache rows still carry. Both are
   // display-only strings — never parsed into a number here (§9).
-  const unitPrice =
+  const rawUnitPrice =
     entry.price_usdt ??
     (typeof raw.unit_price === "number" || typeof raw.unit_price === "string"
       ? String(raw.unit_price)
       : null);
+  const unitPrice = rawUnitPrice ? trimTrailingZeros(rawUnitPrice) : null;
 
   const thumb =
     kind === "game" && imageUrl ? (
