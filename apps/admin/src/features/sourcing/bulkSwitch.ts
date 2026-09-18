@@ -27,7 +27,12 @@
 
 import { MAX_BULK_SKU_IDS } from "./types";
 
-import type { SourcingBulkRuleOut, SourcingBulkRuleResultOut, SourcingMode } from "./types";
+import type {
+  SourcingBulkRuleIn,
+  SourcingBulkRuleOut,
+  SourcingBulkRuleResultOut,
+  SourcingMode,
+} from "./types";
 
 import { ApiError, apiPut, formatApiError } from "@/lib/api";
 
@@ -42,15 +47,18 @@ export async function switchSkusChunked(
   for (let i = 0; i < skuIds.length; i += MAX_BULK_SKU_IDS) {
     const chunk = skuIds.slice(i, i + MAX_BULK_SKU_IDS);
     try {
+      // Typed against SourcingBulkRuleIn so a renamed/misspelled field
+      // fails tsc here instead of the backend's `extra="forbid"` 422 at
+      // request time — apiPut's `body` parameter is `unknown` and checks
+      // nothing on its own.
+      const body: SourcingBulkRuleIn = { sku_ids: chunk, mode, supplier_slug: supplierSlug };
       // Sequential on purpose: each chunk mints and spends its own
       // Idempotency-Key, and firing them in parallel would gain nothing —
       // 100 SKUs per request is already the server's own cap on one unit
       // of work.
-      const result = await apiPut<SourcingBulkRuleOut>(
-        BULK_RULES_URL,
-        { sku_ids: chunk, mode, supplier_slug: supplierSlug },
-        { "Idempotency-Key": crypto.randomUUID() },
-      );
+      const result = await apiPut<SourcingBulkRuleOut>(BULK_RULES_URL, body, {
+        "Idempotency-Key": crypto.randomUUID(),
+      });
       items.push(...result.items);
     } catch (err) {
       const message = err instanceof ApiError ? formatApiError(err) : "Сетевая ошибка";
