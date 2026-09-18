@@ -17,7 +17,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { RulesTable } from "./RulesTable";
-import { autoHintFor, MODE_CARDS, ModeOption } from "./SourcingModeCards";
+import { autoHintFor, disabledReasonFor, MODE_CARDS, ModeOption } from "./SourcingModeCards";
 import { RoutePreview, SkuSummary } from "./SourcingSkuPanel";
 import { SUPPLIER_OPTIONS } from "./supplierOptions";
 
@@ -77,20 +77,30 @@ export function SourcingPage() {
     return has ? null : route.label;
   }, [mappingsQuery.data, sku, supplierSlug]);
 
+  // Whether the picked SKU already has an explicit rule — drives whether
+  // this form reads as "editing" or "creating" (owner report: the form
+  // used to offer "create" even for a SKU that already has one, and the
+  // PUT silently replaced it, so a replacement looked like an addition).
+  // `sku_sourcing_rules`'s primary key is `sku_id`, so there is at most
+  // one, and this is that one.
+  const existingRule = useMemo(() => {
+    if (!sku) return null;
+    return rulesQuery.data?.items.find((r) => r.sku_id === sku.id) ?? null;
+  }, [sku, rulesQuery.data]);
+
   // When the operator picks a SKU, prefill the form with its existing
   // rule (or reset to auto if it has none).
   useEffect(() => {
     if (!sku) return;
-    const existing = rulesQuery.data?.items.find((r) => r.sku_id === sku.id);
-    if (existing) {
-      setMode(existing.mode);
-      setSupplierSlug(existing.supplier_slug ?? "g2b");
+    if (existingRule) {
+      setMode(existingRule.mode);
+      setSupplierSlug(existingRule.supplier_slug ?? "g2b");
     } else {
       setMode("auto");
       setSupplierSlug("g2b");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sku?.id, rulesQuery.data]);
+  }, [sku?.id, existingRule]);
 
   const save = useMutation<unknown, ApiError>({
     // AGENTS.md §9: every state-changing request carries a fresh
@@ -141,7 +151,13 @@ export function SourcingPage() {
     },
   });
 
-  const canSave = sku !== null && (mode !== "force_supplier" || supplierSlug.trim().length > 0);
+  // Defence in depth alongside the mode card's own `disabled` — the card
+  // can't be clicked into a disallowed mode, but this also blocks Save if
+  // a legacy rule row left the form pre-filled with one (e.g. a top_up SKU
+  // with a stray `force_inventory` row from before this guard existed).
+  const modeDisabled = sku !== null && disabledReasonFor(mode, sku) !== null;
+  const canSave =
+    sku !== null && !modeDisabled && (mode !== "force_supplier" || supplierSlug.trim().length > 0);
 
   return (
     <div className="space-y-6">
@@ -175,6 +191,15 @@ export function SourcingPage() {
               <span className="mb-2 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]">
                 Режим
               </span>
+              {existingRule && (
+                <p className="mb-2 rounded-md bg-[var(--bg-accent-soft)] px-3 py-2 text-xs text-[var(--accent-soft-fg)]">
+                  У этого SKU уже есть правило (
+                  {MODE_CARDS.find((c) => c.value === existingRule.mode)?.label ??
+                    existingRule.mode}
+                  {existingRule.supplier_slug ? ` · ${existingRule.supplier_slug}` : ""}) — форма
+                  ниже его редактирует, а не создаёт новое.
+                </p>
+              )}
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {MODE_CARDS.map((card) => (
                   <ModeOption
@@ -182,6 +207,7 @@ export function SourcingPage() {
                     card={card}
                     selected={mode === card.value}
                     autoHint={card.value === "auto" ? autoHintFor(sku, skuMapping) : null}
+                    disabledReason={disabledReasonFor(card.value, sku)}
                     onSelect={() => {
                       setMode(card.value);
                     }}
@@ -236,7 +262,9 @@ export function SourcingPage() {
                   ? "Сохраняем…"
                   : mode === "auto"
                     ? "Применить (авто)"
-                    : "Сохранить правило"}
+                    : existingRule
+                      ? "Заменить правило"
+                      : "Создать правило"}
               </Button>
               <span className="text-xs text-[var(--text-tertiary)]">
                 «Авто» снимает любое явное правило с этого SKU.

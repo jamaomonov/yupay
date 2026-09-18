@@ -8,8 +8,11 @@ import {
   inventoryRoutedCount,
   isCurrentSupplierRoute,
   marginPercent,
+  partitionForceInventorySelection,
   supplierLabel,
 } from "./brandSourcingFormat";
+
+import type { SourcingBrandSupplierOut } from "./types";
 
 it("labels known suppliers and falls back to the raw slug otherwise", () => {
   expect(supplierLabel("g2b")).toBe("G2Bulk");
@@ -36,42 +39,103 @@ it("computes the margin price_usd implies over cost_usdt — cost is the denomin
 });
 
 it("picks every supplier tied for cheapest, among active mappings with a recorded cost", () => {
-  const suppliers = [
-    { supplier_slug: "g2b", has_active_mapping: true, latest_cost_usdt: "0.90", captured_at: null },
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: true,
+      latest_cost_usdt: "0.90",
+      captured_at: null,
+      cost_source: "history",
+    },
     {
       supplier_slug: "nova",
       has_active_mapping: true,
       latest_cost_usdt: "0.79",
       captured_at: null,
+      cost_source: "history",
     },
     {
       supplier_slug: "gengine",
       has_active_mapping: false,
       latest_cost_usdt: "0.10",
       captured_at: null,
+      cost_source: "history",
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["nova"]));
 });
 
 it("treats an exact tie honestly — both suppliers come back, not just the first", () => {
-  const suppliers = [
-    { supplier_slug: "g2b", has_active_mapping: true, latest_cost_usdt: "0.90", captured_at: null },
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: true,
+      latest_cost_usdt: "0.90",
+      captured_at: null,
+      cost_source: "history",
+    },
     {
       supplier_slug: "nova",
       has_active_mapping: true,
       latest_cost_usdt: "0.900000",
       captured_at: null,
+      cost_source: "history",
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b", "nova"]));
 });
 
 it("returns an empty set when no supplier has both an active mapping and a recorded cost", () => {
-  const suppliers = [
-    { supplier_slug: "g2b", has_active_mapping: false, latest_cost_usdt: null, captured_at: null },
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: false,
+      latest_cost_usdt: null,
+      captured_at: null,
+      cost_source: null,
+    },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set());
+});
+
+it("treats a `current` cost exactly like a captured one in the cheapest comparison", () => {
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: true,
+      latest_cost_usdt: "1.00",
+      captured_at: null,
+      cost_source: "current",
+    },
+    {
+      supplier_slug: "nova",
+      has_active_mapping: true,
+      latest_cost_usdt: "1.50",
+      captured_at: "2026-09-10T00:00:00Z",
+      cost_source: "history",
+    },
+  ];
+  expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b"]));
+});
+
+it("treats a selected id no longer in the loaded overview as applicable, not silently dropped (Important #4)", () => {
+  const items = [
+    { sku_id: "sku-1", product_kind: "voucher" },
+    { sku_id: "sku-2", product_kind: "top_up" },
+  ];
+  // sku-3 was ticked before the brand overview refetched without it —
+  // deactivated between load and apply. The selection survives a refetch
+  // (`BrandSourcingPage` never prunes `selected` against `items`), so it
+  // stays ticked even though `items` no longer carries it. It must land in
+  // `applicable` so the server answers for it with its own per-item "not
+  // found", the same way every other mode already sends and reports it —
+  // not vanish from both lists while staying ticked forever.
+  const { applicable, blocked } = partitionForceInventorySelection(
+    items,
+    new Set(["sku-1", "sku-2", "sku-3"]),
+  );
+  expect(applicable.sort()).toEqual(["sku-1", "sku-3"]);
+  expect(blocked).toEqual(["sku-2"]);
 });
 
 it("marks a supplier current when it's the primary route", () => {

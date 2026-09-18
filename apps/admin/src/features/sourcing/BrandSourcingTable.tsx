@@ -13,6 +13,7 @@ import {
   bypassesInventory,
   cheapestSlugs,
   describeRoute,
+  forceInventoryDisabledReason,
   isCurrentSupplierRoute,
   marginPercent,
   supplierLabel,
@@ -120,6 +121,7 @@ export function BrandSourcingTable({
             const margin = marginPercent(item.price_usd, item.cost_usdt);
             const failure = failures.get(item.sku_id);
             const rowPending = pending || pendingSkuIds.has(item.sku_id);
+            const inventoryDisabledReason = forceInventoryDisabledReason(item.product_kind);
             return (
               <tr key={item.sku_id} className="border-t border-[var(--border-default)] align-top">
                 <td className="py-2 pl-3">
@@ -155,13 +157,28 @@ export function BrandSourcingTable({
                         }}
                         disabled={rowPending}
                       />
-                      <QuickModeButton
-                        label="склад"
-                        onClick={() => {
-                          onSwitchOne(item.sku_id, "force_inventory", null);
-                        }}
-                        disabled={rowPending}
-                      />
+                      {inventoryDisabledReason ? (
+                        // Not offerable — the gap is visible text, not just
+                        // an absent control, same treatment `SupplierCell`
+                        // gives a supplier with no active mapping
+                        // ("нет маппинга"). The backend rejects this mode
+                        // for a top_up SKU outright; this only keeps the
+                        // operator from round-tripping a 422 to find out.
+                        <span
+                          className="text-[11px] text-[var(--text-tertiary)]"
+                          title="Топ-ап нельзя выдать со склада кодов — там нет кодов, которые можно списать за пополнение"
+                        >
+                          склад: {inventoryDisabledReason}
+                        </span>
+                      ) : (
+                        <QuickModeButton
+                          label="склад"
+                          onClick={() => {
+                            onSwitchOne(item.sku_id, "force_inventory", null);
+                          }}
+                          disabled={rowPending}
+                        />
+                      )}
                       <QuickModeButton
                         label="вручную"
                         onClick={() => {

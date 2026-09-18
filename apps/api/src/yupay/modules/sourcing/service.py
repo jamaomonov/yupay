@@ -35,9 +35,8 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.sourcing.models import SkuSourcingRule
 
 if TYPE_CHECKING:
-    # Type-only — a real import at module load would close the same cycle the
-    # lazy imports below exist to avoid (catalog/integrations sit "above"
-    # sourcing; see the comment on ``_resolve_auto``).
+    # Type-only — a real import here would close the same cycle the lazy
+    # imports below avoid (see the comment on ``_resolve_auto``).
     from yupay.modules.integrations.models import SkuSupplierMapping
 
 Mode = Literal["auto", "force_inventory", "force_supplier", "manual"]
@@ -72,9 +71,8 @@ def _resolve_explicit_rule(rule: SkuSourcingRule, *, sku_id: str) -> Decision:
     if rule.mode == "force_inventory":
         return Decision(primary="inventory", fallback=None, strict=True, rule_present=True)
     if rule.mode == "manual":
-        # Manual fulfilment — the order ends up in the admin queue. The slug
-        # is implicit (always ``"manual"``); ``set_rule`` keeps the
-        # ``supplier_slug`` column NULL for this mode.
+        # The slug is implicit (always "manual"); set_rule keeps
+        # supplier_slug NULL for this mode.
         return Decision(
             primary="supplier:manual",
             fallback=None,
@@ -147,13 +145,12 @@ def _pick_auto_mapping_slug(mappings: Iterable[SkuSupplierMapping]) -> str | Non
             continue
         # `supplier_slug` tie-break: Python codepoint order, where the old
         # SQL this replaced used the database collation. Reachable only on
-        # an exact `created_at` tie, and every slug in use today is
+        # an exact `created_at` tie; every slug in use today is
         # `[a-z0-9-]`, where codepoint order and the default (`C`-like,
-        # case-sensitive-byte) Postgres collation agree — so this has never
-        # actually diverged. It will diverge the first time a slug carries
-        # an uppercase or non-ASCII character; whoever adds one should
-        # re-check this line against the collation
-        # `sku_supplier_mapping.supplier_slug` is actually stored under.
+        # case-sensitive) Postgres collation agree, so this has never
+        # diverged — it will, the first time a slug carries non-ASCII;
+        # re-check against the collation `sku_supplier_mapping.supplier_slug`
+        # is actually stored under.
         if best is None or (mapping.created_at, mapping.supplier_slug) < (
             best.created_at,
             best.supplier_slug,
@@ -242,6 +239,36 @@ async def _resolve_auto(db: AsyncSession, *, sku_id: str, rule_present: bool) ->
     return _auto_decision(kind=kind, mapping_slug=mapping_slug, rule_present=rule_present)
 
 
+async def _reject_force_inventory_on_top_up_sku(db: AsyncSession, sku_id: str) -> None:
+    """Refuse ``mode="force_inventory"`` for a ``top_up`` SKU.
+
+    A top_up SKU is credited by a live supplier call, never a stocked
+    code — writing this rule anyway strands every order on a guaranteed
+    ``NoStockError`` with no fallback instead of the kind-aware auto route
+    that at least reaches a supplier or the manual queue. Symmetric to
+    ``inventory.service._reject_top_up_sku`` on the "stock a code for one"
+    side of the same mistake.
+
+    Raises:
+        ValidationError: The SKU's product ``kind`` is ``top_up``.
+    """
+    from yupay.modules.catalog.models import Product, Sku
+
+    kind = (
+        await db.execute(
+            select(Product.kind).join(Sku, Sku.product_id == Product.id).where(Sku.id == sku_id)
+        )
+    ).scalar_one_or_none()
+    if kind == "top_up":
+        raise ValidationError(
+            f"SKU {sku_id} is a top_up product — the code warehouse has "
+            "nothing to deliver for it; force_inventory only makes sense "
+            "for a voucher SKU",
+            sku_id=sku_id,
+            kind=kind,
+        )
+
+
 async def set_rule(
     db: AsyncSession,
     *,
@@ -255,22 +282,22 @@ async def set_rule(
     if mode != "force_supplier" and supplier_slug:
         # Tolerate but ignore — keep the row clean.
         supplier_slug = None
+
+    if mode == "force_inventory":
+        await _reject_force_inventory_on_top_up_sku(db, sku_id)
+
     # Lazy for the reason ``resolve_for_sku`` gives: a top-level import of
     # ``integrations``/``fulfillment`` from here closes a cycle.
     from yupay.modules.fulfillment.suppliers import REGISTRY
     from yupay.modules.integrations.models import MAPPING_REQUIRED_SUPPLIERS, SkuSupplierMapping
 
     if mode == "force_supplier" and supplier_slug not in REGISTRY:
-        # set_rule is the only place a ``supplier_slug`` is ever written, so
-        # this is the one gate against a typo (``"waxpeeer"``) being accepted
-        # as a successful rule change: nothing else checks the slug against
-        # the real fulfilment ``REGISTRY``, and every order routed through it
-        # would otherwise fail one at a time with ``get_fulfiller``'s 404,
-        # discovered only after the operator believes the switch worked.
-        # Flat kwarg, not `extra={...}` — this guard is new this branch with
-        # no consumer yet parsing a nested `extra.supplier_slug`, so there is
-        # nothing to preserve by nesting it (see `bulk_rules.bulk_set_rules`
-        # for the same fix and the reasoning in full).
+        # set_rule is the only place a supplier_slug is ever written, so this
+        # is the one gate against a typo ("waxpeeer") being accepted as a
+        # successful rule change — every order routed through it would
+        # otherwise fail one at a time with get_fulfiller's 404, discovered
+        # only after the operator believes the switch worked. Flat kwarg, not
+        # extra={...} — see bulk_rules.bulk_set_rules for the same fix.
         raise ValidationError(
             f"unknown fulfilment supplier: {supplier_slug!r} — not registered in "
             "fulfillment.suppliers.REGISTRY",
@@ -279,10 +306,7 @@ async def set_rule(
 
     if mode == "force_supplier" and supplier_slug in MAPPING_REQUIRED_SUPPLIERS:
         # Forcing a SKU onto G2B or G-Engine with no mapping row does not
-        # route it there — it fails every order that arrives, one at a time,
-        # with "no active mapping" in the inbox. The operator's intent was
-        # "use this supplier", and the honest answer is that it cannot be used
-        # yet, at the moment they say so rather than at the first sale.
+        # route it there — it fails every order with "no active mapping".
         mapped = (
             await db.execute(
                 select(SkuSupplierMapping.supplier_slug).where(

@@ -25,12 +25,14 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.models import Brand, Product, Sku
+from yupay.modules.integrations.cost_refresh import is_routed_supplier, supports_price_collection
 from yupay.modules.integrations.models import (
     MAPPING_REQUIRED_SUPPLIERS,
     SkuSupplierMapping,
@@ -218,19 +220,43 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
             )
 
         active_by_supplier = {m.supplier_slug: m.is_active for m in mappings}
-        suppliers = [
-            SourcingBrandSupplierOut(
-                supplier_slug=slug,
-                has_active_mapping=active_by_supplier.get(slug, False),
-                latest_cost_usdt=(
-                    str(latest_cost[(sku.id, slug)][0]) if (sku.id, slug) in latest_cost else None
-                ),
-                captured_at=(
-                    latest_cost[(sku.id, slug)][1] if (sku.id, slug) in latest_cost else None
-                ),
+        suppliers: list[SourcingBrandSupplierOut] = []
+        for slug in candidate_slugs:
+            history_entry = latest_cost.get((sku.id, slug))
+            cost_source: Literal["history", "current"] | None
+            supplier_cost: str | None
+            if history_entry is not None:
+                cost_source = "history"
+                supplier_cost = str(history_entry[0])
+                captured_at = history_entry[1]
+            elif (
+                sku.cost_usdt is not None
+                and is_routed_supplier(decision, slug)
+                and supports_price_collection(slug)
+            ):
+                # No history row, but this is the supplier the SKU actually
+                # buys from, price collection actually reaches this supplier
+                # (g2b/nova — otherwise Sku.cost_usdt could be a *previous*
+                # routed supplier's number, never this one's), and there is
+                # a cost to report at all. Its current price is
+                # Sku.cost_usdt, not "not captured" (see
+                # SourcingBrandSupplierOut.cost_source).
+                cost_source = "current"
+                supplier_cost = str(sku.cost_usdt)
+                captured_at = None
+            else:
+                cost_source = None
+                supplier_cost = None
+                captured_at = None
+            suppliers.append(
+                SourcingBrandSupplierOut(
+                    supplier_slug=slug,
+                    has_active_mapping=active_by_supplier.get(slug, False),
+                    latest_cost_usdt=supplier_cost,
+                    captured_at=captured_at,
+                    cost_source=cost_source,
+                )
             )
-            for slug in candidate_slugs
-        ]
 
         items.append(
             SourcingBrandSkuOut(
@@ -238,6 +264,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
                 sku_code=sku.sku_code,
                 denomination=sku.denomination,
                 product_slug=product.slug,
+                product_kind=product.kind,
                 price_usd=sku.price_usd,
                 cost_usdt=sku.cost_usdt,
                 primary=decision.primary,

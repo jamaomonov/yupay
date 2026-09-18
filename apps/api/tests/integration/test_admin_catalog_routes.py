@@ -952,3 +952,188 @@ async def test_admin_lists_expose_b2b_read_side(
     r = await integration_client.get("/api/v1/admin/catalog/brands", headers=_admin_headers)
     brand = next(b for b in r.json() if b["slug"] == "var-brand-b2b")
     assert brand["visible_b2b"] is True
+
+
+# ---------- flipping a product's kind to top_up ----------
+
+
+async def _create_voucher_product_and_sku(
+    integration_client: AsyncClient, admin_headers: dict[str, str], *, suffix: str
+) -> tuple[str, str]:
+    """Category → brand → voucher product → SKU boilerplate.
+
+    Returns ``(product_id, sku_id)``. A voucher product is the starting
+    point for the ``kind`` flip guard's tests — it's the only kind that can
+    legally carry inventory codes or a ``force_inventory`` rule in the
+    first place.
+    """
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/categories",
+        headers=admin_headers,
+        json={
+            "slug": f"kind-flip-cat-{suffix}",
+            "translations": [{"locale": "ru", "name": "Категория"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    category_id = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=admin_headers,
+        json={
+            "slug": f"kind-flip-brand-{suffix}",
+            "category_id": category_id,
+            "translations": [{"locale": "ru", "name": "Бренд"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    brand_id = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/products",
+        headers=admin_headers,
+        json={
+            "slug": f"kind-flip-product-{suffix}",
+            "brand_id": brand_id,
+            "kind": "voucher",
+            "translations": [{"locale": "ru", "name": "Продукт"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    product_id: str = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": f"kind-flip-sku-{suffix}",
+            "price_usd": "1.00",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_id: str = r.json()["id"]
+    return product_id, sku_id
+
+
+async def test_update_product_flip_to_top_up_blocked_by_inventory_codes(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Flipping a voucher product to ``top_up`` while its SKU still has
+    stocked inventory codes must be refused — those codes would fulfil
+    nothing once the SKU is credited by a live supplier call instead."""
+    product_id, sku_id = await _create_voucher_product_and_sku(
+        integration_client, _admin_headers, suffix="stock"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers=_admin_headers,
+        json={"sku_id": sku_id, "codes": ["KIND-FLIP-001", "KIND-FLIP-002"]},
+    )
+    assert r.status_code == 200, r.text
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/products/{product_id}",
+        headers=_admin_headers,
+        json={"kind": "top_up"},
+    )
+    assert r.status_code == 422, r.text
+    assert "inventory codes" in r.text
+    assert "1 SKU" in r.text
+
+    # Refused, not silently ignored — the product's kind is unchanged.
+    r = await integration_client.get("/api/v1/admin/catalog/products", headers=_admin_headers)
+    product = next(p for p in r.json() if p["id"] == product_id)
+    assert product["kind"] == "voucher"
+
+
+async def test_update_product_flip_to_top_up_blocked_by_force_inventory_rule(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Flipping to ``top_up`` while a SKU carries an explicit
+    ``force_inventory`` sourcing rule must be refused — that rule would
+    become a guaranteed ``NoStockError`` with no fallback the moment the
+    product becomes top_up."""
+    product_id, sku_id = await _create_voucher_product_and_sku(
+        integration_client, _admin_headers, suffix="rule"
+    )
+    r = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{sku_id}",
+        headers=_admin_headers,
+        json={"mode": "force_inventory"},
+    )
+    assert r.status_code == 200, r.text
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/products/{product_id}",
+        headers=_admin_headers,
+        json={"kind": "top_up"},
+    )
+    assert r.status_code == 422, r.text
+    assert "force_inventory" in r.text
+    assert "1 SKU" in r.text
+
+
+async def test_update_product_flip_to_top_up_allowed_when_clear(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Control case: a voucher product with no inventory codes and no
+    ``force_inventory`` rule on any of its SKUs may still be flipped to
+    ``top_up`` — the guard is specific to the two states it exists to
+    prevent, not a blanket refusal of the flip."""
+    product_id, _sku_id = await _create_voucher_product_and_sku(
+        integration_client, _admin_headers, suffix="clear"
+    )
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/products/{product_id}",
+        headers=_admin_headers,
+        json={"kind": "top_up"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["kind"] == "top_up"
+
+
+async def test_update_product_flip_to_top_up_reports_both_blockers(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    """Both blockers can fire together, on different SKUs of the same
+    product — the error must name both, not just whichever the guard
+    happened to check first, so an operator sees the full clean-up list in
+    one round trip."""
+    product_id, sku_with_stock = await _create_voucher_product_and_sku(
+        integration_client, _admin_headers, suffix="both"
+    )
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/skus",
+        headers=_admin_headers,
+        json={
+            "product_id": product_id,
+            "sku_code": "kind-flip-sku-both-2",
+            "price_usd": "1.00",
+        },
+    )
+    assert r.status_code == 201, r.text
+    sku_with_rule = r.json()["id"]
+
+    r = await integration_client.post(
+        "/api/v1/admin/inventory/bulk-upload",
+        headers=_admin_headers,
+        json={"sku_id": sku_with_stock, "codes": ["KIND-FLIP-BOTH-001"]},
+    )
+    assert r.status_code == 200, r.text
+    r = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{sku_with_rule}",
+        headers=_admin_headers,
+        json={"mode": "force_inventory"},
+    )
+    assert r.status_code == 200, r.text
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/products/{product_id}",
+        headers=_admin_headers,
+        json={"kind": "top_up"},
+    )
+    assert r.status_code == 422, r.text
+    assert "inventory codes" in r.text
+    assert "force_inventory" in r.text

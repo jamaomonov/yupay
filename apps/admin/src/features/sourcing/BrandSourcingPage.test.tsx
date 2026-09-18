@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
+import { FORCE_INVENTORY_TOPUP_ERROR } from "./brandSourcingFormat";
 import { BrandSourcingPage } from "./BrandSourcingPage";
 
 import type { SourcingBrandOverviewOut, SourcingBulkRuleOut } from "./types";
@@ -54,6 +55,7 @@ const OVERVIEW: SourcingBrandOverviewOut = {
       sku_code: "MLBB-100",
       denomination: "100",
       product_slug: "mobile-legends",
+      product_kind: "voucher",
       price_usd: "1.20",
       cost_usdt: "0.90",
       primary: "supplier:g2b",
@@ -65,18 +67,21 @@ const OVERVIEW: SourcingBrandOverviewOut = {
           has_active_mapping: true,
           latest_cost_usdt: "0.90",
           captured_at: "2026-09-10T00:00:00Z",
+          cost_source: "history",
         },
         {
           supplier_slug: "gengine",
           has_active_mapping: false,
           latest_cost_usdt: null,
           captured_at: null,
+          cost_source: null,
         },
         {
           supplier_slug: "nova",
           has_active_mapping: true,
           latest_cost_usdt: "0.79",
           captured_at: "2026-09-15T00:00:00Z",
+          cost_source: "history",
         },
         // Actively mapped but never price-synced (waxpeer's real-world
         // shape: it has no price rows by design) — must render as unknown
@@ -86,6 +91,7 @@ const OVERVIEW: SourcingBrandOverviewOut = {
           has_active_mapping: true,
           latest_cost_usdt: null,
           captured_at: null,
+          cost_source: null,
         },
       ],
     },
@@ -94,6 +100,7 @@ const OVERVIEW: SourcingBrandOverviewOut = {
       sku_code: "MLBB-500",
       denomination: "500",
       product_slug: "mobile-legends",
+      product_kind: "voucher",
       price_usd: "5.00",
       cost_usdt: "3.80",
       primary: "supplier:nova",
@@ -105,24 +112,28 @@ const OVERVIEW: SourcingBrandOverviewOut = {
           has_active_mapping: true,
           latest_cost_usdt: "4.00",
           captured_at: "2026-09-10T00:00:00Z",
+          cost_source: "history",
         },
         {
           supplier_slug: "gengine",
           has_active_mapping: false,
           latest_cost_usdt: null,
           captured_at: null,
+          cost_source: null,
         },
         {
           supplier_slug: "nova",
           has_active_mapping: true,
           latest_cost_usdt: "3.80",
           captured_at: "2026-09-15T00:00:00Z",
+          cost_source: "history",
         },
         {
           supplier_slug: "waxpeer",
           has_active_mapping: true,
           latest_cost_usdt: null,
           captured_at: null,
+          cost_source: null,
         },
       ],
     },
@@ -141,6 +152,7 @@ const VOUCHER_OVERVIEW: SourcingBrandOverviewOut = {
       sku_code: "GIFT-10",
       denomination: null,
       product_slug: "steam-gift",
+      product_kind: "voucher",
       price_usd: "10.00",
       cost_usdt: "8.00",
       primary: "inventory",
@@ -152,12 +164,65 @@ const VOUCHER_OVERVIEW: SourcingBrandOverviewOut = {
           has_active_mapping: true,
           latest_cost_usdt: "8.00",
           captured_at: "2026-09-10T00:00:00Z",
+          cost_source: "history",
         },
         {
           supplier_slug: "nova",
           has_active_mapping: true,
           latest_cost_usdt: "7.50",
           captured_at: "2026-09-15T00:00:00Z",
+          cost_source: "history",
+        },
+      ],
+    },
+  ],
+};
+
+// One top-up row and one voucher row, ticked together — the case a bulk
+// force_inventory switch must get right: send only the voucher SKU, report
+// the top-up one the same way a real per-SKU rejection renders, and touch
+// neither the whole action nor the top-up row's own selection state.
+const MIXED_OVERVIEW: SourcingBrandOverviewOut = {
+  items: [
+    {
+      sku_id: "sku-top",
+      sku_code: "TOPUP-1",
+      denomination: "100",
+      product_slug: "mobile-legends",
+      product_kind: "top_up",
+      price_usd: "1.20",
+      cost_usdt: "0.90",
+      primary: "supplier:g2b",
+      fallback: "supplier:manual",
+      rule_present: false,
+      suppliers: [
+        {
+          supplier_slug: "g2b",
+          has_active_mapping: true,
+          latest_cost_usdt: "0.90",
+          captured_at: "2026-09-10T00:00:00Z",
+          cost_source: "history",
+        },
+      ],
+    },
+    {
+      sku_id: "sku-gift",
+      sku_code: "GIFT-10",
+      denomination: null,
+      product_slug: "steam-gift",
+      product_kind: "voucher",
+      price_usd: "10.00",
+      cost_usdt: "8.00",
+      primary: "inventory",
+      fallback: "supplier:g2b",
+      rule_present: false,
+      suppliers: [
+        {
+          supplier_slug: "g2b",
+          has_active_mapping: true,
+          latest_cost_usdt: "8.00",
+          captured_at: "2026-09-10T00:00:00Z",
+          cost_source: "history",
         },
       ],
     },
@@ -540,4 +605,136 @@ it("marks a row's cost as stale right after a successful switch — the write do
   const row2 = screen.getByText(/MLBB-500/).closest("tr");
   if (!row2) throw new Error("row not found");
   expect(within(row2).queryByText(/не обновилась/)).not.toBeInTheDocument();
+});
+
+it("does not offer the warehouse quick-action on a top-up row, and says why", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(MIXED_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+
+  renderPage();
+  await screen.findByText(/TOPUP-1/);
+  const row = screen.getByText(/TOPUP-1/).closest("tr");
+  if (!row) throw new Error("row not found");
+
+  expect(within(row).queryByRole("button", { name: "склад" })).not.toBeInTheDocument();
+  expect(within(row).getByText(/топ-ап/i)).toBeInTheDocument();
+});
+
+it("still offers the warehouse quick-action on a voucher row", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(MIXED_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+
+  renderPage();
+  await screen.findByText(/GIFT-10/);
+  const row = screen.getByText(/GIFT-10/).closest("tr");
+  if (!row) throw new Error("row not found");
+
+  expect(within(row).getByRole("button", { name: "склад" })).toBeInTheDocument();
+});
+
+it("reports the top-up rows a bulk force_inventory switch cannot apply to, instead of dropping or blocking them", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(MIXED_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+  mockedApiPut.mockResolvedValue({
+    items: [{ sku_id: "sku-gift", ok: true, error: null }],
+  } satisfies SourcingBulkRuleOut);
+
+  renderPage();
+  await screen.findByText(/TOPUP-1/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать TOPUP-1"));
+  fireEvent.click(screen.getByLabelText("Выбрать GIFT-10"));
+  fireEvent.change(screen.getByLabelText("Режим для 2 SKU"), {
+    target: { value: "force_inventory" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 2/ }));
+
+  await waitFor(() => {
+    expect(mockedApiPut).toHaveBeenCalledTimes(1);
+  });
+  // Only the voucher SKU goes over the wire — the top-up one is never sent.
+  const body = mockedApiPut.mock.calls[0]?.[1] as { sku_ids: string[] };
+  expect(body.sku_ids).toEqual(["sku-gift"]);
+
+  // The top-up row reports why, in place — not silently dropped. The row
+  // also always carries the static "склад: ..." advisory (it's a top-up
+  // row, so that control is never offered regardless of any switch
+  // attempt) — scope to the failure paragraph specifically, the same
+  // per-SKU reporting a real backend rejection already renders.
+  const topRow = screen.getByText(/TOPUP-1/).closest("tr");
+  if (!topRow) throw new Error("row not found");
+  await waitFor(() => {
+    expect(
+      within(topRow).getByText(FORCE_INVENTORY_TOPUP_ERROR, { selector: "p" }),
+    ).toBeInTheDocument();
+  });
+  // It stays ticked (easy to notice/retry with a different mode); the
+  // voucher row succeeded and is dropped from the selection. Neither row
+  // was silently ignored and the action as a whole was not blocked.
+  expect(screen.getByLabelText("Выбрать TOPUP-1")).toBeChecked();
+  expect(screen.getByLabelText("Выбрать GIFT-10")).not.toBeChecked();
+});
+
+it("confirms with the applicable count for a mixed force_inventory selection, not the whole ticked selection (Important #5)", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(MIXED_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+  renderPage();
+  await screen.findByText(/TOPUP-1/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать TOPUP-1"));
+  fireEvent.click(screen.getByLabelText("Выбрать GIFT-10"));
+  fireEvent.change(screen.getByLabelText("Режим для 2 SKU"), {
+    target: { value: "force_inventory" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 2/ }));
+
+  expect(confirmSpy).toHaveBeenCalledTimes(1);
+  const message = confirmSpy.mock.calls[0]?.[0] ?? "";
+  // Two SKUs are ticked, but sku-top is a top_up — force_inventory can
+  // never apply to it, so only sku-gift will actually be attempted. The
+  // confirmation must name that count, not the size of the whole
+  // selection.
+  expect(message).toMatch(/1 SKU/);
+  expect(message).not.toMatch(/2 SKU/);
+  expect(mockedApiPut).not.toHaveBeenCalled();
+});
+
+it("resolves a force_inventory switch locally, with no network call, when every ticked row is a top-up", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(MIXED_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+
+  renderPage();
+  await screen.findByText(/TOPUP-1/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать TOPUP-1"));
+  fireEvent.change(screen.getByLabelText("Режим для 1 SKU"), {
+    target: { value: "force_inventory" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 1/ }));
+
+  const topRow = screen.getByText(/TOPUP-1/).closest("tr");
+  if (!topRow) throw new Error("row not found");
+  await waitFor(() => {
+    expect(
+      within(topRow).getByText(FORCE_INVENTORY_TOPUP_ERROR, { selector: "p" }),
+    ).toBeInTheDocument();
+  });
+  expect(mockedApiPut).not.toHaveBeenCalled();
 });

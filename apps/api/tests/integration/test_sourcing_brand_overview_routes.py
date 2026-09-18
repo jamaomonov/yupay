@@ -374,7 +374,7 @@ async def test_overview_voucher_sku_reports_its_fallback_cost_owner(
 ) -> None:
     """Task 1's fix, pinned: a voucher SKU with an active mapping routes
     ``primary="inventory"``, and the real cost owner —
-    ``integrations.cost_refresh._is_routed_supplier``'s second shape, the one
+    ``integrations.cost_refresh.is_routed_supplier``'s second shape, the one
     ADR-0083 Decision 1 names as load-bearing — is only visible through
     ``fallback``. Before the fix, ``SourcingBrandSkuOut`` carried ``primary``
     only, so this screen could not show who owns this SKU's ``cost_usdt``.
@@ -418,26 +418,195 @@ async def test_overview_supplier_comparison_list(
     assert set(sku1_suppliers) == {"g2b", "gengine", "nova"}
 
     # g2b: active mapping, latest of two history rows (1.5, not 1.0) wins.
+    # It is also sku1's routed (incumbent) supplier, but a history row wins
+    # over the "current" fallback whenever one exists.
     assert sku1_suppliers["g2b"]["has_active_mapping"] is True
     assert Decimal(sku1_suppliers["g2b"]["latest_cost_usdt"]) == Decimal("1.5")
     assert sku1_suppliers["g2b"]["captured_at"].startswith("2026-06-01")
+    assert sku1_suppliers["g2b"]["cost_source"] == "history"
 
-    # nova: active mapping (a reserve — reported, just never routed to).
+    # nova: active mapping (a reserve — reported, just never routed to), but
+    # it does have its own history row, so it still reports "history".
     assert sku1_suppliers["nova"]["has_active_mapping"] is True
     assert Decimal(sku1_suppliers["nova"]["latest_cost_usdt"]) == Decimal("2.0")
+    assert sku1_suppliers["nova"]["cost_source"] == "history"
 
-    # gengine: no mapping at all on this SKU — the exact case the brief
-    # calls out: has_active_mapping=false and no cost.
+    # gengine: no mapping at all on this SKU, and not the routed supplier
+    # either — the exact case the brief calls out: has_active_mapping=false,
+    # no cost, and cost_source=None (genuinely unknown, not "not captured"
+    # for a supplier we actually buy from).
     assert sku1_suppliers["gengine"]["has_active_mapping"] is False
     assert sku1_suppliers["gengine"]["latest_cost_usdt"] is None
     assert sku1_suppliers["gengine"]["captured_at"] is None
+    assert sku1_suppliers["gengine"]["cost_source"] is None
 
     # sku2: only gengine is mapped (and it's the forced route).
     sku2_suppliers = {s["supplier_slug"]: s for s in by_sku[_seed_brand["sku2"]]["suppliers"]}
     assert sku2_suppliers["gengine"]["has_active_mapping"] is True
     assert sku2_suppliers["g2b"]["has_active_mapping"] is False
     assert sku2_suppliers["g2b"]["latest_cost_usdt"] is None
+    assert sku2_suppliers["g2b"]["cost_source"] is None
     assert sku2_suppliers["nova"]["has_active_mapping"] is False
+    # gengine is sku2's routed supplier (force_supplier rule) with no history
+    # row, but "current" requires a cost to actually report *and* a
+    # supplier price collection reaches — neither holds here: sku2.cost_usdt
+    # is None (no cost has ever been written) and gengine has no
+    # cost_lookup support at all, so cost_source is honestly None, not
+    # "current" over nothing.
+    assert sku2_suppliers["gengine"]["cost_source"] is None
+    assert sku2_suppliers["gengine"]["latest_cost_usdt"] is None
+
+
+async def test_overview_cost_source_current_for_routed_supplier_with_own_cost(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """Task 1's fix, pinned on a SKU that actually carries a cost: a top_up
+    SKU whose only mapping (g2b) has never had a ``supplier_price_history``
+    row still reports g2b's price, sourced from ``Sku.cost_usdt`` — not
+    ``None`` rendered as "цена не снята" — because g2b is the supplier this
+    SKU routes to (mirrors the production Free Fire finding: zero g2b
+    history rows, g2b's price sitting in ``cost_usdt`` to the cent).
+    """
+    brand_slug = "cost-source-current-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session, brand_id=brand_id, slug="cost-source-current-product-test", kind="top_up"
+    )
+    sku_id = await _make_sku(
+        db_session,
+        product_id=product_id,
+        sku_code="cost-source-current-sku-test",
+        cost_usdt=Decimal("4.250000"),
+    )
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="g2b")
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+    assert row["primary"] == "supplier:g2b"
+
+    suppliers_by_slug = {s["supplier_slug"]: s for s in row["suppliers"]}
+    g2b = suppliers_by_slug["g2b"]
+    assert g2b["cost_source"] == "current"
+    assert Decimal(g2b["latest_cost_usdt"]) == Decimal("4.25")
+    assert g2b["captured_at"] is None
+
+    # A non-routed, no-history supplier on the same SKU still reports None —
+    # "current" is not the default just because *some* supplier on the row
+    # got it.
+    assert suppliers_by_slug["gengine"]["cost_source"] is None
+    assert suppliers_by_slug["gengine"]["latest_cost_usdt"] is None
+
+
+async def test_overview_cost_source_none_for_routed_supplier_price_collection_does_not_reach(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """Task 2's fix: a routed supplier still reports ``cost_source=None`` when
+    price collection has never reached it (only g2b/nova do — gengine
+    doesn't), even though ``Sku.cost_usdt`` is not ``None``.
+
+    Unlike the sku2 case in ``test_overview_supplier_comparison_list``, this
+    SKU *does* carry a real cost — so this pins the fix on its own, not
+    coincidentally alongside "no cost to report at all". A SKU force-routed
+    to gengine (or any supplier ``cost_refresh`` never collects for) can
+    only have ``Sku.cost_usdt`` because some *other*, earlier-routed
+    supplier wrote it — reporting that number as gengine's "current" price
+    would be true of a supplier we never actually queried.
+    """
+    brand_slug = "cost-source-unsupported-routed-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session,
+        brand_id=brand_id,
+        slug="cost-source-unsupported-routed-product-test",
+        kind="top_up",
+    )
+    sku_id = await _make_sku(
+        db_session,
+        product_id=product_id,
+        sku_code="cost-source-unsupported-routed-sku-test",
+        cost_usdt=Decimal("9.990000"),
+    )
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="gengine")
+    await db_session.commit()
+
+    await sourcing_svc.set_rule(
+        db_session,
+        sku_id=sku_id,
+        mode="force_supplier",
+        supplier_slug="gengine",
+        admin_id="test-admin",
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+    assert row["primary"] == "supplier:gengine"
+
+    gengine = next(s for s in row["suppliers"] if s["supplier_slug"] == "gengine")
+    assert gengine["cost_source"] is None
+    assert gengine["latest_cost_usdt"] is None
+
+
+async def test_overview_cost_source_current_for_voucher_fallback_supplier(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """The voucher inventory-fallback shape: ``primary="inventory"``,
+    ``fallback="supplier:g2b"``. ``is_routed_supplier`` treats the
+    fallback slug as the routed one for this shape (ADR-0083 Decision 1),
+    so it must resolve to ``cost_source="current"`` too, not just the
+    top_up ``primary="supplier:<slug>"`` shape covered above.
+    """
+    brand_slug = "cost-source-voucher-fallback-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session,
+        brand_id=brand_id,
+        slug="cost-source-voucher-fallback-product-test",
+        kind="voucher",
+    )
+    sku_id = await _make_sku(
+        db_session,
+        product_id=product_id,
+        sku_code="cost-source-voucher-fallback-sku-test",
+        cost_usdt=Decimal("7.500000"),
+    )
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="g2b", kind="voucher")
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+    assert row["primary"] == "inventory"
+    assert row["fallback"] == "supplier:g2b"
+
+    g2b = next(s for s in row["suppliers"] if s["supplier_slug"] == "g2b")
+    assert g2b["cost_source"] == "current"
+    assert Decimal(g2b["latest_cost_usdt"]) == Decimal("7.5")
+    assert g2b["captured_at"] is None
 
 
 async def test_overview_primary_names_a_supplier_present_in_its_own_suppliers_list(
@@ -615,6 +784,14 @@ async def test_overview_sku_fields(
     assert row["sku_code"] == "mlbb-sku1-test"
     assert row["denomination"] == "100"
     assert row["product_slug"] == "mlbb-diamonds-test"
+    # product_kind lets the brand-overview screen stop offering
+    # force_inventory on a row the backend (set_rule) would refuse anyway —
+    # sku1 is under product_a (kind=top_up), sku3 under product_b
+    # (kind=voucher); each row reports its own product's kind, not a
+    # constant or the brand's.
+    assert row["product_kind"] == "top_up"
+    voucher_row = by_sku[_seed_brand["sku3"]]
+    assert voucher_row["product_kind"] == "voucher"
     assert Decimal(row["price_usd"]) == Decimal("1.00")
 
 

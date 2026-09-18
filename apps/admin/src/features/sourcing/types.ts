@@ -34,6 +34,25 @@ export interface SourcingBrandSupplierOut {
   has_active_mapping: boolean;
   latest_cost_usdt: string | null;
   captured_at: string | null;
+  /** Where `latest_cost_usdt` came from (mirrors the backend's
+   *  `cost_source` field, `sourcing/schemas.py`'s `SourcingBrandSupplierOut`).
+   *  `supplier_price_history` records a price *change* — a supplier whose
+   *  cost never moved has zero history rows even though its current price
+   *  is exactly `Sku.cost_usdt` (every Free Fire SKU on g2b is this case).
+   *
+   *  - `"history"` — a captured `supplier_price_history` row; render as a
+   *    captured price with its `captured_at` date, same as before this
+   *    field existed.
+   *  - `"current"` — no history row, but this supplier is the one the SKU
+   *    routes to, so `latest_cost_usdt` is `Sku.cost_usdt` and
+   *    `captured_at` is `null` — mark it as the SKU's current cost, not a
+   *    captured price, so an operator can tell the two apart at a glance.
+   *  - `null` — genuinely unknown; keep rendering "цена не снята".
+   *
+   *  A `"current"` cost participates in the cheapest-supplier comparison
+   *  exactly like a captured one — `cheapestSlugs` (`brandSourcingFormat.ts`)
+   *  only looks at `has_active_mapping`/`latest_cost_usdt`, never this field. */
+  cost_source: "history" | "current" | null;
 }
 
 /** One active SKU's sourcing picture for the brand-overview screen
@@ -54,6 +73,22 @@ export interface SourcingBrandSkuOut {
   sku_code: string;
   denomination: string | null;
   product_slug: string;
+  /** `"top_up"` | `"voucher"` (mirrors `Product.kind`'s DB check
+   *  constraint) — a bare `string` here, same as `SkuPickerRow.
+   *  product_kind`, not a narrower union: the backend field
+   *  (`sourcing/schemas.py`'s `SourcingBrandSkuOut.product_kind`) is typed
+   *  `str`, not a `Literal`.
+   *
+   *  Exists so this screen can stop *offering* an action the backend
+   *  already refuses: `sourcing.service.set_rule` rejects
+   *  `mode="force_inventory"` on a `top_up` SKU (the code warehouse holds
+   *  voucher codes; a top-up SKU has nothing there to issue) — and
+   *  `primary`/`fallback` cannot substitute for a kind signal, since a
+   *  `top_up` SKU under `mode="auto"` never reports `primary ==
+   *  "inventory"` in the first place (`_auto_decision` only ever gives it
+   *  `supplier:<slug>` or `supplier:manual`). See
+   *  `brandSourcingFormat.forceInventoryDisabledReason`. */
+  product_kind: string;
   price_usd: string;
   cost_usdt: string | null;
   primary: string;

@@ -40,6 +40,21 @@ async def get_code_for_order_item(db, order_item_id) -> str | None: ...
 
 Лимит на одну `bulk_upload` — 5000 кодов (см. `MAX_BULK`).
 
+**`bulk_upload` отказывает для `top_up` SKU.** У товара с `product.kind ==
+"top_up"` (баланс игры, MLBB diamonds, PUBG UC) нечего выдавать со склада —
+его пополняет живой вызов поставщика, а не хранимый код
+(`sourcing/service.py`'s kind-aware defaults и без того никогда не
+маршрутизируют top_up SKU на inventory). Загрузка кодов для такого SKU —
+ошибка, которая иначе всплыла бы только когда заказ попытался бы её
+востребовать под явным правилом `force_inventory` и нашёл код, который
+ничего не исполняет. Проверка (`_reject_top_up_sku`) сидит внутри
+`bulk_upload` — на границе сервиса, а не только в HTTP-роуте — так что её
+наследует любой вызывающий: `POST /admin/inventory/bulk-upload`, прямой
+вызов из теста, будущий импорт-скрипт. `ValidationError` с `sku_id`/`kind` в
+`extra`. Симметричная половина того же правила — на стороне «замаршрутизировать
+SKU на склад» — это `sourcing.service.set_rule`'s отказ на
+`mode="force_inventory"` для top_up (см. `sourcing/README.md`).
+
 ## HTTP (admin only)
 
 ```

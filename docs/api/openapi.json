@@ -14861,7 +14861,7 @@
         "type": "object"
       },
       "SourcingBrandSkuOut": {
-        "description": "One active SKU's sourcing picture for the brand-overview screen.\n\n``fallback`` mirrors ``SourcingDecisionOut.fallback`` / ``Decision.\nfallback`` \u2014 it is what carries the real cost owner for a voucher SKU\nrouted ``primary=\"inventory\"``: ``integrations.cost_refresh.\n_is_routed_supplier`` treats ``primary == \"inventory\" and fallback ==\n\"supplier:<slug>\"`` as \"<slug> owns this SKU's ``Sku.cost_usdt``\"\n(ADR-0083 Decision 1). Without it here, this screen \u2014 built to show who\nowns a SKU's cost \u2014 could not show that for any voucher SKU.",
+        "description": "One active SKU's sourcing picture for the brand-overview screen.\n\n``fallback`` mirrors ``SourcingDecisionOut.fallback`` / ``Decision.\nfallback`` \u2014 it is what carries the real cost owner for a voucher SKU\nrouted ``primary=\"inventory\"``: ``integrations.cost_refresh.\n_is_routed_supplier`` treats ``primary == \"inventory\" and fallback ==\n\"supplier:<slug>\"`` as \"<slug> owns this SKU's ``Sku.cost_usdt``\"\n(ADR-0083 Decision 1). Without it here, this screen \u2014 built to show who\nowns a SKU's cost \u2014 could not show that for any voucher SKU.\n\n``product_kind`` exists so the brand-overview screen can stop *offering*\nan action the backend will refuse anyway: ``sourcing.service.set_rule``\nrejects ``mode=\"force_inventory\"`` on a ``top_up`` SKU (Task 3's guard \u2014\na top_up SKU has nothing to deliver from the code warehouse), but this\nrow previously carried no kind signal at all, and ``primary``/\n``fallback`` cannot substitute for one. Under ``mode=\"auto\"`` a top_up\nSKU never reports ``primary == \"inventory\"`` (``_auto_decision`` only\never gives it ``supplier:<slug>`` or ``supplier:manual``) \u2014 so\n``primary == \"inventory\"`` on a top_up row can only mean a pre-existing\nbad rule, not something the UI can use to infer a SKU is a voucher. The\nbackend rejection in ``set_rule`` stays the real guard; this field only\nlets the per-row \"\u0441\u043a\u043b\u0430\u0434\" control and the bulk \"\u0422\u043e\u043b\u044c\u043a\u043e \u0441\u043a\u043b\u0430\u0434\" mode\ndisable themselves for a ``top_up`` row instead of round-tripping a 422.",
         "properties": {
           "cost_usdt": {
             "anyOf": [
@@ -14906,6 +14906,10 @@
             "title": "Primary",
             "type": "string"
           },
+          "product_kind": {
+            "title": "Product Kind",
+            "type": "string"
+          },
           "product_slug": {
             "title": "Product Slug",
             "type": "string"
@@ -14935,6 +14939,7 @@
           "sku_code",
           "denomination",
           "product_slug",
+          "product_kind",
           "price_usd",
           "cost_usdt",
           "primary",
@@ -14946,7 +14951,7 @@
         "type": "object"
       },
       "SourcingBrandSupplierOut": {
-        "description": "One candidate supplier's mapping + latest cost for a single SKU.\n\nThe candidate set the brand-overview endpoint reports is\n``MAPPING_REQUIRED_SUPPLIERS`` (g2b, gengine, nova) *union* every\nsupplier that actually has a mapping row among the brand's SKUs *union*\nevery supplier named by a ``force_supplier`` rule among those SKUs\n(``integrations.models``, ADR-0019). The fixed half means a supplier\nthe SKU has never been mapped to still gets a row here, with\n``has_active_mapping=False`` and no cost, so an operator comparing\nsuppliers can see it as a switch target rather than it silently being\nabsent. The two union halves mean a supplier outside that fixed set\n(e.g. waxpeer) that won the live route \u2014 either via a mapping\n(``_pick_auto_mapping_slug``) or via an explicit ``force_supplier`` rule\n(``_resolve_explicit_rule``, which accepts any slug, mapping or not) \u2014\nstill appears here too.\n\nFor a **real supplier** (a slug the fulfilment ``REGISTRY`` actually\ndispatches to), this list is guaranteed to contain whatever\n``SourcingBrandSkuOut.primary`` names \u2014 that is the invariant it exists\nto uphold, so the reported route never names a supplier absent from its\nown comparison. ``primary`` can still be ``\"supplier:manual\"`` on a\n``top_up`` SKU with no mapping and no rule (``_auto_decision``'s\nno-mapping fallback) or an explicit ``mode=\"manual\"`` rule \u2014 ``manual``\nis not a supplier, has no ``SkuSupplierMapping``/``SupplierPriceHistory``\nrows, and is never a candidate here; the UI renders it as \"no automated\nroute\" rather than looking it up in this list. Same for ``\"invalid\"`` \u2014\n``brand_overview.get_brand_overview``'s per-row fallback for a malformed\n``force_supplier`` rule with no ``supplier_slug`` \u2014 which names no\nsupplier at all. Sorted alphabetically for a stable order.\n\n``latest_cost_usdt`` is a string (mirrors\n``integrations.schemas.PricePointOut.cost_usdt``, the other DTO that\nsurfaces a ``supplier_price_history`` row) rather than the ``Decimal``\nused for the SKU's own ``price_usd``/``cost_usdt`` below \u2014 those two\nare ``Sku`` columns exposed the way ``catalog.admin_schemas.AdminSkuOut``\nalready exposes them.",
+        "description": "One candidate supplier's mapping + latest cost for a single SKU.\n\nThe candidate set the brand-overview endpoint reports is\n``MAPPING_REQUIRED_SUPPLIERS`` (g2b, gengine, nova) *union* every\nsupplier that actually has a mapping row among the brand's SKUs *union*\nevery supplier named by a ``force_supplier`` rule among those SKUs\n(``integrations.models``, ADR-0019). The fixed half means a supplier\nthe SKU has never been mapped to still gets a row here, with\n``has_active_mapping=False`` and no cost, so an operator comparing\nsuppliers can see it as a switch target rather than it silently being\nabsent. The two union halves mean a supplier outside that fixed set\n(e.g. waxpeer) that won the live route \u2014 either via a mapping\n(``_pick_auto_mapping_slug``) or via an explicit ``force_supplier`` rule\n(``_resolve_explicit_rule``, which accepts any slug, mapping or not) \u2014\nstill appears here too.\n\nFor a **real supplier** (a slug the fulfilment ``REGISTRY`` actually\ndispatches to), this list is guaranteed to contain whatever\n``SourcingBrandSkuOut.primary`` names \u2014 that is the invariant it exists\nto uphold, so the reported route never names a supplier absent from its\nown comparison. ``primary`` can still be ``\"supplier:manual\"`` on a\n``top_up`` SKU with no mapping and no rule (``_auto_decision``'s\nno-mapping fallback) or an explicit ``mode=\"manual\"`` rule \u2014 ``manual``\nis not a supplier, has no ``SkuSupplierMapping``/``SupplierPriceHistory``\nrows, and is never a candidate here; the UI renders it as \"no automated\nroute\" rather than looking it up in this list. Same for ``\"invalid\"`` \u2014\n``brand_overview.get_brand_overview``'s per-row fallback for a malformed\n``force_supplier`` rule with no ``supplier_slug`` \u2014 which names no\nsupplier at all. Sorted alphabetically for a stable order.\n\n``latest_cost_usdt`` is a string (mirrors\n``integrations.schemas.PricePointOut.cost_usdt``, the other DTO that\nsurfaces a ``supplier_price_history`` row) rather than the ``Decimal``\nused for the SKU's own ``price_usd``/``cost_usdt`` below \u2014 those two\nare ``Sku`` columns exposed the way ``catalog.admin_schemas.AdminSkuOut``\nalready exposes them.\n\n``cost_source`` says where ``latest_cost_usdt`` came from, because\n``supplier_price_history`` records a price *change*, not a current\nstate \u2014 a supplier whose cost has simply never moved since the mapping\nwas created has zero history rows even though its price is known and\nlive on ``Sku.cost_usdt`` (every Free Fire SKU in production is exactly\nthis: zero g2b history rows, g2b's price sitting in ``cost_usdt`` to\nthe cent). Rendering that as \"not captured\" would be false for the one\nsupplier the SKU is actually buying from:\n\n- ``\"history\"`` \u2014 a ``supplier_price_history`` row exists for this\n  (sku, supplier); ``latest_cost_usdt``/``captured_at`` are that row's.\n- ``\"current\"`` \u2014 no history row, but this supplier is the one the SKU\n  routes to (``integrations.cost_refresh._is_routed_supplier`` \u2014 the\n  same routed-supplier test ``cost_refresh`` itself uses to decide who\n  may write ``Sku.cost_usdt``, ADR-0083 Decision 1), so\n  ``latest_cost_usdt`` is ``Sku.cost_usdt`` and ``captured_at`` is\n  ``None`` (it is not a point-in-time capture).\n- ``None`` \u2014 no history and not the routed supplier: this supplier's\n  price is genuinely unknown to us. ``latest_cost_usdt`` stays\n  ``None``, same as before this field existed.",
         "properties": {
           "captured_at": {
             "anyOf": [
@@ -14959,6 +14964,21 @@
               }
             ],
             "title": "Captured At"
+          },
+          "cost_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "history",
+                  "current"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Source"
           },
           "has_active_mapping": {
             "title": "Has Active Mapping",
@@ -14984,7 +15004,8 @@
           "supplier_slug",
           "has_active_mapping",
           "latest_cost_usdt",
-          "captured_at"
+          "captured_at",
+          "cost_source"
         ],
         "title": "SourcingBrandSupplierOut",
         "type": "object"
