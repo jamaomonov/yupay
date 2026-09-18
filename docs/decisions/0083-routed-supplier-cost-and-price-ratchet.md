@@ -65,10 +65,10 @@ and what every other mapping's refresh is even for if it can't write anything.
 
 ## Decision outcome
 
-**Chosen option:** 3 + 5 + 7 together — one writer for the cost basis, a price that only ratchets
-up on the automatic path, and history for every mapping regardless of who's routed.
+**Chosen option:** 3 + 5 + 7 together — one _automatic_ writer for the cost basis, a price that
+only ratchets up on the automatic path, and history for every mapping regardless of who's routed.
 
-### 1. Only the routed supplier writes `Sku.cost_usdt`
+### 1. Only the routed supplier writes `Sku.cost_usdt` automatically
 
 `cost_refresh.refresh_sku_cost_for_mapping` resolves the SKU's live route through
 `sourcing.resolve_for_sku` and calls `_is_routed_supplier(decision, mapping.supplier_slug)` before
@@ -78,6 +78,15 @@ with no override routes to inventory first by kind-default, so the supplier that
 charged on a stockout sits in `decision.fallback` instead, and that is the one whose refresh owns
 the cost. Neither `force_inventory` nor `manual` matches any supplier, on purpose — no live
 supplier price is "the" cost basis there.
+
+This governs the _automatic_ refresh path only — the hourly job, the on-demand "refresh all
+prices" button, and the on-save mapping refresh, all of which call
+`cost_refresh.refresh_sku_cost_for_mapping`. It says nothing about a human editing a SKU directly:
+`catalog.admin_service.update_sku` writes `cost_usdt`, `price_usd`, and `margin_percent` straight
+onto the row, bypassing `set_sku_cost_usdt` entirely, and that is correct and intended — an admin
+correcting a number by hand is not a second automatic supplier racing the first. Read "one writer"
+throughout this ADR as "one automatic writer"; it is not a rule against a person changing the
+column.
 
 **What breaks without it, concretely.** After the Free Fire switch, 22 SKUs carry two active
 mappings — the number both the design spec and the shipped code's own module docstring
