@@ -8,6 +8,14 @@ the 95% target (payments, wallet, fulfillment, supplier adapters) and the
 default gate reaches 80%.
 
 Usage: python scripts/check_module_coverage.py coverage.json
+
+**Measure from the repo root, or pass the config explicitly.** Running
+``pytest --cov`` from inside ``apps/api/`` does not pick up the root
+``pyproject.toml``'s ``core = "sysmon"`` override, and without it coverage
+silently undercounts every async-DB function by roughly sixty points — the
+ctrace/greenlet interaction that override exists to document. A floor set from
+such a run is not a floor, it is a number. Use
+``--cov-config=<repo-root>/pyproject.toml`` when measuring from elsewhere.
 """
 
 from __future__ import annotations
