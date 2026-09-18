@@ -12,8 +12,12 @@ Nobody decided that. The owner's decision, asked and answered on 2026-09-18, is
 that the saving is kept on both channels: the reseller price stays where it is,
 which means ``b2b_markup_pct`` has to rise by exactly what the cost fell.
 
-**Run this AFTER the cost has actually moved**, i.e. after the branch is
-deployed and the first hourly refresh has written NOVA's cost onto these SKUs.
+**Run this AFTER the cost has actually moved**, which as of 2026-09-18 has not
+happened and will not happen on its own: the nine SKUs below carry no sourcing
+rule, so they route to G2B and G2B keeps writing their cost. NOVA is a reserve
+and auto routing never picks it. Somebody has to switch them first — on the
+brand screen, as ``force_supplier``, because a reserve cannot be reached any
+other way — and then wait for the next hourly tick.
 The script does not assume when that is — it computes each markup from the
 SKU's *current* cost against a recorded target price, so:
 

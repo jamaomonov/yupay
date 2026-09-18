@@ -433,16 +433,27 @@ automatic refresh path may raise a margin-derived price but never lower one (ADR
 So `price_usd` holds exactly where it was, and the whole gap between what G2B was charging and
 what NOVA charges lands as margin instead of as a markdown nobody decided on.
 
-**The margin gain, measured against production on 2026-09-18.** Both seeds have run with
-`APPLY=1`, so Free Fire CIS already routes to NOVA and the ten NOVA-only SKUs are live. What has
-_not_ happened yet is the cost move: prod still runs the pre-ADR-0083 code, where G2B's refresh
-writes `cost_usdt`, so the nine original SKUs still carry G2B's numbers to the cent. The gain below
-lands when this branch deploys and the routed supplier — NOVA — becomes the one writing that cost.
+**The nine diamond SKUs are still on G2B, and the gain has not started.** Verified on production
+after this branch deployed: `freefire_cis-110`, `-341`, `-572`, `-1166`, `-2398`, `-6160`,
+`weekly-lite`, `weekly-membership` and `monthly-membership` carry **no sourcing rule at all**. They
+hold both a G2B and a NOVA mapping, and because NOVA is a reserve (ADR-0081) auto routing never
+picks it — so G2B wins as the oldest non-reserve mapping and stays the cost writer. Only the ten
+NOVA-only SKUs carry `force_supplier = nova`, which is what the seed wrote them for.
 
-Take 110 Diamonds: the price holds at $0.90, the cost moves from G2B's $0.820000 to NOVA's
-$0.790602, and margin goes from 9.76 % to 13.84 %. Across all nine the average moves from **10.7 %
-to 13.6 %** — about 2.9 points per SKU, tracking each one's own 0.8–3.6 % NOVA discount. Weekly
-Lite gains least (0.93 points, on a 0.8 % discount) and 110 Diamonds most (4.08 points, on 3.6 %).
+So switching the nine is still a **decision someone has to take**, not something the deploy did. It
+is now a job for the brand screen: open Free Fire, compare G2B against NOVA per SKU, tick the nine
+and switch them — as `force_supplier`, because a reserve cannot be reached any other way.
+
+**What it is worth, measured against production on 2026-09-18.** Take 110 Diamonds: the price holds
+at $0.90, the cost would move from G2B's $0.820000 to NOVA's $0.790602, and margin from 9.76 % to
+13.84 %. Across all nine the average moves from **10.7 % to 13.6 %** — about 2.9 points per SKU,
+tracking each one's own 0.8–3.6 % NOVA discount. Weekly Lite gains least (0.93 points, on a 0.8 %
+discount) and 110 Diamonds most (4.08 points, on 3.6 %).
+
+**Order of operations, and it matters.** The cost only moves on the first hourly `catalog_watch`
+tick _after_ the rules are written. The B2B markup correction comes after that, never before — the
+merchant price list is cost-plus and computed live, so raising a markup while the cost is still
+G2B's raises the reseller price instead of holding it.
 
 Margin here is measured the way the rest of the system measures it — against **cost**, not against
 price, which is what `Sku.margin_percent` means and what `price_usd = cost_usdt * (1 +
