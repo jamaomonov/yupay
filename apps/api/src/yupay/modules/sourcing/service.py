@@ -256,8 +256,22 @@ async def set_rule(
         # Tolerate but ignore — keep the row clean.
         supplier_slug = None
     # Lazy for the reason ``resolve_for_sku`` gives: a top-level import of
-    # ``integrations`` from here closes a cycle.
+    # ``integrations``/``fulfillment`` from here closes a cycle.
+    from yupay.modules.fulfillment.suppliers import REGISTRY
     from yupay.modules.integrations.models import MAPPING_REQUIRED_SUPPLIERS, SkuSupplierMapping
+
+    if mode == "force_supplier" and supplier_slug not in REGISTRY:
+        # set_rule is the only place a ``supplier_slug`` is ever written, so
+        # this is the one gate against a typo (``"waxpeeer"``) being accepted
+        # as a successful rule change: nothing else checks the slug against
+        # the real fulfilment ``REGISTRY``, and every order routed through it
+        # would otherwise fail one at a time with ``get_fulfiller``'s 404,
+        # discovered only after the operator believes the switch worked.
+        raise ValidationError(
+            f"unknown fulfilment supplier: {supplier_slug!r} — not registered in "
+            "fulfillment.suppliers.REGISTRY",
+            extra={"supplier_slug": supplier_slug},
+        )
 
     if mode == "force_supplier" and supplier_slug in MAPPING_REQUIRED_SUPPLIERS:
         # Forcing a SKU onto G2B or G-Engine with no mapping row does not
