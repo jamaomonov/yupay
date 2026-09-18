@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 
-import { cheapestSlug, describeRoute, marginPercent, supplierLabel } from "./brandSourcingFormat";
+import { cheapestSlugs, describeRoute, marginPercent, supplierLabel } from "./brandSourcingFormat";
 
 it("labels known suppliers and falls back to the raw slug otherwise", () => {
   expect(supplierLabel("g2b")).toBe("G2Bulk");
@@ -15,13 +15,18 @@ it("describes every shape of Decision.primary the brand overview can report", ()
   expect(describeRoute("invalid")).toBe("Некорректное правило");
 });
 
-it("computes the margin price_usd implies over cost_usdt", () => {
-  expect(marginPercent("1.20", "0.90")).toBe("25.0");
+it("computes the margin price_usd implies over cost_usdt — cost is the denominator", () => {
+  // Same numbers the review flagged: SkuEditPage's marginFromCostAndPrice
+  // says 33.33% for price 1.20 / cost 0.90 — this screen must agree, not
+  // divide by price and say 25.0%.
+  expect(marginPercent("1.20", "0.90")).toBe("33.3");
   expect(marginPercent("1.00", null)).toBeNull();
-  expect(marginPercent("0", "0.90")).toBeNull();
+  // cost <= 0 can't anchor a percentage — this is the real guard now that
+  // cost, not price, is the denominator.
+  expect(marginPercent("1.00", "0")).toBeNull();
 });
 
-it("picks the cheapest actively-mapped supplier with a recorded cost", () => {
+it("picks every supplier tied for cheapest, among active mappings with a recorded cost", () => {
   const suppliers = [
     { supplier_slug: "g2b", has_active_mapping: true, latest_cost_usdt: "0.90", captured_at: null },
     {
@@ -37,12 +42,25 @@ it("picks the cheapest actively-mapped supplier with a recorded cost", () => {
       captured_at: null,
     },
   ];
-  expect(cheapestSlug(suppliers)).toBe("nova");
+  expect(cheapestSlugs(suppliers)).toEqual(new Set(["nova"]));
 });
 
-it("returns null when no supplier has both an active mapping and a recorded cost", () => {
+it("treats an exact tie honestly — both suppliers come back, not just the first", () => {
+  const suppliers = [
+    { supplier_slug: "g2b", has_active_mapping: true, latest_cost_usdt: "0.90", captured_at: null },
+    {
+      supplier_slug: "nova",
+      has_active_mapping: true,
+      latest_cost_usdt: "0.900000",
+      captured_at: null,
+    },
+  ];
+  expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b", "nova"]));
+});
+
+it("returns an empty set when no supplier has both an active mapping and a recorded cost", () => {
   const suppliers = [
     { supplier_slug: "g2b", has_active_mapping: false, latest_cost_usdt: null, captured_at: null },
   ];
-  expect(cheapestSlug(suppliers)).toBeNull();
+  expect(cheapestSlugs(suppliers)).toEqual(new Set());
 });

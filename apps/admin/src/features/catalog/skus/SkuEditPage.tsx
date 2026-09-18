@@ -16,6 +16,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { SkuPriceHistoryCard } from "@/features/integrations/SkuPriceHistoryCard";
 import { type ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
+import { marginFromCostAndPrice } from "@/lib/margin";
 import { qk } from "@/lib/queryKeys";
 
 const CURRENCIES = ["USD", "USDT", "RUB", "UZS", "KZT", "EUR"] as const;
@@ -44,23 +45,6 @@ const _multiplierPattern = /^(\d+(\.\d{1,4})?)?$/;
 // Unit-SKU (Telegram Stars) quantity bounds are plain positive integers —
 // no decimals, unlike the dollar-amount fields above.
 const _qtyPattern = /^(\d+)?$/;
-
-/** margin% = (price − cost) / cost × 100, rounded to 2 decimals — matches the
- *  sell-price formula already used by the G2B import wizard
- *  (`DenominationTable.sellPrice`), just solved for the other variable. Empty
- *  string whenever either input is missing/non-numeric, so a half-typed cost
- *  or price never freezes a stale margin on screen. `Math.round(...) / 100`
- *  drops floating-point noise (e.g. 19.999999999998) before it's shown. */
-function marginFromCostAndPrice(
-  costStr: string | null | undefined,
-  priceStr: string | null | undefined,
-): string {
-  const cost = Number.parseFloat(costStr ?? "");
-  const price = Number.parseFloat(priceStr ?? "");
-  if (Number.isNaN(cost) || cost <= 0 || Number.isNaN(price)) return "";
-  const margin = Math.round(((price - cost) / cost) * 100 * 100) / 100;
-  return margin.toString();
-}
 
 const skuSchema = z
   .object({

@@ -8,7 +8,7 @@
 
 import { useMemo } from "react";
 
-import { cheapestSlug, describeRoute, marginPercent, supplierLabel } from "./brandSourcingFormat";
+import { cheapestSlugs, describeRoute, marginPercent, supplierLabel } from "./brandSourcingFormat";
 
 import type { SourcingBrandSkuOut, SourcingBrandSupplierOut, SourcingMode } from "./types";
 
@@ -27,7 +27,12 @@ export interface BrandSourcingTableProps {
    *  action uses (`sku_ids: [skuId]`) — "a row switches from its own
    *  control" per the design (§6). */
   onSwitchOne: (skuId: string, mode: SourcingMode, supplierSlug: string | null) => void;
+  /** True while the header's bulk mutation is in flight — disables every
+   *  row's controls, since a bulk write can touch any of them. */
   pending: boolean;
+  /** SKU ids with their own per-row switch in flight right now — disables
+   *  only that row's controls, independent of `pending`. */
+  pendingSkuIds: ReadonlySet<string>;
   /** Per-SKU failure reason from the most recent switch attempt — cleared
    *  by the page once a fresh attempt starts. */
   failures: ReadonlyMap<string, string>;
@@ -41,6 +46,7 @@ export function BrandSourcingTable({
   onToggleAll,
   onSwitchOne,
   pending,
+  pendingSkuIds,
   failures,
 }: BrandSourcingTableProps) {
   // Every item of one response carries the same candidate supplier set
@@ -94,9 +100,10 @@ export function BrandSourcingTable({
         </thead>
         <tbody>
           {items.map((item) => {
-            const cheapest = cheapestSlug(item.suppliers);
+            const cheapest = cheapestSlugs(item.suppliers);
             const margin = marginPercent(item.price_usd, item.cost_usdt);
             const failure = failures.get(item.sku_id);
+            const rowPending = pending || pendingSkuIds.has(item.sku_id);
             return (
               <tr key={item.sku_id} className="border-t border-[var(--border-default)] align-top">
                 <td className="py-2 pl-3">
@@ -130,21 +137,21 @@ export function BrandSourcingTable({
                         onClick={() => {
                           onSwitchOne(item.sku_id, "auto", null);
                         }}
-                        disabled={pending}
+                        disabled={rowPending}
                       />
                       <QuickModeButton
                         label="склад"
                         onClick={() => {
                           onSwitchOne(item.sku_id, "force_inventory", null);
                         }}
-                        disabled={pending}
+                        disabled={rowPending}
                       />
                       <QuickModeButton
                         label="вручную"
                         onClick={() => {
                           onSwitchOne(item.sku_id, "manual", null);
                         }}
-                        disabled={pending}
+                        disabled={rowPending}
                       />
                     </div>
                     {failure && <p className="text-[11px] text-[var(--danger)]">{failure}</p>}
@@ -168,8 +175,8 @@ export function BrandSourcingTable({
                       slug={slug}
                       supplier={supplier}
                       isCurrentRoute={item.primary === `supplier:${slug}`}
-                      isCheapest={cheapest === slug}
-                      pending={pending}
+                      isCheapest={cheapest.has(slug)}
+                      pending={rowPending}
                       onSwitch={() => {
                         onSwitchOne(item.sku_id, "force_supplier", slug);
                       }}
@@ -226,13 +233,38 @@ function SupplierCell({
     // disabled control (spec §6 + brief) — the gap is the reason.
     return <td className="py-2 pr-3 text-[11px] text-[var(--text-tertiary)]">нет маппинга</td>;
   }
+  // `has_active_mapping` and `latest_cost_usdt` come from independent
+  // backend sources (the mapping row vs. price history) — a freshly
+  // created mapping, or a supplier like waxpeer that never records price
+  // rows by design, is mapped with an unknown cost. A real cost can never
+  // be "0" (a positive-cost CHECK constraint on the price table), so that
+  // used to render a number the system cannot produce and let the operator
+  // force a supplier whose price is simply unmeasured, with no badge to
+  // warn them off it.
+  const cost = supplier.latest_cost_usdt;
   return (
     <td className={["py-2 pr-3", isCheapest ? "bg-[var(--success-soft)]" : ""].join(" ")}>
       <div className="flex flex-col gap-1">
         <span className="flex items-center gap-1.5">
-          {formatMoneyValue(supplier.latest_cost_usdt ?? "0", "USDT")} USDT
-          {isCheapest && (
-            <Badge tone="bg-[var(--success-soft)] text-[var(--success-fg)]">дешевле всех</Badge>
+          {cost !== null ? (
+            <>
+              {/* Cheapest-supplier comparison decides at 6-decimal
+                  precision (`cheapestSlugs`) but this cell only shows 2 —
+                  the raw value in `title` lets a near-tie explain itself
+                  on hover instead of two different-looking "дешевле всех"
+                  verdicts for what looks like the same number. */}
+              <span title={`${cost} USDT`}>{formatMoneyValue(cost, "USDT")} USDT</span>
+              {isCheapest && (
+                <Badge tone="bg-[var(--success-soft)] text-[var(--success-fg)]">дешевле всех</Badge>
+              )}
+            </>
+          ) : (
+            <span
+              className="text-[var(--text-tertiary)]"
+              title="Маппинг активен, но цена ещё не снята с этого поставщика"
+            >
+              — <span className="text-[10px]">цена не снята</span>
+            </span>
           )}
         </span>
         {supplier.captured_at && (
@@ -252,6 +284,7 @@ function SupplierCell({
             onClick={onSwitch}
             disabled={pending}
             aria-label={`Переключить на ${slug}`}
+            title={cost === null ? "Цена не снята — переключение вслепую" : undefined}
             className="w-fit rounded border border-[var(--border-default)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-muted)] disabled:cursor-not-allowed disabled:opacity-50"
           >
             сюда →

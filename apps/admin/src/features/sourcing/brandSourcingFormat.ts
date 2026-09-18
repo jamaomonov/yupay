@@ -5,6 +5,7 @@
 import type { SourcingBrandSupplierOut } from "./types";
 
 import { SUPPLIER_LABELS, type KnownSupplier } from "@/features/integrations/types";
+import { marginFromCostAndPrice } from "@/lib/margin";
 
 /** Best-effort human label for a supplier slug — a `switch` over the known
  *  set rather than indexing `SUPPLIER_LABELS` with a bare `string` (which
@@ -34,27 +35,44 @@ export function describeRoute(primary: string): string {
 }
 
 /** Margin `price_usd` implies over `cost_usdt` — display only, never fed
- *  back into a request: `Number.parseFloat` on a money string is the same
- *  display-comparison precedent `SkuPriceHistoryCard`/`SkuPriceHistoryModal`
- *  already use for these same two fields. */
+ *  back into a request. Delegates to the one shared formula
+ *  (`marginFromCostAndPrice`, `@/lib/margin`) so this screen can never show a
+ *  different number than the SKU editor for the same SKU under the same
+ *  word; only the display rounding (1 decimal, `null` instead of `""`) is
+ *  local to this screen. */
 export function marginPercent(priceUsd: string, costUsdt: string | null): string | null {
   if (costUsdt === null) return null;
-  const price = Number.parseFloat(priceUsd);
-  const cost = Number.parseFloat(costUsdt);
-  if (!Number.isFinite(price) || !Number.isFinite(cost) || price <= 0) return null;
-  return (((price - cost) / price) * 100).toFixed(1);
+  const raw = marginFromCostAndPrice(costUsdt, priceUsd);
+  if (raw === "") return null;
+  const value = Number.parseFloat(raw);
+  return Number.isFinite(value) ? value.toFixed(1) : null;
 }
 
-/** Which supplier is cheapest for this row, among suppliers that are both
- *  actively mapped and have a recorded cost — display-only comparison,
- *  same precedent as `marginPercent` above. */
-export function cheapestSlug(suppliers: SourcingBrandSupplierOut[]): string | null {
-  let best: { slug: string; value: number } | null = null;
+/** Rounds to the same 6-decimal precision `cost_usdt` is stored at, so two
+ *  costs that only differ beyond that precision (float noise from
+ *  `Number.parseFloat`) don't get treated as a tie-break by accident. */
+function round6(value: number): number {
+  return Math.round(value * 1e6) / 1e6;
+}
+
+/** Every supplier tied for cheapest on this row, among suppliers that are
+ *  both actively mapped and have a recorded cost — display-only comparison,
+ *  same precedent as `marginPercent` above.
+ *
+ *  Plural and a `Set` on purpose: two suppliers priced identically are
+ *  honestly a tie, and a strict "first one wins" comparison used to mark
+ *  only one of them as "дешевле всех" while showing the other at the exact
+ *  same displayed cost — a silent, arbitrary preference. Every member of the
+ *  returned set is equally entitled to the badge. */
+export function cheapestSlugs(suppliers: readonly SourcingBrandSupplierOut[]): ReadonlySet<string> {
+  const candidates: { slug: string; value: number }[] = [];
   for (const s of suppliers) {
     if (!s.has_active_mapping || s.latest_cost_usdt === null) continue;
     const value = Number.parseFloat(s.latest_cost_usdt);
     if (!Number.isFinite(value)) continue;
-    if (best === null || value < best.value) best = { slug: s.supplier_slug, value };
+    candidates.push({ slug: s.supplier_slug, value: round6(value) });
   }
-  return best?.slug ?? null;
+  if (candidates.length === 0) return new Set();
+  const min = Math.min(...candidates.map((c) => c.value));
+  return new Set(candidates.filter((c) => c.value === min).map((c) => c.slug));
 }

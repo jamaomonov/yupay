@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -77,6 +77,15 @@ const OVERVIEW: SourcingBrandOverviewOut = {
           latest_cost_usdt: "0.79",
           captured_at: "2026-09-15T00:00:00Z",
         },
+        // Actively mapped but never price-synced (waxpeer's real-world
+        // shape: it has no price rows by design) — must render as unknown
+        // cost, never as "0,00".
+        {
+          supplier_slug: "waxpeer",
+          has_active_mapping: true,
+          latest_cost_usdt: null,
+          captured_at: null,
+        },
       ],
     },
     {
@@ -107,6 +116,12 @@ const OVERVIEW: SourcingBrandOverviewOut = {
           latest_cost_usdt: "3.80",
           captured_at: "2026-09-15T00:00:00Z",
         },
+        {
+          supplier_slug: "waxpeer",
+          has_active_mapping: true,
+          latest_cost_usdt: null,
+          captured_at: null,
+        },
       ],
     },
   ],
@@ -120,6 +135,10 @@ beforeEach(() => {
     if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(OVERVIEW);
     return Promise.resolve({ items: [] });
   });
+  // The header "Применить к N" action now confirms before it writes
+  // (Important 6) — default every test to "operator confirmed" so the
+  // existing bulk-apply assertions below still exercise the mutation.
+  vi.spyOn(window, "confirm").mockReturnValue(true);
 });
 
 function renderPage(initialPath = "/sourcing/brands/mlbb") {
@@ -135,15 +154,51 @@ function renderPage(initialPath = "/sourcing/brands/mlbb") {
   );
 }
 
-it("renders one row per SKU with its route and each supplier's cost, cheapest marked", async () => {
+it("renders one row per SKU with its route and each supplier's cost", async () => {
   renderPage();
 
   await screen.findByText(/MLBB-100/);
   expect(screen.getByText(/MLBB-500/)).toBeInTheDocument();
+});
 
-  // NOVA (0.79) beats G2B (0.90) for sku-1 — its cost cell carries the marker.
-  const cheapestBadges = screen.getAllByText("дешевле всех");
-  expect(cheapestBadges.length).toBeGreaterThan(0);
+it("marks the cheapest supplier's own cell — not just anywhere on the page", async () => {
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+
+  const row = screen.getByText(/MLBB-100/).closest("tr");
+  if (!row) throw new Error("row not found");
+  // NOVA (0.79) beats G2B (0.90) for sku-1 — the badge must sit in NOVA's
+  // own cost cell, not merely appear somewhere in the row. A reversed
+  // comparator (picks the most expensive) would still make
+  // `getAllByText("дешевле всех").length > 0` true, which is why that used
+  // to be the whole assertion. The cost cell carries its raw value as a
+  // `title` (for the near-tie precision fix below), so query by that
+  // rather than the rounded, possibly-split display text.
+  const novaCell = within(row).getByTitle("0.79 USDT").closest("td");
+  expect(novaCell).not.toBeNull();
+  expect(within(novaCell as HTMLElement).getByText("дешевле всех")).toBeInTheDocument();
+
+  const g2bCell = within(row).getByTitle("0.90 USDT").closest("td");
+  expect(g2bCell).not.toBeNull();
+  expect(within(g2bCell as HTMLElement).queryByText("дешевле всех")).not.toBeInTheDocument();
+});
+
+it("shows an actively-mapped-but-unpriced supplier as unknown cost, never as 0,00", async () => {
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+
+  const row = screen.getByText(/MLBB-100/).closest("tr");
+  if (!row) throw new Error("row not found");
+  // waxpeer: has_active_mapping true, latest_cost_usdt null — a real cost
+  // can never be 0 (positive-cost CHECK constraint), so "0,00" is a number
+  // the system cannot produce.
+  expect(within(row).getByText("цена не снята")).toBeInTheDocument();
+  expect(within(row).queryByText(/0,00/)).not.toBeInTheDocument();
+  // Unknown cost never wins "дешевле всех" — cheapestSlugs skips it.
+  const waxpeerButton = within(row).getByRole("button", { name: "Переключить на waxpeer" });
+  expect(
+    within(waxpeerButton.closest("td") as HTMLElement).queryByText("дешевле всех"),
+  ).not.toBeInTheDocument();
 });
 
 it("does not offer a supplier with no active mapping, and shows why", async () => {
@@ -205,4 +260,143 @@ it("renders which SKUs failed and why, and leaves the successful ones ticked off
   // dropped from the selection — it is done.
   expect(screen.getByLabelText("Выбрать MLBB-500")).toBeChecked();
   expect(screen.getByLabelText("Выбрать MLBB-100")).not.toBeChecked();
+});
+
+it("asks for confirmation before a bulk apply, naming the count and the target", async () => {
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать MLBB-100"));
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 1/ }));
+
+  expect(confirmSpy).toHaveBeenCalledTimes(1);
+  expect(confirmSpy.mock.calls[0]?.[0]).toMatch(/1 SKU/);
+  expect(confirmSpy.mock.calls[0]?.[0]).toMatch(/G2Bulk/);
+  // Declining the confirmation must not write anything.
+  expect(mockedApiPut).not.toHaveBeenCalled();
+});
+
+it("sends the clicked column's own slug, not the row's cheapest slug", async () => {
+  mockedApiPut.mockResolvedValue({
+    items: [{ sku_id: "sku-2", ok: true, error: null }],
+  } satisfies SourcingBulkRuleOut);
+
+  renderPage();
+  await screen.findByText(/MLBB-500/);
+
+  const row = screen.getByText(/MLBB-500/).closest("tr");
+  if (!row) throw new Error("row not found");
+  // For sku-2, NOVA (3.80) is both the cheapest AND already the current
+  // route; G2B (4.00) is the pricier column. Clicking G2B's own switch
+  // must send "g2b" — if the button silently substituted the row's
+  // cheapest slug instead, this would send "nova" and the money would go
+  // to the wrong supplier.
+  fireEvent.click(within(row).getByRole("button", { name: "Переключить на g2b" }));
+
+  await waitFor(() => {
+    expect(mockedApiPut).toHaveBeenCalledTimes(1);
+  });
+  const body = mockedApiPut.mock.calls[0]?.[1] as {
+    sku_ids: string[];
+    mode: string;
+    supplier_slug: string | null;
+  };
+  expect(body.sku_ids).toEqual(["sku-2"]);
+  expect(body.mode).toBe("force_supplier");
+  expect(body.supplier_slug).toBe("g2b");
+});
+
+it("never sends a supplier_slug alongside mode: auto, even with a supplier still picked", async () => {
+  mockedApiPut.mockResolvedValue({
+    items: [
+      { sku_id: "sku-1", ok: true, error: null },
+      { sku_id: "sku-2", ok: true, error: null },
+    ],
+  } satisfies SourcingBulkRuleOut);
+
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать MLBB-100"));
+  fireEvent.click(screen.getByLabelText("Выбрать MLBB-500"));
+
+  // `bulkSupplier` stays at its default ("g2b") — never touched — while the
+  // operator switches the bulk mode to "Авто". This is the exact ternary
+  // (`bulkMode === "force_supplier" ? bulkSupplier : null`) ADR-0081's
+  // "no reserve supplier reaches auto" guarantee rests on: a leftover
+  // picked supplier must not leak into an "auto" request.
+  fireEvent.change(screen.getByLabelText("Режим для 2 SKU"), { target: { value: "auto" } });
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 2/ }));
+
+  await waitFor(() => {
+    expect(mockedApiPut).toHaveBeenCalledTimes(1);
+  });
+  const body = mockedApiPut.mock.calls[0]?.[1] as { mode: string; supplier_slug: string | null };
+  expect(body.mode).toBe("auto");
+  expect(body.supplier_slug).toBeNull();
+});
+
+it("keeps other rows' failure reasons when one row's own switch is retried", async () => {
+  mockedApiPut.mockResolvedValueOnce({
+    items: [
+      { sku_id: "sku-1", ok: true, error: null },
+      { sku_id: "sku-2", ok: false, error: "нет активного маппинга на g2b" },
+    ],
+  } satisfies SourcingBulkRuleOut);
+
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+
+  fireEvent.click(screen.getByLabelText("Выбрать MLBB-100"));
+  fireEvent.click(screen.getByLabelText("Выбрать MLBB-500"));
+  fireEvent.click(screen.getByRole("button", { name: "Применить к 2" }));
+  await screen.findByText("нет активного маппинга на g2b");
+
+  // Retry sku-1 from its own row control — sku-2's still-current failure
+  // reason must survive, not get wiped by a wholesale map replacement.
+  mockedApiPut.mockResolvedValueOnce({
+    items: [{ sku_id: "sku-1", ok: true, error: null }],
+  } satisfies SourcingBulkRuleOut);
+  const row1 = screen.getByText(/MLBB-100/).closest("tr");
+  if (!row1) throw new Error("row not found");
+  fireEvent.click(within(row1).getByRole("button", { name: "склад" }));
+
+  await waitFor(() => {
+    expect(mockedApiPut).toHaveBeenCalledTimes(2);
+  });
+  expect(screen.getByText("нет активного маппинга на g2b")).toBeInTheDocument();
+});
+
+it("disables only the row whose own switch is in flight, not every row", async () => {
+  // An object property, not a bare `let`, so TS doesn't narrow the
+  // closure-assigned value back to its initial `null` at the read site
+  // below.
+  const deferred: { resolve: ((value: SourcingBulkRuleOut) => void) | null } = { resolve: null };
+  mockedApiPut.mockImplementation(
+    () =>
+      new Promise<SourcingBulkRuleOut>((resolve) => {
+        deferred.resolve = resolve;
+      }),
+  );
+
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+
+  const row1 = screen.getByText(/MLBB-100/).closest("tr");
+  const row2 = screen.getByText(/MLBB-500/).closest("tr");
+  if (!row1 || !row2) throw new Error("row not found");
+
+  fireEvent.click(within(row1).getByRole("button", { name: "авто" }));
+
+  // Row 1's own quick controls are disabled while its write is in flight...
+  expect(within(row1).getByRole("button", { name: "авто" })).toBeDisabled();
+  // ...but row 2 has nothing in flight and stays usable.
+  expect(within(row2).getByRole("button", { name: "авто" })).not.toBeDisabled();
+
+  deferred.resolve?.({ items: [{ sku_id: "sku-1", ok: true, error: null }] });
+  await waitFor(() => {
+    expect(within(row1).getByRole("button", { name: "авто" })).not.toBeDisabled();
+  });
 });
