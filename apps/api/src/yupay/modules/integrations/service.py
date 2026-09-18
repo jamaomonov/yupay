@@ -453,9 +453,19 @@ async def list_price_history(
     db: AsyncSession,
     *,
     sku_id: str,
+    supplier_slug: str | None = None,
     limit: int = 100,
 ) -> list[Any]:
-    """Last ``limit`` price points for a SKU, newest first."""
+    """Last ``limit`` price points for a SKU, newest first.
+
+    ``supplier_slug``, when given, narrows the rows to one supplier's own
+    series. Before this branch ``supplier_price_history`` held only G2B
+    rows, so every existing caller reads the unfiltered (default) series and
+    keeps working unchanged; Task 1 of this branch made the table
+    multi-supplier — every active mapping now writes a row on refresh — and
+    22 production SKUs already carry interleaved G2B/NOVA history, which an
+    unfiltered read cannot tell apart.
+    """
     from yupay.modules.integrations.models import SupplierPriceHistory
 
     stmt = (
@@ -464,6 +474,8 @@ async def list_price_history(
         .order_by(SupplierPriceHistory.captured_at.desc())
         .limit(min(max(limit, 1), 500))
     )
+    if supplier_slug is not None:
+        stmt = stmt.where(SupplierPriceHistory.supplier_slug == supplier_slug)
     return list((await db.execute(stmt)).scalars().all())
 
 

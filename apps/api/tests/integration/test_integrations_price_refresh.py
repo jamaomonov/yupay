@@ -508,6 +508,55 @@ async def test_both_suppliers_history_queryable_with_correct_supplier_slug(
     assert sku.cost_usdt == Decimal("0.79")  # only the routed supplier's write survives
 
 
+@respx.mock
+async def test_list_price_history_supplier_slug_filter(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """``list_price_history(supplier_slug=...)`` narrows a SKU's now
+    multi-supplier history to one series; omitted, it stays the unfiltered
+    series every caller from before this branch relied on. Before Task 1,
+    ``supplier_price_history`` held only G2B rows, so no caller needed to
+    tell suppliers apart; 22 production SKUs now carry interleaved G2B/NOVA
+    rows.
+    """
+    from yupay.modules.integrations import service as svc
+
+    sku_id, g2b_mapping, nova_mapping = await _seed_two_mapping_sku(
+        db_session, slug_suffix="hist-filter", initial_g2b_cost="0.82"
+    )
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200, json={"catalogues": [{"id": 1, "name": "60", "amount": 0.95}]}
+        )
+    )
+    await svc.refresh_sku_cost_for_mapping(
+        db_session,
+        mapping=nova_mapping,
+        nova_offers_cache={
+            "pubg_mobile_auto": {
+                "ok": True,
+                "offers": [{"offer_id": "offer-60uc", "name": "60 UC", "price_usd": 0.79}],
+            }
+        },
+    )
+    await svc.refresh_sku_cost_for_mapping(db_session, mapping=g2b_mapping)
+    await db_session.commit()
+
+    unfiltered = await svc.list_price_history(db_session, sku_id=sku_id)
+    assert {row.supplier_slug for row in unfiltered} == {"g2b", "nova"}
+
+    nova_only = await svc.list_price_history(db_session, sku_id=sku_id, supplier_slug="nova")
+    assert len(nova_only) == 1
+    assert nova_only[0].supplier_slug == "nova"
+    assert nova_only[0].cost_usdt == Decimal("0.79")
+
+    g2b_only = await svc.list_price_history(db_session, sku_id=sku_id, supplier_slug="g2b")
+    assert len(g2b_only) == 1
+    assert g2b_only[0].supplier_slug == "g2b"
+    assert g2b_only[0].cost_usdt == Decimal("0.95")
+
+
 async def test_nova_steam_mapping_is_skipped_entirely(
     integration_client: AsyncClient,
     db_session: AsyncSession,
@@ -895,6 +944,58 @@ async def test_history_endpoint_returns_newest_first(
     assert items[0]["cost_usdt"] == "0.950000"
     assert items[0]["previous_cost_usdt"] == "0.890000"
     assert items[1]["cost_usdt"] == "0.890000"
+
+
+@respx.mock
+async def test_history_endpoint_supplier_slug_filter(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """``GET .../history?supplier_slug=...`` narrows the response to one
+    supplier's series; the query param is optional and unfiltered still
+    returns every supplier's rows, unchanged from before this branch."""
+    from yupay.modules.integrations import service as svc
+
+    sku_id, g2b_mapping, nova_mapping = await _seed_two_mapping_sku(
+        db_session, slug_suffix="hist-filter-http", initial_g2b_cost="0.82"
+    )
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200, json={"catalogues": [{"id": 1, "name": "60", "amount": 0.95}]}
+        )
+    )
+    await svc.refresh_sku_cost_for_mapping(
+        db_session,
+        mapping=nova_mapping,
+        nova_offers_cache={
+            "pubg_mobile_auto": {
+                "ok": True,
+                "offers": [{"offer_id": "offer-60uc", "name": "60 UC", "price_usd": 0.79}],
+            }
+        },
+    )
+    await svc.refresh_sku_cost_for_mapping(db_session, mapping=g2b_mapping)
+    await db_session.commit()
+
+    admin = await _login_admin(integration_client, db_session, tg_id=903)
+
+    r_unfiltered = await integration_client.get(
+        f"/api/v1/admin/integrations/sku-prices/{sku_id}/history",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r_unfiltered.status_code == 200
+    assert {row["supplier_slug"] for row in r_unfiltered.json()["items"]} == {"g2b", "nova"}
+
+    r_nova = await integration_client.get(
+        f"/api/v1/admin/integrations/sku-prices/{sku_id}/history",
+        params={"supplier_slug": "nova"},
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+    assert r_nova.status_code == 200
+    nova_items = r_nova.json()["items"]
+    assert len(nova_items) == 1
+    assert nova_items[0]["supplier_slug"] == "nova"
+    assert Decimal(nova_items[0]["cost_usdt"]) == Decimal("0.79")
 
 
 @respx.mock

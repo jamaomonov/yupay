@@ -481,9 +481,17 @@ async def sku_price_history(
     sku_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    supplier_slug: Annotated[str | None, Query(min_length=2, max_length=32)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> PriceHistoryOut:
-    rows = await svc.list_price_history(db, sku_id=sku_id, limit=limit)
+    """Newest-first cost history for a SKU, optionally scoped to one
+    supplier. Unfiltered (``supplier_slug`` omitted) matches every caller
+    from before this branch, when the table held only G2B rows; now that
+    Task 1 writes a row for every active mapping, a caller that wants one
+    supplier's own series — not an interleaved multi-supplier one — passes
+    it.
+    """
+    rows = await svc.list_price_history(db, sku_id=sku_id, supplier_slug=supplier_slug, limit=limit)
     return PriceHistoryOut(
         items=[
             PricePointOut(
