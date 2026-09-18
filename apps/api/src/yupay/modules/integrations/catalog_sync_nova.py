@@ -35,6 +35,7 @@ from yupay.modules.fulfillment.suppliers.nova_client import (
 )
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
+from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
 
 log = get_logger("yupay.integrations.catalog_sync.nova")
 
@@ -66,6 +67,14 @@ async def _sync_category_denoms(
     ``True`` only for a confirmed 404 — a generic refusal (rate limit, 5xx)
     is reported as ``error`` instead, since guessing "the game is gone" from
     an ambiguous failure would mislead the operator who mapped it.
+
+    The 404-vs-ambiguous-refusal split above is the only thing this function
+    promises to discriminate. Everything past a successful ``get_offers`` —
+    a non-dict offer, a junk ``price_usd`` that ``Decimal(str(...))`` won't
+    parse, a database error mid-upsert — is caught broadly instead, the same
+    way ``catalog_sync_g2b._refresh_mapped_vouchers`` catches per product: one
+    malformed offer must report as ``error`` on this category, not raise past
+    the caller (``routes.sync_catalog`` promises it never does).
     """
     try:
         body = await client.get_offers(category_id)
@@ -77,23 +86,26 @@ async def _sync_category_denoms(
         return 0, False, str(exc)[:200]
 
     written = 0
-    for offer in body.get("offers") or []:
-        offer_id = str(offer.get("offer_id") or "").strip()
-        if not offer_id:
-            continue
-        title = str(offer.get("name") or offer_id)[:255]
-        price = offer.get("price_usd")
-        await svc.upsert_catalog_entry(
-            db,
-            supplier_slug="nova",
-            kind="game_denom",
-            external_id=offer_id,
-            title=title,
-            raw=offer,
-            parent_external_id=category_id,
-            price_usdt=Decimal(str(price)) if price not in (None, "") else None,
-        )
-        written += 1
+    try:
+        for offer in body.get("offers") or []:
+            offer_id = str(offer.get("offer_id") or "").strip()
+            if not offer_id:
+                continue
+            title = str(offer.get("name") or offer_id)[:255]
+            price = offer.get("price_usd")
+            await svc.upsert_catalog_entry(
+                db,
+                supplier_slug="nova",
+                kind="game_denom",
+                external_id=offer_id,
+                title=title,
+                raw=offer,
+                parent_external_id=category_id,
+                price_usdt=Decimal(str(price)) if price not in (None, "") else None,
+            )
+            written += 1
+    except Exception as exc:  # noqa: BLE001 -- one malformed offer must not raise past this category
+        return written, False, f"malformed offer payload: {exc!s}"[:200]
     return written, False, None
 
 
@@ -103,12 +115,25 @@ async def _refresh_mapped_game_denoms(db: AsyncSession) -> tuple[int, int, str |
     Mirrors ``catalog_sync_g2b._refresh_mapped_vouchers``: we only ever sell
     what we map, so denominations are kept current for those categories and
     nobody else's. Returns ``(denoms_written, missing_categories, error)``.
+
+    The Steam reserve mapping (:data:`NOVA_STEAM_SENTINEL`) is excluded up
+    front, the same way ``price_refresh._fetch_nova_offers_cache`` and
+    ``cost_lookup._nova_raw_price`` already exclude it: it has no
+    catalogue offers to fetch (ADR-0082 §4), so ``get_offers("steam-topup")``
+    is a guaranteed 404 every tick — not a mapping gone upstream, just one
+    that was never a catalogue category to begin with.
     """
     client = _nova_client_or_none()
     if client is None:
         return 0, 0, None
 
-    category_ids = await svc.mapped_external_product_ids(db, supplier_slug="nova", kind="game")
+    category_ids = [
+        category_id
+        for category_id in await svc.mapped_external_product_ids(
+            db, supplier_slug="nova", kind="game"
+        )
+        if category_id != NOVA_STEAM_SENTINEL
+    ]
     if len(category_ids) > _MAPPED_FETCH_CAP:
         log.warning(
             "integrations.nova.sync.mapped_cap_hit",
@@ -140,7 +165,9 @@ async def sync_nova_catalog(db: AsyncSession) -> CatalogSyncReport:
     """Refresh the NOVA half of ``supplier_catalog_cache``.
 
     Best-effort: the category sweep and the mapped-denomination refresh are
-    independent, so one failing does not lose the other. The caller commits.
+    independent, so one failing does not lose the other. Never raises — the
+    route (``routes.sync_catalog``) and the scheduler tick both depend on
+    that. The caller commits.
     """
     client = _nova_client_or_none()
     if client is None:
@@ -168,7 +195,12 @@ async def sync_nova_catalog(db: AsyncSession) -> CatalogSyncReport:
         error = f"game sync failed: {exc!s}"[:200]
         log.warning("integrations.nova.sync.games_failed", error=str(exc))
 
-    mapped, missing, mapped_error = await _refresh_mapped_game_denoms(db)
+    try:
+        mapped, missing, mapped_error = await _refresh_mapped_game_denoms(db)
+    except Exception as exc:  # noqa: BLE001 -- best-effort sync, mirrors the games-sweep catch above
+        mapped, missing = 0, 0
+        mapped_error = f"mapped denom refresh failed: {exc!s}"[:200]
+        log.warning("integrations.nova.sync.mapped_denoms_failed", error=str(exc))
     if mapped_error:
         error = f"{error}; {mapped_error}" if error else mapped_error
 

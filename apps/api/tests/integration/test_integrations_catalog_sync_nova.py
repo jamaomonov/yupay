@@ -33,7 +33,7 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
-from yupay.modules.integrations.models import SkuSupplierMapping
+from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL, SkuSupplierMapping
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -326,3 +326,87 @@ async def test_the_old_g2b_only_supplier_value_still_works_generically(
         "/api/v1/admin/integrations/waxpeer/sync-catalog", headers=headers
     )
     assert resp.status_code == 422
+
+
+@respx.mock
+async def test_steam_sentinel_mapping_causes_no_call_and_no_missing_upstream(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The Steam reserve mapping's ``external_product_id`` is the sentinel
+    ``"steam-topup"`` — it has no catalogue offers to fetch (ADR-0082 §4),
+    the same fact ``price_refresh._fetch_nova_offers_cache`` and
+    ``cost_lookup._nova_raw_price`` already special-case. If the
+    mapped-denom refresh tried to call ``get_offers("steam-topup")``
+    anyway, this test would fail on the unmocked network call itself — no
+    respx route is registered for it — rather than on an assertion, the
+    same technique ``test_sync_writes_denominations_only_for_a_mapped_game``
+    uses for an unmapped game above."""
+    await _seed_mapped_sku(
+        db_session,
+        slug="steam",
+        supplier_slug="nova",
+        external_product_id=NOVA_STEAM_SENTINEL,
+    )
+
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [{"category_id": "mobile_legends_ru", "name": "Mobile Legends (RU)"}],
+                "meta": {"total": 1, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=706)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/nova/sync-catalog", headers=headers
+    )
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["games_synced"] == 1
+    assert body["mapped_vouchers_refreshed"] == 0
+    assert body["missing_upstream"] == 0
+    assert body["error"] is None
+
+
+@respx.mock
+async def test_malformed_offer_payload_is_reported_not_raised(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A non-dict entry in ``offers`` used to raise an uncaught
+    ``AttributeError`` straight out of the best-effort sync — ``list_topups``
+    filters its own items to dicts, but the per-category offers loop did
+    not. It must report as ``error`` on a 200 instead of a 5xx."""
+    await _seed_mapped_sku(
+        db_session, slug="mlbb2", supplier_slug="nova", external_product_id="mobile_legends_ru"
+    )
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [{"category_id": "mobile_legends_ru", "name": "Mobile Legends (RU)"}],
+                "meta": {"total": 1, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+    respx.get(f"{BASE}/api/v2/topups/offers", params={"category_id": "mobile_legends_ru"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={"ok": True, "category_id": "mobile_legends_ru", "offers": ["not-a-dict"]},
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=707)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/nova/sync-catalog", headers=headers
+    )
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["mapped_vouchers_refreshed"] == 0
+    assert body["error"]
+    assert "1 mapped game(s) failed to refresh offers" in body["error"]
