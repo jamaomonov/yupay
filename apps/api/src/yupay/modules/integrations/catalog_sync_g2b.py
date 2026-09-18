@@ -171,7 +171,19 @@ async def sync_g2b_catalog(db: AsyncSession) -> CatalogSyncReport:
 
     # The part that decides what customers pay. Done after the sweep so a
     # mapped product on page seven still ends up current.
-    mapped, missing, mapped_error = await _refresh_mapped_vouchers(db)
+    #
+    # Wrapped for the same reason NOVA's denominations are: this function
+    # catches per product, but a failure *around* that loop — a DB error, a
+    # malformed response before the loop is reached — would escape to the
+    # route, which promises in its own docstring that it never raises so the
+    # admin gets a definitive answer instead of a 5xx. A sync that reports
+    # "vouchers failed" is useful; a 500 is not.
+    mapped, missing, mapped_error = 0, 0, None
+    try:
+        mapped, missing, mapped_error = await _refresh_mapped_vouchers(db)
+    except Exception as exc:  # noqa: BLE001 -- best-effort, same as the sweeps above
+        mapped_error = f"mapped voucher refresh failed: {exc!s}"[:200]
+        log.warning("integrations.g2b.sync.mapped_vouchers_failed", error=str(exc))
     if mapped_error:
         error = f"{error}; {mapped_error}" if error else mapped_error
 
