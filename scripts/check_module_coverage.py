@@ -23,6 +23,12 @@ FLOORS: dict[str, tuple[float, float]] = {
     "modules/fulfillment": (95.0, 95.0),
     "modules/inventory": (89.0, 95.0),
     "modules/integrations": (90.0, 95.0),
+    # Not on AGENTS.md §8's named list, but route-deciding and money-adjacent
+    # (a wrong route picks the wrong cost basis — ADR-0083) the same way
+    # inventory and integrations are, and this branch alone added ~400 LOC
+    # here. Floor set from the sourcing/bulk-rules/brand-overview integration
+    # suites alone (96.02% measured 2026-09-18), a small margin under.
+    "modules/sourcing": (95.0, 95.0),
 }
 
 
