@@ -33,7 +33,12 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { DenomCatalogPicker } from "./DenomCatalogPicker";
 import { DenomPicker, PlayerChecker, RequiredFieldsHint } from "./gameWidgets";
 import { CatalogPicker, SkuPicker } from "./pickers";
-import { FULFILMENT_ROUTES, isAmountPriced, syntheticCatalogEntry } from "./types";
+import {
+  DENOM_CACHE_SUPPLIERS,
+  FULFILMENT_ROUTES,
+  isAmountPriced,
+  syntheticCatalogEntry,
+} from "./types";
 
 import type {
   CatalogEntry,
@@ -354,16 +359,16 @@ export function MappingEditPage() {
           disabled={!stepStatus.s3}
         >
           <div className="space-y-4">
-            {supplier === "g2b" ? (
-              <DenomPicker
-                gameCode={catalog?.external_id ?? null}
+            {DENOM_CACHE_SUPPLIERS.has(supplier) ? (
+              <DenomCatalogPicker
+                supplier={supplier}
+                gameExternalId={catalog?.external_id ?? null}
                 value={denom}
                 onChange={setDenom}
               />
             ) : (
-              <DenomCatalogPicker
-                supplier={supplier}
-                gameExternalId={catalog?.external_id ?? null}
+              <DenomPicker
+                gameCode={catalog?.external_id ?? null}
                 value={denom}
                 onChange={setDenom}
               />

@@ -384,6 +384,24 @@ export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> 
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
 };
 
+/**
+ * Suppliers whose game denominations are cached in `supplier_catalog_cache`
+ * and syncable on demand via `POST /{supplier}/games/{game_id}/sync-denominations`
+ * — mirrors `DENOM_SYNCABLE_SUPPLIERS` in
+ * `apps/api/src/yupay/modules/integrations/catalog_sync.py`. G2B is
+ * deliberately excluded: its denominations were never moved into the cache,
+ * and it keeps its own live `DenomPicker` (`gameWidgets.tsx`) instead of the
+ * cache-backed `DenomCatalogPicker`.
+ *
+ * This is a straight port of the backend set (ADR-0082's lesson: a rule that
+ * exists on both sides of the API has two homes — change one, change both).
+ * `MappingEditPage` branches on membership here — a positive allowlist,
+ * mirroring the backend's own — rather than a `supplier === "g2b"`
+ * exclusion, so a future mappable supplier that isn't denomination-syncable
+ * doesn't silently get a picker with a pull button that 422s.
+ */
+export const DENOM_CACHE_SUPPLIERS: ReadonlySet<string> = new Set(["nova", "gengine"]);
+
 export interface GameImportDenom {
   catalogue_name: string;
   denomination: string;
