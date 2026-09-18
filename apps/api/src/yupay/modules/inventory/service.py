@@ -57,6 +57,49 @@ def _normalize_code(raw: str) -> str:
     return raw.strip()
 
 
+async def _reject_top_up_sku(db: AsyncSession, sku_id: str) -> None:
+    """Refuse a SKU that has nothing to hand out from the code warehouse.
+
+    A ``top_up`` product (game balance, MLBB diamonds, PUBG UC, ...) is
+    credited by a live supplier call — ``sourcing.resolve_for_sku``'s
+    kind-aware default never routes one to inventory in the first place
+    (``sourcing/service.py``'s ``_auto_decision``). Uploading codes for one
+    anyway is a mistake that would otherwise sit unused (auto routing) or
+    only surface once an order tries to draw from it under an explicit
+    ``force_inventory`` rule and finds a code that fulfils nothing — this
+    guard is that mistake's other, symmetric half:
+    ``sourcing.service.set_rule`` refuses to *route* a top_up SKU at
+    inventory; this refuses to *stock* one in the first place, whichever
+    caller reaches it first.
+
+    A missing ``sku_id`` is not this function's concern — it resolves to no
+    row and no rejection here, same as before this guard existed; the
+    caller's own existence check (``get_sku_or_404`` at the HTTP layer) or
+    the ``inventory_codes`` foreign key is what catches that.
+
+    Args:
+        db: Active session.
+        sku_id: The SKU codes are about to be uploaded for.
+
+    Raises:
+        ValidationError: The SKU's product ``kind`` is ``top_up``.
+    """
+    from yupay.modules.catalog.models import Product, Sku
+
+    kind = (
+        await db.execute(
+            select(Product.kind).join(Sku, Sku.product_id == Product.id).where(Sku.id == sku_id)
+        )
+    ).scalar_one_or_none()
+    if kind == "top_up":
+        raise ValidationError(
+            f"SKU {sku_id} is a top_up product — it has nothing to deliver from "
+            "the code warehouse; top_up SKUs are credited by a live supplier "
+            "call, never a stocked voucher code",
+            extra={"sku_id": sku_id, "kind": kind},
+        )
+
+
 async def bulk_upload(
     db: AsyncSession,
     *,
@@ -73,6 +116,7 @@ async def bulk_upload(
             f"bulk upload is capped at {MAX_BULK} codes per call",
             extra={"got": len(codes), "max": MAX_BULK},
         )
+    await _reject_top_up_sku(db, sku_id)
 
     upload_id = new_id()
     succeeded = 0
