@@ -140,6 +140,30 @@ async def bulk_upsert_rules(
     admin: Annotated[User, Depends(require_admin)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> SourcingBulkRuleOut:
+    """Apply one sourcing decision to up to :data:`MAX_BULK_SKU_IDS` SKUs at once.
+
+    ``body.sku_ids`` is capped at :data:`MAX_BULK_SKU_IDS` (100) — a longer
+    list is a whole-request 422, not 100 individual failures; a caller with
+    more SKUs than that (e.g. a brand larger than 100) must chunk the
+    request itself. Each listed SKU is its own unit of work: one SKU with no
+    active mapping for a forced supplier, or a concurrent write racing it,
+    fails by name in that item's ``{sku_id, ok: false, error}`` without
+    aborting the rest — partial success, not all-or-nothing. Same
+    ``Idempotency-Key`` contract as every other write here (§9 AGENTS.md):
+    one key per attempt, not per selection — see the module ``README.md``.
+
+    Args:
+        body: ``{sku_ids, mode, supplier_slug}`` — one decision for every
+            listed SKU.
+        db: Request-scoped session (``core.db.get_session``).
+        admin: The authenticated admin caller; recorded as each written
+            rule's ``updated_by``.
+        idempotency_key: Optional ``Idempotency-Key`` header; a repeat with
+            the same key replays the first response verbatim.
+
+    Returns:
+        One result per input SKU, in input order.
+    """
     key = normalize_idempotency_key(idempotency_key)
     scope = "sourcing.bulk_upsert_rules"
     if key is not None:

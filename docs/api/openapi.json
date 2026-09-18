@@ -27448,6 +27448,7 @@
     },
     "/api/v1/admin/sourcing/rules:bulk": {
       "put": {
+        "description": "Apply one sourcing decision to up to :data:`MAX_BULK_SKU_IDS` SKUs at once.\n\n``body.sku_ids`` is capped at :data:`MAX_BULK_SKU_IDS` (100) \u2014 a longer\nlist is a whole-request 422, not 100 individual failures; a caller with\nmore SKUs than that (e.g. a brand larger than 100) must chunk the\nrequest itself. Each listed SKU is its own unit of work: one SKU with no\nactive mapping for a forced supplier, or a concurrent write racing it,\nfails by name in that item's ``{sku_id, ok: false, error}`` without\naborting the rest \u2014 partial success, not all-or-nothing. Same\n``Idempotency-Key`` contract as every other write here (\u00a79 AGENTS.md):\none key per attempt, not per selection \u2014 see the module ``README.md``.\n\nArgs:\n    body: ``{sku_ids, mode, supplier_slug}`` \u2014 one decision for every\n        listed SKU.\n    db: Request-scoped session (``core.db.get_session``).\n    admin: The authenticated admin caller; recorded as each written\n        rule's ``updated_by``.\n    idempotency_key: Optional ``Idempotency-Key`` header; a repeat with\n        the same key replays the first response verbatim.\n\nReturns:\n    One result per input SKU, in input order.",
         "operationId": "bulk_upsert_rules_api_v1_admin_sourcing_rules_bulk_put",
         "parameters": [
           {
