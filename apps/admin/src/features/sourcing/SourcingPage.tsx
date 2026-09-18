@@ -15,6 +15,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { ArrowRight, Boxes, Hand, Sparkles, Truck, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 
 import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
@@ -231,6 +232,11 @@ export function SourcingPage() {
       <PageHeader
         title="Маршрутизация (sourcing)"
         description="Откуда брать товар при оплате каждого SKU — из склада кодов или у поставщика."
+        actions={
+          <Link to="/sourcing/brands" className="text-sm text-[var(--accent)] hover:underline">
+            Сравнить поставщиков по бренду →
+          </Link>
+        }
       />
 
       <section className="space-y-5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-5 shadow-[var(--shadow-sm)]">

@@ -28,6 +28,8 @@ export const qk = {
   // sourcing
   sourcingRules: () => ["admin", "sourcing", "rules"] as const,
   sourcingDecision: (skuId: string) => ["admin", "sourcing", "decision", skuId] as const,
+  sourcingBrandOverview: (brandSlug: string) =>
+    ["admin", "sourcing", "brand-overview", brandSlug] as const,
 
   // orders
   orders: (filters: { status?: string | null }) =>
