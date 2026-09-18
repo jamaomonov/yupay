@@ -340,3 +340,45 @@ async def test_a_withdrawn_mapped_voucher_is_counted_not_silently_dropped(
     assert body["mapped_vouchers_refreshed"] == 0
     assert body["missing_upstream"] == 1
     assert body["error"] is None, "a withdrawn product is news, not a failure"
+
+
+@respx.mock
+async def test_sync_catalog_replay_does_not_rerun_the_sync(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """A repeated ``Idempotency-Key`` must replay the first report instead
+    of hitting G2B a second time (AGENTS.md §9) — the same contract
+    ``sync_game_denominations`` already gives its own on-demand sync."""
+    products = respx.get(f"{G2B_BASE}/products?page=1&limit=200").mock(
+        return_value=httpx.Response(
+            200, json={"products": [{"id": 1, "title": "PUBG UC Voucher", "unit_price": 1.5}]}
+        )
+    )
+    games = respx.get(f"{G2B_BASE}/games").mock(
+        return_value=httpx.Response(
+            200, json={"games": [{"code": "pubg_mobile", "name": "PUBG Mobile"}]}
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=605)
+    headers = {
+        "Authorization": f"Bearer {admin}",
+        "Idempotency-Key": "g2b-sync-catalog-replay-key-1",
+    }
+
+    first = await integration_client.post(
+        "/api/v1/admin/integrations/g2b/sync-catalog", headers=headers
+    )
+    assert first.status_code == 200, first.text
+    assert products.call_count == 1
+    assert games.call_count == 1
+
+    again = await integration_client.post(
+        "/api/v1/admin/integrations/g2b/sync-catalog", headers=headers
+    )
+    assert again.status_code == 200, again.text
+    assert again.json() == first.json()
+    # The replay must not touch G2B a second time.
+    assert products.call_count == 1
+    assert games.call_count == 1

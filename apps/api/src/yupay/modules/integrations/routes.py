@@ -272,6 +272,7 @@ async def sync_catalog(
     supplier: Literal["g2b", "nova", "gengine"],
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> CatalogSyncOut:
     """Pulls one supplier's game/voucher catalogue into our cache.
 
@@ -286,10 +287,26 @@ async def sync_catalog(
     and G-Engine. The scheduler runs the same sync hourly, per supplier
     (``sync_supplier_catalog``); this button is for when someone does not
     want to wait.
+
+    Accepts ``Idempotency-Key`` (AGENTS.md §9) the same way its sibling
+    ``sync_game_denominations`` does, below: a replay returns the first
+    report instead of re-running the sweep. The write itself (an upsert into
+    ``supplier_catalog_cache``) is harmless to repeat — nothing here debits a
+    wallet or double-books an order — but harmlessness is an argument for why
+    a stray retry can't hurt, not for leaving the header off; a slow sweep
+    behind a flaky admin connection can still be retried by a human, and a
+    replayed key should get back the report that already ran rather than pay
+    for a second one.
     """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "integrations.sync_catalog"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return CatalogSyncOut.model_validate(cached.body)
     report = await run_catalog_sync(db, supplier_slug=supplier)
     await db.commit()
-    return CatalogSyncOut(
+    out = CatalogSyncOut(
         supplier=supplier,
         vouchers_synced=report.vouchers,
         games_synced=report.games,
@@ -297,6 +314,9 @@ async def sync_catalog(
         missing_upstream=report.missing_upstream,
         error=report.error,
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(
