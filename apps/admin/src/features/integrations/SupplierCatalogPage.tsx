@@ -4,7 +4,7 @@ import { Database, Search } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { SUPPLIER_LABELS, type CatalogEntry, type SupplierMapping } from "./types";
+import { capabilitiesFor, SUPPLIER_LABELS, type CatalogEntry, type SupplierMapping } from "./types";
 
 import { DataTable } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -24,6 +24,10 @@ interface MappingListOut {
 export function SupplierCatalogPage() {
   const { slug = "g2b" } = useParams<{ slug?: string }>();
   const label = (SUPPLIER_LABELS as Record<string, string>)[slug] ?? slug;
+  // Only G2B has an importer (`GameImportPage` posts to the G2B-specific
+  // `POST /g2b/import` regardless of which supplier's catalogue linked to
+  // it) — see `capabilitiesFor`'s docstring.
+  const canImport = capabilitiesFor(slug).gameImport;
   const [search, setSearch] = useState("");
   const q = useDebouncedValue(search, 300);
 
@@ -108,14 +112,15 @@ export function SupplierCatalogPage() {
             {
               key: "action",
               header: "",
-              render: (r) => (
-                <Link
-                  to={`/integrations/${slug}/catalog/${encodeURIComponent(r.external_id)}`}
-                  className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
-                >
-                  <Database className="size-4" /> Импортировать →
-                </Link>
-              ),
+              render: (r) =>
+                canImport ? (
+                  <Link
+                    to={`/integrations/${slug}/catalog/${encodeURIComponent(r.external_id)}`}
+                    className="inline-flex items-center gap-1 text-sm font-medium text-[var(--accent)] hover:underline"
+                  >
+                    <Database className="size-4" /> Импортировать →
+                  </Link>
+                ) : null,
             },
           ]}
         />
