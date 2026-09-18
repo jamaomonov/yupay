@@ -304,6 +304,15 @@ function isKnownSupplier(slug: string): slug is KnownSupplier {
   return (KNOWN_SUPPLIERS as readonly string[]).includes(slug);
 }
 
+/** Best-effort human label for a supplier slug — same narrowing precedent
+ *  as `hasCatalogueCache` above. Used by the SKU price-history card/modal
+ *  to say which supplier a row's price belongs to, now that
+ *  `supplier_price_history` can interleave rows from more than one active
+ *  mapping for the same SKU. */
+export function supplierLabel(slug: string): string {
+  return isKnownSupplier(slug) ? SUPPLIER_LABELS[slug] : slug;
+}
+
 /** Why a supplier shows no catalogue tooling — stated rather than left as a
  *  suspicious absence. */
 export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> = {
