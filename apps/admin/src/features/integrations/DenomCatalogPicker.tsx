@@ -148,7 +148,17 @@ export function DenomCatalogPicker({
             Не удалось подтянуть номиналы: {formatApiError(sync.error)}
           </p>
         )}
-        {sync.isSuccess && sync.data.denominations_synced === 0 && (
+        {/* The backend reports failure in-band on a 200 (`DenomSyncOut.error`)
+            rather than as a transport error — "g-engine has no recharge
+            service 999", "NOVA_API_KEY is not configured" — so `sync.isError`
+            alone misses it and the generic "no denominations" line below
+            would otherwise stand in for a specific, actionable reason. */}
+        {sync.isSuccess && sync.data.error && (
+          <p role="alert" className="text-xs text-[var(--danger)]">
+            {sync.data.error}
+          </p>
+        )}
+        {sync.isSuccess && !sync.data.error && sync.data.denominations_synced === 0 && (
           <p className="text-xs text-[var(--text-tertiary)]">
             Поставщик не вернул ни одного номинала для этой игры.
           </p>

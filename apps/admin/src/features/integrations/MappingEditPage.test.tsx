@@ -275,6 +275,52 @@ it("offers a pull-denominations button when the cache has none for the chosen ga
   expect(within(list).getByRole("option", { name: /100 Diamonds/ })).toBeInTheDocument();
 });
 
+it("shows the backend's in-band sync error instead of the generic no-denominations line", async () => {
+  // `POST .../sync-denominations` reports failure in-band on a 200
+  // (`DenomSyncOut.error`), not as a transport error — e.g. "g-engine has no
+  // recharge service 999" or "NOVA_API_KEY is not configured" — so
+  // `sync.isError` alone never sees it, and the picker used to fall back to
+  // the generic "поставщик не вернул ни одного номинала" line, discarding the
+  // specific, actionable reason.
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/skus/search")) return Promise.resolve([SKU]);
+    if (path.includes("/admin/integrations/catalog")) {
+      const url = new URL(path, "http://test.local");
+      const kind = url.searchParams.get("kind");
+      if (kind === "game") return Promise.resolve({ items: [GAME_MLBB] });
+      if (kind === "game_denom") return Promise.resolve({ items: [] });
+    }
+    return Promise.resolve({ items: [] });
+  });
+  mockedApiPost.mockImplementation((path: string) => {
+    if (path.includes("/sync-denominations")) {
+      return Promise.resolve({
+        supplier: "gengine",
+        game_id: "mlbb",
+        denominations_synced: 0,
+        error: "g-engine has no recharge service 999",
+      });
+    }
+    return Promise.resolve({});
+  });
+
+  renderPage();
+  const picker = await reachSupplierStep();
+  fireEvent.change(picker, { target: { value: "gengine" } });
+  await pickFromCombobox("Игра у поставщика", /Mobile Legends/);
+
+  // Wait for the cache-empty state to actually render before clicking —
+  // `pickFromCombobox` only waits for the game combobox, not the
+  // denomination cache query it triggers.
+  expect(await screen.findByText(/В кэше нет номиналов для этой игры/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Подтянуть номиналы у поставщика" }));
+
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "g-engine has no recharge service 999",
+  );
+  expect(screen.queryByText(/не вернул ни одного номинала/)).not.toBeInTheDocument();
+});
+
 it("lets an id be typed in through the manual fallback when the cache has nothing for the supplier", async () => {
   renderPage();
   const picker = await reachSupplierStep();
