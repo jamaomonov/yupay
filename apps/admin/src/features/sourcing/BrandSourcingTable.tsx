@@ -2,17 +2,25 @@
  *  cost column per candidate supplier and a per-row switch control.
  *
  *  Split out of `BrandSourcingPage.tsx` to keep both files under the
- *  400-LOC module limit and because the row/column logic (cheapest-cost
- *  highlighting, the "no mapping" gap, the reserve-supplier note) is a
- *  self-contained concern the page component does not need to know about. */
+ *  300-LOC soft limit (AGENTS.md §6) and because the row/column logic
+ *  (cheapest-cost highlighting, the "no mapping" gap, the reserve-supplier
+ *  note) is a self-contained concern the page component does not need to
+ *  know about. */
 
 import { useMemo } from "react";
 
-import { cheapestSlugs, describeRoute, marginPercent, supplierLabel } from "./brandSourcingFormat";
+import {
+  bypassesInventory,
+  cheapestSlugs,
+  describeRoute,
+  isCurrentSupplierRoute,
+  marginPercent,
+  supplierLabel,
+} from "./brandSourcingFormat";
+import { SupplierCell } from "./SupplierCostCell";
 
-import type { SourcingBrandSkuOut, SourcingBrandSupplierOut, SourcingMode } from "./types";
+import type { SourcingBrandSkuOut, SourcingMode } from "./types";
 
-import { Badge } from "@/components/Badge";
 import { EmptyState, TableSkeleton } from "@/components/States";
 import { RESERVE_SUPPLIERS } from "@/features/integrations/types";
 import { formatMoneyValue } from "@/lib/money";
@@ -36,6 +44,13 @@ export interface BrandSourcingTableProps {
   /** Per-SKU failure reason from the most recent switch attempt — cleared
    *  by the page once a fresh attempt starts. */
   failures: ReadonlyMap<string, string>;
+  /** SKUs whose route just changed in this browser session, so `cost_usdt`
+   *  and the margin derived from it still reflect the *previous* route —
+   *  a switch writes only `sku_sourcing_rules`; the cost column is repriced
+   *  by the hourly job, not by the switch itself (whole-branch review,
+   *  Important #4). Renders an inline "не обновилась" note instead of
+   *  letting the operator read a stale cost as current. */
+  staleCostSkuIds: ReadonlySet<string>;
 }
 
 export function BrandSourcingTable({
@@ -48,6 +63,7 @@ export function BrandSourcingTable({
   pending,
   pendingSkuIds,
   failures,
+  staleCostSkuIds,
 }: BrandSourcingTableProps) {
   // Every item of one response carries the same candidate supplier set
   // (`brand_overview.get_brand_overview` computes it once per request) —
@@ -165,6 +181,14 @@ export function BrandSourcingTable({
                         маржа ~{margin}%
                       </span>
                     )}
+                    {staleCostSkuIds.has(item.sku_id) && (
+                      <span
+                        className="text-[10px] font-medium text-[var(--warning-fg)]"
+                        title="Маршрут переключён, но cost_usdt пересчитывает почасовое обновление цен — значение выше ещё от прежнего поставщика."
+                      >
+                        цена не обновилась — обновится в течение часа
+                      </span>
+                    )}
                   </div>
                 </td>
                 {supplierSlugs.map((slug) => {
@@ -174,7 +198,11 @@ export function BrandSourcingTable({
                       key={slug}
                       slug={slug}
                       supplier={supplier}
-                      isCurrentRoute={item.primary === `supplier:${slug}`}
+                      isCurrentRoute={isCurrentSupplierRoute(item, slug)}
+                      isFallbackRoute={
+                        item.primary === "inventory" && item.fallback === `supplier:${slug}`
+                      }
+                      wouldBypassInventory={bypassesInventory(item)}
                       isCheapest={cheapest.has(slug)}
                       pending={rowPending}
                       onSwitch={() => {
@@ -210,87 +238,5 @@ function QuickModeButton({
     >
       {label}
     </button>
-  );
-}
-
-function SupplierCell({
-  slug,
-  supplier,
-  isCurrentRoute,
-  isCheapest,
-  pending,
-  onSwitch,
-}: {
-  slug: string;
-  supplier: SourcingBrandSupplierOut | undefined;
-  isCurrentRoute: boolean;
-  isCheapest: boolean;
-  pending: boolean;
-  onSwitch: () => void;
-}) {
-  if (!supplier?.has_active_mapping) {
-    // "Not offerable" must be visible as a reason, not just an absent or
-    // disabled control (spec §6 + brief) — the gap is the reason.
-    return <td className="py-2 pr-3 text-[11px] text-[var(--text-tertiary)]">нет маппинга</td>;
-  }
-  // `has_active_mapping` and `latest_cost_usdt` come from independent
-  // backend sources (the mapping row vs. price history) — a freshly
-  // created mapping, or a supplier like waxpeer that never records price
-  // rows by design, is mapped with an unknown cost. A real cost can never
-  // be "0" (a positive-cost CHECK constraint on the price table), so that
-  // used to render a number the system cannot produce and let the operator
-  // force a supplier whose price is simply unmeasured, with no badge to
-  // warn them off it.
-  const cost = supplier.latest_cost_usdt;
-  return (
-    <td className={["py-2 pr-3", isCheapest ? "bg-[var(--success-soft)]" : ""].join(" ")}>
-      <div className="flex flex-col gap-1">
-        <span className="flex items-center gap-1.5">
-          {cost !== null ? (
-            <>
-              {/* Cheapest-supplier comparison decides at 6-decimal
-                  precision (`cheapestSlugs`) but this cell only shows 2 —
-                  the raw value in `title` lets a near-tie explain itself
-                  on hover instead of two different-looking "дешевле всех"
-                  verdicts for what looks like the same number. */}
-              <span title={`${cost} USDT`}>{formatMoneyValue(cost, "USDT")} USDT</span>
-              {isCheapest && (
-                <Badge tone="bg-[var(--success-soft)] text-[var(--success-fg)]">дешевле всех</Badge>
-              )}
-            </>
-          ) : (
-            <span
-              className="text-[var(--text-tertiary)]"
-              title="Маппинг активен, но цена ещё не снята с этого поставщика"
-            >
-              — <span className="text-[10px]">цена не снята</span>
-            </span>
-          )}
-        </span>
-        {supplier.captured_at && (
-          <span className="text-[10px] text-[var(--text-tertiary)]">
-            {new Date(supplier.captured_at).toLocaleDateString("ru", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "2-digit",
-            })}
-          </span>
-        )}
-        {isCurrentRoute ? (
-          <span className="text-[10px] text-[var(--accent)]">текущий</span>
-        ) : (
-          <button
-            type="button"
-            onClick={onSwitch}
-            disabled={pending}
-            aria-label={`Переключить на ${slug}`}
-            title={cost === null ? "Цена не снята — переключение вслепую" : undefined}
-            className="w-fit rounded border border-[var(--border-default)] px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-muted)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            сюда →
-          </button>
-        )}
-      </div>
-    </td>
   );
 }

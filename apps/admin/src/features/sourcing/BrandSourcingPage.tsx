@@ -13,37 +13,23 @@
  * mints Idempotency-Keys. */
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Select } from "@yupay/ui";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { supplierLabel } from "./brandSourcingFormat";
+import { bulkConfirmMessage, inventoryRoutedCount } from "./brandSourcingFormat";
 import { BrandSourcingTable } from "./BrandSourcingTable";
+import { BrandSourcingToolbar } from "./BrandSourcingToolbar";
 import { switchSkusChunked } from "./bulkSwitch";
-import { BULK_SUPPLIER_OPTIONS } from "./supplierOptions";
 
 import type { SourcingBrandOverviewOut, SourcingBulkRuleOut, SourcingMode } from "./types";
 import type { Brand } from "@/features/catalog/types";
 
 import { PageHeader } from "@/components/PageHeader";
+import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
-import { RESERVE_SUPPLIERS } from "@/features/integrations/types";
 import { apiGet } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
-
-// Human name for each bulk mode, used only in the confirmation prompt below
-// — the <option> labels stay inline since they're rendered once each and
-// never reused elsewhere.
-const BULK_MODE_CONFIRM_LABELS: Record<SourcingMode, string> = {
-  force_supplier: "поставщика",
-  force_inventory: "режим «Только склад»",
-  manual: "режим «Вручную»",
-  auto: "режим «Авто»",
-};
-
-function brandName(b: Brand): string {
-  return b.translations.find((t) => t.locale === "ru")?.name ?? b.slug;
-}
 
 export function BrandSourcingPage() {
   const params = useParams<{ brandSlug?: string }>();
@@ -61,6 +47,17 @@ export function BrandSourcingPage() {
   // Without this a per-row control stayed clickable for the whole time its
   // own write was in flight, inviting a double-submit.
   const [rowPending, setRowPending] = useState<ReadonlySet<string>>(new Set());
+  // SKUs whose sourcing rule just changed successfully in this browser
+  // session. `PUT .../rules:bulk` only writes `sku_sourcing_rules` —
+  // `Sku.cost_usdt` (and the margin the table derives from it) is repriced
+  // by the hourly job, not by the switch itself, so until that job runs the
+  // table would otherwise show the new route beside the old supplier's cost
+  // with nothing saying so (whole-branch review, Important #4). Cleared
+  // only when the brand changes — there is no reliable client-side signal
+  // for "the hourly job has now run for this SKU", so this errs toward
+  // saying "not updated yet" a little longer rather than clearing early and
+  // showing a stale number as current.
+  const [staleCostSkuIds, setStaleCostSkuIds] = useState<ReadonlySet<string>>(new Set());
 
   const brandsQuery = useQuery<Brand[]>({
     queryKey: qk.brands(),
@@ -102,6 +99,11 @@ export function BrandSourcingPage() {
         for (const item of data.items) if (item.ok) next.delete(item.sku_id);
         return next;
       });
+      setStaleCostSkuIds((prev) => {
+        const next = new Set(prev);
+        for (const item of data.items) if (item.ok) next.add(item.sku_id);
+        return next;
+      });
       void qc.invalidateQueries({ queryKey: qk.sourcingBrandOverview(brandSlug ?? "") });
       // The single-SKU editor's explicit-rules table reads this key —
       // without invalidating it too, a bulk switch here can leave that
@@ -134,6 +136,7 @@ export function BrandSourcingPage() {
             next.delete(skuId);
             return next;
           });
+          setStaleCostSkuIds((prev) => new Set(prev).add(skuId));
         } else {
           const message = item?.error ?? "не удалось переключить";
           toast.error(`${skuCodeFor(skuId)}: ${message}`);
@@ -180,13 +183,24 @@ export function BrandSourcingPage() {
   // Names the count and the target — a whole brand can be re-routed from
   // this one button, and the single-rule delete elsewhere on this same
   // feature already asks before a destructive action; this action is
-  // bigger (up to hundreds of SKUs) and had no confirmation at all.
+  // bigger (up to hundreds of SKUs) and had no confirmation at all. Also
+  // names the warehouse-bypass consequence when it applies (Important #1) —
+  // see `bulkConfirmMessage`.
   const confirmBulkApply = (): boolean => {
-    const target =
-      bulkMode === "force_supplier"
-        ? `поставщика ${supplierLabel(bulkSupplier)}`
-        : BULK_MODE_CONFIRM_LABELS[bulkMode];
-    return window.confirm(`Переключить ${selected.size.toString()} SKU на ${target}?`);
+    const message = bulkConfirmMessage(
+      selected.size,
+      bulkMode,
+      bulkSupplier,
+      inventoryRoutedCount(items, selected),
+    );
+    return window.confirm(message);
+  };
+
+  const handleBrandChange = (slug: string) => {
+    void navigate(slug ? `/sourcing/brands/${slug}` : "/sourcing/brands");
+    setSelected(new Set());
+    setFailures(new Map());
+    setStaleCostSkuIds(new Set());
   };
 
   return (
@@ -202,101 +216,31 @@ export function BrandSourcingPage() {
         }
       />
 
-      <section className="flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-        <div>
-          <label
-            htmlFor="brand-sourcing-brand-select"
-            className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]"
-          >
-            Бренд
-          </label>
-          <Select
-            id="brand-sourcing-brand-select"
-            value={brandSlug ?? ""}
-            onChange={(e) => {
-              const slug = e.target.value;
-              void navigate(slug ? `/sourcing/brands/${slug}` : "/sourcing/brands");
-              setSelected(new Set());
-              setFailures(new Map());
-            }}
-            containerClassName="w-64"
-          >
-            <option value="">— Выбери бренд —</option>
-            {brandsQuery.data?.map((b) => (
-              <option key={b.id} value={b.slug}>
-                {brandName(b)}
-              </option>
-            ))}
-          </Select>
-        </div>
-
-        {selected.size > 0 && (
-          <>
-            <div>
-              <label
-                htmlFor="brand-sourcing-mode-select"
-                className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]"
-              >
-                Режим для {selected.size.toString()} SKU
-              </label>
-              <Select
-                id="brand-sourcing-mode-select"
-                value={bulkMode}
-                onChange={(e) => {
-                  // Narrowing a DOM value: every <option> below is a literal
-                  // SourcingMode, so the select can never produce anything else.
-                  setBulkMode(e.target.value as SourcingMode);
-                }}
-                containerClassName="w-48"
-              >
-                <option value="force_supplier">Только поставщик</option>
-                <option value="force_inventory">Только склад</option>
-                <option value="manual">Вручную</option>
-                <option value="auto">Авто</option>
-              </Select>
-            </div>
-            {bulkMode === "force_supplier" && (
-              <div>
-                <label
-                  htmlFor="brand-sourcing-supplier-select"
-                  className="mb-1 block text-xs font-medium uppercase tracking-wide text-[var(--text-tertiary)]"
-                >
-                  Поставщик
-                </label>
-                <Select
-                  id="brand-sourcing-supplier-select"
-                  value={bulkSupplier}
-                  onChange={(e) => {
-                    setBulkSupplier(e.target.value);
-                  }}
-                  containerClassName="w-40"
-                >
-                  {BULK_SUPPLIER_OPTIONS.map((s) => (
-                    <option key={s.slug} value={s.slug}>
-                      {s.label}
-                      {RESERVE_SUPPLIERS.has(s.slug) ? " · резерв" : ""}
-                    </option>
-                  ))}
-                </Select>
-              </div>
-            )}
-            <Button
-              onClick={() => {
-                if (!confirmBulkApply()) return;
-                switchMutation.mutate({ skuIds: [...selected] });
-              }}
-              disabled={!canApply}
-            >
-              {switchMutation.isPending
-                ? "Переключаем…"
-                : `Применить к ${selected.size.toString()}`}
-            </Button>
-          </>
-        )}
-      </section>
+      <BrandSourcingToolbar
+        brands={brandsQuery.data}
+        brandSlug={brandSlug}
+        onBrandChange={handleBrandChange}
+        selectedCount={selected.size}
+        bulkMode={bulkMode}
+        onBulkModeChange={setBulkMode}
+        bulkSupplier={bulkSupplier}
+        onBulkSupplierChange={setBulkSupplier}
+        canApply={canApply}
+        applyPending={switchMutation.isPending}
+        onApply={() => {
+          if (!confirmBulkApply()) return;
+          switchMutation.mutate({ skuIds: [...selected] });
+        }}
+      />
 
       {brandSlug === null ? (
         <p className="text-sm text-[var(--text-secondary)]">Выбери бренд, чтобы увидеть SKU.</p>
+      ) : overviewQuery.isError ? (
+        <ErrorState
+          description={extractApiMessage(overviewQuery.error)}
+          onRetry={() => void overviewQuery.refetch()}
+          retryPending={overviewQuery.isFetching}
+        />
       ) : (
         <BrandSourcingTable
           items={items}
@@ -308,6 +252,7 @@ export function BrandSourcingPage() {
           pending={switchMutation.isPending}
           pendingSkuIds={rowPending}
           failures={failures}
+          staleCostSkuIds={staleCostSkuIds}
         />
       )}
     </div>

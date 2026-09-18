@@ -7,7 +7,7 @@ import { BrandSourcingPage } from "./BrandSourcingPage";
 
 import type { SourcingBrandOverviewOut, SourcingBulkRuleOut } from "./types";
 
-import { apiGet, apiPut } from "@/lib/api";
+import { ApiError, apiGet, apiPut } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
@@ -57,6 +57,7 @@ const OVERVIEW: SourcingBrandOverviewOut = {
       price_usd: "1.20",
       cost_usdt: "0.90",
       primary: "supplier:g2b",
+      fallback: null,
       rule_present: false,
       suppliers: [
         {
@@ -96,6 +97,7 @@ const OVERVIEW: SourcingBrandOverviewOut = {
       price_usd: "5.00",
       cost_usdt: "3.80",
       primary: "supplier:nova",
+      fallback: null,
       rule_present: true,
       suppliers: [
         {
@@ -121,6 +123,41 @@ const OVERVIEW: SourcingBrandOverviewOut = {
           has_active_mapping: true,
           latest_cost_usdt: null,
           captured_at: null,
+        },
+      ],
+    },
+  ],
+};
+
+// A voucher SKU on the automatic route: `primary="inventory"`,
+// `fallback="supplier:g2b"` — warehouse first, g2b as backup (whole-branch
+// review Important #1 and #2). Used by tests below that need the code
+// warehouse to actually be the current route, which `OVERVIEW` above never
+// exercises (every row there already routes to a supplier).
+const VOUCHER_OVERVIEW: SourcingBrandOverviewOut = {
+  items: [
+    {
+      sku_id: "sku-9",
+      sku_code: "GIFT-10",
+      denomination: null,
+      product_slug: "steam-gift",
+      price_usd: "10.00",
+      cost_usdt: "8.00",
+      primary: "inventory",
+      fallback: "supplier:g2b",
+      rule_present: false,
+      suppliers: [
+        {
+          supplier_slug: "g2b",
+          has_active_mapping: true,
+          latest_cost_usdt: "8.00",
+          captured_at: "2026-09-10T00:00:00Z",
+        },
+        {
+          supplier_slug: "nova",
+          has_active_mapping: true,
+          latest_cost_usdt: "7.50",
+          captured_at: "2026-09-15T00:00:00Z",
         },
       ],
     },
@@ -399,4 +436,108 @@ it("disables only the row whose own switch is in flight, not every row", async (
   await waitFor(() => {
     expect(within(row1).getByRole("button", { name: "авто" })).not.toBeDisabled();
   });
+});
+
+it("renders an error state, not the empty state, when the brand overview fails to load", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) {
+      return Promise.reject(new ApiError(404, "Not Found", { detail: "Бренд не найден" }));
+    }
+    return Promise.resolve({ items: [] });
+  });
+
+  renderPage();
+
+  expect(await screen.findByText("Бренд не найден")).toBeInTheDocument();
+  expect(screen.queryByText("У этого бренда нет активных SKU.")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Повторить/i })).toBeInTheDocument();
+});
+
+it("marks the fallback supplier current for a voucher SKU routed through the warehouse (Important #2)", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(VOUCHER_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+
+  renderPage();
+  await screen.findByText(/GIFT-10/);
+  const row = screen.getByText(/GIFT-10/).closest("tr");
+  if (!row) throw new Error("row not found");
+
+  // g2b is `fallback`, not `primary` — it must read as the current cost
+  // owner, with no switch button offered for it.
+  expect(within(row).getByText(/текущий/)).toBeInTheDocument();
+  expect(within(row).queryByRole("button", { name: "Переключить на g2b" })).not.toBeInTheDocument();
+  // nova is neither `primary` nor `fallback` — it stays an ordinary,
+  // switchable candidate.
+  expect(within(row).getByRole("button", { name: "Переключить на nova" })).toBeInTheDocument();
+});
+
+it("labels a supplier switch on an inventory-routed row as bypassing the warehouse (Important #1)", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(VOUCHER_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+
+  renderPage();
+  await screen.findByText(/GIFT-10/);
+  const row = screen.getByText(/GIFT-10/).closest("tr");
+  if (!row) throw new Error("row not found");
+
+  // nova's own switch button — the only offerable one on this row (g2b is
+  // already current as the fallback) — must read as taking the warehouse
+  // out of routing, not as an ordinary "сюда →" preference change.
+  const novaButton = within(row).getByRole("button", { name: "Переключить на nova" });
+  expect(novaButton).toHaveTextContent("в обход склада");
+  expect(novaButton).not.toHaveTextContent("сюда →");
+});
+
+it("adds the warehouse-bypass consequence to the bulk-apply confirmation (Important #1)", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/brands")) return Promise.resolve(BRANDS);
+    if (path.includes("/admin/sourcing/brands/")) return Promise.resolve(VOUCHER_OVERVIEW);
+    return Promise.resolve({ items: [] });
+  });
+  const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+  renderPage();
+  await screen.findByText(/GIFT-10/);
+
+  // Default bulk mode is force_supplier / g2b — ticking this inventory-
+  // routed row and applying must warn before anything is written.
+  fireEvent.click(screen.getByLabelText("Выбрать GIFT-10"));
+  fireEvent.click(screen.getByRole("button", { name: /Применить к 1/ }));
+
+  expect(confirmSpy).toHaveBeenCalledTimes(1);
+  const message = confirmSpy.mock.calls[0]?.[0] ?? "";
+  expect(message).toMatch(/1 SKU/);
+  expect(message).toMatch(/1 из них/);
+  expect(message).toMatch(/склад/);
+  expect(mockedApiPut).not.toHaveBeenCalled();
+});
+
+it("marks a row's cost as stale right after a successful switch — the write doesn't reprice it (Important #4)", async () => {
+  mockedApiPut.mockResolvedValue({
+    items: [{ sku_id: "sku-1", ok: true, error: null }],
+  } satisfies SourcingBulkRuleOut);
+
+  renderPage();
+  await screen.findByText(/MLBB-100/);
+  const row1 = screen.getByText(/MLBB-100/).closest("tr");
+  if (!row1) throw new Error("row not found");
+
+  expect(within(row1).queryByText(/не обновилась/)).not.toBeInTheDocument();
+
+  fireEvent.click(within(row1).getByRole("button", { name: "авто" }));
+
+  await waitFor(() => {
+    expect(within(row1).getByText(/не обновилась/)).toBeInTheDocument();
+  });
+  // The other, untouched row must not be flagged.
+  const row2 = screen.getByText(/MLBB-500/).closest("tr");
+  if (!row2) throw new Error("row not found");
+  expect(within(row2).queryByText(/не обновилась/)).not.toBeInTheDocument();
 });

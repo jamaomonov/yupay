@@ -40,7 +40,15 @@ export interface SourcingBrandSupplierOut {
  *  (mirrors `SourcingBrandSkuOut`). `primary` is `"inventory"`,
  *  `"supplier:<slug>"` (including the non-supplier `"supplier:manual"`
  *  sentinel), or `"invalid"` for a malformed rule the screen still needs to
- *  show rather than crash on. */
+ *  show rather than crash on.
+ *
+ *  `fallback` mirrors `Decision.fallback` (same shape as `primary`, or
+ *  `null` when the route is `strict`). For a voucher SKU on the automatic
+ *  route, `primary` is `"inventory"` and the cost owner — the supplier the
+ *  warehouse falls back to, and whose cost the operator is actually
+ *  comparing — lives in `fallback`, not `primary`. A screen that only ever
+ *  reads `primary` to decide "which supplier is current" marks no
+ *  supplier at all for that row (whole-branch review, Important #2). */
 export interface SourcingBrandSkuOut {
   sku_id: string;
   sku_code: string;
@@ -49,6 +57,7 @@ export interface SourcingBrandSkuOut {
   price_usd: string;
   cost_usdt: string | null;
   primary: string;
+  fallback: string | null;
   rule_present: boolean;
   suppliers: SourcingBrandSupplierOut[];
 }
