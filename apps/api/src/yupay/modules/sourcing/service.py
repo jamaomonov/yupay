@@ -122,6 +122,15 @@ def _pick_auto_mapping_slug(mappings: Iterable[SkuSupplierMapping]) -> str | Non
     iteration order. `supplier_slug` breaks a `created_at` tie so the
     answer is total.
 
+    `created_at` being `nullable=False` on `SkuSupplierMapping` (see
+    `integrations.models`) is load-bearing for that comparison, not just a
+    schema nicety: Postgres sorts `NULL` last but Python's `<` on a tuple
+    containing `None` raises `TypeError` the moment two mappings are
+    compared, so this function — which never touches SQL `ORDER BY` — would
+    blow up on the first tie-break against a null-`created_at` row instead of
+    quietly mis-ordering it. Don't drop that constraint without re-checking
+    this comparison.
+
     Args:
         mappings: A single SKU's mapping rows, any mix of active/inactive
             and any supplier — the filtering happens in here.
@@ -136,6 +145,15 @@ def _pick_auto_mapping_slug(mappings: Iterable[SkuSupplierMapping]) -> str | Non
     for mapping in mappings:
         if not mapping.is_active or mapping.supplier_slug in RESERVE_SUPPLIERS:
             continue
+        # `supplier_slug` tie-break: Python codepoint order, where the old
+        # SQL this replaced used the database collation. Reachable only on
+        # an exact `created_at` tie, and every slug in use today is
+        # `[a-z0-9-]`, where codepoint order and the default (`C`-like,
+        # case-sensitive-byte) Postgres collation agree — so this has never
+        # actually diverged. It will diverge the first time a slug carries
+        # an uppercase or non-ASCII character; whoever adds one should
+        # re-check this line against the collation
+        # `sku_supplier_mapping.supplier_slug` is actually stored under.
         if best is None or (mapping.created_at, mapping.supplier_slug) < (
             best.created_at,
             best.supplier_slug,
