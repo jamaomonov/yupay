@@ -5328,7 +5328,7 @@
         "type": "object"
       },
       "CostSyncResult": {
-        "description": "Outcome of the on-save cost refresh.\n\nReturned alongside the upsert response so the admin UI can flash\neither \"cost updated from $X.XX \u2192 $Y.YY\" or a clear reason when we\ncouldn't pull a price (cache miss, unknown denom, etc).",
+        "description": "Outcome of the on-save cost refresh.\n\nReturned alongside the upsert response so the admin UI can flash\neither \"cost updated from $X.XX \u2192 $Y.YY\" or a clear reason when we\ncouldn't pull a price (cache miss, unknown denom, etc).\n\n``old_price``/``new_price``/``price_drop_blocked`` mirror\n``CostRefreshOutcome``'s own fields (``integrations.cost_refresh``) \u2014\nwithout them here, the one intentional downward-price path\n(``integrations.routes._refresh_sku_cost`` always passes\n``allow_price_drop=True``, per ADR-0083 Decision 2) is invisible to the\noperator who triggers it: the mapping-save response would say only\n\"cost updated\" while the shelf price silently dropped by the banked\nmargin.",
         "properties": {
           "new_cost": {
             "anyOf": [
@@ -5341,6 +5341,17 @@
             ],
             "title": "New Cost"
           },
+          "new_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Price"
+          },
           "old_cost": {
             "anyOf": [
               {
@@ -5351,6 +5362,22 @@
               }
             ],
             "title": "Old Cost"
+          },
+          "old_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Price"
+          },
+          "price_drop_blocked": {
+            "default": false,
+            "title": "Price Drop Blocked",
+            "type": "boolean"
           },
           "reason": {
             "anyOf": [
@@ -14817,6 +14844,240 @@
         "title": "SkuUpdate",
         "type": "object"
       },
+      "SourcingBrandOverviewOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourcingBrandSkuOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SourcingBrandOverviewOut",
+        "type": "object"
+      },
+      "SourcingBrandSkuOut": {
+        "description": "One active SKU's sourcing picture for the brand-overview screen.\n\n``fallback`` mirrors ``SourcingDecisionOut.fallback`` / ``Decision.\nfallback`` \u2014 it is what carries the real cost owner for a voucher SKU\nrouted ``primary=\"inventory\"``: ``integrations.cost_refresh.\n_is_routed_supplier`` treats ``primary == \"inventory\" and fallback ==\n\"supplier:<slug>\"`` as \"<slug> owns this SKU's ``Sku.cost_usdt``\"\n(ADR-0083 Decision 1). Without it here, this screen \u2014 built to show who\nowns a SKU's cost \u2014 could not show that for any voucher SKU.",
+        "properties": {
+          "cost_usdt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usdt"
+          },
+          "denomination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denomination"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "primary": {
+            "title": "Primary",
+            "type": "string"
+          },
+          "product_slug": {
+            "title": "Product Slug",
+            "type": "string"
+          },
+          "rule_present": {
+            "title": "Rule Present",
+            "type": "boolean"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          },
+          "suppliers": {
+            "items": {
+              "$ref": "#/components/schemas/SourcingBrandSupplierOut"
+            },
+            "title": "Suppliers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sku_id",
+          "sku_code",
+          "denomination",
+          "product_slug",
+          "price_usd",
+          "cost_usdt",
+          "primary",
+          "fallback",
+          "rule_present",
+          "suppliers"
+        ],
+        "title": "SourcingBrandSkuOut",
+        "type": "object"
+      },
+      "SourcingBrandSupplierOut": {
+        "description": "One candidate supplier's mapping + latest cost for a single SKU.\n\nThe candidate set the brand-overview endpoint reports is\n``MAPPING_REQUIRED_SUPPLIERS`` (g2b, gengine, nova) *union* every\nsupplier that actually has a mapping row among the brand's SKUs *union*\nevery supplier named by a ``force_supplier`` rule among those SKUs\n(``integrations.models``, ADR-0019). The fixed half means a supplier\nthe SKU has never been mapped to still gets a row here, with\n``has_active_mapping=False`` and no cost, so an operator comparing\nsuppliers can see it as a switch target rather than it silently being\nabsent. The two union halves mean a supplier outside that fixed set\n(e.g. waxpeer) that won the live route \u2014 either via a mapping\n(``_pick_auto_mapping_slug``) or via an explicit ``force_supplier`` rule\n(``_resolve_explicit_rule``, which accepts any slug, mapping or not) \u2014\nstill appears here too.\n\nFor a **real supplier** (a slug the fulfilment ``REGISTRY`` actually\ndispatches to), this list is guaranteed to contain whatever\n``SourcingBrandSkuOut.primary`` names \u2014 that is the invariant it exists\nto uphold, so the reported route never names a supplier absent from its\nown comparison. ``primary`` can still be ``\"supplier:manual\"`` on a\n``top_up`` SKU with no mapping and no rule (``_auto_decision``'s\nno-mapping fallback) or an explicit ``mode=\"manual\"`` rule \u2014 ``manual``\nis not a supplier, has no ``SkuSupplierMapping``/``SupplierPriceHistory``\nrows, and is never a candidate here; the UI renders it as \"no automated\nroute\" rather than looking it up in this list. Same for ``\"invalid\"`` \u2014\n``brand_overview.get_brand_overview``'s per-row fallback for a malformed\n``force_supplier`` rule with no ``supplier_slug`` \u2014 which names no\nsupplier at all. Sorted alphabetically for a stable order.\n\n``latest_cost_usdt`` is a string (mirrors\n``integrations.schemas.PricePointOut.cost_usdt``, the other DTO that\nsurfaces a ``supplier_price_history`` row) rather than the ``Decimal``\nused for the SKU's own ``price_usd``/``cost_usdt`` below \u2014 those two\nare ``Sku`` columns exposed the way ``catalog.admin_schemas.AdminSkuOut``\nalready exposes them.",
+        "properties": {
+          "captured_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "has_active_mapping": {
+            "title": "Has Active Mapping",
+            "type": "boolean"
+          },
+          "latest_cost_usdt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Cost Usdt"
+          },
+          "supplier_slug": {
+            "title": "Supplier Slug",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier_slug",
+          "has_active_mapping",
+          "latest_cost_usdt",
+          "captured_at"
+        ],
+        "title": "SourcingBrandSupplierOut",
+        "type": "object"
+      },
+      "SourcingBulkRuleIn": {
+        "additionalProperties": false,
+        "description": "Switch many SKUs to one sourcing decision in a single request.",
+        "properties": {
+          "mode": {
+            "enum": [
+              "auto",
+              "force_inventory",
+              "force_supplier",
+              "manual"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "sku_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Sku Ids",
+            "type": "array"
+          },
+          "supplier_slug": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Slug"
+          }
+        },
+        "required": [
+          "sku_ids",
+          "mode"
+        ],
+        "title": "SourcingBulkRuleIn",
+        "type": "object"
+      },
+      "SourcingBulkRuleOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourcingBulkRuleResultOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SourcingBulkRuleOut",
+        "type": "object"
+      },
+      "SourcingBulkRuleResultOut": {
+        "description": "One SKU's outcome inside a bulk write \u2014 success or a named failure.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "ok"
+        ],
+        "title": "SourcingBulkRuleResultOut",
+        "type": "object"
+      },
       "SourcingDecisionOut": {
         "properties": {
           "fallback": {
@@ -23412,6 +23673,7 @@
     },
     "/api/v1/admin/integrations/sku-prices/{sku_id}/history": {
       "get": {
+        "description": "Newest-first cost history for a SKU, optionally scoped to one\nsupplier. Unfiltered (``supplier_slug`` omitted) matches every caller\nfrom before this branch, when the table held only G2B rows; now that\nTask 1 writes a row for every active mapping, a caller that wants one\nsupplier's own series \u2014 not an interleaved multi-supplier one \u2014 passes\nit.",
         "operationId": "sku_price_history_api_v1_admin_integrations_sku_prices__sku_id__history_get",
         "parameters": [
           {
@@ -23421,6 +23683,24 @@
             "schema": {
               "title": "Sku Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "supplier_slug",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier Slug"
             }
           },
           {
@@ -26902,6 +27182,64 @@
         ]
       }
     },
+    "/api/v1/admin/sourcing/brands/{brand_slug}": {
+      "get": {
+        "operationId": "brand_overview_api_v1_admin_sourcing_brands__brand_slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_slug",
+            "required": true,
+            "schema": {
+              "title": "Brand Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingBrandOverviewOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Sourcing overview for every active SKU of a brand",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
     "/api/v1/admin/sourcing/rules": {
       "get": {
         "operationId": "list_rules_api_v1_admin_sourcing_rules_get",
@@ -27161,6 +27499,82 @@
           }
         },
         "summary": "Upsert the rule for a SKU",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
+    "/api/v1/admin/sourcing/rules:bulk": {
+      "put": {
+        "description": "Apply one sourcing decision to up to :data:`MAX_BULK_SKU_IDS` SKUs at once.\n\n``body.sku_ids`` is capped at :data:`MAX_BULK_SKU_IDS` (100) \u2014 a longer\nlist is a whole-request 422, not 100 individual failures; a caller with\nmore SKUs than that (e.g. a brand larger than 100) must chunk the\nrequest itself. Each listed SKU is its own unit of work: one SKU with no\nactive mapping for a forced supplier, or a concurrent write racing it,\nfails by name in that item's ``{sku_id, ok: false, error}`` without\naborting the rest \u2014 partial success, not all-or-nothing. Same\n``Idempotency-Key`` contract as every other write here (\u00a79 AGENTS.md):\none key per attempt, not per selection \u2014 see the module ``README.md``.\n\nArgs:\n    body: ``{sku_ids, mode, supplier_slug}`` \u2014 one decision for every\n        listed SKU.\n    db: Request-scoped session (``core.db.get_session``).\n    admin: The authenticated admin caller; recorded as each written\n        rule's ``updated_by``.\n    idempotency_key: Optional ``Idempotency-Key`` header; a repeat with\n        the same key replays the first response verbatim.\n\nReturns:\n    One result per input SKU, in input order.",
+        "operationId": "bulk_upsert_rules_api_v1_admin_sourcing_rules_bulk_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcingBulkRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingBulkRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Switch many SKUs to one sourcing decision in a single request",
         "tags": [
           "admin:sourcing"
         ]

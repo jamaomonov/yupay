@@ -46,6 +46,7 @@ import { ProvidersPage } from "@/features/payments/providers/ProvidersPage";
 import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { PromoPage } from "@/features/promo/PromoPage";
 import { ReviewsPage } from "@/features/reviews/ReviewsPage";
+import { BrandSourcingPage } from "@/features/sourcing/BrandSourcingPage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
 import { UsersListPage } from "@/features/users/UsersListPage";
 import { WalletPage } from "@/features/wallet/WalletPage";
@@ -81,6 +82,8 @@ export const router = createBrowserRouter([
           { path: "/skus/:id", element: <SkuEditPage /> },
           { path: "/inventory", element: <InventoryPage /> },
           { path: "/sourcing", element: <SourcingPage /> },
+          { path: "/sourcing/brands", element: <BrandSourcingPage /> },
+          { path: "/sourcing/brands/:brandSlug", element: <BrandSourcingPage /> },
           { path: "/orders", element: <OrdersListPage /> },
           { path: "/orders/:id", element: <OrderDetailPage /> },
           { path: "/payments", element: <PaymentsPage /> },

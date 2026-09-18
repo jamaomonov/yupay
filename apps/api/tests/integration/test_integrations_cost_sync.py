@@ -117,6 +117,54 @@ async def _seed_sku(db: AsyncSession, kind: str) -> str:
     return sku.id
 
 
+async def _seed_priced_sku(
+    db: AsyncSession, slug_suffix: str, *, cost_usdt: str, price_usd: str, margin_percent: str
+) -> str:
+    """Like ``_seed_sku`` but with a cost basis and a saved margin, for the
+    ratchet tests: a mapping save is the one caller of
+    ``set_sku_cost_usdt`` that still passes ``allow_price_drop=True``."""
+    category = Category(
+        id=new_id(),
+        slug=f"cat-{slug_suffix}",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Cat")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug=f"br-{slug_suffix}",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="Br")],
+    )
+    product = Product(
+        id=new_id(),
+        slug=f"prod-{slug_suffix}",
+        brand_id=brand.id,
+        kind="top_up",
+        sort_order=10,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="Prod")],
+    )
+    sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code=f"sk-{slug_suffix}",
+        denomination="60",
+        region="WW",
+        price_usd=Decimal(price_usd),
+        cost_usdt=Decimal(cost_usdt),
+        margin_percent=Decimal(margin_percent),
+        sort_order=10,
+        active=True,
+    )
+    db.add_all([category, brand, product, sku])
+    await db.commit()
+    return sku.id
+
+
 # ---------- voucher branch ----------
 
 
@@ -236,3 +284,52 @@ async def test_cost_sync_game_unknown_denom_reports_reason(
     body = r.json()
     assert body["cost_sync"]["updated"] is False
     assert "9001" in (body["cost_sync"]["reason"] or "")
+
+
+# ---------- allow_price_drop — the mapping-save route is "the admin path" ----------
+
+
+@respx.mock
+async def test_mapping_save_still_lowers_price_on_a_cost_drop(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """The mapping-save route calls ``refresh_sku_cost_for_mapping`` with
+    ``allow_price_drop=True`` — an operator choosing this mapping in the
+    admin UI may still lower a SKU's price. This is the "admin path"
+    Task 2 exempts from the hourly ratchet: unlike the automatic refresh,
+    this call site must keep lowering the price on a cost drop, exactly
+    as it did before ``allow_price_drop`` existed."""
+    sku_id = await _seed_priced_sku(
+        db_session, "admin-drop", cost_usdt="10.00", price_usd="12.00", margin_percent="20"
+    )
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200,
+            json={"catalogues": [{"id": 264, "name": "60", "amount": 8.00}]},
+        )
+    )
+    admin = await _login_admin(integration_client, db_session, tg_id=805)
+    r = await integration_client.put(
+        f"/api/v1/admin/integrations/mappings/{sku_id}",
+        headers={"Authorization": f"Bearer {admin}"},
+        json={
+            "supplier_slug": "g2b",
+            "kind": "game",
+            "external_product_id": "pubgm",
+            "external_variant_id": "60",
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["cost_sync"]["updated"] is True
+    assert body["cost_sync"]["new_cost"] == "8.0"
+    # The intentional downward-price path, visible to the operator who
+    # triggered it — not just "cost updated" with the price drop hidden.
+    assert Decimal(body["cost_sync"]["old_price"]) == Decimal("12.00")
+    assert Decimal(body["cost_sync"]["new_price"]) == Decimal("9.60")
+    assert body["cost_sync"]["price_drop_blocked"] is False
+
+    sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
+    assert sku.cost_usdt == Decimal("8.00")
+    assert sku.price_usd == Decimal("9.60"), "20% margin on the new $8 cost — the price must drop"

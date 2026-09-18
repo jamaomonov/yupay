@@ -166,6 +166,21 @@ export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
 };
 
 /**
+ * Suppliers a SKU is never routed to **automatically** — mirrors
+ * `RESERVE_SUPPLIERS` in `apps/api/src/yupay/modules/integrations/models.py`
+ * (ADR-0081). A reserve is reached only through an explicit `force_supplier`
+ * choice, never as the outcome of `mode: "auto"`; no sourcing screen may
+ * offer one as an automatic route.
+ *
+ * This is a straight port of the backend set (ADR-0082's lesson: a rule
+ * that exists on both sides of the API has two homes — change one, change
+ * both). Used by the sourcing screens to label a reserve supplier's cost
+ * cell ("резерв") and to keep it out of anything that would imply "auto"
+ * — it stays fully offerable as an explicit `force_supplier` target.
+ */
+export const RESERVE_SUPPLIERS: ReadonlySet<string> = new Set(["nova"]);
+
+/**
  * What a supplier actually supports, so the page offers only what will work.
  *
  * Waxpeer sells one thing — a Steam wallet top-up priced by the dollar amount
@@ -287,6 +302,15 @@ export function hasCatalogueCache(slug: string): boolean {
 
 function isKnownSupplier(slug: string): slug is KnownSupplier {
   return (KNOWN_SUPPLIERS as readonly string[]).includes(slug);
+}
+
+/** Best-effort human label for a supplier slug — same narrowing precedent
+ *  as `hasCatalogueCache` above. Used by the SKU price-history card/modal
+ *  to say which supplier a row's price belongs to, now that
+ *  `supplier_price_history` can interleave rows from more than one active
+ *  mapping for the same SKU. */
+export function supplierLabel(slug: string): string {
+  return isKnownSupplier(slug) ? SUPPLIER_LABELS[slug] : slug;
 }
 
 /** Why a supplier shows no catalogue tooling — stated rather than left as a

@@ -8,6 +8,14 @@ the 95% target (payments, wallet, fulfillment, supplier adapters) and the
 default gate reaches 80%.
 
 Usage: python scripts/check_module_coverage.py coverage.json
+
+**Measure from the repo root, or pass the config explicitly.** Running
+``pytest --cov`` from inside ``apps/api/`` does not pick up the root
+``pyproject.toml``'s ``core = "sysmon"`` override, and without it coverage
+silently undercounts every async-DB function by roughly sixty points — the
+ctrace/greenlet interaction that override exists to document. A floor set from
+such a run is not a floor, it is a number. Use
+``--cov-config=<repo-root>/pyproject.toml`` when measuring from elsewhere.
 """
 
 from __future__ import annotations
@@ -23,6 +31,12 @@ FLOORS: dict[str, tuple[float, float]] = {
     "modules/fulfillment": (95.0, 95.0),
     "modules/inventory": (89.0, 95.0),
     "modules/integrations": (90.0, 95.0),
+    # Not on AGENTS.md §8's named list, but route-deciding and money-adjacent
+    # (a wrong route picks the wrong cost basis — ADR-0083) the same way
+    # inventory and integrations are, and this branch alone added ~400 LOC
+    # here. Floor set from the sourcing/bulk-rules/brand-overview integration
+    # suites alone (96.02% measured 2026-09-18), a small margin under.
+    "modules/sourcing": (95.0, 95.0),
 }
 
 

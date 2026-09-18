@@ -13,60 +13,24 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
-import { ArrowRight, Boxes, Hand, Sparkles, Truck, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+
+import { RulesTable } from "./RulesTable";
+import { autoHintFor, MODE_CARDS, ModeOption } from "./SourcingModeCards";
+import { RoutePreview, SkuSummary } from "./SourcingSkuPanel";
+import { SUPPLIER_OPTIONS } from "./supplierOptions";
 
 import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
 
-import { Badge } from "@/components/Badge";
-import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { SkuPicker } from "@/features/integrations/pickers";
 import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, api, apiGet } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
-
-// Suppliers that make sense as a ``force_supplier`` target. Derived from the
-// shared route table so a newly integrated supplier shows up here without a
-// second edit — the list used to be G2B-only, which quietly made every other
-// supplier unreachable from this screen.
-const SUPPLIER_OPTIONS = FULFILMENT_ROUTES.filter((r) => r.external || r.slug === "mock");
-
-interface ModeCard {
-  value: SourcingMode;
-  label: string;
-  icon: typeof Sparkles;
-  blurb: string;
-}
-
-const MODE_CARDS: ModeCard[] = [
-  {
-    value: "auto",
-    label: "Авто",
-    icon: Sparkles,
-    blurb: "Система решает по типу товара. Обычно ничего настраивать не нужно.",
-  },
-  {
-    value: "force_supplier",
-    label: "Только поставщик",
-    icon: Truck,
-    blurb: "Всегда выкупать у поставщика, минуя склад. Нужно выбрать какого.",
-  },
-  {
-    value: "force_inventory",
-    label: "Только склад",
-    icon: Warehouse,
-    blurb: "Выдавать только из склада кодов. Нет кодов — заказ упадёт в ошибку.",
-  },
-  {
-    value: "manual",
-    label: "Вручную",
-    icon: Hand,
-    blurb: "Без автоматики — заказ попадёт в очередь ручной выдачи оператору.",
-  },
-];
 
 export function SourcingPage() {
   const qc = useQueryClient();
@@ -129,13 +93,21 @@ export function SourcingPage() {
   }, [sku?.id, rulesQuery.data]);
 
   const save = useMutation<unknown, ApiError>({
+    // AGENTS.md §9: every state-changing request carries a fresh
+    // Idempotency-Key, minted per attempt (here, inside mutationFn — same
+    // "per attempt, never reused" policy `bulkSwitch.ts` documents, just
+    // for a single-SKU write instead of a chunked one).
     mutationFn: () => {
       if (mode === "auto") {
         // "Авто" === no explicit rule. Saving auto deletes any override.
-        return api(`/api/v1/admin/sourcing/rules/${sku?.id ?? ""}`, { method: "DELETE" });
+        return api(`/api/v1/admin/sourcing/rules/${sku?.id ?? ""}`, {
+          method: "DELETE",
+          headers: { "Idempotency-Key": crypto.randomUUID() },
+        });
       }
       return api(`/api/v1/admin/sourcing/rules/${sku?.id ?? ""}`, {
         method: "PUT",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
         body: JSON.stringify({
           mode,
           supplier_slug: mode === "force_supplier" ? supplierSlug : null,
@@ -148,89 +120,39 @@ export function SourcingPage() {
       void qc.invalidateQueries({ queryKey: qk.sourcingDecision(sku?.id ?? "") });
     },
     onError: (err) => {
-      toast.error(formatApiError(err));
+      toast.error(extractApiMessage(err));
     },
   });
 
   const remove = useMutation<void, ApiError, string>({
-    mutationFn: (skuId) => api<void>(`/api/v1/admin/sourcing/rules/${skuId}`, { method: "DELETE" }),
+    // Same gap, same file, same rule — see the comment on `save` above.
+    mutationFn: (skuId) =>
+      api<void>(`/api/v1/admin/sourcing/rules/${skuId}`, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+      }),
     onSuccess: () => {
       toast.success("Правило удалено — SKU вернулся в авто");
       void qc.invalidateQueries({ queryKey: qk.sourcingRules() });
       void qc.invalidateQueries({ queryKey: qk.sourcingDecision(sku?.id ?? "") });
     },
     onError: (err) => {
-      toast.error(formatApiError(err));
+      toast.error(extractApiMessage(err));
     },
   });
 
   const canSave = sku !== null && (mode !== "force_supplier" || supplierSlug.trim().length > 0);
-
-  const columns: Column<SourcingRuleListOut["items"][number]>[] = [
-    {
-      key: "sku",
-      header: "SKU",
-      render: (r) => (
-        <code className="font-mono text-xs text-[var(--text-secondary)]">{r.sku_code}</code>
-      ),
-      className: "w-40",
-    },
-    {
-      key: "mode",
-      header: "Режим",
-      render: (r) => <ModeBadge mode={r.mode} />,
-      className: "w-44",
-    },
-    {
-      key: "supplier",
-      header: "Поставщик",
-      render: (r) =>
-        r.supplier_slug ? (
-          <code className="text-xs">{r.supplier_slug}</code>
-        ) : (
-          <span className="text-[var(--text-tertiary)]">—</span>
-        ),
-      className: "w-32",
-    },
-    {
-      key: "updated",
-      header: "Обновлено",
-      render: (r) =>
-        new Date(r.updated_at).toLocaleString("ru", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      className: "w-40",
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(ev) => {
-            ev.stopPropagation();
-            if (window.confirm("Удалить правило? SKU вернётся в режим авто.")) {
-              remove.mutate(r.sku_id);
-            }
-          }}
-        >
-          Удалить
-        </Button>
-      ),
-      className: "w-24 text-right",
-    },
-  ];
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="Маршрутизация (sourcing)"
         description="Откуда брать товар при оплате каждого SKU — из склада кодов или у поставщика."
+        actions={
+          <Link to="/sourcing/brands" className="text-sm text-[var(--accent)] hover:underline">
+            Сравнить поставщиков по бренду →
+          </Link>
+        }
       />
 
       <section className="space-y-5 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-5 shadow-[var(--shadow-sm)]">
@@ -328,196 +250,14 @@ export function SourcingPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
           Явные правила
         </h2>
-        <DataTable
-          rows={rulesQuery.data?.items ?? []}
-          columns={columns}
-          rowKey={(r) => r.sku_id}
+        <RulesTable
+          rules={rulesQuery.data?.items ?? []}
           loading={rulesQuery.isLoading}
-          empty="Явных правил нет — все SKU работают в режиме авто."
+          onDelete={(skuId) => {
+            remove.mutate(skuId);
+          }}
         />
       </section>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// SKU summary
-// ---------------------------------------------------------------------------
-
-function SkuSummary({
-  sku,
-  mapping,
-}: {
-  sku: SkuPickerRow;
-  mapping: { supplier_slug: string } | null;
-}) {
-  const isTopUp = sku.product_kind === "top_up";
-  return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md bg-[var(--bg-muted)] px-3 py-2 text-sm">
-      <span className="font-medium">{sku.product_name}</span>
-      <code className="text-xs text-[var(--text-secondary)]">{sku.sku_code}</code>
-      <Badge
-        tone={
-          isTopUp
-            ? "bg-[var(--info-soft)] text-[var(--info-fg)]"
-            : "bg-[var(--bg-surface)] text-[var(--text-secondary)]"
-        }
-      >
-        {isTopUp ? "игровой топ-ап" : "ваучер"}
-      </Badge>
-      {mapping ? (
-        <Badge tone="bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]" dot>
-          маппинг: {mapping.supplier_slug}
-        </Badge>
-      ) : (
-        <Badge tone="bg-[var(--bg-surface)] text-[var(--text-tertiary)]">нет маппинга</Badge>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Route preview
-// ---------------------------------------------------------------------------
-
-function RoutePreview({ decision, loading }: { decision: SourcingDecisionOut; loading: boolean }) {
-  return (
-    <div className="rounded-md border border-dashed border-[var(--border-default)] p-3">
-      <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
-        Что произойдёт при оплате
-        {loading && <span className="text-[var(--text-tertiary)]">· обновляем…</span>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <RouteNode route={decision.primary} primary />
-        {decision.fallback && !decision.strict && (
-          <>
-            <span className="text-[var(--text-tertiary)]">
-              <ArrowRight className="size-4" aria-hidden />
-            </span>
-            <span className="text-xs text-[var(--text-tertiary)]">если не вышло →</span>
-            <RouteNode route={decision.fallback} primary={false} />
-          </>
-        )}
-        {decision.strict && (
-          <span className="text-xs text-[var(--text-tertiary)]">(без запасного варианта)</span>
-        )}
-      </div>
-      {!decision.rule_present && (
-        <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">
-          Режим «авто» — правило не задано явно.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function RouteNode({ route, primary }: { route: string; primary: boolean }) {
-  const { icon: Icon, label } = describeRoute(route);
-  return (
-    <span
-      className={[
-        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm",
-        primary
-          ? "bg-[var(--bg-accent-soft)] font-medium text-[var(--accent-soft-fg)]"
-          : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-      ].join(" ")}
-    >
-      <Icon className="size-4" aria-hidden />
-      {label}
-    </span>
-  );
-}
-
-function describeRoute(route: string): { icon: typeof Boxes; label: string } {
-  if (route === "inventory") return { icon: Warehouse, label: "Склад кодов" };
-  const slug = route.startsWith("supplier:") ? route.slice("supplier:".length) : route;
-  if (slug === "manual") return { icon: Hand, label: "Ручная выдача" };
-  if (slug === "g2b") return { icon: Truck, label: "Поставщик G2Bulk" };
-  if (slug === "mock") return { icon: Boxes, label: "Mock (dev)" };
-  return { icon: Truck, label: `Поставщик ${slug}` };
-}
-
-// ---------------------------------------------------------------------------
-// Mode option card
-// ---------------------------------------------------------------------------
-
-function ModeOption({
-  card,
-  selected,
-  autoHint,
-  onSelect,
-}: {
-  card: ModeCard;
-  selected: boolean;
-  autoHint: string | null;
-  onSelect: () => void;
-}) {
-  const Icon = card.icon;
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={[
-        "flex flex-col gap-1.5 rounded-md border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]",
-        selected
-          ? "border-[var(--accent)] bg-[var(--bg-accent-soft)]"
-          : "border-[var(--border-default)] hover:bg-[var(--bg-muted)]",
-      ].join(" ")}
-    >
-      <span className="flex items-center gap-2">
-        <Icon className="size-4 text-[var(--accent)]" aria-hidden />
-        <span className="font-medium">{card.label}</span>
-      </span>
-      <span className="text-xs text-[var(--text-secondary)]">{card.blurb}</span>
-      {autoHint && (
-        <span className="mt-0.5 rounded bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">
-          {autoHint}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** Human explanation of what "auto" resolves to for THIS sku. */
-function autoHintFor(sku: SkuPickerRow, mapping: { supplier_slug: string } | null): string {
-  if (sku.product_kind === "top_up") {
-    return mapping
-      ? `Сейчас: поставщик ${mapping.supplier_slug} → при отказе ручная выдача.`
-      : "Сейчас: ручная выдача (нет маппинга на поставщика).";
-  }
-  return mapping
-    ? `Сейчас: склад → при пустом складе поставщик ${mapping.supplier_slug}.`
-    : "Сейчас: склад → при пустом складе mock (dev) / ошибка (prod).";
-}
-
-// ---------------------------------------------------------------------------
-// shared
-// ---------------------------------------------------------------------------
-
-function ModeBadge({ mode }: { mode: SourcingMode }) {
-  const map: Record<SourcingMode, { label: string; cls: string }> = {
-    auto: { label: "авто", cls: "bg-[var(--bg-muted)] text-[var(--text-secondary)]" },
-    force_inventory: {
-      label: "только склад",
-      cls: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-    },
-    force_supplier: {
-      label: "только поставщик",
-      cls: "bg-[var(--info-soft)] text-[var(--info-fg)]",
-    },
-    manual: { label: "вручную", cls: "bg-[var(--warning-soft)] text-[var(--warning-fg)]" },
-  };
-  const { label, cls } = map[mode];
-  return (
-    <Badge tone={cls} dot={mode !== "auto"}>
-      {label}
-    </Badge>
-  );
-}
-
-function formatApiError(err: ApiError): string {
-  const body = err.body as { detail?: string; title?: string } | null;
-  return body?.detail ?? body?.title ?? err.message;
 }

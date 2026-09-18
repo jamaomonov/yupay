@@ -15,6 +15,7 @@ import { History, TrendingDown, TrendingUp } from "lucide-react";
 import { useState } from "react";
 
 import { SkuPriceHistoryModal } from "./SkuPriceHistoryModal";
+import { supplierLabel } from "./types";
 
 import type { PriceHistoryListOut } from "./types";
 
@@ -52,8 +53,21 @@ export function SkuPriceHistoryCard({ skuId, skuCode }: Props) {
   const items = query.data?.items ?? [];
   if (items.length === 0) return null;
 
+  // `supplier_price_history` now carries a row per active mapping, not just
+  // G2B's — up to 22 production SKUs already interleave two suppliers'
+  // rows. Mixing them into one series would zig-zag between two suppliers'
+  // price *levels* and report a delta that's really just a supplier switch,
+  // not a price move (whole-branch review, Important #3). Pin this compact
+  // card to the most-recently-captured supplier's own rows only — `items`
+  // is newest-first, so that's `items[0]`'s supplier; every other
+  // supplier's rows still live in "Вся история" (`SkuPriceHistoryModal`),
+  // now labelled per row.
+  const currentSupplier = items[0]!.supplier_slug;
+  const currentItems = items.filter((p) => p.supplier_slug === currentSupplier);
+  const hasOtherSuppliers = items.some((p) => p.supplier_slug !== currentSupplier);
+
   // History is newest-first; sparkline wants oldest-first.
-  const ordered = [...items].reverse();
+  const ordered = [...currentItems].reverse();
   const values = ordered.map((p) => Number.parseFloat(p.cost_usdt));
   const first = values[0]!;
   const last = values[values.length - 1]!;
@@ -66,8 +80,9 @@ export function SkuPriceHistoryCard({ skuId, skuCode }: Props) {
         <div>
           <h3 className="text-sm font-medium">История цены поставщика</h3>
           <p className="text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
-            {items.length.toString()} точек · последняя{" "}
+            {supplierLabel(currentSupplier)} · {currentItems.length.toString()} точек · последняя{" "}
             {formatDate(ordered[ordered.length - 1]!.captured_at)}
+            {hasOtherSuppliers && " · есть и другие поставщики — см. «Вся история»"}
           </p>
         </div>
         <DeltaBadge delta={delta} trendUp={trendUp} />
@@ -75,7 +90,9 @@ export function SkuPriceHistoryCard({ skuId, skuCode }: Props) {
 
       <div className="flex items-center justify-between gap-4">
         <div className="flex flex-col">
-          <span className="text-xs text-[var(--text-tertiary)]">Текущая</span>
+          <span className="text-xs text-[var(--text-tertiary)]">
+            Текущая ({supplierLabel(currentSupplier)})
+          </span>
           <span className="font-mono text-lg">${last.toFixed(4)}</span>
         </div>
         <Sparkline values={values} width={220} height={48} ariaLabel="История цены" />

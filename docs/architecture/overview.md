@@ -50,8 +50,10 @@ Deliver → Reward`. State lives in `fulfillment_tasks`.
   currency per transaction).
 - **Payment gateway abstraction** — common protocol for Stripe / PayPal / YooKassa / Click /
   Payme / Uzum / Crypto.
-- **Supplier abstraction** — `SupplierClient` protocol with `tenacity` retries and
-  `purgatory` circuit breakers per vendor.
+- **Supplier abstraction** — the `Fulfiller` protocol (`fulfillment/suppliers/base.py`), one
+  module per vendor under `fulfillment/suppliers/`, registered in that package's `REGISTRY`,
+  with `tenacity` retries and `purgatory` circuit breakers per vendor. (`SupplierClient`, named
+  here in an earlier revision, is not a protocol this codebase defines.)
 - **Metrics** — per-route counts/latencies come from the FastAPI instrumentator; domain
   counters live in `core.metrics` with closed `Literal` label vocabularies and recorders
   that can never fail a request. Never a label: an id, a link, a nickname, an IP.

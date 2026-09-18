@@ -398,17 +398,25 @@ class CostUpdateResult:
     """Return of :func:`set_sku_cost_usdt` — what changed and why.
 
     ``previous_price``/``new_price``/``margin_percent`` are populated only
-    when the SKU had a saved margin *and* the cost actually moved — that's
-    the case this exists for: re-deriving price_usd so a SKU nobody is
-    actively watching never quietly starts selling below cost. A SKU with
-    no saved margin gets only its cost updated, exactly as before this
-    existed.
+    when the SKU had a saved margin *and* the cost actually moved *and* the
+    re-derived price was actually written — that's the case this exists
+    for: re-deriving price_usd so a SKU nobody is actively watching never
+    quietly starts selling below cost. A SKU with no saved margin gets only
+    its cost updated, exactly as before this existed.
+
+    ``price_drop_blocked`` covers the fourth combination: a margin was on
+    file, the cost moved *down*, and ``allow_price_drop=False`` refused the
+    lower candidate price — cost still updates, price_usd is left exactly
+    as it was, and none of the three fields above are populated. Distinct
+    from "no margin at all" so a caller (the price-refresh alert) can tell
+    the two apart instead of both reading as silence.
     """
 
     previous_cost: Decimal | None
     previous_price: Decimal | None = None
     new_price: Decimal | None = None
     margin_percent: Decimal | None = None
+    price_drop_blocked: bool = False
 
 
 async def set_sku_cost_usdt(
@@ -416,9 +424,12 @@ async def set_sku_cost_usdt(
     *,
     sku_id: str,
     new_cost: Decimal,
+    allow_price_drop: bool = True,
 ) -> CostUpdateResult:
     """Replace ``Sku.cost_usdt`` and, when a margin is on file, re-derive
-    ``price_usd`` from it so the sale price tracks the new cost.
+    ``price_usd`` from it — subject to ``allow_price_drop``, which the
+    automatic path sets to ``False`` so a cheaper supplier widens the margin
+    instead of cutting the shelf price.
 
     Refuses to write a non-positive cost; mirrors the
     ``ck_skus_cost_usdt_positive`` check at the DB layer with a clearer
@@ -427,6 +438,29 @@ async def set_sku_cost_usdt(
     DB constraint already refuse to store) is defensively skipped rather
     than written — cost still updates, price is left alone, same as a SKU
     with no margin at all.
+
+    Args:
+        db: Active session (caller commits).
+        sku_id: The SKU to update.
+        new_cost: The new ``cost_usdt`` value.
+        allow_price_drop: Whether a margin-derived price that comes out
+            *lower* than the SKU's current ``price_usd`` may actually be
+            written. Defaults to ``True`` so every existing and future
+            caller keeps today's behaviour unless it explicitly opts out —
+            this function has callers beyond the hourly refresh, and a
+            default that silently flipped would move prices across the
+            whole catalogue. The hourly/on-demand supplier price-sync path
+            is the one caller that passes ``False``: syncing a SKU's cost
+            down to a cheaper supplier is the owner's decision to bank as
+            wider margin, not to hand to the customer as a lower shelf
+            price — Free Fire's switch to NOVA is the case this exists
+            for. A cost *rise* still raises ``price_usd`` under both flag
+            values; that half is what stops a supplier's price increase
+            from silently eating the margin, and it would be exactly as
+            silent a bug as the one this function exists to prevent. An
+            operator editing a cost by hand (the mapping-save route,
+            ``allow_price_drop=True``, the default) can still lower a
+            price on purpose — a person doing that usually means it.
     """
     if new_cost <= 0:
         raise ConflictError(
@@ -442,13 +476,31 @@ async def set_sku_cost_usdt(
     previous_price: Decimal | None = None
     new_price: Decimal | None = None
     margin: Decimal | None = None
+    price_drop_blocked = False
     if sku.margin_percent is not None and previous_cost != new_cost:
         candidate = _price_from_margin(new_cost, sku.margin_percent)
         if candidate > 0:
-            previous_price = sku.price_usd
-            sku.price_usd = candidate
-            new_price = candidate
-            margin = sku.margin_percent
+            if allow_price_drop or candidate > sku.price_usd:
+                previous_price = sku.price_usd
+                sku.price_usd = candidate
+                new_price = candidate
+                margin = sku.margin_percent
+            elif previous_cost is not None and new_cost < previous_cost:
+                # "Blocked" means a *cost drop* whose price cut we declined —
+                # and the discriminator is the cost's direction, not the
+                # price's. A rise can also leave the price alone, whenever the
+                # candidate still lands under a price parked above it by
+                # earlier savings, and reporting that as a blocked drop prints
+                # "наценка выросла" directly under "себестоимость выросла".
+                # Comparing candidate to price does not separate them: in that
+                # rise the candidate is below the price too.
+                #
+                # `previous_cost is None` is a SKU getting its first cost ever:
+                # nothing dropped, because there was nothing to drop from. The
+                # enclosing `previous_cost != new_cost` is true in that case,
+                # so without the guard this comparison raises — mypy caught it,
+                # and it would have been a real crash rather than a type nit.
+                price_drop_blocked = True
 
     sku.updated_at = now()
     await db.flush()
@@ -457,6 +509,7 @@ async def set_sku_cost_usdt(
         previous_price=previous_price,
         new_price=new_price,
         margin_percent=margin,
+        price_drop_blocked=price_drop_blocked,
     )
 
 

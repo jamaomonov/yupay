@@ -94,6 +94,15 @@ class CostSyncResult(BaseModel):
     Returned alongside the upsert response so the admin UI can flash
     either "cost updated from $X.XX → $Y.YY" or a clear reason when we
     couldn't pull a price (cache miss, unknown denom, etc).
+
+    ``old_price``/``new_price``/``price_drop_blocked`` mirror
+    ``CostRefreshOutcome``'s own fields (``integrations.cost_refresh``) —
+    without them here, the one intentional downward-price path
+    (``integrations.routes._refresh_sku_cost`` always passes
+    ``allow_price_drop=True``, per ADR-0083 Decision 2) is invisible to the
+    operator who triggers it: the mapping-save response would say only
+    "cost updated" while the shelf price silently dropped by the banked
+    margin.
     """
 
     updated: bool
@@ -101,6 +110,9 @@ class CostSyncResult(BaseModel):
     new_cost: str | None = None
     source: str | None = None
     reason: str | None = None
+    old_price: str | None = None
+    new_price: str | None = None
+    price_drop_blocked: bool = False
 
 
 class SupplierMappingUpsertOut(BaseModel):

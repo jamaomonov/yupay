@@ -186,17 +186,27 @@ async def _refresh_sku_cost(db: AsyncSession, mapping: object) -> CostSyncResult
     reuse it from a background actor; this wrapper exists only to map
     the strongly-typed ``CostRefreshOutcome`` back into the DTO the
     admin SPA expects.
+
+    ``allow_price_drop=True``, explicitly: an operator just chose this
+    mapping in the admin UI, so a cost drop it uncovers may lower the
+    shelf price, same as before ``allow_price_drop`` existed. The hourly/
+    on-demand bulk refresh (``price_refresh.refresh_all_mappings``) is the
+    one caller that passes ``False`` — see that function and
+    ``set_sku_cost_usdt`` for the rule.
     """
     from yupay.modules.integrations.models import SkuSupplierMapping
 
     assert isinstance(mapping, SkuSupplierMapping)
-    outcome = await svc.refresh_sku_cost_for_mapping(db, mapping=mapping)
+    outcome = await svc.refresh_sku_cost_for_mapping(db, mapping=mapping, allow_price_drop=True)
     return CostSyncResult(
         updated=outcome.updated,
         old_cost=str(outcome.old_cost) if outcome.old_cost is not None else None,
         new_cost=str(outcome.new_cost) if outcome.new_cost is not None else None,
         source=outcome.source,
         reason=outcome.reason,
+        old_price=str(outcome.old_price) if outcome.old_price is not None else None,
+        new_price=str(outcome.new_price) if outcome.new_price is not None else None,
+        price_drop_blocked=outcome.price_drop_blocked,
     )
 
 
@@ -474,9 +484,17 @@ async def sku_price_history(
     sku_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    supplier_slug: Annotated[str | None, Query(min_length=2, max_length=32)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> PriceHistoryOut:
-    rows = await svc.list_price_history(db, sku_id=sku_id, limit=limit)
+    """Newest-first cost history for a SKU, optionally scoped to one
+    supplier. Unfiltered (``supplier_slug`` omitted) matches every caller
+    from before this branch, when the table held only G2B rows; now that
+    Task 1 writes a row for every active mapping, a caller that wants one
+    supplier's own series — not an interleaved multi-supplier one — passes
+    it.
+    """
+    rows = await svc.list_price_history(db, sku_id=sku_id, supplier_slug=supplier_slug, limit=limit)
     return PriceHistoryOut(
         items=[
             PricePointOut(

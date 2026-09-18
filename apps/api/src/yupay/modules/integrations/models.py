@@ -188,6 +188,18 @@ class SupplierPriceHistory(Base):
         CheckConstraint("kind IN ('voucher','game')", name="ck_supplier_price_history_kind"),
         CheckConstraint("cost_usdt > 0", name="ck_supplier_price_history_cost_positive"),
         Index("ix_supplier_price_history_sku_time", "sku_id", "captured_at"),
+        # Supports ``sourcing.brand_overview``'s ``DISTINCT ON (sku_id,
+        # supplier_slug) ... ORDER BY sku_id, supplier_slug, captured_at
+        # DESC`` — the latest-row-per-supplier shape the index above (built
+        # for "latest N rows for one SKU across every supplier") can't serve
+        # without an extra sort. See migration
+        # 0081_price_history_sku_supplier.
+        Index(
+            "ix_supplier_price_history_sku_supplier_time",
+            "sku_id",
+            "supplier_slug",
+            text("captured_at DESC"),
+        ),
     )
 
 

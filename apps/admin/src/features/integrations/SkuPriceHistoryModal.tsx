@@ -9,6 +9,8 @@ import { useQuery } from "@tanstack/react-query";
 import { TrendingDown, TrendingUp, X } from "lucide-react";
 import { useRef } from "react";
 
+import { supplierLabel } from "./types";
+
 import type { PriceHistoryListOut, PricePoint } from "./types";
 
 import { apiGet } from "@/lib/api";
@@ -75,8 +77,9 @@ export function SkuPriceHistoryModal({ skuId, skuCode, onClose }: Props) {
             <p className="px-5 py-6 text-xs text-[var(--text-tertiary)]">Истории пока нет.</p>
           ) : (
             <>
-              <div className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-[var(--border-subtle)] px-5 py-2 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
+              <div className="grid grid-cols-[auto_auto_1fr_auto] gap-3 border-b border-[var(--border-subtle)] px-5 py-2 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
                 <span>Дата</span>
+                <span>Поставщик</span>
                 <span>Было → стало</span>
                 <span className="text-right">Изменение</span>
               </div>
@@ -99,6 +102,14 @@ export function SkuPriceHistoryModal({ skuId, skuCode, onClose }: Props) {
 }
 
 function DetailRow({ point }: { point: PricePoint }) {
+  // `previous_cost_usdt` is denormalised per (sku, supplier) on write
+  // (`cost_refresh._last_history_cost` / `previous_for_supplier` —
+  // apps/api/src/yupay/modules/integrations/cost_refresh.py), so this
+  // row's own delta is already scoped to its own supplier even though
+  // `supplier_price_history` now interleaves rows from more than one
+  // active mapping — the supplier column below is purely so the operator
+  // can see whose price they're reading, not a correctness fix for the
+  // delta itself.
   const prev = point.previous_cost_usdt ? Number.parseFloat(point.previous_cost_usdt) : null;
   const curr = Number.parseFloat(point.cost_usdt);
   const delta = prev !== null && prev !== 0 ? ((curr - prev) / prev) * 100 : null;
@@ -106,8 +117,9 @@ function DetailRow({ point }: { point: PricePoint }) {
   const trendDown = delta !== null && delta < 0;
 
   return (
-    <li className="grid grid-cols-[auto_1fr_auto] items-center gap-3 px-5 py-2 text-xs">
+    <li className="grid grid-cols-[auto_auto_1fr_auto] items-center gap-3 px-5 py-2 text-xs">
       <span className="text-[var(--text-secondary)]">{formatDate(point.captured_at)}</span>
+      <span className="text-[var(--text-tertiary)]">{supplierLabel(point.supplier_slug)}</span>
       <span className="flex items-center gap-1.5 font-mono">
         {prev !== null ? (
           <>

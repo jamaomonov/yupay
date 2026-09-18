@@ -415,6 +415,64 @@ place them; they are paired instead through an explicit `SKU_OFFER_OVERRIDES`
 table in the script (`freefire_cis-weekly-lite → weekly_lite`, etc.), read
 once by a human rather than fuzzy-matched by name.
 
+### What the operator sees once the switch is live
+
+Design: [ADR-0083](../decisions/0083-routed-supplier-cost-and-price-ratchet.md). This is what
+changes for these nine SKUs from the moment `APPLY=1` commits the `force_supplier = nova` rule —
+distinct from the mapping/routing mechanics above, which exist the instant the mapping is written.
+
+**Cost now syncs from NOVA, not G2B.** `sourcing.resolve_for_sku` says these nine SKUs route to
+NOVA, so per ADR-0083 NOVA is the only supplier whose hourly (or on-demand) refresh is allowed to
+write `Sku.cost_usdt` for them. The G2B mapping is still active and still refreshed every hour —
+switching never deletes or deactivates it, which is exactly what makes the rollback in the next
+section a one-click change — but its refresh now only records a `supplier_price_history` row. It
+can no longer move these SKUs' cost or price.
+
+**The retail price does not move.** Syncing cost down to NOVA's number is a drop, and the
+automatic refresh path may raise a margin-derived price but never lower one (ADR-0083 Decision 2).
+So `price_usd` holds exactly where it was, and the whole gap between what G2B was charging and
+what NOVA charges lands as margin instead of as a markdown nobody decided on.
+
+**The margin gain, measured against production on 2026-09-18.** Both seeds have run with
+`APPLY=1`, so Free Fire CIS already routes to NOVA and the ten NOVA-only SKUs are live. What has
+_not_ happened yet is the cost move: prod still runs the pre-ADR-0083 code, where G2B's refresh
+writes `cost_usdt`, so the nine original SKUs still carry G2B's numbers to the cent. The gain below
+lands when this branch deploys and the routed supplier — NOVA — becomes the one writing that cost.
+
+Take 110 Diamonds: the price holds at $0.90, the cost moves from G2B's $0.820000 to NOVA's
+$0.790602, and margin goes from 9.76 % to 13.84 %. Across all nine the average moves from **10.7 %
+to 13.6 %** — about 2.9 points per SKU, tracking each one's own 0.8–3.6 % NOVA discount. Weekly
+Lite gains least (0.93 points, on a 0.8 % discount) and 110 Diamonds most (4.08 points, on 3.6 %).
+
+Margin here is measured the way the rest of the system measures it — against **cost**, not against
+price, which is what `Sku.margin_percent` means and what `price_usd = cost_usdt * (1 +
+margin_percent / 100)` encodes. Measuring against price instead would report the same nine SKUs as
+9.6 % → 11.9 % and quietly disagree with every other screen.
+
+### The reseller price does not hold by itself
+
+Retail and B2B price from the same `cost_usdt` but by opposite rules. Retail
+`price_usd` is a stored column ADR-0083 refuses to lower, so the saving stays
+with us automatically. The merchant price list is **cost-plus, computed live** —
+`merchants.pricing.merchant_unit_price` reads `cost_usdt` on every request — so
+the same cost drop cuts the reseller price by the same 0.8–3.6 % unless somebody
+raises the markup.
+
+The owner's decision (2026-09-18) is to keep the saving on both channels. The
+lever is `b2b_markup_pct` on the nine SKUs, and the script is
+`scripts/seed/2026-09-18_free_fire_b2b_hold.py`.
+
+**Run it after the cost has moved**, not before: it computes each markup from the
+SKU's current cost against the B2B price recorded on 2026-09-18, so run early —
+while `cost_usdt` is still G2B's — and it correctly writes nothing and says so.
+Dry run first, `APPLY=1` to commit, like the other seeds here. It refuses any
+markup outside 5–13 %, because a cost that moved for some other reason would
+otherwise have its markup bent to hold a price that no longer means anything.
+
+All nine sit at the platform-wide 6 % today and land between 6.87 % and 9.94 %:
+the smaller the NOVA discount, the smaller the correction. Skipping this step is
+not neutral — it is a price cut to resellers that nobody decided.
+
 ### The ten NOVA-only SKUs
 
 `scripts/seed/2026-09-18_free_fire_nova_only.py` creates six Level Up
