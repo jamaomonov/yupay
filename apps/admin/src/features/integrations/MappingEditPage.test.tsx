@@ -5,7 +5,7 @@ import { beforeEach, expect, it, vi } from "vitest";
 
 import { MappingEditPage } from "./MappingEditPage";
 
-import { api, apiGet } from "@/lib/api";
+import { api, apiGet, apiPost } from "@/lib/api";
 
 /**
  * This form was hardcoded to G2B — `supplier_slug: "g2b"` on save, and a
@@ -14,6 +14,12 @@ import { api, apiGet } from "@/lib/api";
  * row it needs could not be created anywhere. G-Engine was exactly that: its
  * fulfiller refuses with "no active g-engine mapping for this SKU", and no
  * screen could produce one.
+ *
+ * The pickers are now generalised over every `MAPPING_REQUIRED_SUPPLIERS`
+ * slug (g2b, gengine, nova) instead of just G2B — the operator no longer has
+ * to know a supplier's raw id to map a SKU to it, only to search its cached
+ * title. Manual id entry stays available underneath, collapsed, for when the
+ * cache hasn't caught up with the supplier yet.
  */
 
 vi.mock("@/lib/api", () => ({
@@ -21,6 +27,7 @@ vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
   ApiError: class ApiError extends Error {},
+  formatApiError: (err: unknown) => (err instanceof Error ? err.message : "error"),
 }));
 
 vi.mock("@/components/Toast", () => ({
@@ -28,6 +35,7 @@ vi.mock("@/components/Toast", () => ({
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
+const mockedApiPost = vi.mocked(apiPost);
 const mockedApi = vi.mocked(api);
 
 const SKU = {
@@ -39,14 +47,77 @@ const SKU = {
   denomination: "100",
 };
 
+// G-Engine, not G2B: `DenomCatalogPicker` (the cache-backed picker these
+// fixtures exercise) only ever renders for NOVA/G-Engine — G2B's own live
+// picker (`DenomPicker`) is untouched by this change and isn't exercised
+// here. See `DenomCatalogPicker.tsx`'s module docstring for why.
+const GAME_MLBB = {
+  supplier_slug: "gengine",
+  kind: "game",
+  external_id: "mlbb",
+  title: "Mobile Legends",
+  raw: {},
+  fetched_at: "2026-01-01T00:00:00Z",
+  parent_external_id: null,
+  price_usdt: null,
+};
+
+const GAME_PUBG = {
+  ...GAME_MLBB,
+  external_id: "pubg",
+  title: "PUBG Mobile",
+};
+
+const DENOM_MLBB_100 = {
+  supplier_slug: "gengine",
+  kind: "game_denom",
+  external_id: "100-diamonds",
+  title: "100 Diamonds",
+  raw: {},
+  fetched_at: "2026-01-01T00:00:00Z",
+  parent_external_id: "mlbb",
+  price_usdt: "1.50",
+};
+
+const DENOM_PUBG_60 = {
+  ...DENOM_MLBB_100,
+  external_id: "60-uc",
+  title: "60 UC",
+  parent_external_id: "pubg",
+  price_usdt: "0.90",
+};
+
+/** Routes `/admin/integrations/catalog` requests to a `kind`-keyed table,
+ *  the way the real endpoint would filter by `kind` (+ `parent_external_id`
+ *  for `game_denom`). Keeps each test's mock declarative instead of a chain
+ *  of `path.includes(...)` checks that are easy to get subtly wrong — e.g.
+ *  `"kind=game_denom".includes("kind=game")` is true, so ordering matters
+ *  and a URL parse sidesteps it entirely. */
+function mockCatalogEndpoint(byKind: { game?: unknown[]; game_denom?: Record<string, unknown[]> }) {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/skus/search")) return Promise.resolve([SKU]);
+    if (path.includes("/admin/integrations/catalog")) {
+      const url = new URL(path, "http://test.local");
+      const kind = url.searchParams.get("kind");
+      if (kind === "game") return Promise.resolve({ items: byKind.game ?? [] });
+      if (kind === "game_denom") {
+        const parent = url.searchParams.get("parent_external_id") ?? "";
+        return Promise.resolve({ items: byKind.game_denom?.[parent] ?? [] });
+      }
+    }
+    return Promise.resolve({ items: [] });
+  });
+}
+
 beforeEach(() => {
   mockedApiGet.mockReset();
+  mockedApiPost.mockReset();
   mockedApi.mockReset();
   mockedApi.mockResolvedValue({ created: true });
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/catalog/skus/search")) return Promise.resolve([SKU]);
-    // G-Engine has no catalogue rows — that is the whole reason the manual
-    // field exists — and G2B's catalogue is irrelevant to these assertions.
+    // Empty cache by default — the whole point of most of these assertions
+    // is what the UI offers when a supplier's cache has nothing yet.
     return Promise.resolve({ items: [] });
   });
 });
@@ -73,6 +144,13 @@ async function reachSupplierStep() {
   return screen.getByLabelText("Поставщик");
 }
 
+/** Opens a Combobox by its accessible name and clicks the named option. */
+async function pickFromCombobox(triggerName: string, optionName: RegExp) {
+  fireEvent.click(screen.getByRole("combobox", { name: triggerName }));
+  const list = await screen.findByRole("listbox");
+  fireEvent.click(await within(list).findByRole("option", { name: optionName }));
+}
+
 it("offers the suppliers that actually consume a mapping", async () => {
   renderPage();
   const picker = await reachSupplierStep();
@@ -90,17 +168,19 @@ it("offers the suppliers that actually consume a mapping", async () => {
   expect(slugs).not.toContain("inventory");
 });
 
-it("lets the ids be typed in for a supplier whose catalogue we do not mirror", async () => {
+it("fills the submitted body by picking a game, then a denomination scoped to it", async () => {
+  mockCatalogEndpoint({
+    game: [GAME_MLBB, GAME_PUBG],
+    game_denom: { mlbb: [DENOM_MLBB_100], pubg: [DENOM_PUBG_60] },
+  });
   renderPage();
-  const picker = await reachSupplierStep();
-
+  const picker = await reachSupplierStep(); // leaves kind=game
+  // `DenomCatalogPicker` (the cache-backed denomination picker) only renders
+  // for NOVA/G-Engine — G2B keeps its own live picker, untouched here.
   fireEvent.change(picker, { target: { value: "gengine" } });
 
-  // The combobox would show an empty list forever, so it is replaced rather
-  // than left there looking broken.
-  expect(screen.queryByRole("combobox", { name: /Выберите игру/ })).not.toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), { target: { value: "5" } });
-  fireEvent.change(screen.getByLabelText("ID номинала у поставщика"), { target: { value: "1" } });
+  await pickFromCombobox("Игра у поставщика", /Mobile Legends/);
+  await pickFromCombobox("Номинал", /100 Diamonds/);
 
   fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
 
@@ -109,6 +189,112 @@ it("lets the ids be typed in for a supplier whose catalogue we do not mirror", a
   });
   // `api` is called with a JSON string body; narrowing it back for the
   // assertion, since RequestInit types it as the wider BodyInit.
+  const raw = mockedApi.mock.calls[0]?.[1]?.body as string | undefined;
+  const body: unknown = JSON.parse(raw ?? "{}");
+  expect(body).toMatchObject({
+    supplier_slug: "gengine",
+    external_product_id: "mlbb",
+    external_variant_id: "100-diamonds",
+  });
+});
+
+it("scopes the denomination picker to the chosen game", async () => {
+  mockCatalogEndpoint({
+    game: [GAME_MLBB, GAME_PUBG],
+    game_denom: { mlbb: [DENOM_MLBB_100], pubg: [DENOM_PUBG_60] },
+  });
+  renderPage();
+  const picker = await reachSupplierStep();
+  fireEvent.change(picker, { target: { value: "gengine" } });
+
+  await pickFromCombobox("Игра у поставщика", /Mobile Legends/);
+  fireEvent.click(screen.getByRole("combobox", { name: "Номинал" }));
+  const mlbbList = await screen.findByRole("listbox");
+  expect(within(mlbbList).getByRole("option", { name: /100 Diamonds/ })).toBeInTheDocument();
+  expect(within(mlbbList).queryByRole("option", { name: /60 UC/ })).not.toBeInTheDocument();
+  // Close it (no selection) before switching games — `fireEvent.click` does not
+  // synthesise the mousedown an outside click relies on to auto-close.
+  fireEvent.click(screen.getByRole("combobox", { name: "Номинал" }));
+
+  // Picking a different game re-queries the denomination cache with the new
+  // parent — the previous game's denominations must not leak into the list.
+  await pickFromCombobox("Игра у поставщика", /PUBG Mobile/);
+  fireEvent.click(screen.getByRole("combobox", { name: "Номинал" }));
+  const pubgList = await screen.findByRole("listbox");
+  expect(within(pubgList).getByRole("option", { name: /60 UC/ })).toBeInTheDocument();
+  expect(within(pubgList).queryByRole("option", { name: /100 Diamonds/ })).not.toBeInTheDocument();
+});
+
+it("offers a pull-denominations button when the cache has none for the chosen game, and shows what it returns", async () => {
+  let pulled = false;
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/catalog/skus/search")) return Promise.resolve([SKU]);
+    if (path.includes("/admin/integrations/catalog")) {
+      const url = new URL(path, "http://test.local");
+      const kind = url.searchParams.get("kind");
+      if (kind === "game") return Promise.resolve({ items: [GAME_MLBB] });
+      if (kind === "game_denom") {
+        return Promise.resolve({ items: pulled ? [DENOM_MLBB_100] : [] });
+      }
+    }
+    return Promise.resolve({ items: [] });
+  });
+  mockedApiPost.mockImplementation((path: string) => {
+    if (path.includes("/sync-denominations")) {
+      pulled = true;
+      return Promise.resolve({
+        supplier: "gengine",
+        game_id: "mlbb",
+        denominations_synced: 1,
+        error: null,
+      });
+    }
+    return Promise.resolve({});
+  });
+
+  renderPage();
+  const picker = await reachSupplierStep();
+  fireEvent.change(picker, { target: { value: "gengine" } });
+  await pickFromCombobox("Игра у поставщика", /Mobile Legends/);
+
+  expect(await screen.findByText(/В кэше нет номиналов для этой игры/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Подтянуть номиналы у поставщика" }));
+
+  // An Idempotency-Key rides every attempt, minted fresh — not reused.
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledWith(
+      expect.stringContaining("/admin/integrations/gengine/games/mlbb/sync-denominations"),
+      {},
+      expect.objectContaining({ "Idempotency-Key": expect.any(String) as string }),
+    );
+  });
+
+  // ...and then shows what came back, instead of leaving the empty list.
+  fireEvent.click(await screen.findByRole("combobox", { name: "Номинал" }));
+  const list = await screen.findByRole("listbox");
+  expect(within(list).getByRole("option", { name: /100 Diamonds/ })).toBeInTheDocument();
+});
+
+it("lets an id be typed in through the manual fallback when the cache has nothing for the supplier", async () => {
+  renderPage();
+  const picker = await reachSupplierStep();
+
+  fireEvent.change(picker, { target: { value: "gengine" } });
+
+  // The picker is still offered even though the mocked cache is empty for
+  // it — only the manual path used to disappear here, and it must not.
+  expect(screen.getByRole("combobox", { name: "Игра у поставщика" })).toBeInTheDocument();
+
+  fireEvent.click(screen.getByText("Ввести ID вручную — если поставщик ещё не в кэше"));
+  fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), { target: { value: "5" } });
+  fireEvent.click(screen.getByText("Ввести ID номинала вручную — если поставщик ещё не в кэше"));
+  fireEvent.change(screen.getByLabelText("ID номинала у поставщика"), { target: { value: "1" } });
+
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  await waitFor(() => {
+    expect(mockedApi).toHaveBeenCalled();
+  });
   const raw = mockedApi.mock.calls[0]?.[1]?.body as string | undefined;
   const body: unknown = JSON.parse(raw ?? "{}");
   expect(body).toMatchObject({
@@ -126,6 +312,7 @@ it("can save an amount-priced service that has no denomination", async () => {
   const picker = await reachSupplierStep();
 
   fireEvent.change(picker, { target: { value: "gengine" } });
+  fireEvent.click(screen.getByText("Ввести ID вручную — если поставщик ещё не в кэше"));
   fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), { target: { value: "72" } });
   // Not "Множитель" here: for an amount-priced service the field is the amount
   // itself, and calling it a multiplier would mislead whoever fills it in.
@@ -158,6 +345,7 @@ it("saves NOVA's Steam mapping with no denomination, but still demands one for a
   const picker = await reachSupplierStep();
 
   fireEvent.change(picker, { target: { value: "nova" } });
+  fireEvent.click(screen.getByText("Ввести ID вручную — если поставщик ещё не в кэше"));
   fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), {
     target: { value: "steam-topup" },
   });
@@ -183,6 +371,7 @@ it("drops the ids when the supplier changes", async () => {
   const picker = await reachSupplierStep();
 
   fireEvent.change(picker, { target: { value: "gengine" } });
+  fireEvent.click(screen.getByText("Ввести ID вручную — если поставщик ещё не в кэше"));
   fireEvent.change(screen.getByLabelText("ID сервиса у поставщика"), { target: { value: "5" } });
   fireEvent.change(picker, { target: { value: "g2b" } });
   fireEvent.change(picker, { target: { value: "gengine" } });

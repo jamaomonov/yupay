@@ -2,13 +2,23 @@
  *
  * One file because these three pickers share the same shape (Combobox +
  * debounced query + TanStack Query fetch) — splitting them would just
- * triple the boilerplate. */
+ * triple the boilerplate.
+ *
+ * `CatalogPicker` reads `supplier_catalog_cache` through
+ * `GET /admin/integrations/catalog` and is supplier-agnostic: it was built
+ * for G2B but takes any `supplier_slug`, so the same component now serves
+ * every supplier in `MAPPING_REQUIRED_SUPPLIERS` (g2b, gengine, nova) for the
+ * `voucher`/`game` step — see `MappingEditPage`. The `game_denom` step is
+ * narrower: only NOVA and G-Engine cache denominations at all, so its picker
+ * (`DenomCatalogPicker.tsx`, with its own empty-cache "pull from supplier"
+ * flow) covers those two and reuses `CatalogRow` from here, while G2B keeps
+ * its own separate, live (uncached) picker in `gameWidgets.tsx`. */
 
 import { useQuery } from "@tanstack/react-query";
 import { Box, Boxes, Gamepad2 } from "lucide-react";
 import { useState } from "react";
 
-import type { CatalogEntry, CatalogListOut, SkuPickerRow } from "./types";
+import type { CatalogEntry, CatalogKind, CatalogListOut, SkuPickerRow } from "./types";
 
 import { Combobox } from "@/components/Combobox";
 import { apiGet } from "@/lib/api";
@@ -108,7 +118,7 @@ function SkuRow({ row, compact = false }: { row: SkuPickerRow; compact?: boolean
 }
 
 // ---------------------------------------------------------------------------
-// G2B voucher / game pickers (both read from supplier_catalog_cache)
+// Voucher / game pickers (both read from supplier_catalog_cache)
 // ---------------------------------------------------------------------------
 
 interface CatalogPickerProps {
@@ -154,7 +164,7 @@ export function CatalogPicker({
   return (
     <Combobox
       id={id}
-      ariaLabel={kind === "voucher" ? "Ваучер G2B" : "Игра G2B"}
+      ariaLabel={kind === "voucher" ? "Продукт поставщика" : "Игра у поставщика"}
       value={value}
       onChange={onChange}
       items={items}
@@ -168,7 +178,7 @@ export function CatalogPicker({
           : "Ничего не найдено"
       }
       disabled={disabled}
-      placeholder={kind === "voucher" ? "Выберите ваучер…" : "Выберите игру…"}
+      placeholder={kind === "voucher" ? "Выберите продукт…" : "Выберите игру…"}
       keyFor={(e) => `${e.kind}-${e.external_id}`}
       renderSelected={(e) => <CatalogRow entry={e} kind={kind} compact />}
       renderItem={(e) => <CatalogRow entry={e} kind={kind} />}
@@ -176,22 +186,29 @@ export function CatalogPicker({
   );
 }
 
-function CatalogRow({
+/** Row renderer shared by `CatalogPicker` (voucher/game) and
+ *  `DenomCatalogPicker` (game_denom) — one visual language for every
+ *  supplier-catalog row, regardless of which cache level it comes from. */
+export function CatalogRow({
   entry,
   kind,
   compact = false,
 }: {
   entry: CatalogEntry;
-  kind: "voucher" | "game";
+  kind: CatalogKind;
   compact?: boolean;
 }) {
   const raw = entry.raw;
   const imageUrl = typeof raw.image_url === "string" ? raw.image_url : null;
   const stock = typeof raw.stock === "number" ? raw.stock : null;
+  // Prefer the typed `price_usdt` the backend now reports; fall back to the
+  // untyped `raw.unit_price` some older cache rows still carry. Both are
+  // display-only strings — never parsed into a number here (§9).
   const unitPrice =
-    typeof raw.unit_price === "number" || typeof raw.unit_price === "string"
+    entry.price_usdt ??
+    (typeof raw.unit_price === "number" || typeof raw.unit_price === "string"
       ? String(raw.unit_price)
-      : null;
+      : null);
 
   const thumb =
     kind === "game" && imageUrl ? (

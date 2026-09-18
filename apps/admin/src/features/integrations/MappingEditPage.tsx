@@ -7,23 +7,33 @@
  *
  *   1. SKU            — Combobox sourced from /admin/catalog/skus/search.
  *   2. Тип            — voucher | game (radio chips).
- *   3. Поставщик + продукт — a supplier picker, then either a Combobox over
- *      supplier_catalog_cache or, for suppliers we do not mirror a catalogue
- *      for, the id typed in by hand. Both write the same field.
- *   4. Номинал        — game-only; lazy fetch of /games/{code}/catalogue.
- *      Required-fields hint + optional player checker live in this step.
+ *   3. Поставщик + продукт — a supplier picker, then a searchable Combobox
+ *      over supplier_catalog_cache (`CatalogPicker`, generalised for every
+ *      MAPPING_REQUIRED_SUPPLIERS slug), with manual id entry collapsed
+ *      underneath as a fallback for when the cache hasn't caught up. Both
+ *      write the same field.
+ *   4. Номинал        — game-only; a picker over the game's denominations.
+ *      NOVA/G-Engine get `DenomCatalogPicker` (same cache, filtered to the
+ *      chosen game, with a "pull from supplier" action when it's empty);
+ *      G2B keeps its own live `DenomPicker` (`gameWidgets.tsx`) — the backend
+ *      never moved G2B's denominations into the cache (see
+ *      `DenomCatalogPicker`'s docstring). Both share the same collapsed
+ *      manual fallback underneath. Required-fields hint + optional player
+ *      checker live in this step, G2B-only (they proxy G2B's own endpoints,
+ *      so they mean nothing for another supplier's game code).
  *   5. Параметры      — quantity, активность, опц. extra JSON.
  */
 
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
-import { Check, CircleDot, ShoppingCart, Sparkles } from "lucide-react";
+import { Check, ChevronDown, CircleDot, ShoppingCart, Sparkles } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { DenomCatalogPicker } from "./DenomCatalogPicker";
 import { DenomPicker, PlayerChecker, RequiredFieldsHint } from "./gameWidgets";
 import { CatalogPicker, SkuPicker } from "./pickers";
-import { FULFILMENT_ROUTES, hasCatalogueCache, isAmountPriced } from "./types";
+import { FULFILMENT_ROUTES, isAmountPriced, syntheticCatalogEntry } from "./types";
 
 import type {
   CatalogEntry,
@@ -38,9 +48,12 @@ import { useToast } from "@/components/Toast";
 import { ApiError, api, apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
-/** Suppliers a mapping can point at. G2B and G-Engine both resolve a SKU
- *  through `sku_supplier_mapping`; the rest either derive the purchase from
- *  the order or are in-house routes. */
+/** Suppliers a mapping can point at — the ones a SKU resolves through
+ *  `sku_supplier_mapping`; the rest either derive the purchase from the
+ *  order or are in-house routes. This is exactly the backend's
+ *  `MAPPING_REQUIRED_SUPPLIERS` (g2b, gengine, nova), which is why every
+ *  supplier reachable in this wizard gets the same catalog-picker
+ *  treatment below — there is no supplier here that doesn't need one. */
 const MAPPABLE = FULFILMENT_ROUTES.filter((r) => r.mappings);
 
 interface ExistingMappingPayload {
@@ -103,14 +116,16 @@ export function MappingEditPage() {
         : JSON.stringify(existing.data.extra, null, 2),
     );
     // catalog prefill — synthesise a minimal CatalogEntry from the row.
-    setCatalog({
-      supplier_slug: existing.data.supplier_slug,
-      kind: existing.data.kind === "voucher" ? "voucher" : "game",
-      external_id: existing.data.external_product_id,
-      title: existing.data.external_product_id,
-      raw: {},
-      fetched_at: new Date().toISOString(),
-    });
+    // Displayed as-is (id only, no cached title/price) until the operator
+    // reopens the picker and reselects — same as before this only spared
+    // the object literal, it didn't add a cache lookup.
+    setCatalog(
+      syntheticCatalogEntry(
+        existing.data.supplier_slug,
+        existing.data.kind === "voucher" ? "voucher" : "game",
+        existing.data.external_product_id,
+      ),
+    );
   }, [existing.data]);
 
   useEffect(() => {
@@ -286,44 +301,44 @@ export function MappingEditPage() {
             )}
           </div>
 
-          {kind && hasCatalogueCache(supplier) && (
-            <CatalogPicker
-              supplier={supplier}
-              kind={kind}
-              value={catalog}
-              onChange={(next) => {
-                setCatalog(next);
-                if (next?.external_id !== catalog?.external_id) setDenom("");
-              }}
-            />
-          )}
-
-          {kind && !hasCatalogueCache(supplier) && (
-            <ManualIdField
-              label={kind === "voucher" ? "ID продукта у поставщика" : "ID сервиса у поставщика"}
-              hint={
-                supplier === "gengine"
-                  ? kind === "voucher"
-                    ? "product id из GET /shop/products"
-                    : "service id из GET /recharge/services"
-                  : "Идентификатор продукта в системе поставщика"
-              }
-              value={catalog?.external_id ?? ""}
-              onChange={(next) => {
-                setCatalog(
-                  next.trim()
-                    ? {
-                        supplier_slug: supplier,
-                        kind: kind === "voucher" ? "voucher" : "game",
-                        external_id: next.trim(),
-                        title: next.trim(),
-                        raw: {},
-                        fetched_at: new Date().toISOString(),
-                      }
-                    : null,
-                );
-              }}
-            />
+          {kind && (
+            <>
+              <CatalogPicker
+                supplier={supplier}
+                kind={kind}
+                value={catalog}
+                onChange={(next) => {
+                  setCatalog(next);
+                  if (next?.external_id !== catalog?.external_id) setDenom("");
+                }}
+              />
+              <ManualFallback label="Ввести ID вручную — если поставщик ещё не в кэше">
+                <ManualIdField
+                  label={
+                    kind === "voucher" ? "ID продукта у поставщика" : "ID сервиса у поставщика"
+                  }
+                  hint={
+                    supplier === "gengine"
+                      ? kind === "voucher"
+                        ? "product id из GET /shop/products"
+                        : "service id из GET /recharge/services"
+                      : "Идентификатор продукта в системе поставщика"
+                  }
+                  value={catalog?.external_id ?? ""}
+                  onChange={(next) => {
+                    setCatalog(
+                      next.trim()
+                        ? syntheticCatalogEntry(
+                            supplier,
+                            kind === "voucher" ? "voucher" : "game",
+                            next.trim(),
+                          )
+                        : null,
+                    );
+                  }}
+                />
+              </ManualFallback>
+            </>
           )}
         </div>
       </Step>
@@ -338,32 +353,42 @@ export function MappingEditPage() {
           active={stepStatus.s3 && !stepStatus.s4}
           disabled={!stepStatus.s3}
         >
-          {hasCatalogueCache(supplier) ? (
-            <>
+          <div className="space-y-4">
+            {supplier === "g2b" ? (
               <DenomPicker
                 gameCode={catalog?.external_id ?? null}
                 value={denom}
                 onChange={setDenom}
               />
-              <div className="mt-4 space-y-3">
-                {/* Both widgets query G2B's catalogue endpoints, so they only
-                    mean anything for a supplier we mirror. */}
+            ) : (
+              <DenomCatalogPicker
+                supplier={supplier}
+                gameExternalId={catalog?.external_id ?? null}
+                value={denom}
+                onChange={setDenom}
+              />
+            )}
+            <ManualFallback label="Ввести ID номинала вручную — если поставщик ещё не в кэше">
+              <ManualIdField
+                label="ID номинала у поставщика"
+                hint={
+                  supplier === "gengine"
+                    ? "denomination id — из denominations[] в GET /recharge/services"
+                    : "Идентификатор номинала в системе поставщика"
+                }
+                value={denom}
+                onChange={setDenom}
+              />
+            </ManualFallback>
+            {supplier === "g2b" && (
+              <div className="space-y-3">
+                {/* Both widgets proxy G2B's own endpoints, so they only mean
+                    anything for a game code from G2B's catalogue. */}
                 <RequiredFieldsHint gameCode={catalog?.external_id ?? null} />
                 <PlayerChecker gameCode={catalog?.external_id ?? null} />
               </div>
-            </>
-          ) : (
-            <ManualIdField
-              label="ID номинала у поставщика"
-              hint={
-                supplier === "gengine"
-                  ? "denomination id — из denominations[] в GET /recharge/services"
-                  : "Идентификатор номинала в системе поставщика"
-              }
-              value={denom}
-              onChange={setDenom}
-            />
-          )}
+            )}
+          </div>
         </Step>
       )}
 
@@ -607,12 +632,31 @@ function KindCard({
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Free-text id entry for suppliers whose catalogue we do not mirror.
- *
- * G-Engine has no `supplier_catalog_cache` rows, so the picker would show an
- * empty list and there would be no way to create the mapping at all. The id is
- * numeric on their side but stays a string here — the column is text, and the
- * backend already names a non-numeric value rather than crashing on it.
+/** Collapses a manual-id fallback under a `<summary>` so it never competes
+ *  with the picker above it for attention — closed by default, one click
+ *  away when the cache genuinely hasn't caught up with the supplier (a
+ *  just-added position, a sync that hasn't run yet). Native `<details>`
+ *  rather than local `useState`: no click-outside handling to write, and
+ *  it degrades to "just a link" if JS is ever slow to hydrate. */
+function ManualFallback({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <details className="group">
+      <summary className="flex cursor-pointer list-none items-center gap-1 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]">
+        <ChevronDown
+          className="size-3.5 shrink-0 transition-transform group-open:rotate-180"
+          aria-hidden
+        />
+        {label}
+      </summary>
+      <div className="mt-2 max-w-sm">{children}</div>
+    </details>
+  );
+}
+
+/** Free-text id entry — the fallback path when the picker's cache hasn't
+ *  caught up with the supplier yet. The id is numeric on every supplier's
+ *  own side but stays a string here — the column is text, and the backend
+ *  already names a non-numeric value rather than crashing on it.
  */
 function ManualIdField({
   label,

@@ -135,6 +135,8 @@ export const qk = {
     supplierSlug: string;
     kind?: string | null;
     search?: string | null;
+    /** Narrows a `game_denom` listing to one game — omit for `game`/`voucher`. */
+    parentExternalId?: string | null;
   }) =>
     [
       "admin",
@@ -143,6 +145,7 @@ export const qk = {
       filters.supplierSlug,
       filters.kind ?? null,
       filters.search ?? null,
+      filters.parentExternalId ?? null,
     ] as const,
   integrationAttempts: (filters: { supplier?: string | null }) =>
     ["admin", "integrations", "attempts", filters.supplier ?? null] as const,

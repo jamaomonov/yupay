@@ -49,16 +49,58 @@ export interface CatalogEntry {
   title: string;
   raw: Record<string, unknown>;
   fetched_at: string;
+  /** For a `game_denom` row, the `external_id` of the game it belongs to.
+   *  Null for `game`/`voucher` rows, which have no parent. */
+  parent_external_id: string | null;
+  /** The supplier's own price for this entry, when they report one —
+   *  a string straight through from the API (§9: money never becomes a
+   *  float client-side). Parse only for display; never do arithmetic on it
+   *  here. */
+  price_usdt: string | null;
 }
 
 export interface CatalogListOut {
   items: CatalogEntry[];
 }
 
+/** Builds a minimal `CatalogEntry` for an id the UI knows about but the
+ *  cache doesn't — a value typed by hand, or one prefilled from an
+ *  existing mapping row that predates (or outran) the cache. Centralised so
+ *  every call site fills the same fields the same way; a field added to
+ *  `CatalogEntry` only needs updating here. */
+export function syntheticCatalogEntry(
+  supplierSlug: string,
+  kind: CatalogKind,
+  externalId: string,
+  parentExternalId: string | null = null,
+): CatalogEntry {
+  return {
+    supplier_slug: supplierSlug,
+    kind,
+    external_id: externalId,
+    title: externalId,
+    raw: {},
+    fetched_at: new Date().toISOString(),
+    parent_external_id: parentExternalId,
+    price_usdt: null,
+  };
+}
+
 export interface CatalogSyncResult {
   supplier: string;
   vouchers_synced: number;
   games_synced: number;
+  error: string | null;
+}
+
+/** Response of `POST /admin/integrations/{supplier}/games/{game_id}/sync-denominations`
+ *  (`DenomSyncOut` on the backend). Only `nova` and `gengine` accept this
+ *  route — G2B's denominations were never moved into `supplier_catalog_cache`
+ *  and keep their own live picker (`DenomPicker` in `gameWidgets.tsx`). */
+export interface SyncDenominationsResult {
+  supplier: string;
+  game_id: string;
+  denominations_synced: number;
   error: string | null;
 }
 
