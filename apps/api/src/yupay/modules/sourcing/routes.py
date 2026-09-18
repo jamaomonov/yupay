@@ -17,10 +17,13 @@ from yupay.core.idempotency import (
 from yupay.modules.admin.api import require_admin
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import brand_overview as brand_overview_svc
+from yupay.modules.sourcing import bulk_rules as bulk_rules_svc
 from yupay.modules.sourcing import service as svc
 from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.sourcing.schemas import (
     SourcingBrandOverviewOut,
+    SourcingBulkRuleIn,
+    SourcingBulkRuleOut,
     SourcingDecisionOut,
     SourcingRuleIn,
     SourcingRuleListOut,
@@ -121,6 +124,36 @@ async def upsert_rule(
     )
     sku_codes = await svc.sku_codes_for(db, [sku_id])
     out = _rule_out(rule, sku_codes.get(sku_id, sku_id))
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.put(
+    "/rules:bulk",
+    response_model=SourcingBulkRuleOut,
+    summary="Switch many SKUs to one sourcing decision in a single request",
+)
+async def bulk_upsert_rules(
+    body: SourcingBulkRuleIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> SourcingBulkRuleOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "sourcing.bulk_upsert_rules"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return SourcingBulkRuleOut.model_validate(cached.body)
+    items = await bulk_rules_svc.bulk_set_rules(
+        db,
+        sku_ids=body.sku_ids,
+        mode=body.mode,
+        supplier_slug=body.supplier_slug,
+        admin_id=admin.id,
+    )
+    out = SourcingBulkRuleOut(items=items)
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out

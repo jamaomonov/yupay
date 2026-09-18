@@ -91,11 +91,46 @@ class SourcingBrandOverviewOut(BaseModel):
     items: list[SourcingBrandSkuOut]
 
 
+#: Per-request cap on ``SourcingBulkRuleIn.sku_ids`` — one request cannot walk
+#: the whole catalogue. Enforced in ``bulk_rules.bulk_set_rules`` (an explicit
+#: ``ValidationError`` with a structured ``extra``, matching
+#: ``inventory.service.MAX_BULK``) rather than as a ``Field`` constraint here,
+#: so an over-cap request gets the same RFC 7807 shape as every other business
+#: rejection in this module instead of FastAPI's generic body-validation 422.
+MAX_BULK_SKU_IDS = 100
+
+
+class SourcingBulkRuleIn(BaseModel):
+    """Switch many SKUs to one sourcing decision in a single request."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    sku_ids: list[str] = Field(min_length=1)
+    mode: Mode
+    supplier_slug: str | None = Field(default=None, min_length=2, max_length=32)
+
+
+class SourcingBulkRuleResultOut(BaseModel):
+    """One SKU's outcome inside a bulk write — success or a named failure."""
+
+    sku_id: str
+    ok: bool
+    error: str | None = None
+
+
+class SourcingBulkRuleOut(BaseModel):
+    items: list[SourcingBulkRuleResultOut]
+
+
 __all__ = [
+    "MAX_BULK_SKU_IDS",
     "Mode",
     "SourcingBrandOverviewOut",
     "SourcingBrandSkuOut",
     "SourcingBrandSupplierOut",
+    "SourcingBulkRuleIn",
+    "SourcingBulkRuleOut",
+    "SourcingBulkRuleResultOut",
     "SourcingDecisionOut",
     "SourcingRuleIn",
     "SourcingRuleListOut",

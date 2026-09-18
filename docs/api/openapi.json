@@ -14950,6 +14950,95 @@
         "title": "SourcingBrandSupplierOut",
         "type": "object"
       },
+      "SourcingBulkRuleIn": {
+        "additionalProperties": false,
+        "description": "Switch many SKUs to one sourcing decision in a single request.",
+        "properties": {
+          "mode": {
+            "enum": [
+              "auto",
+              "force_inventory",
+              "force_supplier",
+              "manual"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "sku_ids": {
+            "items": {
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Sku Ids",
+            "type": "array"
+          },
+          "supplier_slug": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Slug"
+          }
+        },
+        "required": [
+          "sku_ids",
+          "mode"
+        ],
+        "title": "SourcingBulkRuleIn",
+        "type": "object"
+      },
+      "SourcingBulkRuleOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourcingBulkRuleResultOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SourcingBulkRuleOut",
+        "type": "object"
+      },
+      "SourcingBulkRuleResultOut": {
+        "description": "One SKU's outcome inside a bulk write \u2014 success or a named failure.",
+        "properties": {
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "ok"
+        ],
+        "title": "SourcingBulkRuleResultOut",
+        "type": "object"
+      },
       "SourcingDecisionOut": {
         "properties": {
           "fallback": {
@@ -27352,6 +27441,81 @@
           }
         },
         "summary": "Upsert the rule for a SKU",
+        "tags": [
+          "admin:sourcing"
+        ]
+      }
+    },
+    "/api/v1/admin/sourcing/rules:bulk": {
+      "put": {
+        "operationId": "bulk_upsert_rules_api_v1_admin_sourcing_rules_bulk_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SourcingBulkRuleIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourcingBulkRuleOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Switch many SKUs to one sourcing decision in a single request",
         "tags": [
           "admin:sourcing"
         ]

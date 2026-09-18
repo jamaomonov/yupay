@@ -78,6 +78,7 @@ GET    /api/v1/admin/sourcing/rules                  — все явные пр�
 GET    /api/v1/admin/sourcing/rules/{sku_id}         — Decision (что сейчас применится)
 PUT    /api/v1/admin/sourcing/rules/{sku_id}         — upsert
 DELETE /api/v1/admin/sourcing/rules/{sku_id}         — снять, SKU вернётся в `auto`
+PUT    /api/v1/admin/sourcing/rules:bulk             — массовое переключение (см. ниже)
 ```
 
 `PUT` с `mode=force_supplier` на поставщика, которому нужен маппинг (G2B,
@@ -85,6 +86,16 @@ G-Engine, NOVA — `MAPPING_REQUIRED_SUPPLIERS` в `integrations.models`), от�
 у SKU нет активной строки `sku_supplier_mapping` на него. Иначе правило
 «применилось», а каждый заказ падает в inbox с `no active mapping` — по одному.
 Waxpeer маппинга не требует и не проверяется.
+
+`PUT .../rules:bulk` (`bulk_rules.bulk_set_rules`) применяет одно решение —
+`{sku_ids, mode, supplier_slug}` — к списку SKU (до 100 за запрос) сразу.
+Каждый SKU — своя единица работы (`SAVEPOINT` на итерацию): один SKU без
+активного маппинга на форсируемого поставщика проваливается по имени
+(`{sku_id, ok: false, error: "..."}`), а остальные всё равно записываются —
+частичный успех, а не всё-или-ничего. `mode=auto` удаляет явное правило, как
+`DELETE`, и не ошибается на SKU, у которого правила и так не было. Оба `PUT`
+принимают `Idempotency-Key` (§9 AGENTS.md) — повтор с тем же ключом отдаёт
+сохранённый ответ, не перезапуская запись.
 
 ## Связь с `fulfillment`
 
