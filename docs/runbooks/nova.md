@@ -415,6 +415,36 @@ place them; they are paired instead through an explicit `SKU_OFFER_OVERRIDES`
 table in the script (`freefire_cis-weekly-lite → weekly_lite`, etc.), read
 once by a human rather than fuzzy-matched by name.
 
+### What the operator sees once the switch is live
+
+Design: [ADR-0083](../decisions/0083-routed-supplier-cost-and-price-ratchet.md). This is what
+changes for these nine SKUs from the moment `APPLY=1` commits the `force_supplier = nova` rule —
+distinct from the mapping/routing mechanics above, which exist the instant the mapping is written.
+
+**Cost now syncs from NOVA, not G2B.** `sourcing.resolve_for_sku` says these nine SKUs route to
+NOVA, so per ADR-0083 NOVA is the only supplier whose hourly (or on-demand) refresh is allowed to
+write `Sku.cost_usdt` for them. The G2B mapping is still active and still refreshed every hour —
+switching never deletes or deactivates it, which is exactly what makes the rollback in the next
+section a one-click change — but its refresh now only records a `supplier_price_history` row. It
+can no longer move these SKUs' cost or price.
+
+**The retail price does not move.** Syncing cost down to NOVA's number is a drop, and the
+automatic refresh path may raise a margin-derived price but never lower one (ADR-0083 Decision 2).
+So `price_usd` holds exactly where it was, and the whole gap between what G2B was charging and
+what NOVA charges lands as margin instead of as a markdown nobody decided on.
+
+**The margin gain, computed against the catalogue as it stands (2026-09-18; neither seed had run
+with `APPLY=1` yet, so these are today's real G2B costs against NOVA's live numbers from
+[ADR-0082](../decisions/0082-nova-steam-and-real-cost-basis.md) §1, not a projection).** Take
+110 Diamonds: price holds at $0.98, cost moves from G2B's $0.82 to NOVA's $0.790602, so margin
+moves from 16.3 % to 19.3 % — up 3.0 points, matching NOVA's 3.6 % cost discount on this SKU almost
+exactly (the two aren't identical because margin is measured against price, the discount against
+cost). Run the same arithmetic across all nine SKUs and the average moves from about 16.7 % to
+about 18.8 % — roughly two to three points of margin per SKU, tracking each SKU's own 0.8–3.6 %
+NOVA discount. That is a different number from the ~10 %→13 % this branch's design spec floated
+before the switch shipped; it is what the current catalogue actually supports, and it is the
+number to trust.
+
 ### The ten NOVA-only SKUs
 
 `scripts/seed/2026-09-18_free_fire_nova_only.py` creates six Level Up

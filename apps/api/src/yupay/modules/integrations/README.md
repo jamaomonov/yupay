@@ -10,9 +10,28 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
 
 - Own `sku_supplier_mapping` and `supplier_catalog_cache`.
 - Serve the admin CRUD over mappings and the cached supplier catalog.
-- Refresh `Sku.cost_usdt` from the supplier (on upsert and via the hourly
-  `refresh-all-prices` job — the single source of cost truth). When the SKU
-  has a saved `margin_percent`, a cost move also re-derives `price_usd`
+- Refresh a supplier's price for a mapping (on upsert and via the hourly
+  `refresh-all-prices` job), **dispatched by `mapping.supplier_slug`**
+  (`cost_refresh.refresh_sku_cost_for_mapping`, split out into its own module
+  when `service.py` passed 900 lines — G2B reads the catalog cache or calls
+  `games_catalogue` live; NOVA calls `GET /topups/offers` per category,
+  cached per refresh run so a 19-SKU brand makes one call, not nineteen; a
+  NOVA Steam mapping is skipped, it has no catalogue price to look up).
+  **Only the supplier a SKU actually routes to may write `Sku.cost_usdt`.**
+  Every other active mapping still gets refreshed — it just records a
+  `supplier_price_history` row and touches nothing else. `Sku.cost_usdt` is
+  our cost basis, not a fact about a supplier: retail price derives from it,
+  an order line freezes it at checkout, the margin report subtracts it, so
+  two suppliers writing it on the same SKU would flip that SKU's retail
+  price every refresh depending on which one ran last. The check is
+  `_is_routed_supplier(decision, mapping.supplier_slug)` against
+  `sourcing.resolve_for_sku`'s answer — see
+  [ADR-0083](../../../../../../docs/decisions/0083-routed-supplier-cost-and-price-ratchet.md)
+  for why, and for the 22 production SKUs (after the Free Fire→NOVA switch,
+  [ADR-0082](../../../../../../docs/decisions/0082-nova-steam-and-real-cost-basis.md))
+  this is not hypothetical for.
+  When the SKU has a saved `margin_percent`, a cost move on the routed
+  supplier also re-derives `price_usd`
   (`catalog.admin_service.set_sku_cost_usdt`) so a SKU nobody is actively
   re-pricing never starts selling below cost — see
   [ADR-0050](../../../../../../docs/decisions/0050-sku-margin-percent.md).
@@ -22,8 +41,13 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   that passes `False`, so a supplier cost drop widens the margin instead of
   quietly handing the saving to the customer. A cost rise still raises the
   price either way. The mapping-save route (an operator's own action)
-  keeps the default and can still lower a price on purpose. See
-  [the sourcing-by-brand design, §5](../../../../../../docs/superpowers/specs/2026-09-18-sourcing-by-brand-design.md).
+  keeps the default and can still lower a price on purpose. Note that the
+  admin's on-demand "Обновить все цены" button also runs through
+  `refresh_all_mappings`, so it inherits the same `allow_price_drop=False`
+  — it can raise or hold a price, never lower one; a downward correction is
+  a per-SKU action only. See
+  [ADR-0083](../../../../../../docs/decisions/0083-routed-supplier-cost-and-price-ratchet.md)
+  and [the sourcing-by-brand design, §5](../../../../../../docs/superpowers/specs/2026-09-18-sourcing-by-brand-design.md).
 - Probe supplier connectivity (`GET /{slug}/health`).
 - Resolve a player id to a nickname for the storefront (`player_check.py`),
   behind a per-supplier circuit breaker (`breaker.py`) so a G2B outage costs
