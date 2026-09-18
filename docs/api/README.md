@@ -242,6 +242,18 @@ per-IP `guard_ip` throttled) and never mails the caller's input, so it cannot
 exfiltrate codes to an attacker-controlled address. See
 `docs/decisions/0042-guest-code-access-magic-link.md`.
 
+## Sourcing rules — bulk admin endpoint
+
+`PUT /admin/sourcing/rules:bulk` (`{sku_ids, mode, supplier_slug}`, admin-only) switches up
+to 100 SKUs to one sourcing decision per request — see `apps/api/src/yupay/modules/sourcing/README.md`
+for the mode/supplier semantics. It accepts `Idempotency-Key` like every other write here,
+with one contract worth stating explicitly because the natural retry loop breaks it:
+**one `Idempotency-Key` per attempt, never per SKU selection.** A repeated key replays the
+first response verbatim — including a response where every item failed (`0/100 ok`) — and
+ignores a different request body sent with the same key. So fixing the cause of a failure
+(e.g. creating a missing supplier mapping) and retrying with the _same_ key replays the
+stale failed response and writes nothing; a retry after remediation needs a fresh key.
+
 ## Merchant B2B admin (M1)
 
 `/admin/merchants` (create, list-with-USD-balance, freeze/unfreeze,
