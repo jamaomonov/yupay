@@ -785,7 +785,7 @@ class Settings(BaseSettings):
 
     # --- Steam Gifts ---
     # Region-priced Steam gift packages, fulfilled through the G-Engine gifts
-    # endpoints (see ``integrations.adapters.gengine``). ``steam_gifts_enabled``
+    # endpoints (see ``fulfillment.suppliers.gengine``). ``steam_gifts_enabled``
     # is the feature flag the public/miniapp routers (Task 3) gate on;
     # ``steam_gifts_margin_percent`` only seeds ``steam_gift_settings`` row 1
     # on first read — after that, the DB (and its Redis cache) is the source of
