@@ -73,6 +73,22 @@ export interface SourcingBrandSkuOut {
   sku_code: string;
   denomination: string | null;
   product_slug: string;
+  /** `"top_up"` | `"voucher"` (mirrors `Product.kind`'s DB check
+   *  constraint) — a bare `string` here, same as `SkuPickerRow.
+   *  product_kind`, not a narrower union: the backend field
+   *  (`sourcing/schemas.py`'s `SourcingBrandSkuOut.product_kind`) is typed
+   *  `str`, not a `Literal`.
+   *
+   *  Exists so this screen can stop *offering* an action the backend
+   *  already refuses: `sourcing.service.set_rule` rejects
+   *  `mode="force_inventory"` on a `top_up` SKU (the code warehouse holds
+   *  voucher codes; a top-up SKU has nothing there to issue) — and
+   *  `primary`/`fallback` cannot substitute for a kind signal, since a
+   *  `top_up` SKU under `mode="auto"` never reports `primary ==
+   *  "inventory"` in the first place (`_auto_decision` only ever gives it
+   *  `supplier:<slug>` or `supplier:manual`). See
+   *  `brandSourcingFormat.forceInventoryDisabledReason`. */
+  product_kind: string;
   price_usd: string;
   cost_usdt: string | null;
   primary: string;

@@ -16,7 +16,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { bulkConfirmMessage, inventoryRoutedCount } from "./brandSourcingFormat";
+import {
+  bulkConfirmMessage,
+  FORCE_INVENTORY_TOPUP_ERROR,
+  inventoryRoutedCount,
+  partitionForceInventorySelection,
+} from "./brandSourcingFormat";
 import { BrandSourcingTable } from "./BrandSourcingTable";
 import { BrandSourcingToolbar } from "./BrandSourcingToolbar";
 import { switchSkusChunked } from "./bulkSwitch";
@@ -78,8 +83,39 @@ export function BrandSourcingPage() {
   }, [items]);
 
   const switchMutation = useMutation<SourcingBulkRuleOut, unknown, { skuIds: string[] }>({
-    mutationFn: ({ skuIds }) =>
-      switchSkusChunked(skuIds, bulkMode, bulkMode === "force_supplier" ? bulkSupplier : null),
+    // `force_inventory` needs one extra step the other modes don't: a
+    // ticked selection can mix top_up and voucher rows, and the backend
+    // rejects the mode outright for a top_up SKU (the code warehouse has
+    // nothing to issue for one). Neither dropping the top-ups silently
+    // (they'd look switched when nothing was ever sent for them) nor
+    // blocking the whole action (the voucher rows are a legitimate,
+    // independent switch) is right — split the selection, send only what
+    // can apply, and report the rest the same way a real per-SKU
+    // rejection already renders (`onSuccess` below treats every entry in
+    // `data.items` alike, real or synthesized). `switchSkusChunked` makes
+    // no network call for an empty `applicable` list (its chunk loop
+    // never runs), so an all-top_up selection resolves locally.
+    mutationFn: async ({ skuIds }) => {
+      if (bulkMode !== "force_inventory") {
+        return switchSkusChunked(
+          skuIds,
+          bulkMode,
+          bulkMode === "force_supplier" ? bulkSupplier : null,
+        );
+      }
+      const { applicable, blocked } = partitionForceInventorySelection(items, new Set(skuIds));
+      const result = await switchSkusChunked(applicable, bulkMode, null);
+      return {
+        items: [
+          ...result.items,
+          ...blocked.map((skuId) => ({
+            sku_id: skuId,
+            ok: false,
+            error: FORCE_INVENTORY_TOPUP_ERROR,
+          })),
+        ],
+      };
+    },
     onSuccess: (data) => {
       const failed = data.items.filter((i) => !i.ok);
       const okCount = data.items.length - failed.length;

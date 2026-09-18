@@ -7,6 +7,48 @@ import type { SourcingBrandSkuOut, SourcingBrandSupplierOut, SourcingMode } from
 import { SUPPLIER_LABELS, type KnownSupplier } from "@/features/integrations/types";
 import { marginFromCostAndPrice } from "@/lib/margin";
 
+/** Shared wording for "this row cannot go to the code warehouse" —
+ *  `BrandSourcingTable`'s per-row "склад" control and `BrandSourcingPage`'s
+ *  bulk force_inventory switch both need the exact same string: the table
+ *  shows it in place of the control it withholds, the page synthesizes a
+ *  per-SKU failure entry carrying it for a top-up row inside a mixed bulk
+ *  selection (see `partitionForceInventorySelection`). One constant so the
+ *  two treatments of the same fact can never drift apart. */
+export const FORCE_INVENTORY_TOPUP_ERROR = "топ-ап — со склада коды не выдаются";
+
+/** Why `force_inventory` must not be offered for this row — `null` when it
+ *  is offerable. Mirrors the single-SKU editor's `SourcingModeCards.
+ *  disabledReasonFor` and the backend guard `sourcing.service.set_rule` now
+ *  enforces (a `top_up` SKU rejected with a 4xx): the code warehouse holds
+ *  voucher codes, and a top-up SKU has nothing there a payment could ever
+ *  be fulfilled from. */
+export function forceInventoryDisabledReason(productKind: string): string | null {
+  return productKind === "top_up" ? FORCE_INVENTORY_TOPUP_ERROR : null;
+}
+
+/** Splits a ticked selection into the SKUs a bulk `force_inventory` switch
+ *  can actually apply to and the ones it cannot (`top_up` rows) — the case
+ *  to get right is a mixed selection: neither silently dropping the
+ *  top-ups (they'd look switched when they were never sent) nor blocking
+ *  the whole action (the voucher rows in the same selection are legitimate
+ *  and would otherwise wait on an unrelated row). The caller sends
+ *  `applicable` over the wire and reports `blocked` the same way a real
+ *  per-SKU rejection is reported — see `BrandSourcingPage`'s
+ *  `switchMutation`. */
+export function partitionForceInventorySelection(
+  items: readonly Pick<SourcingBrandSkuOut, "sku_id" | "product_kind">[],
+  selected: ReadonlySet<string>,
+): { applicable: string[]; blocked: string[] } {
+  const applicable: string[] = [];
+  const blocked: string[] = [];
+  for (const item of items) {
+    if (!selected.has(item.sku_id)) continue;
+    if (item.product_kind === "top_up") blocked.push(item.sku_id);
+    else applicable.push(item.sku_id);
+  }
+  return { applicable, blocked };
+}
+
 /** Whether `slug` is this row's current cost owner — either the primary
  *  route (`primary === "supplier:<slug>"`) or, for a voucher SKU on the
  *  automatic route, the supplier the code warehouse falls back to
