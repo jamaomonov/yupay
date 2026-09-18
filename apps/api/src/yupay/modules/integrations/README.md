@@ -32,7 +32,7 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   already returns each service's denominations inline — so its mapped-only
   filter costs nothing extra, it just declines to cache the unmapped ones.
   For a game the cache has never seen, `POST
-  /admin/integrations/{supplier}/games/{game_id}/sync-denominations`
+/admin/integrations/{supplier}/games/{game_id}/sync-denominations`
   (`nova | gengine`; G2B keeps its own pre-existing live picker,
   `GET /g2b/games/{game_code}/catalogue`, uncached) pulls exactly that one
   game's denominations in, on demand — a `POST`, explicitly triggered by an
@@ -41,6 +41,7 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   calls a supplier; it only ever reads what one of the two sync routes (or
   the hourly job) already wrote, filtering `game_denom` rows to one game via
   `parent_external_id`.
+
 - Refresh a supplier's price for a mapping (on upsert and via the hourly
   `refresh-all-prices` job), **dispatched by `mapping.supplier_slug`**
   (`cost_refresh.refresh_sku_cost_for_mapping`, split out into its own module
