@@ -17,11 +17,12 @@ import { ArrowRight, Boxes, Hand, Sparkles, Truck, Warehouse } from "lucide-reac
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
+import { RulesTable } from "./RulesTable";
+
 import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
 
 import { Badge } from "@/components/Badge";
-import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { SkuPicker } from "@/features/integrations/pickers";
@@ -167,66 +168,6 @@ export function SourcingPage() {
 
   const canSave = sku !== null && (mode !== "force_supplier" || supplierSlug.trim().length > 0);
 
-  const columns: Column<SourcingRuleListOut["items"][number]>[] = [
-    {
-      key: "sku",
-      header: "SKU",
-      render: (r) => (
-        <code className="font-mono text-xs text-[var(--text-secondary)]">{r.sku_code}</code>
-      ),
-      className: "w-40",
-    },
-    {
-      key: "mode",
-      header: "Режим",
-      render: (r) => <ModeBadge mode={r.mode} />,
-      className: "w-44",
-    },
-    {
-      key: "supplier",
-      header: "Поставщик",
-      render: (r) =>
-        r.supplier_slug ? (
-          <code className="text-xs">{r.supplier_slug}</code>
-        ) : (
-          <span className="text-[var(--text-tertiary)]">—</span>
-        ),
-      className: "w-32",
-    },
-    {
-      key: "updated",
-      header: "Обновлено",
-      render: (r) =>
-        new Date(r.updated_at).toLocaleString("ru", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        }),
-      className: "w-40",
-    },
-    {
-      key: "actions",
-      header: "",
-      render: (r) => (
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={(ev) => {
-            ev.stopPropagation();
-            if (window.confirm("Удалить правило? SKU вернётся в режим авто.")) {
-              remove.mutate(r.sku_id);
-            }
-          }}
-        >
-          Удалить
-        </Button>
-      ),
-      className: "w-24 text-right",
-    },
-  ];
-
   return (
     <div className="space-y-6">
       <PageHeader
@@ -334,12 +275,12 @@ export function SourcingPage() {
         <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-[var(--text-secondary)]">
           Явные правила
         </h2>
-        <DataTable
-          rows={rulesQuery.data?.items ?? []}
-          columns={columns}
-          rowKey={(r) => r.sku_id}
+        <RulesTable
+          rules={rulesQuery.data?.items ?? []}
           loading={rulesQuery.isLoading}
-          empty="Явных правил нет — все SKU работают в режиме авто."
+          onDelete={(skuId) => {
+            remove.mutate(skuId);
+          }}
         />
       </section>
     </div>
@@ -501,27 +442,6 @@ function autoHintFor(sku: SkuPickerRow, mapping: { supplier_slug: string } | nul
 // ---------------------------------------------------------------------------
 // shared
 // ---------------------------------------------------------------------------
-
-function ModeBadge({ mode }: { mode: SourcingMode }) {
-  const map: Record<SourcingMode, { label: string; cls: string }> = {
-    auto: { label: "авто", cls: "bg-[var(--bg-muted)] text-[var(--text-secondary)]" },
-    force_inventory: {
-      label: "только склад",
-      cls: "bg-[var(--success-soft)] text-[var(--success-fg)]",
-    },
-    force_supplier: {
-      label: "только поставщик",
-      cls: "bg-[var(--info-soft)] text-[var(--info-fg)]",
-    },
-    manual: { label: "вручную", cls: "bg-[var(--warning-soft)] text-[var(--warning-fg)]" },
-  };
-  const { label, cls } = map[mode];
-  return (
-    <Badge tone={cls} dot={mode !== "auto"}>
-      {label}
-    </Badge>
-  );
-}
 
 function formatApiError(err: ApiError): string {
   const body = err.body as { detail?: string; title?: string } | null;
