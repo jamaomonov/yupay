@@ -433,17 +433,21 @@ automatic refresh path may raise a margin-derived price but never lower one (ADR
 So `price_usd` holds exactly where it was, and the whole gap between what G2B was charging and
 what NOVA charges lands as margin instead of as a markdown nobody decided on.
 
-**The margin gain, computed against the catalogue as it stands (2026-09-18; neither seed had run
-with `APPLY=1` yet, so these are today's real G2B costs against NOVA's live numbers from
-[ADR-0082](../decisions/0082-nova-steam-and-real-cost-basis.md) §1, not a projection).** Take
-110 Diamonds: price holds at $0.98, cost moves from G2B's $0.82 to NOVA's $0.790602, so margin
-moves from 16.3 % to 19.3 % — up 3.0 points, matching NOVA's 3.6 % cost discount on this SKU almost
-exactly (the two aren't identical because margin is measured against price, the discount against
-cost). Run the same arithmetic across all nine SKUs and the average moves from about 16.7 % to
-about 18.8 % — roughly two to three points of margin per SKU, tracking each SKU's own 0.8–3.6 %
-NOVA discount. That is a different number from the ~10 %→13 % this branch's design spec floated
-before the switch shipped; it is what the current catalogue actually supports, and it is the
-number to trust.
+**The margin gain, measured against production on 2026-09-18.** Both seeds have run with
+`APPLY=1`, so Free Fire CIS already routes to NOVA and the ten NOVA-only SKUs are live. What has
+_not_ happened yet is the cost move: prod still runs the pre-ADR-0083 code, where G2B's refresh
+writes `cost_usdt`, so the nine original SKUs still carry G2B's numbers to the cent. The gain below
+lands when this branch deploys and the routed supplier — NOVA — becomes the one writing that cost.
+
+Take 110 Diamonds: the price holds at $0.90, the cost moves from G2B's $0.820000 to NOVA's
+$0.790602, and margin goes from 9.76 % to 13.84 %. Across all nine the average moves from **10.7 %
+to 13.6 %** — about 2.9 points per SKU, tracking each one's own 0.8–3.6 % NOVA discount. Weekly
+Lite gains least (0.93 points, on a 0.8 % discount) and 110 Diamonds most (4.08 points, on 3.6 %).
+
+Margin here is measured the way the rest of the system measures it — against **cost**, not against
+price, which is what `Sku.margin_percent` means and what `price_usd = cost_usdt * (1 +
+margin_percent / 100)` encodes. Measuring against price instead would report the same nine SKUs as
+9.6 % → 11.9 % and quietly disagree with every other screen.
 
 ### The ten NOVA-only SKUs
 
