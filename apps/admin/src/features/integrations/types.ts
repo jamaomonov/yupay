@@ -49,16 +49,58 @@ export interface CatalogEntry {
   title: string;
   raw: Record<string, unknown>;
   fetched_at: string;
+  /** For a `game_denom` row, the `external_id` of the game it belongs to.
+   *  Null for `game`/`voucher` rows, which have no parent. */
+  parent_external_id: string | null;
+  /** The supplier's own price for this entry, when they report one —
+   *  a string straight through from the API (§9: money never becomes a
+   *  float client-side). Parse only for display; never do arithmetic on it
+   *  here. */
+  price_usdt: string | null;
 }
 
 export interface CatalogListOut {
   items: CatalogEntry[];
 }
 
+/** Builds a minimal `CatalogEntry` for an id the UI knows about but the
+ *  cache doesn't — a value typed by hand, or one prefilled from an
+ *  existing mapping row that predates (or outran) the cache. Centralised so
+ *  every call site fills the same fields the same way; a field added to
+ *  `CatalogEntry` only needs updating here. */
+export function syntheticCatalogEntry(
+  supplierSlug: string,
+  kind: CatalogKind,
+  externalId: string,
+  parentExternalId: string | null = null,
+): CatalogEntry {
+  return {
+    supplier_slug: supplierSlug,
+    kind,
+    external_id: externalId,
+    title: externalId,
+    raw: {},
+    fetched_at: new Date().toISOString(),
+    parent_external_id: parentExternalId,
+    price_usdt: null,
+  };
+}
+
 export interface CatalogSyncResult {
   supplier: string;
   vouchers_synced: number;
   games_synced: number;
+  error: string | null;
+}
+
+/** Response of `POST /admin/integrations/{supplier}/games/{game_id}/sync-denominations`
+ *  (`DenomSyncOut` on the backend). Only `nova` and `gengine` accept this
+ *  route — G2B's denominations were never moved into `supplier_catalog_cache`
+ *  and keep their own live picker (`DenomPicker` in `gameWidgets.tsx`). */
+export interface SyncDenominationsResult {
+  supplier: string;
+  game_id: string;
+  denominations_synced: number;
   error: string | null;
 }
 
@@ -183,6 +225,20 @@ export const RESERVE_SUPPLIERS: ReadonlySet<string> = new Set(["nova"]);
 /**
  * What a supplier actually supports, so the page offers only what will work.
  *
+ * Two different questions used to share one `catalogue` flag, which meant a
+ * supplier with a sync endpoint but no importer (or vice versa) had no way to
+ * say so:
+ *
+ * - `catalogueSync` — has a browsable/syncable product catalogue
+ *   (`POST /{supplier}/sync-catalog`) that the mapping wizard's pickers read
+ *   from `supplier_catalog_cache`. Mirrors the backend's
+ *   `SYNCABLE_SUPPLIERS` (`catalog_sync.py`).
+ * - `gameImport` — can turn a browsed catalogue game into a Brand + Product +
+ *   SKUs in one action (`SupplierCatalogPage`'s per-row "Импортировать" →
+ *   `GameImportPage`). G2B-only: the importer posts to the G2B-specific
+ *   `POST /g2b/import` regardless of which supplier's catalogue page linked
+ *   to it, so offering the link for another supplier would 404.
+ *
  * Waxpeer sells one thing — a Steam wallet top-up priced by the dollar amount
  * the customer types — so there is no product list to browse, cache or map a
  * SKU onto, and no per-mapping cost to refresh. It has zero rows in
@@ -191,20 +247,45 @@ export const RESERVE_SUPPLIERS: ReadonlySet<string> = new Set(["nova"]);
  * that can only fail.
  */
 export interface SupplierCapabilities {
-  /** Has a browsable/syncable product catalogue and SKU mappings built on it. */
-  catalogue: boolean;
+  catalogueSync: boolean;
+  gameImport: boolean;
 }
 
 export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> = {
-  g2b: { catalogue: true },
-  waxpeer: { catalogue: false },
-  // Its catalogue lives behind `/recharge/services`, which the import
-  // wizard does not speak yet — the mapping is hand-entered for now.
-  gengine: { catalogue: false },
-  // No sync-catalogue endpoint for NOVA in this branch — the mapping is
-  // hand-entered, same as G-Engine's.
-  nova: { catalogue: false },
+  g2b: { catalogueSync: true, gameImport: true },
+  waxpeer: { catalogueSync: false, gameImport: false },
+  // G-Engine's catalogue now syncs (`POST /gengine/sync-catalog`) into the
+  // same cache the mapping wizard's pickers read — but there is no importer
+  // for it, so `gameImport` stays false.
+  gengine: { catalogueSync: true, gameImport: false },
+  // Same story as G-Engine: NOVA's catalogue syncs now, but only G2B has an
+  // importer.
+  nova: { catalogueSync: true, gameImport: false },
 };
+
+/**
+ * Looks up a slug's capabilities the way every caller reading a slug from the
+ * URL should. Known suppliers get the truth from `SUPPLIER_CAPABILITIES`
+ * above; an unknown one — a supplier someone just added and hasn't listed
+ * here yet — gets the two defaults decided by what a wrong guess costs.
+ *
+ * `catalogueSync` defaults **true**: the route it drives is typed
+ * `Literal[...]` on the backend, so an unsupported slug comes back as a clean
+ * 422 the operator can read. Offering a button that might answer "not
+ * supported" beats hiding tooling that does work.
+ *
+ * `gameImport` defaults **false**, and the asymmetry is the point. That link
+ * posts to `/g2b/import`, hardcoded — for any other supplier it would not
+ * fail, it would *succeed at the wrong thing*, importing a G2B game while the
+ * operator is looking at someone else's catalogue. A silent wrong action is
+ * worse than a missing button, so an unknown supplier does not get offered
+ * one.
+ */
+export function capabilitiesFor(slug: string): SupplierCapabilities {
+  return isKnownSupplier(slug)
+    ? SUPPLIER_CAPABILITIES[slug]
+    : { catalogueSync: true, gameImport: false };
+}
 
 /**
  * Every route a fulfilment task can carry, in one place.
@@ -291,21 +372,12 @@ export function isAmountPriced(slug: string, externalProductId = ""): boolean {
   return slug === "nova" && externalProductId.trim() === NOVA_STEAM_SENTINEL;
 }
 
-/** Suppliers whose catalogue is cached locally, so a mapping can be picked
- *  from a list. Anything else is typed in by hand — see `MappingEditPage`. */
-export function hasCatalogueCache(slug: string): boolean {
-  // Narrowed by membership rather than cast: `SUPPLIER_CAPABILITIES` is keyed
-  // by the known slugs, so casting an arbitrary string into that key type
-  // would tell the compiler the lookup always hits when it does not.
-  return isKnownSupplier(slug) && SUPPLIER_CAPABILITIES[slug].catalogue;
-}
-
 function isKnownSupplier(slug: string): slug is KnownSupplier {
   return (KNOWN_SUPPLIERS as readonly string[]).includes(slug);
 }
 
 /** Best-effort human label for a supplier slug — same narrowing precedent
- *  as `hasCatalogueCache` above. Used by the SKU price-history card/modal
+ *  as `capabilitiesFor` above. Used by the SKU price-history card/modal
  *  to say which supplier a row's price belongs to, now that
  *  `supplier_price_history` can interleave rows from more than one active
  *  mapping for the same SKU. */
@@ -314,21 +386,32 @@ export function supplierLabel(slug: string): string {
 }
 
 /** Why a supplier shows no catalogue tooling — stated rather than left as a
- *  suspicious absence. */
+ *  suspicious absence. Only Waxpeer belongs here now: G-Engine and NOVA both
+ *  gained a sync endpoint on this branch and no longer need a by-hand note
+ *  (`capabilitiesFor(slug).catalogueSync` is true for both). */
 export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> = {
-  gengine:
-    "Каталог G-Engine (сервисы пополнения) пока не импортируется мастером — " +
-    "маппинг SKU заводится вручную: service_id в external_product_id, " +
-    "denomination_id в external_variant_id.",
   waxpeer:
     "Waxpeer пополняет Steam-кошелёк на введённую сумму — у него нет списка товаров, " +
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
-  nova:
-    "Каталог NOVA пока не импортируется мастером — маппинг SKU заводится вручную: " +
-    "category_id (например, mobile_legends_ru) в external_product_id, " +
-    "offer_id в external_variant_id. NOVA — резерв: заказ уходит туда, только если " +
-    "SKU переключили на неё вручную через force_supplier.",
 };
+
+/**
+ * Suppliers whose game denominations are cached in `supplier_catalog_cache`
+ * and syncable on demand via `POST /{supplier}/games/{game_id}/sync-denominations`
+ * — mirrors `DENOM_SYNCABLE_SUPPLIERS` in
+ * `apps/api/src/yupay/modules/integrations/catalog_sync.py`. G2B is
+ * deliberately excluded: its denominations were never moved into the cache,
+ * and it keeps its own live `DenomPicker` (`gameWidgets.tsx`) instead of the
+ * cache-backed `DenomCatalogPicker`.
+ *
+ * This is a straight port of the backend set (ADR-0082's lesson: a rule that
+ * exists on both sides of the API has two homes — change one, change both).
+ * `MappingEditPage` branches on membership here — a positive allowlist,
+ * mirroring the backend's own — rather than a `supplier === "g2b"`
+ * exclusion, so a future mappable supplier that isn't denomination-syncable
+ * doesn't silently get a picker with a pull button that 422s.
+ */
+export const DENOM_CACHE_SUPPLIERS: ReadonlySet<string> = new Set(["nova", "gengine"]);
 
 export interface GameImportDenom {
   catalogue_name: string;

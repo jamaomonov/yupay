@@ -15,9 +15,9 @@ import { Link, useParams } from "react-router-dom";
 
 import { SupplierAttemptsTab } from "./SupplierAttemptsTab";
 import {
+  capabilitiesFor,
   FULFILMENT_ROUTES,
   HEALTH_CHECK_TIMEOUT_MS,
-  SUPPLIER_CAPABILITIES,
   SUPPLIER_LABELS,
   SUPPLIER_NO_CATALOGUE_NOTE,
   type CatalogSyncResult,
@@ -38,10 +38,8 @@ export function SupplierDetailPage() {
   const label = SUPPLIER_LABELS[slug as keyof typeof SUPPLIER_LABELS] ?? slug;
   // Unknown suppliers get the full set rather than a blank page: better to
   // offer an action that might fail than to silently hide tooling from a
-  // supplier someone just added.
-  const caps = SUPPLIER_CAPABILITIES[slug as keyof typeof SUPPLIER_CAPABILITIES] ?? {
-    catalogue: true,
-  };
+  // supplier someone just added — see `capabilitiesFor`.
+  const caps = capabilitiesFor(slug);
   const noCatalogueNote =
     SUPPLIER_NO_CATALOGUE_NOTE[slug as keyof typeof SUPPLIER_NO_CATALOGUE_NOTE] ?? null;
   // "Takes SKU mappings" and "has a catalogue cache" are two different
@@ -82,7 +80,13 @@ export function SupplierDetailPage() {
     mutationFn: () =>
       apiPost<CatalogSyncResult>(`/api/v1/admin/integrations/${slug}/sync-catalog`, {}),
     onSuccess: (data) => {
-      void qc.invalidateQueries({ queryKey: qk.integrationCatalog({ supplierSlug: slug }) });
+      // Bare prefix, not `qk.integrationCatalog({ supplierSlug: slug })`: that
+      // key resolves to `[…, slug, null, null, null]`, which is not a prefix
+      // of a picker's `[…, slug, "game", "", null]` — so invalidating with it
+      // never refreshed a picker left open during the sync. This prefix
+      // matches every catalog query for this supplier regardless of
+      // kind/search/parent.
+      void qc.invalidateQueries({ queryKey: ["admin", "integrations", "catalog", slug] });
       const summary = `ваучеры: ${data.vouchers_synced.toString()}, игры: ${data.games_synced.toString()}`;
       if (data.error) {
         toast.error(`Каталог синхронизирован частично — ${summary}. ${data.error}`);
@@ -149,7 +153,7 @@ export function SupplierDetailPage() {
             actionLabel="Открыть маппинги"
             to={`/integrations/mappings?supplier=${slug}`}
           />
-          {caps.catalogue && (
+          {caps.catalogueSync && (
             <>
               <ActionCard
                 icon={Database}
@@ -191,7 +195,7 @@ export function SupplierDetailPage() {
         </section>
       )}
 
-      {!caps.catalogue && noCatalogueNote && (
+      {!caps.catalogueSync && noCatalogueNote && (
         <p className="mt-6 rounded-md border border-dashed border-[var(--border-default)] p-4 text-sm text-[var(--text-secondary)]">
           {noCatalogueNote}
         </p>

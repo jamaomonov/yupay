@@ -1,6 +1,14 @@
-/** G2B game-specific widgets used in the mapping wizard.
+/** G2B-only widgets used in the mapping wizard's denomination step.
  *
- * - ``DenomPicker``: grid of denomination chips (lazy fetch on game change).
+ * - ``DenomPicker``: grid of denomination chips, fetched live from G2B on
+ *   every game change (``GET /g2b/games/{code}/catalogue``). G2B is
+ *   deliberately **not** on `DENOM_SYNCABLE_SUPPLIERS` on the backend — its
+ *   denominations were never moved into `supplier_catalog_cache`, so there is
+ *   no cache-empty state to explain and no pull button to offer here; this
+ *   picker is always live. NOVA and G-Engine get the cache-backed
+ *   `DenomCatalogPicker` (`./DenomCatalogPicker.tsx`) instead, which *does*
+ *   need that pull button, because their denominations are cached and a
+ *   just-mapped game's cache can genuinely be empty.
  * - ``RequiredFieldsHint``: read-only summary of what the player must enter
  *   at checkout for this game. Informational — surfaces the contract so
  *   admins don't ship a mapping that demands fields the storefront doesn't
@@ -8,6 +16,10 @@
  * - ``PlayerChecker``: collapsed-by-default panel that proxies G2B's
  *   ``checkPlayerId`` so admins can verify a real player resolves before
  *   committing.
+ *
+ * All three call G2B-specific endpoints and mean nothing for another
+ * supplier's game code, so `MappingEditPage` renders them only when
+ * `supplier === "g2b"`.
  */
 
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -21,7 +33,8 @@ import { apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 // ---------------------------------------------------------------------------
-// Denom picker
+// Denom picker (G2B live — see module docstring for why this isn't the
+// cache-backed DenomCatalogPicker)
 // ---------------------------------------------------------------------------
 
 interface DenomPickerProps {

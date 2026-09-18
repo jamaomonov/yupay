@@ -304,6 +304,12 @@ yupay/
   endpoint, it needs an ADR entry saying why it clears those conditions and a line here. A
   rule that does not name its exceptions stops being read as a rule: this one was silently
   deviated from three times before the list existed.
+- **Admin catalogue-sync calls are a carve-out, not a fifth line in the list above**:
+  `POST /{supplier}/games/{game_id}/sync-denominations` already argues the deviation-free
+  shape in its own docstring — `POST`, operator-triggered from the mapping wizard, off the
+  order/payment/fulfilment path — and the same shape covers three pre-existing siblings
+  never added to that list either: `POST /{supplier}/sync-catalog`, `POST /g2b/import`, and
+  the live `GET /g2b/games/{code}/catalogue` and `/fields`.
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
 - DB indices are added in the same migration as the query that needs them.

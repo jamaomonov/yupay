@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from yupay.modules.catalog.schemas import FormField
 
@@ -146,8 +146,24 @@ class CatalogEntryOut(BaseModel):
     kind: CatalogKind
     external_id: str
     title: str
+    #: The game's ``external_id`` for a ``game_denom`` row; ``None`` for a
+    #: flat ``voucher``/``game`` row, which has no parent.
+    parent_external_id: str | None = None
+    #: The supplier's own price for this row, as a string (AGENTS.md §9 —
+    #: money never travels as a float). ``None`` when the supplier's
+    #: catalogue didn't report one at sync time.
+    price_usdt: str | None = None
     raw: dict[str, Any]
     fetched_at: datetime
+
+    @field_validator("price_usdt", mode="before")
+    @classmethod
+    def _stringify_price(cls, value: Any) -> str | None:
+        """``SupplierCatalogCache.price_usdt`` is a ``Decimal`` column;
+        ``model_validate`` is called directly on the ORM row (see
+        ``routes.list_catalog``), so the conversion to the wire string has
+        to happen here rather than at every call site."""
+        return None if value is None else str(value)
 
 
 class CatalogListOut(BaseModel):
@@ -155,7 +171,17 @@ class CatalogListOut(BaseModel):
 
 
 class CatalogSyncOut(BaseModel):
-    """Result of a one-shot catalog refresh for a supplier."""
+    """Result of a one-shot catalog refresh for a supplier.
+
+    The field names are G2B's own vocabulary (vouchers/mapped vouchers) but
+    the shape is shared by NOVA and G-Engine too, per the contract each
+    ``/{supplier}/sync-catalog`` call keeps: for those two, ``vouchers_synced``
+    stays 0 (neither has a flat voucher catalogue), ``games_synced`` counts
+    the top-level game/service rows written, and ``mapped_vouchers_refreshed``
+    reports ``game_denom`` rows written for games we already hold an active
+    mapping to — the denomination-sync half of Task 2, folded into the same
+    counter G2B uses for its own "beyond the browse sweep" refresh.
+    """
 
     supplier: str
     vouchers_synced: int = 0
@@ -166,6 +192,16 @@ class CatalogSyncOut(BaseModel):
     #: Mapped products G2B no longer lists. Their cached price is kept, so a
     #: non-zero count here is worth a look rather than an outage.
     missing_upstream: int = 0
+    error: str | None = None
+
+
+class DenomSyncOut(BaseModel):
+    """Result of an on-demand single-game denomination sync
+    (``POST /{supplier}/games/{game_id}/sync-denominations``)."""
+
+    supplier: str
+    game_id: str
+    denominations_synced: int = 0
     error: str | None = None
 
 
@@ -316,6 +352,7 @@ __all__ = [
     "CheckPlayerOut",
     "CostSyncResult",
     "DenomImportIn",
+    "DenomSyncOut",
     "GameDenomListOut",
     "GameDenomOut",
     "GameFieldsOut",

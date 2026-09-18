@@ -136,6 +136,12 @@ without touching the others via `AUTH_IP_GUARD_BUCKET_MAX`, e.g.
 admin UI — never in the live fulfilment path. So a stale cache can't
 cause an order to fail, only annoy an admin. Re-run sync as needed.
 
+The route itself is no longer G2B-only: `POST /{supplier}/sync-catalog`
+now takes `supplier` in `{g2b, nova, gengine}`, and the same URL above
+still resolves (`g2b` is one of the three accepted values). The scheduler
+runs the same sync hourly, per supplier — this endpoint is only for when
+an operator doesn't want to wait an hour.
+
 ## Related
 
 - ADR-0019 — G2B integration design.

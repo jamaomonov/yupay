@@ -7,7 +7,7 @@ supplier API, and on-demand catalog sync that populates
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +29,7 @@ from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.integrations import service as svc
-from yupay.modules.integrations.catalog_sync import sync_g2b_catalog as run_g2b_catalog_sync
+from yupay.modules.integrations.catalog_sync import run_catalog_sync, run_game_denomination_sync
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.player_check import check_player_for_brand
 from yupay.modules.integrations.schemas import (
@@ -40,6 +40,7 @@ from yupay.modules.integrations.schemas import (
     CheckPlayerIn,
     CheckPlayerOut,
     CostSyncResult,
+    DenomSyncOut,
     GameDenomListOut,
     GameDenomOut,
     GameFieldsOut,
@@ -245,47 +246,119 @@ async def list_catalog(
     supplier_slug: Annotated[str, Query(min_length=2, max_length=32)],
     kind: Annotated[CatalogKind | None, Query()] = None,
     search: Annotated[str | None, Query(max_length=64)] = None,
+    parent_external_id: Annotated[str | None, Query(max_length=128)] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
 ) -> CatalogListOut:
+    """Cache-only read — never calls a supplier (AGENTS.md §10). ``kind`` and
+    ``parent_external_id`` together are how the admin picker narrows a
+    ``game_denom`` listing down to one game's own denominations."""
     rows = await svc.list_catalog(
         db,
         supplier_slug=supplier_slug,
         kind=kind,
         search=search,
+        parent_external_id=parent_external_id,
         limit=limit,
     )
     return CatalogListOut(items=[CatalogEntryOut.model_validate(r) for r in rows])
 
 
 @admin_router.post(
-    "/g2b/sync-catalog",
+    "/{supplier}/sync-catalog",
     response_model=CatalogSyncOut,
-    summary="Refresh ``supplier_catalog_cache`` from the G2B API",
+    summary="Refresh ``supplier_catalog_cache`` from one supplier's API",
 )
-async def sync_g2b_catalog(
+async def sync_catalog(
+    supplier: Literal["g2b", "nova", "gengine"],
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> CatalogSyncOut:
-    """Pulls G2B's product + game catalog into our cache.
+    """Pulls one supplier's game/voucher catalogue into our cache.
 
     Best-effort: partial failures are logged but the endpoint never raises
     so the admin UI gets a definitive answer instead of a 5xx. Live
     fulfilment does NOT depend on this cache — the source of truth is
     ``sku_supplier_mapping``.
 
-    The scheduler runs the same function hourly (``sync_supplier_catalog``);
-    this button is for when someone does not want to wait.
+    Generalised from the G2B-only ``POST /g2b/sync-catalog`` (kept working —
+    ``supplier="g2b"`` is one of the three literal values this path accepts,
+    so the old URL still resolves to this same handler) to also cover NOVA
+    and G-Engine. The scheduler runs the same sync hourly, per supplier
+    (``sync_supplier_catalog``); this button is for when someone does not
+    want to wait.
+
+    Accepts ``Idempotency-Key`` (AGENTS.md §9) the same way its sibling
+    ``sync_game_denominations`` does, below: a replay returns the first
+    report instead of re-running the sweep. The write itself (an upsert into
+    ``supplier_catalog_cache``) is harmless to repeat — nothing here debits a
+    wallet or double-books an order — but harmlessness is an argument for why
+    a stray retry can't hurt, not for leaving the header off; a slow sweep
+    behind a flaky admin connection can still be retried by a human, and a
+    replayed key should get back the report that already ran rather than pay
+    for a second one.
     """
-    report = await run_g2b_catalog_sync(db)
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "integrations.sync_catalog"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return CatalogSyncOut.model_validate(cached.body)
+    report = await run_catalog_sync(db, supplier_slug=supplier)
     await db.commit()
-    return CatalogSyncOut(
-        supplier="g2b",
+    out = CatalogSyncOut(
+        supplier=supplier,
         vouchers_synced=report.vouchers,
         games_synced=report.games,
         mapped_vouchers_refreshed=report.mapped_vouchers,
         missing_upstream=report.missing_upstream,
         error=report.error,
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.post(
+    "/{supplier}/games/{game_id}/sync-denominations",
+    response_model=DenomSyncOut,
+    summary="Pull one game's denominations into the catalog cache, on demand",
+)
+async def sync_game_denominations(
+    supplier: Literal["nova", "gengine"],
+    game_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> DenomSyncOut:
+    """One live supplier call, made on purpose.
+
+    AGENTS.md §10 forbids a synchronous supplier call inside a *request
+    handler on the money path*; this route is the deviation-free shape
+    instead of a violation of it — a ``POST``, explicitly triggered by an
+    operator, off the order path, syncing exactly one game the mapping
+    wizard's cache has never seen. Nothing here is on a customer's critical
+    path, and ``GET .../catalog`` — the route the picker actually polls —
+    never reaches a supplier itself; it only reads what this endpoint or the
+    hourly job already wrote.
+
+    G2B is not one of the two suppliers this path accepts: its own per-game
+    denomination picker already exists as a live GET
+    (``/g2b/games/{game_code}/catalogue``, pre-dating this endpoint) and was
+    not moved into the cache.
+    """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "integrations.sync_game_denominations"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return DenomSyncOut.model_validate(cached.body)
+    count, error = await run_game_denomination_sync(db, supplier_slug=supplier, game_id=game_id)
+    await db.commit()
+    out = DenomSyncOut(supplier=supplier, game_id=game_id, denominations_synced=count, error=error)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 @admin_router.post(

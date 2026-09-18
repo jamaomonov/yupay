@@ -97,16 +97,32 @@ it("still lists the interaction log for both", async () => {
   expect(await screen.findByText("Последние взаимодействия")).toBeInTheDocument();
 });
 
-it("offers the mapping tooling to a supplier that takes mappings but has no catalogue", async () => {
-  // G-Engine takes SKU mappings — typed by hand, since its catalogue is not
-  // mirrored — and this page hid the only doorway to that form behind the
-  // catalogue switch. The card is back; the catalogue tooling stays absent
-  // and the note still says why.
+it("offers full catalogue tooling to G-Engine now that it has a sync endpoint", async () => {
+  // G-Engine used to have no sync-catalog route, so this page hid
+  // "Синхронизировать каталог" / "Просмотр каталога" / "Обновить цены" behind
+  // a `catalogue: false` flag and told the operator to type ids by hand
+  // instead. This branch added the endpoint; the tooling — and the mapping
+  // card, which was never gated on it — must all show now, and the stale
+  // by-hand note must be gone.
   mockHealth("gengine");
   renderAt("gengine");
   await screen.findByRole("heading", { name: "G-Engine" });
 
   expect(screen.getByText("Маппинг SKU")).toBeInTheDocument();
-  expect(screen.queryByText("Каталог поставщика")).not.toBeInTheDocument();
-  expect(screen.getByText(/service_id/)).toBeInTheDocument();
+  expect(screen.getByText("Каталог поставщика")).toBeInTheDocument();
+  expect(screen.getByText("Просмотр каталога")).toBeInTheDocument();
+  expect(screen.getByText("Цены маппингов")).toBeInTheDocument();
+  expect(screen.queryByText(/service_id/)).not.toBeInTheDocument();
+});
+
+it("offers full catalogue tooling to NOVA now that it has a sync endpoint too", async () => {
+  mockHealth("nova");
+  renderAt("nova");
+  await screen.findByRole("heading", { name: "NOVA" });
+
+  expect(screen.getByText("Маппинг SKU")).toBeInTheDocument();
+  expect(screen.getByText("Каталог поставщика")).toBeInTheDocument();
+  expect(screen.getByText("Просмотр каталога")).toBeInTheDocument();
+  // The stale by-hand note ("category_id... offer_id...") must be gone.
+  expect(screen.queryByText(/category_id/)).not.toBeInTheDocument();
 });
