@@ -987,3 +987,64 @@ async def test_force_supplier_nova_accepted_with_an_active_mapping(
         admin_id="admin-1",
     )
     assert rule.supplier_slug == "nova"
+
+
+async def test_force_inventory_rejects_top_up_sku(db_session: AsyncSession) -> None:
+    """The code warehouse has nothing to deliver for a top_up SKU — routing
+    one at ``force_inventory`` would strand every order on a guaranteed
+    ``NoStockError`` with no fallback (``strict=True``, no kind-aware auto
+    route to fall back to). Symmetric to
+    ``inventory.service._reject_top_up_sku`` on the "stock a code for one"
+    side of the same mistake.
+    """
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    sku_id = await _make_topup_sku(db_session)
+    with pytest.raises(ValidationError, match="top_up"):
+        await sourcing_svc.set_rule(
+            db_session,
+            sku_id=sku_id,
+            mode="force_inventory",
+            supplier_slug=None,
+            admin_id="admin-1",
+        )
+
+    # Nothing was written for the rejected SKU.
+    rule = await sourcing_svc.get_rule(db_session, sku_id)
+    assert rule is None
+
+
+async def test_force_inventory_accepted_for_voucher_sku(
+    db_session: AsyncSession, _seed_sku: str
+) -> None:
+    """Control case: the guard is specific to ``top_up`` — a ``voucher`` SKU
+    (the existing seeded fixture, force_inventory's intended use) still
+    accepts it."""
+    from yupay.modules.sourcing import service as sourcing_svc
+
+    rule = await sourcing_svc.set_rule(
+        db_session,
+        sku_id=_seed_sku,
+        mode="force_inventory",
+        supplier_slug=None,
+        admin_id="admin-1",
+    )
+    assert rule.mode == "force_inventory"
+
+
+async def test_force_inventory_route_rejects_top_up_sku(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+) -> None:
+    """Same guard, exercised through the single-SKU ``PUT`` route."""
+    admin = await _login_user(integration_client, tg_id=353)
+    await _grant_admin(db_session, tg_id=353)
+    sku_id = await _make_topup_sku(db_session)
+
+    r = await integration_client.put(
+        f"/api/v1/admin/sourcing/rules/{sku_id}",
+        headers={"Authorization": f"Bearer {admin}"},
+        json={"mode": "force_inventory"},
+    )
+    assert r.status_code == 422, r.text
+    assert "top_up" in r.text.lower()

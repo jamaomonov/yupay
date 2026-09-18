@@ -90,8 +90,19 @@ async def _admin_headers(
     return {"Authorization": f"Bearer {token}"}
 
 
-async def _seed_brand_with_skus(db: AsyncSession, *, n: int, slug_prefix: str) -> list[str]:
-    """``n`` active top_up SKUs under one fresh brand — enough for bulk tests."""
+async def _seed_brand_with_skus(
+    db: AsyncSession, *, n: int, slug_prefix: str, kind: str = "top_up"
+) -> list[str]:
+    """``n`` active SKUs under one fresh brand — enough for bulk tests.
+
+    ``kind`` defaults to ``top_up`` (most of this file's tests are about
+    top_up-specific auto-routing, e.g. the reserve-supplier guard). A few
+    tests that exercise the bulk mechanics themselves (savepoint rollback,
+    a DB-level integrity error, auto-delete) and want ``force_inventory`` —
+    which Task 3's guard now refuses for a top_up SKU — pass
+    ``kind="voucher"`` instead; nothing about those tests cares which kind
+    is under test.
+    """
     category = Category(
         id=new_id(),
         slug=f"cat-{slug_prefix}",
@@ -111,7 +122,7 @@ async def _seed_brand_with_skus(db: AsyncSession, *, n: int, slug_prefix: str) -
         id=new_id(),
         slug=f"product-{slug_prefix}",
         brand_id=brand.id,
-        kind="top_up",
+        kind=kind,
         sort_order=10,
         active=True,
         required_fields=[],
@@ -268,7 +279,9 @@ async def test_bulk_savepoint_rolls_back_a_write_that_precedes_a_later_failure(
     from yupay.modules.sourcing import bulk_rules as bulk_rules_mod
     from yupay.modules.sourcing.service import Mode
 
-    sku_ids = await _seed_brand_with_skus(db_session, n=3, slug_prefix="bulk-savepoint")
+    sku_ids = await _seed_brand_with_skus(
+        db_session, n=3, slug_prefix="bulk-savepoint", kind="voucher"
+    )
     bad_sku = sku_ids[1]
 
     # Not ``bulk_rules_mod.set_rule`` directly — mypy flags a re-exported
@@ -357,7 +370,9 @@ async def test_bulk_integrity_error_is_a_per_item_failure_not_a_500(
     from yupay.modules.sourcing import service as sourcing_svc
     from yupay.modules.sourcing.service import Mode
 
-    sku_ids = await _seed_brand_with_skus(db_session, n=3, slug_prefix="bulk-integrity")
+    sku_ids = await _seed_brand_with_skus(
+        db_session, n=3, slug_prefix="bulk-integrity", kind="voucher"
+    )
     bad_sku = sku_ids[1]
     db_session.add(SkuSourcingRule(sku_id=bad_sku, mode="force_inventory", supplier_slug=None))
     await db_session.commit()
@@ -483,7 +498,7 @@ async def test_bulk_mode_auto_deletes_existing_rules(
 ) -> None:
     from yupay.modules.sourcing import service as sourcing_svc
 
-    sku_ids = await _seed_brand_with_skus(db_session, n=2, slug_prefix="bulk-auto")
+    sku_ids = await _seed_brand_with_skus(db_session, n=2, slug_prefix="bulk-auto", kind="voucher")
     for sku_id in sku_ids:
         await sourcing_svc.set_rule(
             db_session,
@@ -665,6 +680,95 @@ async def test_bulk_idempotency_key_replays_cached_response(
         )
     ).scalar_one()
     assert row.mode == "manual"
+
+
+async def test_bulk_force_inventory_rejects_top_up_skus_per_item(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """Task 3's guard (``sourcing.service.set_rule`` refuses
+    ``force_inventory`` on a ``top_up`` SKU) must hold through the bulk
+    endpoint too — it delegates to ``set_rule`` unchanged
+    (``bulk_rules.bulk_set_rules``). A batch mixing a top_up SKU with a
+    voucher SKU reports the top_up one as a per-item failure by name; the
+    voucher SKU (force_inventory's intended use) still gets the rule —
+    proving the rejection is per-SKU, not a whole-batch failure.
+    """
+    topup_ids = await _seed_brand_with_skus(db_session, n=1, slug_prefix="bulk-force-inv-topup")
+    topup_sku = topup_ids[0]
+
+    category = Category(
+        id=new_id(),
+        slug="cat-bulk-force-inv-voucher",
+        sort_order=10,
+        active=True,
+        translations=[CategoryTranslation(locale="ru", name="Ваучеры")],
+    )
+    brand = Brand(
+        id=new_id(),
+        slug="brand-bulk-force-inv-voucher",
+        category_id=category.id,
+        sort_order=10,
+        active=True,
+        translations=[BrandTranslation(locale="ru", name="voucher")],
+    )
+    product = Product(
+        id=new_id(),
+        slug="product-bulk-force-inv-voucher",
+        brand_id=brand.id,
+        kind="voucher",
+        sort_order=10,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="voucher")],
+    )
+    voucher_sku = Sku(
+        id=new_id(),
+        product_id=product.id,
+        sku_code="bulk-force-inv-voucher-sku",
+        denomination="10",
+        region="WW",
+        price_usd="1.00",
+        sort_order=10,
+        active=True,
+    )
+    db_session.add_all([category, brand, product, voucher_sku])
+    await db_session.commit()
+
+    r = await integration_client.put(
+        BULK_URL,
+        headers=_admin_headers,
+        json={
+            "sku_ids": [topup_sku, voucher_sku.id],
+            "mode": "force_inventory",
+            "supplier_slug": None,
+        },
+    )
+    assert r.status_code == 200, r.text
+    by_sku = {item["sku_id"]: item for item in r.json()["items"]}
+
+    assert by_sku[topup_sku]["ok"] is False
+    assert by_sku[topup_sku]["error"] is not None
+    assert "top_up" in by_sku[topup_sku]["error"].lower()
+
+    assert by_sku[voucher_sku.id]["ok"] is True
+    assert by_sku[voucher_sku.id]["error"] is None
+
+    rows = (
+        (
+            await db_session.execute(
+                select(SkuSourcingRule).where(
+                    SkuSourcingRule.sku_id.in_([topup_sku, voucher_sku.id])
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_id = {row.sku_id: row for row in rows}
+    assert topup_sku not in by_id, "the rejected top_up SKU must not get a rule row"
+    assert by_id[voucher_sku.id].mode == "force_inventory"
 
 
 async def test_bulk_non_admin_forbidden(

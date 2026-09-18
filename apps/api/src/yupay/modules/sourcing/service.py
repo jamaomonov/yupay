@@ -255,6 +255,35 @@ async def set_rule(
     if mode != "force_supplier" and supplier_slug:
         # Tolerate but ignore — keep the row clean.
         supplier_slug = None
+
+    if mode == "force_inventory":
+        # The code warehouse has nothing to hand out for a top_up SKU (game
+        # balance, MLBB diamonds, PUBG UC, ...) — it is credited by a live
+        # supplier call, never a stocked code (module docstring's kind-aware
+        # defaults above). Writing this rule anyway would not merely do
+        # nothing: `Decision(primary="inventory", fallback=None,
+        # strict=True)` strands every order at this SKU on a guaranteed
+        # `NoStockError` with no fallback, instead of the kind-aware auto
+        # route that at least reaches a supplier or the manual queue. The
+        # symmetric half of this guard lives in
+        # `inventory.service._reject_top_up_sku`, on the "stock a code for
+        # one" side of the same mistake.
+        from yupay.modules.catalog.models import Product, Sku
+
+        kind = (
+            await db.execute(
+                select(Product.kind).join(Sku, Sku.product_id == Product.id).where(Sku.id == sku_id)
+            )
+        ).scalar_one_or_none()
+        if kind == "top_up":
+            raise ValidationError(
+                f"SKU {sku_id} is a top_up product — the code warehouse has "
+                "nothing to deliver for it; force_inventory only makes sense "
+                "for a voucher SKU",
+                sku_id=sku_id,
+                kind=kind,
+            )
+
     # Lazy for the reason ``resolve_for_sku`` gives: a top-level import of
     # ``integrations``/``fulfillment`` from here closes a cycle.
     from yupay.modules.fulfillment.suppliers import REGISTRY

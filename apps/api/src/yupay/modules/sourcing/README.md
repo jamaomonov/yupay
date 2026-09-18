@@ -166,6 +166,21 @@ Free Fire — ноль строк истории g2b при том, что `cost
   действительно неизвестна. `latest_cost_usdt` остаётся `None`, как и до
   появления этого поля.
 
+## Инвариант: `force_inventory` только для `voucher`
+
+`set_rule` отказывает на `mode="force_inventory"`, если продукт SKU —
+`top_up`. У top_up SKU нечего выдавать со склада (баланс игрока пополняет
+живой вызов поставщика), так что `force_inventory` там значило бы
+`Decision(primary="inventory", fallback=None, strict=True)` — гарантированный
+`NoStockError` без фолбэка на каждый заказ, вместо обычного auto-маршрута,
+который хотя бы дойдёт до поставщика или ручной очереди. Симметричная
+половина того же правила — на стороне «положить код на склад» — это
+`inventory.service._reject_top_up_sku`: `bulk_upload` отказывает загружать
+коды для top_up SKU тем же способом. Массовый эндпоинт (`rules:bulk`)
+наследует проверку без изменений — она внутри `set_rule`, который
+`bulk_set_rules` вызывает на каждый SKU, так что отказ репортится по имени
+SKU, а не роняет весь батч.
+
 ## Admin-экран «Sourcing по бренду»
 
 `/sourcing/brands/:brandSlug` (`apps/admin/src/features/sourcing/BrandSourcingPage.tsx`) —
