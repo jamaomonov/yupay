@@ -350,6 +350,7 @@ async def test_overview_route_matches_resolve_for_sku(
         sku_id = _seed_brand[key]
         decision = await sourcing_svc.resolve_for_sku(db_session, sku_id)
         assert by_sku[sku_id]["primary"] == decision.primary, key
+        assert by_sku[sku_id]["fallback"] == decision.fallback, key
         assert by_sku[sku_id]["rule_present"] == decision.rule_present, key
 
     # Concrete expectations, not just "matches the service": sku1 must route
@@ -359,9 +360,45 @@ async def test_overview_route_matches_resolve_for_sku(
     # sku2 carries an explicit force_supplier rule onto gengine.
     assert by_sku[_seed_brand["sku2"]]["primary"] == "supplier:gengine"
     assert by_sku[_seed_brand["sku2"]]["rule_present"] is True
-    # sku3 (voucher, no mapping) is inventory-first by kind default.
+    # sku3 (voucher, no mapping) is inventory-first by kind default, falling
+    # back to the default mock supplier (no real mapping to prefer instead).
     assert by_sku[_seed_brand["sku3"]]["primary"] == "inventory"
+    assert by_sku[_seed_brand["sku3"]]["fallback"] == "supplier:mock"
     assert by_sku[_seed_brand["sku3"]]["rule_present"] is False
+
+
+async def test_overview_voucher_sku_reports_its_fallback_cost_owner(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """Task 1's fix, pinned: a voucher SKU with an active mapping routes
+    ``primary="inventory"``, and the real cost owner —
+    ``integrations.cost_refresh._is_routed_supplier``'s second shape, the one
+    ADR-0083 Decision 1 names as load-bearing — is only visible through
+    ``fallback``. Before the fix, ``SourcingBrandSkuOut`` carried ``primary``
+    only, so this screen could not show who owns this SKU's ``cost_usdt``.
+    """
+    brand_slug = "voucher-fallback-overview-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session, brand_id=brand_id, slug="voucher-fallback-product-test", kind="voucher"
+    )
+    sku_id = await _make_sku(db_session, product_id=product_id, sku_code="voucher-fallback-test")
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="g2b", kind="voucher")
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+
+    assert row["primary"] == "inventory"
+    assert row["fallback"] == "supplier:g2b"
 
 
 async def test_overview_supplier_comparison_list(

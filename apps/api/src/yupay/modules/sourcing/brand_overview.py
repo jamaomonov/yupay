@@ -241,6 +241,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
                 price_usd=sku.price_usd,
                 cost_usdt=sku.cost_usdt,
                 primary=decision.primary,
+                fallback=decision.fallback,
                 rule_present=decision.rule_present,
                 suppliers=suppliers,
             )

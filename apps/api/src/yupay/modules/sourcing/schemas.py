@@ -89,7 +89,16 @@ class SourcingBrandSupplierOut(BaseModel):
 
 
 class SourcingBrandSkuOut(BaseModel):
-    """One active SKU's sourcing picture for the brand-overview screen."""
+    """One active SKU's sourcing picture for the brand-overview screen.
+
+    ``fallback`` mirrors ``SourcingDecisionOut.fallback`` / ``Decision.
+    fallback`` — it is what carries the real cost owner for a voucher SKU
+    routed ``primary="inventory"``: ``integrations.cost_refresh.
+    _is_routed_supplier`` treats ``primary == "inventory" and fallback ==
+    "supplier:<slug>"`` as "<slug> owns this SKU's ``Sku.cost_usdt``"
+    (ADR-0083 Decision 1). Without it here, this screen — built to show who
+    owns a SKU's cost — could not show that for any voucher SKU.
+    """
 
     sku_id: str
     sku_code: str
@@ -98,6 +107,7 @@ class SourcingBrandSkuOut(BaseModel):
     price_usd: Decimal
     cost_usdt: Decimal | None
     primary: str
+    fallback: str | None
     rule_present: bool
     suppliers: list[SourcingBrandSupplierOut]
 
