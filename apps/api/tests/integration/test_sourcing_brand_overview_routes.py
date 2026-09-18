@@ -374,7 +374,7 @@ async def test_overview_voucher_sku_reports_its_fallback_cost_owner(
 ) -> None:
     """Task 1's fix, pinned: a voucher SKU with an active mapping routes
     ``primary="inventory"``, and the real cost owner —
-    ``integrations.cost_refresh._is_routed_supplier``'s second shape, the one
+    ``integrations.cost_refresh.is_routed_supplier``'s second shape, the one
     ADR-0083 Decision 1 names as load-bearing — is only visible through
     ``fallback``. Before the fix, ``SourcingBrandSkuOut`` carried ``primary``
     only, so this screen could not show who owns this SKU's ``cost_usdt``.
@@ -448,9 +448,12 @@ async def test_overview_supplier_comparison_list(
     assert sku2_suppliers["g2b"]["cost_source"] is None
     assert sku2_suppliers["nova"]["has_active_mapping"] is False
     # gengine is sku2's routed supplier (force_supplier rule) with no history
-    # row — Task 1's fix: "current", not "not captured", even though
-    # sku2.cost_usdt itself is None here (no cost has ever been written).
-    assert sku2_suppliers["gengine"]["cost_source"] == "current"
+    # row, but "current" requires a cost to actually report *and* a
+    # supplier price collection reaches — neither holds here: sku2.cost_usdt
+    # is None (no cost has ever been written) and gengine has no
+    # cost_lookup support at all, so cost_source is honestly None, not
+    # "current" over nothing.
+    assert sku2_suppliers["gengine"]["cost_source"] is None
     assert sku2_suppliers["gengine"]["latest_cost_usdt"] is None
 
 
@@ -503,13 +506,71 @@ async def test_overview_cost_source_current_for_routed_supplier_with_own_cost(
     assert suppliers_by_slug["gengine"]["latest_cost_usdt"] is None
 
 
+async def test_overview_cost_source_none_for_routed_supplier_price_collection_does_not_reach(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """Task 2's fix: a routed supplier still reports ``cost_source=None`` when
+    price collection has never reached it (only g2b/nova do — gengine
+    doesn't), even though ``Sku.cost_usdt`` is not ``None``.
+
+    Unlike the sku2 case in ``test_overview_supplier_comparison_list``, this
+    SKU *does* carry a real cost — so this pins the fix on its own, not
+    coincidentally alongside "no cost to report at all". A SKU force-routed
+    to gengine (or any supplier ``cost_refresh`` never collects for) can
+    only have ``Sku.cost_usdt`` because some *other*, earlier-routed
+    supplier wrote it — reporting that number as gengine's "current" price
+    would be true of a supplier we never actually queried.
+    """
+    brand_slug = "cost-source-unsupported-routed-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session,
+        brand_id=brand_id,
+        slug="cost-source-unsupported-routed-product-test",
+        kind="top_up",
+    )
+    sku_id = await _make_sku(
+        db_session,
+        product_id=product_id,
+        sku_code="cost-source-unsupported-routed-sku-test",
+        cost_usdt=Decimal("9.990000"),
+    )
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="gengine")
+    await db_session.commit()
+
+    await sourcing_svc.set_rule(
+        db_session,
+        sku_id=sku_id,
+        mode="force_supplier",
+        supplier_slug="gengine",
+        admin_id="test-admin",
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+    assert row["primary"] == "supplier:gengine"
+
+    gengine = next(s for s in row["suppliers"] if s["supplier_slug"] == "gengine")
+    assert gengine["cost_source"] is None
+    assert gengine["latest_cost_usdt"] is None
+
+
 async def test_overview_cost_source_current_for_voucher_fallback_supplier(
     integration_client: AsyncClient,
     db_session: AsyncSession,
     _admin_headers: dict[str, str],
 ) -> None:
     """The voucher inventory-fallback shape: ``primary="inventory"``,
-    ``fallback="supplier:g2b"``. ``_is_routed_supplier`` treats the
+    ``fallback="supplier:g2b"``. ``is_routed_supplier`` treats the
     fallback slug as the routed one for this shape (ADR-0083 Decision 1),
     so it must resolve to ``cost_source="current"`` too, not just the
     top_up ``primary="supplier:<slug>"`` shape covered above.

@@ -32,7 +32,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.models import Brand, Product, Sku
-from yupay.modules.integrations.cost_refresh import _is_routed_supplier
+from yupay.modules.integrations.cost_refresh import is_routed_supplier, supports_price_collection
 from yupay.modules.integrations.models import (
     MAPPING_REQUIRED_SUPPLIERS,
     SkuSupplierMapping,
@@ -229,12 +229,20 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
                 cost_source = "history"
                 supplier_cost = str(history_entry[0])
                 captured_at = history_entry[1]
-            elif _is_routed_supplier(decision, slug):
+            elif (
+                sku.cost_usdt is not None
+                and is_routed_supplier(decision, slug)
+                and supports_price_collection(slug)
+            ):
                 # No history row, but this is the supplier the SKU actually
-                # buys from — its current price is Sku.cost_usdt, not
-                # "not captured" (see SourcingBrandSupplierOut.cost_source).
+                # buys from, price collection actually reaches this supplier
+                # (g2b/nova — otherwise Sku.cost_usdt could be a *previous*
+                # routed supplier's number, never this one's), and there is
+                # a cost to report at all. Its current price is
+                # Sku.cost_usdt, not "not captured" (see
+                # SourcingBrandSupplierOut.cost_source).
                 cost_source = "current"
-                supplier_cost = str(sku.cost_usdt) if sku.cost_usdt is not None else None
+                supplier_cost = str(sku.cost_usdt)
                 captured_at = None
             else:
                 cost_source = None

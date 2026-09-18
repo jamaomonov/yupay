@@ -93,14 +93,21 @@ class SourcingBrandSupplierOut(BaseModel):
     - ``"history"`` — a ``supplier_price_history`` row exists for this
       (sku, supplier); ``latest_cost_usdt``/``captured_at`` are that row's.
     - ``"current"`` — no history row, but this supplier is the one the SKU
-      routes to (``integrations.cost_refresh._is_routed_supplier`` — the
+      routes to (``integrations.cost_refresh.is_routed_supplier`` — the
       same routed-supplier test ``cost_refresh`` itself uses to decide who
-      may write ``Sku.cost_usdt``, ADR-0083 Decision 1), so
+      may write ``Sku.cost_usdt``, ADR-0083 Decision 1), price collection
+      actually reaches this supplier
+      (``integrations.cost_refresh.supports_price_collection`` — g2b/nova
+      only, the same dispatch ``refresh_sku_cost_for_mapping`` uses), and
+      ``Sku.cost_usdt`` is not ``None``. All three must hold: a SKU
+      force-routed to a supplier price collection never queries (gengine,
+      waxpeer, ...) would otherwise report a *previous* routed supplier's
+      leftover number as this one's "current" price. When they do,
       ``latest_cost_usdt`` is ``Sku.cost_usdt`` and ``captured_at`` is
       ``None`` (it is not a point-in-time capture).
-    - ``None`` — no history and not the routed supplier: this supplier's
-      price is genuinely unknown to us. ``latest_cost_usdt`` stays
-      ``None``, same as before this field existed.
+    - ``None`` — none of the above: this supplier's price is genuinely
+      unknown to us, or not honestly attributable to it. ``latest_cost_usdt``
+      stays ``None``, same as before this field existed.
     """
 
     supplier_slug: str
@@ -116,7 +123,7 @@ class SourcingBrandSkuOut(BaseModel):
     ``fallback`` mirrors ``SourcingDecisionOut.fallback`` / ``Decision.
     fallback`` — it is what carries the real cost owner for a voucher SKU
     routed ``primary="inventory"``: ``integrations.cost_refresh.
-    _is_routed_supplier`` treats ``primary == "inventory" and fallback ==
+    is_routed_supplier`` treats ``primary == "inventory" and fallback ==
     "supplier:<slug>"`` as "<slug> owns this SKU's ``Sku.cost_usdt``"
     (ADR-0083 Decision 1). Without it here, this screen — built to show who
     owns a SKU's cost — could not show that for any voucher SKU.
