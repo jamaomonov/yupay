@@ -5328,7 +5328,7 @@
         "type": "object"
       },
       "CostSyncResult": {
-        "description": "Outcome of the on-save cost refresh.\n\nReturned alongside the upsert response so the admin UI can flash\neither \"cost updated from $X.XX \u2192 $Y.YY\" or a clear reason when we\ncouldn't pull a price (cache miss, unknown denom, etc).",
+        "description": "Outcome of the on-save cost refresh.\n\nReturned alongside the upsert response so the admin UI can flash\neither \"cost updated from $X.XX \u2192 $Y.YY\" or a clear reason when we\ncouldn't pull a price (cache miss, unknown denom, etc).\n\n``old_price``/``new_price``/``price_drop_blocked`` mirror\n``CostRefreshOutcome``'s own fields (``integrations.cost_refresh``) \u2014\nwithout them here, the one intentional downward-price path\n(``integrations.routes._refresh_sku_cost`` always passes\n``allow_price_drop=True``, per ADR-0083 Decision 2) is invisible to the\noperator who triggers it: the mapping-save response would say only\n\"cost updated\" while the shelf price silently dropped by the banked\nmargin.",
         "properties": {
           "new_cost": {
             "anyOf": [
@@ -5341,6 +5341,17 @@
             ],
             "title": "New Cost"
           },
+          "new_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "New Price"
+          },
           "old_cost": {
             "anyOf": [
               {
@@ -5351,6 +5362,22 @@
               }
             ],
             "title": "Old Cost"
+          },
+          "old_price": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Old Price"
+          },
+          "price_drop_blocked": {
+            "default": false,
+            "title": "Price Drop Blocked",
+            "type": "boolean"
           },
           "reason": {
             "anyOf": [
@@ -14834,7 +14861,7 @@
         "type": "object"
       },
       "SourcingBrandSkuOut": {
-        "description": "One active SKU's sourcing picture for the brand-overview screen.",
+        "description": "One active SKU's sourcing picture for the brand-overview screen.\n\n``fallback`` mirrors ``SourcingDecisionOut.fallback`` / ``Decision.\nfallback`` \u2014 it is what carries the real cost owner for a voucher SKU\nrouted ``primary=\"inventory\"``: ``integrations.cost_refresh.\n_is_routed_supplier`` treats ``primary == \"inventory\" and fallback ==\n\"supplier:<slug>\"`` as \"<slug> owns this SKU's ``Sku.cost_usdt``\"\n(ADR-0083 Decision 1). Without it here, this screen \u2014 built to show who\nowns a SKU's cost \u2014 could not show that for any voucher SKU.",
         "properties": {
           "cost_usdt": {
             "anyOf": [
@@ -14858,6 +14885,17 @@
               }
             ],
             "title": "Denomination"
+          },
+          "fallback": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fallback"
           },
           "price_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
@@ -14900,6 +14938,7 @@
           "price_usd",
           "cost_usdt",
           "primary",
+          "fallback",
           "rule_present",
           "suppliers"
         ],
@@ -23634,6 +23673,7 @@
     },
     "/api/v1/admin/integrations/sku-prices/{sku_id}/history": {
       "get": {
+        "description": "Newest-first cost history for a SKU, optionally scoped to one\nsupplier. Unfiltered (``supplier_slug`` omitted) matches every caller\nfrom before this branch, when the table held only G2B rows; now that\nTask 1 writes a row for every active mapping, a caller that wants one\nsupplier's own series \u2014 not an interleaved multi-supplier one \u2014 passes\nit.",
         "operationId": "sku_price_history_api_v1_admin_integrations_sku_prices__sku_id__history_get",
         "parameters": [
           {
@@ -23643,6 +23683,24 @@
             "schema": {
               "title": "Sku Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "supplier_slug",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "minLength": 2,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Supplier Slug"
             }
           },
           {
