@@ -13,10 +13,13 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
 - Refresh a supplier's price for a mapping (on upsert and via the hourly
   `refresh-all-prices` job), **dispatched by `mapping.supplier_slug`**
   (`cost_refresh.refresh_sku_cost_for_mapping`, split out into its own module
-  when `service.py` passed 900 lines — G2B reads the catalog cache or calls
-  `games_catalogue` live; NOVA calls `GET /topups/offers` per category,
-  cached per refresh run so a 19-SKU brand makes one call, not nineteen; a
-  NOVA Steam mapping is skipped, it has no catalogue price to look up).
+  when `service.py` passed 900 lines. The per-supplier raw-price lookups it
+  dispatches into live in `cost_lookup.py` in turn, split out of
+  `cost_refresh.py` when that module itself passed 495 lines — G2B reads the
+  catalog cache or calls `games_catalogue` live; NOVA calls
+  `GET /topups/offers` per category, cached per refresh run so a 19-SKU
+  brand makes one call, not nineteen; a NOVA Steam mapping is skipped, it
+  has no catalogue price to look up).
   **Only the supplier a SKU actually routes to may write `Sku.cost_usdt`.**
   Every other active mapping still gets refreshed — it just records a
   `supplier_price_history` row and touches nothing else. `Sku.cost_usdt` is
