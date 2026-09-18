@@ -10,6 +10,37 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
 
 - Own `sku_supplier_mapping` and `supplier_catalog_cache`.
 - Serve the admin CRUD over mappings and the cached supplier catalog.
+- **Sync a supplier's catalogue into `supplier_catalog_cache`** so the mapping
+  wizard's "ID сервиса у поставщика" / "ID номинала у поставщика" fields can
+  be a picker instead of an operator typing an id they'd otherwise have to
+  call the supplier's own API to discover.
+  `POST /admin/integrations/{supplier}/sync-catalog` (`g2b | nova | gengine`,
+  the same route the hourly `sync_supplier_catalog` scheduler job calls) does
+  the whole-catalogue sweep — every `voucher`/`game` row, best-effort, never
+  raises. `catalog_sync.py` is a thin dispatcher; the actual per-supplier
+  logic lives one module each (`catalog_sync_g2b.py`, `catalog_sync_nova.py`,
+  `catalog_sync_gengine.py` — split out when three suppliers would have
+  pushed a single file past AGENTS.md §6's 400-LOC limit, the same seam
+  `sourcing/brand_overview.py` and `cost_lookup.py` were split out on) behind
+  the shared `CatalogSyncReport` type in `catalog_sync_types.py`.
+
+  **Denominations (`game_denom`) are never swept wholesale** — only synced
+  for a game an active mapping already points at (`svc.mapped_external_product_ids`),
+  the same restriction the pre-existing G2B mapped-voucher refresh applies to
+  vouchers. Reading a game's denominations costs a separate upstream call per
+  game for every supplier except G-Engine, whose `GET /recharge/services`
+  already returns each service's denominations inline — so its mapped-only
+  filter costs nothing extra, it just declines to cache the unmapped ones.
+  For a game the cache has never seen, `POST
+  /admin/integrations/{supplier}/games/{game_id}/sync-denominations`
+  (`nova | gengine`; G2B keeps its own pre-existing live picker,
+  `GET /g2b/games/{game_code}/catalogue`, uncached) pulls exactly that one
+  game's denominations in, on demand — a `POST`, explicitly triggered by an
+  operator, off the order path: the deviation-free shape AGENTS.md §10 asks
+  for, not a violation of it. `GET /admin/integrations/catalog` itself never
+  calls a supplier; it only ever reads what one of the two sync routes (or
+  the hourly job) already wrote, filtering `game_denom` rows to one game via
+  `parent_external_id`.
 - Refresh a supplier's price for a mapping (on upsert and via the hourly
   `refresh-all-prices` job), **dispatched by `mapping.supplier_slug`**
   (`cost_refresh.refresh_sku_cost_for_mapping`, split out into its own module
