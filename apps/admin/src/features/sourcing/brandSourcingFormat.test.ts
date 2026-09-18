@@ -11,6 +11,8 @@ import {
   supplierLabel,
 } from "./brandSourcingFormat";
 
+import type { SourcingBrandSupplierOut } from "./types";
+
 it("labels known suppliers and falls back to the raw slug otherwise", () => {
   expect(supplierLabel("g2b")).toBe("G2Bulk");
   expect(supplierLabel("nova")).toBe("NOVA");
@@ -36,42 +38,83 @@ it("computes the margin price_usd implies over cost_usdt — cost is the denomin
 });
 
 it("picks every supplier tied for cheapest, among active mappings with a recorded cost", () => {
-  const suppliers = [
-    { supplier_slug: "g2b", has_active_mapping: true, latest_cost_usdt: "0.90", captured_at: null },
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: true,
+      latest_cost_usdt: "0.90",
+      captured_at: null,
+      cost_source: "history",
+    },
     {
       supplier_slug: "nova",
       has_active_mapping: true,
       latest_cost_usdt: "0.79",
       captured_at: null,
+      cost_source: "history",
     },
     {
       supplier_slug: "gengine",
       has_active_mapping: false,
       latest_cost_usdt: "0.10",
       captured_at: null,
+      cost_source: "history",
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["nova"]));
 });
 
 it("treats an exact tie honestly — both suppliers come back, not just the first", () => {
-  const suppliers = [
-    { supplier_slug: "g2b", has_active_mapping: true, latest_cost_usdt: "0.90", captured_at: null },
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: true,
+      latest_cost_usdt: "0.90",
+      captured_at: null,
+      cost_source: "history",
+    },
     {
       supplier_slug: "nova",
       has_active_mapping: true,
       latest_cost_usdt: "0.900000",
       captured_at: null,
+      cost_source: "history",
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b", "nova"]));
 });
 
 it("returns an empty set when no supplier has both an active mapping and a recorded cost", () => {
-  const suppliers = [
-    { supplier_slug: "g2b", has_active_mapping: false, latest_cost_usdt: null, captured_at: null },
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: false,
+      latest_cost_usdt: null,
+      captured_at: null,
+      cost_source: null,
+    },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set());
+});
+
+it("treats a `current` cost exactly like a captured one in the cheapest comparison", () => {
+  const suppliers: SourcingBrandSupplierOut[] = [
+    {
+      supplier_slug: "g2b",
+      has_active_mapping: true,
+      latest_cost_usdt: "1.00",
+      captured_at: null,
+      cost_source: "current",
+    },
+    {
+      supplier_slug: "nova",
+      has_active_mapping: true,
+      latest_cost_usdt: "1.50",
+      captured_at: "2026-09-10T00:00:00Z",
+      cost_source: "history",
+    },
+  ];
+  expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b"]));
 });
 
 it("marks a supplier current when it's the primary route", () => {

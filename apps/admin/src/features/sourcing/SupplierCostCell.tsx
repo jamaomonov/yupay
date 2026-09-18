@@ -61,7 +61,9 @@ export function SupplierCell({
                   the raw value in `title` lets a near-tie explain itself
                   on hover instead of two different-looking "дешевле всех"
                   verdicts for what looks like the same number. */}
-              <span title={`${cost} USDT`}>{formatMoneyValue(cost, "USDT")} USDT</span>
+              <span title={costTitle(cost, supplier.cost_source)}>
+                {formatMoneyValue(cost, "USDT")} USDT
+              </span>
               {isCheapest && (
                 <Badge tone="bg-[var(--success-soft)] text-[var(--success-fg)]">дешевле всех</Badge>
               )}
@@ -75,14 +77,24 @@ export function SupplierCell({
             </span>
           )}
         </span>
-        {supplier.captured_at && (
-          <span className="text-[10px] text-[var(--text-tertiary)]">
-            {new Date(supplier.captured_at).toLocaleDateString("ru", {
-              day: "2-digit",
-              month: "2-digit",
-              year: "2-digit",
-            })}
-          </span>
+        {/* `cost_source === "current"` means there is no history row to
+            date — `captured_at` is `null` by contract, so the date line
+            below would otherwise just vanish, leaving a captured-looking
+            number with no visible difference from a real capture. Say what
+            it actually is instead: the SKU's own `cost_usdt`, not a
+            point-in-time price snapshot. */}
+        {supplier.cost_source === "current" ? (
+          <span className="text-[10px] text-[var(--text-tertiary)]">текущая цена SKU</span>
+        ) : (
+          supplier.captured_at && (
+            <span className="text-[10px] text-[var(--text-tertiary)]">
+              {new Date(supplier.captured_at).toLocaleDateString("ru", {
+                day: "2-digit",
+                month: "2-digit",
+                year: "2-digit",
+              })}
+            </span>
+          )
         )}
         {isCurrentRoute ? (
           <span className="text-[10px] text-[var(--accent)]">
@@ -108,6 +120,14 @@ export function SupplierCell({
       </div>
     </td>
   );
+}
+
+/** Hover tooltip for a supplier's cost value — flags a `"current"` cost as
+ *  the SKU's own `cost_usdt` rather than a captured price, mirroring the
+ *  visible note below the number. */
+function costTitle(cost: string, source: "history" | "current" | null): string {
+  if (source === "current") return `${cost} USDT (текущая цена SKU, история не записана)`;
+  return `${cost} USDT`;
 }
 
 /** Tooltip for a supplier cell's own switch button — states the
