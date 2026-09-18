@@ -88,9 +88,16 @@ async def bulk_set_rules(
             is a malformed request, not 100 individual failures.
     """
     if len(sku_ids) > MAX_BULK_SKU_IDS:
+        # Flat kwargs, not `extra={...}`: `AppError.__init__` already takes
+        # `**extra`, so passing a dict *as* `extra` nests it a second time —
+        # `body["extra"]["max"]` instead of `body["max"]`. That shape is kept
+        # for existing endpoints whose body resellers already parse, but this
+        # endpoint is new this branch with no consumer yet, so there is
+        # nothing to keep flat-then-nested for.
         raise ValidationError(
             f"bulk sourcing update is capped at {MAX_BULK_SKU_IDS} SKUs per call",
-            extra={"got": len(sku_ids), "max": MAX_BULK_SKU_IDS},
+            got=len(sku_ids),
+            max=MAX_BULK_SKU_IDS,
         )
 
     results: list[SourcingBulkRuleResultOut] = []

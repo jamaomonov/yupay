@@ -616,8 +616,10 @@ async def test_bulk_capped_at_100_skus(
     # Not just "any 422" — the cap itself, by name, so this test cannot pass
     # on an unrelated body-validation rejection.
     assert "100" in body["detail"], body
-    assert body["extra"]["max"] == 100, body
-    assert body["extra"]["got"] == 101, body
+    # Flat, not nested under "extra" — this endpoint is new this branch with
+    # no consumer parsing the older `body["extra"]["max"]` shape yet.
+    assert body["max"] == 100, body
+    assert body["got"] == 101, body
 
 
 async def test_bulk_idempotency_key_replays_cached_response(

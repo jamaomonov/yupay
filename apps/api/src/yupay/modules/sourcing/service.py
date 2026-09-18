@@ -267,10 +267,14 @@ async def set_rule(
         # the real fulfilment ``REGISTRY``, and every order routed through it
         # would otherwise fail one at a time with ``get_fulfiller``'s 404,
         # discovered only after the operator believes the switch worked.
+        # Flat kwarg, not `extra={...}` — this guard is new this branch with
+        # no consumer yet parsing a nested `extra.supplier_slug`, so there is
+        # nothing to preserve by nesting it (see `bulk_rules.bulk_set_rules`
+        # for the same fix and the reasoning in full).
         raise ValidationError(
             f"unknown fulfilment supplier: {supplier_slug!r} — not registered in "
             "fulfillment.suppliers.REGISTRY",
-            extra={"supplier_slug": supplier_slug},
+            supplier_slug=supplier_slug,
         )
 
     if mode == "force_supplier" and supplier_slug in MAPPING_REQUIRED_SUPPLIERS:
