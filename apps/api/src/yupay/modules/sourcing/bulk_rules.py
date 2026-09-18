@@ -15,32 +15,39 @@ and a per-SKU failure is reported by name rather than aborting the batch.
 
 **Why a savepoint per item.** The outer session belongs to the request (see
 ``core.db.get_session``): it commits once, after the route handler returns,
-and rolls back everything if any exception escapes the handler. Today,
-every failure this module actually produces — the "SKU not found" check and
-``set_rule``'s validation guards — is raised from a plain ``SELECT``, before
-any row for that SKU is touched, so the underlying Postgres transaction is
-never put in a failed state by them and a bare ``try/except`` around
-``set_rule`` would already leave prior successful flushes intact. But that is
-an accident of what ``set_rule`` happens to validate before it writes today,
-not a property this module can rely on: a future validation added *after* a
-write (or any genuine DB-level error — a constraint violation, a
-serialization failure) would abort the whole asyncpg transaction, and every
-subsequent item — success or failure — would then fail with
-"current transaction is aborted" without ever running. A ``SAVEPOINT`` per
-item (``AsyncSession.begin_nested``) makes that robust instead of incidental:
-on a per-item failure, only that item's savepoint is rolled back; every
-earlier item's flush stays intact for the outer commit, and every later item
-still runs normally.
+and rolls back everything if any exception escapes the handler. Most
+failures this module produces today — the "SKU not found" check and most of
+``set_rule``'s validation guards — are raised from a plain ``SELECT``,
+before any row for that SKU is touched, so a bare ``try/except`` around
+``set_rule`` would already leave prior successful flushes intact for those.
+But that is not the whole space: a genuine DB-level error (a unique-
+constraint violation, a serialization failure) is raised *from the write
+itself*, after ``set_rule``'s ``INSERT``/``UPDATE`` has already gone to the
+wire — two admins bulk-switching overlapping SKU selections race
+``set_rule``'s SELECT-then-INSERT (no ``ON CONFLICT``) into exactly this on
+``sku_sourcing_rules``'s primary key, and this endpoint widens that race
+window 100×. Without a savepoint, that failure would also abort the whole
+asyncpg transaction, and every subsequent item — success or failure — would
+then fail with "current transaction is aborted" without ever running. A
+``SAVEPOINT`` per item (``AsyncSession.begin_nested``) makes every item's
+failure — application-raised or DB-level — robust instead of only the ones
+that happen to precede a write: on a per-item failure, only that item's
+savepoint is rolled back; every earlier item's flush stays intact for the
+outer commit, and every later item still runs normally.
 """
 
 from __future__ import annotations
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import NotFoundError, ValidationError
+from yupay.core.logging import get_logger
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing.schemas import MAX_BULK_SKU_IDS, SourcingBulkRuleResultOut
 from yupay.modules.sourcing.service import Mode, delete_rule, get_rule, set_rule
+
+log = get_logger("yupay.sourcing.bulk_rules")
 
 
 async def bulk_set_rules(
@@ -105,7 +112,34 @@ async def bulk_set_rules(
         except (ValidationError, NotFoundError) as exc:
             results.append(SourcingBulkRuleResultOut(sku_id=sku_id, ok=False, error=exc.detail))
             continue
+        except IntegrityError:
+            # set_rule is SELECT-then-INSERT with no ON CONFLICT: two admins
+            # bulk-switching overlapping selections can race into a unique
+            # violation on ``sku_sourcing_rules``'s primary key. The
+            # savepoint already rolled the failed write back — tell the
+            # operator what to do about it rather than leaking the
+            # asyncpg/psycopg exception text.
+            results.append(
+                SourcingBulkRuleResultOut(
+                    sku_id=sku_id,
+                    ok=False,
+                    error=(
+                        "another request updated this SKU's sourcing rule at the same "
+                        "time — retry this SKU"
+                    ),
+                )
+            )
+            continue
         results.append(SourcingBulkRuleResultOut(sku_id=sku_id, ok=True, error=None))
+
+    ok_count = sum(1 for r in results if r.ok)
+    log.info(
+        "sourcing.bulk_rules.applied",
+        mode=mode,
+        total=len(sku_ids),
+        ok=ok_count,
+        failed=len(sku_ids) - ok_count,
+    )
     return results
 
 
