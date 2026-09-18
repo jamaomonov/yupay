@@ -324,6 +324,11 @@ async def test_mapping_save_still_lowers_price_on_a_cost_drop(
     body = r.json()
     assert body["cost_sync"]["updated"] is True
     assert body["cost_sync"]["new_cost"] == "8.0"
+    # The intentional downward-price path, visible to the operator who
+    # triggered it — not just "cost updated" with the price drop hidden.
+    assert Decimal(body["cost_sync"]["old_price"]) == Decimal("12.00")
+    assert Decimal(body["cost_sync"]["new_price"]) == Decimal("9.60")
+    assert body["cost_sync"]["price_drop_blocked"] is False
 
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("8.00")

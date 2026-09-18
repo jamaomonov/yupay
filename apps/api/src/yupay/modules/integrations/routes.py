@@ -204,6 +204,9 @@ async def _refresh_sku_cost(db: AsyncSession, mapping: object) -> CostSyncResult
         new_cost=str(outcome.new_cost) if outcome.new_cost is not None else None,
         source=outcome.source,
         reason=outcome.reason,
+        old_price=str(outcome.old_price) if outcome.old_price is not None else None,
+        new_price=str(outcome.new_price) if outcome.new_price is not None else None,
+        price_drop_blocked=outcome.price_drop_blocked,
     )
 
 
