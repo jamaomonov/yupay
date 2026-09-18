@@ -66,6 +66,19 @@ def _mock_g2b_ok() -> None:
     )
 
 
+def _mock_nova_ok() -> None:
+    respx.get(f"{NOVA_BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [{"category_id": "mobile_legends_ru", "name": "Mobile Legends (RU)"}],
+                "meta": {"total": 1, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+
+
 def _mock_gengine_ok() -> None:
     respx.get(f"{GENGINE_BASE}/recharge/services").mock(
         return_value=httpx.Response(
@@ -126,12 +139,26 @@ async def test_a_supplier_sync_that_raises_does_not_stop_the_others(
 ) -> None:
     """Defense in depth: even if a per-supplier sync broke its own
     best-effort contract and raised outright, the job's own per-supplier
-    ``try``/``except`` must still let the rest of the tick complete."""
-    _mock_g2b_ok()
+    ``try``/``except`` must still let the rest of the tick complete.
+
+    ``g2b`` is the one that raises here, not ``nova``. ``_SUPPLIERS`` sorts
+    to ``(g2b, gengine, nova)``, so nova is always *last* — a regression
+    that replaced the job's ``continue`` with a ``break`` (stopping the
+    whole tick on the first failure instead of skipping just that
+    supplier) would still leave every other supplier synced whenever the
+    failing one happens to be last, because there'd be nothing left to
+    iterate to anyway. Both tests in this module used to fail nova
+    exclusively, so that regression could pass them both. Failing the
+    *first* supplier in iteration order instead means a stray ``break``
+    really would cost gengine and nova their tick — verified by making
+    that exact swap in the job and watching this test fail before writing
+    it this way.
+    """
+    _mock_nova_ok()
     _mock_gengine_ok()
 
     async def _flaky(db: Any, *, supplier_slug: str) -> Any:
-        if supplier_slug == "nova":
+        if supplier_slug == "g2b":
             raise RuntimeError("simulated crash mid-sync")
         return await real_run_catalog_sync(db, supplier_slug=supplier_slug)
 
@@ -139,5 +166,7 @@ async def test_a_supplier_sync_that_raises_does_not_stop_the_others(
 
     await sync_supplier_catalog.run_sync_supplier_catalog()
 
-    assert await _cached_external_ids(db_session, supplier_slug="g2b", kind="voucher") == {"1"}
     assert await _cached_external_ids(db_session, supplier_slug="gengine", kind="game") == {"5"}
+    assert await _cached_external_ids(db_session, supplier_slug="nova", kind="game") == {
+        "mobile_legends_ru"
+    }
