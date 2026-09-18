@@ -19,6 +19,7 @@ from urllib.parse import urlencode
 import httpx
 import pytest
 import respx
+import structlog.testing
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -267,3 +268,101 @@ async def test_on_demand_sync_of_an_unknown_service_reports_not_crashes(
     body = resp.json()
     assert body["denominations_synced"] == 0
     assert body["error"]
+
+
+@respx.mock
+async def test_on_demand_sync_reports_a_malformed_denomination_not_raises(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """``_write_denoms`` used to run outside ``sync_gengine_game_denominations``'s
+    ``try`` — a junk price ``Decimal(str(...))`` can't parse would raise
+    ``decimal.InvalidOperation`` straight out of the route. It must report
+    as ``error`` on a 200 instead."""
+    respx.get(f"{BASE}/recharge/services").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "total": 1,
+                "limit": 100,
+                "offset": 0,
+                "items": [
+                    {
+                        "id": 42,
+                        "name": "Broken Service",
+                        "type": "fixed",
+                        "params": [],
+                        "denominations": [
+                            {"id": 1, "name": "Junk Price", "value": "1", "price": "not-a-number"}
+                        ],
+                    }
+                ],
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=806)
+    headers = {"Authorization": f"Bearer {admin}", "Idempotency-Key": "gengine-denom-sync-key-3"}
+    resp = await integration_client.post(
+        "/api/v1/admin/integrations/gengine/games/42/sync-denominations", headers=headers
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["denominations_synced"] == 0
+    assert body["error"]
+
+
+@respx.mock
+async def test_two_page_ceiling_warns_and_suppresses_missing_upstream(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Page one and page two both come back at the 100-item cap — a third
+    page almost certainly exists and was never fetched. A mapped service
+    that lives only on that unfetched tail must not read as "gone
+    upstream" (``missing_upstream`` stays 0 for this tick), and the
+    truncation is logged so an operator can go looking rather than trust a
+    false "everything's fine"."""
+    await _seed_mapped_sku(db_session, slug="ghost", external_product_id="999")
+
+    # ids start at 1 — ``sync_gengine_catalog`` treats a falsy ``id`` (``0``
+    # included, since ``item.get("id") or ""`` is falsy for ``0``) as
+    # unusable and skips it, which would make this test's own count wrong
+    # rather than exercising the truncation it's here to check.
+    page_one = {
+        "total": 250,
+        "limit": 100,
+        "offset": 0,
+        "items": [
+            {"id": i, "name": f"Service {i}", "type": "fixed", "params": [], "denominations": []}
+            for i in range(1, 101)
+        ],
+    }
+    page_two = {
+        "total": 250,
+        "limit": 100,
+        "offset": 100,
+        "items": [
+            {"id": i, "name": f"Service {i}", "type": "fixed", "params": [], "denominations": []}
+            for i in range(101, 201)
+        ],
+    }
+    respx.get(f"{BASE}/recharge/services", params={"limit": "100", "offset": "0"}).mock(
+        return_value=httpx.Response(200, json=page_one)
+    )
+    respx.get(f"{BASE}/recharge/services", params={"limit": "100", "offset": "100"}).mock(
+        return_value=httpx.Response(200, json=page_two)
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=805)
+    headers = {"Authorization": f"Bearer {admin}"}
+    with structlog.testing.capture_logs() as captured:
+        sync = await integration_client.post(
+            "/api/v1/admin/integrations/gengine/sync-catalog", headers=headers
+        )
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["games_synced"] == 200
+    assert body["missing_upstream"] == 0, "mapped id 999 fell off page two, not gone upstream"
+    assert any(
+        entry.get("event") == "integrations.gengine.sync.services_page_limit_hit"
+        for entry in captured
+    )

@@ -55,19 +55,33 @@ def _gengine_client_or_none() -> GEngineClient | None:
     return None
 
 
-async def _list_all_services(client: GEngineClient) -> list[dict[str, Any]]:
+async def _list_all_services(client: GEngineClient) -> tuple[list[dict[str, Any]], bool]:
     """Walk up to two pages of ``GET /recharge/services``.
 
     G-Engine's own catalogue "overlaps ours almost exactly" (see
     ``fulfillment/suppliers/gengine.py``) — a handful of titles — so one page
     at the server's own cap (:data:`MAX_PAGE` = 100) covers it today. A
     second page is fetched only if the first came back full, to stay inside
-    the "one or two calls" budget a full sync is meant to cost.
+    the "one or two calls" budget a full sync is meant to cost. Past 200
+    services this still caps out — G-Engine's own ``total`` is discarded by
+    ``list_recharge_services`` today, so there is no cheaper way to know the
+    true count without a third call this budget doesn't allow.
+
+    Returns ``(items, truncated)``. ``truncated`` is ``True`` only when the
+    *second* page also came back full — meaning a third page almost
+    certainly exists and was never fetched. The full sweep uses it to
+    suppress ``missing_upstream`` for this tick, the same way NOVA's own
+    client logs ``nova.topups_page_limit_hit`` when its cursor walk gives up.
     """
     items = await client.list_recharge_services(limit=MAX_PAGE, offset=0)
-    if len(items) == MAX_PAGE:
-        items = items + await client.list_recharge_services(limit=MAX_PAGE, offset=MAX_PAGE)
-    return items
+    if len(items) < MAX_PAGE:
+        return items, False
+    page_two = await client.list_recharge_services(limit=MAX_PAGE, offset=MAX_PAGE)
+    items = items + page_two
+    truncated = len(page_two) == MAX_PAGE
+    if truncated:
+        log.warning("integrations.gengine.sync.services_page_limit_hit", collected=len(items))
+    return items, truncated
 
 
 async def _write_denoms(db: AsyncSession, service: dict[str, Any]) -> int:
@@ -116,8 +130,9 @@ async def sync_gengine_catalog(db: AsyncSession) -> CatalogSyncReport:
     mapped_denoms = 0
     seen_ids: set[str] = set()
     error: str | None = None
+    truncated = False
     try:
-        services = await _list_all_services(client)
+        services, truncated = await _list_all_services(client)
         for item in services:
             external_id = str(item.get("id") or "").strip()
             if not external_id:
@@ -139,9 +154,12 @@ async def sync_gengine_catalog(db: AsyncSession) -> CatalogSyncReport:
         error = f"game sync failed: {exc!s}"[:200]
         log.warning("integrations.gengine.sync.games_failed", error=str(exc))
 
-    # Only trustworthy when the sweep actually completed — a total outage
-    # must not read as "every mapped game just got pulled by the supplier".
-    missing_upstream = 0 if error else len(mapped_ids - seen_ids)
+    # Only trustworthy when the sweep actually completed *and* wasn't
+    # truncated by the two-page ceiling — a total outage must not read as
+    # "every mapped game just got pulled by the supplier", and neither may a
+    # mapped service that simply fell off page two: it is still upstream,
+    # just past where this tick stopped looking.
+    missing_upstream = 0 if (error or truncated) else len(mapped_ids - seen_ids)
 
     return CatalogSyncReport(
         games=games,
@@ -161,18 +179,23 @@ async def sync_gengine_game_denominations(
     :func:`_list_all_services` is built for. The one live G-Engine call this
     module makes outside the hourly tick; see
     ``routes.sync_game_denominations`` for why it is a POST (AGENTS.md §10).
+
+    Never raises — ``_write_denoms`` is inside the same ``try`` as the fetch
+    so a malformed denomination (a junk price ``Decimal(str(...))`` can't
+    parse, a non-dict entry) reports as ``error`` instead of a 5xx, the same
+    guarantee the full sweep already gives its own ``_write_denoms`` call.
     """
     client = _gengine_client_or_none()
     if client is None:
         return 0, "GENGINE_API_KEY is not configured"
     try:
-        services = await _list_all_services(client)
+        services, _truncated = await _list_all_services(client)
+        match = next((s for s in services if str(s.get("id") or "").strip() == game_id), None)
+        if match is None:
+            return 0, f"g-engine has no recharge service {game_id!r}"
+        return await _write_denoms(db, match), None
     except Exception as exc:  # noqa: BLE001 -- best-effort, mirrors the full sweep
         return 0, str(exc)[:200]
-    match = next((s for s in services if str(s.get("id") or "").strip() == game_id), None)
-    if match is None:
-        return 0, f"g-engine has no recharge service {game_id!r}"
-    return await _write_denoms(db, match), None
 
 
 __all__ = ["sync_gengine_catalog", "sync_gengine_game_denominations"]
