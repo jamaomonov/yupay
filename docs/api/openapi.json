@@ -23955,7 +23955,7 @@
     },
     "/api/v1/admin/integrations/{supplier}/sync-catalog": {
       "post": {
-        "description": "Pulls one supplier's game/voucher catalogue into our cache.\n\nBest-effort: partial failures are logged but the endpoint never raises\nso the admin UI gets a definitive answer instead of a 5xx. Live\nfulfilment does NOT depend on this cache \u2014 the source of truth is\n``sku_supplier_mapping``.\n\nGeneralised from the G2B-only ``POST /g2b/sync-catalog`` (kept working \u2014\n``supplier=\"g2b\"`` is one of the three literal values this path accepts,\nso the old URL still resolves to this same handler) to also cover NOVA\nand G-Engine. The scheduler runs the same sync hourly, per supplier\n(``sync_supplier_catalog``); this button is for when someone does not\nwant to wait.",
+        "description": "Pulls one supplier's game/voucher catalogue into our cache.\n\nBest-effort: partial failures are logged but the endpoint never raises\nso the admin UI gets a definitive answer instead of a 5xx. Live\nfulfilment does NOT depend on this cache \u2014 the source of truth is\n``sku_supplier_mapping``.\n\nGeneralised from the G2B-only ``POST /g2b/sync-catalog`` (kept working \u2014\n``supplier=\"g2b\"`` is one of the three literal values this path accepts,\nso the old URL still resolves to this same handler) to also cover NOVA\nand G-Engine. The scheduler runs the same sync hourly, per supplier\n(``sync_supplier_catalog``); this button is for when someone does not\nwant to wait.\n\nAccepts ``Idempotency-Key`` (AGENTS.md \u00a79) the same way its sibling\n``sync_game_denominations`` does, below: a replay returns the first\nreport instead of re-running the sweep. The write itself (an upsert into\n``supplier_catalog_cache``) is harmless to repeat \u2014 nothing here debits a\nwallet or double-books an order \u2014 but harmlessness is an argument for why\na stray retry can't hurt, not for leaving the header off; a slow sweep\nbehind a flaky admin connection can still be retried by a human, and a\nreplayed key should get back the report that already ran rather than pay\nfor a second one.",
         "operationId": "sync_catalog_api_v1_admin_integrations__supplier__sync_catalog_post",
         "parameters": [
           {
@@ -23970,6 +23970,22 @@
               ],
               "title": "Supplier",
               "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
             }
           },
           {
