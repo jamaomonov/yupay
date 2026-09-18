@@ -241,6 +241,6 @@ it("keeps two different brands that share a display name in separate groups", as
   const groupedRegions = screen.getAllByRole("region", { name: "Mobile Legends (1)" });
   expect(groupedRegions).toHaveLength(2);
   expect(screen.queryByRole("region", { name: "Mobile Legends (2)" })).not.toBeInTheDocument();
-  expect(within(groupedRegions[0] as HTMLElement).getByText(/MLBB-A|MLBB-B/)).toBeInTheDocument();
-  expect(within(groupedRegions[1] as HTMLElement).getByText(/MLBB-A|MLBB-B/)).toBeInTheDocument();
+  expect(within(groupedRegions[0]!).getByText(/MLBB-A|MLBB-B/)).toBeInTheDocument();
+  expect(within(groupedRegions[1]!).getByText(/MLBB-A|MLBB-B/)).toBeInTheDocument();
 });
