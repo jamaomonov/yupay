@@ -40,6 +40,7 @@ from yupay.modules.catalog.models import (
 )
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierPriceHistory
 from yupay.modules.sourcing import service as sourcing_svc
+from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -449,6 +450,119 @@ async def test_overview_primary_names_a_supplier_present_in_its_own_suppliers_li
     )
 
 
+async def test_overview_primary_from_force_supplier_rule_is_present_in_suppliers_list(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """Same invariant as the test above, broken through the *other* branch of
+    ``primary``'s two sources: an explicit ``force_supplier`` rule rather
+    than an auto-picked mapping.
+
+    ``_resolve_explicit_rule`` returns ``f"supplier:{rule.supplier_slug}"``
+    for *any* slug, and ``set_rule`` only requires an active mapping row
+    when the slug is in ``MAPPING_REQUIRED_SUPPLIERS`` — waxpeer needs none.
+    Before the fix, ``candidate_slugs`` was built from
+    ``MAPPING_REQUIRED_SUPPLIERS | {mapping rows}`` only (no rule rows), so
+    a SKU force-routed onto waxpeer with *no* mapping row anywhere at all
+    still reported ``primary == "supplier:waxpeer"`` next to a ``suppliers``
+    list that never contained a "waxpeer" entry — the exact defect the prior
+    fix closed on the mapping branch, reopened here on the rule branch of
+    the same ``if rule is not None and rule.mode != "auto"``.
+    """
+    brand_slug = "force-rule-overview-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session, brand_id=brand_id, slug="force-rule-overview-product-test", kind="top_up"
+    )
+    sku_id = await _make_sku(db_session, product_id=product_id, sku_code="force-rule-sku-test")
+    await db_session.commit()
+
+    # No SkuSupplierMapping row at all for this SKU — waxpeer or otherwise.
+    await sourcing_svc.set_rule(
+        db_session,
+        sku_id=sku_id,
+        mode="force_supplier",
+        supplier_slug="waxpeer",
+        admin_id="test-admin",
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    row = items[0]
+
+    assert row["primary"] == "supplier:waxpeer"
+    suppliers_by_slug = {s["supplier_slug"]: s for s in row["suppliers"]}
+    assert "waxpeer" in suppliers_by_slug, "waxpeer missing from the comparison list entirely"
+    # No mapping row exists — the comparison entry is present but empty.
+    assert suppliers_by_slug["waxpeer"]["has_active_mapping"] is False
+    assert suppliers_by_slug["waxpeer"]["latest_cost_usdt"] is None
+
+    primary_slug = row["primary"].removeprefix("supplier:")
+    assert primary_slug in suppliers_by_slug, (
+        f"primary names {primary_slug!r} but it is absent from the SKU's own "
+        f"suppliers list: {sorted(suppliers_by_slug)}"
+    )
+
+
+async def test_overview_malformed_force_supplier_rule_reports_invalid(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+    _seed_brand: dict[str, str],
+) -> None:
+    """A ``force_supplier`` row with an empty ``supplier_slug`` — a shape
+    ``set_rule`` itself refuses to write, but a direct SQL statement, a
+    seed, or a migration still can — must not 400 the whole brand screen.
+    This is the exact screen an operator opens to *fix* routing, so one
+    broken row must not take the other rows down with it.
+
+    ``supplier_slug=""`` rather than ``NULL``: the table's own
+    ``ck_sku_sourcing_rules_supplier_required`` CHECK constraint (migration
+    0010) already blocks ``NULL`` at the database level, so that particular
+    row can never exist — but the constraint only tests ``IS NOT NULL``, and
+    ``_resolve_explicit_rule``'s guard is ``if not rule.supplier_slug``,
+    which is also true for an empty string. ``""`` clears the DB constraint
+    while still tripping the application-level one, which is exactly the gap
+    a stray SQL statement, a seed, or a migration could fall into.
+
+    Written directly through the session (``db_session.add``), bypassing
+    ``set_rule``'s validation entirely, to reproduce a row nothing in this
+    module would ever construct on its own.
+    """
+    broken_sku = _seed_brand["sku3"]  # currently ruleless — auto/inventory
+    db_session.add(
+        SkuSourcingRule(
+            sku_id=broken_sku,
+            mode="force_supplier",
+            supplier_slug="",
+            updated_by="test-direct-sql",
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{_seed_brand['brand_slug']}",
+        headers=_admin_headers,
+    )
+    assert r.status_code == 200, r.text
+    by_sku = {item["sku_id"]: item for item in r.json()["items"]}
+
+    # The broken row renders as "invalid" rather than 500ing/400ing the page.
+    assert by_sku[broken_sku]["primary"] == "invalid"
+    assert by_sku[broken_sku]["rule_present"] is True
+
+    # The other SKUs of the same brand still load normally alongside it.
+    assert by_sku[_seed_brand["sku1"]]["primary"] == "supplier:g2b"
+    assert by_sku[_seed_brand["sku2"]]["primary"] == "supplier:gengine"
+
+
 async def test_overview_sku_fields(
     integration_client: AsyncClient,
     db_session: AsyncSession,
@@ -498,22 +612,39 @@ async def test_overview_sql_query_count_is_bounded(
     _admin_headers: dict[str, str],
     sql_counter: dict[str, int],
 ) -> None:
-    """Adding more SKUs (each with its own mapping + history row) must not
-    grow the query count — the three N+1s the brief calls out: resolving
-    the route, reading mappings, and reading price history per row."""
+    """Adding more SKUs (each with its own mapping + history row, spread
+    across two *products* and two *suppliers*) must not grow the query
+    count — the three N+1s the brief calls out: resolving the route,
+    reading mappings, and reading price history per row.
+
+    The original fixture put every SKU under one product with one supplier,
+    so a per-product or per-supplier N+1 (e.g. a query keyed on
+    ``product_id`` or ``supplier_slug`` instead of batched with ``IN``)
+    would never have shown up here. Alternating both flushes that blind
+    spot out. A generous absolute ceiling runs beside the delta check too:
+    the delta assertion alone would pass a constant blow-up (5 queries ->
+    50, still flat as SKUs are added) that is still a real regression.
+    """
     brand_slug = "query-count-brand-test"
     _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
-    product_id = await _make_product(
-        db_session, brand_id=brand_id, slug="query-count-product-test", kind="top_up"
+    product_a = await _make_product(
+        db_session, brand_id=brand_id, slug="query-count-product-a-test", kind="top_up"
     )
+    product_b = await _make_product(
+        db_session, brand_id=brand_id, slug="query-count-product-b-test", kind="top_up"
+    )
+    products = (product_a, product_b)
+    suppliers = ("g2b", "gengine")
 
     async def _add_sku(n: int) -> None:
+        product_id = products[n % 2]
+        supplier_slug = suppliers[n % 2]
         sku_id = await _make_sku(db_session, product_id=product_id, sku_code=f"qc-sku-{n}-test")
-        await _make_mapping(db_session, sku_id=sku_id, supplier_slug="g2b")
+        await _make_mapping(db_session, sku_id=sku_id, supplier_slug=supplier_slug)
         await _make_history(
             db_session,
             sku_id=sku_id,
-            supplier_slug="g2b",
+            supplier_slug=supplier_slug,
             cost_usdt=Decimal("1.000000"),
             captured_at=datetime(2026, 1, 1, tzinfo=UTC),
         )
@@ -533,4 +664,13 @@ async def test_overview_sql_query_count_is_bounded(
 
     assert large_count == small_count, (
         f"query count grew from {small_count} to {large_count} as SKUs were added — N+1"
+    )
+    # Absolute ceiling: the endpoint runs five bounded sourcing queries plus
+    # the request's auth/admin lookups, not dozens — a constant blow-up
+    # (5 queries -> 50, still flat as SKUs are added) would slip past the
+    # delta check above but must still fail here. 30 leaves real headroom
+    # above what this measures today (comfortably under 20) without coming
+    # anywhere near "dozens."
+    assert small_count <= 30, (
+        f"query count {small_count} is far above what this endpoint should need"
     )

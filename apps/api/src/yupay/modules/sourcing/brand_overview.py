@@ -29,7 +29,7 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from yupay.core.errors import NotFoundError
+from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.integrations.models import (
     MAPPING_REQUIRED_SUPPLIERS,
@@ -43,10 +43,22 @@ from yupay.modules.sourcing.schemas import (
     SourcingBrandSupplierOut,
 )
 from yupay.modules.sourcing.service import (
+    Decision,
     _auto_decision,
     _pick_auto_mapping_slug,
     _resolve_explicit_rule,
 )
+
+#: Per-brand cap on the SKUs this endpoint returns — mirrors
+#: ``service.list_rules``'s ``min(limit, 500)``. No brand is anywhere near
+#: this in practice (~35 active SKUs is the largest today), so the cap is a
+#: backstop rather than a real pagination need: a brand beyond it gets a
+#: silently truncated list (the first ``MAX_BRAND_OVERVIEW_SKUS`` active SKUs
+#: in the query's own stable order — product sort order, then SKU sort
+#: order/code) instead of an endpoint that reads an unbounded number of rows
+#: into memory and 500s or times out the page an operator opens to fix
+#: routing.
+MAX_BRAND_OVERVIEW_SKUS = 500
 
 
 async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrandOverviewOut:
@@ -70,7 +82,11 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         One :class:`SourcingBrandSkuOut` per active SKU of the brand, each
         carrying the live route and a per-candidate-supplier cost
         comparison. Empty ``items`` for a brand with no active SKUs — that
-        is a valid state, not a 404.
+        is a valid state, not a 404. Capped at :data:`MAX_BRAND_OVERVIEW_SKUS`
+        (500) active SKUs, in the query's own stable order (product sort
+        order, then SKU sort order/code) — a brand beyond that count gets a
+        silently truncated list rather than an error; no brand today is
+        anywhere near the cap.
 
     Raises:
         NotFoundError: No brand has this slug.
@@ -91,6 +107,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
             .join(Product, Product.id == Sku.product_id)
             .where(Product.brand_id == brand_id, Sku.active.is_(True))
             .order_by(Product.sort_order, Product.id, Sku.sort_order, Sku.sku_code)
+            .limit(MAX_BRAND_OVERVIEW_SKUS)
         )
     ).all()
     if not sku_rows:
@@ -118,16 +135,27 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
     # appear (so a supplier the brand has never mapped still shows up as a
     # switch target, ``has_active_mapping=False``, no cost) *union* every
     # supplier that actually has a mapping row among the SKUs being
-    # returned. The fixed half alone can omit a supplier that is the SKU's
-    # live route right now — a mapping onto a supplier outside
-    # ``MAPPING_REQUIRED_SUPPLIERS`` (waxpeer, say) still wins
-    # ``_pick_auto_mapping_slug`` when it is the oldest active,
-    # non-reserve mapping, and the reported ``primary`` must always name a
-    # supplier present in this same list. The union costs no extra query —
-    # ``mapping_rows`` is already loaded above. Sorted for a stable,
-    # deterministic order across requests (not insertion order, which
-    # would vary with how mappings were created).
-    candidate_slugs = sorted(MAPPING_REQUIRED_SUPPLIERS | {m.supplier_slug for m in mapping_rows})
+    # returned *union* every supplier named by a ``force_supplier`` rule
+    # among those SKUs. The fixed half alone can omit a supplier that is the
+    # SKU's live route right now, on either of ``primary``'s two sources:
+    # a mapping onto a supplier outside ``MAPPING_REQUIRED_SUPPLIERS``
+    # (waxpeer, say) still wins ``_pick_auto_mapping_slug`` when it is the
+    # oldest active, non-reserve mapping — and an explicit ``force_supplier``
+    # rule names *any* slug via ``_resolve_explicit_rule``, mapping required
+    # or not (``set_rule`` only demands a mapping row when the slug is in
+    # ``MAPPING_REQUIRED_SUPPLIERS``; waxpeer needs none). Either path can
+    # make ``primary`` name a supplier the fixed-plus-mapped union would
+    # have missed, and the reported ``primary`` must always name a supplier
+    # present in this same list. Both unions cost no extra query —
+    # ``mapping_rows`` and ``rule_rows`` are already loaded above. Sorted
+    # for a stable, deterministic order across requests (not insertion
+    # order, which would vary with how mappings/rules were created).
+    forced_slugs = {
+        r.supplier_slug for r in rule_rows if r.mode == "force_supplier" and r.supplier_slug
+    }
+    candidate_slugs = sorted(
+        MAPPING_REQUIRED_SUPPLIERS | {m.supplier_slug for m in mapping_rows} | forced_slugs
+    )
 
     # Latest history row per (sku_id, supplier_slug) — Postgres DISTINCT ON,
     # not a loop: same technique as ``fx.refresh_cycle.latest_history_rates``
@@ -150,6 +178,13 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
             SupplierPriceHistory.sku_id,
             SupplierPriceHistory.supplier_slug,
             SupplierPriceHistory.captured_at.desc(),
+            # Tie-break for two rows with the same captured_at on one
+            # (sku_id, supplier_slug) — otherwise DISTINCT ON picks whichever
+            # one Postgres happens to scan first, arbitrarily and
+            # non-reproducibly. Row id descending just needs to be total and
+            # deterministic, not meaningful — see minor 5 of the task-3-fix2
+            # review.
+            SupplierPriceHistory.id.desc(),
         )
     )
     history_rows = (await db.execute(history_stmt)).all()
@@ -162,7 +197,20 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         rule = rules_by_sku.get(sku.id)
         mappings = mappings_by_sku.get(sku.id, [])
         if rule is not None and rule.mode != "auto":
-            decision = _resolve_explicit_rule(rule, sku_id=sku.id)
+            try:
+                decision = _resolve_explicit_rule(rule, sku_id=sku.id)
+            except ValidationError:
+                # A malformed row — ``mode="force_supplier"`` with an empty
+                # ``supplier_slug`` — that ``set_rule`` itself would refuse to
+                # write, but a direct SQL statement, a seed, or a migration
+                # can still produce (``sku_sourcing_rules`` has no DB-level
+                # check tying the two columns together). This is the screen
+                # an operator opens to *fix* routing, so one broken row must
+                # not 400 the other ~34: report it with a route the UI can
+                # render as broken instead of raising out of the loop.
+                decision = Decision(
+                    primary="invalid", fallback=None, strict=True, rule_present=True
+                )
         else:
             mapping_slug = _pick_auto_mapping_slug(mappings)
             decision = _auto_decision(
