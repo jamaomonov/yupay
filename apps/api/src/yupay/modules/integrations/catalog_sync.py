@@ -21,7 +21,7 @@ caller still names it directly; new callers should prefer
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from yupay.core.errors import NotFoundError
 from yupay.modules.integrations.catalog_sync_g2b import sync_g2b_catalog
@@ -37,6 +37,21 @@ from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
+
+
+class _DenomSyncer(Protocol):
+    """One supplier's on-demand denomination syncer.
+
+    A plain ``Callable[..., Awaitable[tuple[int, str | None]]]`` erases the
+    keyword-only ``game_id`` both :func:`~catalog_sync_nova.sync_nova_game_denominations`
+    and :func:`~catalog_sync_gengine.sync_gengine_game_denominations` share, so
+    ``mypy --strict`` cannot check the ``game_id=game_id`` call in
+    :func:`run_game_denomination_sync` below against it. This restores the
+    signature so that call is actually checked.
+    """
+
+    def __call__(self, db: AsyncSession, *, game_id: str) -> Awaitable[tuple[int, str | None]]: ...
+
 
 #: Suppliers a full catalogue sweep is wired up for. Mirrors
 #: ``routes._KNOWN_SUPPLIERS`` minus Waxpeer, which sells Steam items by
@@ -56,7 +71,7 @@ _SYNCERS: dict[str, Callable[[AsyncSession], Awaitable[CatalogSyncReport]]] = {
     "gengine": sync_gengine_catalog,
 }
 
-_DENOM_SYNCERS: dict[str, Callable[..., Awaitable[tuple[int, str | None]]]] = {
+_DENOM_SYNCERS: dict[str, _DenomSyncer] = {
     "nova": sync_nova_game_denominations,
     "gengine": sync_gengine_game_denominations,
 }
