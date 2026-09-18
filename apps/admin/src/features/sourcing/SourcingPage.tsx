@@ -13,57 +13,24 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
-import { ArrowRight, Boxes, Hand, Sparkles, Truck, Warehouse } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 
 import { RulesTable } from "./RulesTable";
+import { autoHintFor, MODE_CARDS, ModeOption } from "./SourcingModeCards";
+import { RoutePreview, SkuSummary } from "./SourcingSkuPanel";
 import { SUPPLIER_OPTIONS } from "./supplierOptions";
 
 import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
 
-import { Badge } from "@/components/Badge";
 import { PageHeader } from "@/components/PageHeader";
 import { useToast } from "@/components/Toast";
 import { SkuPicker } from "@/features/integrations/pickers";
 import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, api, apiGet } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
-
-interface ModeCard {
-  value: SourcingMode;
-  label: string;
-  icon: typeof Sparkles;
-  blurb: string;
-}
-
-const MODE_CARDS: ModeCard[] = [
-  {
-    value: "auto",
-    label: "Авто",
-    icon: Sparkles,
-    blurb: "Система решает по типу товара. Обычно ничего настраивать не нужно.",
-  },
-  {
-    value: "force_supplier",
-    label: "Только поставщик",
-    icon: Truck,
-    blurb: "Всегда выкупать у поставщика, минуя склад. Нужно выбрать какого.",
-  },
-  {
-    value: "force_inventory",
-    label: "Только склад",
-    icon: Warehouse,
-    blurb: "Выдавать только из склада кодов. Нет кодов — заказ упадёт в ошибку.",
-  },
-  {
-    value: "manual",
-    label: "Вручную",
-    icon: Hand,
-    blurb: "Без автоматики — заказ попадёт в очередь ручной выдачи оператору.",
-  },
-];
 
 export function SourcingPage() {
   const qc = useQueryClient();
@@ -153,7 +120,7 @@ export function SourcingPage() {
       void qc.invalidateQueries({ queryKey: qk.sourcingDecision(sku?.id ?? "") });
     },
     onError: (err) => {
-      toast.error(formatApiError(err));
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -170,7 +137,7 @@ export function SourcingPage() {
       void qc.invalidateQueries({ queryKey: qk.sourcingDecision(sku?.id ?? "") });
     },
     onError: (err) => {
-      toast.error(formatApiError(err));
+      toast.error(extractApiMessage(err));
     },
   });
 
@@ -293,165 +260,4 @@ export function SourcingPage() {
       </section>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
-// SKU summary
-// ---------------------------------------------------------------------------
-
-function SkuSummary({
-  sku,
-  mapping,
-}: {
-  sku: SkuPickerRow;
-  mapping: { supplier_slug: string } | null;
-}) {
-  const isTopUp = sku.product_kind === "top_up";
-  return (
-    <div className="flex flex-wrap items-center gap-3 rounded-md bg-[var(--bg-muted)] px-3 py-2 text-sm">
-      <span className="font-medium">{sku.product_name}</span>
-      <code className="text-xs text-[var(--text-secondary)]">{sku.sku_code}</code>
-      <Badge
-        tone={
-          isTopUp
-            ? "bg-[var(--info-soft)] text-[var(--info-fg)]"
-            : "bg-[var(--bg-surface)] text-[var(--text-secondary)]"
-        }
-      >
-        {isTopUp ? "игровой топ-ап" : "ваучер"}
-      </Badge>
-      {mapping ? (
-        <Badge tone="bg-[var(--bg-accent-soft)] text-[var(--accent-soft-fg)]" dot>
-          маппинг: {mapping.supplier_slug}
-        </Badge>
-      ) : (
-        <Badge tone="bg-[var(--bg-surface)] text-[var(--text-tertiary)]">нет маппинга</Badge>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Route preview
-// ---------------------------------------------------------------------------
-
-function RoutePreview({ decision, loading }: { decision: SourcingDecisionOut; loading: boolean }) {
-  return (
-    <div className="rounded-md border border-dashed border-[var(--border-default)] p-3">
-      <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wide text-[var(--text-tertiary)]">
-        Что произойдёт при оплате
-        {loading && <span className="text-[var(--text-tertiary)]">· обновляем…</span>}
-      </div>
-      <div className="flex flex-wrap items-center gap-2 text-sm">
-        <RouteNode route={decision.primary} primary />
-        {decision.fallback && !decision.strict && (
-          <>
-            <span className="text-[var(--text-tertiary)]">
-              <ArrowRight className="size-4" aria-hidden />
-            </span>
-            <span className="text-xs text-[var(--text-tertiary)]">если не вышло →</span>
-            <RouteNode route={decision.fallback} primary={false} />
-          </>
-        )}
-        {decision.strict && (
-          <span className="text-xs text-[var(--text-tertiary)]">(без запасного варианта)</span>
-        )}
-      </div>
-      {!decision.rule_present && (
-        <p className="mt-2 text-[10px] text-[var(--text-tertiary)]">
-          Режим «авто» — правило не задано явно.
-        </p>
-      )}
-    </div>
-  );
-}
-
-function RouteNode({ route, primary }: { route: string; primary: boolean }) {
-  const { icon: Icon, label } = describeRoute(route);
-  return (
-    <span
-      className={[
-        "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm",
-        primary
-          ? "bg-[var(--bg-accent-soft)] font-medium text-[var(--accent-soft-fg)]"
-          : "bg-[var(--bg-muted)] text-[var(--text-secondary)]",
-      ].join(" ")}
-    >
-      <Icon className="size-4" aria-hidden />
-      {label}
-    </span>
-  );
-}
-
-function describeRoute(route: string): { icon: typeof Boxes; label: string } {
-  if (route === "inventory") return { icon: Warehouse, label: "Склад кодов" };
-  const slug = route.startsWith("supplier:") ? route.slice("supplier:".length) : route;
-  if (slug === "manual") return { icon: Hand, label: "Ручная выдача" };
-  if (slug === "g2b") return { icon: Truck, label: "Поставщик G2Bulk" };
-  if (slug === "mock") return { icon: Boxes, label: "Mock (dev)" };
-  return { icon: Truck, label: `Поставщик ${slug}` };
-}
-
-// ---------------------------------------------------------------------------
-// Mode option card
-// ---------------------------------------------------------------------------
-
-function ModeOption({
-  card,
-  selected,
-  autoHint,
-  onSelect,
-}: {
-  card: ModeCard;
-  selected: boolean;
-  autoHint: string | null;
-  onSelect: () => void;
-}) {
-  const Icon = card.icon;
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      aria-pressed={selected}
-      className={[
-        "flex flex-col gap-1.5 rounded-md border p-3 text-left transition-colors",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-base)]",
-        selected
-          ? "border-[var(--accent)] bg-[var(--bg-accent-soft)]"
-          : "border-[var(--border-default)] hover:bg-[var(--bg-muted)]",
-      ].join(" ")}
-    >
-      <span className="flex items-center gap-2">
-        <Icon className="size-4 text-[var(--accent)]" aria-hidden />
-        <span className="font-medium">{card.label}</span>
-      </span>
-      <span className="text-xs text-[var(--text-secondary)]">{card.blurb}</span>
-      {autoHint && (
-        <span className="mt-0.5 rounded bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)]">
-          {autoHint}
-        </span>
-      )}
-    </button>
-  );
-}
-
-/** Human explanation of what "auto" resolves to for THIS sku. */
-function autoHintFor(sku: SkuPickerRow, mapping: { supplier_slug: string } | null): string {
-  if (sku.product_kind === "top_up") {
-    return mapping
-      ? `Сейчас: поставщик ${mapping.supplier_slug} → при отказе ручная выдача.`
-      : "Сейчас: ручная выдача (нет маппинга на поставщика).";
-  }
-  return mapping
-    ? `Сейчас: склад → при пустом складе поставщик ${mapping.supplier_slug}.`
-    : "Сейчас: склад → при пустом складе mock (dev) / ошибка (prod).";
-}
-
-// ---------------------------------------------------------------------------
-// shared
-// ---------------------------------------------------------------------------
-
-function formatApiError(err: ApiError): string {
-  const body = err.body as { detail?: string; title?: string } | null;
-  return body?.detail ?? body?.title ?? err.message;
 }
