@@ -21,6 +21,10 @@ tune, not six copies of it.
 
 from __future__ import annotations
 
+from sqlalchemy import String
+
+from yupay.modules.users.models import User
+
 #: Generous headroom over anything a real avatar URL has ever measured here
 #: (the longest of 893 on file is 100 chars; the incident URL was "past
 #: 1024"), while still refusing something pathological (a multi-KB payload,
@@ -29,11 +33,17 @@ from __future__ import annotations
 #: accepts can never again fail the INSERT/UPDATE on its own.
 MAX_AVATAR_URL_LENGTH = 2048
 
-#: Matches ``users.display_name``'s own column width (``String(255)``,
-#: unchanged by migration 0083 — see its docstring for why only ``photo_url``
-#: needed widening). A name has no "broken" state the way a truncated URL
-#: does, so this guard truncates instead of dropping.
-MAX_DISPLAY_NAME_LENGTH = 255
+#: ``users.display_name``'s own column width (``String(255)``, unchanged by
+#: migration 0083 — see its docstring for why only ``photo_url`` needed
+#: widening), read off the model rather than hand-copied: a narrower column
+#: (or a wider one) then changes this guard automatically instead of leaving
+#: it silently out of sync — over-permissive if the column ever shrinks
+#: without this being touched too. A name has no "broken" state the way a
+#: truncated URL does, so this guard truncates instead of dropping.
+_display_name_type = User.__table__.c.display_name.type
+assert isinstance(_display_name_type, String), "users.display_name must stay a String column"
+assert _display_name_type.length is not None, "users.display_name must stay length-bounded"
+MAX_DISPLAY_NAME_LENGTH: int = _display_name_type.length
 
 
 def safe_avatar_url(url: str | None) -> str | None:
