@@ -1,4 +1,4 @@
-"""users.photo_url: varchar(1024) -> text.
+"""Avatar URL columns: varchar(1024) -> text.
 
 A URL has no natural length bound; 1024 was a guess reality exceeded. Sentry,
 2026-09-18: ``POST /api/v1/auth/google`` 500'd with
@@ -19,8 +19,17 @@ repo's Postgres 16 image before writing this migration: a scratch table's
 and after the same ``ALTER COLUMN ... TYPE text`` run here. This is safe to
 run against the production ``users`` table without a maintenance window.
 
+``steam_links.avatar_url`` is widened in the same breath, and not for
+symmetry: ``upsert_user_by_steam`` writes the *same* value into both columns
+in the *same* flush, so leaving one at 1024 would keep the identical 500
+reachable through the sibling column. The guard's ceiling (2048) is wider
+than that column was, so the gap was real rather than theoretical — a Steam
+avatar between 1025 and 2048 characters would have passed the guard and then
+failed the insert. Steam's URLs are short fixed-format CDN links today, which
+is exactly what was true of Google's until it wasn't.
+
 An application-level guard (``yupay.modules.users.identity_guard``) still
-refuses an absurd value before it ever reaches this column — this migration
+refuses an absurd value before it ever reaches these columns — this migration
 removes the *arbitrary* 1024 cap, not the idea of a cap at all.
 
 Revision ID: 0083_widen_photo_url
@@ -39,13 +48,14 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
-    op.alter_column(
-        "users",
-        "photo_url",
-        existing_type=sa.String(length=1024),
-        type_=sa.Text(),
-        existing_nullable=True,
-    )
+    for table, column in (("users", "photo_url"), ("steam_links", "avatar_url")):
+        op.alter_column(
+            table,
+            column,
+            existing_type=sa.String(length=1024),
+            type_=sa.Text(),
+            existing_nullable=True,
+        )
 
 
 def downgrade() -> None:
@@ -54,10 +64,11 @@ def downgrade() -> None:
     # than the old column, so a downgrade after this ships can fail on real
     # data. That's the expected cost of reverting a deliberate widening, not
     # a bug in the downgrade.
-    op.alter_column(
-        "users",
-        "photo_url",
-        existing_type=sa.Text(),
-        type_=sa.String(length=1024),
-        existing_nullable=True,
-    )
+    for table, column in (("users", "photo_url"), ("steam_links", "avatar_url")):
+        op.alter_column(
+            table,
+            column,
+            existing_type=sa.Text(),
+            type_=sa.String(length=1024),
+            existing_nullable=True,
+        )

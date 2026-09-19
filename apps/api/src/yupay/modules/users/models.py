@@ -148,7 +148,7 @@ class SteamLink(Base):
     )
     steam_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
     persona_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")

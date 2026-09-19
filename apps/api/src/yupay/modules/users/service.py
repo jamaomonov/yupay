@@ -151,13 +151,13 @@ async def upsert_user_by_steam(
     flush from the same value, so guarding only one still leaves the other
     free to fail the INSERT/UPDATE on an absurd value — the exact failure
     mode this guard exists to prevent, just on a different column.
-    ``steam_links.avatar_url`` stays ``varchar(1024)`` (unlike
-    ``users.photo_url``, not widened by migration 0083 — Steam's avatar URLs
-    are short, fixed-format CDN links, not user-supplied text), so a
-    genuine — not absurd — value between 1024 and
-    :data:`~yupay.modules.users.identity_guard.MAX_AVATAR_URL_LENGTH` chars
-    could still overflow it; that shape has never been observed from Steam
-    and is considered out of scope here.
+    Migration 0083 widens both columns to ``text`` for the same reason. An
+    earlier draft widened only ``users.photo_url``, on the argument that
+    Steam's avatar URLs are short fixed-format CDN links — which is true, and
+    is exactly what was true of Google's avatar URLs until one of them ran
+    past 1024 characters and cost somebody their registration. Leaving the
+    sibling at ``varchar(1024)`` would have kept a live gap between the
+    guard's ceiling and the column's, reachable by a value the guard accepts.
     """
     avatar = safe_avatar_url(avatar_url)
     link = await _get_steam_link(session, steam_id)
