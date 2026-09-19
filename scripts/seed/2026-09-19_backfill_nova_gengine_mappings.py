@@ -82,38 +82,82 @@ PAIRS: dict[str, dict[str, str]] = {
 
 
 def norm(text: str) -> str:
-    """Lowercase, and collapse every run of non-alphanumerics to one space."""
-    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+    """Lowercase, collapse non-alphanumerics, and write "30 days" as "30d".
+
+    That last step is not cosmetic: NOVA lists ``Bulletproof Case (30d)``
+    where our SKU says ``Bulletproof Case (30 days)``, and Free Fire's own
+    SKUs already say ``Evo Access 30d``. One spelling, chosen to match the
+    shorter one both sides already use somewhere.
+    """
+    flat = re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+    return re.sub(r"\b(\d+)\s+days?\b", r"\1d", flat)
 
 
-#: "1980 + 260 genesis crystals" -> (1980, 260, "genesis crystals");
-#: "60 genesis crystals" -> (60, None, "genesis crystals").
-_AMOUNT = re.compile(r"^(\d+)(?:\s*\+\s*(\d+))?\s+(.+)$")
+#: Same unit, different word. Only pairs confirmed against live prices and an
+#: identical denomination ladder go here.
+#:
+#: * ``unknown cash`` — G-Engine's "60 Unknown Cash" is $0.9180 against the
+#:   $0.9000 we pay for "60 UC", and NOVA lists the same pack as "60 UC".
+#: * ``bc`` — NOVA's Blood Strike ladder is 51/105/320/540/1100/2260/5800 "BC",
+#:   the same seven values we and G-Engine call "Gold"/"Golds", at prices
+#:   within a few percent. Checked before adding: "BC" appears in no other
+#:   game's denominations, so this cannot leak into another catalogue.
+#:
+#: Deliberately *not* here: G-Engine's Genshin "Chronal Nexus", which runs the
+#: same 60/330/1090/2240/3880/8080 ladder *alongside* its Genesis Crystals at
+#: different prices. A second product at the same tiers is not a synonym, and
+#: treating it as one would sell the wrong thing.
+_UNIT_ALIASES = {"unknown cash": "uc", "bc": "gold"}
+
+#: "1980 + 260 genesis crystals" — NOVA, and G-Engine on some games.
+_AMOUNT_LEADING = re.compile(r"^(\d+)\s*\+\s*(\d+)\s+(.+)$")
+#: "156 diamonds + 16 bonus" — G-Engine's other spelling, bonus last.
+_AMOUNT_TRAILING = re.compile(r"^(\d+)\s+(.+?)\s*\+\s*(\d+)\s+bonus$")
+#: "2240 genesis crystals" — ours, and G2B's.
+_AMOUNT_PLAIN = re.compile(r"^(\d+)\s+(.+)$")
 
 
 def amount_key(text: str) -> tuple[int, str] | None:
     """Total units and unit name, or ``None`` when the title is not a quantity.
 
-    NOVA and G-Engine spell a pack as base plus bonus — "1980 + 260 Genesis
-    Crystals" — where we and G2B both spell the total, "2240 Genesis
-    Crystals". Verified against production: our six Genshin SKUs sell through
-    G2B as 60/330/1090/2240/3880/8080, and NOVA's six titles sum to exactly
-    those. So the sum is the join key, not the leading number.
+    Suppliers quote a pack as base plus bonus where we and G2B quote the
+    total, so the total is the join key. Verified on production: our six
+    Genshin SKUs sell through G2B as 60/330/1090/2240/3880/8080 and NOVA's
+    six titles sum to exactly those.
 
-    The unit name carries whatever follows the digits, which is what keeps
-    "150 + 15 Diamonds (First Top-Up Bonus)" — a one-off promotion that also
-    totals 165 — out of the plain "165 Diamonds" bucket: its unit reads
-    "diamonds first top up bonus" and matches nothing of ours.
+    Two spellings of the bonus exist and both are handled — NOVA's
+    ``1980 + 260 Genesis Crystals`` and G-Engine's
+    ``156 Diamonds + 16 Bonus``. Missing the second cost 30-odd G-Engine
+    mappings on the first pass; they looked like honest gaps in the
+    supplier's catalogue rather than a parser that could not read it.
+
+    Whatever follows the digits stays in the key, which is what keeps
+    NOVA's one-off ``150 + 15 Diamonds (First Top-Up Bonus)`` — also 165 —
+    out of the plain ``165 Diamonds`` bucket.
     """
-    # Not ``norm`` — that strips "+" along with every other punctuation mark,
-    # which silently turned "1980 + 260 Genesis Crystals" into base 1980 and
-    # unit "260 genesis crystals", matching nothing and looking like an
-    # honest miss. Keep the plus, drop the rest.
-    m = _AMOUNT.match(re.sub(r"[^a-z0-9+]+", " ", text.lower()).strip())
-    if m is None:
-        return None
-    base, bonus, unit = m.group(1), m.group(2), m.group(3)
-    return int(base) + (int(bonus) if bonus else 0), unit
+    # Not ``norm``: that strips "+" along with the rest of the punctuation.
+    flat = re.sub(r"[^a-z0-9+]+", " ", text.lower()).strip()
+    flat = re.sub(r"\b(\d+)\s+days?\b", r"\1d", flat)
+
+    m = _AMOUNT_LEADING.match(flat)
+    if m is not None:
+        total, unit = int(m.group(1)) + int(m.group(2)), m.group(3)
+    else:
+        m = _AMOUNT_TRAILING.match(flat)
+        if m is not None:
+            total, unit = int(m.group(1)) + int(m.group(3)), m.group(2)
+        else:
+            m = _AMOUNT_PLAIN.match(flat)
+            if m is None:
+                return None
+            total, unit = int(m.group(1)), m.group(2)
+    # Suppliers disagree on plurals — "Oneiric Shard" against our "Oneiric
+    # Shards", "Golds" against our "Gold". Strip a trailing "s" on both sides
+    # so the two meet, but only at the very end and never after
+    # "s", "i" or "u" — otherwise it eats the "s" of "bonus", or turns
+    # "genesis crystals" into "genesi crystal".
+    unit = re.sub(r"(?<![siu])s$", "", unit)
+    return total, _UNIT_ALIASES.get(unit, unit)
 
 
 async def main() -> None:
