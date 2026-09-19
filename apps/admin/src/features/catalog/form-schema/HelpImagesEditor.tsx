@@ -52,10 +52,17 @@ export function HelpImagesEditor({ control, register, name }: Props) {
   const [tasks, setTasks] = useState<UploadTask[]>([]);
   const inputId = useId();
 
-  const atCap = rows.length >= MAX_HELP_IMAGES;
+  // An upload that's still in flight hasn't `append`ed its row yet, so
+  // `rows.length` alone undercounts what's about to exist. Left uncounted,
+  // two quick picks could each see a free slot and both proceed, landing 7
+  // images past the 6 the API (and this form's own zod schema) allow — Save
+  // would then silently no-op (see the required_fields error banner in
+  // ProductEditPage, added for exactly this).
+  const uploadingCount = tasks.filter((t) => t.status === "uploading").length;
+  const atCap = rows.length + uploadingCount >= MAX_HELP_IMAGES;
 
   function pickFiles(fileList: FileList): void {
-    const slots = MAX_HELP_IMAGES - rows.length;
+    const slots = MAX_HELP_IMAGES - rows.length - uploadingCount;
     const files = Array.from(fileList).slice(0, Math.max(slots, 0));
     void (async () => {
       for (const file of files) {

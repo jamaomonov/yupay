@@ -113,6 +113,39 @@ describe("HelpImagesEditor", () => {
     expect(screen.getByText(/Достигнут максимум 6 изображений на поле/i)).toBeInTheDocument();
   });
 
+  it("counts an in-flight upload against the cap so a second quick pick cannot exceed 6", async () => {
+    // The bug: an upload still in flight hasn't appended its row yet, so
+    // `rows.length` alone under-counts what's about to exist — two quick
+    // picks could each see a free slot and both proceed, landing past 6.
+    // A Promise executor runs synchronously, so `resolveUpload` is assigned
+    // before `deferred()` returns — the `!` just tells TS to trust that.
+    let resolveUpload!: (url: string) => void;
+    mockedUpload.mockImplementation(
+      () =>
+        new Promise<string>((resolve) => {
+          resolveUpload = resolve;
+        }),
+    );
+    const five = ["a", "b", "c", "d", "e"].map(image);
+    render(<Harness initial={five} />);
+
+    fireEvent.change(fileInput(), { target: { files: [makeFile("f.png")] } });
+
+    // One upload in flight against 5 settled rows already fills the cap —
+    // the add control must reflect that before the upload even resolves.
+    await waitFor(() => {
+      expect(screen.queryByLabelText(/Добавить изображение/i)).not.toBeInTheDocument();
+    });
+    expect(screen.getByText(/Достигнут максимум 6 изображений на поле/i)).toBeInTheDocument();
+
+    resolveUpload("https://cdn.yupay.uz/field-help/f.png");
+    await waitFor(() => {
+      expect(screen.getAllByRole("presentation", { hidden: true })).toHaveLength(6);
+    });
+    // Still capped, not 7 — nothing snuck in while the upload was pending.
+    expect(screen.getAllByRole("presentation", { hidden: true })).toHaveLength(6);
+  });
+
   it("reflects a reorder and a removal in what the form submits", async () => {
     const three = ["a", "b", "c"].map(image);
     render(<Harness initial={three} />);

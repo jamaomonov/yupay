@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
-import { Controller, useForm, useFieldArray } from "react-hook-form";
+import { Controller, useForm, useFieldArray, type UseFormReturn } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
@@ -68,6 +68,30 @@ const productSchema = z.object({
 });
 
 type FormValues = z.infer<typeof productSchema>;
+
+/**
+ * `required_fields.N.help_images` (max 6, see `formField` above) is the one
+ * validation rule on this page that lives below `translations`/`slug`/
+ * `brand_id` — and this page only ever rendered those three top-level
+ * errors. A violation (two quick uploads racing past the cap in
+ * `HelpImagesEditor`, or a malformed payload) used to fail validation
+ * silently: `handleSubmit`'s success callback never fires, nothing on
+ * screen explains why, and Save just does nothing. Surfaced here as one
+ * message per offending field, next to the Save button.
+ */
+function requiredFieldErrorMessages(form: UseFormReturn<FormValues>): string[] {
+  const errors = form.formState.errors.required_fields;
+  if (!errors) return [];
+  const rows = form.getValues("required_fields");
+  const messages: string[] = [];
+  rows.forEach((_, idx) => {
+    const message = errors[idx]?.help_images?.message;
+    if (message) {
+      messages.push(`Поле формы №${String(idx + 1)} «Где найти?»: ${message}`);
+    }
+  });
+  return messages;
+}
 
 const EMPTY: FormValues = {
   slug: "",
@@ -269,6 +293,16 @@ export function ProductEditPage() {
           name="required_fields"
         />
       </section>
+
+      {form.formState.errors.required_fields && (
+        <div className="mt-4 space-y-1">
+          {requiredFieldErrorMessages(form).map((message) => (
+            <p key={message} className="text-sm text-[var(--danger)]">
+              {message}
+            </p>
+          ))}
+        </div>
+      )}
 
       {save.isError && (
         <p className="mt-4 text-sm text-[var(--danger)]">

@@ -127,6 +127,38 @@ it("keeps a field's G2B check intact when the product is saved untouched", async
   });
 });
 
+it("surfaces a help_images cap violation near Save instead of silently doing nothing", async () => {
+  // Before this fix, a `required_fields.N.help_images` zod error (max 6,
+  // e.g. a malformed payload or a client-side race past the cap in
+  // HelpImagesEditor) failed validation silently: `handleSubmit`'s success
+  // callback never fires, `Field`'s `error` prop only ever covered slug/
+  // brand_id, and Save just did nothing with no explanation on screen.
+  const sevenImages = Array.from({ length: 7 }, (_, i) => ({
+    url: `https://cdn.yupay.uz/field-help/${String(i)}.png`,
+    caption: { ru: "", en: "", uz: "" },
+  }));
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/brands")) return Promise.resolve([BRAND]);
+    if (path.includes("/products")) {
+      return Promise.resolve([
+        {
+          ...PRODUCT,
+          required_fields: [{ ...PRODUCT.required_fields[0]!, help_images: sevenImages }],
+        },
+      ]);
+    }
+    return Promise.resolve([]);
+  });
+
+  renderPage();
+
+  await screen.findByText("player_id");
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  expect(await screen.findByText(/Поле формы №1 «Где найти\?»/)).toBeInTheDocument();
+  expect(mockedApiPatch).not.toHaveBeenCalled();
+});
+
 it("shows the G2B check as enabled and lets it be turned off", async () => {
   renderPage();
 
