@@ -52,12 +52,16 @@ test("renders images in order with their captions", () => {
   ];
   render(<WhereToFindModal open onClose={vi.fn()} {...props} images={images} />);
 
-  const rendered = screen.getAllByRole("img");
+  // A visible caption already says what the step is; the alt goes empty
+  // rather than repeat it (a screen reader would otherwise hear it twice) —
+  // which per ARIA makes the image presentational, not `role="img"` (same
+  // as the admin's own thumbnails; see Thumb.test.tsx).
+  const rendered = screen.getAllByRole("presentation", { hidden: true });
   expect(rendered).toHaveLength(2);
   expect(rendered[0]).toHaveAttribute("src", expect.stringContaining("1.png"));
   expect(rendered[1]).toHaveAttribute("src", expect.stringContaining("2.png"));
-  expect(rendered[0]).toHaveAttribute("alt", "Откройте профиль");
-  expect(rendered[1]).toHaveAttribute("alt", "ID под ником");
+  expect(rendered[0]).toHaveAttribute("alt", "");
+  expect(rendered[1]).toHaveAttribute("alt", "");
   // The caption sits with its image, not just in the alt.
   expect(screen.getByText("Откройте профиль")).toBeInTheDocument();
   expect(screen.getByText("ID под ником")).toBeInTheDocument();
@@ -81,12 +85,22 @@ test("a longer-than-expected image list still renders without breaking", () => {
     caption: null,
   }));
   render(<WhereToFindModal open onClose={vi.fn()} {...props} images={images} />);
-  expect(screen.getAllByRole("img")).toHaveLength(12);
-  // The dialog card stays capped and scrollable — it never grows past the
-  // viewport and traps the close button.
-  const card = screen.getByRole("dialog").querySelector(".overflow-y-auto");
-  expect(card).not.toBeNull();
-  // The close button is still reachable regardless of how much image content
-  // is inside — it lives outside the scrolling content, not pushed off top.
-  expect(screen.getByRole("button", { name: "Закрыть" })).toBeInTheDocument();
+  const rendered = screen.getAllByRole("img");
+  expect(rendered).toHaveLength(12);
+
+  // jsdom has no layout engine, so this cannot prove the close button stays
+  // *visually* on screen at a given scroll position — only a real browser
+  // (Playwright) can. What it can prove is the fix's actual mechanism: all
+  // 12 images live inside the one scrolling body container, while the close
+  // button is not a descendant of that container — an absolutely-positioned
+  // child of a scroll container scrolls away with its content, so keeping
+  // the button outside it is what stops that happening.
+  const dialog = screen.getByRole("dialog");
+  const scrollArea = dialog.querySelector(".overflow-y-auto");
+  expect(scrollArea).not.toBeNull();
+  expect(scrollArea?.querySelectorAll("img")).toHaveLength(12);
+
+  const closeButton = screen.getByRole("button", { name: "Закрыть" });
+  expect(closeButton).toBeInTheDocument();
+  expect(closeButton.closest(".overflow-y-auto")).toBeNull();
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { PurchasePanel } from "./PurchasePanel";
@@ -597,12 +597,49 @@ it("renders a plain field's where-to-find images in order with their captions, a
   // explanation.
   expect(await screen.findByText(helpCopy)).toBeInTheDocument();
 
-  const images = screen.getAllByRole("img");
+  // Captioned, so alt goes empty (the visible caption already says what the
+  // step is) — per ARIA that makes the image presentational, not
+  // `role="img"`. Scoped to the dialog: the page has other decorative
+  // `<img alt="">`s (payment provider logos etc.) outside it.
+  const images = within(screen.getByRole("dialog")).getAllByRole("presentation", {
+    hidden: true,
+  });
   expect(images).toHaveLength(2);
   expect(images[0]).toHaveAttribute("src", expect.stringContaining("server-1.png"));
   expect(images[1]).toHaveAttribute("src", expect.stringContaining("server-2.png"));
   expect(screen.getByText("Откройте профиль")).toBeInTheDocument();
   expect(screen.getByText("ID под ником")).toBeInTheDocument();
+});
+
+it("falls back past an explicitly empty caption to render a Russian-only caption on an EN surface", async () => {
+  // The admin's caption editor always submits all three locale keys, so an
+  // untouched locale arrives as `""`, not a missing key — a caption typed
+  // only in Russian used to render as no caption at all for an EN visitor.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [
+      {
+        key: "server",
+        label: { ru: "Сервер" },
+        type: "select",
+        required: true,
+        help_images: [
+          {
+            url: "https://cdn.yupay.uz/help/server-1.png",
+            caption: { ru: "Откройте профиль", en: "", uz: "" },
+          },
+        ],
+        options: [{ value: "europe", label: { ru: "Europe" } }],
+      },
+    ],
+  };
+
+  renderPanel(<PurchasePanel products={[product]} locale="en" />);
+
+  fireEvent.click(screen.getByRole("button", { name: "whereToFindGeneric" }));
+
+  expect(await screen.findByText("Откройте профиль")).toBeInTheDocument();
 });
 
 it("opens the where-to-find modal for a field with images but no help text", async () => {

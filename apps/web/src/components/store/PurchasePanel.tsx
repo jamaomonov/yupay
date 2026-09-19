@@ -1181,8 +1181,19 @@ export function PurchasePanel({
   // copy (and the attestation checkbox below) only make sense when there's
   // one to fill in.
   const accountRequired = fields.length > 0;
-  const label = (m: Record<string, string> | null | undefined): string =>
-    (m && (m[locale] ?? m.ru ?? Object.values(m)[0])) ?? "";
+  // Falls back to the first *non-empty* translation (ru first, then
+  // whatever's left) — the admin's caption/label editors always submit all
+  // three locale keys, so an untouched locale arrives as `""`, not a missing
+  // key, and plain `??` doesn't fall back on that. Left un-fixed, a
+  // Russian-only "где найти" caption used to render as no caption at all for
+  // an EN/UZ visitor (also feeds `whereToFindImages` below).
+  const label = (m: Record<string, string> | null | undefined): string => {
+    if (!m) return "";
+    const byLocale = m[locale];
+    if (byLocale && byLocale.trim().length > 0) return byLocale;
+    if (m.ru && m.ru.trim().length > 0) return m.ru;
+    return Object.values(m).find((v) => v.trim().length > 0) ?? "";
+  };
 
   // Typed amount is per-SKU — clear it on a selection switch so a leftover
   // "10" from a previous variable-amount SKU never bleeds into the next.
