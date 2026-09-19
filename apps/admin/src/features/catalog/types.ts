@@ -84,6 +84,17 @@ export interface FieldCheck {
   server_field?: string | null;
 }
 
+/** A single step of the "Где найти?" walkthrough — a screenshot of the
+ *  profile screen with the player id circled, plus an optional per-locale
+ *  caption. `help_images` on `FormField` is an ordered array of these: the
+ *  order is the walkthrough, so the editor must let an operator reorder it.
+ *  `url` must point at our own media bucket — the API rejects anything
+ *  else, so the only way to produce one is the presign-upload flow. */
+export interface HelpImage {
+  url: string;
+  caption?: Record<string, string> | null;
+}
+
 export interface FormField {
   key: string;
   label: Record<string, string>;
@@ -91,6 +102,8 @@ export interface FormField {
   required: boolean;
   placeholder?: Record<string, string> | null;
   help_text?: Record<string, string> | null;
+  /** At most 6, enforced both here (UI) and on the API. */
+  help_images?: HelpImage[] | null;
   pattern?: string | null;
   options?: FormOption[] | null;
   check?: FieldCheck | null;

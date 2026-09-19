@@ -10,7 +10,15 @@ export type RasterMediaKind =
   | "brand_hero"
   | "product_image"
   | "sku_image"
-  | "blog_image";
+  | "blog_image"
+  // Product form-field "Где найти?" walkthrough screenshots
+  // (FormField.help_images). Confirmed against the backend agent's
+  // in-progress work in this same checkout — apps/api/.../storage/
+  // service.py's MediaKind Literal and schemas.py's FormField.help_images
+  // both landed with this exact spelling — but docs/api/openapi.json had
+  // not been regenerated/committed as of this writing, so re-check it
+  // once their commit lands; a mismatch is a 422 on every upload attempt.
+  | "field_help_image";
 
 interface PresignOut {
   upload_url: string;
