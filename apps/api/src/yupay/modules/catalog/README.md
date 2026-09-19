@@ -197,6 +197,8 @@ straight into Postgres via raw `jsonb_set`/dict literals, never through
 check the same-bucket prefix and the 6-image cap itself — nothing
 downstream will catch a seed that skips this.
 
+The read path is lenient about **both** rules for the same reason: a stored row that violates either one costs the image, not the page. A foreign URL is dropped and a list past the cap is truncated, each with a `logger.warning`. The write path refuses both outright, so the operator who can actually fix it is the one who hears about it.
+
 Images upload the same way every other admin image does: presign via
 `storage.api.presign_upload(kind="field_help_image", ...)`, `PUT` straight
 to R2, then persist the returned `public_url` into this field — see the

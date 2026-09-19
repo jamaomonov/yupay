@@ -243,6 +243,22 @@ class FormField(BaseModel):
                 )
                 continue
             kept.append(item)
+        # The cap gets the same treatment, and for the same reason. It does not
+        # depend on mutable config, so only a model-bypassing write can exceed
+        # it — a seed with raw `jsonb_set`, which is how this column is
+        # populated in practice (see the module README). But the consequence of
+        # letting it raise here is identical: a 500 on the storefront product
+        # page, and on the admin page an operator would open to fix it. A
+        # seventh screenshot is worth losing; the page is not. The write path
+        # still refuses it outright, so the operator who can act still hears.
+        if len(kept) > _MAX_HELP_IMAGES:
+            log.warning(
+                "catalog.help_images.truncated_on_read",
+                field_key=info.data.get("key"),
+                kept=_MAX_HELP_IMAGES,
+                found=len(kept),
+            )
+            kept = kept[:_MAX_HELP_IMAGES]
         return kept
 
     @field_validator("help_images")

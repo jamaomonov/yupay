@@ -175,3 +175,30 @@ def test_help_image_write_path_still_rejects_without_context() -> None:
     422s. Guards against ``_field_on_read``'s context becoming the default."""
     with pytest.raises(ValidationError, match="own media bucket"):
         _field(help_images=[{"url": _FOREIGN_URL}])
+
+
+def test_a_read_truncates_past_the_cap_instead_of_failing_the_page() -> None:
+    """A seed can write a seventh image; the storefront must still render.
+
+    The cap does not depend on mutable config, so only a model-bypassing write
+    can exceed it — and `scripts/seed/` writing `required_fields` with raw
+    `jsonb_set` is how this column is populated in practice. Letting it raise
+    on read costs the whole product page, which is never the right answer to a
+    data problem.
+    """
+    seven = [{"url": _own_url(n), "caption": None} for n in range(7)]
+
+    field = _field_on_read(help_images=seven)
+
+    assert field.help_images is not None
+    assert len(field.help_images) == 6
+    # The survivors are the first six in order, not an arbitrary subset.
+    assert [i.url for i in field.help_images] == [_own_url(n) for n in range(6)]
+
+
+def test_a_write_still_refuses_a_seventh_image() -> None:
+    """The lenient read must not have softened the write."""
+    seven = [{"url": _own_url(n), "caption": None} for n in range(7)]
+
+    with pytest.raises(ValidationError, match="at most"):
+        _field(help_images=seven)
