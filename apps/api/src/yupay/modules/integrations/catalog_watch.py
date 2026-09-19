@@ -309,6 +309,16 @@ async def watch_cached_variants(
             # without the same exclusion here every tick would spend a wasted
             # call to log a warning that reads like a real problem.
             continue
+        if not mapping.external_variant_id:
+            # Amount-priced: the Steam wallet and Telegram Stars buy a sum,
+            # not a listed pack, so `upsert_mapping` lets them be `kind="game"`
+            # with no variant. There is no denomination to find missing, and
+            # the loop below would count them as "still present" whatever the
+            # supplier said. Syncing their game costs a call and — for a
+            # service the recharge list carries no denominations for — an
+            # hourly warning, which is what the first production tick logged
+            # for G-Engine services 2 and 72.
+            continue
         by_game.setdefault(mapping.external_product_id, []).append((mapping, sku))
 
     for game_id, pairs in by_game.items():

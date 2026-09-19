@@ -38,6 +38,17 @@ An empty pass never prunes and never stamps: a sync that errors, writes
 nothing, or leaves the cache empty skips that game. The same rule as G2B's
 empty catalogue, for the same reason.
 
+Two kinds of mapping are skipped before any call is made, because nothing
+about them could be missing from a denomination list:
+
+- the NOVA Steam reserve sentinel (`steam-topup`), which is not a catalogue
+  category at all (ADR-0082 §4) and answers 404 every time;
+- **amount-priced** mappings — the Steam wallet, Telegram Stars — which buy a
+  sum rather than a listed pack and so carry no `external_variant_id`.
+
+Both were found by the first production tick, which logged a warning for
+G-Engine services 2 and 72 before it was taught to leave them alone.
+
 The mapping row itself always stays active — it is the watch's memory. It is
 **not** deleted on a deactivation: that is deliberate, because the mapping is
 how a reappearance is recognised, and because a human needs to see what the

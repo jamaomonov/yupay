@@ -479,3 +479,34 @@ async def test_cached_watch_never_asks_for_the_steam_sentinel(db_session: AsyncS
     assert report.checked == 0
     assert report.skipped_games == 0
     assert mapping.extra == {}
+
+
+async def test_cached_watch_skips_a_game_whose_mappings_are_amount_priced(
+    db_session: AsyncSession,
+) -> None:
+    """The Steam wallet and Telegram Stars buy a sum, not a listed pack, so
+    their mappings carry no ``external_variant_id``. Nothing about them can
+    be missing from a denomination list, and G-Engine's recharge feed carries
+    no denominations for those services at all — so the first production tick
+    spent two calls to log two warnings. Don't ask.
+    """
+    _sku, mapping = await _seed_cached(
+        db_session, supplier="gengine", game_id="72", variant=None, cached=()
+    )
+    asked: list[str] = []
+
+    async def _sync(
+        db: AsyncSession, *, supplier_slug: str, game_id: str
+    ) -> tuple[int, str | None]:
+        asked.append(game_id)
+        return 0, None
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="gengine", sync=_sync, send_alert=_AlertSpy()
+    )
+
+    await db_session.refresh(mapping)
+    assert asked == []
+    assert report.checked == 0
+    assert report.skipped_games == 0
+    assert mapping.extra == {}
