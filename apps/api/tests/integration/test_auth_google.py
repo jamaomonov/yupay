@@ -10,11 +10,15 @@ verified without clearing it would have armed the planted password.
 
 from __future__ import annotations
 
+import asyncio
+
 import pytest
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from yupay.core.clock import now
 from yupay.core.errors import UnauthorizedError
 from yupay.core.ids import new_id
+from yupay.modules.auth import service as auth_svc
 from yupay.modules.auth.google import GoogleAuthError, GoogleUser
 from yupay.modules.auth.service import google_login
 from yupay.modules.users.models import User
@@ -160,3 +164,60 @@ async def test_a_normal_length_avatar_url_still_stores_it(db_session: AsyncSessi
     ).first()
     assert row is not None
     assert row.photo_url == "https://lh3.googleusercontent.com/a/pic"
+
+
+async def test_concurrent_first_sight_google_login_does_not_500(
+    db_engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Sentry-shaped race, Google's flavour: two concurrent first logins for
+    the same brand-new email both pass the SELECT and both reach the INSERT,
+    racing ``users.email``'s unique index. Forces the interleaving
+    deterministically like ``test_auth_refresh_race.py`` and
+    ``test_users_upsert_race.py``: session A's lookup is paused after it
+    reads "not found" but before it inserts, while session B runs the full
+    login to completion (insert + commit); only then is A released to
+    attempt its own insert and collide.
+    """
+    factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    email = f"g-race-{new_id()}@example.test"
+
+    orig_lookup = auth_svc._get_active_user_by_email
+    first_in_window = asyncio.Event()
+    release_first = asyncio.Event()
+    state = {"paused": False}
+
+    async def _paused_lookup(db: AsyncSession, addr: str) -> User | None:
+        result = await orig_lookup(db, addr)
+        if addr == email and not state["paused"]:
+            state["paused"] = True
+            first_in_window.set()
+            await release_first.wait()
+        return result
+
+    monkeypatch.setattr(auth_svc, "_get_active_user_by_email", _paused_lookup)
+
+    async def verify(credential: str) -> GoogleUser:
+        return _google_user(email=email)
+
+    async def _run_a() -> str:
+        async with factory() as session:
+            tokens = await google_login(session, "tok", verifier=verify)
+            await session.commit()
+            return tokens.user.id
+
+    async def _run_b() -> str:
+        await first_in_window.wait()
+        async with factory() as session:
+            tokens = await google_login(session, "tok", verifier=verify)
+            await session.commit()
+        release_first.set()
+        return tokens.user.id
+
+    a_id, b_id = await asyncio.gather(_run_a(), _run_b())
+    assert a_id == b_id
+
+    async with factory() as check:
+        user_count = (
+            await check.execute(select(func.count()).select_from(User).where(User.email == email))
+        ).scalar_one()
+    assert user_count == 1

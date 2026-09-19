@@ -4,8 +4,8 @@ User identity (account + profile + Telegram link).
 
 ## Responsibilities
 
-- Own the `users` and `telegram_links` tables.
-- Find-or-create a `User` from a verified Telegram identity (called by `auth`).
+- Own the `users`, `telegram_links`, and `steam_links` tables.
+- Find-or-create a `User` from a verified Telegram or Steam identity (called by `auth`).
 - Look up a user by id (used by `auth.deps.current_user`).
 
 ## Public interface
@@ -50,6 +50,25 @@ guarding only one still leaves the INSERT/UPDATE able to fail on the other).
 `steam_links.avatar_url` itself stays `varchar(1024)`, unlike `users.photo_url` —
 Steam's avatar URLs are short, fixed-format CDN links, not open-ended text.
 
+## Concurrent first-sight logins (SAVEPOINT, not 500)
+
+`upsert_user_by_telegram`/`upsert_user_by_steam` are find-or-create over a plain
+SELECT-then-INSERT, so two concurrent first logins for the same brand-new
+`tg_user_id`/`steam_id` race it: both see "not found", both try to insert. Sentry,
+production, 2026-09-18: the loser hit `asyncpg.UniqueViolationError` on
+`uq_telegram_links_tg_user_id` and 500'd — someone's first-ever login failed for it.
+
+Both functions now run their INSERT inside `session.begin_nested()` (a SAVEPOINT),
+with `session.add(...)` called **after** the SAVEPOINT opens — added before it, a
+unique-constraint failure would leave the doomed rows in `session.new` and poison
+the outer transaction (the same reasoning as `affiliate.partners.apply` and
+`fulfillment.service.complete_manual_task`; see their own `begin_nested()` notes).
+On `IntegrityError` the loser re-reads the winner's now-committed row and falls
+through into the same "existing user" branch a returning visitor would take —
+exactly as if it had found the row on the first SELECT — rather than propagating
+the exception. `auth.service.google_login`'s equivalent race (unique on
+`users.email`) follows the identical shape; see `auth`'s README.
+
 ## Soft delete (GDPR)
 
 `users.deleted_at` is the tombstone. A periodic job (planned in the `users` module) nulls
@@ -82,4 +101,9 @@ hold". Both reads are one query each (see `wallet.balances`).
   URL creates the user with no avatar rather than 500ing; a normal one still
   stores it; a returning user isn't given a bad avatar either.
 - `apps/api/tests/integration/test_auth_google.py` — the equivalent for the
-  Google path (the one Sentry actually reported).
+  Google path (the one Sentry actually reported), plus its own first-sight
+  concurrency race (see below).
+- `apps/api/tests/integration/test_users_upsert_race.py` — forces the actual
+  interleaving (two real concurrent sessions, one paused mid-request) for
+  the Telegram and Steam first-sight races, the same technique
+  `test_auth_refresh_race.py` uses for the refresh-rotation race.

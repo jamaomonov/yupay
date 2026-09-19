@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import Select, String, cast, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -55,46 +56,76 @@ async def upsert_user_by_telegram(
     On subsequent visits we touch ``last_seen_at`` and refresh mutable Telegram fields.
     The ``locale_hint`` is only applied at creation time — we don't override an existing
     user's locale choice.
+
+    First-sight creation is find-or-create over a plain SELECT-then-INSERT, so
+    two concurrent first logins for the same brand-new Telegram id race it:
+    both see "not found" and both try to insert. Sentry, production,
+    2026-09-18: the loser hit ``asyncpg.UniqueViolationError`` on
+    ``uq_telegram_links_tg_user_id`` and 500'd — someone opening the app for
+    the first time got a 500 for it. The INSERT now runs inside a
+    ``db.begin_nested()`` SAVEPOINT; on ``IntegrityError`` the loser re-reads
+    the winner's already-committed row and falls through into the same
+    "existing user" branch below, exactly as if it had found the row on the
+    first SELECT.
     """
     existing = await get_user_by_telegram_id(session, tg_user.id)
-    if existing is not None:
-        link = existing.telegram_link
-        if link is not None:
-            link.tg_username = tg_user.username
-            link.first_name = tg_user.first_name
-            link.last_name = tg_user.last_name
-            link.language_code = tg_user.language_code
-            link.is_premium = tg_user.is_premium
-            link.last_seen_at = now()
-        photo_url = safe_avatar_url(tg_user.photo_url)
-        if photo_url and not existing.photo_url:
-            existing.photo_url = photo_url
-        existing.updated_at = now()
-        await session.flush()
-        return existing
+    if existing is None:
+        locale = (locale_hint or tg_user.language_code or "ru").split("-")[0][:8] or "ru"
+        user = User(
+            id=new_id(),
+            email=None,
+            locale=locale,
+            display_name=safe_display_name(tg_user.first_name or tg_user.username),
+            photo_url=safe_avatar_url(tg_user.photo_url),
+        )
+        new_link = TelegramLink(
+            id=new_id(),
+            user_id=user.id,
+            tg_user_id=tg_user.id,
+            tg_username=tg_user.username,
+            first_name=tg_user.first_name,
+            last_name=tg_user.last_name,
+            language_code=tg_user.language_code,
+            is_premium=tg_user.is_premium,
+        )
+        try:
+            # Rows added *inside* the SAVEPOINT, not before it opens: added
+            # earlier, a UNIQUE(tg_user_id) failure would leave the doomed
+            # rows sitting in session.new and poison the outer transaction
+            # (begin_nested() autoflushes already-pending state first — see
+            # affiliate.partners / fulfillment's own begin_nested() notes).
+            async with session.begin_nested():
+                session.add(user)
+                session.add(new_link)
+                await session.flush()
+        except IntegrityError:
+            existing = await get_user_by_telegram_id(session, tg_user.id)
+            if existing is None:
+                raise
+        else:
+            return user
 
-    locale = (locale_hint or tg_user.language_code or "ru").split("-")[0][:8] or "ru"
-    user = User(
-        id=new_id(),
-        email=None,
-        locale=locale,
-        display_name=safe_display_name(tg_user.first_name or tg_user.username),
-        photo_url=safe_avatar_url(tg_user.photo_url),
-    )
-    link = TelegramLink(
-        id=new_id(),
-        user_id=user.id,
-        tg_user_id=tg_user.id,
-        tg_username=tg_user.username,
-        first_name=tg_user.first_name,
-        last_name=tg_user.last_name,
-        language_code=tg_user.language_code,
-        is_premium=tg_user.is_premium,
-    )
-    session.add(user)
-    session.add(link)
+    link = existing.telegram_link
+    if link is not None:
+        link.tg_username = tg_user.username
+        link.first_name = tg_user.first_name
+        link.last_name = tg_user.last_name
+        link.language_code = tg_user.language_code
+        link.is_premium = tg_user.is_premium
+        link.last_seen_at = now()
+    photo_url = safe_avatar_url(tg_user.photo_url)
+    if photo_url and not existing.photo_url:
+        existing.photo_url = photo_url
+    existing.updated_at = now()
     await session.flush()
-    return user
+    return existing
+
+
+async def _get_steam_link(session: AsyncSession, steam_id: int) -> SteamLink | None:
+    """Look up the :class:`SteamLink` row (with its joined user) by steamid64."""
+    return (
+        await session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
+    ).scalar_one_or_none()
 
 
 async def upsert_user_by_steam(
@@ -106,9 +137,14 @@ async def upsert_user_by_steam(
 ) -> User:
     """Find-or-create a user from a verified Steam identity.
 
-    Mirrors :func:`upsert_user_by_telegram`: first sight creates the ``users``
-    row and the ``steam_links`` row; later visits touch ``last_seen_at`` and
-    refresh the mutable Steam fields.
+    Mirrors :func:`upsert_user_by_telegram`, race handling included: first
+    sight creates the ``users`` row and the ``steam_links`` row; later visits
+    touch ``last_seen_at`` and refresh the mutable Steam fields. Two
+    concurrent first logins for the same steamid64 both see "not found" and
+    both try to insert; the loser now recovers from the ``IntegrityError`` on
+    ``steam_links.steam_id`` by re-reading the winner's row and falling
+    through into the "existing" branch, instead of 500ing — see
+    :func:`upsert_user_by_telegram`'s docstring for the shape.
 
     ``avatar_url`` is guarded once and reused for both ``steam_links
     .avatar_url`` and ``users.photo_url``: they are written in the same
@@ -124,37 +160,43 @@ async def upsert_user_by_steam(
     and is considered out of scope here.
     """
     avatar = safe_avatar_url(avatar_url)
-    link = (
-        await session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
-    ).scalar_one_or_none()
-    if link is not None:
-        link.persona_name = persona_name or link.persona_name
-        link.avatar_url = avatar or link.avatar_url
-        link.last_seen_at = now()
-        user = link.user
-        if avatar and not user.photo_url:
-            user.photo_url = avatar
-        user.updated_at = now()
-        await session.flush()
-        return user
-
-    user = User(
-        id=new_id(),
-        email=None,
-        locale="ru",
-        display_name=safe_display_name(persona_name),
-        photo_url=avatar,
-    )
-    session.add(user)
-    session.add(
-        SteamLink(
+    link = await _get_steam_link(session, steam_id)
+    if link is None:
+        user = User(
+            id=new_id(),
+            email=None,
+            locale="ru",
+            display_name=safe_display_name(persona_name),
+            photo_url=avatar,
+        )
+        new_link = SteamLink(
             id=new_id(),
             user_id=user.id,
             steam_id=steam_id,
             persona_name=persona_name,
             avatar_url=avatar,
         )
-    )
+        try:
+            # See upsert_user_by_telegram: rows added inside the SAVEPOINT,
+            # not before it opens.
+            async with session.begin_nested():
+                session.add(user)
+                session.add(new_link)
+                await session.flush()
+        except IntegrityError:
+            link = await _get_steam_link(session, steam_id)
+            if link is None:
+                raise
+        else:
+            return user
+
+    link.persona_name = persona_name or link.persona_name
+    link.avatar_url = avatar or link.avatar_url
+    link.last_seen_at = now()
+    user = link.user
+    if avatar and not user.photo_url:
+        user.photo_url = avatar
+    user.updated_at = now()
     await session.flush()
     return user
 
