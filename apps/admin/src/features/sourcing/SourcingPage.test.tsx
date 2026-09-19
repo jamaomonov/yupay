@@ -211,3 +211,60 @@ it("still offers force_inventory for a voucher SKU", async () => {
   fireEvent.click(card);
   expect(card).toHaveAttribute("aria-pressed", "true");
 });
+
+it("asks for the picked SKU's mappings, not the first page of everyone's", async () => {
+  /**
+   * The unfiltered endpoint answers its first 200 rows ordered by
+   * `updated_at`. Production passed 200 active mappings on 2026-09-19:
+   * `steam-wallet-usd` sat at rank 194 for NOVA and 236 for G-Engine, so the
+   * page saw the first and not the second and refused to force G-Engine —
+   * "нет активного маппинга" for a mapping that existed.
+   *
+   * The mock below is that exact shape: a G-Engine mapping that a truncated
+   * list would have missed, returned only to a query scoped by `sku_id`.
+   */
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path === "/api/v1/admin/sourcing/rules") return Promise.resolve(RULES);
+    if (path.startsWith("/api/v1/admin/sourcing/rules/")) return Promise.resolve(DECISION);
+    if (path.includes("/integrations/mappings")) {
+      return Promise.resolve(
+        path.includes(`sku_id=${TOPUP_NO_RULE.id}`)
+          ? {
+              items: [
+                {
+                  sku_id: TOPUP_NO_RULE.id,
+                  supplier_slug: "g2b",
+                  is_active: true,
+                  kind: "game",
+                  external_product_id: "steam",
+                  external_variant_id: null,
+                  quantity: 1,
+                },
+              ],
+            }
+          : { items: [] },
+      );
+    }
+    return Promise.resolve([]);
+  });
+
+  renderPage();
+  fireEvent.click(screen.getByText("pick-topup-no-rule"));
+
+  await waitFor(() => {
+    const asked = mockedApiGet.mock.calls
+      .map(([p]) => String(p))
+      .filter((p) => p.includes("/integrations/mappings"));
+    expect(asked.length).toBeGreaterThan(0);
+    expect(asked.every((p) => p.includes(`sku_id=${TOPUP_NO_RULE.id}`))).toBe(true);
+  });
+
+  // And the row it finds there is believed: forcing that supplier draws no
+  // "no active mapping" warning. The mock returns this mapping *only* for the
+  // scoped query, so an unscoped fetch would land back on the warning.
+  fireEvent.click(screen.getByText("Только поставщик"));
+
+  await waitFor(() => {
+    expect(screen.queryByText(/нет активного маппинга/i)).not.toBeInTheDocument();
+  });
+});

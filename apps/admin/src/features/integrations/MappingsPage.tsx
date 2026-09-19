@@ -25,13 +25,24 @@ export function MappingsPage() {
   const toast = useToast();
   const qc = useQueryClient();
 
+  // The endpoint's own ceiling. Its default is 200, which production passed on
+  // 2026-09-19 (454 active mappings) — an unfiltered list silently showed 200
+  // of them, with nothing on screen to say so. Asking for the maximum buys
+  // room, not a guarantee, which is what `truncated` below is for.
+  const LIST_LIMIT = 500;
+
   const listing = useQuery<SupplierMappingListOut>({
     queryKey: qk.integrationMappings({ supplierSlug: supplier }),
     queryFn: () =>
       apiGet<SupplierMappingListOut>(
-        `/api/v1/admin/integrations/mappings${supplier ? `?supplier_slug=${supplier}` : ""}`,
+        `/api/v1/admin/integrations/mappings?limit=${String(LIST_LIMIT)}` +
+          (supplier ? `&supplier_slug=${supplier}` : ""),
       ),
   });
+
+  // A full page means there are probably more rows we did not ask for. Saying
+  // so is the difference between a short list and a wrong one.
+  const truncated = (listing.data?.items.length ?? 0) >= LIST_LIMIT;
 
   const remove = useMutation<void, ApiError, { sku_id: string; supplier_slug: string }>({
     mutationFn: ({ sku_id, supplier_slug }) =>
@@ -182,7 +193,9 @@ export function MappingsPage() {
           />
         ))}
         <span className="ml-auto text-xs text-[var(--text-tertiary)]">
-          Всего: {(listing.data?.items.length ?? 0).toString()}
+          {truncated ? "Показано первых " : "Всего: "}
+          {(listing.data?.items.length ?? 0).toString()}
+          {truncated ? " — есть ещё, сузьте фильтром" : ""}
         </span>
       </div>
 

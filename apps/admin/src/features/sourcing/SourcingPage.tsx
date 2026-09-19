@@ -54,9 +54,18 @@ export function SourcingPage() {
 
   // Does this SKU have an active supplier mapping? Drives the "Авто"
   // card's explanation + a status chip.
+  // Scoped to this SKU on purpose. Unfiltered, the endpoint answers its first
+  // 200 rows ordered by `updated_at`, and production passed 200 active
+  // mappings on 2026-09-19: `steam-wallet-usd` sat at rank 194 for NOVA and
+  // 236 for G-Engine, so forcing G-Engine was refused with "no active
+  // mapping" for a mapping that existed and simply fell off the page.
   const mappingsQuery = useQuery<SupplierMappingListOut>({
-    queryKey: qk.integrationMappings({ supplierSlug: null }),
-    queryFn: () => apiGet<SupplierMappingListOut>("/api/v1/admin/integrations/mappings"),
+    queryKey: qk.integrationMappings({ supplierSlug: null, skuId: sku?.id ?? null }),
+    queryFn: () =>
+      apiGet<SupplierMappingListOut>(
+        `/api/v1/admin/integrations/mappings?sku_id=${encodeURIComponent(sku?.id ?? "")}`,
+      ),
+    enabled: Boolean(sku),
   });
   const skuMapping = useMemo(() => {
     if (!sku) return null;

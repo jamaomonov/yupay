@@ -127,8 +127,14 @@ export const qk = {
 
   // integrations (supplier mappings + health + catalog)
   integrationHealth: (slug: string) => ["admin", "integrations", "health", slug] as const,
-  integrationMappings: (filters: { supplierSlug?: string | null }) =>
-    ["admin", "integrations", "mappings", filters.supplierSlug ?? null] as const,
+  integrationMappings: (filters: { supplierSlug?: string | null; skuId?: string | null }) =>
+    [
+      "admin",
+      "integrations",
+      "mappings",
+      filters.supplierSlug ?? null,
+      filters.skuId ?? null,
+    ] as const,
   integrationMapping: (skuId: string, supplierSlug: string) =>
     ["admin", "integrations", "mapping", skuId, supplierSlug] as const,
   integrationCatalog: (filters: {
