@@ -175,17 +175,25 @@ async def main() -> None:
                     if norm(d.title) in ours_titles or (key is not None and key in ours_amounts):
                         continue
                     label = (str(key[0]).rjust(9), key[1]) if key else ("", norm(d.title))
-                    gaps.setdefault(label, []).append((supplier, d.price_usdt))
+                    gaps.setdefault(label, []).append((supplier, d.price_usdt, d.title))
 
             if not gaps:
                 continue
             print(f"\n{brand}  ({len(skus)} SKUs today, {len(gaps)} not sold)")
             for (amount, unit), sources in sorted(gaps.items()):
                 where = ", ".join(
-                    f"{s}" + (f" ${float(p):.4f}" if p is not None else "") for s, p in sources
+                    f"{s}" + (f" ${float(p):.4f}" if p is not None else "")
+                    for s, p, _t in sources
                 )
                 name = f"{amount.strip()} {unit}".strip()
-                print(f"    {name:<46} {where}")
+                # Their own wording too, not just our computed total: the total
+                # is what makes two suppliers one line, but the raw title is
+                # what anyone writing an alias has to copy. Printing only the
+                # total once sent me looking for a "55 WEB BONUS" that NOVA
+                # spells "50 + 5 WEB BONUS".
+                raw = {t for _s, _p, t in sources if norm(t) != f"{amount.strip()} {unit}".strip()}
+                suffix = f'   [{" / ".join(sorted(raw))}]' if raw else ""
+                print(f"    {name:<46} {where}{suffix}")
                 total_gaps += 1
 
         print(f"\n  -> {total_gaps} denominations sold upstream that we do not list.\n")

@@ -16,15 +16,18 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
+from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.catalog_watch import (
     _CONFIRM_AFTER,
+    watch_cached_variants,
     watch_mapped_variants,
 )
-from yupay.modules.integrations.models import SkuSupplierMapping
+from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
 
 pytestmark = pytest.mark.asyncio
 
@@ -258,3 +261,189 @@ async def test_voucher_fetch_error_is_not_a_miss(db_session: AsyncSession) -> No
     await db_session.refresh(mapping)
     assert "catalog_missing_since" not in mapping.extra
     assert alerts.sent == []
+
+
+# ---------------------------------------------------------------------------
+# NOVA / G-Engine: the same watch, against a re-synced cache
+# ---------------------------------------------------------------------------
+
+
+async def _seed_cached(
+    db: AsyncSession,
+    *,
+    supplier: str = "nova",
+    game_id: str = "pubg_mobile_auto",
+    variant: str = "1800_uc",
+    cached: tuple[str, ...] = ("1800_uc", "60_uc"),
+) -> tuple[Sku, SkuSupplierMapping]:
+    """A mapping plus the cache rows a denomination sync would have written."""
+    sku, mapping = await _seed(db, external_product_id=game_id, external_variant_id=variant)
+    mapping.supplier_slug = supplier
+    for external_id in cached:
+        db.add(
+            SupplierCatalogCache(
+                supplier_slug=supplier,
+                kind="game_denom",
+                external_id=external_id,
+                title=external_id,
+                parent_external_id=game_id,
+                raw={},
+            )
+        )
+    await db.flush()
+    return sku, mapping
+
+
+def _sync_returning(written: int, error: str | None = None) -> Any:
+    """A ``run_game_denomination_sync`` double that writes nothing new."""
+
+    async def _sync(
+        db: AsyncSession, *, supplier_slug: str, game_id: str
+    ) -> tuple[int, str | None]:
+        return written, error
+
+    return _sync
+
+
+async def test_cached_watch_stamps_a_variant_missing_from_the_cache(
+    db_session: AsyncSession,
+) -> None:
+    sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    alerts = _AlertSpy()
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync_returning(1), send_alert=alerts
+    )
+
+    await db_session.refresh(sku)
+    await db_session.refresh(mapping)
+    assert sku.active is True
+    assert "catalog_missing_since" in mapping.extra
+    assert alerts.sent == []
+    assert report.stamped == 1
+
+
+async def test_cached_watch_deactivates_on_the_second_strike(db_session: AsyncSession) -> None:
+    sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    mapping.extra = {
+        "catalog_missing_since": (now() - _CONFIRM_AFTER - timedelta(minutes=1)).isoformat()
+    }
+    await db_session.flush()
+    alerts = _AlertSpy()
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync_returning(1), send_alert=alerts
+    )
+
+    await db_session.refresh(sku)
+    assert sku.active is False
+    assert report.deactivated == 1
+    assert len(alerts.sent) == 1
+    assert alerts.sent[0][1] == "catalog_watch"
+
+
+async def test_cached_watch_ignores_a_failed_sync(db_session: AsyncSession) -> None:
+    """A supplier outage must not read as a delisting — the whole point of
+    the two-strike rule, and the one way this job could do real damage."""
+    sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    alerts = _AlertSpy()
+
+    report = await watch_cached_variants(
+        db_session,
+        supplier_slug="nova",
+        sync=_sync_returning(0, "nova is unreachable"),
+        send_alert=alerts,
+    )
+
+    await db_session.refresh(sku)
+    await db_session.refresh(mapping)
+    assert sku.active is True
+    assert mapping.extra == {}
+    assert report.stamped == 0
+    assert report.skipped_games == 1
+
+
+async def test_cached_watch_ignores_a_sync_that_wrote_nothing(db_session: AsyncSession) -> None:
+    sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    alerts = _AlertSpy()
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync_returning(0), send_alert=alerts
+    )
+
+    await db_session.refresh(mapping)
+    assert mapping.extra == {}
+    assert report.skipped_games == 1
+
+
+async def test_cached_watch_clears_a_stamp_when_the_position_is_still_there(
+    db_session: AsyncSession,
+) -> None:
+    _sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("1800_uc",))
+    mapping.extra = {"catalog_missing_since": now().isoformat()}
+    await db_session.flush()
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync_returning(1), send_alert=_AlertSpy()
+    )
+
+    await db_session.refresh(mapping)
+    assert mapping.extra == {}
+    assert report.checked == 1
+    assert report.stamped == 0
+
+
+async def test_cached_watch_sees_nothing_without_pruning(db_session: AsyncSession) -> None:
+    """The load-bearing dependency, stated as a test.
+
+    ``watch_cached_variants`` can only notice a delisting because the
+    denomination syncers now delete what vanished. Here the cache still
+    holds the variant — exactly what an upsert-only syncer would leave — and
+    the watch correctly reports a clean sheet. If someone removes
+    ``prune_catalog_denoms``, this is the behaviour every mapping gets, and
+    the watch goes silently blind rather than failing.
+    """
+    _sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("1800_uc", "60_uc"))
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync_returning(2), send_alert=_AlertSpy()
+    )
+
+    await db_session.refresh(mapping)
+    assert mapping.extra == {}
+    assert report.stamped == 0
+    assert report.checked == 1
+
+
+async def test_prune_drops_only_what_the_pass_stopped_seeing(db_session: AsyncSession) -> None:
+    await _seed_cached(db_session, cached=("a", "b", "c"))
+
+    removed = await svc.prune_catalog_denoms(
+        db_session, supplier_slug="nova", parent_external_id="pubg_mobile_auto", keep={"a", "c"}
+    )
+    await db_session.flush()
+
+    left = set(
+        (
+            await db_session.execute(
+                select(SupplierCatalogCache.external_id).where(
+                    SupplierCatalogCache.parent_external_id == "pubg_mobile_auto"
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    assert removed == 1
+    assert left == {"a", "c"}
+
+
+async def test_prune_refuses_to_empty_the_cache_on_an_empty_pass(db_session: AsyncSession) -> None:
+    """An empty answer is an outage, not a mass delisting."""
+    await _seed_cached(db_session, cached=("a", "b"))
+
+    removed = await svc.prune_catalog_denoms(
+        db_session, supplier_slug="nova", parent_external_id="pubg_mobile_auto", keep=set()
+    )
+
+    assert removed == 0

@@ -91,10 +91,12 @@ async def _write_denoms(db: AsyncSession, service: dict[str, Any]) -> int:
     if not service_id:
         return 0
     written = 0
+    seen: set[str] = set()
     for denom in service.get("denominations") or []:
         denom_id = str(denom.get("id") or "").strip()
         if not denom_id:
             continue
+        seen.add(denom_id)
         title = str(denom.get("name") or denom_id)[:255]
         price = denom.get("price")
         await svc.upsert_catalog_entry(
@@ -108,6 +110,11 @@ async def _write_denoms(db: AsyncSession, service: dict[str, Any]) -> int:
             price_usdt=Decimal(str(price)) if price is not None else None,
         )
         written += 1
+    # See ``prune_catalog_denoms``: an empty ``seen`` prunes nothing, so a
+    # service that came back with no denominations keeps whatever we cached.
+    await svc.prune_catalog_denoms(
+        db, supplier_slug="gengine", parent_external_id=service_id, keep=seen
+    )
     return written
 
 
