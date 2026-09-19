@@ -92,6 +92,22 @@ it("credits the balance and toasts the formatted amount", async () => {
   expect(screen.getByLabelText("promoTitle")).toHaveValue("");
 });
 
+it("submits on Enter, not just a click on Apply", async () => {
+  // The Enter path has no `disabled` attribute behind it, unlike the
+  // button — only the guard inside `submit()` stops an empty code, so this
+  // is worth pinning on its own rather than assuming the keydown handler
+  // still calls the same `submit`.
+  const fetchMock = stubRedeem({ code: "WELCOME10", amount: "50000", currency: "UZS" }, true, 200);
+
+  renderCard();
+  fireEvent.change(screen.getByLabelText("promoTitle"), { target: { value: "welcome10" } });
+  fireEvent.keyDown(screen.getByLabelText("promoTitle"), { key: "Enter" });
+
+  await waitFor(() => {
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
 it.each([
   ["already_redeemed", "promoAlreadyUsed"],
   ["expired", "promoExpired"],
