@@ -271,6 +271,38 @@ async def watch_mapped_variants(
 DenomSync = Callable[..., Awaitable[tuple[int, str | None]]]
 
 
+#: How stale a game's cached denominations may be before this watch stops
+#: trusting them and fetches its own. ``sync_supplier_catalog`` refreshes
+#: exactly these games 120s before each tick on the same cadence, so in the
+#: normal case the rows are about two minutes old and no supplier call is
+#: needed at all. A whole interval of silence means that sweep did not run or
+#: did not reach this game, and then a fresh look is worth its one call.
+_CACHE_FRESH_FOR = timedelta(minutes=30)
+
+
+async def _cached_denoms(
+    db: AsyncSession, *, supplier_slug: str, game_id: str
+) -> tuple[set[str], datetime | None]:
+    """One game's cached denomination ids, and when they were last written."""
+    rows = (
+        await db.execute(
+            select(
+                SupplierCatalogCache.external_id,
+                SupplierCatalogCache.fetched_at,
+            ).where(
+                SupplierCatalogCache.supplier_slug == supplier_slug,
+                SupplierCatalogCache.kind == "game_denom",
+                SupplierCatalogCache.parent_external_id == game_id,
+            )
+        )
+    ).all()
+    if not rows:
+        return set(), None
+    # The *oldest* row, not the newest: a game is only as fresh as the
+    # straggler, and a pass that rewrote half of it has not refreshed it.
+    return {r[0] for r in rows}, min(r[1] for r in rows)
+
+
 async def watch_cached_variants(
     db: AsyncSession,
     *,
@@ -284,8 +316,16 @@ async def watch_cached_variants(
     :func:`watch_mapped_variants` asks it directly. NOVA and G-Engine do not
     have that shape here — their denominations arrive through
     ``run_game_denomination_sync``, which writes ``supplier_catalog_cache``.
-    So this refreshes each mapped game and then diffs the mappings against
-    what the refresh left behind.
+    So this diffs the mappings against that cache — the one
+    ``sync_supplier_catalog`` refreshed 120s earlier on the same cadence, for
+    exactly these games. Re-fetching them here cost 27-40 supplier calls an
+    hour for answers already on the table, and G-Engine's per-game sync
+    re-walks its whole services list every time.
+
+    A game whose rows are older than :data:`_CACHE_FRESH_FOR` is fetched here
+    after all: that means the sweep did not run, or did not reach it, and
+    judging a mapping against hour-old rows is how a delisting gets missed or
+    invented. So the calls are not removed, only stopped from being made twice.
 
     That diff only means anything because the syncers now **prune**: until
     ``service.prune_catalog_denoms`` existed they upserted and never deleted,
@@ -299,6 +339,10 @@ async def watch_cached_variants(
     skips the game and stamps nothing.
     """
     checked = stamped = deactivated = reappeared = skipped_games = 0
+    #: Games this tick had to fetch itself because the sweep's rows were
+    #: stale. Zero is the healthy number.
+    fetched = 0
+    fetched = 0
 
     by_game: dict[str, list[tuple[SkuSupplierMapping, Sku]]] = {}
     for mapping, sku in await _active_mappings(db, supplier_slug=supplier_slug, kind="game"):
@@ -321,45 +365,45 @@ async def watch_cached_variants(
             continue
         by_game.setdefault(mapping.external_product_id, []).append((mapping, sku))
 
+    cutoff = now() - _CACHE_FRESH_FOR
     for game_id, pairs in by_game.items():
-        try:
-            written, error = await sync(db, supplier_slug=supplier_slug, game_id=game_id)
-        except Exception as exc:  # noqa: BLE001 -- an outage must not stamp anything
-            skipped_games += 1
-            log.warning(
-                "integrations.catalog_watch.denom_sync_failed",
-                supplier=supplier_slug,
-                game_id=game_id,
-                error=str(exc)[:200],
-            )
-            continue
-        if error or written == 0:
-            skipped_games += 1
-            log.warning(
-                "integrations.catalog_watch.denom_sync_unusable",
-                supplier=supplier_slug,
-                game_id=game_id,
-                written=written,
-                error=(error or "")[:200],
-            )
-            continue
+        listed, written_at = await _cached_denoms(db, supplier_slug=supplier_slug, game_id=game_id)
 
-        listed = set(
-            (
-                await db.execute(
-                    select(SupplierCatalogCache.external_id).where(
-                        SupplierCatalogCache.supplier_slug == supplier_slug,
-                        SupplierCatalogCache.kind == "game_denom",
-                        SupplierCatalogCache.parent_external_id == game_id,
-                    )
+        if written_at is None or written_at < cutoff:
+            # Stale, or never cached: fetch it ourselves rather than judge a
+            # mapping against rows the sweep last touched an hour ago. This is
+            # the path every game took until the sweep's own refresh was
+            # noticed — correct, just 27-40 supplier calls an hour for answers
+            # somebody else had already fetched.
+            fetched += 1
+            try:
+                count, error = await sync(db, supplier_slug=supplier_slug, game_id=game_id)
+            except Exception as exc:  # noqa: BLE001 -- an outage must not stamp anything
+                skipped_games += 1
+                log.warning(
+                    "integrations.catalog_watch.denom_sync_failed",
+                    supplier=supplier_slug,
+                    game_id=game_id,
+                    error=str(exc)[:200],
                 )
-            )
-            .scalars()
-            .all()
-        )
+                continue
+            if error or count == 0:
+                skipped_games += 1
+                log.warning(
+                    "integrations.catalog_watch.denom_sync_unusable",
+                    supplier=supplier_slug,
+                    game_id=game_id,
+                    written=count,
+                    error=(error or "")[:200],
+                )
+                continue
+            listed, _ = await _cached_denoms(db, supplier_slug=supplier_slug, game_id=game_id)
+
         if not listed:
-            # Belt and braces: `written > 0` should make this impossible, but
-            # a mass deactivation is not the failure mode to be relaxed about.
+            # A game we actively map holding zero denominations reads as a
+            # sweep that failed, not as "everything was delisted at once" —
+            # the same refusal `watch_mapped_variants` gives an empty G2B
+            # catalogue, for the same reason.
             skipped_games += 1
             log.warning(
                 "integrations.catalog_watch.denom_cache_empty",
@@ -381,6 +425,12 @@ async def watch_cached_variants(
                 )
 
     await db.flush()
+    if fetched:
+        log.info(
+            "integrations.catalog_watch.denoms_refetched",
+            supplier=supplier_slug,
+            games=fetched,
+        )
     return CatalogWatchReport(
         checked=checked,
         stamped=stamped,

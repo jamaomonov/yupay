@@ -279,8 +279,14 @@ async def _seed_cached(
     game_id: str = "pubg_mobile_auto",
     variant: str | None = "1800_uc",
     cached: tuple[str, ...] = ("1800_uc", "60_uc"),
+    cache_age: timedelta = timedelta(0),
 ) -> tuple[Sku, SkuSupplierMapping]:
-    """A mapping plus the cache rows a denomination sync would have written."""
+    """A mapping plus the cache rows a denomination sync would have written.
+
+    ``cache_age`` is how long ago the sweep wrote them. Fresh by default,
+    which is the normal case: ``sync_supplier_catalog`` refreshes these games
+    120s before each watch tick.
+    """
     sku, mapping = await _seed(db, external_product_id=game_id, external_variant_id=variant)
     mapping.supplier_slug = supplier
     for external_id in cached:
@@ -292,6 +298,7 @@ async def _seed_cached(
                 title=external_id,
                 parent_external_id=game_id,
                 raw={},
+                fetched_at=now() - cache_age,
             )
         )
     await db.flush()
@@ -348,8 +355,14 @@ async def test_cached_watch_deactivates_on_the_second_strike(db_session: AsyncSe
 
 async def test_cached_watch_ignores_a_failed_sync(db_session: AsyncSession) -> None:
     """A supplier outage must not read as a delisting — the whole point of
-    the two-strike rule, and the one way this job could do real damage."""
-    sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    the two-strike rule, and the one way this job could do real damage.
+
+    Stale rows, so the watch goes to the supplier itself rather than trusting
+    what the sweep left an hour ago — and that is the call that fails here.
+    """
+    sku, mapping = await _seed_cached(
+        db_session, variant="1800_uc", cached=("60_uc",), cache_age=timedelta(hours=2)
+    )
     alerts = _AlertSpy()
 
     report = await watch_cached_variants(
@@ -368,7 +381,9 @@ async def test_cached_watch_ignores_a_failed_sync(db_session: AsyncSession) -> N
 
 
 async def test_cached_watch_ignores_a_sync_that_wrote_nothing(db_session: AsyncSession) -> None:
-    sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    sku, mapping = await _seed_cached(
+        db_session, variant="1800_uc", cached=("60_uc",), cache_age=timedelta(hours=2)
+    )
     alerts = _AlertSpy()
 
     report = await watch_cached_variants(
@@ -510,3 +525,75 @@ async def test_cached_watch_skips_a_game_whose_mappings_are_amount_priced(
     assert report.checked == 0
     assert report.skipped_games == 0
     assert mapping.extra == {}
+
+
+async def test_fresh_rows_from_the_sweep_cost_no_supplier_call(
+    db_session: AsyncSession,
+) -> None:
+    """The saving this exists for.
+
+    ``sync_supplier_catalog`` refreshes exactly these games 120s before each
+    tick, on the same cadence. Re-fetching them here cost 27-40 supplier calls
+    an hour — 14 NOVA categories and 13 G-Engine services, the latter
+    re-walking its whole services list each time — for answers already on the
+    table.
+    """
+    _sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    asked: list[str] = []
+
+    async def _sync(
+        db: AsyncSession, *, supplier_slug: str, game_id: str
+    ) -> tuple[int, str | None]:
+        asked.append(game_id)
+        return 1, None
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync, send_alert=_AlertSpy()
+    )
+
+    assert asked == []
+    # And it still did the job: the variant is gone from those fresh rows.
+    await db_session.refresh(mapping)
+    assert "catalog_missing_since" in mapping.extra
+    assert report.stamped == 1
+
+
+async def test_stale_rows_are_refetched_rather_than_trusted(
+    db_session: AsyncSession,
+) -> None:
+    """A sweep that did not run must not become a verdict.
+
+    Judging a mapping against hour-old rows is how a delisting gets missed —
+    or invented, if the supplier has since listed the pack again.
+    """
+    _sku, mapping = await _seed_cached(
+        db_session, variant="1800_uc", cached=("60_uc",), cache_age=timedelta(hours=2)
+    )
+    asked: list[str] = []
+
+    async def _sync(
+        db: AsyncSession, *, supplier_slug: str, game_id: str
+    ) -> tuple[int, str | None]:
+        asked.append(game_id)
+        # The refresh finds the variant alive again.
+        db.add(
+            SupplierCatalogCache(
+                supplier_slug="nova",
+                kind="game_denom",
+                external_id="1800_uc",
+                title="1800 UC",
+                parent_external_id=game_id,
+                raw={},
+            )
+        )
+        await db.flush()
+        return 2, None
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync, send_alert=_AlertSpy()
+    )
+
+    assert asked == ["pubg_mobile_auto"]
+    await db_session.refresh(mapping)
+    assert mapping.extra == {}
+    assert report.stamped == 0
