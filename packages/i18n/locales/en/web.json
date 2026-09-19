@@ -832,7 +832,18 @@
     "methodUnavailable": "Under maintenance",
     "topUpBadAmount": "Check the amount — it is outside the allowed range",
     "topUpProviderDown": "That payment method is unavailable right now, pick another",
-    "methodNoneAvailable": "No payment methods are available right now"
+    "methodNoneAvailable": "No payment methods are available right now",
+    "promoTitle": "Promo code",
+    "promoPlaceholder": "Enter code",
+    "promoApply": "Apply",
+    "promoSuccess": "{amount} credited",
+    "promoNotFound": "No such promo code",
+    "promoUsed": "This code is already used or unavailable",
+    "promoAlreadyUsed": "You have already redeemed this promo code",
+    "promoExpired": "This promo code has expired",
+    "promoExhausted": "This promo code has run out of redemptions",
+    "promoInactive": "This promo code is no longer active",
+    "promoError": "Couldn't apply the promo code"
   },
   "checkoutReturn": {
     "title": "Checking the payment",

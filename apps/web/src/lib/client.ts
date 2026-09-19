@@ -93,6 +93,18 @@ export class ApiError extends Error {
      * another structurally (never by matching `detail` text) read this.
      */
     public extra?: Record<string, unknown>,
+    /**
+     * The problem+json `code` — a machine-readable refusal reason a raiser
+     * sets as a keyword arg (e.g. `ConflictError("...", code="already_redeemed")`
+     * in `promo/service.py`), which lands at the body's **top level**, not
+     * nested under `extra`: `app_error_handler` does `body.update(exc.extra)`,
+     * and `code` is just another key inside that `extra` dict. `undefined`
+     * for non-JSON bodies or bodies without a `code` field. Callers that need
+     * to tell refusals of the same status apart — promo redeem's
+     * `already_redeemed` vs `expired` vs `exhausted` vs `inactive`, all 409s
+     * — read this rather than matching `detail` text (see `lib/promo.ts`).
+     */
+    public code?: string,
   ) {
     super(`API ${String(status)} on ${path}`);
     this.name = "ApiError";
@@ -195,16 +207,18 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
   if (!res.ok) {
     let type: string | undefined;
     let detail: string | undefined;
+    let code: string | undefined;
     try {
       const body: unknown = await res.json();
       if (body && typeof body === "object") {
         if ("type" in body && typeof body.type === "string") type = body.type;
         if ("detail" in body && typeof body.detail === "string") detail = body.detail;
+        if ("code" in body && typeof body.code === "string") code = body.code;
       }
     } catch {
-      /* non-JSON or empty error body — leave both undefined */
+      /* non-JSON or empty error body — leave all three undefined */
     }
-    throw new ApiError(res.status, path, type, detail);
+    throw new ApiError(res.status, path, type, detail, undefined, code);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

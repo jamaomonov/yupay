@@ -832,7 +832,18 @@
     "methodUnavailable": "Texnik ishlar",
     "topUpBadAmount": "Summani tekshiring — u ruxsat etilgan chegaradan tashqarida",
     "topUpProviderDown": "Bu toʻlov usuli hozir mavjud emas, boshqasini tanlang",
-    "methodNoneAvailable": "Hozircha mavjud toʻlov usullari yoʻq"
+    "methodNoneAvailable": "Hozircha mavjud toʻlov usullari yoʻq",
+    "promoTitle": "Promokod",
+    "promoPlaceholder": "Kodni kiriting",
+    "promoApply": "Qoʻllash",
+    "promoSuccess": "{amount} hisoblandi",
+    "promoNotFound": "Bunday promokod yoʻq",
+    "promoUsed": "Promokod allaqachon ishlatilgan yoki mavjud emas",
+    "promoAlreadyUsed": "Siz bu promokodni allaqachon faollashtirgansiz",
+    "promoExpired": "Promokod muddati tugagan",
+    "promoExhausted": "Promokod faollashtirishlar limiti tugagan",
+    "promoInactive": "Promokod endi amal qilmaydi",
+    "promoError": "Promokodni qoʻllab boʻlmadi"
   },
   "checkoutReturn": {
     "title": "Toʻlov tekshirilmoqda",

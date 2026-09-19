@@ -176,4 +176,32 @@ describe("apiFetch", () => {
     const err = await apiFetch("/orders", { anonymous: true }).catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 500, type: undefined });
   });
+
+  it("surfaces the top-level `code` a raiser's `extra` kwarg merges onto the body", async () => {
+    // `ConflictError("...", code="already_redeemed")` in promo/service.py —
+    // `app_error_handler` merges `exc.extra` onto the body's top level
+    // (`body.update(exc.extra)`), so `code` sits beside `type`/`detail`, not
+    // nested. A 409 alone can't tell a customer why redeem refused them.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(409, {
+        type: "https://app.yupay.uz/errors/conflict",
+        title: "Conflict",
+        status: 409,
+        detail: "promo code has expired",
+        code: "expired",
+      }),
+    );
+
+    await expect(apiFetch("/promo/redeem", { anonymous: true })).rejects.toMatchObject({
+      status: 409,
+      code: "expired",
+    });
+  });
+
+  it("leaves ApiError.code undefined for a body without one", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(409, { detail: "conflict" }));
+
+    const err = await apiFetch("/promo/redeem", { anonymous: true }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: undefined });
+  });
 });
