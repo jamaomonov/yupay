@@ -247,6 +247,24 @@ async def _get_active_user_by_email(db: AsyncSession, email: str) -> User | None
     ).scalar_one_or_none()
 
 
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """Whether ``exc`` is a UNIQUE-constraint violation (Postgres SQLSTATE
+    ``23505``), not some other integrity failure.
+
+    ``google_login``'s recovery re-reads and returns the concurrent winner's
+    row on ``IntegrityError`` — correct only for the ``users.email`` race it
+    exists to handle. Catching bare ``IntegrityError`` would also absorb a
+    NOT NULL or FK violation from a real bug, as long as an active user for
+    the address happened to already exist for an unrelated reason (the
+    re-read's ``if user is None: raise`` only catches the case where it does
+    *not*). Checking the SQLSTATE narrows the catch to the one failure the
+    recovery is designed for, and re-raises everything else. Same helper as
+    ``users.service``'s (duplicated rather than shared across the module
+    boundary for something this small).
+    """
+    return getattr(exc.orig, "sqlstate", None) == "23505"
+
+
 async def google_login(
     db: AsyncSession,
     credential: str,
@@ -326,7 +344,9 @@ async def google_login(
             async with db.begin_nested():
                 db.add(candidate)
                 await db.flush()
-        except IntegrityError:
+        except IntegrityError as exc:
+            if not _is_unique_violation(exc):
+                raise
             user = await _get_active_user_by_email(db, email)
             if user is None:
                 raise
