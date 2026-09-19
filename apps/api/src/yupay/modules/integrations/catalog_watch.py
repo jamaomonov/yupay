@@ -24,10 +24,15 @@ position reappears, a pending stamp is cleared quietly; after a deactivation
 the admin gets a "it's back" alert but the SKU stays off until a human
 re-checks the price and re-enables it (the admin SKU card).
 
-Per-supplier by construction: the loop asks the fulfiller registry for each
-supplier that has active mappings and skips those without a catalogue client.
-Today that is G2B; adding another supplier is a registry entry, not new code
-here.
+Two entry points, because suppliers answer differently. G2B is asked live
+(:func:`watch_mapped_variants`). NOVA and G-Engine reach us through
+``run_game_denomination_sync`` and ``supplier_catalog_cache``, so
+:func:`watch_cached_variants` refreshes and diffs that instead — which works
+only because those syncers prune what vanished (``prune_catalog_denoms``).
+
+Until 2026-09-19 only G2B was watched at all, which was fine while it held
+almost every mapping and stopped being fine the day NOVA and G-Engine went
+from 63 mappings between them to 241.
 """
 
 from __future__ import annotations
@@ -43,7 +48,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Sku
-from yupay.modules.integrations.models import SkuSupplierMapping
+from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
 
 log = get_logger("yupay.integrations.catalog_watch")
 
@@ -257,4 +262,117 @@ async def watch_mapped_variants(
     )
 
 
-__all__ = ["CatalogClient", "CatalogWatchReport", "watch_mapped_variants"]
+#: ``run_game_denomination_sync``'s shape: refresh one game's denominations
+#: and report ``(written, error)``.
+DenomSync = Callable[..., Awaitable[tuple[int, str | None]]]
+
+
+async def watch_cached_variants(
+    db: AsyncSession,
+    *,
+    supplier_slug: str,
+    sync: DenomSync,
+    send_alert: SendAlert,
+) -> CatalogWatchReport:
+    """The same watch, for suppliers whose catalogue reaches us as a cache.
+
+    G2B answers "what do you still sell for this game?" live, so
+    :func:`watch_mapped_variants` asks it directly. NOVA and G-Engine do not
+    have that shape here — their denominations arrive through
+    ``run_game_denomination_sync``, which writes ``supplier_catalog_cache``.
+    So this refreshes each mapped game and then diffs the mappings against
+    what the refresh left behind.
+
+    That diff only means anything because the syncers now **prune**: until
+    ``service.prune_catalog_denoms`` existed they upserted and never deleted,
+    so a withdrawn pack stayed cached forever and this function would have
+    reported a clean sheet no matter what the supplier did. If that pruning
+    is ever removed, this watch goes quietly blind — it will not fail, it
+    will just stop finding anything.
+
+    Same two-strike rule and the same refusal to act on an ambiguous
+    answer: a sync that errors, writes nothing, or leaves the cache empty
+    skips the game and stamps nothing.
+    """
+    checked = stamped = deactivated = reappeared = skipped_games = 0
+
+    by_game: dict[str, list[tuple[SkuSupplierMapping, Sku]]] = {}
+    for mapping, sku in await _active_mappings(db, supplier_slug=supplier_slug, kind="game"):
+        by_game.setdefault(mapping.external_product_id, []).append((mapping, sku))
+
+    for game_id, pairs in by_game.items():
+        try:
+            written, error = await sync(db, supplier_slug=supplier_slug, game_id=game_id)
+        except Exception as exc:  # noqa: BLE001 -- an outage must not stamp anything
+            skipped_games += 1
+            log.warning(
+                "integrations.catalog_watch.denom_sync_failed",
+                supplier=supplier_slug,
+                game_id=game_id,
+                error=str(exc)[:200],
+            )
+            continue
+        if error or written == 0:
+            skipped_games += 1
+            log.warning(
+                "integrations.catalog_watch.denom_sync_unusable",
+                supplier=supplier_slug,
+                game_id=game_id,
+                written=written,
+                error=(error or "")[:200],
+            )
+            continue
+
+        listed = set(
+            (
+                await db.execute(
+                    select(SupplierCatalogCache.external_id).where(
+                        SupplierCatalogCache.supplier_slug == supplier_slug,
+                        SupplierCatalogCache.kind == "game_denom",
+                        SupplierCatalogCache.parent_external_id == game_id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if not listed:
+            # Belt and braces: `written > 0` should make this impossible, but
+            # a mass deactivation is not the failure mode to be relaxed about.
+            skipped_games += 1
+            log.warning(
+                "integrations.catalog_watch.denom_cache_empty",
+                supplier=supplier_slug,
+                game_id=game_id,
+            )
+            continue
+
+        for mapping, sku in pairs:
+            checked += 1
+            position = mapping.external_variant_id or mapping.external_product_id
+            if mapping.external_variant_id and mapping.external_variant_id not in listed:
+                s, d = await _handle_missing(mapping, sku, position=position, send_alert=send_alert)
+                stamped += s
+                deactivated += d
+            else:
+                reappeared += await _handle_present(
+                    mapping, sku, position=position, send_alert=send_alert
+                )
+
+    await db.flush()
+    return CatalogWatchReport(
+        checked=checked,
+        stamped=stamped,
+        deactivated=deactivated,
+        reappeared=reappeared,
+        skipped_games=skipped_games,
+    )
+
+
+__all__ = [
+    "CatalogClient",
+    "CatalogWatchReport",
+    "DenomSync",
+    "watch_cached_variants",
+    "watch_mapped_variants",
+]

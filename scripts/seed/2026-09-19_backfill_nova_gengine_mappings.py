@@ -81,6 +81,44 @@ PAIRS: dict[str, dict[str, str]] = {
 # NOVA lists nothing for roblox, standoff-2, discord or the Telegram brands.
 
 
+#: Our denomination -> the supplier's title for the *same* product, keyed by
+#: brand. Nothing here is derivable: these are judgement calls, each checked
+#: against our cost before being written down.
+#:
+#: * oxide — our "55 Coins (50 + 5)" is the web-purchase pack; NOVA calls the
+#:   same thing "50 + 5 WEB BONUS" — their base+bonus pair against our total,
+#:   and every pair sums to our number. Confirmed by the owner, and by price:
+#:   NOVA's
+#:   seven WEB BONUS tiers sit a steady ~2% above the seven costs we pay.
+#:   NOVA's plain "50 Coins" at the *same* price is the in-game variant with
+#:   fewer coins, so it is deliberately not aliased — that one we do not want.
+#: * arena-breakout — G-Engine drops our trailing "Activation Pass". The three
+#:   sit at a consistent +13/14% over our cost, which is what says they are the
+#:   same passes and not three coincidences.
+#: * mobile-legends — "Weekly Diamond Pass" is their "Weekly Pass": global
+#:   1.459 against $1.4790 (+1.4%), RU 1.928 against $1.8972 (-1.6%).
+TITLE_ALIASES: dict[str, dict[str, str]] = {
+    "oxide-survival-island": {
+        "55 Coins (50 + 5)": "50 + 5 WEB BONUS",
+        "145 Coins (125 + 20)": "125 + 20 WEB BONUS",
+        "315 Coins (250 + 65)": "250 + 65 WEB BONUS",
+        "675 Coins (500 + 175)": "500 + 175 WEB BONUS",
+        "1750 Coins (1250 + 500)": "1250 + 500 WEB BONUS",
+        "3750 Coins (2500 + 1250)": "2500 + 1250 WEB BONUS",
+        "11250 Coins (7500 + 3750)": "7500 + 3750 Web Bonus",
+    },
+    "arena-breakout": {
+        "Monthly Advanced Battle Pass Activation Pass": "Monthly Advanced Battle Pass",
+        "Monthly Premium Battle Pass Activation Pass": "Monthly Premium Battle Pass",
+        "Quarterly Premium Battle Pass Bundle Activation Pass Bundle": (
+            "Quarterly Premium Battle Pass Bundle"
+        ),
+    },
+    "mobile-legends": {"Weekly Diamond Pass": "Weekly Pass"},
+    "mobile-legends-ru": {"Weekly Diamond Pass": "Weekly Pass"},
+}
+
+
 def norm(text: str) -> str:
     """Lowercase, collapse non-alphanumerics, and write "30 days" as "30d".
 
@@ -246,8 +284,9 @@ async def main() -> None:
                             continue
                     if not sku.denomination:
                         continue
-                    hit = by_title.get(norm(sku.denomination))
-                    if hit is None:
+                    wanted = TITLE_ALIASES.get(brand, {}).get(sku.denomination)
+                    hit = by_title.get(norm(wanted if wanted else sku.denomination))
+                    if hit is None and wanted is None:
                         key = amount_key(sku.denomination)
                         candidates = by_amount.get(key, []) if key is not None else []
                         if len(candidates) > 1:

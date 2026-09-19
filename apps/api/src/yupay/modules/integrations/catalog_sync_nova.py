@@ -86,11 +86,13 @@ async def _sync_category_denoms(
         return 0, False, str(exc)[:200]
 
     written = 0
+    seen: set[str] = set()
     try:
         for offer in body.get("offers") or []:
             offer_id = str(offer.get("offer_id") or "").strip()
             if not offer_id:
                 continue
+            seen.add(offer_id)
             title = str(offer.get("name") or offer_id)[:255]
             price = offer.get("price_usd")
             await svc.upsert_catalog_entry(
@@ -106,6 +108,12 @@ async def _sync_category_denoms(
             written += 1
     except Exception as exc:  # noqa: BLE001 -- one malformed offer must not raise past this category
         return written, False, f"malformed offer payload: {exc!s}"[:200]
+    # Only a clean pass may prune. A partial one returned above with an error,
+    # and an empty one prunes nothing by ``prune_catalog_denoms``'s own rule —
+    # neither may be read as a mass delisting.
+    await svc.prune_catalog_denoms(
+        db, supplier_slug="nova", parent_external_id=category_id, keep=seen
+    )
     return written, False, None
 
 

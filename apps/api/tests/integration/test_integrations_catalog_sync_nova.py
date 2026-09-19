@@ -410,3 +410,49 @@ async def test_malformed_offer_payload_is_reported_not_raised(
     assert body["mapped_vouchers_refreshed"] == 0
     assert body["error"]
     assert "1 mapped game(s) failed to refresh offers" in body["error"]
+
+
+@respx.mock
+async def test_a_denomination_the_supplier_dropped_leaves_the_cache(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The cache must forget, or the catalogue watch goes blind.
+
+    ``upsert_catalog_entry`` only writes, so until ``prune_catalog_denoms``
+    a withdrawn pack stayed cached forever — the mapping picker kept
+    offering it and ``catalog_watch.watch_cached_variants``, which diffs
+    mappings against this cache, could never see a position disappear. Two
+    syncs here: the second answer is missing one offer, and that offer must
+    be gone afterwards.
+    """
+    admin = await _login_admin(integration_client, db_session, tg_id=707)
+    headers = {"Authorization": f"Bearer {admin}"}
+    url = "/api/v1/admin/integrations/nova/games/genshin_impact/sync-denominations"
+
+    def _offers(*ids: str) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "category_id": "genshin_impact",
+                "offers": [{"offer_id": i, "name": i, "price_usd": "1.0"} for i in ids],
+            },
+        )
+
+    route = respx.get(f"{BASE}/api/v2/topups/offers", params={"category_id": "genshin_impact"})
+
+    route.mock(return_value=_offers("60_crystals", "300_crystals"))
+    first = await integration_client.post(url, headers={**headers, "Idempotency-Key": "nova-denom-prune-key-001"})
+    assert first.json()["denominations_synced"] == 2
+
+    # NOVA stops listing 300_crystals.
+    route.mock(return_value=_offers("60_crystals"))
+    second = await integration_client.post(url, headers={**headers, "Idempotency-Key": "nova-denom-prune-key-002"})
+    assert second.json()["denominations_synced"] == 1
+
+    listing = await integration_client.get(
+        "/api/v1/admin/integrations/catalog"
+        "?supplier_slug=nova&kind=game_denom&parent_external_id=genshin_impact",
+        headers=headers,
+    )
+    assert {it["external_id"] for it in listing.json()["items"]} == {"60_crystals"}

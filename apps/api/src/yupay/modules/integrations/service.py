@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -388,6 +389,43 @@ async def delete_mapping(db: AsyncSession, *, sku_id: str, supplier_slug: str) -
         raise NotFoundError("supplier mapping not found")
     await db.delete(row)
     await db.flush()
+
+
+async def prune_catalog_denoms(
+    db: AsyncSession,
+    *,
+    supplier_slug: str,
+    parent_external_id: str,
+    keep: set[str],
+) -> int:
+    """Forget cached denominations of one game the supplier stopped listing.
+
+    ``upsert_catalog_entry`` only ever writes, so before this existed the
+    cache never forgot: a pack withdrawn upstream stayed in the mapping
+    picker forever, and anything diffing the cache against a fresh pass —
+    ``catalog_watch.watch_cached_variants`` does exactly that — could never
+    see a position disappear. That is the bug this closes.
+
+    ``keep`` is what the pass just saw. An empty ``keep`` prunes nothing:
+    a fetch that returned no rows is an outage or an API change, never
+    "the supplier delisted the whole game at once" — the same rule the
+    catalogue watch applies to an empty catalogue.
+
+    Returns the number of rows removed.
+    """
+    if not keep:
+        return 0
+    result = await db.execute(
+        sa_delete(SupplierCatalogCache).where(
+            SupplierCatalogCache.supplier_slug == supplier_slug,
+            SupplierCatalogCache.kind == "game_denom",
+            SupplierCatalogCache.parent_external_id == parent_external_id,
+            SupplierCatalogCache.external_id.notin_(tuple(keep)),
+        )
+    )
+    # `Result` is the declared return type of `execute`; only the
+    # `CursorResult` a DML statement actually yields carries `rowcount`.
+    return int(getattr(result, "rowcount", 0) or 0)
 
 
 async def upsert_catalog_entry(

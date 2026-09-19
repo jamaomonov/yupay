@@ -17,10 +17,35 @@ failed order.
 | Position reappears before deactivation      | Clears the stamp quietly.                                                                                      |
 | Position reappears after deactivation       | Telegram alert; the SKU **stays off** — a human re-checks the price and re-enables it in the admin SKU card.   |
 
-Game mappings are checked against `games_catalogue` names (one supplier call
-per distinct game), voucher mappings via `fetch_product` by id (`None` is the
-supplier's explicit "not listed"; an exception is not a miss). The mapping row
-itself always stays active — it is the watch's memory.
+## Which suppliers, and how each is asked
+
+All three that need a mapping. They are asked differently because they answer
+differently:
+
+| Supplier | Entry point             | How "still listed?" is answered                                                                               |
+| -------- | ----------------------- | ------------------------------------------------------------------------------------------------------------- |
+| G2B      | `watch_mapped_variants` | Live: `games_catalogue` names per game; vouchers via `fetch_product` by id.                                   |
+| NOVA     | `watch_cached_variants` | `run_game_denomination_sync` refreshes the game, then the mapping is diffed against `supplier_catalog_cache`. |
+| G-Engine | `watch_cached_variants` | Same as NOVA.                                                                                                 |
+
+The cached path works **only because the denomination syncers prune** — see
+`integrations.service.prune_catalog_denoms`. Before it existed they upserted
+and never deleted, so a withdrawn pack stayed cached forever. If that pruning
+is removed, the NOVA/G-Engine watch does not fail; it silently stops finding
+anything. `test_cached_watch_sees_nothing_without_pruning` pins that.
+
+An empty pass never prunes and never stamps: a sync that errors, writes
+nothing, or leaves the cache empty skips that game. The same rule as G2B's
+empty catalogue, for the same reason.
+
+The mapping row itself always stays active — it is the watch's memory. It is
+**not** deleted on a deactivation: that is deliberate, because the mapping is
+how a reappearance is recognised, and because a human needs to see what the
+SKU used to point at before re-enabling it.
+
+Until 2026-09-19 only G2B was watched. That was tolerable while it held almost
+every mapping, and stopped being tolerable when NOVA and G-Engine went from 63
+mappings between them to 241.
 
 ## Where
 
@@ -42,6 +67,12 @@ itself always stays active — it is the watch's memory.
 - False deactivation (supplier API changed its naming, not its assortment):
   re-enable the SKU and fix the mapping's `external_variant_id` to the new
   name; the old name will never match again and would just re-deactivate.
-- Currently wired for G2B. Another supplier needs its client to expose
-  `games_catalogue`/`fetch_product` (the `CatalogClient` protocol) and a
-  branch in the job; the two-strike logic is supplier-agnostic.
+- Each supplier runs in its own session and its own `try`, so one supplier's
+  outage cannot roll back stamps another already wrote, and the tick log line
+  carries `supplier=`.
+- A fourth supplier joins one of the two paths: a live client satisfying the
+  `CatalogClient` protocol, or an entry in `DENOM_SYNCABLE_SUPPLIERS` whose
+  syncer prunes. The two-strike logic is supplier-agnostic either way.
+- NOVA and G-Engine cost one denomination-sync call per mapped game per tick.
+  That is the same call the mapping wizard makes, and it is what keeps the
+  cache honest for the picker as well.
