@@ -27,6 +27,8 @@ from yupay.modules.fx.service import FxUnavailableError
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from yupay.modules.fx.quote_settings import ManualOverride
+
 log = get_logger("yupay.pricing.fx_guard")
 
 RejectReason = Literal["unavailable", "stale", "deviation", "out_of_band", "non_positive"]
@@ -109,12 +111,29 @@ async def _previous_rate(db: AsyncSession, *, quote: str) -> Decimal | None:
     return (await db.execute(stmt)).scalar_one_or_none()
 
 
-async def guarded_usd_rate(db: AsyncSession, *, quote: str) -> Decimal:
-    """USD→``quote`` rate that has passed the gate, or :class:`RateRejected`."""
+async def guarded_usd_rate(
+    db: AsyncSession,
+    *,
+    quote: str,
+    override_cache: dict[str, ManualOverride | None] | None = None,
+) -> Decimal:
+    """USD→``quote`` rate that has passed the gate, or :class:`RateRejected`.
+
+    Args:
+        db: Session.
+        quote: The quote currency.
+        override_cache: Memoizes the admin FX manual-override lookup per
+            quote across every call sharing this dict — see
+            ``FxService.get_rate``. Pass the same dict every caller in one
+            request already threads through ``rate_cache`` (e.g.
+            ``catalog.service._resolve_variable_price``) so the override is
+            read once per request instead of once per SKU. ``None`` (the
+            default) keeps the old per-call read behaviour.
+    """
     settings = get_settings()
     fx = build_default_service()
     try:
-        snap = await fx.snapshot(db, base="USD", quote=quote)
+        snap = await fx.snapshot(db, base="USD", quote=quote, override_cache=override_cache)
     except FxUnavailableError as exc:
         # Loud on purpose: the whole FX pipeline being down is the most
         # operationally significant failure this gate can hit.

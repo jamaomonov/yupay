@@ -54,6 +54,7 @@ from yupay.modules.notifications.templates import (
     password_reset_email,
     verify_email_email,
 )
+from yupay.modules.users.identity_guard import safe_avatar_url, safe_display_name
 from yupay.modules.users.models import User
 from yupay.modules.users.service import (
     get_user_by_id,
@@ -239,6 +240,31 @@ async def login_password(
     return await _open_session(db, user=user, settings=s)
 
 
+async def _get_active_user_by_email(db: AsyncSession, email: str) -> User | None:
+    """Look up a non-deleted user by (already lower-cased) email."""
+    return (
+        await db.execute(select(User).where(User.email == email, User.deleted_at.is_(None)))
+    ).scalar_one_or_none()
+
+
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """Whether ``exc`` is a UNIQUE-constraint violation (Postgres SQLSTATE
+    ``23505``), not some other integrity failure.
+
+    ``google_login``'s recovery re-reads and returns the concurrent winner's
+    row on ``IntegrityError`` — correct only for the ``users.email`` race it
+    exists to handle. Catching bare ``IntegrityError`` would also absorb a
+    NOT NULL or FK violation from a real bug, as long as an active user for
+    the address happened to already exist for an unrelated reason (the
+    re-read's ``if user is None: raise`` only catches the case where it does
+    *not*). Checking the SQLSTATE narrows the catch to the one failure the
+    recovery is designed for, and re-raises everything else. Same helper as
+    ``users.service``'s (duplicated rather than shared across the module
+    boundary for something this small).
+    """
+    return getattr(exc.orig, "sqlstate", None) == "23505"
+
+
 async def google_login(
     db: AsyncSession,
     credential: str,
@@ -260,6 +286,15 @@ async def google_login(
       stored there. Password login refuses unverified accounts, so such a hash
       could only have been planted by someone who couldn't prove the address —
       marking the email verified without clearing it would arm that password.
+
+    First-sight creation is find-or-create over a plain SELECT-then-INSERT,
+    so two concurrent first logins for the same brand-new address race it:
+    both see "not found", both try to insert, and the loser used to hit
+    ``asyncpg.UniqueViolationError`` on ``users.email`` and 500. The INSERT
+    now runs inside a ``db.begin_nested()`` SAVEPOINT; on ``IntegrityError``
+    the loser re-reads the winner's already-committed row and falls through
+    into the same update branch a pre-existing account would take, so the
+    request still succeeds.
 
     Args:
         db: Session; commits happen at the request boundary.
@@ -283,22 +318,43 @@ async def google_login(
         raise UnauthorizedError("google verification failed")
 
     email = identity.email.strip().lower()
-    user = (
-        await db.execute(select(User).where(User.email == email, User.deleted_at.is_(None)))
-    ).scalar_one_or_none()
+    user = await _get_active_user_by_email(db, email)
+    created = False
     if user is None:
-        user = User(
+        candidate = User(
             id=new_id(),
             email=email,
             email_verified_at=now(),
-            display_name=identity.name,
-            photo_url=identity.picture,
+            display_name=safe_display_name(identity.name),
+            photo_url=safe_avatar_url(identity.picture),
             locale="ru",
         )
-        db.add(user)
-        await db.flush()
-        log.info("auth.google.user_created")
-    else:
+        try:
+            # Inside the SAVEPOINT, added after it opens (see
+            # affiliate.partners / fulfillment's begin_nested() note): added
+            # before it, a UNIQUE(email) failure would leave the doomed row
+            # in db.new and poison the outer transaction. Two concurrent
+            # first-sight Google logins for the same address both pass the
+            # SELECT above and both reach this INSERT; the loser hits the
+            # unique index on users.email. The savepoint rolls back only
+            # this half-written loser — not the whole request transaction —
+            # and we then re-read the winner's now-committed row and fall
+            # through into the same update branch below, exactly as if we
+            # had found it on the first SELECT.
+            async with db.begin_nested():
+                db.add(candidate)
+                await db.flush()
+        except IntegrityError as exc:
+            if not _is_unique_violation(exc):
+                raise
+            user = await _get_active_user_by_email(db, email)
+            if user is None:
+                raise
+        else:
+            user = candidate
+            created = True
+            log.info("auth.google.user_created")
+    if not created:
         if user.email_verified_at is None:
             if user.password_hash is not None:
                 # See the docstring: a password on a never-verified account is
@@ -307,10 +363,12 @@ async def google_login(
                 user.password_hash = None
                 log.info("auth.google.planted_password_cleared")
             user.email_verified_at = now()
-        if identity.picture and not user.photo_url:
-            user.photo_url = identity.picture
-        if identity.name and not user.display_name:
-            user.display_name = identity.name
+        picture = safe_avatar_url(identity.picture)
+        if picture and not user.photo_url:
+            user.photo_url = picture
+        display_name = safe_display_name(identity.name)
+        if display_name and not user.display_name:
+            user.display_name = display_name
         user.updated_at = now()
         await db.flush()
     return await _open_session(db, user=user, settings=s)

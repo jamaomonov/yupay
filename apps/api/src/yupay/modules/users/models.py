@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, text
+from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, text
 from sqlalchemy.dialects.postgresql import CITEXT, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,7 +37,12 @@ class User(Base):
     # so it survives device switches (Telegram desktop ↔ phone).
     display_currency: Mapped[str] = mapped_column(String(8), nullable=False, server_default="USD")
     display_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    photo_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    # `text`, not `varchar(n)`: a URL has no natural length bound, and 1024
+    # was a guess reality exceeded (a real Google avatar URL, ~2026-09-18,
+    # StringDataRightTruncationError on INSERT — see migration 0083). The
+    # application-level guard against something truly absurd lives in
+    # `yupay.modules.users.identity_guard`, not here.
+    photo_url: Mapped[str | None] = mapped_column(Text(), nullable=True)
     # List of role strings — e.g. ``["admin"]``. See ADR-0010.
     roles: Mapped[list[str]] = mapped_column(
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
@@ -143,7 +148,7 @@ class SteamLink(Base):
     )
     steam_id: Mapped[int] = mapped_column(BigInteger, nullable=False, unique=True)
     persona_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(Text(), nullable=True)
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import Select, String, cast, func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +18,7 @@ from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.auth.telegram import TelegramUser
+from yupay.modules.users.identity_guard import safe_avatar_url, safe_display_name
 from yupay.modules.users.models import SteamLink, TelegramLink, User
 from yupay.modules.users.schemas import UserAdminSort
 from yupay.modules.wallet.balances import (
@@ -42,6 +44,40 @@ async def get_user_by_telegram_id(session: AsyncSession, tg_user_id: int) -> Use
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """Whether ``exc`` is a UNIQUE-constraint violation (Postgres SQLSTATE
+    ``23505``), not some other integrity failure.
+
+    The recovery below re-reads and returns the concurrent winner's row on
+    ``IntegrityError`` — correct only for the specific unique-index race
+    ``upsert_user_by_telegram``/``upsert_user_by_steam`` exist to handle.
+    Catching bare ``IntegrityError`` would also absorb a NOT NULL or FK
+    violation from a real bug, as long as the identity row happened to
+    already exist for an unrelated reason (the re-read's ``if … is None:
+    raise`` only catches the case where it does *not*). Checking the
+    SQLSTATE narrows the catch to the one failure the recovery is designed
+    for, and re-raises everything else.
+    """
+    return getattr(exc.orig, "sqlstate", None) == "23505"
+
+
+def _normalised_language_code(code: str | None) -> str | None:
+    """Fit a raw IETF language tag into ``telegram_links.language_code``'s
+    ``varchar(8)``, the same primary-subtag-only truncation ``locale`` above
+    already applies before it reaches ``users.locale`` (also ``varchar(8)``).
+
+    Telegram hands back whatever the client reports, unvalidated — a tag
+    like ``zh-Hant-TW`` is 10 characters and would fail the INSERT/UPDATE on
+    this column in the same flush that writes the (already-guarded)
+    ``locale``. Returns ``None`` for absent/blank input; the column is
+    nullable, unlike ``users.locale``, so there is no default to fall back
+    to here.
+    """
+    if not code:
+        return None
+    return code.split("-")[0][:8] or None
+
+
 async def upsert_user_by_telegram(
     session: AsyncSession,
     tg_user: TelegramUser,
@@ -54,45 +90,78 @@ async def upsert_user_by_telegram(
     On subsequent visits we touch ``last_seen_at`` and refresh mutable Telegram fields.
     The ``locale_hint`` is only applied at creation time — we don't override an existing
     user's locale choice.
+
+    First-sight creation is find-or-create over a plain SELECT-then-INSERT, so
+    two concurrent first logins for the same brand-new Telegram id race it:
+    both see "not found" and both try to insert. Sentry, production,
+    2026-09-18: the loser hit ``asyncpg.UniqueViolationError`` on
+    ``uq_telegram_links_tg_user_id`` and 500'd — someone opening the app for
+    the first time got a 500 for it. The INSERT now runs inside a
+    ``db.begin_nested()`` SAVEPOINT; on ``IntegrityError`` the loser re-reads
+    the winner's already-committed row and falls through into the same
+    "existing user" branch below, exactly as if it had found the row on the
+    first SELECT.
     """
     existing = await get_user_by_telegram_id(session, tg_user.id)
-    if existing is not None:
-        link = existing.telegram_link
-        if link is not None:
-            link.tg_username = tg_user.username
-            link.first_name = tg_user.first_name
-            link.last_name = tg_user.last_name
-            link.language_code = tg_user.language_code
-            link.is_premium = tg_user.is_premium
-            link.last_seen_at = now()
-        if tg_user.photo_url and not existing.photo_url:
-            existing.photo_url = tg_user.photo_url
-        existing.updated_at = now()
-        await session.flush()
-        return existing
+    if existing is None:
+        locale = (locale_hint or tg_user.language_code or "ru").split("-")[0][:8] or "ru"
+        user = User(
+            id=new_id(),
+            email=None,
+            locale=locale,
+            display_name=safe_display_name(tg_user.first_name or tg_user.username),
+            photo_url=safe_avatar_url(tg_user.photo_url),
+        )
+        new_link = TelegramLink(
+            id=new_id(),
+            user_id=user.id,
+            tg_user_id=tg_user.id,
+            tg_username=tg_user.username,
+            first_name=tg_user.first_name,
+            last_name=tg_user.last_name,
+            language_code=_normalised_language_code(tg_user.language_code),
+            is_premium=tg_user.is_premium,
+        )
+        try:
+            # Rows added *inside* the SAVEPOINT, not before it opens: added
+            # earlier, a UNIQUE(tg_user_id) failure would leave the doomed
+            # rows sitting in session.new and poison the outer transaction
+            # (begin_nested() autoflushes already-pending state first — see
+            # affiliate.partners / fulfillment's own begin_nested() notes).
+            async with session.begin_nested():
+                session.add(user)
+                session.add(new_link)
+                await session.flush()
+        except IntegrityError as exc:
+            if not _is_unique_violation(exc):
+                raise
+            existing = await get_user_by_telegram_id(session, tg_user.id)
+            if existing is None:
+                raise
+        else:
+            return user
 
-    locale = (locale_hint or tg_user.language_code or "ru").split("-")[0][:8] or "ru"
-    user = User(
-        id=new_id(),
-        email=None,
-        locale=locale,
-        display_name=(tg_user.first_name or tg_user.username),
-        photo_url=tg_user.photo_url,
-    )
-    link = TelegramLink(
-        id=new_id(),
-        user_id=user.id,
-        tg_user_id=tg_user.id,
-        tg_username=tg_user.username,
-        first_name=tg_user.first_name,
-        last_name=tg_user.last_name,
-        language_code=tg_user.language_code,
-        is_premium=tg_user.is_premium,
-    )
-    session.add(user)
-    session.add(link)
+    link = existing.telegram_link
+    if link is not None:
+        link.tg_username = tg_user.username
+        link.first_name = tg_user.first_name
+        link.last_name = tg_user.last_name
+        link.language_code = _normalised_language_code(tg_user.language_code)
+        link.is_premium = tg_user.is_premium
+        link.last_seen_at = now()
+    photo_url = safe_avatar_url(tg_user.photo_url)
+    if photo_url and not existing.photo_url:
+        existing.photo_url = photo_url
+    existing.updated_at = now()
     await session.flush()
-    return user
+    return existing
+
+
+async def _get_steam_link(session: AsyncSession, steam_id: int) -> SteamLink | None:
+    """Look up the :class:`SteamLink` row (with its joined user) by steamid64."""
+    return (
+        await session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
+    ).scalar_one_or_none()
 
 
 async def upsert_user_by_steam(
@@ -104,41 +173,79 @@ async def upsert_user_by_steam(
 ) -> User:
     """Find-or-create a user from a verified Steam identity.
 
-    Mirrors :func:`upsert_user_by_telegram`: first sight creates the ``users``
-    row and the ``steam_links`` row; later visits touch ``last_seen_at`` and
-    refresh the mutable Steam fields.
-    """
-    link = (
-        await session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
-    ).scalar_one_or_none()
-    if link is not None:
-        link.persona_name = persona_name or link.persona_name
-        link.avatar_url = avatar_url or link.avatar_url
-        link.last_seen_at = now()
-        user = link.user
-        if avatar_url and not user.photo_url:
-            user.photo_url = avatar_url
-        user.updated_at = now()
-        await session.flush()
-        return user
+    Mirrors :func:`upsert_user_by_telegram`, race handling included: first
+    sight creates the ``users`` row and the ``steam_links`` row; later visits
+    touch ``last_seen_at`` and refresh the mutable Steam fields. Two
+    concurrent first logins for the same steamid64 both see "not found" and
+    both try to insert; the loser now recovers from the ``IntegrityError`` on
+    ``steam_links.steam_id`` by re-reading the winner's row and falling
+    through into the "existing" branch, instead of 500ing — see
+    :func:`upsert_user_by_telegram`'s docstring for the shape.
 
-    user = User(
-        id=new_id(),
-        email=None,
-        locale="ru",
-        display_name=persona_name,
-        photo_url=avatar_url,
-    )
-    session.add(user)
-    session.add(
-        SteamLink(
+    ``avatar_url`` is guarded once and reused for both ``steam_links
+    .avatar_url`` and ``users.photo_url``: they are written in the same
+    flush from the same value, so guarding only one still leaves the other
+    free to fail the INSERT/UPDATE on an absurd value — the exact failure
+    mode this guard exists to prevent, just on a different column.
+    Migration 0083 widens both columns to ``text`` for the same reason. An
+    earlier draft widened only ``users.photo_url``, on the argument that
+    Steam's avatar URLs are short fixed-format CDN links — which is true, and
+    is exactly what was true of Google's avatar URLs until one of them ran
+    past 1024 characters and cost somebody their registration. Leaving the
+    sibling at ``varchar(1024)`` would have kept a live gap between the
+    guard's ceiling and the column's, reachable by a value the guard accepts.
+
+    ``persona_name`` gets the identical treatment for the identical reason:
+    ``safe_display_name(persona_name)`` goes onto ``users.display_name``,
+    but the raw ``persona_name`` — straight from the Steam Web API, the same
+    class of unvalidated third-party field ``avatar_url`` is — used to go
+    onto ``steam_links.persona_name`` unguarded, in the same flush. A
+    personaname over 255 characters would truncate harmlessly into
+    ``display_name`` and then fail the INSERT/UPDATE on its sibling column.
+    Guarded once here and reused at both write sites below, same shape as
+    ``avatar``.
+    """
+    avatar = safe_avatar_url(avatar_url)
+    name = safe_display_name(persona_name)
+    link = await _get_steam_link(session, steam_id)
+    if link is None:
+        user = User(
+            id=new_id(),
+            email=None,
+            locale="ru",
+            display_name=name,
+            photo_url=avatar,
+        )
+        new_link = SteamLink(
             id=new_id(),
             user_id=user.id,
             steam_id=steam_id,
-            persona_name=persona_name,
-            avatar_url=avatar_url,
+            persona_name=name,
+            avatar_url=avatar,
         )
-    )
+        try:
+            # See upsert_user_by_telegram: rows added inside the SAVEPOINT,
+            # not before it opens.
+            async with session.begin_nested():
+                session.add(user)
+                session.add(new_link)
+                await session.flush()
+        except IntegrityError as exc:
+            if not _is_unique_violation(exc):
+                raise
+            link = await _get_steam_link(session, steam_id)
+            if link is None:
+                raise
+        else:
+            return user
+
+    link.persona_name = name or link.persona_name
+    link.avatar_url = avatar or link.avatar_url
+    link.last_seen_at = now()
+    user = link.user
+    if avatar and not user.photo_url:
+        user.photo_url = avatar
+    user.updated_at = now()
     await session.flush()
     return user
 

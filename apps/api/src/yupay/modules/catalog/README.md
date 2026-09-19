@@ -216,6 +216,23 @@ For every SKU and a requested currency `Q`:
    a whole listing.
 4. Otherwise → omit `display_price` (client falls back to `price_usd`).
 
+Every list/detail endpoint resolves prices for a **whole page** of SKUs in a loop, and
+opens two small caches once per request, threading them through every `_resolve_price`
+call: `rate_cache` (the guarded market rate, for variable-amount SKUs) and
+`override_cache` (the FX module's admin manual-override lookup — read by both the
+fixed-price path, via `FxService.convert`, and the variable-amount path, via
+`pricing.fx_guard.guarded_usd_rate`). Without them a product with N SKUs would re-run
+the same Redis/Postgres lookup N times. What was actually observed: a Sentry event on
+`pubg-uc` (35 SKUs) showed three `fx:manual:UZS` breadcrumbs inside 50ms of one
+request — three is what Sentry's breadcrumb panel happened to display, not the true
+read count. `_resolve_price` ran once per SKU and each run re-read the key
+independently before this fix, so the actual count for that page could reach 35; the
+breadcrumb list is capped and three is a lower bound on it, not a measurement of the
+amplification. `test_catalog_fx_override_read_count.py` pins the real number (exactly
+1, post-fix) for a 6-SKU page instead of relying on what one Sentry event chose to
+show.
+See `fx`'s README for `override_cache`'s shape.
+
 ## Seed data
 
 ```bash
@@ -233,6 +250,8 @@ regional pricing. Idempotent — re-running matches by `slug` / `sku_code`.
 - `apps/api/tests/integration/test_catalog_routes.py` — all 6 endpoints against a real
   Postgres, including brand → products navigation, `required_fields` carriage,
   `RUB` override + degradation on a broken FX chain, unsupported currency.
+- `apps/api/tests/integration/test_catalog_fx_override_read_count.py` — pins the manual-
+  override read count at 1 for a 6-SKU product page (the amplification regression).
 
 ## What's deliberately **not** here yet
 

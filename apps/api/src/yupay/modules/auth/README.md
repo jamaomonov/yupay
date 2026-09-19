@@ -105,6 +105,29 @@ email: существующий аккаунт с этим адресом пол
   только тот, кто адресом не владеет — пометить email верифицированным, не
   сняв пароль, значило бы вооружить чужой пароль.
 
+**Аватар и имя идут через `users.identity_guard`.** Sentry, продакшн: реальный
+Google avatar URL длиннее 1024 символов уронил `INSERT INTO users`
+(`StringDataRightTruncationError`) — регистрация не проходила вовсе.
+`users.photo_url` теперь `text` (миграция 0083), но `identity.picture` /
+`identity.name` всё равно идут через `safe_avatar_url`/`safe_display_name`
+(не напрямую в `User(...)`), а не только полагаются на ширину колонки — см.
+`users`'s README, раздел "Identity-field guards".
+
+**Конкурентная первая регистрация — SAVEPOINT, не 500.** Sentry, продакшн,
+2026-09-18 (Telegram-путь, но форма та же): два запроса на один и тот же ещё
+не существующий email/tg_user_id/steam_id гоняют одно и то же
+SELECT-then-INSERT — оба видят "не найден", оба пытаются вставить.
+Проигравший раньше падал в 500 (`asyncpg.UniqueViolationError` на
+уникальном индексе). Теперь INSERT идёт внутри `db.begin_nested()`
+(`session.begin_nested()` в `users.service`); на `IntegrityError` savepoint
+откатывает только эту половинную вставку, а код перечитывает уже
+закоммиченную строку победителя и продолжает так, как будто нашёл её с
+самого начала — та же ветка, что для уже существующего аккаунта. Тот же
+паттерн в `users.service.upsert_user_by_telegram`/`upsert_user_by_steam`
+(уникальность на `tg_user_id`/`steam_id`). См. `test_auth_google.py` и
+`test_users_upsert_race.py` — оба гоняют настоящую гонку двумя параллельными
+сессиями, а не последовательные вызовы.
+
 ## Steam Sign-In
 
 Steam так и не завёл OAuth — только OpenID 2.0. `GET /auth/steam/start`

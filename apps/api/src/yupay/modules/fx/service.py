@@ -99,18 +99,35 @@ class FxService:
                 ordered.append(provider)
         return ordered
 
-    async def get_rate(self, base: str, quote: str, *, allow_stale: bool = True) -> Quote:
+    async def get_rate(
+        self,
+        base: str,
+        quote: str,
+        *,
+        allow_stale: bool = True,
+        override_cache: dict[str, ManualOverride | None] | None = None,
+    ) -> Quote:
         """Return the rate the system must use for ``base → quote``.
 
         Admin manual override (when on) wins over Redis and every provider. The
         market path is cache → providers → stale fallback.
+
+        Args:
+            override_cache: Memoizes the manual-override lookup per quote,
+                keyed by the upper-cased quote code, across several calls that
+                share this dict — mirrors the catalog ``rate_cache`` pattern
+                (see ``catalog.service._resolve_variable_price``). Pass the
+                same dict across every conversion in one request (e.g. once
+                per product/brand/listing page) so a product with N SKUs reads
+                the override once, not N times. ``None`` (the default) keeps
+                the old per-call behaviour for one-off callers.
         """
         base_u, quote_u = base.upper(), quote.upper()
         if base_u == quote_u:
             return Quote(
                 base=base_u, quote=quote_u, rate=Decimal(1), fetched_at=now(), source="identity"
             )
-        manual = await self._manual_quote(base_u, quote_u)
+        manual = await self._manual_quote(base_u, quote_u, override_cache=override_cache)
         if manual is not None:
             return manual
         return await self.get_market_rate(base_u, quote_u, allow_stale=allow_stale)
@@ -209,11 +226,29 @@ class FxService:
             )
         raise FxUnavailableError(f"no provider could serve {base_u}->{quote_u}")
 
-    async def _manual_quote(self, base: str, quote: str) -> Quote | None:
-        """Return the admin rate when the toggle is on for a USD→quote pair."""
+    async def _manual_quote(
+        self,
+        base: str,
+        quote: str,
+        *,
+        override_cache: dict[str, ManualOverride | None] | None = None,
+    ) -> Quote | None:
+        """Return the admin rate when the toggle is on for a USD→quote pair.
+
+        See :meth:`get_rate` for ``override_cache``. A quote present in the
+        dict — even mapped to ``None`` — is a cached negative, not a miss, and
+        is never re-queried within the same cache's lifetime.
+        """
         if base != "USD":
             return None
-        override = await load_override(self._redis, quote, session_factory=self._session_factory)
+        if override_cache is not None and quote in override_cache:
+            override = override_cache[quote]
+        else:
+            override = await load_override(
+                self._redis, quote, session_factory=self._session_factory
+            )
+            if override_cache is not None:
+                override_cache[quote] = override
         if override is None:
             return None
         return override_to_quote(override, base=base)
@@ -265,9 +300,21 @@ class FxService:
         """Make a **committed** override visible to the hot path."""
         await publish_override(self._redis, override)
 
-    async def convert(self, amount: Decimal, *, base: str, quote: str) -> ConversionResult:
-        """Convert ``amount`` from ``base`` to ``quote`` using the latest cached rate."""
-        q = await self.get_rate(base, quote)
+    async def convert(
+        self,
+        amount: Decimal,
+        *,
+        base: str,
+        quote: str,
+        override_cache: dict[str, ManualOverride | None] | None = None,
+    ) -> ConversionResult:
+        """Convert ``amount`` from ``base`` to ``quote`` using the latest cached rate.
+
+        ``override_cache``: see :meth:`get_rate` — pass one shared dict across
+        every conversion in a batch (e.g. every SKU on one catalog page) to
+        read the admin override once instead of once per conversion.
+        """
+        q = await self.get_rate(base, quote, override_cache=override_cache)
         return ConversionResult(amount=(amount * q.rate), rate=q.rate, source=q.source)
 
     async def snapshot(
@@ -277,16 +324,22 @@ class FxService:
         base: str,
         quote: str,
         reuse_within_seconds: int | None = None,
+        override_cache: dict[str, ManualOverride | None] | None = None,
     ) -> FxSnapshot:
         """Persist (or reuse) an immutable :class:`FxSnapshot` for an order.
 
         If a recent snapshot for the same pair exists within
         ``reuse_within_seconds`` (default = ``fx_snapshot_max_age_seconds``), we return
         it as-is. Otherwise we fetch a fresh rate and insert a new row.
+
+        ``override_cache``: see :meth:`get_rate` — pass one shared dict across
+        every snapshot taken within one request (e.g. ``pricing.fx_guard
+        .guarded_usd_rate`` called once per variable-amount SKU on a catalog
+        page) so the admin override is read once, not once per call.
         """
         max_age = reuse_within_seconds or self._settings.fx_snapshot_max_age_seconds
         base_u, quote_u = base.upper(), quote.upper()
-        q = await self.get_rate(base_u, quote_u)
+        q = await self.get_rate(base_u, quote_u, override_cache=override_cache)
 
         if max_age > 0:
             stmt = (

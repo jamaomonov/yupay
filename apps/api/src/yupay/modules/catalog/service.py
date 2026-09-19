@@ -37,6 +37,7 @@ from yupay.modules.reviews.models import BrandRatingStats
 from yupay.modules.reviews.service import get_stats as _reviews_get_stats
 
 if TYPE_CHECKING:
+    from yupay.modules.fx.quote_settings import ManualOverride
     from yupay.modules.fx.service import FxService
 
 DEFAULT_LOCALE = "ru"
@@ -150,7 +151,12 @@ def _brand_summary(brand: Brand, locale: str, rating: BrandRatingOut | None = No
 
 
 async def _resolve_variable_price(
-    db: AsyncSession, sku: Sku, cu: str, *, rate_cache: dict[str, Decimal | None]
+    db: AsyncSession,
+    sku: Sku,
+    cu: str,
+    *,
+    rate_cache: dict[str, Decimal | None],
+    override_cache: dict[str, ManualOverride | None] | None = None,
 ) -> PriceOut | None:
     """Display price for a variable-amount SKU: the guarded rate times the
     SKU's own margin multiplier, applied to one dollar — deliberately the
@@ -173,12 +179,18 @@ async def _resolve_variable_price(
     rate check (each a handful of SQL statements) once per SKU. Both hits and
     rejections are cached: a currency present in the dict (even mapped to
     ``None``) is never re-queried within the same request.
+
+    ``override_cache``: threaded straight through to ``guarded_usd_rate``
+    (see :func:`_resolve_price`) so a page mixing variable- and fixed-price
+    SKUs reads the admin manual-override key once per request rather than
+    once per variable-amount SKU on top of the once-per-fixed-price-SKU
+    reads ``_resolve_fixed_price`` already collapsed.
     """
     if cu in rate_cache:
         market = rate_cache[cu]
     else:
         try:
-            market = await guarded_usd_rate(db, quote=cu)
+            market = await guarded_usd_rate(db, quote=cu, override_cache=override_cache)
         except RateRejected:
             market = None
         rate_cache[cu] = market
@@ -195,6 +207,7 @@ async def _resolve_price(
     currency: str | None,
     fx: FxService | None,
     rate_cache: dict[str, Decimal | None],
+    override_cache: dict[str, ManualOverride | None] | None = None,
 ) -> PriceOut | None:
     """Resolve the display price. Override → FX → ``None``. FX failures swallowed.
 
@@ -207,6 +220,13 @@ async def _resolve_price(
     default/no-currency case) resolves to ``None`` here too, the same
     "not sold this way" signal as a rejected rate, never face-value
     ``price_usd``.
+
+    ``override_cache`` memoizes the admin FX manual-override lookup per quote
+    currency across every fixed-price SKU resolved within one catalog
+    request — same shape as ``rate_cache`` above it, passed straight through
+    to ``FxService.convert``. Without it, a product page with many
+    fixed-price SKUs (PUBG Mobile: 35) re-reads the same ``fx:manual:{quote}``
+    Redis key once per SKU instead of once for the whole page.
     """
     if not currency:
         return None
@@ -215,15 +235,23 @@ async def _resolve_price(
     if sku.variable_amount:
         if cu == "USD":
             return None
-        return await _resolve_variable_price(db, sku, cu, rate_cache=rate_cache)
+        return await _resolve_variable_price(
+            db, sku, cu, rate_cache=rate_cache, override_cache=override_cache
+        )
 
     if cu == "USD":
         return PriceOut(amount=sku.price_usd, currency="USD", source="usd")
 
-    return await _resolve_fixed_price(sku, cu, fx)
+    return await _resolve_fixed_price(sku, cu, fx, override_cache=override_cache)
 
 
-async def _resolve_fixed_price(sku: Sku, cu: str, fx: FxService | None) -> PriceOut | None:
+async def _resolve_fixed_price(
+    sku: Sku,
+    cu: str,
+    fx: FxService | None,
+    *,
+    override_cache: dict[str, ManualOverride | None] | None = None,
+) -> PriceOut | None:
     """Override → FX → ``None``, for a fixed-price (non-variable-amount) SKU
     once ``currency`` is known to be non-USD. Split out of :func:`_resolve_price`
     to keep each branch's return-statement count small."""
@@ -234,17 +262,25 @@ async def _resolve_fixed_price(sku: Sku, cu: str, fx: FxService | None) -> Price
 
     if fx is None:
         return None
-    return await _resolve_fx_price(sku, cu, fx)
+    return await _resolve_fx_price(sku, cu, fx, override_cache=override_cache)
 
 
-async def _resolve_fx_price(sku: Sku, cu: str, fx: FxService) -> PriceOut | None:
+async def _resolve_fx_price(
+    sku: Sku,
+    cu: str,
+    fx: FxService,
+    *,
+    override_cache: dict[str, ManualOverride | None] | None = None,
+) -> PriceOut | None:
     """Plain FX conversion for a fixed-price SKU with no override. ``None``
     on any FX outage — swallowed, not surfaced, so the rest of the page still
     renders without a price for this one SKU."""
     from yupay.modules.fx.service import FxUnavailableError
 
     try:
-        result = await fx.convert(sku.price_usd, base="USD", quote=cu)
+        result = await fx.convert(
+            sku.price_usd, base="USD", quote=cu, override_cache=override_cache
+        )
     except FxUnavailableError:
         return None
     return PriceOut(amount=result.amount, currency=cu, source="fx")
@@ -371,8 +407,10 @@ async def get_brand_by_slug(
             faqs_out.append(FaqOut(id=faq.id, question=picked[0], answer=picked[1]))
 
     # Memoizes the guarded rate per currency across every product on this
-    # brand page — see _resolve_variable_price.
+    # brand page — see _resolve_variable_price. override_cache does the same
+    # for the admin FX manual override read (see _resolve_price).
     rate_cache: dict[str, Decimal | None] = {}
+    override_cache: dict[str, ManualOverride | None] = {}
     products_out: list[ProductSummaryOut] = []
     for product in sorted((p for p in brand.products if p.active), key=lambda p: p.sort_order):
         active_skus = sorted(
@@ -383,7 +421,12 @@ async def get_brand_by_slug(
             continue
         starting = active_skus[0]
         display = await _resolve_price(
-            db, starting, currency=currency, fx=fx, rate_cache=rate_cache
+            db,
+            starting,
+            currency=currency,
+            fx=fx,
+            rate_cache=rate_cache,
+            override_cache=override_cache,
         )
         products_out.append(
             _build_product_summary(product, locale=locale, starting=starting, display=display)
@@ -440,8 +483,10 @@ async def list_products(
     rows = (await db.execute(stmt)).scalars().all()
 
     # Memoizes the guarded rate per currency across every product in this
-    # listing — see _resolve_variable_price.
+    # listing — see _resolve_variable_price. override_cache does the same
+    # for the admin FX manual override read (see _resolve_price).
     rate_cache: dict[str, Decimal | None] = {}
+    override_cache: dict[str, ManualOverride | None] = {}
     summaries: list[ProductSummaryOut] = []
     for product in rows:
         active_skus = sorted(
@@ -452,7 +497,12 @@ async def list_products(
             continue
         starting = active_skus[0]
         display = await _resolve_price(
-            db, starting, currency=currency, fx=fx, rate_cache=rate_cache
+            db,
+            starting,
+            currency=currency,
+            fx=fx,
+            rate_cache=rate_cache,
+            override_cache=override_cache,
         )
         summaries.append(
             _build_product_summary(product, locale=locale, starting=starting, display=display)
@@ -495,11 +545,22 @@ async def get_product_by_slug(
     name, short_desc, description, _ = _pick_translation(product.translations, locale)
     # Memoizes the guarded rate per currency across every SKU on this product
     # page — see _resolve_variable_price. This is the case the N+1 bites
-    # hardest: a single product can list several variable-amount SKUs.
+    # hardest: a single product can list several variable-amount SKUs — or,
+    # for the fixed-price kind, several plain FX conversions each re-reading
+    # the same admin manual-override key (override_cache; see _resolve_price)
+    # — PUBG Mobile alone has 35 active SKUs on one product page.
     rate_cache: dict[str, Decimal | None] = {}
+    override_cache: dict[str, ManualOverride | None] = {}
     skus_out: list[SkuOut] = []
     for sku in sorted((s for s in product.skus if s.active), key=lambda s: s.sort_order):
-        display = await _resolve_price(db, sku, currency=currency, fx=fx, rate_cache=rate_cache)
+        display = await _resolve_price(
+            db,
+            sku,
+            currency=currency,
+            fx=fx,
+            rate_cache=rate_cache,
+            override_cache=override_cache,
+        )
         skus_out.append(
             SkuOut(
                 id=sku.id,
