@@ -16,8 +16,19 @@ rewrite and no revalidation of existing rows (every existing value already
 satisfies a looser or absent bound). Verified empirically against this
 repo's Postgres 16 image before writing this migration: a scratch table's
 ``pg_class.relfilenode`` and ``pg_relation_size`` were byte-identical before
-and after the same ``ALTER COLUMN ... TYPE text`` run here. This is safe to
-run against the production ``users`` table without a maintenance window.
+and after the same ``ALTER COLUMN ... TYPE text`` run here.
+
+That is "no rewrite", not "no lock". The ``ALTER`` still takes ACCESS
+EXCLUSIVE on ``users`` — the hottest table in the auth path — for the
+instant the column change applies, and with no ``lock_timeout`` a busy
+production run would queue behind whatever transaction already holds a
+lock on that table and hold every request that arrives after it behind the
+wait in turn: an auth outage lasting as long as that one transaction.
+``lock_timeout`` below turns that into a failed migration step instead,
+the same shape 0069, 0072 and 0073 use for their own ACCESS EXCLUSIVE
+DDL. This is safe to run against the production ``users`` table without a
+maintenance window *because* it is metadata-only and bounded by the
+timeout — not merely because it is metadata-only.
 
 ``steam_links.avatar_url`` is widened in the same breath, and not for
 symmetry: ``upsert_user_by_steam`` writes the *same* value into both columns
@@ -48,6 +59,16 @@ depends_on: str | None = None
 
 
 def upgrade() -> None:
+    # Fail fast rather than queue. The ALTER itself is metadata-only and
+    # near-instant once it holds the lock (see the docstring), but it still
+    # needs ACCESS EXCLUSIVE on `users` to take it, and Postgres queues lock
+    # requests FIFO — a wait behind one slow transaction would stall every
+    # later request against `users`, i.e. login and registration, for as
+    # long as that transaction runs. Same three seconds of patience as
+    # 0069, 0072 and 0073: a contended deploy fails with
+    # `lock_not_available` and is retried in a quieter minute, rather than
+    # stalling every auth request queued behind it.
+    op.execute("SET lock_timeout = '3s'")
     for table, column in (("users", "photo_url"), ("steam_links", "avatar_url")):
         op.alter_column(
             table,
@@ -56,6 +77,10 @@ def upgrade() -> None:
             type_=sa.Text(),
             existing_nullable=True,
         )
+    # Scoped to the statements above: a plain `SET` lives for the rest of
+    # the session, so without this every later revision in the same
+    # `upgrade head` would inherit a patience it never asked for.
+    op.execute("RESET lock_timeout")
 
 
 def downgrade() -> None:
@@ -64,6 +89,17 @@ def downgrade() -> None:
     # than the old column, so a downgrade after this ships can fail on real
     # data. That's the expected cost of reverting a deliberate widening, not
     # a bug in the downgrade.
+    #
+    # Unlike upgrade(), this direction is not free under the lock: narrowing
+    # `text -> varchar(1024)` is a full table rewrite plus a verification
+    # scan (Postgres must check every existing row still fits the new
+    # bound), not the metadata-only change the forward ALTER is. The same
+    # ACCESS EXCLUSIVE lock is held for the whole rewrite, not an instant,
+    # so `lock_timeout` here only bounds the wait to *acquire* the lock —
+    # it does not bound how long the rewrite holds it once acquired. A
+    # downgrade is an exceptional, operator-driven action (never run by
+    # `deploy.yml`), so that cost is accepted rather than engineered around.
+    op.execute("SET lock_timeout = '3s'")
     for table, column in (("users", "photo_url"), ("steam_links", "avatar_url")):
         op.alter_column(
             table,
@@ -72,3 +108,4 @@ def downgrade() -> None:
             type_=sa.String(length=1024),
             existing_nullable=True,
         )
+    op.execute("RESET lock_timeout")
