@@ -142,9 +142,20 @@ class SupplierCatalogCache(Base):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     #: For a ``game_denom`` row, the game's own ``external_id`` — what the
     #: admin picker filters on to show one game's denominations rather than
-    #: every denomination of every supplier game at once. ``NULL`` for a
-    #: flat ``voucher``/``game`` row, which has no parent.
-    parent_external_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    #: every denomination of every supplier game at once. ``''`` for a flat
+    #: ``voucher``/``game`` row, which has no parent.
+    #:
+    #: Part of the primary key since 0084, and it has to be: denomination ids
+    #: are unique per *game*, not per supplier. NOVA calls the 55-diamond pack
+    #: ``55_diamonds`` in both Magic Chess Go Go (RU) and Mobile Legends (RU);
+    #: G-Engine numbers denominations per service and reuses the numbers.
+    #: While the key was ``(supplier_slug, kind, external_id)`` those two games
+    #: shared one row and each sync stole it from the other — on production,
+    #: eight of Magic Chess RU's seventeen denominations were invisible in the
+    #: mapping picker because Mobile Legends RU had synced last.
+    parent_external_id: Mapped[str] = mapped_column(
+        String(128), primary_key=True, nullable=False, server_default=text("''")
+    )
     #: The supplier's own price for this row, when it reports one at catalog
     #: time (NOVA's ``price_usd`` per offer, G-Engine's ``price`` per
     #: denomination). Stored as ``Decimal`` here per AGENTS.md §9; the admin
