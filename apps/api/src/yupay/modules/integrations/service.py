@@ -447,23 +447,27 @@ async def upsert_catalog_entry(
 
     ``parent_external_id``/``price_usdt`` matter only for a ``game_denom``
     row (the game it belongs to, and the supplier's own price for it, when
-    reported) — every other kind leaves them ``None``.
+    reported) — every other kind leaves them ``None``, and ``None`` is stored
+    as ``''`` because the column is part of the key (see the model, and 0084
+    for why it had to be).
     """
     stmt = pg_insert(SupplierCatalogCache).values(
         supplier_slug=supplier_slug,
         kind=kind,
         external_id=external_id,
         title=title,
-        parent_external_id=parent_external_id,
+        parent_external_id=parent_external_id or "",
         price_usdt=price_usdt,
         raw=raw,
         fetched_at=now(),
     )
     stmt = stmt.on_conflict_do_update(
-        index_elements=["supplier_slug", "kind", "external_id"],
+        # Must match the primary key exactly. While ``parent_external_id`` was
+        # missing here, a denomination id shared by two games conflicted on
+        # the first game's row and overwrote its parent with the second's.
+        index_elements=["supplier_slug", "kind", "external_id", "parent_external_id"],
         set_={
             "title": stmt.excluded.title,
-            "parent_external_id": stmt.excluded.parent_external_id,
             "price_usdt": stmt.excluded.price_usdt,
             "raw": stmt.excluded.raw,
             "fetched_at": stmt.excluded.fetched_at,

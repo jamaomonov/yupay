@@ -28,6 +28,23 @@ differently:
 | NOVA     | `watch_cached_variants` | `run_game_denomination_sync` refreshes the game, then the mapping is diffed against `supplier_catalog_cache`. |
 | G-Engine | `watch_cached_variants` | Same as NOVA.                                                                                                 |
 
+### A denomination missing from the mapping picker
+
+Two different causes, and they look identical from the admin:
+
+1. **The supplier stopped listing it.** Then the watch has already stamped
+   the mapping, or deactivated the SKU and said so in the ops chat.
+2. **Another game took the row.** Until migration 0084 the cache key was
+   `(supplier_slug, kind, external_id)`, which assumed a denomination id is
+   unique across a supplier's whole catalogue. It is not: NOVA calls the
+   55-diamond pack `55_diamonds` in Magic Chess Go Go (RU) and in Mobile
+   Legends (RU) alike, so the two games shared one row and each sync stole it
+   from the other. Measured on production 2026-09-19: NOVA returned 17 offers
+   for `magic_chess_gogo_ru` and the cache held 9, the other eight sitting
+   under `mobile_legends_ru`. `parent_external_id` is part of the key since
+   0084, so this cause is closed — if a denomination is missing now, it is
+   cause 1.
+
 The cached path works **only because the denomination syncers prune** — see
 `integrations.service.prune_catalog_denoms`. Before it existed they upserted
 and never deleted, so a withdrawn pack stayed cached forever. If that pruning
