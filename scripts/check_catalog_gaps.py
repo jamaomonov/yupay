@@ -30,7 +30,7 @@ import re
 from sqlalchemy import select
 from yupay.core.db import get_session_factory
 from yupay.modules.catalog.models import Brand, Product, Sku
-from yupay.modules.integrations.models import SupplierCatalogCache
+from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
 
 # brand slug -> supplier game id, copied from the backfill script. Region is
 # chosen by hand there and the reason is in its docstring.
@@ -50,6 +50,7 @@ PAIRS: dict[str, dict[str, str]] = {
     "honkai-star-rail": {"nova": "honkai_star_rail_global", "gengine": "10"},
     "oxide-survival-island": {"nova": "oxide_survival_island"},
 }
+
 
 def norm(text: str) -> str:
     """Lowercase, collapse non-alphanumerics, and write "30 days" as "30d".
@@ -145,32 +146,61 @@ async def main() -> None:
         total_gaps = 0
         for brand, per_supplier in PAIRS.items():
             skus = (
-                await db.execute(
-                    select(Sku)
-                    .join(Product, Product.id == Sku.product_id)
-                    .join(Brand, Brand.id == Product.brand_id)
-                    .where(Brand.slug == brand)
+                (
+                    await db.execute(
+                        select(Sku)
+                        .join(Product, Product.id == Sku.product_id)
+                        .join(Brand, Brand.id == Product.brand_id)
+                        .where(Brand.slug == brand)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
             ours_titles = {norm(s.denomination) for s in skus if s.denomination}
-            ours_amounts = {
-                amount_key(s.denomination) for s in skus if s.denomination
-            } - {None}
+            ours_amounts = {amount_key(s.denomination) for s in skus if s.denomination} - {None}
 
             # supplier denom -> the suppliers offering it, keyed so the same
             # pack from two suppliers is one line, not two.
             gaps: dict[tuple[str, str], list[tuple[str, object]]] = {}
             for supplier, game_id in per_supplier.items():
-                denoms = (
-                    await db.execute(
-                        select(SupplierCatalogCache).where(
-                            SupplierCatalogCache.supplier_slug == supplier,
-                            SupplierCatalogCache.kind == "game_denom",
-                            SupplierCatalogCache.parent_external_id == game_id,
+                # What an active mapping already points at. Matching titles is
+                # how the *backfill* finds candidates, but it is the wrong
+                # measure of coverage here: a pack reached through an explicit
+                # alias — oxide's "50 + 5 WEB BONUS" for our "55 Coins
+                # (50 + 5)" — is sold, however little its name looks like ours.
+                # Counting those as gaps overstated this report by fifteen.
+                already = {
+                    row.external_variant_id
+                    for row in (
+                        await db.execute(
+                            select(SkuSupplierMapping).where(
+                                SkuSupplierMapping.supplier_slug == supplier,
+                                SkuSupplierMapping.external_product_id == game_id,
+                                SkuSupplierMapping.is_active.is_(True),
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                    if row.external_variant_id
+                }
+                denoms = (
+                    (
+                        await db.execute(
+                            select(SupplierCatalogCache).where(
+                                SupplierCatalogCache.supplier_slug == supplier,
+                                SupplierCatalogCache.kind == "game_denom",
+                                SupplierCatalogCache.parent_external_id == game_id,
+                            )
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
                 for d in denoms:
+                    if d.external_id in already:
+                        continue
                     key = amount_key(d.title)
                     if norm(d.title) in ours_titles or (key is not None and key in ours_amounts):
                         continue
@@ -182,8 +212,7 @@ async def main() -> None:
             print(f"\n{brand}  ({len(skus)} SKUs today, {len(gaps)} not sold)")
             for (amount, unit), sources in sorted(gaps.items()):
                 where = ", ".join(
-                    f"{s}" + (f" ${float(p):.4f}" if p is not None else "")
-                    for s, p, _t in sources
+                    f"{s}" + (f" ${float(p):.4f}" if p is not None else "") for s, p, _t in sources
                 )
                 name = f"{amount.strip()} {unit}".strip()
                 # Their own wording too, not just our computed total: the total
@@ -192,7 +221,7 @@ async def main() -> None:
                 # total once sent me looking for a "55 WEB BONUS" that NOVA
                 # spells "50 + 5 WEB BONUS".
                 raw = {t for _s, _p, t in sources if norm(t) != f"{amount.strip()} {unit}".strip()}
-                suffix = f'   [{" / ".join(sorted(raw))}]' if raw else ""
+                suffix = f"   [{' / '.join(sorted(raw))}]" if raw else ""
                 print(f"    {name:<46} {where}{suffix}")
                 total_gaps += 1
 
@@ -204,14 +233,31 @@ async def main() -> None:
         print("=" * 78)
 
         ours = {game_name(b) for b in (await db.execute(select(Brand.slug))).scalars()}
-        ours |= {game_name(b.replace("-", " ")) for b in list(ours)}
-        mapped_ids = {(s, g) for per in PAIRS.values() for s, g in per.items()}
+        # Every game any active mapping already points at, read from the
+        # database rather than from PAIRS above. PAIRS only covers the brands
+        # this script pairs by hand, so using it here counted Telegram, Steam
+        # and Standoff 2 — all of which we do sell, through mappings PAIRS
+        # never mentions — as games we do not.
+        mapped_ids = {
+            (row.supplier_slug, row.external_product_id)
+            for row in (
+                await db.execute(
+                    select(SkuSupplierMapping).where(SkuSupplierMapping.is_active.is_(True))
+                )
+            )
+            .scalars()
+            .all()
+        }
 
         games = (
-            await db.execute(
-                select(SupplierCatalogCache).where(SupplierCatalogCache.kind == "game")
+            (
+                await db.execute(
+                    select(SupplierCatalogCache).where(SupplierCatalogCache.kind == "game")
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         by_name: dict[str, set[str]] = {}
         titles: dict[str, str] = {}
         for g in games:
