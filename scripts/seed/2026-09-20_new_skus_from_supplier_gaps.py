@@ -11,6 +11,16 @@ because most of what that report lists should *not* be sold:
 * **BP Coins** (Oxide, three) are a second currency and need their own product
   and form field, not a row here.
 
+Two more left after they were already created, on the owner's correction:
+"Bulletproof Case Privileges" and "Composite Case Privileges" are G-Engine's
+names for the packs we already sell as "Bulletproof Case (30 days)" and
+"Composition Case (30 days)". NOVA carries *both* spellings at different
+prices — `bulletproof_case_30d` at $2.1950 and `bulletproof_case_privileges`
+at $2.2746 — which is what made them look like separate products here. The
+duplicates were deleted and the existing SKUs gained the G-Engine mapping
+instead; the rename table in
+`2026-09-19_backfill_nova_gengine_mappings.py` now carries the pair.
+
 What is left is nine plain packs. Margins are the owner's, 2026-09-20: **15 %**
 retail (``margin_percent``) and **6 %** wholesale (``b2b_markup_pct`` — already
 what every neighbouring SKU carries).
@@ -123,30 +133,6 @@ SPECS: tuple[NewSku, ...] = (
         Decimal("154.458600"),
         8,
         {"gengine": ("13", "691")},
-    ),
-    NewSku(
-        "arena_breakout-bulletproof-case-privileges",
-        "Bulletproof Case Privileges",
-        PACKS,
-        "GLOBAL",
-        Decimal("2.274600"),
-        3,
-        {
-            "gengine": ("13", "70"),
-            "nova": ("arena_breakout", "bulletproof_case_privileges"),
-        },
-    ),
-    NewSku(
-        "arena_breakout-composite-case-privileges",
-        "Composite Case Privileges",
-        PACKS,
-        "GLOBAL",
-        Decimal("6.844200"),
-        4,
-        {
-            "gengine": ("13", "71"),
-            "nova": ("arena_breakout", "composite_case_privileges"),
-        },
     ),
     # --- Magic Chess Go Go (RU) ------------------------------------------
     NewSku(

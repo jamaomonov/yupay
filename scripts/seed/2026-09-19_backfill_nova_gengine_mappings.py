@@ -113,6 +113,15 @@ TITLE_ALIASES: dict[str, dict[str, str]] = {
         "Quarterly Premium Battle Pass Bundle Activation Pass Bundle": (
             "Quarterly Premium Battle Pass Bundle"
         ),
+        # G-Engine's name for the two case passes we sell as "(30 days)".
+        # NOVA lists both spellings at different prices — `bulletproof_case_30d`
+        # $2.1950 against `bulletproof_case_privileges` $2.2746 — so these read
+        # as two products until the owner said otherwise on 2026-09-20. The
+        # cheaper `…_30d` rows are already mapped and this script never
+        # overwrites an existing mapping, so the alias only ever reaches
+        # G-Engine, which has no `(30 days)` row at all.
+        "Bulletproof Case (30 days)": "Bulletproof Case Privileges",
+        "Composition Case (30 days)": "Composite Case Privileges",
     },
     "mobile-legends": {"Weekly Diamond Pass": "Weekly Pass"},
     "mobile-legends-ru": {"Weekly Diamond Pass": "Weekly Pass"},
