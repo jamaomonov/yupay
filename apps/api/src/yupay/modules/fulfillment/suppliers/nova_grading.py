@@ -59,6 +59,21 @@ LOW_BALANCE_ERROR = "supplier_low_balance"
 _LOW_BALANCE_WORDS = ("insufficient", "not enough", "too low")
 _LOW_BALANCE_PHRASES = ("insufficient funds", "no funds")
 
+#: Their sentence when the shortfall is **theirs**, not ours: `400 "Service
+#: balance is insufficient to complete this order"`. Observed 2026-09-20 in
+#: NOVA's own dashboard, which refused a $19 Steam top-up while showing a
+#: $112.75 wallet — so it cannot be read as "top up your wallet".
+#:
+#: Both sentences park the order the same way; what differs is the only thing
+#: the operator actually needs, which is whether there is anything for them to
+#: do. Calling "their upstream is dry" a low balance and printing "пополни
+#: счёт" sent a real operator to look at a balance that was already fine.
+_SERVICE_SHORTFALL_PHRASES = ("service balance",)
+
+#: Who is short. ``ours`` is actionable — top up. ``supplier`` is not.
+SHORTFALL_OURS = "ours"
+SHORTFALL_SUPPLIER = "supplier"
+
 _IN_FLIGHT = frozenset(
     {
         "pending",
@@ -188,15 +203,43 @@ def _without_our_inputs(text: str, fields: dict[str, str]) -> str:
     return text
 
 
-def _low_balance_result() -> FulfillResult:
-    """A soft low-balance failure the saga parks in the inbox and alerts on."""
+def _shortfall_side(exc: NovaError) -> str:
+    """Whose balance is short — see :data:`_SERVICE_SHORTFALL_PHRASES`."""
+    text = f"{exc} {exc.body} {exc.code}".lower()
+    if any(phrase in text for phrase in _SERVICE_SHORTFALL_PHRASES):
+        return SHORTFALL_SUPPLIER
+    return SHORTFALL_OURS
+
+
+def _low_balance_result(
+    *, message: str, side: str, our_balance: str | None = None
+) -> FulfillResult:
+    """A soft low-balance failure the saga parks in the inbox and alerts on.
+
+    Carries three things it used to throw away, and the throwing away is why
+    an operator with a funded wallet spent an evening wondering why we said
+    it was empty:
+
+    * ``supplier_message`` — their own sentence, which is the only evidence
+      anyone has about a refusal they cannot reproduce;
+    * ``shortfall`` — whether the missing money is ours or theirs;
+    * ``current_balance`` — what our wallet actually held, so the alert can
+      print a number instead of the ``$?`` it printed before.
+    """
+    extra: dict[str, Any] = {
+        "supplier": "nova",
+        "shortfall": side,
+        "supplier_message": message[:500],
+    }
+    if our_balance is not None:
+        extra["current_balance"] = our_balance
     return FulfillResult(
         outcome="failed",
         external_order_id=None,
         artifact_kind=None,
         artifact=None,
         error=LOW_BALANCE_ERROR,
-        extra_metadata={"supplier": "nova"},
+        extra_metadata=extra,
         # Deliberately unclassified: the order is not finished failing.
         money_outcome=None,
     )
