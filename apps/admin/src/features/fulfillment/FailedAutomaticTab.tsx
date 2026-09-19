@@ -16,6 +16,7 @@ import { useNavigate } from "react-router-dom";
 
 import { ForceCompleteModal } from "./ForceCompleteModal";
 import { failedTasksQuery, selectFailedRows } from "./inboxQueries";
+import { TaskDetailPanel } from "./TaskDetailPanel";
 
 import type { TaskAdminOut, TaskListOut } from "./types";
 
@@ -41,6 +42,11 @@ export function FailedAutomaticTab() {
   const navigate = useNavigate();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [forceCompleteFor, setForceCompleteFor] = useState<TaskAdminOut | null>(null);
+  // The reassign control lives in TaskDetailPanel, which until now was only
+  // reachable from the «Все» tab. An operator who lands here — the tab whose
+  // badge told them something broke — was one tab away from the one action
+  // that fixes a supplier-side failure.
+  const [detailFor, setDetailFor] = useState<TaskAdminOut | null>(null);
 
   // Query + predicate come from ``inboxQueries`` so the Inbox tab badge counts
   // exactly the rows rendered here (manual tasks live in their own tab).
@@ -153,22 +159,33 @@ export function FailedAutomaticTab() {
     {
       key: "actions",
       header: "",
-      render: (t) => {
-        if (t.last_error !== LOW_BALANCE_ERROR) return null;
-        return (
+      render: (t) => (
+        <div className="flex items-center justify-end gap-3">
+          {t.last_error === LOW_BALANCE_ERROR && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setForceCompleteFor(t);
+              }}
+              className="text-xs text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
+            >
+              Завершить вручную
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              setForceCompleteFor(t);
+              setDetailFor(t);
             }}
             className="text-xs text-[var(--text-secondary)] underline-offset-2 hover:text-[var(--text-primary)] hover:underline"
           >
-            Завершить вручную
+            Другой поставщик
           </button>
-        );
-      },
-      className: "w-32 text-right",
+        </div>
+      ),
+      className: "w-56 text-right",
     },
   ];
 
@@ -236,6 +253,17 @@ export function FailedAutomaticTab() {
             void navigate(`/orders/${t.order_id}`);
           }}
         />
+      )}
+
+      {detailFor && (
+        <div className="mt-4">
+          <TaskDetailPanel
+            task={detailFor}
+            onClose={() => {
+              setDetailFor(null);
+            }}
+          />
+        </div>
       )}
 
       {forceCompleteFor && (
