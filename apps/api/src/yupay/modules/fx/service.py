@@ -324,16 +324,22 @@ class FxService:
         base: str,
         quote: str,
         reuse_within_seconds: int | None = None,
+        override_cache: dict[str, ManualOverride | None] | None = None,
     ) -> FxSnapshot:
         """Persist (or reuse) an immutable :class:`FxSnapshot` for an order.
 
         If a recent snapshot for the same pair exists within
         ``reuse_within_seconds`` (default = ``fx_snapshot_max_age_seconds``), we return
         it as-is. Otherwise we fetch a fresh rate and insert a new row.
+
+        ``override_cache``: see :meth:`get_rate` — pass one shared dict across
+        every snapshot taken within one request (e.g. ``pricing.fx_guard
+        .guarded_usd_rate`` called once per variable-amount SKU on a catalog
+        page) so the admin override is read once, not once per call.
         """
         max_age = reuse_within_seconds or self._settings.fx_snapshot_max_age_seconds
         base_u, quote_u = base.upper(), quote.upper()
-        q = await self.get_rate(base_u, quote_u)
+        q = await self.get_rate(base_u, quote_u, override_cache=override_cache)
 
         if max_age > 0:
             stmt = (

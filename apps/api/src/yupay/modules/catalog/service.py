@@ -151,7 +151,12 @@ def _brand_summary(brand: Brand, locale: str, rating: BrandRatingOut | None = No
 
 
 async def _resolve_variable_price(
-    db: AsyncSession, sku: Sku, cu: str, *, rate_cache: dict[str, Decimal | None]
+    db: AsyncSession,
+    sku: Sku,
+    cu: str,
+    *,
+    rate_cache: dict[str, Decimal | None],
+    override_cache: dict[str, ManualOverride | None] | None = None,
 ) -> PriceOut | None:
     """Display price for a variable-amount SKU: the guarded rate times the
     SKU's own margin multiplier, applied to one dollar — deliberately the
@@ -174,12 +179,18 @@ async def _resolve_variable_price(
     rate check (each a handful of SQL statements) once per SKU. Both hits and
     rejections are cached: a currency present in the dict (even mapped to
     ``None``) is never re-queried within the same request.
+
+    ``override_cache``: threaded straight through to ``guarded_usd_rate``
+    (see :func:`_resolve_price`) so a page mixing variable- and fixed-price
+    SKUs reads the admin manual-override key once per request rather than
+    once per variable-amount SKU on top of the once-per-fixed-price-SKU
+    reads ``_resolve_fixed_price`` already collapsed.
     """
     if cu in rate_cache:
         market = rate_cache[cu]
     else:
         try:
-            market = await guarded_usd_rate(db, quote=cu)
+            market = await guarded_usd_rate(db, quote=cu, override_cache=override_cache)
         except RateRejected:
             market = None
         rate_cache[cu] = market
@@ -224,7 +235,9 @@ async def _resolve_price(
     if sku.variable_amount:
         if cu == "USD":
             return None
-        return await _resolve_variable_price(db, sku, cu, rate_cache=rate_cache)
+        return await _resolve_variable_price(
+            db, sku, cu, rate_cache=rate_cache, override_cache=override_cache
+        )
 
     if cu == "USD":
         return PriceOut(amount=sku.price_usd, currency="USD", source="usd")
