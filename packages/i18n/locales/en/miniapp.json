@@ -79,7 +79,7 @@
   "wallet.promoUsed": "This code is already used or unavailable",
   "wallet.promoAlreadyUsed": "You have already redeemed this promo code",
   "wallet.promoExpired": "This promo code has expired",
-  "wallet.promoExhausted": "This promo code has run out of redemptions",
+  "wallet.promoExhausted": "This promo code is used up",
   "wallet.promoInactive": "This promo code is no longer active",
   "wallet.promoError": "Couldn't apply the promo code",
   "wallet.tx.adminAdjust": "Admin adjustment",

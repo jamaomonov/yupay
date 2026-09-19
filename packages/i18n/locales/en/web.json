@@ -841,7 +841,7 @@
     "promoUsed": "This code is already used or unavailable",
     "promoAlreadyUsed": "You have already redeemed this promo code",
     "promoExpired": "This promo code has expired",
-    "promoExhausted": "This promo code has run out of redemptions",
+    "promoExhausted": "This promo code is used up",
     "promoInactive": "This promo code is no longer active",
     "promoError": "Couldn't apply the promo code"
   },
