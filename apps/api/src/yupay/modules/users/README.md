@@ -28,7 +28,7 @@ from yupay.modules.users.api import (
 - `telegram_links` — 1:1 with `users` at MVP, kept as a separate table to make
   "link another Telegram" trivially additive later.
 - `steam_links` — 1:1 with `users`, same shape as `telegram_links`; Steam's OpenID
-  hands back only a steamid64, no email, so the link *is* the account identity.
+  hands back only a steamid64, no email, so the link _is_ the account identity.
 
 ## Identity-field guards (`identity_guard.py`)
 
@@ -46,9 +46,13 @@ site (`users.service.upsert_user_by_telegram`/`upsert_user_by_steam`,
 
 `upsert_user_by_steam` guards `avatar_url` once and reuses the same value for both
 `steam_links.avatar_url` and `users.photo_url` (they write in the same flush, so
-guarding only one still leaves the INSERT/UPDATE able to fail on the other).
-`steam_links.avatar_url` itself stays `varchar(1024)`, unlike `users.photo_url` —
-Steam's avatar URLs are short, fixed-format CDN links, not open-ended text.
+guarding only one still leaves the INSERT/UPDATE able to fail on the other), and
+guards `persona_name` once the same way for `steam_links.persona_name` and
+`users.display_name`. `steam_links.avatar_url` is `text` too (migration 0083 widened
+it alongside `users.photo_url`, not for symmetry): "Steam's avatar URLs are short,
+fixed-format CDN links" was exactly what was true of Google's avatar URLs until one
+exceeded 1024 characters and cost a registration — leaving the sibling column narrow
+would have kept that same failure reachable through Steam instead.
 
 ## Concurrent first-sight logins (SAVEPOINT, not 500)
 

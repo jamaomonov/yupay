@@ -44,6 +44,40 @@ async def get_user_by_telegram_id(session: AsyncSession, tg_user_id: int) -> Use
     return (await session.execute(stmt)).scalar_one_or_none()
 
 
+def _is_unique_violation(exc: IntegrityError) -> bool:
+    """Whether ``exc`` is a UNIQUE-constraint violation (Postgres SQLSTATE
+    ``23505``), not some other integrity failure.
+
+    The recovery below re-reads and returns the concurrent winner's row on
+    ``IntegrityError`` — correct only for the specific unique-index race
+    ``upsert_user_by_telegram``/``upsert_user_by_steam`` exist to handle.
+    Catching bare ``IntegrityError`` would also absorb a NOT NULL or FK
+    violation from a real bug, as long as the identity row happened to
+    already exist for an unrelated reason (the re-read's ``if … is None:
+    raise`` only catches the case where it does *not*). Checking the
+    SQLSTATE narrows the catch to the one failure the recovery is designed
+    for, and re-raises everything else.
+    """
+    return getattr(exc.orig, "sqlstate", None) == "23505"
+
+
+def _normalised_language_code(code: str | None) -> str | None:
+    """Fit a raw IETF language tag into ``telegram_links.language_code``'s
+    ``varchar(8)``, the same primary-subtag-only truncation ``locale`` above
+    already applies before it reaches ``users.locale`` (also ``varchar(8)``).
+
+    Telegram hands back whatever the client reports, unvalidated — a tag
+    like ``zh-Hant-TW`` is 10 characters and would fail the INSERT/UPDATE on
+    this column in the same flush that writes the (already-guarded)
+    ``locale``. Returns ``None`` for absent/blank input; the column is
+    nullable, unlike ``users.locale``, so there is no default to fall back
+    to here.
+    """
+    if not code:
+        return None
+    return code.split("-")[0][:8] or None
+
+
 async def upsert_user_by_telegram(
     session: AsyncSession,
     tg_user: TelegramUser,
@@ -85,7 +119,7 @@ async def upsert_user_by_telegram(
             tg_username=tg_user.username,
             first_name=tg_user.first_name,
             last_name=tg_user.last_name,
-            language_code=tg_user.language_code,
+            language_code=_normalised_language_code(tg_user.language_code),
             is_premium=tg_user.is_premium,
         )
         try:
@@ -98,7 +132,9 @@ async def upsert_user_by_telegram(
                 session.add(user)
                 session.add(new_link)
                 await session.flush()
-        except IntegrityError:
+        except IntegrityError as exc:
+            if not _is_unique_violation(exc):
+                raise
             existing = await get_user_by_telegram_id(session, tg_user.id)
             if existing is None:
                 raise
@@ -110,7 +146,7 @@ async def upsert_user_by_telegram(
         link.tg_username = tg_user.username
         link.first_name = tg_user.first_name
         link.last_name = tg_user.last_name
-        link.language_code = tg_user.language_code
+        link.language_code = _normalised_language_code(tg_user.language_code)
         link.is_premium = tg_user.is_premium
         link.last_seen_at = now()
     photo_url = safe_avatar_url(tg_user.photo_url)
@@ -158,22 +194,33 @@ async def upsert_user_by_steam(
     past 1024 characters and cost somebody their registration. Leaving the
     sibling at ``varchar(1024)`` would have kept a live gap between the
     guard's ceiling and the column's, reachable by a value the guard accepts.
+
+    ``persona_name`` gets the identical treatment for the identical reason:
+    ``safe_display_name(persona_name)`` goes onto ``users.display_name``,
+    but the raw ``persona_name`` — straight from the Steam Web API, the same
+    class of unvalidated third-party field ``avatar_url`` is — used to go
+    onto ``steam_links.persona_name`` unguarded, in the same flush. A
+    personaname over 255 characters would truncate harmlessly into
+    ``display_name`` and then fail the INSERT/UPDATE on its sibling column.
+    Guarded once here and reused at both write sites below, same shape as
+    ``avatar``.
     """
     avatar = safe_avatar_url(avatar_url)
+    name = safe_display_name(persona_name)
     link = await _get_steam_link(session, steam_id)
     if link is None:
         user = User(
             id=new_id(),
             email=None,
             locale="ru",
-            display_name=safe_display_name(persona_name),
+            display_name=name,
             photo_url=avatar,
         )
         new_link = SteamLink(
             id=new_id(),
             user_id=user.id,
             steam_id=steam_id,
-            persona_name=persona_name,
+            persona_name=name,
             avatar_url=avatar,
         )
         try:
@@ -183,14 +230,16 @@ async def upsert_user_by_steam(
                 session.add(user)
                 session.add(new_link)
                 await session.flush()
-        except IntegrityError:
+        except IntegrityError as exc:
+            if not _is_unique_violation(exc):
+                raise
             link = await _get_steam_link(session, steam_id)
             if link is None:
                 raise
         else:
             return user
 
-    link.persona_name = persona_name or link.persona_name
+    link.persona_name = name or link.persona_name
     link.avatar_url = avatar or link.avatar_url
     link.last_seen_at = now()
     user = link.user

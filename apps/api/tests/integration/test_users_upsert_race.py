@@ -99,9 +99,14 @@ async def test_concurrent_first_sight_telegram_login_does_not_500(
                 .where(TelegramLink.tg_user_id == tg_id)
             )
         ).scalar_one()
-        user_count = (
-            await check.execute(select(func.count()).select_from(User).where(User.id == a_id))
-        ).scalar_one()
+        # Global count, not `.where(User.id == a_id)` -- `id` is the primary
+        # key, so a count scoped to it is 0 or 1 by construction and would
+        # pass even if the savepoint failed to contain the loser's `users`
+        # INSERT and left an orphan row with a *different* id sitting in the
+        # table. Tables are truncated per test (see `db_engine`), so the
+        # global count is exactly "how many users rows exist" -- the thing
+        # the savepoint exists to keep at one.
+        user_count = (await check.execute(select(func.count()).select_from(User))).scalar_one()
     assert link_count == 1
     assert user_count == 1
 
@@ -158,8 +163,8 @@ async def test_concurrent_first_sight_steam_login_does_not_500(
                 select(func.count()).select_from(SteamLink).where(SteamLink.steam_id == steam_id)
             )
         ).scalar_one()
-        user_count = (
-            await check.execute(select(func.count()).select_from(User).where(User.id == a_id))
-        ).scalar_one()
+        # See the Telegram test above for why this is a global count, not
+        # `.where(User.id == a_id)`.
+        user_count = (await check.execute(select(func.count()).select_from(User))).scalar_one()
     assert link_count == 1
     assert user_count == 1
