@@ -224,24 +224,32 @@ async def main() -> None:
     async with factory() as db:
         for brand, per_supplier in PAIRS.items():
             skus = (
-                await db.execute(
-                    select(Sku)
-                    .join(Product, Product.id == Sku.product_id)
-                    .join(Brand, Brand.id == Product.brand_id)
-                    .where(Brand.slug == brand)
+                (
+                    await db.execute(
+                        select(Sku)
+                        .join(Product, Product.id == Sku.product_id)
+                        .join(Brand, Brand.id == Product.brand_id)
+                        .where(Brand.slug == brand)
+                    )
                 )
-            ).scalars().all()
+                .scalars()
+                .all()
+            )
 
             for supplier, game_id in per_supplier.items():
                 denoms = (
-                    await db.execute(
-                        select(SupplierCatalogCache).where(
-                            SupplierCatalogCache.supplier_slug == supplier,
-                            SupplierCatalogCache.kind == "game_denom",
-                            SupplierCatalogCache.parent_external_id == game_id,
+                    (
+                        await db.execute(
+                            select(SupplierCatalogCache).where(
+                                SupplierCatalogCache.supplier_slug == supplier,
+                                SupplierCatalogCache.kind == "game_denom",
+                                SupplierCatalogCache.parent_external_id == game_id,
+                            )
                         )
                     )
-                ).scalars().all()
+                    .scalars()
+                    .all()
+                )
                 by_title: dict[str, SupplierCatalogCache] = {}
                 by_amount: dict[tuple[int, str], list[SupplierCatalogCache]] = {}
                 for d in denoms:
@@ -269,16 +277,20 @@ async def main() -> None:
                         # lose the `created_at` tie-break. Refuse it and say so
                         # rather than trust the survey that said none exist.
                         incumbent = (
-                            await db.execute(
-                                select(SkuSupplierMapping).where(
-                                    SkuSupplierMapping.sku_id == sku.id,
-                                    SkuSupplierMapping.is_active.is_(True),
-                                    SkuSupplierMapping.supplier_slug.notin_(
-                                        tuple(RESERVE_SUPPLIERS)
-                                    ),
+                            (
+                                await db.execute(
+                                    select(SkuSupplierMapping).where(
+                                        SkuSupplierMapping.sku_id == sku.id,
+                                        SkuSupplierMapping.is_active.is_(True),
+                                        SkuSupplierMapping.supplier_slug.notin_(
+                                            tuple(RESERVE_SUPPLIERS)
+                                        ),
+                                    )
                                 )
                             )
-                        ).scalars().first()
+                            .scalars()
+                            .first()
+                        )
                         if incumbent is None:
                             refused.append((brand, supplier, sku.denomination or sku.sku_code))
                             continue
@@ -338,7 +350,7 @@ async def main() -> None:
         print(f"  -  {supplier:<8} {brand:<24} {denom}")
 
     if not APPLY:
-        print(f"\ndry run — nothing written. Re-run with APPLY=1.")
+        print("\ndry run — nothing written. Re-run with APPLY=1.")
         return
 
     # --- 3. Write.
