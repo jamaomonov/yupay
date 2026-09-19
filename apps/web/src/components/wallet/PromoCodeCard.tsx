@@ -7,8 +7,7 @@ import { useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
 import { promoErrorKey } from "@/lib/promo";
-import { formatUzs } from "@/lib/seo";
-import { redeemPromo } from "@/lib/wallet";
+import { formatLedgerAmount, redeemPromo } from "@/lib/wallet";
 import { toast } from "@/store/useToast";
 
 export interface PromoCodeCardProps {
@@ -36,12 +35,18 @@ export function PromoCodeCard({ locale }: PromoCodeCardProps) {
     mutationFn: (value: string) => redeemPromo(value, crypto.randomUUID()),
     onSuccess: (data) => {
       setCode("");
-      // Formatted the same way the balance card above renders its figure —
-      // not a raw `${amount} ${currency}` concatenation, which is the bug
-      // the Mini App fixed on this exact toast (2026-09-04 review).
+      // `formatLedgerAmount`, not `formatUzs` — the latter hardcodes the soum
+      // word. The wallet is UZS-only in practice so the two agree on every
+      // credit issued today, which is exactly why the non-UZS case needs a
+      // test rather than an eyeball: nothing in `PromoCreateIn` stops an
+      // admin issuing a promo in another currency, the response carries its
+      // own, and a credit labelled in the wrong one is a money-display bug
+      // only the customer would ever notice. Not a raw
+      // `${amount} ${currency}` concatenation either — that was the bug the
+      // Mini App fixed on this exact toast (2026-09-04 review).
       toast.success(
         t("promoSuccess", {
-          amount: formatUzs(locale, Math.round(Number.parseFloat(data.amount) || 0)),
+          amount: formatLedgerAmount(locale, Number.parseFloat(data.amount) || 0, data.currency),
         }),
       );
       // The hero balance card sits right above — refresh it immediately.

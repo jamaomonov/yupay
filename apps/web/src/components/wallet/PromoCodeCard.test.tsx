@@ -7,6 +7,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PromoCodeCard } from "./PromoCodeCard";
 
 import { formatUzs } from "@/lib/seo";
+import { formatLedgerAmount } from "@/lib/wallet";
 import { useToast } from "@/store/useToast";
 
 /**
@@ -188,4 +189,24 @@ it("mints a fresh Idempotency-Key for every attempt, never a reused one", async 
   expect(key1).toBeTruthy();
   expect(key2).toBeTruthy();
   expect(key1).not.toBe(key2);
+});
+
+it("labels a non-UZS credit in its own currency, not in soum", async () => {
+  // The wallet is UZS-only in practice, so `formatUzs` and
+  // `formatLedgerAmount` agree on every credit issued today — which is
+  // exactly why this needs a test rather than an eyeball. Nothing in
+  // `PromoCreateIn` stops an admin issuing a promo in another currency, and
+  // the response carries its own. A credit labelled in the wrong one is a
+  // money-display bug only the customer would ever notice.
+  stubRedeem({ code: "USDGIFT", amount: "12.50", currency: "USD" }, true, 200);
+
+  renderCard();
+  apply("usdgift");
+
+  await waitFor(() => {
+    expect(useToast.getState().toasts).toHaveLength(1);
+  });
+  expect(useToast.getState().toasts[0]?.message).toBe(
+    `promoSuccess:${JSON.stringify({ amount: formatLedgerAmount("ru", 12.5, "USD") })}`,
+  );
 });
