@@ -57,6 +57,12 @@ export function PromoCodeCard({ locale }: PromoCodeCardProps) {
     },
     onError: (err) => {
       toast.error(t(promoErrorKey(err)));
+      // A fresh key rides every attempt (agreed design, see above), so a
+      // redeem that committed but whose response was lost answers 409
+      // `already_redeemed` on retry — truthful, and it can't double-credit,
+      // but the balance on screen would otherwise disagree with reality
+      // until the next window-focus refetch. Refresh it here too.
+      void qc.invalidateQueries({ queryKey: ["wallet"] });
     },
   });
 
