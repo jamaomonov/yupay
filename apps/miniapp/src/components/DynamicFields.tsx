@@ -35,14 +35,22 @@ import {
 import { haptic } from "@/lib/telegram";
 
 /** Picks the active-locale value out of a server-provided multilingual map,
- *  falling back to the first available translation, then to ``fallback``. */
+ *  falling back to the first available *non-empty* translation, then to
+ *  ``fallback``. A field's translation form always submits all three locale
+ *  keys (see HelpImagesEditor), so an untouched locale arrives as `""`, not
+ *  as a missing key — plain `??` doesn't fall back on that (`""` isn't
+ *  nullish), which used to render a silently empty caption/label for any
+ *  locale the operator hadn't typed into. */
 export function pickLocalized(
   map: Record<string, string> | null | undefined,
   locale: Locale,
   fallback = "",
 ): string {
   if (!map) return fallback;
-  return map[locale] ?? Object.values(map)[0] ?? fallback;
+  const byLocale = map[locale];
+  if (byLocale && byLocale.trim().length > 0) return byLocale;
+  const firstNonEmpty = Object.values(map).find((v) => v.trim().length > 0);
+  return firstNonEmpty ?? fallback;
 }
 
 /** One `help_images` entry, localized for display: the caption (when the
@@ -254,14 +262,20 @@ function DynamicField({
       )}
 
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
-        {/* Capped and scrollable: a phone screenshot is portrait, and three
-            of them won't fit an uncapped sheet — this keeps the close
-            affordance reachable instead of letting the sheet grow past the
-            viewport. */}
+        {/* Capped: a phone screenshot is portrait, and three of them won't
+            fit an uncapped sheet. Scrolling itself — and keeping the close
+            button reachable regardless of how tall the content gets — is
+            `SheetContent`'s own job now (it wraps `children` in a scrolling
+            body separate from the close button), so this only caps height. */}
         <SheetContent
           side="bottom"
-          className="max-h-[80vh] overflow-y-auto rounded-t-3xl"
+          className="max-h-[80vh] rounded-t-3xl"
           id={helpId}
+          // Radix warns "Missing Description or aria-describedby" when no
+          // `SheetDescription` renders — true here for an images-only field
+          // (no `help` text). Explicitly opting out silences it instead of
+          // conjuring a description that doesn't exist.
+          {...(help ? {} : { "aria-describedby": undefined })}
         >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
@@ -277,7 +291,7 @@ function DynamicField({
           {images.length > 0 && (
             <ol className="mt-4 flex flex-col gap-4">
               {images.map((img, i) => (
-                <li key={img.url} className="flex flex-col gap-2">
+                <li key={`${String(i)}-${img.url}`} className="flex flex-col gap-2">
                   <div className="flex items-center gap-2">
                     <span
                       className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
@@ -298,7 +312,11 @@ function DynamicField({
                   <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-white/10 bg-white/5">
                     <SafeImage
                       src={img.url}
-                      alt={img.alt}
+                      // A visible caption already says what the step is;
+                      // repeating it as alt would have a screen reader read
+                      // it twice. Keep the "Step N of M" alt only when there
+                      // is no caption shown next to the image.
+                      alt={img.caption ? "" : img.alt}
                       className="h-full w-full object-contain"
                     />
                   </div>

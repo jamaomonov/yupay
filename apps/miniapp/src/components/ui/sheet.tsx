@@ -69,14 +69,21 @@ const SheetContent = React.forwardRef<
       <SheetOverlay />
       <SheetPrimitive.Content
         ref={ref}
-        className={cn(sheetVariants({ side }), className)}
+        // `flex flex-col` plus the wrapper below keeps the close button out
+        // of any scrolling area a caller adds via `className` (e.g. a
+        // `max-h-[80vh] overflow-y-auto` help sheet full of screenshots) —
+        // an absolutely-positioned child of a scroll container scrolls away
+        // with the content, same failure mode fixed in WhereToFindModal on
+        // the web storefront. A caller with no scrolling content at all
+        // (most sheets) sizes to fit exactly as before.
+        className={cn(sheetVariants({ side }), "flex flex-col", className)}
         {...props}
       >
         <SheetPrimitive.Close className="ring-offset-background focus:ring-ring data-[state=open]:bg-secondary absolute right-4 top-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:pointer-events-none">
           <X className="h-4 w-4" />
           <span className="sr-only">{t("common.close")}</span>
         </SheetPrimitive.Close>
-        {children}
+        <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
       </SheetPrimitive.Content>
     </SheetPortal>
   );

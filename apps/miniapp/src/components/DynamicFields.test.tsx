@@ -54,6 +54,21 @@ describe("resolveHelpImages", () => {
     expect(resolveHelpImages(images, "uz")[0]?.caption).toBe("Шаг");
   });
 
+  test("falls back past an explicitly empty caption for the active locale", () => {
+    // HelpImagesEditor always writes all three locale keys (`caption: { ru:
+    // "", en: "", uz: "" }`), so an untouched locale arrives as `""`, not a
+    // missing key. A plain `??` chain doesn't fall back on that — a
+    // Russian-only caption used to render as no caption at all on EN/UZ.
+    const images: HelpImage[] = [
+      {
+        url: "https://cdn.yupay.uz/help/1.png",
+        caption: { ru: "Откройте профиль", en: "", uz: "" },
+      },
+    ];
+    expect(resolveHelpImages(images, "en")[0]?.caption).toBe("Откройте профиль");
+    expect(resolveHelpImages(images, "uz")[0]?.caption).toBe("Откройте профиль");
+  });
+
   test("returns an empty list for null, undefined, or empty input", () => {
     expect(resolveHelpImages(null, "ru")).toEqual([]);
     expect(resolveHelpImages(undefined, "ru")).toEqual([]);
