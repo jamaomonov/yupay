@@ -204,4 +204,34 @@ describe("apiFetch", () => {
     const err = await apiFetch("/promo/redeem", { anonymous: true }).catch((e: unknown) => e);
     expect(err).toMatchObject({ status: 409, code: undefined });
   });
+
+  it("ignores a non-string `code` rather than trusting the body's shape", async () => {
+    // The guard is `typeof body.code === "string"` — a body that violates the
+    // contract (a numeric code, say) must not slip through as if it were one.
+    fetchMock.mockResolvedValueOnce(jsonResponse(409, { detail: "conflict", code: 42 }));
+
+    const err = await apiFetch("/promo/redeem", { anonymous: true }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, code: undefined });
+  });
+
+  it("surfaces the nested `extra` object a raiser's `extra=` kwarg produces", async () => {
+    // `ConflictError("order is not awaiting payment", extra={"status": ...})`
+    // in `payments/service.py` — the kwarg is literally named `extra`, so it
+    // nests under that key on the body rather than merging at the top level
+    // (contrast `code=` above). `isOrderNotAwaitingPaymentConflict` in
+    // `gift-checkout.ts` reads exactly this shape from its own raw-fetch
+    // path; this pins that `apiFetch` now carries the same field.
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(409, {
+        type: "https://app.yupay.uz/errors/conflict",
+        title: "Conflict",
+        status: 409,
+        detail: "order is not awaiting payment",
+        extra: { status: "expired" },
+      }),
+    );
+
+    const err = await apiFetch("/payments/intents", { anonymous: true }).catch((e: unknown) => e);
+    expect(err).toMatchObject({ status: 409, extra: { status: "expired" } });
+  });
 });

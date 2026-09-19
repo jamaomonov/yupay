@@ -100,9 +100,8 @@ export class ApiError extends Error {
      * nested under `extra`: `app_error_handler` does `body.update(exc.extra)`,
      * and `code` is just another key inside that `extra` dict. `undefined`
      * for non-JSON bodies or bodies without a `code` field. Callers that need
-     * to tell refusals of the same status apart — promo redeem's
-     * `already_redeemed` vs `expired` vs `exhausted` vs `inactive`, all 409s
-     * — read this rather than matching `detail` text (see `lib/promo.ts`).
+     * to tell refusals of the same status apart read this rather than
+     * matching `detail` text — see `lib/promo-redeem.ts` for the mapping.
      */
     public code?: string,
   ) {
@@ -207,18 +206,22 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
   if (!res.ok) {
     let type: string | undefined;
     let detail: string | undefined;
+    let extra: Record<string, unknown> | undefined;
     let code: string | undefined;
     try {
       const body: unknown = await res.json();
       if (body && typeof body === "object") {
         if ("type" in body && typeof body.type === "string") type = body.type;
         if ("detail" in body && typeof body.detail === "string") detail = body.detail;
+        if ("extra" in body && body.extra && typeof body.extra === "object") {
+          extra = body.extra as Record<string, unknown>;
+        }
         if ("code" in body && typeof body.code === "string") code = body.code;
       }
     } catch {
-      /* non-JSON or empty error body — leave all three undefined */
+      /* non-JSON or empty error body — leave all four undefined */
     }
-    throw new ApiError(res.status, path, type, detail, undefined, code);
+    throw new ApiError(res.status, path, type, detail, extra, code);
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;
