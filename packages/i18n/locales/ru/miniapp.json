@@ -39,6 +39,7 @@
   "field.whereToFind": "Где найти?",
   "field.whereToFindLabel": "Где найти {label}",
   "field.whereToFindTitle": "Где найти «{label}»",
+  "field.whereToFindImageAlt": "Шаг {index} из {total}",
   "field.clear": "Очистить",
   "field.lastTime": "Прошлый раз",
   "field.noOptions": "Опций пока нет",

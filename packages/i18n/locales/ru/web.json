@@ -258,6 +258,7 @@
     "whereToFind": "Где найти ID",
     "whereToFindGeneric": "Где найти?",
     "whereToFindTitle": "Где найти «{label}»",
+    "whereToFindImageAlt": "Шаг {index} из {total}",
     "amountLabel": "Сумма в долларах",
     "amountPlaceholder": "Например, 10",
     "amountRequired": "Введите сумму",

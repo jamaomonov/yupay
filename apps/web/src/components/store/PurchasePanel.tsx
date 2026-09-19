@@ -11,9 +11,9 @@ import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useStat
 
 import { ConfirmPurchaseModal } from "./ConfirmPurchaseModal";
 import { type AppliedPromo, PromoField } from "./PromoField";
-import { WhereToFindModal } from "./WhereToFindModal";
+import { WhereToFindModal, type WhereToFindImage } from "./WhereToFindModal";
 
-import type { FormField, ProductDetail, SkuOut } from "@/lib/catalog";
+import type { FormField, HelpImage, ProductDetail, SkuOut } from "@/lib/catalog";
 import type { PlayerCheckResult } from "@/lib/player-check";
 
 import { WalletMark } from "@/components/icons/WalletMark";
@@ -151,6 +151,30 @@ function sameQuestion(a: Question, b: Question): boolean {
   return a.brandSlug === b.brandSlug && a.playerId === b.playerId && a.serverId === b.serverId;
 }
 
+/** Localizes a field's `help_images` for the "где найти" modal: each image's
+ *  caption becomes its visible caption and its alt (WCAG 1.1.1 — never
+ *  empty), falling back to a "step N of M" phrase when the field carries no
+ *  caption for the active locale. Never assumes the list is non-empty or
+ *  that any caption is present. */
+function whereToFindImages(
+  images: HelpImage[] | null | undefined,
+  label: (m: Record<string, string> | null | undefined) => string,
+  t: (key: string, values?: Record<string, string>) => string,
+): WhereToFindImage[] {
+  const list = images ?? [];
+  return list.map((img, i) => {
+    const caption = img.caption ? label(img.caption) : "";
+    return {
+      url: img.url,
+      caption: caption.length > 0 ? caption : null,
+      alt:
+        caption.length > 0
+          ? caption
+          : t("whereToFindImageAlt", { index: String(i + 1), total: String(list.length) }),
+    };
+  });
+}
+
 /**
  * The checkable player-id field: a pill input paired with an advisory
  * nickname lookup (`f.check` on the catalog schema). Everything about
@@ -170,6 +194,7 @@ function CheckablePlayerField({
   serverId,
   serverLabel,
   help,
+  images,
   placeholder,
   check,
   onCheckResult,
@@ -188,6 +213,11 @@ function CheckablePlayerField({
    *  for this check" and as the text for the "fill it in first" hint below. */
   serverLabel: string | null;
   help: string | null;
+  /** Localized "где найти" step images (already alt/caption-resolved by the
+   *  panel) — empty when the field carries none. A field may have text,
+   *  images, or both, so the "где найти" button opens whenever either is
+   *  non-empty, never only on `help`. */
+  images: WhereToFindImage[];
   placeholder: string;
   /** The verdict that currently applies to `value` under `brandSlug`, or
    *  `null` when none does (`currentCheck`). Handed down rather than kept
@@ -233,6 +263,9 @@ function CheckablePlayerField({
   // an unnamed "edit text" and the checkout cannot be completed by voice or
   // screen reader.
   const fieldId = useId();
+  // A field may carry text, images, or both — the "где найти" affordance
+  // opens on either, never only on `help`.
+  const hasHelp = (help !== null && help.length > 0) || images.length > 0;
   const blocker = checkBlocker({
     value,
     pattern,
@@ -366,9 +399,9 @@ function CheckablePlayerField({
             onChange={(e) => {
               onChange(e.target.value);
             }}
-            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim rounded-btn h-[46px] w-full border pl-4 text-[15px] outline-none transition ${help ? "pr-11" : "pr-4"}`}
+            className={`border-border-2 bg-card focus:border-primary/60 placeholder:text-tx-dim rounded-btn h-[46px] w-full border pl-4 text-[15px] outline-none transition ${hasHelp ? "pr-11" : "pr-4"}`}
           />
-          {help && (
+          {hasHelp && (
             <button
               type="button"
               onClick={() => {
@@ -403,11 +436,12 @@ function CheckablePlayerField({
           {checking ? t("checking") : t("check")}
         </button>
       </div>
-      {help && (
+      {hasHelp && (
         <WhereToFindModal
           open={helpOpen}
           title={t("whereToFind")}
-          body={help}
+          body={help ?? ""}
+          images={images}
           closeLabel={t("close")}
           onClose={closeHelp}
         />
@@ -450,6 +484,7 @@ function PlainField({
   labelText,
   placeholder,
   help,
+  images,
   options,
   t,
 }: {
@@ -460,11 +495,15 @@ function PlainField({
   labelText: string;
   placeholder: string;
   help: string | null;
+  /** Localized "где найти" step images — see `CheckablePlayerField`'s prop
+   *  of the same name. */
+  images: WhereToFindImage[];
   options: { value: string; text: string }[];
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   const [helpOpen, setHelpOpen] = useState(false);
   const fieldId = useId();
+  const hasHelp = (help !== null && help.length > 0) || images.length > 0;
 
   return (
     <div>
@@ -473,7 +512,7 @@ function PlainField({
           {labelText}
           {required && <span className="text-primary"> *</span>}
         </label>
-        {help && (
+        {hasHelp && (
           <button
             type="button"
             onClick={() => {
@@ -520,11 +559,12 @@ function PlainField({
           className="border-border bg-card focus:border-primary rounded-btn h-[46px] w-full border px-3.5 text-[15px] outline-none transition"
         />
       )}
-      {help && (
+      {hasHelp && (
         <WhereToFindModal
           open={helpOpen}
           title={t("whereToFindTitle", { label: labelText })}
-          body={help}
+          body={help ?? ""}
+          images={images}
           closeLabel={t("close")}
           onClose={() => {
             setHelpOpen(false);
@@ -1869,6 +1909,7 @@ export function PurchasePanel({
                           : null
                       }
                       help={f.help_text ? label(f.help_text) : null}
+                      images={whereToFindImages(f.help_images, label, t)}
                       placeholder={f.placeholder ? label(f.placeholder) : t("playerIdPlaceholder")}
                       check={currentFieldCheck(f)}
                       onCheckResult={(verdict) => {
@@ -1892,6 +1933,7 @@ export function PurchasePanel({
                       labelText={label(f.label)}
                       placeholder={label(f.placeholder)}
                       help={f.help_text ? label(f.help_text) : null}
+                      images={whereToFindImages(f.help_images, label, t)}
                       options={
                         f.options?.map((o) => ({ value: o.value, text: label(o.label) })) ?? []
                       }

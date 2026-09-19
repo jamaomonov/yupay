@@ -10,10 +10,11 @@
 import { Check, HelpCircle, History, Loader2, X } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-import type { FormField } from "@/lib/catalog";
+import type { FormField, HelpImage } from "@/lib/catalog";
 import type { PlayerCheckResult } from "@/lib/player-check";
 import type { Locale } from "@yupay/i18n";
 
+import { SafeImage } from "@/components/ui/safe-image";
 import {
   Sheet,
   SheetContent,
@@ -22,6 +23,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
+import { lookup } from "@/lib/i18n/core";
 import {
   canCheck,
   checkUnavailable,
@@ -41,6 +43,36 @@ export function pickLocalized(
 ): string {
   if (!map) return fallback;
   return map[locale] ?? Object.values(map)[0] ?? fallback;
+}
+
+/** One `help_images` entry, localized for display: the caption (when the
+ *  field has one for this locale) becomes both the visible caption text and
+ *  the image's alt; with none, `alt` falls back to a "step N of M" phrase so
+ *  it is never empty (WCAG 1.1.1). Kept as a plain function — no React, no
+ *  `useT()` — so it is unit-testable in this app's node test env the same
+ *  way `pickLocalized` is. */
+export interface ResolvedHelpImage {
+  url: string;
+  alt: string;
+  caption: string | null;
+}
+
+export function resolveHelpImages(
+  images: HelpImage[] | null | undefined,
+  locale: Locale,
+): ResolvedHelpImage[] {
+  const list = images ?? [];
+  return list.map((img, i) => {
+    const caption = pickLocalized(img.caption, locale, "").trim();
+    return {
+      url: img.url,
+      caption: caption.length > 0 ? caption : null,
+      alt:
+        caption.length > 0
+          ? caption
+          : lookup(locale, "field.whereToFindImageAlt", { index: i + 1, total: list.length }),
+    };
+  });
 }
 
 export interface DynamicFieldsProps {
@@ -151,7 +183,9 @@ function DynamicField({
   const label = pickLocalized(field.label, locale, field.key);
   const placeholder = pickLocalized(field.placeholder ?? null, locale, "");
   const help = pickLocalized(field.help_text ?? null, locale, "");
-  const hasHelp = help.length > 0;
+  const images = resolveHelpImages(field.help_images, locale);
+  // A field may carry text, images, or both — the sheet opens on either.
+  const hasHelp = help.length > 0 || images.length > 0;
   const required = field.required;
 
   return (
@@ -220,16 +254,58 @@ function DynamicField({
       )}
 
       <Sheet open={helpOpen} onOpenChange={setHelpOpen}>
-        <SheetContent side="bottom" className="rounded-t-3xl" id={helpId}>
+        {/* Capped and scrollable: a phone screenshot is portrait, and three
+            of them won't fit an uncapped sheet — this keeps the close
+            affordance reachable instead of letting the sheet grow past the
+            viewport. */}
+        <SheetContent
+          side="bottom"
+          className="max-h-[80vh] overflow-y-auto rounded-t-3xl"
+          id={helpId}
+        >
           <SheetHeader>
             <SheetTitle className="flex items-center gap-2">
               <HelpCircle size={16} className="text-primary" aria-hidden="true" />
               {t("field.whereToFindTitle", { label })}
             </SheetTitle>
-            <SheetDescription className="whitespace-pre-wrap text-left leading-relaxed text-white/70">
-              {help}
-            </SheetDescription>
+            {help && (
+              <SheetDescription className="whitespace-pre-wrap text-left leading-relaxed text-white/70">
+                {help}
+              </SheetDescription>
+            )}
           </SheetHeader>
+          {images.length > 0 && (
+            <ol className="mt-4 flex flex-col gap-4">
+              {images.map((img, i) => (
+                <li key={img.url} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold"
+                      style={{
+                        background: "hsl(var(--primary) / 0.15)",
+                        color: "hsl(var(--primary))",
+                      }}
+                    >
+                      {i + 1}
+                    </span>
+                    {img.caption && (
+                      <span className="text-[13px] font-medium text-white/70">{img.caption}</span>
+                    )}
+                  </div>
+                  {/* Portrait box, matching a phone screenshot's own shape;
+                      `object-contain` letterboxes rather than crops so a
+                      circled id near the edge is never cut off. */}
+                  <div className="relative aspect-[3/4] w-full overflow-hidden rounded-xl border border-white/10 bg-white/5">
+                    <SafeImage
+                      src={img.url}
+                      alt={img.alt}
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </SheetContent>
       </Sheet>
     </div>
