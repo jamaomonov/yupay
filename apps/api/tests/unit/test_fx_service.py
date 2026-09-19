@@ -13,6 +13,7 @@ import pytest
 from redis.exceptions import RedisError
 from yupay.core.clock import now
 from yupay.modules.fx.providers.base import FxProvider, FxProviderError, Quote
+from yupay.modules.fx.quote_settings import ManualOverride
 from yupay.modules.fx.service import FxService, FxUnavailableError
 
 
@@ -404,6 +405,81 @@ async def test_a_redis_failure_is_not_read_as_a_cache_miss(redis, monkeypatch) -
     with pytest.raises(FxUnavailableError):
         await svc.get_rate("USD", "RUB")
     assert provider.calls == 0, "a Redis failure must not send the request to a provider"
+
+
+async def test_convert_reuses_override_cache_across_calls(redis, monkeypatch) -> None:
+    """Two conversions of the same quote in one batch must read the manual
+    override once, not twice — the fix for the catalog N-SKU amplification
+    (a 35-SKU product page re-reading ``fx:manual:UZS`` once per SKU).
+
+    ``override_cache`` is the caller-owned dict threaded through exactly like
+    catalog's ``rate_cache``: absent (``None``), behaviour is unchanged (every
+    call reads); passed and reused across calls, the second call must not
+    touch Redis for the override at all.
+    """
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+
+    calls = {"n": 0}
+    orig_get = redis.get
+
+    async def _counting_get(key, *a, **kw):
+        if key == "fx:manual:RUB":
+            calls["n"] += 1
+        return await orig_get(key, *a, **kw)
+
+    monkeypatch.setattr(redis, "get", _counting_get)
+
+    cache: dict[str, ManualOverride | None] = {}
+    r1 = await svc.convert(Decimal("10"), base="USD", quote="RUB", override_cache=cache)
+    r2 = await svc.convert(Decimal("20"), base="USD", quote="RUB", override_cache=cache)
+
+    assert r1.rate == Decimal("90")
+    assert r2.rate == Decimal("90")
+    assert calls["n"] == 1, "the manual override must be read once per cache, not once per call"
+
+
+async def test_convert_without_override_cache_reads_every_call(redis, monkeypatch) -> None:
+    """No cache passed (the default) preserves the old, uncached behaviour —
+    every call is free to see a just-updated override."""
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+
+    calls = {"n": 0}
+    orig_get = redis.get
+
+    async def _counting_get(key, *a, **kw):
+        if key == "fx:manual:RUB":
+            calls["n"] += 1
+        return await orig_get(key, *a, **kw)
+
+    monkeypatch.setattr(redis, "get", _counting_get)
+
+    await svc.convert(Decimal("10"), base="USD", quote="RUB")
+    await svc.convert(Decimal("20"), base="USD", quote="RUB")
+
+    assert calls["n"] == 2
+
+
+async def test_override_cache_is_still_correct_across_two_quotes(redis) -> None:
+    """The cache is keyed per quote — RUB and UZS must not bleed into each
+    other even when sharing one ``override_cache`` dict."""
+    from yupay.core.clock import now as _now
+    from yupay.modules.fx import cache as fx_cache
+
+    provider = StubProvider(rate=Decimal("90"))
+    svc = FxService(providers=[provider], redis=redis)
+    await fx_cache.write_manual(
+        redis, quote="UZS", use_manual=True, manual_rate=Decimal("12500"), updated_at=_now()
+    )
+
+    cache: dict[str, ManualOverride | None] = {}
+    rub = await svc.convert(Decimal("1"), base="USD", quote="RUB", override_cache=cache)
+    uzs = await svc.convert(Decimal("1"), base="USD", quote="UZS", override_cache=cache)
+
+    assert rub.source == "stub"
+    assert uzs.source == "manual"
+    assert uzs.rate == Decimal("12500")
 
 
 async def test_a_failed_cache_write_does_not_lose_the_quote(redis, monkeypatch) -> None:

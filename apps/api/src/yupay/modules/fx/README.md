@@ -55,6 +55,19 @@ the matrix every `FX_REFRESH_INTERVAL_MINUTES` (default 5) so demand reads
 mostly hit Redis, writes `fx_rates` history, and runs the 6% drop tripwire
 (ADR-0056).
 
+### `override_cache` — memoizing the manual-override read
+
+`get_rate` / `convert` take an optional `override_cache: dict[str, ManualOverride | None]`.
+Passed, the `fx:manual:{quote}` lookup is read once per quote and reused for
+every later call sharing that same dict; omitted (the default), every call
+reads independently, unchanged from before. A caller converting several
+amounts in one request — the catalog module resolving N SKUs on one product
+page — should open one dict and pass it to every `convert` call, the same
+pattern the catalog's own `rate_cache` already used for the guarded market
+rate. Without it, a 35-SKU product page re-read one invariant Redis key once
+per SKU (`fx:manual:UZS` × 3 inside 50ms on one real request) — wasted round
+trips, and more chances to land on a Redis blip than the page needed.
+
 ## Tables owned
 
 - `fx_rates` — append-only history of fetched rates.

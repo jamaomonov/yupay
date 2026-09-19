@@ -7,11 +7,15 @@ requires SQL is covered by the integration tests.
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 from yupay.modules.catalog.models import Sku, SkuPrice
 from yupay.modules.catalog.service import _pick_translation, _resolve_price
+from yupay.modules.fx.quote_settings import ManualOverride
+
+if TYPE_CHECKING:
+    from yupay.modules.fx.service import ConversionResult
 
 # None of the SKUs built by ``_sku()`` below are variable-amount, so
 # ``_resolve_price`` never touches its ``db`` argument in these tests — a
@@ -20,14 +24,31 @@ _NO_DB = cast(Any, None)
 
 
 class _StubFx:
-    """Minimal FxService stand-in. Returns a constant rate."""
+    """Minimal FxService stand-in. Returns a constant rate.
+
+    Records every ``override_cache`` it was called with (by identity), so a
+    test can assert that ``_resolve_price`` passes the *same* dict through on
+    every call within one page rather than a fresh one each time — the piece
+    of the amplification fix that lives in ``catalog.service`` itself, as
+    opposed to the memoization behaviour inside ``FxService`` (covered in
+    ``test_fx_service.py``).
+    """
 
     def __init__(self, rate: Decimal) -> None:
         self._rate = rate
+        self.override_caches: list[dict[str, ManualOverride | None] | None] = []
 
-    async def convert(self, amount: Decimal, *, base: str, quote: str):
+    async def convert(
+        self,
+        amount: Decimal,
+        *,
+        base: str,
+        quote: str,
+        override_cache: dict[str, ManualOverride | None] | None = None,
+    ) -> ConversionResult:
         from yupay.modules.fx.service import ConversionResult
 
+        self.override_caches.append(override_cache)
         return ConversionResult(amount=amount * self._rate, rate=self._rate, source="stub")
 
 
@@ -117,6 +138,36 @@ async def test_resolve_price_no_fx_no_override_yields_none() -> None:
     """Caller falls back to ``price_usd`` rather than 503."""
     result = await _resolve_price(_NO_DB, _sku("10"), currency="RUB", fx=None, rate_cache={})
     assert result is None
+
+
+@pytest.mark.asyncio
+async def test_resolve_price_threads_one_override_cache_across_many_skus() -> None:
+    """N fixed-price SKUs on one page must share one ``override_cache`` dict,
+    not open a fresh one per SKU — that dict is what lets ``FxService`` read
+    the admin manual override once instead of once per SKU (the fix for the
+    35-SKU-product amplification: three ``GET 'fx:manual:UZS'`` per request).
+
+    This pins the catalog-side half of the threading (the same object reaches
+    every call); the Redis-read-count half is pinned in
+    ``test_fx_service.py::test_convert_reuses_override_cache_across_calls``.
+    """
+    fx = _StubFx(Decimal("90"))
+    shared_cache: dict[str, ManualOverride | None] = {}
+    for _ in range(5):
+        result = await _resolve_price(
+            _NO_DB,
+            _sku("10"),
+            currency="RUB",
+            fx=fx,  # type: ignore[arg-type]
+            rate_cache={},
+            override_cache=shared_cache,
+        )
+        assert result is not None
+
+    assert len(fx.override_caches) == 5
+    assert all(c is shared_cache for c in fx.override_caches), (
+        "each SKU must reuse the same override_cache object, not a fresh dict per call"
+    )
 
 
 @pytest.mark.asyncio
