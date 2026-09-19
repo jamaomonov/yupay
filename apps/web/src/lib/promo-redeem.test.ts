@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 
 import { ApiError } from "./client";
-import { promoErrorKey } from "./promo";
+import { promoErrorKey } from "./promo-redeem";
 
 /** A problem+json refusal the way `POST /promo/redeem` returns one — `code`
  *  sits at the body's top level (see `client.ts`'s `ApiError.code`). */

@@ -6,7 +6,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
-import { promoErrorKey } from "@/lib/promo";
+import { promoErrorKey } from "@/lib/promo-redeem";
 import { formatLedgerAmount, redeemPromo } from "@/lib/wallet";
 import { toast } from "@/store/useToast";
 
