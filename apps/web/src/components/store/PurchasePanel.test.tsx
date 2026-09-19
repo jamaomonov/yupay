@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { PurchasePanel } from "./PurchasePanel";
@@ -568,6 +568,124 @@ it("hides a plain field's help text behind a button instead of always showing it
   expect(await screen.findByText(helpCopy)).toBeInTheDocument();
 });
 
+it("renders a plain field's where-to-find images in order with their captions, alongside its text", async () => {
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const helpCopy = "Сервер виден на экране входа рядом с именем аккаунта.";
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [
+      {
+        key: "server",
+        label: { ru: "Сервер" },
+        type: "select",
+        required: true,
+        help_text: { ru: helpCopy },
+        help_images: [
+          { url: "https://cdn.yupay.uz/help/server-1.png", caption: { ru: "Откройте профиль" } },
+          { url: "https://cdn.yupay.uz/help/server-2.png", caption: { ru: "ID под ником" } },
+        ],
+        options: [{ value: "europe", label: { ru: "Europe" } }],
+      },
+    ],
+  };
+
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: "whereToFindGeneric" }));
+
+  // The text stays — a customer with images blocked still gets the
+  // explanation.
+  expect(await screen.findByText(helpCopy)).toBeInTheDocument();
+
+  // Captioned, so alt goes empty (the visible caption already says what the
+  // step is) — per ARIA that makes the image presentational, not
+  // `role="img"`. Scoped to the dialog: the page has other decorative
+  // `<img alt="">`s (payment provider logos etc.) outside it.
+  const images = within(screen.getByRole("dialog")).getAllByRole("presentation", {
+    hidden: true,
+  });
+  expect(images).toHaveLength(2);
+  expect(images[0]).toHaveAttribute("src", expect.stringContaining("server-1.png"));
+  expect(images[1]).toHaveAttribute("src", expect.stringContaining("server-2.png"));
+  expect(screen.getByText("Откройте профиль")).toBeInTheDocument();
+  expect(screen.getByText("ID под ником")).toBeInTheDocument();
+});
+
+it("falls back past an explicitly empty caption to render a Russian-only caption on an EN surface", async () => {
+  // The admin's caption editor always submits all three locale keys, so an
+  // untouched locale arrives as `""`, not a missing key — a caption typed
+  // only in Russian used to render as no caption at all for an EN visitor.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [
+      {
+        key: "server",
+        label: { ru: "Сервер" },
+        type: "select",
+        required: true,
+        help_images: [
+          {
+            url: "https://cdn.yupay.uz/help/server-1.png",
+            caption: { ru: "Откройте профиль", en: "", uz: "" },
+          },
+        ],
+        options: [{ value: "europe", label: { ru: "Europe" } }],
+      },
+    ],
+  };
+
+  renderPanel(<PurchasePanel products={[product]} locale="en" />);
+
+  fireEvent.click(screen.getByRole("button", { name: "whereToFindGeneric" }));
+
+  expect(await screen.findByText("Откройте профиль")).toBeInTheDocument();
+});
+
+it("opens the where-to-find modal for a field with images but no help text", async () => {
+  // A field may have text, images, or both — the button must not stay
+  // gated on help_text alone.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [
+      {
+        key: "server",
+        label: { ru: "Сервер" },
+        type: "select",
+        required: true,
+        help_images: [{ url: "https://cdn.yupay.uz/help/server-1.png", caption: null }],
+        options: [{ value: "europe", label: { ru: "Europe" } }],
+      },
+    ],
+  };
+
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: "whereToFindGeneric" }));
+
+  const image = await screen.findByRole("img");
+  // No caption on the server: alt still isn't empty (WCAG 1.1.1) — it falls
+  // back to a step description rather than a blank string.
+  expect(image.getAttribute("alt")).not.toBe("");
+});
+
+it("keeps every field's help text hidden with no images and no stray marker element", async () => {
+  // A field with neither help_text nor help_images must render no
+  // "где найти" affordance at all.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [{ key: "server", label: { ru: "Сервер" }, type: "text", required: true }],
+  };
+
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
+
+  // Let the async provider-status fetch settle inside `act` before asserting.
+  await screen.findByLabelText("Сервер *");
+  expect(screen.queryByRole("button", { name: "whereToFindGeneric" })).not.toBeInTheDocument();
+});
+
 it("disables the check button and explains why until the paired server field is filled in", async () => {
   // check.server_field names a sibling field (MLBB's "server") — G2B needs
   // both together, so an id-only lookup against an empty server used to
@@ -629,6 +747,30 @@ const MLBB_FIELDS: ProductDetail["required_fields"] = [
   },
   { key: "server", label: { ru: "ID сервера" }, type: "text", required: true },
 ];
+
+it("renders a checkable field's where-to-find images too, capped list included", async () => {
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const manyImages = Array.from({ length: 6 }, (_, i) => ({
+    url: `https://cdn.yupay.uz/help/player-${String(i)}.png`,
+    caption: null,
+  }));
+  const product: ProductDetail = {
+    ...makeProduct(),
+    required_fields: [{ ...MLBB_FIELDS[0]!, help_images: manyImages }, MLBB_FIELDS[1]!],
+  };
+
+  renderPanel(<PurchasePanel products={[product]} locale="ru" />);
+
+  fireEvent.click(screen.getByRole("button", { name: "whereToFind" }));
+
+  const images = await screen.findAllByRole("img");
+  // Rendering all six (the cap is the backend's business, not this
+  // component's) must not throw or drop any.
+  expect(images).toHaveLength(6);
+  for (const img of images) {
+    expect(img.getAttribute("alt")).not.toBe("");
+  }
+});
 
 it("keeps the check blocked when only the server id is filled in", async () => {
   // Reported from prod as an asymmetry: id-without-server correctly refused,

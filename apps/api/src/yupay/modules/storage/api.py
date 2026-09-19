@@ -12,6 +12,7 @@ from yupay.modules.storage.service import (
     MEDIA_KINDS,
     MediaKind,
     PresignResult,
+    is_own_media_url,
     presign_upload,
     public_url_for,
 )
@@ -23,6 +24,7 @@ __all__ = [
     "PresignUploadIn",
     "PresignUploadOut",
     "admin_router",
+    "is_own_media_url",
     "presign_upload",
     "public_url_for",
 ]

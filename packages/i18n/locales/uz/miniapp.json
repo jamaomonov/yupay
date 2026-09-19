@@ -39,6 +39,7 @@
   "field.whereToFind": "Qayerdan topish mumkin?",
   "field.whereToFindLabel": "{label}ni qayerdan topish mumkin",
   "field.whereToFindTitle": "«{label}»ni qayerdan topish mumkin",
+  "field.whereToFindImageAlt": "{index}-qadam ({total} tadan)",
   "field.clear": "Tozalash",
   "field.lastTime": "O'tgan safar",
   "field.noOptions": "Hozircha variantlar yo'q",

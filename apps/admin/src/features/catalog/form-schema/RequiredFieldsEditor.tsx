@@ -16,6 +16,8 @@ import {
   useWatch,
 } from "react-hook-form";
 
+import { HelpImagesEditor } from "./HelpImagesEditor";
+
 import type { FieldType, FormField } from "../types";
 
 interface Props {
@@ -58,6 +60,7 @@ export function RequiredFieldsEditor({ control, register, setValue, name }: Prop
             required: true,
             placeholder: { ru: "", en: "", uz: "" },
             help_text: { ru: "", en: "", uz: "" },
+            help_images: [],
           } satisfies FormField);
         }}
       >
@@ -181,6 +184,8 @@ function FieldRow({
               ))}
             </div>
           </div>
+
+          <HelpImagesEditor control={control} register={register} name={`${path}.help_images`} />
 
           <Labeled label="Regex pattern">
             <Input {...register(`${path}.pattern`)} placeholder="^[0-9]{6,15}$" />

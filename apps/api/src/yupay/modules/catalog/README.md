@@ -42,7 +42,7 @@ from yupay.modules.catalog.api import (
     BrandListOut, BrandDetailOut, BrandOut,              # DTOs
     CategoryListOut, ProductListOut,
     ProductDetailOut, ProductSummaryOut, SkuOut,
-    PriceOut, FormField, FormOption, LocaleMap,
+    PriceOut, FormField, FormOption, HelpImage, LocaleMap,
     get_brand_by_slug, get_product_by_slug, get_sku_by_id,
     list_brands, list_categories, list_products,
     router,                                              # FastAPI router @ /api/v1/catalog
@@ -87,6 +87,17 @@ typed form, and that the API validates on order creation.
     "required": true,
     "pattern": "^[0-9]{6,20}$",
     "placeholder": { "ru": "12345678", "en": "12345678" },
+    "help_text": { "ru": "ID игрока указан в профиле" },
+    "help_images": [
+      {
+        "url": "https://cdn.yupay.uz/field_help_image/2026/09/abc.png",
+        "caption": { "ru": "Открой профиль" },
+      },
+      {
+        "url": "https://cdn.yupay.uz/field_help_image/2026/09/def.png",
+        "caption": { "ru": "ID под ником" },
+      },
+    ],
   },
   {
     "key": "server",
@@ -138,6 +149,61 @@ both halves, so the check reports every customer's correct id as invalid —
 which is exactly what shipped on `mlbb-diamonds-ru`. `ProductCreate` /
 `ProductUpdate` now reject a `server_field` that names the field itself or a
 key no field defines; see `admin_schemas.validate_form_fields`.
+
+### The `help_images` list
+
+A field may carry `help_images`: an ordered list of screenshots for its
+"Где найти?" modal — the visual companion to `help_text`, for the case a
+paragraph doesn't cover well (e.g. "here's exactly where the ID sits on
+your profile screen"). Order matters and is preserved exactly as
+submitted: it **is** the walkthrough ("open the profile" → "the ID sits
+under the nickname"), not just a set of images.
+
+Each entry is `{ "url": str, "caption": LocaleMap | None }` (`HelpImage`
+in `schemas.py`). Two limits are enforced server-side, on `FormField`
+itself, not only at the HTTP layer:
+
+- **At most 6 images per field.** An instruction longer than that has
+  stopped being an instruction.
+- **`url` must point at our own R2 media bucket** — validated against
+  `r2_public_base_url` via `storage.service.is_own_media_url` (the same
+  predicate `storage.api` re-exports for any other caller with this
+  need). Without this check, a field's help becomes an arbitrary
+  remote-image embed: an operator could point it at any third-party
+  host, leaking every storefront visitor's IP to that host and adding an
+  availability dependency we don't control.
+
+The same-bucket check's verdict depends on `r2_public_base_url` — a
+config value, not just the stored URL — so a stored row that was valid
+when written can go invalid on its own if that setting ever changes
+(an environment cutover, a prod-dump restore into staging). Writes stay
+strict: `ProductCreate`/`ProductUpdate` still 422 on a foreign URL, so an
+operator gets a clear error and can act. Reads are lenient instead: both
+`catalog.service.get_product_by_slug` (storefront) and `AdminProductOut`
+(admin list/create/update) call `model_validate(..., context=
+HELP_IMAGES_READ_CONTEXT)`, which drops a non-conforming `help_images`
+entry — logging a `catalog.help_images.dropped_on_read` warning — instead
+of failing the whole field. A bad URL costs one missing picture, not the
+product page or the admin page an operator would use to fix it. The
+6-image cap is not part of this leniency — it doesn't depend on mutable
+config, so a row that reaches the cap can only do so by bypassing the
+model (see the seed note below), a case this project chooses to record
+rather than paper over.
+
+**Seeds bypass this model entirely.** Several files under
+`scripts/seed/` (and `yupay.scripts.seed_catalog`) write `required_fields`
+straight into Postgres via raw `jsonb_set`/dict literals, never through
+`FormField`/`HelpImage`. A seed that sets `help_images` must therefore
+check the same-bucket prefix and the 6-image cap itself — nothing
+downstream will catch a seed that skips this.
+
+The read path is lenient about **both** rules for the same reason: a stored row that violates either one costs the image, not the page. A foreign URL is dropped and a list past the cap is truncated, each with a `logger.warning`. The write path refuses both outright, so the operator who can actually fix it is the one who hears about it.
+
+Images upload the same way every other admin image does: presign via
+`storage.api.presign_upload(kind="field_help_image", ...)`, `PUT` straight
+to R2, then persist the returned `public_url` into this field — see the
+`storage` module's README for the upload workflow and its `field_help_image`
+media-kind row.
 
 ## Display-price policy
 

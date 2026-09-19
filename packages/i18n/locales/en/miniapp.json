@@ -39,6 +39,7 @@
   "field.whereToFind": "Where to find it?",
   "field.whereToFindLabel": "Where to find {label}",
   "field.whereToFindTitle": "Where to find “{label}”",
+  "field.whereToFindImageAlt": "Step {index} of {total}",
   "field.clear": "Clear",
   "field.lastTime": "Last time",
   "field.noOptions": "No options yet",

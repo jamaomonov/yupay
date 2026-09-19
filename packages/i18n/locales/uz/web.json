@@ -258,6 +258,7 @@
     "whereToFind": "ID qayerdan olinadi",
     "whereToFindGeneric": "Qayerdan topish mumkin",
     "whereToFindTitle": "{label} qayerdan topiladi",
+    "whereToFindImageAlt": "{index}-qadam ({total} tadan)",
     "amountLabel": "Dollardagi summa",
     "amountPlaceholder": "Masalan, 10",
     "amountRequired": "Summani kiriting",

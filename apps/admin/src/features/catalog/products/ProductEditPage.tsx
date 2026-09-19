@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
 import { Trash2 } from "lucide-react";
 import { useEffect } from "react";
-import { Controller, useForm, useFieldArray } from "react-hook-form";
+import { Controller, useForm, useFieldArray, type UseFormReturn } from "react-hook-form";
 import { useNavigate, useParams } from "react-router-dom";
 import { z } from "zod";
 
@@ -20,6 +20,10 @@ const LOCALES = ["ru", "en", "uz"] as const;
 
 const localeMap = z.record(z.string(), z.string());
 const formOption = z.object({ value: z.string().min(1), label: localeMap });
+// One step of the "Где найти?" screenshot walkthrough. `url` always comes
+// from the presign-upload flow (HelpImagesEditor) — the API rejects a URL
+// that isn't its own media bucket, so there's nothing here to hand-validate.
+const helpImage = z.object({ url: z.string().min(1), caption: localeMap.optional().nullable() });
 // Mirrors the API's FieldCheck — omitting a key here doesn't leave it
 // untouched, it DELETES it: zod strips properties a schema doesn't declare,
 // so a product with G2B verification wired up used to lose it silently the
@@ -36,6 +40,9 @@ const formField = z.object({
   required: z.boolean().default(true),
   placeholder: localeMap.optional().nullable(),
   help_text: localeMap.optional().nullable(),
+  // At most 6, enforced in HelpImagesEditor's UI too — mirrored here so a
+  // malformed payload can't sneak past the form either.
+  help_images: z.array(helpImage).max(6).optional().nullable(),
   pattern: z.string().optional().nullable(),
   options: z.array(formOption).optional().nullable(),
   check: fieldCheck.optional().nullable(),
@@ -61,6 +68,30 @@ const productSchema = z.object({
 });
 
 type FormValues = z.infer<typeof productSchema>;
+
+/**
+ * `required_fields.N.help_images` (max 6, see `formField` above) is the one
+ * validation rule on this page that lives below `translations`/`slug`/
+ * `brand_id` — and this page only ever rendered those three top-level
+ * errors. A violation (two quick uploads racing past the cap in
+ * `HelpImagesEditor`, or a malformed payload) used to fail validation
+ * silently: `handleSubmit`'s success callback never fires, nothing on
+ * screen explains why, and Save just does nothing. Surfaced here as one
+ * message per offending field, next to the Save button.
+ */
+function requiredFieldErrorMessages(form: UseFormReturn<FormValues>): string[] {
+  const errors = form.formState.errors.required_fields;
+  if (!errors) return [];
+  const rows = form.getValues("required_fields");
+  const messages: string[] = [];
+  rows.forEach((_, idx) => {
+    const message = errors[idx]?.help_images?.message;
+    if (message) {
+      messages.push(`Поле формы №${String(idx + 1)} «Где найти?»: ${message}`);
+    }
+  });
+  return messages;
+}
 
 const EMPTY: FormValues = {
   slug: "",
@@ -113,7 +144,12 @@ export function ProductEditPage() {
       image_url: existing.image_url ?? "",
       sort_order: existing.sort_order,
       active: existing.active,
-      required_fields: existing.required_fields,
+      // help_images comes back `null` for a field with none — useFieldArray
+      // (HelpImagesEditor) needs an actual array to build its rows from.
+      required_fields: existing.required_fields.map((f) => ({
+        ...f,
+        help_images: f.help_images ?? [],
+      })),
       translations: LOCALES.map((locale) => {
         const t = existing.translations.find((x) => x.locale === locale);
         return {
@@ -257,6 +293,16 @@ export function ProductEditPage() {
           name="required_fields"
         />
       </section>
+
+      {form.formState.errors.required_fields && (
+        <div className="mt-4 space-y-1">
+          {requiredFieldErrorMessages(form).map((message) => (
+            <p key={message} className="text-sm text-[var(--danger)]">
+              {message}
+            </p>
+          ))}
+        </div>
+      )}
 
       {save.isError && (
         <p className="mt-4 text-sm text-[var(--danger)]">

@@ -112,6 +112,18 @@ export interface FieldCheck {
   server_field?: string | null;
 }
 
+/** One step image for a field's "где найти" sheet — a profile screenshot
+ *  with the id circled, say. Ordered: the sequence is the walkthrough.
+ *  `url` always points at our own media bucket (the backend rejects
+ *  anything else), so it can be rendered without sanitising the host.
+ *  `caption` may be `null` and the list may be empty or absent — never
+ *  assume otherwise. Capped at 6 server-side; that cap is the backend's
+ *  business, not this type's. */
+export interface HelpImage {
+  url: string;
+  caption: Record<string, string> | null;
+}
+
 export interface FormField {
   key: string;
   label: Record<string, string>;
@@ -119,6 +131,7 @@ export interface FormField {
   required: boolean;
   placeholder?: Record<string, string> | null;
   help_text?: Record<string, string> | null;
+  help_images?: HelpImage[] | null;
   pattern?: string | null;
   options?: FormOption[] | null;
   check?: FieldCheck | null;

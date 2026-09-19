@@ -1,29 +1,58 @@
 "use client";
 
 import { X } from "lucide-react";
+import Image from "next/image";
 import { useEffect, useRef } from "react";
+
+import { isOptimizable } from "@/lib/image";
+
+/**
+ * One step image for the "где найти" walkthrough, already localized by the
+ * caller (same contract as `body` below — this component stays presentation
+ * -only and never needs a locale or translator of its own).
+ */
+export interface WhereToFindImage {
+  url: string;
+  /** Meaningful, never-empty alt text (WCAG 1.1.1): the caption when the
+   *  field has one, otherwise a "Step N of M" fallback computed by the
+   *  caller. */
+  alt: string;
+  /** The same caption, shown as visible text under the image when present. */
+  caption: string | null;
+}
 
 /**
  * Modal that explains where to find the account identifier (player ID /
- * Steam login). The body is plain text today, but the "где найти" hint opens
- * a dialog rather than expanding inline precisely because this is the
- * container future rich help — profile screenshots, numbered step images —
- * will render into without another layout change.
+ * Steam login). The body is plain text; when the field also carries step
+ * images (profile screenshots, the id circled) they render below it, in
+ * order, each with its caption — this is the container the docstring here
+ * used to promise them into, now filled in.
  *
  * Mirrors the app's modal convention (see LoginModal): a full-screen dialog
  * layer, a backdrop that closes on click, Escape to dismiss, and focus that
- * moves into the card on open and back to the opener on close.
+ * moves into the card on open and back to the opener on close. The card
+ * itself is capped to 85vh; only its body (text + images) scrolls
+ * internally, in its own div — the header (title + close button) sits
+ * outside that scroll container, so a tall stack of screenshots can never
+ * carry the close button off-screen with it (an absolutely-positioned child
+ * of a scroll container scrolls away with the content it's positioned
+ * over).
  */
 export function WhereToFindModal({
   open,
   title,
   body,
+  images,
   closeLabel,
   onClose,
 }: {
   open: boolean;
   title: string;
   body: string;
+  /** Ordered walkthrough images, or `null`/absent/empty when the field has
+   *  none — a field may have text, images, or both; never assume this list
+   *  is non-empty. */
+  images?: WhereToFindImage[] | null;
   closeLabel: string;
   onClose: () => void;
 }) {
@@ -77,6 +106,8 @@ export function WhereToFindModal({
 
   if (!open) return null;
 
+  const stepImages = images ?? [];
+
   return (
     <div
       role="dialog"
@@ -94,25 +125,71 @@ export function WhereToFindModal({
       <div
         ref={cardRef}
         tabIndex={-1}
-        className="border-border bg-card relative z-10 max-h-[85vh] w-full max-w-[460px] overflow-y-auto rounded-2xl border p-7 shadow-2xl outline-none"
+        className="border-border bg-card relative z-10 flex max-h-[85vh] w-full max-w-[460px] flex-col overflow-hidden rounded-2xl border shadow-2xl outline-none"
       >
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label={closeLabel}
-          className="text-tx-mute hover:bg-muted hover:text-foreground absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full transition"
-        >
-          <X size={18} />
-        </button>
+        {/* Non-scrolling header: the title and the only visible way to close
+            the dialog live here, outside the scroll container below, so they
+            can never scroll off-screen regardless of how much help content
+            follows. */}
+        <div className="relative shrink-0 px-7 pb-4 pt-7">
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="text-tx-mute hover:bg-muted hover:text-foreground absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full transition"
+          >
+            <X size={18} />
+          </button>
 
-        <h2 className="font-display pr-10 text-xl font-bold leading-tight tracking-[-0.02em]">
-          {title}
-        </h2>
+          <h2 className="font-display pr-10 text-xl font-bold leading-tight tracking-[-0.02em]">
+            {title}
+          </h2>
+        </div>
 
-        {/* Plain-text help today (newlines preserved). Screenshots and step
-            images will slot in here once the catalog carries them. */}
-        <div className="text-tx-mute mt-4 whitespace-pre-line text-[14px] leading-relaxed">
-          {body}
+        <div className="overflow-y-auto px-7 pb-7">
+          {/* Plain-text help (newlines preserved). The text always stays: a
+              customer on a slow connection or with images blocked still needs
+              this. */}
+          {body && (
+            <div className="text-tx-mute whitespace-pre-line text-[14px] leading-relaxed">
+              {body}
+            </div>
+          )}
+
+          {stepImages.length > 0 && (
+            <ol className={`flex flex-col gap-4${body ? "mt-5" : ""}`}>
+              {stepImages.map((img, i) => (
+                <li key={`${String(i)}-${img.url}`} className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="bg-primary/15 text-primary flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-bold">
+                      {i + 1}
+                    </span>
+                    {img.caption && (
+                      <span className="text-tx-mute text-[13px] font-medium">{img.caption}</span>
+                    )}
+                  </div>
+                  {/* Portrait box: a phone screenshot's own shape. `object-contain`
+                      letterboxes rather than crops, so the circled id near the
+                      edge of the source screenshot is never cut off. */}
+                  <div className="border-border bg-card-2 relative aspect-[3/4] w-full overflow-hidden rounded-xl border">
+                    <Image
+                      src={img.url}
+                      // A visible caption already says what the step is —
+                      // announcing the same text again as alt would have a
+                      // screen reader read it twice. Only fall back to the
+                      // meaningful "Step N of M" alt when there's no caption
+                      // shown next to the image.
+                      alt={img.caption ? "" : img.alt}
+                      fill
+                      unoptimized={!isOptimizable(img.url)}
+                      sizes="(min-width: 460px) 412px, 100vw"
+                      className="object-contain"
+                    />
+                  </div>
+                </li>
+              ))}
+            </ol>
+          )}
         </div>
       </div>
     </div>

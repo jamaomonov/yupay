@@ -33,6 +33,7 @@ from yupay.modules.catalog.admin_schemas import (
     SkuPickerOut,
     SkuUpdate,
 )
+from yupay.modules.catalog.schemas import HELP_IMAGES_READ_CONTEXT
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.users.models import User
 
@@ -183,7 +184,7 @@ async def list_products(
     brand_id: str | None = None,
 ) -> list[AdminProductOut]:
     return [
-        AdminProductOut.model_validate(p)
+        AdminProductOut.model_validate(p, context=HELP_IMAGES_READ_CONTEXT)
         for p in await svc.list_all_products(db, brand_id=brand_id)
     ]
 
@@ -195,7 +196,9 @@ async def create_product(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> AdminProductOut:
     row = await svc.create_product(db, body)
-    return AdminProductOut.model_validate(row)
+    # The body was just strict-validated by ProductCreate, so this can't drop
+    # anything — lenient here only to match `update_product`'s PATCH case below.
+    return AdminProductOut.model_validate(row, context=HELP_IMAGES_READ_CONTEXT)
 
 
 @router.patch("/products/{product_id}", response_model=AdminProductOut)
@@ -206,7 +209,11 @@ async def update_product(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> AdminProductOut:
     row = await svc.update_product(db, product_id, body)
-    return AdminProductOut.model_validate(row)
+    # A PATCH that doesn't touch required_fields leaves the row's existing
+    # value untouched — including one a seed wrote straight past the model
+    # (see the catalog README) — so this response, unlike create's, can
+    # genuinely contain a stored field that no longer validates strictly.
+    return AdminProductOut.model_validate(row, context=HELP_IMAGES_READ_CONTEXT)
 
 
 @router.delete("/products/{product_id}", status_code=status.HTTP_204_NO_CONTENT)

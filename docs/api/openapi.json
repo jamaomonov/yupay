@@ -6646,6 +6646,20 @@
               }
             ]
           },
+          "help_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HelpImage"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help Images"
+          },
           "help_text": {
             "anyOf": [
               {
@@ -7946,6 +7960,35 @@
           "token"
         ],
         "title": "HandshakeOut",
+        "type": "object"
+      },
+      "HelpImage": {
+        "additionalProperties": false,
+        "description": "One annotated screenshot in a field's \"\u0413\u0434\u0435 \u043d\u0430\u0439\u0442\u0438?\" walkthrough.\n\nOrder matters: the list order **is** the walkthrough (\"open the\nprofile screen\" -> \"the ID sits under the nickname\"), so it is\npreserved exactly as submitted \u2014 never re-sorted when serialising back\nout.",
+        "properties": {
+          "caption": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Caption"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "HelpImage",
         "type": "object"
       },
       "HourPoint": {
@@ -11654,14 +11697,15 @@
             "type": "string"
           },
           "kind": {
-            "description": "One of brand_logo, brand_hero, product_image, sku_image, broadcast_media, blog_image.",
+            "description": "One of brand_logo, brand_hero, product_image, sku_image, broadcast_media, blog_image, field_help_image.",
             "enum": [
               "brand_logo",
               "brand_hero",
               "product_image",
               "sku_image",
               "broadcast_media",
-              "blog_image"
+              "blog_image",
+              "field_help_image"
             ],
             "title": "Kind",
             "type": "string"

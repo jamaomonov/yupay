@@ -15,10 +15,35 @@ import re
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, ValidationInfo, field_validator
+
+from yupay.core.logging import get_logger
+
+log = get_logger("yupay.catalog.schemas")
 
 LocaleMap = dict[str, str]
 """Map of locale → translated string. Keys are locales we support (``ru``/``en``/``uz``)."""
+
+_LENIENT_HELP_IMAGES_KEY = "lenient_help_images"
+
+HELP_IMAGES_READ_CONTEXT: dict[str, bool] = {_LENIENT_HELP_IMAGES_KEY: True}
+"""Pass as ``context=`` to ``model_validate`` on a *read* path that re-hydrates an
+already-stored ``FormField``/``required_fields`` row — ``catalog.service`` for the
+storefront, ``AdminProductOut`` for the admin list/create/update responses.
+
+Opts into dropping a ``help_images`` entry that no longer validates (see
+``FormField._drop_nonconforming_help_images_on_read``) instead of failing the whole
+field. Omit it — the default for ``ProductCreate``/``ProductUpdate`` request bodies,
+which FastAPI parses with no context, and for any bare ``FormField(...)``/
+``HelpImage(...)`` construction — to keep the strict raise an admin write relies on
+for its 422.
+"""
+
+# ``FormField.help_images`` cap — an instruction longer than this has stopped
+# being an instruction. Enforced here (the model both admin writes and
+# storefront reads flow through) rather than only at the HTTP layer, so it
+# holds for every caller, not just the admin endpoint.
+_MAX_HELP_IMAGES = 6
 
 # ``FormField.pattern`` is admin-authored and later run inline, synchronously,
 # against untrusted customer input via ``re.fullmatch`` in
@@ -91,6 +116,66 @@ class FieldCheck(BaseModel):
     server_field: str | None = None
 
 
+class HelpImage(BaseModel):
+    """One annotated screenshot in a field's "Где найти?" walkthrough.
+
+    Order matters: the list order **is** the walkthrough ("open the
+    profile screen" -> "the ID sits under the nickname"), so it is
+    preserved exactly as submitted — never re-sorted when serialising back
+    out.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    caption: LocaleMap | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _url_is_own_media(cls, v: str) -> str:
+        """Refuse anything but our own R2 media bucket.
+
+        Without this, a field's help becomes an arbitrary remote-image
+        embed: an operator account could point it at any third-party host,
+        which is both a privacy leak (every storefront visitor's IP
+        reaching that host) and an availability risk. Single source of
+        truth for "one of our own uploaded media URLs" is
+        ``storage.service.is_own_media_url`` — also re-exported from
+        ``storage.api`` for any caller that wants the module's public
+        surface — reused here rather than re-deriving the
+        ``r2_public_base_url`` prefix.
+
+        Imported lazily, and from ``storage.service`` rather than
+        ``storage.api``: ``storage.api`` also re-exports the presign
+        router, which imports ``admin.api`` -> ``auth.deps`` ->
+        ``api.v1.deps`` -> (Python must init the ``api.v1`` package first)
+        ``api.v1.__init__``, which imports ``admin.api`` again while it is
+        still mid-import — a circular import that only surfaces when
+        something reaches ``admin.api`` *before* ``api.v1`` has been
+        touched at all, which is exactly what constructing a bare
+        ``FormField`` in a unit test (no app bootstrap) does.
+        ``storage.service`` has none of that: it only depends on
+        ``core.config``/``core.errors``/``core.ids``/``storage.client``.
+
+        The lazy import stays for now; the real fix is upstream of this file.
+        ``auth.deps`` reaches into ``api.v1.deps`` only for ``db_session`` —
+        which is *defined* there, wrapping ``core.db.get_session``, not
+        re-exported from ``core.db`` — and that reach-in is what forces
+        ``api.v1``'s package ``__init__`` to run before ``admin.api`` has
+        finished importing. Moving ``db_session`` (and ``SessionDep``) into
+        ``core.db`` and having ``api.v1.deps`` re-export them, so
+        ``auth.deps`` imports ``db_session`` from ``core.db`` instead, would
+        break the cycle at its root; swapping which module ``auth.deps``
+        imports it *from* today would just fail, since ``core.db`` doesn't
+        define that name yet.
+        """
+        from yupay.modules.storage.service import is_own_media_url
+
+        if not is_own_media_url(v):
+            raise ValueError("help_images url must point at our own media bucket")
+        return v
+
+
 class FormField(BaseModel):
     """One field of a product's form schema."""
 
@@ -102,6 +187,7 @@ class FormField(BaseModel):
     required: bool = True
     placeholder: LocaleMap | None = None
     help_text: LocaleMap | None = None
+    help_images: list[HelpImage] | None = None
     pattern: str | None = None
     options: list[FormOption] | None = None
     check: FieldCheck | None = None
@@ -111,6 +197,75 @@ class FormField(BaseModel):
     def _pattern_is_safe(cls, v: str | None) -> str | None:
         if v is not None:
             _assert_pattern_is_safe(v)
+        return v
+
+    @field_validator("help_images", mode="before")
+    @classmethod
+    def _drop_nonconforming_help_images_on_read(cls, v: object, info: ValidationInfo) -> object:
+        """On an opted-in read, drop a ``help_images`` entry that fails ``HelpImage``
+        validation instead of failing the whole field.
+
+        ``HelpImage._url_is_own_media`` is the one validator here whose verdict
+        depends on mutable runtime config (``settings.r2_public_base_url``), not
+        only on the stored value — flip that config (an environment cutover, a
+        prod-dump restore into staging) and every previously-valid stored URL
+        becomes invalid at once. ``catalog.service.get_product_by_slug`` and
+        ``AdminProductOut`` both call ``model_validate`` for *every* stored field
+        on *every* read, so letting that raise would 500 the storefront product
+        page — and the admin page an operator would use to fix it.
+
+        Runs ``mode="before"`` (raw dicts, ahead of Pydantic's own list-item
+        coercion) so a dropped entry never reaches — and never itself raises
+        through — the list. Reuses ``HelpImage.model_validate`` per item rather
+        than re-deriving what "conforming" means, so this can't drift out of
+        sync with what ``HelpImage``'s own validators actually enforce.
+
+        Only runs when the caller opts in via ``context=HELP_IMAGES_READ_CONTEXT``
+        (the storefront and admin *read* paths). Write bodies
+        (``ProductCreate``/``ProductUpdate``, parsed by FastAPI with no context)
+        and any bare construction keep the strict per-item 422 from
+        ``HelpImage._url_is_own_media`` — an operator gets a clear error and can
+        act, which a silently dropped image would deny them.
+        """
+        if not isinstance(v, list) or not (info.context or {}).get(_LENIENT_HELP_IMAGES_KEY):
+            return v
+        kept: list[object] = []
+        for item in v:
+            try:
+                HelpImage.model_validate(item, context=info.context)
+            except ValidationError as exc:
+                url = item.get("url") if isinstance(item, dict) else None
+                log.warning(
+                    "catalog.help_images.dropped_on_read",
+                    field_key=info.data.get("key"),
+                    url=url,
+                    reason=str(exc),
+                )
+                continue
+            kept.append(item)
+        # The cap gets the same treatment, and for the same reason. It does not
+        # depend on mutable config, so only a model-bypassing write can exceed
+        # it — a seed with raw `jsonb_set`, which is how this column is
+        # populated in practice (see the module README). But the consequence of
+        # letting it raise here is identical: a 500 on the storefront product
+        # page, and on the admin page an operator would open to fix it. A
+        # seventh screenshot is worth losing; the page is not. The write path
+        # still refuses it outright, so the operator who can act still hears.
+        if len(kept) > _MAX_HELP_IMAGES:
+            log.warning(
+                "catalog.help_images.truncated_on_read",
+                field_key=info.data.get("key"),
+                kept=_MAX_HELP_IMAGES,
+                found=len(kept),
+            )
+            kept = kept[:_MAX_HELP_IMAGES]
+        return kept
+
+    @field_validator("help_images")
+    @classmethod
+    def _help_images_bounded(cls, v: list[HelpImage] | None) -> list[HelpImage] | None:
+        if v is not None and len(v) > _MAX_HELP_IMAGES:
+            raise ValueError(f"help_images accepts at most {_MAX_HELP_IMAGES} images")
         return v
 
 
@@ -287,6 +442,7 @@ class ProductListOut(BaseModel):
 
 
 __all__ = [
+    "HELP_IMAGES_READ_CONTEXT",
     "BrandDetailOut",
     "BrandListOut",
     "BrandOut",
@@ -295,6 +451,7 @@ __all__ = [
     "FieldCheck",
     "FormField",
     "FormOption",
+    "HelpImage",
     "LocaleMap",
     "PriceOut",
     "ProductDetailOut",

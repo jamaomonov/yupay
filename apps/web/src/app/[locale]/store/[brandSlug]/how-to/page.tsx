@@ -1,4 +1,5 @@
 import { ChevronRight } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { hasLocale } from "next-intl";
@@ -12,9 +13,11 @@ import {
   getBrandDetail,
   getBrandSlugs,
   getProductDetail,
+  type HelpImage,
   type LocaleMap,
   type ProductDetail,
 } from "@/lib/catalog";
+import { isOptimizable } from "@/lib/image";
 import {
   alternates,
   firstNonEmpty,
@@ -29,10 +32,17 @@ import {
 
 const CURRENCY = "UZS";
 
-/** Pick a locale's string from a LocaleMap (ru fallback, then first value). */
+/** Pick a locale's string from a LocaleMap, falling back to ru then the
+ *  first *non-empty* translation. The admin's caption/label editors submit
+ *  all three locale keys, so an untouched one arrives as `""`, not a
+ *  missing key — plain `??` doesn't fall back on that (see the caption bug
+ *  this shape caused on the storefront's own "где найти" modal). */
 function pick(m: LocaleMap | null | undefined, locale: string): string | null {
   if (!m) return null;
-  return m[locale] ?? m.ru ?? Object.values(m)[0] ?? null;
+  const byLocale = m[locale];
+  if (byLocale && byLocale.trim().length > 0) return byLocale;
+  if (m.ru && m.ru.trim().length > 0) return m.ru;
+  return Object.values(m).find((v) => v.trim().length > 0) ?? null;
 }
 
 /** Numbered steps out of an instructions blob, for the HowTo schema. Matches
@@ -49,13 +59,25 @@ function parseSteps(instructions: string): string[] {
     .filter((s) => s.length > 0);
 }
 
-/** The account identifier's "where to find" help text, from the first product
- *  field that carries it (player id / login). */
-function whereToFind(products: (ProductDetail | null)[], locale: string): string | null {
+interface WhereToFindContent {
+  text: string | null;
+  images: HelpImage[];
+}
+
+/** The account identifier's "где найти" help — text and/or step screenshots
+ *  — from the first product field that carries either. A field documented
+ *  only with screenshots (no help_text) still deserves the section: it used
+ *  to be skipped entirely because this looked at help_text alone. */
+function whereToFind(
+  products: (ProductDetail | null)[],
+  locale: string,
+): WhereToFindContent | null {
   for (const p of products) {
-    const help = p?.required_fields[0]?.help_text;
-    const text = pick(help, locale);
-    if (text) return text;
+    const field = p?.required_fields[0];
+    if (!field) continue;
+    const text = pick(field.help_text, locale);
+    const images = field.help_images ?? [];
+    if (text || images.length > 0) return { text, images };
   }
   return null;
 }
@@ -240,15 +262,59 @@ export default async function HowToPage({
           </section>
         )}
 
-        {/* Where to find the ID / login */}
+        {/* Where to find the ID / login — text, step screenshots, or both */}
         {findId && (
           <section className="mt-12">
             <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
               {t("whereToFind")}
             </h2>
-            <p className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
-              {findId}
-            </p>
+            {findId.text && (
+              <p className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
+                {findId.text}
+              </p>
+            )}
+            {findId.images.length > 0 && (
+              <ol className={`flex flex-col gap-4${findId.text ? "mt-5" : "mt-4"}`}>
+                {findId.images.map((img, i) => {
+                  const caption = pick(img.caption, locale);
+                  const alt =
+                    caption ??
+                    t("whereToFindImageAlt", {
+                      index: String(i + 1),
+                      total: String(findId.images.length),
+                    });
+                  return (
+                    <li
+                      key={`${String(i)}-${img.url}`}
+                      className="flex max-w-[320px] flex-col gap-2"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="bg-primary/10 text-primary flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-[12px] font-bold">
+                          {i + 1}
+                        </span>
+                        {caption && (
+                          <span className="text-tx-mute text-[13px] font-medium">{caption}</span>
+                        )}
+                      </div>
+                      {/* Same portrait, letterboxed treatment as the "где
+                          найти" modal — see WhereToFindModal.tsx. */}
+                      <div className="border-border bg-card-2 relative aspect-[3/4] w-full overflow-hidden rounded-xl border">
+                        <Image
+                          src={img.url}
+                          // A visible caption already says what the step is;
+                          // repeating it as alt would read twice.
+                          alt={caption ? "" : alt}
+                          fill
+                          unoptimized={!isOptimizable(img.url)}
+                          sizes="320px"
+                          className="object-contain"
+                        />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ol>
+            )}
           </section>
         )}
 
