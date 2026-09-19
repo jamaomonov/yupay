@@ -304,6 +304,27 @@ yupay/
   endpoint, it needs an ADR entry saying why it clears those conditions and a line here. A
   rule that does not name its exceptions stops being read as a rule: this one was silently
   deviated from three times before the list existed.
+- **The Steam Gifts catalogue reads are a second carve-out**, and a weaker one — they are
+  named here because they were not, and the rule above says why that matters. Four public
+  `GET`s under `/gifts/catalog` call G-Engine from their handler on a cache miss:
+  the listing, `/hot`, `/{app_id}` and `/{app_id}/dlc` (the last two share one cached
+  detail; `/hot` also walks up to five listing pages). They are not pre-purchase lookups —
+  they validate nothing and answer no question about a player — so they do not belong in
+  the four-item list; they are catalogue reads a browser asks for, off the order, payment
+  and fulfilment path, every one Redis-cached with an explicit TTL (listing and `/hot`
+  3600 s, detail and search 900 s).
+  What they lack that the admin carve-out has is an operator: a stranger's page view can
+  reach G-Engine. Measured on production 2026-09-20 that is nearly theoretical — 136 page
+  views in 24 h produced 3 upstream catalogue calls — but "nearly" is the honest word, not
+  "never", and there is no breaker.
+  The way out is not an ADR, it is a synced catalogue: since G-Engine started returning
+  `packages[]` with per-zone prices and `dlc[]` on `GET /gifts/apps` (2026-09-20), the
+  whole 4429-app catalogue costs 45 paged calls instead of one per app, so these handlers
+  could read our own store instead. That was measured and deliberately **not** done: a
+  sweep is ~46 MB and ~90 s, more upstream traffic per pass than the feature generates in
+  a day, and an hourly sync would make purchase prices four times staler than the 900 s
+  detail cache does now. The trade turns the other way the moment the ~4400 per-game SEO
+  pages are wanted, because nothing else can price them.
 - **Admin catalogue-sync calls are a carve-out, not a fifth line in the list above**:
   `POST /{supplier}/games/{game_id}/sync-denominations` already argues the deviation-free
   shape in its own docstring — `POST`, operator-triggered from the mapping wizard, off the
