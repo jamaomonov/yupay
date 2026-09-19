@@ -105,6 +105,14 @@ email: существующий аккаунт с этим адресом пол
   только тот, кто адресом не владеет — пометить email верифицированным, не
   сняв пароль, значило бы вооружить чужой пароль.
 
+**Аватар и имя идут через `users.identity_guard`.** Sentry, продакшн: реальный
+Google avatar URL длиннее 1024 символов уронил `INSERT INTO users`
+(`StringDataRightTruncationError`) — регистрация не проходила вовсе.
+`users.photo_url` теперь `text` (миграция 0083), но `identity.picture` /
+`identity.name` всё равно идут через `safe_avatar_url`/`safe_display_name`
+(не напрямую в `User(...)`), а не только полагаются на ширину колонки — см.
+`users`'s README, раздел "Identity-field guards".
+
 ## Steam Sign-In
 
 Steam так и не завёл OAuth — только OpenID 2.0. `GET /auth/steam/start`

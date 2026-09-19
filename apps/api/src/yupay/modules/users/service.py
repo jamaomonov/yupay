@@ -17,6 +17,7 @@ from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.auth.telegram import TelegramUser
+from yupay.modules.users.identity_guard import safe_avatar_url, safe_display_name
 from yupay.modules.users.models import SteamLink, TelegramLink, User
 from yupay.modules.users.schemas import UserAdminSort
 from yupay.modules.wallet.balances import (
@@ -65,8 +66,9 @@ async def upsert_user_by_telegram(
             link.language_code = tg_user.language_code
             link.is_premium = tg_user.is_premium
             link.last_seen_at = now()
-        if tg_user.photo_url and not existing.photo_url:
-            existing.photo_url = tg_user.photo_url
+        photo_url = safe_avatar_url(tg_user.photo_url)
+        if photo_url and not existing.photo_url:
+            existing.photo_url = photo_url
         existing.updated_at = now()
         await session.flush()
         return existing
@@ -76,8 +78,8 @@ async def upsert_user_by_telegram(
         id=new_id(),
         email=None,
         locale=locale,
-        display_name=(tg_user.first_name or tg_user.username),
-        photo_url=tg_user.photo_url,
+        display_name=safe_display_name(tg_user.first_name or tg_user.username),
+        photo_url=safe_avatar_url(tg_user.photo_url),
     )
     link = TelegramLink(
         id=new_id(),
@@ -107,17 +109,31 @@ async def upsert_user_by_steam(
     Mirrors :func:`upsert_user_by_telegram`: first sight creates the ``users``
     row and the ``steam_links`` row; later visits touch ``last_seen_at`` and
     refresh the mutable Steam fields.
+
+    ``avatar_url`` is guarded once and reused for both ``steam_links
+    .avatar_url`` and ``users.photo_url``: they are written in the same
+    flush from the same value, so guarding only one still leaves the other
+    free to fail the INSERT/UPDATE on an absurd value — the exact failure
+    mode this guard exists to prevent, just on a different column.
+    ``steam_links.avatar_url`` stays ``varchar(1024)`` (unlike
+    ``users.photo_url``, not widened by migration 0083 — Steam's avatar URLs
+    are short, fixed-format CDN links, not user-supplied text), so a
+    genuine — not absurd — value between 1024 and
+    :data:`~yupay.modules.users.identity_guard.MAX_AVATAR_URL_LENGTH` chars
+    could still overflow it; that shape has never been observed from Steam
+    and is considered out of scope here.
     """
+    avatar = safe_avatar_url(avatar_url)
     link = (
         await session.execute(select(SteamLink).where(SteamLink.steam_id == steam_id))
     ).scalar_one_or_none()
     if link is not None:
         link.persona_name = persona_name or link.persona_name
-        link.avatar_url = avatar_url or link.avatar_url
+        link.avatar_url = avatar or link.avatar_url
         link.last_seen_at = now()
         user = link.user
-        if avatar_url and not user.photo_url:
-            user.photo_url = avatar_url
+        if avatar and not user.photo_url:
+            user.photo_url = avatar
         user.updated_at = now()
         await session.flush()
         return user
@@ -126,8 +142,8 @@ async def upsert_user_by_steam(
         id=new_id(),
         email=None,
         locale="ru",
-        display_name=persona_name,
-        photo_url=avatar_url,
+        display_name=safe_display_name(persona_name),
+        photo_url=avatar,
     )
     session.add(user)
     session.add(
@@ -136,7 +152,7 @@ async def upsert_user_by_steam(
             user_id=user.id,
             steam_id=steam_id,
             persona_name=persona_name,
-            avatar_url=avatar_url,
+            avatar_url=avatar,
         )
     )
     await session.flush()

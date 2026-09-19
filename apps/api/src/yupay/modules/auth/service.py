@@ -54,6 +54,7 @@ from yupay.modules.notifications.templates import (
     password_reset_email,
     verify_email_email,
 )
+from yupay.modules.users.identity_guard import safe_avatar_url, safe_display_name
 from yupay.modules.users.models import User
 from yupay.modules.users.service import (
     get_user_by_id,
@@ -291,8 +292,8 @@ async def google_login(
             id=new_id(),
             email=email,
             email_verified_at=now(),
-            display_name=identity.name,
-            photo_url=identity.picture,
+            display_name=safe_display_name(identity.name),
+            photo_url=safe_avatar_url(identity.picture),
             locale="ru",
         )
         db.add(user)
@@ -307,10 +308,12 @@ async def google_login(
                 user.password_hash = None
                 log.info("auth.google.planted_password_cleared")
             user.email_verified_at = now()
-        if identity.picture and not user.photo_url:
-            user.photo_url = identity.picture
-        if identity.name and not user.display_name:
-            user.display_name = identity.name
+        picture = safe_avatar_url(identity.picture)
+        if picture and not user.photo_url:
+            user.photo_url = picture
+        display_name = safe_display_name(identity.name)
+        if display_name and not user.display_name:
+            user.display_name = display_name
         user.updated_at = now()
         await db.flush()
     return await _open_session(db, user=user, settings=s)

@@ -112,3 +112,51 @@ async def test_a_bad_token_is_a_401_not_a_500(db_session: AsyncSession) -> None:
 
     with pytest.raises(UnauthorizedError):
         await google_login(db_session, "tok", verifier=verify)
+
+
+async def test_an_absurdly_long_avatar_url_does_not_fail_registration(
+    db_session: AsyncSession,
+) -> None:
+    """Sentry, production: a real Google avatar URL past 1024 chars 500'd
+    ``POST /auth/google`` with ``StringDataRightTruncationError`` on the old
+    ``varchar(1024)`` column. The column is now ``text`` (migration 0083),
+    but the guard (``identity_guard.safe_avatar_url``) must also refuse an
+    absurd value outright rather than lean on the column alone — so
+    registration succeeds either way, with no avatar stored for a value this
+    implausible.
+    """
+    absurd_url = "https://lh3.googleusercontent.com/a-/" + ("A" * 3000)
+    email = f"g-{new_id()}@example.test"
+
+    async def verify_with_long_avatar(credential: str) -> GoogleUser:
+        user = _google_user(email=email)
+        return GoogleUser(
+            sub=user.sub,
+            email=user.email,
+            email_verified=user.email_verified,
+            name=user.name,
+            picture=absurd_url,
+        )
+
+    tokens = await google_login(db_session, "tok", verifier=verify_with_long_avatar)
+    assert tokens.access_token
+
+    row = (
+        await db_session.execute(User.__table__.select().where(User.__table__.c.email == email))
+    ).first()
+    assert row is not None
+    assert row.photo_url is None
+
+
+async def test_a_normal_length_avatar_url_still_stores_it(db_session: AsyncSession) -> None:
+    email = f"g-{new_id()}@example.test"
+
+    async def verify(credential: str) -> GoogleUser:
+        return _google_user(email=email)
+
+    await google_login(db_session, "tok", verifier=verify)
+    row = (
+        await db_session.execute(User.__table__.select().where(User.__table__.c.email == email))
+    ).first()
+    assert row is not None
+    assert row.photo_url == "https://lh3.googleusercontent.com/a/pic"
