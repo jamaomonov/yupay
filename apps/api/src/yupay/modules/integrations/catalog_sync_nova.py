@@ -106,14 +106,20 @@ async def _sync_category_denoms(
                 price_usdt=Decimal(str(price)) if price not in (None, "") else None,
             )
             written += 1
+        # Inside the same ``try`` as the loop, deliberately: this function
+        # promises never to raise past itself (``routes.sync_catalog`` relies
+        # on it), and a database error here is exactly as possible as one in
+        # ``upsert_catalog_entry`` above.
+        #
+        # Only a clean pass reaches this line — a partial one returned with an
+        # error — and an empty ``seen`` prunes nothing by
+        # ``prune_catalog_denoms``'s own rule. Neither may read as a supplier
+        # delisting a whole category at once.
+        await svc.prune_catalog_denoms(
+            db, supplier_slug="nova", parent_external_id=category_id, keep=seen
+        )
     except Exception as exc:  # noqa: BLE001 -- one malformed offer must not raise past this category
         return written, False, f"malformed offer payload: {exc!s}"[:200]
-    # Only a clean pass may prune. A partial one returned above with an error,
-    # and an empty one prunes nothing by ``prune_catalog_denoms``'s own rule —
-    # neither may be read as a mass delisting.
-    await svc.prune_catalog_denoms(
-        db, supplier_slug="nova", parent_external_id=category_id, keep=seen
-    )
     return written, False, None
 
 

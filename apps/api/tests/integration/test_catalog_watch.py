@@ -27,7 +27,11 @@ from yupay.modules.integrations.catalog_watch import (
     watch_cached_variants,
     watch_mapped_variants,
 )
-from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
+from yupay.modules.integrations.models import (
+    NOVA_STEAM_SENTINEL,
+    SkuSupplierMapping,
+    SupplierCatalogCache,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -273,7 +277,7 @@ async def _seed_cached(
     *,
     supplier: str = "nova",
     game_id: str = "pubg_mobile_auto",
-    variant: str = "1800_uc",
+    variant: str | None = "1800_uc",
     cached: tuple[str, ...] = ("1800_uc", "60_uc"),
 ) -> tuple[Sku, SkuSupplierMapping]:
     """A mapping plus the cache rows a denomination sync would have written."""
@@ -447,3 +451,31 @@ async def test_prune_refuses_to_empty_the_cache_on_an_empty_pass(db_session: Asy
     )
 
     assert removed == 0
+
+
+async def test_cached_watch_never_asks_for_the_steam_sentinel(db_session: AsyncSession) -> None:
+    """The NOVA Steam reserve mapping is not a catalogue category (ADR-0082
+    §4), so asking for its denominations is a guaranteed 404. The full sweep
+    excludes it; without the same exclusion here every hourly tick would
+    spend a wasted call to log a warning that reads like a real problem.
+    """
+    _sku, mapping = await _seed_cached(
+        db_session, game_id=NOVA_STEAM_SENTINEL, variant=None, cached=()
+    )
+    asked: list[str] = []
+
+    async def _sync(
+        db: AsyncSession, *, supplier_slug: str, game_id: str
+    ) -> tuple[int, str | None]:
+        asked.append(game_id)
+        return 0, f"nova has no category {game_id!r}"
+
+    report = await watch_cached_variants(
+        db_session, supplier_slug="nova", sync=_sync, send_alert=_AlertSpy()
+    )
+
+    await db_session.refresh(mapping)
+    assert asked == []
+    assert report.checked == 0
+    assert report.skipped_games == 0
+    assert mapping.extra == {}

@@ -48,7 +48,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Sku
-from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
+from yupay.modules.integrations.models import (
+    NOVA_STEAM_SENTINEL,
+    SkuSupplierMapping,
+    SupplierCatalogCache,
+)
 
 log = get_logger("yupay.integrations.catalog_watch")
 
@@ -298,6 +302,13 @@ async def watch_cached_variants(
 
     by_game: dict[str, list[tuple[SkuSupplierMapping, Sku]]] = {}
     for mapping, sku in await _active_mappings(db, supplier_slug=supplier_slug, kind="game"):
+        if mapping.external_product_id == NOVA_STEAM_SENTINEL:
+            # The Steam reserve mapping is not a catalogue category and never
+            # was (ADR-0082 §4). Asking for its denominations is a guaranteed
+            # 404 — the full sweep excludes it for exactly this reason, and
+            # without the same exclusion here every tick would spend a wasted
+            # call to log a warning that reads like a real problem.
+            continue
         by_game.setdefault(mapping.external_product_id, []).append((mapping, sku))
 
     for game_id, pairs in by_game.items():

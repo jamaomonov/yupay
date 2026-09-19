@@ -442,12 +442,16 @@ async def test_a_denomination_the_supplier_dropped_leaves_the_cache(
     route = respx.get(f"{BASE}/api/v2/topups/offers", params={"category_id": "genshin_impact"})
 
     route.mock(return_value=_offers("60_crystals", "300_crystals"))
-    first = await integration_client.post(url, headers={**headers, "Idempotency-Key": "nova-denom-prune-key-001"})
+    first = await integration_client.post(
+        url, headers={**headers, "Idempotency-Key": "nova-denom-prune-key-001"}
+    )
     assert first.json()["denominations_synced"] == 2
 
     # NOVA stops listing 300_crystals.
     route.mock(return_value=_offers("60_crystals"))
-    second = await integration_client.post(url, headers={**headers, "Idempotency-Key": "nova-denom-prune-key-002"})
+    second = await integration_client.post(
+        url, headers={**headers, "Idempotency-Key": "nova-denom-prune-key-002"}
+    )
     assert second.json()["denominations_synced"] == 1
 
     listing = await integration_client.get(
