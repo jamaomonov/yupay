@@ -9,6 +9,7 @@ import { Suspense, use, useEffect, useState } from "react";
 
 import { WalletMark } from "@/components/icons/WalletMark";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { PromoCodeCard } from "@/components/wallet/PromoCodeCard";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { formatUzs, pathFor } from "@/lib/seo";
@@ -127,6 +128,11 @@ export default function WalletPage({ params }: { params: Promise<{ locale: strin
           {t("topUpCta")}
         </Link>
       </section>
+
+      {/* Promo code: credits user_wallet directly, so the balance card above
+          moves the instant a redeem succeeds. The Mini App's wallet has
+          carried this since it shipped; the web wallet didn't. */}
+      <PromoCodeCard locale={locale} />
 
       <h2 className="text-tx-dim mb-3 font-mono text-[11px] font-bold uppercase tracking-[0.16em]">
         {t("historyTitle")}

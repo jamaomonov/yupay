@@ -832,7 +832,18 @@
     "methodUnavailable": "Технические работы",
     "topUpBadAmount": "Проверьте сумму — она вне допустимых границ",
     "topUpProviderDown": "Способ оплаты сейчас недоступен, выберите другой",
-    "methodNoneAvailable": "Сейчас нет доступных способов оплаты"
+    "methodNoneAvailable": "Сейчас нет доступных способов оплаты",
+    "promoTitle": "Промокод",
+    "promoPlaceholder": "Введите код",
+    "promoApply": "Применить",
+    "promoSuccess": "Начислено {amount}",
+    "promoNotFound": "Такого промокода нет",
+    "promoUsed": "Промокод уже использован или недоступен",
+    "promoAlreadyUsed": "Вы уже активировали этот промокод",
+    "promoExpired": "Срок действия промокода истёк",
+    "promoExhausted": "Промокод исчерпан",
+    "promoInactive": "Промокод больше не действует",
+    "promoError": "Не удалось применить промокод"
   },
   "checkoutReturn": {
     "title": "Проверяем платёж",

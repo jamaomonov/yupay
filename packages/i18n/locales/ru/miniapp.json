@@ -79,7 +79,7 @@
   "wallet.promoUsed": "Промокод уже использован или недоступен",
   "wallet.promoAlreadyUsed": "Вы уже активировали этот промокод",
   "wallet.promoExpired": "Срок действия промокода истёк",
-  "wallet.promoExhausted": "Промокод исчерпан — все активации использованы",
+  "wallet.promoExhausted": "Промокод исчерпан",
   "wallet.promoInactive": "Промокод больше не действует",
   "wallet.promoError": "Не удалось применить промокод",
   "wallet.tx.adminAdjust": "Корректировка от админа",

@@ -159,6 +159,30 @@ export function createWalletTopUp(
   });
 }
 
+export interface PromoRedeemOut {
+  code: string;
+  amount: string;
+  currency: string;
+}
+
+/**
+ * Redeem a promo code. Credits `user_wallet` immediately when accepted — the
+ * same `POST /promo/redeem` the Mini App's wallet already calls.
+ *
+ * The key is minted fresh per call, unlike `createWalletTopUp`'s reused one:
+ * there a retry must replay the exact same request or it opens a second
+ * payment. Here, a refusal is fixed by the customer trying a different code,
+ * which is a new request, not a retry of the one that just failed — so the
+ * caller mints a new key on every attempt rather than reusing one.
+ */
+export function redeemPromo(code: string, idempotencyKey: string): Promise<PromoRedeemOut> {
+  return apiFetch<PromoRedeemOut>("/promo/redeem", {
+    method: "POST",
+    headers: { "Idempotency-Key": idempotencyKey },
+    body: { code },
+  });
+}
+
 /** One idempotency key per (amount, provider) the customer is asking for.
  *
  * Retrying the same request reuses it, so the server replays the original
@@ -201,16 +225,20 @@ export function formatLedgerAmount(locale: string, amount: number, currency: str
     // Same fix as `formatUzs`: `Intl`'s `style:"currency"` prints the bare
     // ISO code ("150 000 UZS"), not the word every other soum price in the
     // storefront uses — the wallet history was the one page still doing
-    // that (2026-09-04 review).
+    // that (2026-09-04 review). UZS has no minor unit in practice, so
+    // `minimumFractionDigits` is deliberately left at its default of 0.
     const number = new Intl.NumberFormat(intlLocale, { maximumFractionDigits }).format(amount);
     return `${number} ${uzsWord(locale)}`;
   }
+  // Money always shows its minor unit — a non-UZS credit rendered without
+  // cents ("12,5 $" for $12.50) reads as a rounding error, not a display
+  // choice. `minimumFractionDigits` matches the maximum rather than 0.
   try {
     return new Intl.NumberFormat(intlLocale, {
       style: "currency",
       currency,
       maximumFractionDigits,
-      minimumFractionDigits: 0,
+      minimumFractionDigits: maximumFractionDigits,
     }).format(amount);
   } catch {
     // `Intl` only knows ISO 4217, and USDT is a ticker rather than a currency
@@ -218,7 +246,7 @@ export function formatLedgerAmount(locale: string, amount: number, currency: str
     // a render.
     const number = new Intl.NumberFormat(intlLocale, {
       maximumFractionDigits,
-      minimumFractionDigits: 0,
+      minimumFractionDigits: maximumFractionDigits,
     }).format(amount);
     return `${number} ${currency}`;
   }
