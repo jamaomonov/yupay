@@ -13,6 +13,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.config import get_settings
 from yupay.core.ids import new_id
 from yupay.modules.catalog.models import (
     Brand,
@@ -336,6 +337,43 @@ async def test_product_detail_carries_brand_and_form(
     # form schema is returned as-is
     assert body["required_fields"][0]["key"] == "player_id"
     assert body["required_fields"][0]["type"] == "text"
+
+
+async def test_product_detail_drops_a_foreign_help_images_url_instead_of_500ing(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_one
+) -> None:
+    """A stored ``help_images`` URL that no longer points at our own R2
+    bucket must cost one missing picture, not the whole product page.
+
+    This is exactly what a config cutover (or a seed that bypasses the
+    Pydantic model — see the catalog README) leaves behind: a row that was
+    valid when written but no longer validates strictly. Written straight
+    via `update()`, bypassing `FormField`/`HelpImage` entirely, the same way
+    a raw-SQL seed would — see `catalog.schemas.HELP_IMAGES_READ_CONTEXT`.
+    """
+    own_base = get_settings().r2_public_base_url.rstrip("/")
+    field_with_mixed_images = {
+        **_PLAYER_ID_FIELD,
+        "help_images": [
+            {"url": f"{own_base}/field_help_image/2026/09/ok.png"},
+            {"url": "https://res.cloudinary.com/demo/image/upload/foreign.png"},
+        ],
+    }
+    await db_session.execute(
+        update(Product)
+        .where(Product.slug == "pubg-uc")
+        .values(required_fields=[field_with_mixed_images])
+    )
+    await db_session.commit()
+
+    r = await integration_client.get("/api/v1/catalog/products/pubg-uc")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    # The rest of the product is untouched.
+    assert body["brand"]["slug"] == "pubg-mobile"
+    assert len(body["skus"]) == 2
+    help_images = body["required_fields"][0]["help_images"]
+    assert [img["url"] for img in help_images] == [f"{own_base}/field_help_image/2026/09/ok.png"]
 
 
 async def test_product_detail_reports_supplier_stock(

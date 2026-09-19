@@ -20,6 +20,7 @@ from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import get_settings
+from yupay.modules.catalog.models import Product
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -1177,6 +1178,14 @@ def _help_image_url(n: int) -> str:
     return f"{base}/field_help_image/2026/09/help-{n}.png"
 
 
+# Deliberately non-monotonic: `help-{n}.png` sorts lexicographically the same
+# as it sorts numerically, so a submission order of range(6) can't tell
+# "preserved as submitted" apart from "silently re-sorted ascending" — a
+# stray `.sort()` anywhere on the write or the read path would pass every
+# assertion below unnoticed. This permutation can't.
+_SHUFFLED_HELP_IMAGE_ORDER = (3, 0, 5, 1, 4, 2)
+
+
 async def test_product_create_round_trips_help_images_in_order(
     integration_client: AsyncClient, _admin_headers: dict[str, str]
 ) -> None:
@@ -1184,7 +1193,10 @@ async def test_product_create_round_trips_help_images_in_order(
     URLs, same order, captions intact — since the order *is* the
     walkthrough ("open the profile" -> "the ID sits under the nickname")."""
     brand_id = await _create_brand_for_product(integration_client, _admin_headers, suffix="ok")
-    help_images = [{"url": _help_image_url(i), "caption": {"ru": f"Шаг {i}"}} for i in range(6)]
+    help_images = [
+        {"url": _help_image_url(i), "caption": {"ru": f"Шаг {i}"}}
+        for i in _SHUFFLED_HELP_IMAGE_ORDER
+    ]
     r = await integration_client.post(
         "/api/v1/admin/catalog/products",
         headers=_admin_headers,
@@ -1207,7 +1219,7 @@ async def test_product_create_round_trips_help_images_in_order(
     assert r.status_code == 201, r.text
     stored = r.json()["required_fields"][0]["help_images"]
     assert [img["url"] for img in stored] == [img["url"] for img in help_images]
-    assert stored[0]["caption"] == {"ru": "Шаг 0"}
+    assert stored[0]["caption"] == {"ru": f"Шаг {_SHUFFLED_HELP_IMAGE_ORDER[0]}"}
 
     # Fetch it back via GET to prove it round-trips through storage, not
     # just through the POST response echo.
@@ -1275,3 +1287,64 @@ async def test_product_create_rejects_a_help_image_url_on_another_host(
     )
     assert r.status_code == 422, r.text
     assert "own media bucket" in r.text
+
+
+async def test_admin_products_list_drops_a_foreign_help_images_url_instead_of_500ing(
+    integration_client: AsyncClient,
+    _admin_headers: dict[str, str],
+    db_session: AsyncSession,
+) -> None:
+    """``GET /admin/catalog/products`` is the page an operator would use to
+    fix a bad stored URL — it must not 500 on the way there.
+
+    Writes straight past ``FormField``/``HelpImage`` via ``update()``, the
+    same way a raw-SQL seed (or an ``R2_PUBLIC_BASE_URL`` cutover that
+    outdates an old row) would."""
+    brand_id = await _create_brand_for_product(integration_client, _admin_headers, suffix="drop")
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/products",
+        headers=_admin_headers,
+        json={
+            "slug": "help-img-product-drop",
+            "brand_id": brand_id,
+            "kind": "top_up",
+            "required_fields": [
+                {
+                    "key": "player_id",
+                    "label": {"ru": "ID игрока"},
+                    "type": "text",
+                    "required": True,
+                    "help_images": [{"url": _help_image_url(0)}],
+                },
+            ],
+            "translations": [{"locale": "ru", "name": "Продукт"}],
+        },
+    )
+    assert r.status_code == 201, r.text
+    product_id = r.json()["id"]
+
+    await db_session.execute(
+        update(Product)
+        .where(Product.id == product_id)
+        .values(
+            required_fields=[
+                {
+                    "key": "player_id",
+                    "label": {"ru": "ID игрока"},
+                    "type": "text",
+                    "required": True,
+                    "help_images": [
+                        {"url": _help_image_url(0)},
+                        {"url": "https://res.cloudinary.com/demo/x.png"},
+                    ],
+                },
+            ]
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.get("/api/v1/admin/catalog/products", headers=_admin_headers)
+    assert r.status_code == 200, r.text
+    product = next(p for p in r.json() if p["id"] == product_id)
+    help_images = product["required_fields"][0]["help_images"]
+    assert [img["url"] for img in help_images] == [_help_image_url(0)]

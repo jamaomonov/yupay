@@ -15,10 +15,29 @@ import re
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, ValidationInfo, field_validator
+
+from yupay.core.logging import get_logger
+
+log = get_logger("yupay.catalog.schemas")
 
 LocaleMap = dict[str, str]
 """Map of locale → translated string. Keys are locales we support (``ru``/``en``/``uz``)."""
+
+_LENIENT_HELP_IMAGES_KEY = "lenient_help_images"
+
+HELP_IMAGES_READ_CONTEXT: dict[str, bool] = {_LENIENT_HELP_IMAGES_KEY: True}
+"""Pass as ``context=`` to ``model_validate`` on a *read* path that re-hydrates an
+already-stored ``FormField``/``required_fields`` row — ``catalog.service`` for the
+storefront, ``AdminProductOut`` for the admin list/create/update responses.
+
+Opts into dropping a ``help_images`` entry that no longer validates (see
+``FormField._drop_nonconforming_help_images_on_read``) instead of failing the whole
+field. Omit it — the default for ``ProductCreate``/``ProductUpdate`` request bodies,
+which FastAPI parses with no context, and for any bare ``FormField(...)``/
+``HelpImage(...)`` construction — to keep the strict raise an admin write relies on
+for its 422.
+"""
 
 # ``FormField.help_images`` cap — an instruction longer than this has stopped
 # being an instruction. Enforced here (the model both admin writes and
@@ -137,6 +156,18 @@ class HelpImage(BaseModel):
         ``FormField`` in a unit test (no app bootstrap) does.
         ``storage.service`` has none of that: it only depends on
         ``core.config``/``core.errors``/``core.ids``/``storage.client``.
+
+        The lazy import stays for now; the real fix is upstream of this file.
+        ``auth.deps`` reaches into ``api.v1.deps`` only for ``db_session`` —
+        which is *defined* there, wrapping ``core.db.get_session``, not
+        re-exported from ``core.db`` — and that reach-in is what forces
+        ``api.v1``'s package ``__init__`` to run before ``admin.api`` has
+        finished importing. Moving ``db_session`` (and ``SessionDep``) into
+        ``core.db`` and having ``api.v1.deps`` re-export them, so
+        ``auth.deps`` imports ``db_session`` from ``core.db`` instead, would
+        break the cycle at its root; swapping which module ``auth.deps``
+        imports it *from* today would just fail, since ``core.db`` doesn't
+        define that name yet.
         """
         from yupay.modules.storage.service import is_own_media_url
 
@@ -167,6 +198,52 @@ class FormField(BaseModel):
         if v is not None:
             _assert_pattern_is_safe(v)
         return v
+
+    @field_validator("help_images", mode="before")
+    @classmethod
+    def _drop_nonconforming_help_images_on_read(cls, v: object, info: ValidationInfo) -> object:
+        """On an opted-in read, drop a ``help_images`` entry that fails ``HelpImage``
+        validation instead of failing the whole field.
+
+        ``HelpImage._url_is_own_media`` is the one validator here whose verdict
+        depends on mutable runtime config (``settings.r2_public_base_url``), not
+        only on the stored value — flip that config (an environment cutover, a
+        prod-dump restore into staging) and every previously-valid stored URL
+        becomes invalid at once. ``catalog.service.get_product_by_slug`` and
+        ``AdminProductOut`` both call ``model_validate`` for *every* stored field
+        on *every* read, so letting that raise would 500 the storefront product
+        page — and the admin page an operator would use to fix it.
+
+        Runs ``mode="before"`` (raw dicts, ahead of Pydantic's own list-item
+        coercion) so a dropped entry never reaches — and never itself raises
+        through — the list. Reuses ``HelpImage.model_validate`` per item rather
+        than re-deriving what "conforming" means, so this can't drift out of
+        sync with what ``HelpImage``'s own validators actually enforce.
+
+        Only runs when the caller opts in via ``context=HELP_IMAGES_READ_CONTEXT``
+        (the storefront and admin *read* paths). Write bodies
+        (``ProductCreate``/``ProductUpdate``, parsed by FastAPI with no context)
+        and any bare construction keep the strict per-item 422 from
+        ``HelpImage._url_is_own_media`` — an operator gets a clear error and can
+        act, which a silently dropped image would deny them.
+        """
+        if not isinstance(v, list) or not (info.context or {}).get(_LENIENT_HELP_IMAGES_KEY):
+            return v
+        kept: list[object] = []
+        for item in v:
+            try:
+                HelpImage.model_validate(item, context=info.context)
+            except ValidationError as exc:
+                url = item.get("url") if isinstance(item, dict) else None
+                log.warning(
+                    "catalog.help_images.dropped_on_read",
+                    field_key=info.data.get("key"),
+                    url=url,
+                    reason=str(exc),
+                )
+                continue
+            kept.append(item)
+        return kept
 
     @field_validator("help_images")
     @classmethod
@@ -349,6 +426,7 @@ class ProductListOut(BaseModel):
 
 
 __all__ = [
+    "HELP_IMAGES_READ_CONTEXT",
     "BrandDetailOut",
     "BrandListOut",
     "BrandOut",

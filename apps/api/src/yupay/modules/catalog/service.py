@@ -15,6 +15,7 @@ from sqlalchemy.orm import lazyload, selectinload
 
 from yupay.modules.catalog.models import Brand, BrandFaq, Category, Product, Sku
 from yupay.modules.catalog.schemas import (
+    HELP_IMAGES_READ_CONTEXT,
     BrandDetailOut,
     BrandOut,
     BrandRatingOut,
@@ -530,7 +531,10 @@ async def get_product_by_slug(
         description=description,
         image_url=product.image_url,
         kind=product.kind,  # type: ignore[arg-type]
-        required_fields=[FormField.model_validate(f) for f in product.required_fields],
+        required_fields=[
+            FormField.model_validate(f, context=HELP_IMAGES_READ_CONTEXT)
+            for f in product.required_fields
+        ],
         skus=skus_out,
     )
 

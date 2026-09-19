@@ -161,8 +161,7 @@ under the nickname"), not just a set of images.
 
 Each entry is `{ "url": str, "caption": LocaleMap | None }` (`HelpImage`
 in `schemas.py`). Two limits are enforced server-side, on `FormField`
-itself (so they hold for every caller — admin write and storefront read
-alike), not only at the HTTP layer:
+itself, not only at the HTTP layer:
 
 - **At most 6 images per field.** An instruction longer than that has
   stopped being an instruction.
@@ -173,6 +172,30 @@ alike), not only at the HTTP layer:
   remote-image embed: an operator could point it at any third-party
   host, leaking every storefront visitor's IP to that host and adding an
   availability dependency we don't control.
+
+The same-bucket check's verdict depends on `r2_public_base_url` — a
+config value, not just the stored URL — so a stored row that was valid
+when written can go invalid on its own if that setting ever changes
+(an environment cutover, a prod-dump restore into staging). Writes stay
+strict: `ProductCreate`/`ProductUpdate` still 422 on a foreign URL, so an
+operator gets a clear error and can act. Reads are lenient instead: both
+`catalog.service.get_product_by_slug` (storefront) and `AdminProductOut`
+(admin list/create/update) call `model_validate(..., context=
+HELP_IMAGES_READ_CONTEXT)`, which drops a non-conforming `help_images`
+entry — logging a `catalog.help_images.dropped_on_read` warning — instead
+of failing the whole field. A bad URL costs one missing picture, not the
+product page or the admin page an operator would use to fix it. The
+6-image cap is not part of this leniency — it doesn't depend on mutable
+config, so a row that reaches the cap can only do so by bypassing the
+model (see the seed note below), a case this project chooses to record
+rather than paper over.
+
+**Seeds bypass this model entirely.** Several files under
+`scripts/seed/` (and `yupay.scripts.seed_catalog`) write `required_fields`
+straight into Postgres via raw `jsonb_set`/dict literals, never through
+`FormField`/`HelpImage`. A seed that sets `help_images` must therefore
+check the same-bucket prefix and the 6-image cap itself — nothing
+downstream will catch a seed that skips this.
 
 Images upload the same way every other admin image does: presign via
 `storage.api.presign_upload(kind="field_help_image", ...)`, `PUT` straight
