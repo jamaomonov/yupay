@@ -9,7 +9,8 @@ Issue short-lived presigned PUT URLs so the admin SPA can upload images
 R2 bucket. Returns the public URL the admin should persist into the
 relevant DB column (`brands.logo_url`, `brands.hero_image_url`,
 `products.image_url`, `skus.image_url`, a blog cover / inline `<img>`,
-or the broadcast's media column).
+the broadcast's media column, or one entry of a product form field's
+`help_images` list — see "Media kinds" below).
 
 This module **does not** stream bytes — uploads bypass FastAPI entirely.
 See [ADR-0018](../../../../../../docs/decisions/0018-r2-media-storage.md).
@@ -49,10 +50,27 @@ types have a known file extension. This is deliberate: `MEDIA_ALLOWED_MIME`
 had to grow to cover broadcast attachments, but image kinds must not
 silently start accepting a video just because the global list did.
 
-| `kind`                                                                 | Allowed Content-Types                                         | Size cap                                   |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------ |
-| `brand_logo`, `brand_hero`, `product_image`, `sku_image`, `blog_image` | `image/png`, `image/jpeg`, `image/webp` (no SVG)              | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`)            |
-| `broadcast_media`                                                      | those three, plus `image/gif`, `video/mp4`, `application/pdf` | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
+| `kind`                                                                                     | Allowed Content-Types                                         | Size cap                                   |
+| ------------------------------------------------------------------------------------------ | ------------------------------------------------------------- | ------------------------------------------ |
+| `brand_logo`, `brand_hero`, `product_image`, `sku_image`, `blog_image`, `field_help_image` | `image/png`, `image/jpeg`, `image/webp` (no SVG)              | 5 MB (`MEDIA_MAX_UPLOAD_BYTES`)            |
+| `broadcast_media`                                                                          | those three, plus `image/gif`, `video/mp4`, `application/pdf` | 20 MB (`BROADCAST_MEDIA_MAX_UPLOAD_BYTES`) |
+
+`field_help_image` is what a product form field's `help_images` (see
+`yupay.modules.catalog.schemas.FormField`/`HelpImage`) uploads through —
+one screenshot in a «Где найти?» walkthrough, landing under its own
+`field_help_image/<yyyy>/<mm>/<ulid>.<ext>` prefix rather than mixing with
+brand logos and blog covers. `catalog.schemas.HelpImage` validates the
+stored URL against `is_own_media_url` (below) before accepting it, and
+caps the list at 6 images per field — both enforced server-side, in the
+Pydantic model, not just at upload time.
+
+`is_own_media_url(url)` (`storage.service`, re-exported from
+`storage.api`) is the single predicate for "this URL points at our own R2
+media bucket" — it compares `url`'s scheme + host against
+`r2_public_base_url` and requires the path to sit under that prefix.
+Every caller that must refuse a URL pointing at a third-party host reuses
+this instead of re-deriving the prefix; `catalog.schemas.HelpImage` is the
+first such caller.
 
 ## Upload workflow
 

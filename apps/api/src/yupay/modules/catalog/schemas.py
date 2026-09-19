@@ -20,6 +20,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 LocaleMap = dict[str, str]
 """Map of locale → translated string. Keys are locales we support (``ru``/``en``/``uz``)."""
 
+# ``FormField.help_images`` cap — an instruction longer than this has stopped
+# being an instruction. Enforced here (the model both admin writes and
+# storefront reads flow through) rather than only at the HTTP layer, so it
+# holds for every caller, not just the admin endpoint.
+_MAX_HELP_IMAGES = 6
+
 # ``FormField.pattern`` is admin-authored and later run inline, synchronously,
 # against untrusted customer input via ``re.fullmatch`` in
 # ``yupay.modules.orders.validation`` — with no timeout. A pathological pattern
@@ -91,6 +97,54 @@ class FieldCheck(BaseModel):
     server_field: str | None = None
 
 
+class HelpImage(BaseModel):
+    """One annotated screenshot in a field's "Где найти?" walkthrough.
+
+    Order matters: the list order **is** the walkthrough ("open the
+    profile screen" -> "the ID sits under the nickname"), so it is
+    preserved exactly as submitted — never re-sorted when serialising back
+    out.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    url: str
+    caption: LocaleMap | None = None
+
+    @field_validator("url")
+    @classmethod
+    def _url_is_own_media(cls, v: str) -> str:
+        """Refuse anything but our own R2 media bucket.
+
+        Without this, a field's help becomes an arbitrary remote-image
+        embed: an operator account could point it at any third-party host,
+        which is both a privacy leak (every storefront visitor's IP
+        reaching that host) and an availability risk. Single source of
+        truth for "one of our own uploaded media URLs" is
+        ``storage.service.is_own_media_url`` — also re-exported from
+        ``storage.api`` for any caller that wants the module's public
+        surface — reused here rather than re-deriving the
+        ``r2_public_base_url`` prefix.
+
+        Imported lazily, and from ``storage.service`` rather than
+        ``storage.api``: ``storage.api`` also re-exports the presign
+        router, which imports ``admin.api`` -> ``auth.deps`` ->
+        ``api.v1.deps`` -> (Python must init the ``api.v1`` package first)
+        ``api.v1.__init__``, which imports ``admin.api`` again while it is
+        still mid-import — a circular import that only surfaces when
+        something reaches ``admin.api`` *before* ``api.v1`` has been
+        touched at all, which is exactly what constructing a bare
+        ``FormField`` in a unit test (no app bootstrap) does.
+        ``storage.service`` has none of that: it only depends on
+        ``core.config``/``core.errors``/``core.ids``/``storage.client``.
+        """
+        from yupay.modules.storage.service import is_own_media_url
+
+        if not is_own_media_url(v):
+            raise ValueError("help_images url must point at our own media bucket")
+        return v
+
+
 class FormField(BaseModel):
     """One field of a product's form schema."""
 
@@ -102,6 +156,7 @@ class FormField(BaseModel):
     required: bool = True
     placeholder: LocaleMap | None = None
     help_text: LocaleMap | None = None
+    help_images: list[HelpImage] | None = None
     pattern: str | None = None
     options: list[FormOption] | None = None
     check: FieldCheck | None = None
@@ -111,6 +166,13 @@ class FormField(BaseModel):
     def _pattern_is_safe(cls, v: str | None) -> str | None:
         if v is not None:
             _assert_pattern_is_safe(v)
+        return v
+
+    @field_validator("help_images")
+    @classmethod
+    def _help_images_bounded(cls, v: list[HelpImage] | None) -> list[HelpImage] | None:
+        if v is not None and len(v) > _MAX_HELP_IMAGES:
+            raise ValueError(f"help_images accepts at most {_MAX_HELP_IMAGES} images")
         return v
 
 
@@ -295,6 +357,7 @@ __all__ = [
     "FieldCheck",
     "FormField",
     "FormOption",
+    "HelpImage",
     "LocaleMap",
     "PriceOut",
     "ProductDetailOut",

@@ -23,6 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Literal, get_args
+from urllib.parse import urlsplit
 
 from botocore.exceptions import BotoCoreError, ClientError
 
@@ -38,6 +39,7 @@ MediaKind = Literal[
     "sku_image",
     "broadcast_media",
     "blog_image",
+    "field_help_image",
 ]
 MEDIA_KINDS: tuple[MediaKind, ...] = get_args(MediaKind)
 
@@ -65,6 +67,7 @@ _KIND_ALLOWED_MIME: dict[str, set[str]] = {
     "product_image": set(_IMAGE_MIME),
     "sku_image": set(_IMAGE_MIME),
     "blog_image": set(_IMAGE_MIME),
+    "field_help_image": set(_IMAGE_MIME),
     "broadcast_media": set(_IMAGE_MIME) | {"image/gif", "video/mp4", "application/pdf"},
 }
 
@@ -113,6 +116,37 @@ def public_url_for(key: str) -> str:
     """Return the publicly-reachable URL for a stored object key."""
     base = get_settings().r2_public_base_url.rstrip("/")
     return f"{base}/{key}"
+
+
+def is_own_media_url(url: str) -> bool:
+    """True when ``url`` sits under our own public media prefix.
+
+    The single definition of "one of our own uploaded media URLs" — every
+    caller that must refuse a URL pointing at a third-party host (e.g.
+    ``catalog.schemas.HelpImage.url``) reuses this instead of re-deriving
+    the prefix. Mirrors exactly what :func:`public_url_for` builds:
+    ``<r2_public_base_url>/<key>``.
+
+    Compares scheme and host (``netloc``) exactly, then requires the path to
+    sit under the base URL's path — a plain string prefix match would let
+    ``https://cdn.yupay.uz.evil.com/x`` slip past a naive check; comparing
+    ``netloc`` separately closes that.
+
+    Args:
+        url: Candidate URL to check.
+
+    Returns:
+        ``True`` when ``url``'s scheme + host match ``r2_public_base_url``
+        and its path sits under that prefix. ``False`` for any mismatch,
+        including a malformed ``url`` — :func:`urllib.parse.urlsplit` never
+        raises, so there is nothing to catch.
+    """
+    base = urlsplit(get_settings().r2_public_base_url)
+    candidate = urlsplit(url)
+    if candidate.scheme != base.scheme or candidate.netloc != base.netloc:
+        return False
+    base_path = base.path.rstrip("/")
+    return candidate.path == base_path or candidate.path.startswith(base_path + "/")
 
 
 def presign_upload(
@@ -201,6 +235,7 @@ __all__ = [
     "MEDIA_KINDS",
     "MediaKind",
     "PresignResult",
+    "is_own_media_url",
     "presign_upload",
     "public_url_for",
 ]

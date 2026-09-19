@@ -42,7 +42,7 @@ from yupay.modules.catalog.api import (
     BrandListOut, BrandDetailOut, BrandOut,              # DTOs
     CategoryListOut, ProductListOut,
     ProductDetailOut, ProductSummaryOut, SkuOut,
-    PriceOut, FormField, FormOption, LocaleMap,
+    PriceOut, FormField, FormOption, HelpImage, LocaleMap,
     get_brand_by_slug, get_product_by_slug, get_sku_by_id,
     list_brands, list_categories, list_products,
     router,                                              # FastAPI router @ /api/v1/catalog
@@ -87,6 +87,17 @@ typed form, and that the API validates on order creation.
     "required": true,
     "pattern": "^[0-9]{6,20}$",
     "placeholder": { "ru": "12345678", "en": "12345678" },
+    "help_text": { "ru": "ID игрока указан в профиле" },
+    "help_images": [
+      {
+        "url": "https://cdn.yupay.uz/field_help_image/2026/09/abc.png",
+        "caption": { "ru": "Открой профиль" },
+      },
+      {
+        "url": "https://cdn.yupay.uz/field_help_image/2026/09/def.png",
+        "caption": { "ru": "ID под ником" },
+      },
+    ],
   },
   {
     "key": "server",
@@ -138,6 +149,36 @@ both halves, so the check reports every customer's correct id as invalid —
 which is exactly what shipped on `mlbb-diamonds-ru`. `ProductCreate` /
 `ProductUpdate` now reject a `server_field` that names the field itself or a
 key no field defines; see `admin_schemas.validate_form_fields`.
+
+### The `help_images` list
+
+A field may carry `help_images`: an ordered list of screenshots for its
+"Где найти?" modal — the visual companion to `help_text`, for the case a
+paragraph doesn't cover well (e.g. "here's exactly where the ID sits on
+your profile screen"). Order matters and is preserved exactly as
+submitted: it **is** the walkthrough ("open the profile" → "the ID sits
+under the nickname"), not just a set of images.
+
+Each entry is `{ "url": str, "caption": LocaleMap | None }` (`HelpImage`
+in `schemas.py`). Two limits are enforced server-side, on `FormField`
+itself (so they hold for every caller — admin write and storefront read
+alike), not only at the HTTP layer:
+
+- **At most 6 images per field.** An instruction longer than that has
+  stopped being an instruction.
+- **`url` must point at our own R2 media bucket** — validated against
+  `r2_public_base_url` via `storage.service.is_own_media_url` (the same
+  predicate `storage.api` re-exports for any other caller with this
+  need). Without this check, a field's help becomes an arbitrary
+  remote-image embed: an operator could point it at any third-party
+  host, leaking every storefront visitor's IP to that host and adding an
+  availability dependency we don't control.
+
+Images upload the same way every other admin image does: presign via
+`storage.api.presign_upload(kind="field_help_image", ...)`, `PUT` straight
+to R2, then persist the returned `public_url` into this field — see the
+`storage` module's README for the upload workflow and its `field_help_image`
+media-kind row.
 
 ## Display-price policy
 
