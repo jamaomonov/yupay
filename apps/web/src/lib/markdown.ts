@@ -3,6 +3,8 @@ import {
   getBrands,
   getProductDetail,
   type BrandSummary,
+  type HelpImage,
+  type LocaleMap,
   type SkuOut,
 } from "./catalog";
 import { firstNonEmpty, formatUzs, SITE } from "./seo";
@@ -23,6 +25,19 @@ const SUMMARY =
   "YuPay — пополнение игровых валют, подписок, лицензий, гифт-карт и цифровых кодов в Узбекистане, России и СНГ. Оплата в сумах картами Uzcard и Humo (Click, Payme, Uzum), для России — YooKassa, Tinkoff, СБП, а также USDT. Доставка моментальная и автоматическая, пополнение по публичному ID/логину — пароль не требуется. Комиссия сервиса 0%, курс виден до оплаты.";
 
 const oneLine = (s: string): string => s.replace(/\s+/g, " ").trim();
+
+/** Picks a locale's string, falling back to ru then the first *non-empty*
+ *  translation. The admin's caption/label editors submit all three locale
+ *  keys, so an untouched one arrives as `""`, not a missing key — a plain
+ *  `??` chain doesn't fall back on that (the same bug the storefront's
+ *  "где найти" modal had). */
+function localize(m: LocaleMap | null | undefined, locale: string): string | null {
+  if (!m) return null;
+  const byLocale = m[locale];
+  if (byLocale && byLocale.trim().length > 0) return byLocale;
+  if (m.ru && m.ru.trim().length > 0) return m.ru;
+  return Object.values(m).find((v) => v.trim().length > 0) ?? null;
+}
 
 /**
  * A prose block, with its shape intact.
@@ -95,6 +110,10 @@ interface HowToLabels {
   title: (n: string) => string;
   steps: string;
   where: string;
+  /** Placeholder for a step screenshot that carries no caption — an agent
+   *  reading Markdown can't see the picture, so a step with no words still
+   *  gets a line saying one exists, instead of a silently missing number. */
+  screenshot: string;
   prices: string;
   faq: string;
 }
@@ -102,6 +121,7 @@ const HOWTO_RU: HowToLabels = {
   title: (n) => `Как пополнить ${n} в Узбекистане`,
   steps: "Пошаговая инструкция",
   where: "Где найти ID / логин",
+  screenshot: "Скриншот",
   prices: "Цены и номиналы",
   faq: "Частые вопросы",
 };
@@ -111,6 +131,7 @@ const HOWTO_L: Record<string, HowToLabels> = {
     title: (n) => `How to top up ${n} in Uzbekistan`,
     steps: "Step by step",
     where: "Where to find your ID / login",
+    screenshot: "Screenshot",
     prices: "Prices and denominations",
     faq: "FAQ",
   },
@@ -118,6 +139,7 @@ const HOWTO_L: Record<string, HowToLabels> = {
     title: (n) => `${n} ni Oʻzbekistonda qanday toʻldirish`,
     steps: "Bosqichma-bosqich",
     where: "ID / login qayerdan olinadi",
+    screenshot: "Skrinshot",
     prices: "Narxlar va nominallar",
     faq: "Koʻp beriladigan savollar",
   },
@@ -140,14 +162,36 @@ export async function howToMarkdown(locale: string, slug: string): Promise<strin
     (brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY).catch(() => null)),
   );
   let where: string | null = null;
+  let whereImages: HelpImage[] = [];
   for (const p of products) {
-    const h = p?.required_fields[0]?.help_text;
-    if (h) {
-      where = h[locale] ?? h.ru ?? Object.values(h)[0] ?? null;
+    const field = p?.required_fields[0];
+    if (!field) continue;
+    const text = localize(field.help_text, locale);
+    const images = field.help_images ?? [];
+    // A field documented only with screenshots (no help_text) still
+    // deserves the section — it used to be skipped entirely because this
+    // looked at help_text alone.
+    if (text || images.length > 0) {
+      where = text;
+      whereImages = images;
       break;
     }
   }
-  if (where) out.push(`## ${L.where}`, block(where), ``);
+  if (where || whereImages.length > 0) {
+    out.push(`## ${L.where}`);
+    if (where) out.push(``, block(where));
+    if (whereImages.length > 0) {
+      // An agent reading this Markdown can't see the screenshots — the
+      // captions are the only part of the walkthrough that survives, so
+      // they're rendered as an ordered list rather than dropped.
+      out.push(``);
+      whereImages.forEach((img, i) => {
+        const caption = localize(img.caption, locale);
+        out.push(`${String(i + 1)}. ${caption ? oneLine(caption) : L.screenshot}`);
+      });
+    }
+    out.push(``);
+  }
 
   const priced = products.filter(
     (p): p is NonNullable<typeof p> => p !== null && p.skus.length > 0,
