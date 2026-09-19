@@ -31,8 +31,11 @@ export function PromoCodeCard({ locale }: PromoCodeCardProps) {
   const redeem = useMutation({
     // A fresh Idempotency-Key per press, minted here rather than hoisted
     // into a ref or module scope — see `redeemPromo`'s docstring on why
-    // reuse is wrong for this call, unlike a top-up retry.
-    mutationFn: (value: string) => redeemPromo(value, crypto.randomUUID()),
+    // reuse is wrong for this call, unlike a top-up retry. Prefixed so an
+    // operator reading `promo_redemptions.idempotency_key` can tell which
+    // surface minted it — the Mini App's own keys carry `miniapp-`
+    // (`newIdempotencyKey`) and `topUpAttemptKey` carries `web-topup-`.
+    mutationFn: (value: string) => redeemPromo(value, `web-promo-${crypto.randomUUID()}`),
     onSuccess: (data) => {
       setCode("");
       // `formatLedgerAmount`, not `formatUzs` — the latter hardcodes the soum
