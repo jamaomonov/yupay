@@ -101,6 +101,14 @@ mappings between them to 241.
 - A fourth supplier joins one of the two paths: a live client satisfying the
   `CatalogClient` protocol, or an entry in `DENOM_SYNCABLE_SUPPLIERS` whose
   syncer prunes. The two-strike logic is supplier-agnostic either way.
-- NOVA and G-Engine cost one denomination-sync call per mapped game per tick.
-  That is the same call the mapping wizard makes, and it is what keeps the
-  cache honest for the picker as well.
+- NOVA and G-Engine normally cost **no** supplier calls: `sync_supplier_catalog`
+  refreshes exactly these games 120s earlier on the same cadence, and the watch
+  reads what it wrote. A game whose oldest cached row is more than 30 minutes
+  old is fetched here instead — that means the sweep did not run or did not
+  reach it, and judging a mapping against hour-old rows is how a delisting gets
+  missed or invented. The tick logs
+  `integrations.catalog_watch.denoms_refetched` with a count when that happens;
+  a steady non-zero count there means the sweep is unhealthy, not this job.
+- Before 2026-09-20 the watch always fetched: 14 NOVA categories and 13
+  G-Engine services per tick, 27-40 calls an hour, and G-Engine's per-game sync
+  re-walks its whole services list every time.
