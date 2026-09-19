@@ -225,16 +225,20 @@ export function formatLedgerAmount(locale: string, amount: number, currency: str
     // Same fix as `formatUzs`: `Intl`'s `style:"currency"` prints the bare
     // ISO code ("150 000 UZS"), not the word every other soum price in the
     // storefront uses — the wallet history was the one page still doing
-    // that (2026-09-04 review).
+    // that (2026-09-04 review). UZS has no minor unit in practice, so
+    // `minimumFractionDigits` is deliberately left at its default of 0.
     const number = new Intl.NumberFormat(intlLocale, { maximumFractionDigits }).format(amount);
     return `${number} ${uzsWord(locale)}`;
   }
+  // Money always shows its minor unit — a non-UZS credit rendered without
+  // cents ("12,5 $" for $12.50) reads as a rounding error, not a display
+  // choice. `minimumFractionDigits` matches the maximum rather than 0.
   try {
     return new Intl.NumberFormat(intlLocale, {
       style: "currency",
       currency,
       maximumFractionDigits,
-      minimumFractionDigits: 0,
+      minimumFractionDigits: maximumFractionDigits,
     }).format(amount);
   } catch {
     // `Intl` only knows ISO 4217, and USDT is a ticker rather than a currency
@@ -242,7 +246,7 @@ export function formatLedgerAmount(locale: string, amount: number, currency: str
     // a render.
     const number = new Intl.NumberFormat(intlLocale, {
       maximumFractionDigits,
-      minimumFractionDigits: 0,
+      minimumFractionDigits: maximumFractionDigits,
     }).format(amount);
     return `${number} ${currency}`;
   }

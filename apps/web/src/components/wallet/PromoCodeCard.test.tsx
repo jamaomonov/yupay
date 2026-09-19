@@ -7,7 +7,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { PromoCodeCard } from "./PromoCodeCard";
 
 import { formatUzs } from "@/lib/seo";
-import { formatLedgerAmount } from "@/lib/wallet";
 import { useToast } from "@/store/useToast";
 
 /**
@@ -214,6 +213,11 @@ it("labels a non-UZS credit in its own currency, not in soum", async () => {
   // `PromoCreateIn` stops an admin issuing a promo in another currency, and
   // the response carries its own. A credit labelled in the wrong one is a
   // money-display bug only the customer would ever notice.
+  //
+  // Asserts the literal formatted string rather than calling
+  // `formatLedgerAmount` again — pinning "12,50 $" (not "12,5 $") is the
+  // point: money keeps its cents (see `wallet.test.ts`'s
+  // `formatLedgerAmount` suite for the formatter's own coverage).
   stubRedeem({ code: "USDGIFT", amount: "12.50", currency: "USD" }, true, 200);
 
   renderCard();
@@ -222,7 +226,9 @@ it("labels a non-UZS credit in its own currency, not in soum", async () => {
   await waitFor(() => {
     expect(useToast.getState().toasts).toHaveLength(1);
   });
+  // `Intl`'s `ru-RU` currency format joins the number and symbol with a
+  // non-breaking space (U+00A0), not a plain one.
   expect(useToast.getState().toasts[0]?.message).toBe(
-    `promoSuccess:${JSON.stringify({ amount: formatLedgerAmount("ru", 12.5, "USD") })}`,
+    `promoSuccess:${JSON.stringify({ amount: "12,50 $" })}`,
   );
 });
