@@ -99,6 +99,65 @@ _CONFIDENCE: dict[MoneyOutcome, int] = {
 _NOBODY_CAN_SAY = MoneyOutcome.UNKNOWN
 
 
+#: Suppliers that treat an ``Idempotency-Key`` as spent the instant they see
+#: it: a reuse is refused with ``409 "This Idempotency-Key was already used for
+#: a purchase"``, never replayed.
+#:
+#: Everyone else here does the opposite and *depends* on the reuse — Waxpeer
+#: returns the original top-up for a repeated ``custom_id`` (and reports it as
+#: the external order id), G-Engine recovers an order by the same ``uuid``. A
+#: fresh key for those would buy the goods a second time, so this is a list of
+#: exceptions and not a default.
+KEY_BURNED_ON_USE: frozenset[str] = frozenset({"nova"})
+
+_RETRY_NONCE_KEY = "idempotency_nonce"
+
+
+def idempotency_key_for(task: FulfillmentTask) -> str:
+    """The key this attempt sends upstream.
+
+    ``task.id`` until something arms a retry nonce, so a task that never
+    needed one keeps the key it has always sent.
+    """
+    nonce = (task.extra_metadata or {}).get(_RETRY_NONCE_KEY)
+    return f"{task.id}:{nonce}" if nonce else task.id
+
+
+def arm_retry_key(task: FulfillmentTask) -> None:
+    """Give the next attempt a key the supplier has not seen — where it is safe.
+
+    Without this a NOVA task that fails once can never be retried: the key is
+    ``task.id``, NOVA burned it on the first call, and every Retry comes back
+    ``409``. That is not a corner case — it is exactly what happens after a
+    low-balance stall, whose entire design is "park it, top up, press Retry".
+    Worse, the 409 grades as ``UNKNOWN``, and the ladder never comes back down,
+    so one press turns "we know we spent nothing" into "we cannot tell" for
+    good.
+
+    Two guards, both load-bearing:
+
+    * only suppliers in :data:`KEY_BURNED_ON_USE` get a new key. For the rest
+      the reuse *is* the protection against paying twice.
+    * never once an attempt may have spent. ``UNKNOWN`` and ``SPENT`` mean a
+      call might already have bought the goods; a key the supplier has not
+      seen would let it buy them again, which is the one mistake worth more
+      than a stuck task. Those keep the old key — the supplier refuses it and
+      a human reconciles, which is the correct end of that road.
+    """
+    if task.supplier not in KEY_BURNED_ON_USE:
+        return
+    standing = money_outcome_of(task)
+    if standing in (MoneyOutcome.UNKNOWN, MoneyOutcome.SPENT):
+        log.info(
+            "fulfillment.retry_key.withheld",
+            task_id=task.id,
+            supplier=task.supplier,
+            standing=standing.value if standing else None,
+        )
+        return
+    task.extra_metadata = {**(task.extra_metadata or {}), _RETRY_NONCE_KEY: new_id()}
+
+
 def record_money_outcome(task: FulfillmentTask, outcome: MoneyOutcome) -> None:
     """Persist what became of our money on a task that has just failed.
 
@@ -753,7 +812,7 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
 
     try:
         result: FulfillResult = await fulfiller.fulfill(
-            db=db, order=order, item=item, idempotency_key=task.id
+            db=db, order=order, item=item, idempotency_key=idempotency_key_for(task)
         )
     except (FulfillerError, FulfillerNotIntegratedError) as exc:
         await _record_attempt(
@@ -1606,6 +1665,7 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     # went back would deliver goods nobody paid for, because a second charge
     # replays its key and debits nothing.
     await _refuse_a_settled_merchant_order(db, task=task)
+    arm_retry_key(task)
     task.status = "pending"
     task.last_error = None
     # ``money_outcome`` is deliberately **not** cleared. It is the only memory
@@ -1693,6 +1753,7 @@ async def reassign_task(
 
     previous = task.supplier
     task.supplier = slug
+    arm_retry_key(task)
     task.status = "pending"
     task.last_error = None
     # ``money_outcome`` stays, for the reason ``retry_task`` gives.
@@ -2202,13 +2263,35 @@ async def _maybe_alert_low_balance(
     ext_id = html.escape(str(extra.get("external_product_id") or "?"))
     variant = str(extra.get("external_variant_id") or "")
     variant_line = f"\nНоминал: <code>{html.escape(variant)}</code>" if variant else ""
+
+    # Whose money is missing. Adapters that cannot tell leave this unset and
+    # keep the old wording; NOVA sets it, because its two refusals mean
+    # opposite things to whoever reads this (see ``nova_grading``).
+    supplier_side = str(extra.get("shortfall") or "") == "supplier"
+    said = str(extra.get("supplier_message") or "")
+    # Their sentence, verbatim — the one piece of evidence about a refusal
+    # nobody can reproduce. Escaped: it is text we did not write.
+    said_line = f"\nОтвет поставщика: <i>{html.escape(said)}</i>" if said else ""
+
+    if supplier_side:
+        title = "⚠️ У поставщика кончились средства"
+        money_line = f"Наш баланс: <b>${current}</b> — его хватает, дело не в нём."
+        advice = (
+            "Пополнять нечего: денег нет на стороне поставщика. "
+            "Напиши им, а заказ повтори в Fulfilment Inbox, когда ответят."
+        )
+    else:
+        title = "⚠️ Низкий баланс поставщика"
+        money_line = f"Баланс: <b>${current}</b> · Нужно: <b>${required}</b>"
+        advice = "Пополни счёт и нажми «Повторить» в Fulfilment Inbox."
+
     text = (
-        "<b>⚠️ Низкий баланс поставщика</b>\n"
+        f"<b>{title}</b>\n"
         f"Поставщик: <code>{html.escape(supplier)}</code>\n"
         f"Продукт: <code>{ext_id}</code>{variant_line}\n"
-        f"Баланс: <b>${current}</b> · Нужно: <b>${required}</b>\n"
+        f"{money_line}{said_line}\n"
         f"<i>Задача: {task.id[:8]}… · клиент видит «в обработке».</i>\n"
-        f"Пополни счёт и нажми «Повторить» в Fulfilment Inbox."
+        f"{advice}"
     )
     await notifications.send_admin_alert(text, kind="supplier_low_balance")
 

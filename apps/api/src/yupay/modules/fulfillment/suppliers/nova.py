@@ -48,6 +48,7 @@ from yupay.modules.fulfillment.suppliers.nova_grading import (
     _low_balance_result,
     _refusal_money,
     _result,
+    _shortfall_side,
     _without_our_inputs,
 )
 from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
@@ -118,6 +119,22 @@ class NovaFulfiller(Fulfiller):
 
     # ---------- protocol ----------
 
+    async def _balance_or_none(self) -> str | None:
+        """Our wallet, for the alert. Never fails the refusal it decorates.
+
+        One extra read on a path that has already failed, so the operator is
+        told whether the missing money is theirs to add. If this call is the
+        thing that is broken, the refusal still lands — a missing number is a
+        worse alert, not a worse outcome.
+        """
+        try:
+            body = await self._client().get_balance()
+        except Exception as exc:  # noqa: BLE001 -- decoration must not raise
+            log.info("nova.balance_unavailable_for_alert", error=str(exc)[:200])
+            return None
+        value = body.get("balance")
+        return None if value in (None, "") else str(value)
+
     async def fulfill(
         self,
         *,
@@ -162,7 +179,11 @@ class NovaFulfiller(Fulfiller):
             )
         except NovaError as exc:
             if _looks_like_low_balance(exc):
-                return _low_balance_result()
+                return _low_balance_result(
+                    message=_without_our_inputs(str(exc), fields),
+                    side=_shortfall_side(exc),
+                    our_balance=await self._balance_or_none(),
+                )
             raise FulfillerError(
                 _without_our_inputs(str(exc), fields), money_outcome=_refusal_money(exc)
             ) from exc
@@ -196,7 +217,11 @@ class NovaFulfiller(Fulfiller):
             )
         except NovaError as exc:
             if _looks_like_low_balance(exc):
-                return _low_balance_result()
+                return _low_balance_result(
+                    message=_without_our_inputs(str(exc), {"steam_login": steam_login}),
+                    side=_shortfall_side(exc),
+                    our_balance=await self._balance_or_none(),
+                )
             raise FulfillerError(
                 _without_our_inputs(str(exc), {"steam_login": steam_login}),
                 money_outcome=_refusal_money(exc),

@@ -72,11 +72,44 @@ error code for this, so the match is on the message — see
 `supplier_low_balance` stall rather than a hard failure: the task lands in
 the admin inbox (Fulfilment → "Failed" tab) with an ops alert
 (`kind="supplier_low_balance"`), and the **order item stays `in_progress`**
-so the storefront keeps saying "обработка" instead of erroring out. Top up,
-then Retry the task. If NOVA ever refuses for low balance with wording
-outside those three phrases, it will instead land as a normal `failed` task
-graded `UNKNOWN` — same inbox, no alert distinction, worth widening
-`_LOW_BALANCE_HINTS` if that phrase turns out to be common.
+so the storefront keeps saying "обработка" instead of erroring out.
+
+### Which balance is short — read the alert, not the label
+
+NOVA has **two** refusals that both say a balance is insufficient, and they
+mean opposite things to whoever is on call:
+
+| Their sentence                                           | Whose money                      | What to do                                           |
+| -------------------------------------------------------- | -------------------------------- | ---------------------------------------------------- |
+| `Insufficient internal balance`                          | **ours** — our NOVA wallet       | Top up, then Retry.                                  |
+| `Service balance is insufficient to complete this order` | **theirs** — NOVA's own upstream | Nothing to top up. Ask NOVA, retry when they answer. |
+
+The second was observed 2026-09-20 in NOVA's own dashboard, which refused a
+$19 Steam top-up while displaying a $112.75 wallet — so it cannot be read as
+"top up". Until then both graded as `supplier_low_balance` and the alert said
+"Пополни счёт", which sent an operator to check a balance that was already
+fine. The alert now names the side, quotes NOVA's own sentence and prints our
+real balance beside it; `shortfall` (`ours` / `supplier`) and
+`supplier_message` are on the task's metadata if you need them after the fact.
+
+### Retrying a NOVA task
+
+NOVA burns an `Idempotency-Key` the moment it sees one and answers a reuse
+with `409 "This Idempotency-Key was already used for a purchase"`. The
+fulfilment key used to be `task.id` for the life of the task, so **a NOVA task
+that failed once could not be retried at all** — and the 409 graded `UNKNOWN`,
+which the confidence ladder never releases, so one Retry turned "we know we
+spent nothing" into "we cannot tell" permanently.
+
+`arm_retry_key` now mints a fresh key on Retry, but only for suppliers in
+`KEY_BURNED_ON_USE` and only while no attempt may have spent. A task already
+standing at `UNKNOWN` or `SPENT` keeps the burned key on purpose: a key NOVA
+has not seen is a new purchase, and paying twice is worse than a stuck task.
+Those need a human to reconcile against NOVA's order list before anything is
+re-sent.
+
+Waxpeer and G-Engine are deliberately _not_ in that set — they replay the
+original order for a repeated key, so for them the reuse is the protection.
 
 ## Switching a SKU to NOVA and back
 

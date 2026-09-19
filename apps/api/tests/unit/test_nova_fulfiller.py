@@ -55,6 +55,10 @@ class _FakeClient:
             raise self._raises
         return self._order
 
+    async def get_balance(self) -> dict[str, Any]:
+        """The read the low-balance path makes to say whose money is missing."""
+        return {"ok": True, "balance": "112.7547", "currency": "USD"}
+
     async def create_steam_order(self, **kwargs: Any) -> dict[str, Any]:
         self.steam_calls.append(kwargs)
         if self._raises is not None:
@@ -590,3 +594,48 @@ async def test_an_ordinary_refusal_is_still_a_refusal(monkeypatch: pytest.Monkey
     with pytest.raises(FulfillerError) as excinfo:
         await _fulfill(client, monkeypatch)
     assert excinfo.value.money_outcome is MoneyOutcome.RETURNED
+
+
+# ---------------------------------------------------------------------------
+# Whose balance is short
+# ---------------------------------------------------------------------------
+
+
+async def test_their_service_shortfall_is_not_reported_as_our_empty_wallet(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NOVA's own dashboard refused a $19 Steam top-up on 2026-09-20 with
+    "Service balance is insufficient to complete this order" while showing a
+    $112.75 wallet. Both that and "Insufficient internal balance" park the
+    order; only the second is anything the operator can act on, and telling
+    them to top up a funded wallet is how an evening gets spent on the wrong
+    question."""
+    client = _FakeClient(
+        raises=NovaError("Service balance is insufficient to complete this order", status=400)
+    )
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.extra_metadata["shortfall"] == "supplier"
+    assert "Service balance" in result.extra_metadata["supplier_message"]
+
+
+async def test_our_empty_wallet_still_reads_as_ours(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Their other sentence, confirmed 2026-09-18 against a $9.10 wallet."""
+    client = _FakeClient(raises=NovaError("Insufficient internal balance", status=400))
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.extra_metadata["shortfall"] == "ours"
+
+
+async def test_the_refusal_carries_their_sentence_and_our_balance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both used to be thrown away, which left the alert printing "$?" and
+    nobody able to check whether the grading was even right."""
+    client = _FakeClient(raises=NovaError("Insufficient internal balance", status=400))
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.extra_metadata["supplier_message"] == "Insufficient internal balance"
+    assert result.extra_metadata["current_balance"] == "112.7547"
