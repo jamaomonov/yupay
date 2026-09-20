@@ -45,6 +45,12 @@ export interface TaskAdminOut {
   succeeded_at: string | null;
   failed_at: string | null;
   cancelled_at: string | null;
+  /** This task's merchant order has had its deposit returned in full, so every
+   *  operator action on it is refused with `409 deposit_already_returned`.
+   *  Optional because only the list endpoint fills it — the detail DTO does
+   *  not, and a `?? false` there must not read as "not settled" by accident;
+   *  {@link selectFailedRows} is the one consumer. Always false for retail. */
+  deposit_settled?: boolean;
 }
 
 export interface TaskListOut {

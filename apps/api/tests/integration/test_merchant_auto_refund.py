@@ -2174,3 +2174,68 @@ async def test_the_same_g2b_rejection_moves_no_money_for_a_retail_order(
     ).scalar_one() == 0
     await db_session.refresh(order)
     assert order.status == "fulfilling"
+
+
+async def test_the_inbox_stops_offering_a_settled_task_as_work(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """A fully-refunded task is flagged ``deposit_settled`` on the listing.
+
+    Reported from production 2026-09-20: two refunded merchant tasks sat in
+    the Fulfilment Inbox's Failed tab forever. The task staying ``failed`` is
+    deliberate — ``_settle_merchant_deposit_inner`` gates on exactly that
+    status — and every operator action on it is already refused with
+    ``409 deposit_already_returned``. So the listing says so and the tab's
+    predicate drops it; the row stays visible under «Все».
+    """
+    _merchant_id, _key, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-inbox"
+    )
+    _failing_mock(monkeypatch, MoneyOutcome.RETURNED)
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/fulfillment/tasks?order_id={order_id}", headers=admin_headers
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1, r.text
+    # The state the fix depends on: still failed, and now marked settled.
+    assert items[0]["status"] == "failed"
+    assert items[0]["deposit_settled"] is True
+    assert _merchant_alerts(alerts) == []
+
+
+async def test_an_unsettled_failure_is_not_flagged(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+    alerts: list[Alert],
+) -> None:
+    """The other half: money we did NOT get back leaves the task actionable.
+
+    Over-flagging would empty the operator's queue of the failures that still
+    need a human, which is worse than the noise this removes. ``SPENT`` never
+    refunds automatically, so nothing has come back and the row must stay.
+    """
+    _merchant_id, _key, _secret, order_id = await _placed(
+        integration_client, admin_headers, db_session, merchant_order_id="acme-inbox-open"
+    )
+    _failing_mock(monkeypatch, MoneyOutcome.SPENT)
+    assert await ff_svc.drain_pending_tasks(db_session) == 1
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/fulfillment/tasks?order_id={order_id}", headers=admin_headers
+    )
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1, r.text
+    assert items[0]["status"] == "failed"
+    assert items[0]["deposit_settled"] is False

@@ -103,6 +103,21 @@ class FulfillmentTaskListItemOut(BaseModel):
     succeeded_at: datetime | None
     failed_at: datetime | None
     cancelled_at: datetime | None
+    #: This task's merchant order has had its deposit returned in full, so
+    #: nothing an operator can press will move it: ``retry_task``,
+    #: ``complete_manual_task`` and the reroute all answer
+    #: ``409 deposit_already_returned`` (``_refuse_a_settled_merchant_order``).
+    #:
+    #: The failed state is not a leak — ``_settle_merchant_deposit_inner``
+    #: gates on ``task.status == "failed"``, so the refund happens *because*
+    #: the task failed and it must stay that way. What was missing is this
+    #: flag: the Fulfilment Inbox is "tasks needing an operator", and a task
+    #: whose order is already square and cannot be re-driven needs none. The
+    #: order itself is closed for exactly this reason (M3c Task 6) — the same
+    #: argument had simply never reached the work queue.
+    #:
+    #: Always ``False`` for a retail task: there is no deposit to return.
+    deposit_settled: bool = False
 
 
 class FulfillmentTaskListOut(BaseModel):

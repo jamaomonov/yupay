@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
+from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
@@ -22,7 +24,7 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.security import email_hash
 from yupay.modules.fulfillment import service as svc
-from yupay.modules.fulfillment.models import Delivery
+from yupay.modules.fulfillment.models import Delivery, FulfillmentTask
 from yupay.modules.fulfillment.schemas import (
     AttemptAdminListOut,
     AttemptAdminOut,
@@ -171,6 +173,55 @@ async def request_code_access(
 # ---------- admin ----------
 
 
+async def _settled_merchant_orders(db: AsyncSession, rows: Sequence[FulfillmentTask]) -> set[str]:
+    """Which of this page's tasks belong to a fully-returned merchant order.
+
+    Two grouped queries for the page, never one per row (AGENTS.md §10): the
+    orders' ``merchant_id`` in one, then ``deposit.refunded_for_orders`` — the
+    batch reader M3c added for exactly this shape — in another. Retail orders
+    are dropped before the second query, so a page with no merchant task costs
+    one cheap lookup and nothing else.
+
+    "Fully" is ``refund.settled_in_full``, the same predicate the order's own
+    closure and its failure reason use, rather than ``returned > 0``. A partial
+    settlement is a human mid-decision and still needs the operator; the
+    inbox must keep showing it.
+
+    Imported inside the function for the reason the rest of this module does
+    it: ``merchants`` reaches back into ``fulfillment`` and a module-scope
+    import closes the cycle while the ``/api/v1`` stack is still being built.
+    """
+    from yupay.modules.merchants import deposit as merchant_deposit
+    from yupay.modules.merchants import refund as merchant_refund
+    from yupay.modules.orders.models import Order
+
+    order_ids = {r.order_id for r in rows}
+    if not order_ids:
+        return set()
+    pairs = [
+        (merchant_id, order_id)
+        for order_id, merchant_id in (
+            await db.execute(
+                select(Order.id, Order.merchant_id).where(
+                    Order.id.in_(order_ids), Order.merchant_id.is_not(None)
+                )
+            )
+        ).all()
+        if merchant_id is not None
+    ]
+    if not pairs:
+        return set()
+    returned = await merchant_deposit.refunded_for_orders(db, pairs=pairs)
+    charged = await merchant_deposit.charged_for_orders(db, pairs=pairs)
+    return {
+        order_id
+        for _, order_id in pairs
+        if merchant_refund.settled_in_full(
+            charged=charged.get(order_id), returned=returned.get(order_id, Decimal("0"))
+        )
+    }
+
+
 @admin_router.get("/tasks", response_model=FulfillmentTaskListOut)
 async def admin_list_tasks(
     db: Annotated[AsyncSession, Depends(db_session)],
@@ -191,10 +242,13 @@ async def admin_list_tasks(
         limit=max(1, min(limit, 500)),
         offset=max(0, offset),
     )
-    return FulfillmentTaskListOut(
-        items=[FulfillmentTaskListItemOut.model_validate(r) for r in rows],
-        total=total,
-    )
+    settled = await _settled_merchant_orders(db, rows)
+    items = []
+    for r in rows:
+        item = FulfillmentTaskListItemOut.model_validate(r)
+        item.deposit_settled = r.order_id in settled
+        items.append(item)
+    return FulfillmentTaskListOut(items=items, total=total)
 
 
 @admin_router.get("/tasks/{task_id}", response_model=FulfillmentTaskOut)

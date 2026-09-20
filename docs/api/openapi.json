@@ -6938,6 +6938,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "deposit_settled": {
+            "default": false,
+            "title": "Deposit Settled",
+            "type": "boolean"
+          },
           "external_order_id": {
             "anyOf": [
               {

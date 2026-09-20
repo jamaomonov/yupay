@@ -8,6 +8,9 @@
  * URL, the query key and the predicate in one module means the badge and the
  * tab can't drift apart — and because the keys are identical, React Query
  * serves both from a single request instead of fetching twice.
+ *
+ * Failed drops a second class of row as of 2026-09-20: a merchant task whose
+ * deposit has already been returned. See {@link selectFailedRows}.
  */
 
 import type { TaskAdminOut, TaskListOut } from "./types";
@@ -42,9 +45,23 @@ export const stuckTasksQuery = {
   refetchInterval: 30_000,
 } as const;
 
-/** Rows the Failed tab shows: automatic failures only. */
+/**
+ * Rows the Failed tab shows: automatic failures an operator can still act on.
+ *
+ * Two exclusions, and the second is not cosmetic. `supplier === "manual"`
+ * belongs to the manual tab. `deposit_settled` is a merchant order whose
+ * deposit has already been returned in full: every button on the row —
+ * «Перезапустить», «Другой поставщик», manual completion — is refused by the
+ * API with `409 deposit_already_returned`, because delivering now would hand
+ * over goods nobody paid for. The task is left `failed` on purpose (the
+ * refund gates on exactly that state), and the order is already closed for
+ * the same reason; the row was simply never taken out of the work queue, so
+ * two permanently un-actionable lines sat in production's Failed tab.
+ *
+ * They stay visible under «Все» — this hides work that is done, not history.
+ */
 export function selectFailedRows(data: TaskListOut | undefined): TaskAdminOut[] {
-  return (data?.items ?? []).filter((t) => t.supplier !== "manual");
+  return (data?.items ?? []).filter((t) => t.supplier !== "manual" && !t.deposit_settled);
 }
 
 /** Rows the Stuck tab shows: in-flight for longer than {@link STUCK_AFTER_MS}. */
