@@ -23,9 +23,16 @@ Read live from both suppliers on 2026-09-20:
     NOVA (get_offers 'imo'):       10, 100, 160, 210, 420, 840, 1680, 2100,
                                    4200, 8400, 16800, 21000
 
+**160 and 210 are dropped** (owner, 2026-09-20). They are the two NOVA rungs
+that sit either side of G2B's 200, and next to it they read as a worse deal:
+200 diamonds cost $4.29 on the shelf while 210 cost $4.81 — 12% more money
+for 5% more diamonds, because NOVA's wholesale is 6% higher. A ladder whose
+neighbouring rungs argue with each other costs more attention than the two
+positions are worth. Ten NOVA rungs remain.
+
 So there is **no SKU either supplier could take over from the other**. This is
 not the usual "map a second supplier as a fallback" import: every one of the
-seventeen rungs below has exactly one source, and a rung whose supplier goes
+fifteen rungs below has exactly one source, and a rung whose supplier goes
 down is down. That is worth knowing before an outage rather than during one.
 
 Per-diamond wholesale: G2B $0.01870, NOVA $0.01984 — G2B is ~6% cheaper, and
@@ -36,21 +43,21 @@ everything above 5000, up to 21000 for ~$417.
 The union is monotonic in both amount and cost, so the shelf still reads as
 one ascending ladder even though it is stitched from two catalogues.
 
-## Why NOVA's twelve get an explicit sourcing rule
+## Why NOVA's ten get an explicit sourcing rule
 
 NOVA is a **reserve** supplier (``RESERVE_SUPPLIERS``, ADR-0081):
 ``sourcing._pick_auto_mapping_slug`` skips it whatever its mapping's age, so a
 SKU whose only mapping is NOVA resolves to *no supplier at all* and every
-order against it fails to route. Left alone, twelve of these seventeen SKUs
+order against it fails to route. Left alone, ten of these fifteen SKUs
 would be unsellable — listed, priced, and dead.
 
 So each NOVA rung gets ``mode='force_supplier', supplier_slug='nova'``. That
 is exactly the "explicit decision" ADR-0081 asks for, made in a reviewable
-diff instead of twelve clicks; and the risk the ADR guards against — orders
+diff instead of ten clicks; and the risk the ADR guards against — orders
 drifting to a supplier nobody chose — cannot arise here, because these SKUs
 have no other supplier to drift away from.
 
-**The NOVA wallet must be funded before these twelve can sell.** They are
+**The NOVA wallet must be funded before these ten can sell.** They are
 created active; if that is wrong, deactivate them in the admin.
 
 ## Not imported
@@ -163,8 +170,6 @@ G2B_DENOMS: list[tuple[int, str, str]] = [
 NOVA_DENOMS: list[tuple[int, str, str]] = [
     (10, "10_diamonds", "0.2142"),
     (100, "100_diamonds", "1.989"),
-    (160, "160_diamonds", "3.1926"),
-    (210, "210_diamonds", "4.182"),
     (420, "420_diamonds", "8.3436"),
     (840, "840_diamonds", "16.677"),
     (1680, "1680_diamonds", "33.3336"),
@@ -249,7 +254,7 @@ async def _import_g2b(session: Any) -> tuple[str, str, int, list[str]]:
 
 
 async def _import_nova(session: Any, *, product_id: str) -> tuple[int, list[str]]:
-    """The twelve NOVA rungs: SKU, mapping, and the rule that makes them sell."""
+    """The ten NOVA rungs: SKU, mapping, and the rule that makes them sell."""
     from yupay.modules.catalog import admin_schemas as catalog_schemas
     from yupay.modules.catalog import admin_service as catalog
 
@@ -344,7 +349,7 @@ async def main() -> None:
     print(f"ladder  {ordered} SKUs ordered by price")
     print()
     print("NEXT: run scripts/seed/imo_seo.sql, upload the brand logo in the admin,")
-    print("      and fund the NOVA wallet before the twelve NOVA rungs can sell.")
+    print("      and fund the NOVA wallet before the ten NOVA rungs can sell.")
 
 
 asyncio.run(main())
