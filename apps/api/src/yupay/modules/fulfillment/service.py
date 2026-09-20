@@ -18,10 +18,12 @@ import hashlib
 import html
 import sys
 from collections.abc import Coroutine, Iterable
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
-from sqlalchemy import Row, func, select, text
+from sqlalchemy import Row, func, or_, select, text
+from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -1645,6 +1647,58 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
         await _try_settle_order(db, order_id=order_id)
     await db.flush()
     return ran
+
+
+#: How soon after a check the next one is allowed. The steady cadence, for an
+#: order that is genuinely still working upstream.
+RECHECK_AFTER_SECONDS = 60
+
+
+async def due_reconcile_task_ids(db: AsyncSession, *, supplier: str, limit: int = 500) -> list[str]:
+    """In-flight tasks of one supplier that are due for a status check.
+
+    Due means ``next_attempt_at`` is in the past **or unset**, and unset is
+    what a freshly created task carries — which is the whole point. The sweep
+    can then run every few seconds without polling every order every few
+    seconds: a new order is looked at on the next tick, and an order that has
+    already been asked about waits :data:`RECHECK_AFTER_SECONDS`.
+
+    That matters because some orders finish instantly. NOVA delivered a
+    Telegram Stars order in seconds on 2026-09-20 and the customer watched
+    "в обработке" until the minute was up; G-Engine's two-phase pay is worse,
+    because the *payment* waits for the next tick, not just the news of it.
+    """
+    rows = await db.execute(
+        select(FulfillmentTask.id)
+        .where(
+            FulfillmentTask.supplier == supplier,
+            FulfillmentTask.status == "in_progress",
+            or_(
+                FulfillmentTask.next_attempt_at.is_(None),
+                FulfillmentTask.next_attempt_at <= now(),
+            ),
+        )
+        .order_by(FulfillmentTask.created_at, FulfillmentTask.id)
+        .limit(limit)
+    )
+    return [str(r) for r in rows.scalars().all()]
+
+
+async def schedule_next_check(
+    db: AsyncSession, *, task_id: str, seconds: int = RECHECK_AFTER_SECONDS
+) -> None:
+    """Push a task's next status check out by ``seconds``.
+
+    Written after every check, including one that failed: a supplier we could
+    not read is not a supplier to hammer every few seconds. A task that has
+    since gone terminal keeps the stamp harmlessly — the query above filters
+    on status first.
+    """
+    await db.execute(
+        sa_update(FulfillmentTask)
+        .where(FulfillmentTask.id == task_id)
+        .values(next_attempt_at=now() + timedelta(seconds=seconds))
+    )
 
 
 async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
