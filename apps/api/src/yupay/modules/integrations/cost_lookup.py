@@ -148,7 +148,7 @@ async def _nova_stars_price(client: Any, mapping: SkuSupplierMapping) -> _RawPri
     if per_star in (None, ""):
         return _RawPrice(amount=None, source="", reason="NOVA не вернула цену звезды")
     amount = Decimal(str(per_star)) * Decimal(int(mapping.quantity))
-    return _RawPrice(amount=amount, source="nova.fragment.stars_price", reason="")
+    return _RawPrice(amount=amount, source="nova.fragment.stars_price", reason=None)
 
 
 async def _nova_premium_price(client: Any, mapping: SkuSupplierMapping) -> _RawPrice:
@@ -169,7 +169,7 @@ async def _nova_premium_price(client: Any, mapping: SkuSupplierMapping) -> _RawP
     value = body.get("customer_amount_usd")
     if value in (None, ""):
         return _RawPrice(amount=None, source="", reason="NOVA не вернула цену Premium")
-    return _RawPrice(amount=Decimal(str(value)), source="nova.fragment.premium_quote", reason="")
+    return _RawPrice(amount=Decimal(str(value)), source="nova.fragment.premium_quote", reason=None)
 
 
 async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be wrong, each with its own operator-facing reason
