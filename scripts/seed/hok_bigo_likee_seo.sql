@@ -30,7 +30,7 @@ BEGIN;
 
 UPDATE brand_translations SET
     highlights = $c$["Оплата в сумах","По Player ID","Без пароля","От 16 токенов"]$c$::json,
-    short_description = $c$Пополнение Honor of Kings — токены по Player ID, оплата в сумах, без пароля.$c$,
+    short_description = $c$Пополнение Honor of Kings: токены от 16 до 8360 и Weekly Card по Player ID. Оплата в сумах через Click, Payme, Uzum и Paynet, зачисление автоматическое.$c$,
     description = $c$Honor of Kings — мобильная MOBA от Tencent, самая массовая в мире по числу игроков. Токены это внутриигровая валюта: за них берут героев, скины, сезонные пропуска Weekly Card и предметы из магазина.
 
 YuPay пополняет аккаунт по публичному Player ID — пароль и вход в аккаунт не нужны, мы их не запрашиваем. Оплата в узбекских сумах картами Uzcard и Humo через Click, Payme, Uzum или Paynet; сумма видна до подтверждения, токены зачисляются автоматически.
@@ -48,7 +48,7 @@ WHERE locale = 'ru' AND brand_id = (SELECT id FROM brands WHERE slug = 'honor-of
 
 UPDATE brand_translations SET
     highlights = $c$["Pay in som","By Player ID","No password","From 16 tokens"]$c$::json,
-    short_description = $c$Top up Honor of Kings — tokens by Player ID, paid in som, no password.$c$,
+    short_description = $c$Honor of Kings top-ups: 16 to 8360 tokens and the Weekly Card, by Player ID. Pay in som via Click, Payme, Uzum or Paynet — credited automatically.$c$,
     description = $c$Honor of Kings is Tencent's mobile MOBA and the most played in the world by headcount. Tokens are the in-game currency: heroes, skins, the Weekly Card season pass and store items.
 
 YuPay tops up the account by your public Player ID — no account password is needed and we never ask for one. Pay in Uzbek sum with Uzcard and Humo via Click, Payme, Uzum or Paynet; the total is shown before you confirm and the tokens are credited automatically.
@@ -66,7 +66,7 @@ WHERE locale = 'en' AND brand_id = (SELECT id FROM brands WHERE slug = 'honor-of
 
 UPDATE brand_translations SET
     highlights = $c$["Soʻmda toʻlov","Player ID boʻyicha","Parolsiz","16 tokendan"]$c$::json,
-    short_description = $c$Honor of Kings ni toʻldirish — Player ID boʻyicha tokenlar, soʻmda toʻlov, parolsiz.$c$,
+    short_description = $c$Honor of Kings toʻldirish: Player ID boʻyicha 16 dan 8360 gacha token va Weekly Card. Click, Payme, Uzum, Paynet orqali soʻmda toʻlov, avtomatik.$c$,
     description = $c$Honor of Kings — Tencent'ning mobil MOBA oʻyini, oʻyinchilar soni boʻyicha dunyoda eng yiriklaridan. Tokenlar oʻyin ichidagi valyuta: ular bilan qahramonlar, skinlar, Weekly Card mavsumiy propuski va doʻkondagi buyumlar olinadi.
 
 YuPay hisobni ommaviy Player ID boʻyicha toʻldiradi — parol kerak emas, biz uni soʻramaymiz. Toʻlov oʻzbek soʻmida Uzcard va Humo kartalari orqali Click, Payme, Uzum yoki Paynet bilan; summa tasdiqlashdan oldin koʻrinadi, tokenlar avtomatik tushadi.
@@ -86,7 +86,7 @@ WHERE locale = 'uz' AND brand_id = (SELECT id FROM brands WHERE slug = 'honor-of
 
 UPDATE brand_translations SET
     highlights = $c$["Оплата в сумах","По Bigo ID","Без пароля","От 10 алмазов"]$c$::json,
-    short_description = $c$Пополнение Bigo Live — алмазы по Bigo ID, оплата в сумах, без пароля.$c$,
+    short_description = $c$Пополнение Bigo Live: алмазы от 10 до 10 000 по Bigo ID для подарков в эфирах. Оплата в сумах через Click, Payme, Uzum и Paynet, без пароля.$c$,
     description = $c$Bigo Live — приложение для прямых эфиров. Алмазы это внутренняя валюта: ими дарят подарки стримерам во время трансляций, открывают уровни и оформление профиля. Заработать их в приложении нельзя, их покупают.
 
 YuPay пополняет баланс по публичному Bigo ID — пароль и код из SMS не нужны. Оплата в сумах картами Uzcard и Humo через Click, Payme, Uzum или Paynet, зачисление автоматическое.
@@ -104,7 +104,7 @@ WHERE locale = 'ru' AND brand_id = (SELECT id FROM brands WHERE slug = 'bigo-liv
 
 UPDATE brand_translations SET
     highlights = $c$["Pay in som","By Bigo ID","No password","From 10 diamonds"]$c$::json,
-    short_description = $c$Top up Bigo Live — diamonds by Bigo ID, paid in som, no password.$c$,
+    short_description = $c$Bigo Live top-ups: 10 to 10,000 diamonds by Bigo ID for gifts during live broadcasts. Pay in som via Click, Payme, Uzum or Paynet, no password.$c$,
     description = $c$Bigo Live is a live-streaming app. Diamonds are its own currency: they buy gifts for streamers during a broadcast, levels and profile decorations. There is no way to earn them in the app — they are bought.
 
 YuPay tops up the balance by your public Bigo ID — no password and no SMS code are needed. Pay in som with Uzcard and Humo via Click, Payme, Uzum or Paynet; delivery is automatic.
@@ -122,7 +122,7 @@ WHERE locale = 'en' AND brand_id = (SELECT id FROM brands WHERE slug = 'bigo-liv
 
 UPDATE brand_translations SET
     highlights = $c$["Soʻmda toʻlov","Bigo ID boʻyicha","Parolsiz","10 olmosdan"]$c$::json,
-    short_description = $c$Bigo Live ni toʻldirish — Bigo ID boʻyicha olmoslar, soʻmda toʻlov, parolsiz.$c$,
+    short_description = $c$Bigo Live toʻldirish: efirlarda sovgʻa uchun Bigo ID boʻyicha 10 dan 10 000 gacha olmos. Click, Payme, Uzum, Paynet orqali soʻmda toʻlov, parolsiz.$c$,
     description = $c$Bigo Live — jonli efirlar ilovasi. Olmoslar uning ichki valyutasi: ular bilan efir vaqtida strimerlarga sovgʻa qilinadi, darajalar va profil bezaklari ochiladi. Ilovada ularni ishlab topib boʻlmaydi, sotib olinadi.
 
 YuPay balansni ommaviy Bigo ID boʻyicha toʻldiradi — parol va SMS kod kerak emas. Toʻlov soʻmda Uzcard va Humo kartalari bilan Click, Payme, Uzum yoki Paynet orqali, hisobga oʻtkazish avtomatik.
@@ -142,7 +142,7 @@ WHERE locale = 'uz' AND brand_id = (SELECT id FROM brands WHERE slug = 'bigo-liv
 
 UPDATE brand_translations SET
     highlights = $c$["Оплата в сумах","По Likee ID","Без пароля","От 100 алмазов"]$c$::json,
-    short_description = $c$Пополнение Likee — алмазы по Likee ID, оплата в сумах, без пароля.$c$,
+    short_description = $c$Пополнение Likee: алмазы от 100 до 20 000 по Likee ID для подарков авторам в эфирах. Оплата в сумах через Click, Payme, Uzum и Paynet, без пароля.$c$,
     description = $c$Likee — приложение коротких видео и прямых эфиров. Алмазы нужны, чтобы отправлять подарки авторам во время трансляций и покупать эффекты. В приложении их не заработать.
 
 YuPay пополняет баланс по публичному Likee ID — пароль не нужен. Оплата в сумах картами Uzcard и Humo через Click, Payme, Uzum или Paynet, зачисление автоматическое.
@@ -160,7 +160,7 @@ WHERE locale = 'ru' AND brand_id = (SELECT id FROM brands WHERE slug = 'likee');
 
 UPDATE brand_translations SET
     highlights = $c$["Pay in som","By Likee ID","No password","From 100 diamonds"]$c$::json,
-    short_description = $c$Top up Likee — diamonds by Likee ID, paid in som, no password.$c$,
+    short_description = $c$Likee top-ups: 100 to 20,000 diamonds by Likee ID for gifting creators on live streams. Pay in som via Click, Payme, Uzum or Paynet, no password.$c$,
     description = $c$Likee is a short-video and live-streaming app. Diamonds are what you send creators as gifts during a broadcast, and what buys effects. They cannot be earned in the app.
 
 YuPay tops up the balance by your public Likee ID — no password needed. Pay in som with Uzcard and Humo via Click, Payme, Uzum or Paynet; delivery is automatic.
@@ -178,7 +178,7 @@ WHERE locale = 'en' AND brand_id = (SELECT id FROM brands WHERE slug = 'likee');
 
 UPDATE brand_translations SET
     highlights = $c$["Soʻmda toʻlov","Likee ID boʻyicha","Parolsiz","100 olmosdan"]$c$::json,
-    short_description = $c$Likee ni toʻldirish — Likee ID boʻyicha olmoslar, soʻmda toʻlov, parolsiz.$c$,
+    short_description = $c$Likee toʻldirish: efirlarda mualliflarga sovgʻa uchun Likee ID boʻyicha 100 dan 20 000 gacha olmos. Click, Payme, Uzum, Paynet orqali soʻmda toʻlov.$c$,
     description = $c$Likee — qisqa videolar va jonli efirlar ilovasi. Olmoslar efir vaqtida mualliflarga sovgʻa yuborish va effektlar sotib olish uchun kerak. Ilovada ularni ishlab topib boʻlmaydi.
 
 YuPay balansni ommaviy Likee ID boʻyicha toʻldiradi — parol kerak emas. Toʻlov soʻmda Uzcard va Humo kartalari bilan Click, Payme, Uzum yoki Paynet orqali, hisobga oʻtkazish avtomatik.
