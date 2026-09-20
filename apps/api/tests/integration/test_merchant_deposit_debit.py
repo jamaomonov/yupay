@@ -20,14 +20,60 @@ What each test is here to catch:
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
+import time
 from decimal import Decimal
+from urllib.parse import urlencode
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
 
 _PATH = "/api/v1/admin/merchants/{}/deposit-debits"
+BOT_TOKEN = "123456:TEST"
+
+# Telegram id 98: every integration module that needs an admin mints its own
+# (91-97, 4242, 4343 are taken), because `admin_headers` is a per-file fixture
+# rather than a conftest one. The suite runs under `-n auto`, so two files
+# sharing an id would be two workers racing for the same user row.
+_ADMIN_TG_ID = 98
+
+
+def _sign_init_data(fields: dict[str, str]) -> str:
+    pairs = sorted((k, v) for k, v in fields.items() if k != "hash")
+    data = "\n".join(f"{k}={v}" for k, v in pairs).encode("utf-8")
+    secret = hmac.new(b"WebAppData", BOT_TOKEN.encode("utf-8"), hashlib.sha256).digest()
+    fields = {**fields, "hash": hmac.new(secret, data, hashlib.sha256).hexdigest()}
+    return urlencode(fields)
+
+
+@pytest.fixture
+async def admin_headers(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> dict[str, str]:
+    """Log a Telegram user in and grant it the admin role."""
+    user_json = json.dumps({"id": _ADMIN_TG_ID, "first_name": "Admin"}, separators=(",", ":"))
+    init_data = _sign_init_data({"user": user_json, "auth_date": str(int(time.time()))})
+    r = await integration_client.post("/api/v1/auth/telegram/webapp", json={"init_data": init_data})
+    assert r.status_code == 200, r.text
+    token = r.json()["access_token"]
+
+    user_id = (
+        await db_session.execute(
+            select(User.id)
+            .join(TelegramLink, TelegramLink.user_id == User.id)
+            .where(TelegramLink.tg_user_id == _ADMIN_TG_ID)
+        )
+    ).scalar_one()
+    await db_session.execute(update(User).where(User.id == user_id).values(roles=["admin"]))
+    await db_session.commit()
+    return {"Authorization": f"Bearer {token}"}
 
 
 async def _create_merchant(client: AsyncClient, headers: dict[str, str], title: str) -> str:
