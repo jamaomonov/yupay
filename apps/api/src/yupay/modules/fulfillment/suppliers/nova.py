@@ -329,7 +329,7 @@ class NovaFulfiller(Fulfiller):
     async def check_status(
         self,
         *,
-        db: AsyncSession,  # noqa: ARG002 -- the task carries the supplier id
+        db: AsyncSession,
         task: FulfillmentTask,
     ) -> FulfillStatus:
         if not self.available:
@@ -348,8 +348,20 @@ class NovaFulfiller(Fulfiller):
                 money_outcome=None,
             )
 
+        # Which of NOVA's two APIs owns this order. `/api/v2/orders/{id}` does
+        # not know a Fragment one, and asking it anyway does not 404 — the
+        # Fragment answer comes back without the `ok` envelope `_request`
+        # requires, so a delivered order reported itself as `nova HTTP 200`
+        # and the task sat in processing while the customer already had their
+        # Stars. Read from the mapping rather than a marker on the task, so
+        # tasks created before this fix are answered too.
         try:
-            obj = await self._client().get_order(task.external_order_id)
+            fragment = await _is_fragment_task(db, task)
+            obj = (
+                await self._client().get_fragment_order(task.external_order_id)
+                if fragment
+                else await self._client().get_order(task.external_order_id)
+            )
         except (NovaError, NovaUnavailableError) as exc:
             raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
 
@@ -407,6 +419,30 @@ class NovaFulfiller(Fulfiller):
 
 
 # ---------- helpers ----------
+
+
+async def _is_fragment_task(db: AsyncSession, task: FulfillmentTask) -> bool:
+    """Whether this task's order lives in NOVA's Fragment namespace.
+
+    Answered from the SKU's mapping, which is the same row the fulfiller
+    dispatched on, so the two cannot disagree. A task whose mapping has since
+    been deleted falls back to the v2 endpoint — the older behaviour, and the
+    one that is right for every order that predates Fragment.
+    """
+    from sqlalchemy import select
+
+    from yupay.modules.orders.models import OrderItem
+
+    sku_id = (
+        await db.execute(select(OrderItem.sku_id).where(OrderItem.id == task.order_item_id))
+    ).scalar_one_or_none()
+    if not sku_id:
+        return False
+    try:
+        mapping = await _mapping_for(db, sku_id=str(sku_id))
+    except FulfillerError:
+        return False
+    return str(mapping.external_product_id or "").strip() in (FRAGMENT_STARS, FRAGMENT_PREMIUM)
 
 
 async def _mapping_for(db: AsyncSession, *, sku_id: str) -> Any:

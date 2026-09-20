@@ -105,6 +105,13 @@ matter when something breaks (ADR-0084):
   was bought. We grade it a failure that cost nothing; if you see it in the
   inbox, ask NOVA whether the account is in test mode before retrying.
 
+Both halves of a Fragment order live in that namespace, **including the
+status poll**. `/api/v2/orders/{id}` does not know a Fragment order, and
+asking it anyway does not 404 — the answer comes back without the `ok`
+envelope, which surfaces as `nova HTTP 200`. That exact alert fired on
+2026-09-20 for a delivered Stars order: the customer had their Stars, the
+task sat in processing, and the only clue was a status step failing with a 200. `check_status` picks the endpoint from the SKU's mapping.
+
 Mappings carry a sentinel in `external_product_id`:
 
 | Product | `external_product_id` | variant               | `quantity`                                   |

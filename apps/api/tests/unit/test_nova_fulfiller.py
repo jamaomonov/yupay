@@ -270,6 +270,7 @@ async def test_check_status_without_an_id_stays_in_progress(
 async def test_check_status_that_cannot_read_says_unknown(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    _games_task(monkeypatch)
     task = SimpleNamespace(external_order_id="ord_1", extra_metadata={})
     client = _FakeClient(raises=NovaUnavailableError("boom"))
     with pytest.raises(FulfillerError) as excinfo:
@@ -297,7 +298,21 @@ async def test_the_same_task_always_sends_the_same_key_and_never_retries_itself(
     assert {c["idempotency_key"] for c in client.calls} == {"task-42"}
 
 
+def _games_task(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`check_status` now asks which of NOVA's two APIs owns the order, which
+    means a session. These older tests hand it `db=None`, so the question is
+    answered directly instead — they are about reading a v2 order, not about
+    the namespace lookup, which has its own tests below."""
+    import yupay.modules.fulfillment.suppliers.nova as mod
+
+    async def _no(_db: Any, _task: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(mod, "_is_fragment_task", _no)
+
+
 async def test_check_status_reads_a_finished_order(monkeypatch: pytest.MonkeyPatch) -> None:
+    _games_task(monkeypatch)
     task = SimpleNamespace(external_order_id="ord_1", extra_metadata={})
     client = _FakeClient(order={"id": "ord_1", "status": "completed"})
     status = await _fulfiller(client, monkeypatch).check_status(
@@ -824,3 +839,71 @@ async def test_the_fragment_charge_is_recorded_from_their_own_field(
     )
 
     assert result.extra_metadata.get("supplier_charged_usd") == "15.225000"
+
+
+async def test_a_fragment_order_is_polled_on_the_fragment_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`/api/v2/orders/{id}` does not know a Fragment order, and asking it
+    anyway does not 404: the answer comes back without the `ok` envelope
+    `_request` demands, so a delivered order reported itself as
+    `nova HTTP 200` and the task sat in processing while the customer already
+    had their Stars. Observed in production 2026-09-20."""
+    import yupay.modules.fulfillment.suppliers.nova as mod
+
+    asked: list[str] = []
+
+    class _Client:
+        async def get_order(self, order_id: str) -> dict[str, Any]:
+            asked.append("v2")
+            raise AssertionError("a Fragment order must not be polled on /api/v2/orders")
+
+        async def get_fragment_order(self, order_id: str) -> dict[str, Any]:
+            asked.append("fragment")
+            return {"id": order_id, "status": "SUCCESS"}
+
+    async def _is_fragment(_db: Any, _task: Any) -> bool:
+        return True
+
+    monkeypatch.setattr(mod, "_is_fragment_task", _is_fragment)
+    fulfiller = _fulfiller(_Client(), monkeypatch)  # type: ignore[arg-type]
+
+    status = await fulfiller.check_status(
+        db=None,  # type: ignore[arg-type]
+        task=SimpleNamespace(external_order_id="frg-9", order_item_id="oi-1"),  # type: ignore[arg-type]
+    )
+
+    assert asked == ["fragment"]
+    assert status.outcome == "succeeded"
+
+
+async def test_a_games_order_still_polls_the_v2_endpoint(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The fix must not move every other NOVA order onto Fragment."""
+    import yupay.modules.fulfillment.suppliers.nova as mod
+
+    asked: list[str] = []
+
+    class _Client:
+        async def get_order(self, order_id: str) -> dict[str, Any]:
+            asked.append("v2")
+            return {"id": order_id, "status": "completed"}
+
+        async def get_fragment_order(self, order_id: str) -> dict[str, Any]:
+            asked.append("fragment")
+            raise AssertionError("a games order must not be polled on Fragment")
+
+    async def _is_fragment(_db: Any, _task: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(mod, "_is_fragment_task", _is_fragment)
+    fulfiller = _fulfiller(_Client(), monkeypatch)  # type: ignore[arg-type]
+
+    status = await fulfiller.check_status(
+        db=None,  # type: ignore[arg-type]
+        task=SimpleNamespace(external_order_id="1770085", order_item_id="oi-2"),  # type: ignore[arg-type]
+    )
+
+    assert asked == ["v2"]
+    assert status.outcome == "succeeded"
