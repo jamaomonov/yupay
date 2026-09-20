@@ -48,13 +48,26 @@ branch_labels: str | None = None
 depends_on: str | None = None
 
 _TABLE = "blog_posts"
-#: Bare suffix, never the full name: the metadata naming convention in
-#: ``core/db.py`` re-templates ``ck_%(table_name)s_%(constraint_name)s``, so
-#: passing the full name here would ship
-#: ``ck_blog_posts_ck_blog_posts_...`` and stop matching the ORM. 0079 left
-#: this warning and it still applies.
+#: The BARE suffix, and it must be — on ``drop_constraint`` as much as on
+#: ``create_check_constraint``.
+#:
+#: ``core/db.py``'s naming convention is ``ck_%(table_name)s_%(constraint_name)s``
+#: and, because it contains ``%(constraint_name)s``, SQLAlchemy re-templates it
+#: even for a constraint that already carries an explicit name. Alembic builds
+#: one internally for the drop, so passing the qualified
+#: ``ck_blog_posts_brand_unless_draft`` here asks Postgres for
+#: ``ck_blog_posts_ck_blog_posts_brand_unless_draft`` — which is exactly how CI
+#: failed this migration's first run.
+#:
+#: **Neighbouring migrations pass the FULL name to ``drop_constraint`` and are
+#: not wrong**, which is the part worth knowing before "fixing" one of them:
+#: their constraints were themselves created double-prefixed, so the qualified
+#: string re-templates into the name that is really in the database.
+#: ``core/db.py`` says the same ("``ck_orders_ck_orders_actor_exclusive`` is
+#: live in production"). What decides it is the name Postgres actually holds,
+#: not a convention — verified here against production, where 0079's bare-suffix
+#: create left ``ck_blog_posts_brand_unless_draft``.
 _NAME = "brand_unless_draft"
-_FULL = "ck_blog_posts_brand_unless_draft"
 
 _OLD = "primary_brand_id IS NOT NULL OR status = 'draft'"
 _NEW = "primary_brand_id IS NOT NULL OR status IN ('draft', 'archived')"
@@ -62,7 +75,7 @@ _NEW = "primary_brand_id IS NOT NULL OR status IN ('draft', 'archived')"
 
 def upgrade() -> None:
     op.execute("SET lock_timeout = '3s'")
-    op.drop_constraint(_FULL, _TABLE, type_="check")
+    op.drop_constraint(_NAME, _TABLE, type_="check")
     op.create_check_constraint(_NAME, _TABLE, _NEW)
     # Scoped: a plain SET lives for the rest of the session, so without this
     # every later revision in the same `upgrade head` inherits a patience it
@@ -77,6 +90,6 @@ def downgrade() -> None:
     # operator reverting this must first give those posts a brand or delete
     # them. Failing loudly beats silently dropping the constraint.
     op.execute("SET lock_timeout = '3s'")
-    op.drop_constraint(_FULL, _TABLE, type_="check")
+    op.drop_constraint(_NAME, _TABLE, type_="check")
     op.create_check_constraint(_NAME, _TABLE, _OLD)
     op.execute("RESET lock_timeout")
