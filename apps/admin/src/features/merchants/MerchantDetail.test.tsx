@@ -332,3 +332,139 @@ it("warns loudly when a replayed key booked the credit against another order", a
   expect(alert.textContent).toContain(ORDER);
   expect(screen.queryByText(`Привязано к заказу ${ORDER}`)).not.toBeInTheDocument();
 });
+
+// ---------- debiting the deposit ----------
+//
+// The control the page was missing: an operator typed `−1` into «Пополнить
+// депозит» and got "сумма должна быть положительной". The endpoint existed;
+// the button did not.
+
+async function debitAndConfirm(amount: string, reason: string) {
+  fireEvent.change(await screen.findByLabelText("Сумма списания (USD)"), {
+    target: { value: amount },
+  });
+  fireEvent.change(screen.getByLabelText(/Причина/), { target: { value: reason } });
+  fireEvent.click(screen.getByRole("button", { name: "Списать" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Да, списать" }));
+}
+
+it("debits the deposit and shows the balance from the response", async () => {
+  mockedApiPost.mockResolvedValue({
+    transaction_id: "t9",
+    merchant_id: "m1",
+    amount: "4.00",
+    balance: "21.00",
+  });
+  renderPage();
+
+  await debitAndConfirm("4", "ошибочное пополнение");
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalled();
+  });
+  const [url, body] = mockedApiPost.mock.calls[0] ?? [];
+  expect(url).toBe("/api/v1/admin/merchants/m1/deposit-debits");
+  expect(body).toEqual({ amount: "4", reason: "ошибочное пополнение" });
+  // The balance shown is the API's, never the form's arithmetic.
+  expect(await screen.findByText(/\$21\.00/)).toBeInTheDocument();
+});
+
+it("refuses a debit with no reason without posting anything", async () => {
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Сумма списания (USD)"), {
+    target: { value: "4" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Списать" }));
+
+  // The ledger row is the only record of why a balance fell, so the form
+  // must not let one through without it. Asserted the way the credit tests
+  // beside it do — no request, and the confirm dialog never opens (toasts
+  // are not rendered in this harness).
+  expect(mockedApiPost).not.toHaveBeenCalled();
+  expect(screen.queryByRole("button", { name: "Да, списать" })).not.toBeInTheDocument();
+});
+
+it("refuses to debit more than the balance without posting anything", async () => {
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Сумма списания (USD)"), {
+    target: { value: "25.01" },
+  });
+  fireEvent.change(screen.getByLabelText(/Причина/), { target: { value: "перебор" } });
+  fireEvent.click(screen.getByRole("button", { name: "Списать" }));
+
+  // The server answers 409 anyway; catching it here means the confirm dialog
+  // never opens on an amount that cannot work.
+  await waitFor(() => {
+    expect(screen.queryByRole("button", { name: "Да, списать" })).not.toBeInTheDocument();
+  });
+  expect(mockedApiPost).not.toHaveBeenCalled();
+});
+
+it("fills the whole balance in one click", async () => {
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Весь остаток" }));
+
+  expect(await screen.findByLabelText("Сумма списания (USD)")).toHaveValue("25.00");
+});
+
+it("names the remaining balance in the confirmation, not just the amount", async () => {
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Сумма списания (USD)"), {
+    target: { value: "4" },
+  });
+  fireEvent.change(screen.getByLabelText(/Причина/), { target: { value: "коррекция" } });
+  fireEvent.click(screen.getByRole("button", { name: "Списать" }));
+
+  // "How much will be left" is the number the operator is deciding on.
+  expect(await screen.findByText(/Останется \$21\.00/)).toBeInTheDocument();
+});
+
+it("warns when a replayed key booked a different amount", async () => {
+  mockedApiPost.mockResolvedValue({
+    transaction_id: "t9",
+    merchant_id: "m1",
+    amount: "2.00",
+    balance: "23.00",
+  });
+  renderPage();
+
+  await debitAndConfirm("4", "коррекция");
+
+  // The ledger replays by key without comparing parameters. The observable
+  // difference from a clean success: the form is NOT cleared, so the operator
+  // still sees what they typed beside a balance that moved by something else.
+  // (Toasts are not rendered in this harness — same as the credit tests.)
+  await waitFor(() => {
+    expect(screen.getByText(/\$23\.00/)).toBeInTheDocument();
+  });
+  expect(screen.getByLabelText("Сумма списания (USD)")).toHaveValue("4");
+});
+
+it("ignores a double-click while the debit is in flight", async () => {
+  mockedApiPost.mockImplementation(
+    () =>
+      new Promise((resolve) => {
+        setTimeout(() => {
+          resolve({ transaction_id: "t9", merchant_id: "m1", amount: "4.00", balance: "21.00" });
+        }, 50);
+      }),
+  );
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Сумма списания (USD)"), {
+    target: { value: "4" },
+  });
+  fireEvent.change(screen.getByLabelText(/Причина/), { target: { value: "коррекция" } });
+  fireEvent.click(screen.getByRole("button", { name: "Списать" }));
+  const confirm = await screen.findByRole("button", { name: "Да, списать" });
+  fireEvent.click(confirm);
+  fireEvent.click(confirm);
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+});

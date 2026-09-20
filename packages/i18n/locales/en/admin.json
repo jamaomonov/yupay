@@ -67,6 +67,28 @@
       "resultOrder": "Booked against order {order}",
       "replayOrderMismatch": "The previously used key is booked against order {booked}, not the entered {typed}. An attribution cannot be re-pointed — check the history below."
     },
+    "debit": {
+      "title": "Debit the deposit",
+      "hint": "Posted to the ledger as C merchant_deposit / D house_payments_received. Not attributed to an order.",
+      "amountLabel": "Amount to debit (USD)",
+      "amountPlaceholder": "e.g. 1.10",
+      "reasonLabel": "Reason",
+      "reasonHint": "(required; internal only, recorded on the deposit history)",
+      "reasonPlaceholder": "e.g. credited in error on 20.09",
+      "submit": "Debit",
+      "submitBusy": "Debiting…",
+      "wholeBalance": "Whole balance",
+      "confirmTitle": "Debit the deposit?",
+      "confirmBody": "{amount} will be taken off «{title}»'s deposit, leaving {rest}.",
+      "confirm": "Yes, debit",
+      "success": "Debited {amount}. Balance: {balance}.",
+      "replayMismatch": "{booked} was debited under a previously used key — the amount you typed, {typed}, was not applied. Check the history below.",
+      "amountInvalid": "Amount must be a positive USD value with at most two decimals.",
+      "reasonRequired": "A debit needs a reason: it is the only record of why the balance fell.",
+      "overdraw": "Cannot debit more than the balance, which is {balance}.",
+      "noWebhook": "The merchant is not notified — there is no balance.debited event. They will see the movement on their statement.",
+      "error": "Could not debit: {message}"
+    },
     "ledger": {
       "title": "Deposit history",
       "empty": "No deposit movements yet.",

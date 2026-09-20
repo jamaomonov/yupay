@@ -47,6 +47,7 @@ import {
   type MerchantTxnListOut,
   type MerchantTxnOut,
 } from "./api";
+import { DepositDebitCard } from "./DepositDebitCard";
 
 import type { ApiError } from "@/lib/api";
 
@@ -393,6 +394,15 @@ export function MerchantDetail() {
           )}
         </div>
       </section>
+
+      <DepositDebitCard
+        merchantId={id}
+        merchantTitle={merchant.title}
+        balance={merchant.deposit_balance}
+        onBalance={(balance) => {
+          patchList({ ...merchant, deposit_balance: balance });
+        }}
+      />
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--text-secondary)]">

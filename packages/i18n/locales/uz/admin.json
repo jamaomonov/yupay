@@ -67,6 +67,28 @@
       "resultOrder": "{order} buyurtmaga bog'landi",
       "replayOrderMismatch": "Avval ishlatilgan kalit {booked} buyurtmaga bog'langan, kiritilgan {typed} ga emas. Bog'lanishni qayta yo'naltirib bo'lmaydi — quyidagi tarixni tekshiring."
     },
+    "debit": {
+      "title": "Depozitdan yechish",
+      "hint": "Ledgerga C merchant_deposit / D house_payments_received juftligi bilan yoziladi. Buyurtmaga bogʻlanmaydi.",
+      "amountLabel": "Yechiladigan summa (USD)",
+      "amountPlaceholder": "masalan: 1.10",
+      "reasonLabel": "Sabab",
+      "reasonHint": "(majburiy; faqat bizga koʻrinadi, depozit tarixiga yoziladi)",
+      "reasonPlaceholder": "masalan: 20.09 dagi xato toʻldirish",
+      "submit": "Yechish",
+      "submitBusy": "Yechilmoqda…",
+      "wholeBalance": "Butun qoldiq",
+      "confirmTitle": "Depozitdan yechilsinmi?",
+      "confirmBody": "«{title}» depozitidan {amount} yechiladi. {rest} qoladi.",
+      "confirm": "Ha, yechilsin",
+      "success": "{amount} yechildi. Balans: {balance}.",
+      "replayMismatch": "Avval ishlatilgan kalit boʻyicha {booked} yechildi — kiritilgan {typed} qoʻllanmadi. Quyidagi tarixni tekshiring.",
+      "amountInvalid": "Summa — musbat USD qiymati, nuqtadan keyin koʻpi bilan ikki raqam.",
+      "reasonRequired": "Sababsiz yechib boʻlmaydi: bu balans nega tushgani yoziladigan yagona joy.",
+      "overdraw": "Qoldiqdan koʻp yechib boʻlmaydi: depozitda {balance}.",
+      "noWebhook": "Merchantga xabar bormaydi — balance.debited hodisasi mavjud emas. U harakatni oʻz hisobotida koʻradi.",
+      "error": "Yechib boʻlmadi: {message}"
+    },
     "ledger": {
       "title": "Depozit tarixi",
       "empty": "Depozit bo'yicha harakatlar hali yo'q.",

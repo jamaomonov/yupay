@@ -114,6 +114,30 @@ export function creditDeposit(
   });
 }
 
+/** Result of a deposit debit (`DepositDebitOut`).
+ *
+ *  No `order_id`: a debit is booked against the merchant, never an order —
+ *  attributing one would land on that order's `refunded_usd` as money the
+ *  merchant never got back. */
+export interface DepositDebitOut {
+  transaction_id: string;
+  merchant_id: string;
+  /** What the ledger ACTUALLY booked — the ORIGINAL transaction's amount on
+   *  an idempotent replay, for the same reason `DepositCreditOut.amount` is. */
+  amount: string;
+  balance: string;
+}
+
+export function debitDeposit(
+  merchantId: string,
+  body: { amount: string; reason: string },
+  idempotencyKey: string,
+): Promise<DepositDebitOut> {
+  return apiPost<DepositDebitOut>(`/api/v1/admin/merchants/${merchantId}/deposit-debits`, body, {
+    "Idempotency-Key": idempotencyKey,
+  });
+}
+
 /**
  * `"$1 250.00"` from `"1250.00"` (and `"−$5.00"` from `"-5.000000"`) —
  * trims ledger-precision trailing zeros down to at least two decimals and
@@ -173,6 +197,31 @@ export function parseOrderId(raw: string): string | null {
     stripped.slice(16, 20),
     stripped.slice(20),
   ].join("-");
+}
+
+/**
+ * A USD decimal string as an integer number of cents.
+ *
+ * Safe as a JS number, and the bound is worth stating rather than assuming:
+ * the schema caps an amount at `max_digits=12, decimal_places=2`, so the
+ * largest value is 10^10 dollars = 10^12 cents — three orders of magnitude
+ * under `Number.MAX_SAFE_INTEGER`. Parsing the dollars as a float and
+ * multiplying would not be safe; this reads the digits.
+ */
+export function toCents(raw: string): number {
+  const trimmed = raw.trim();
+  const negative = trimmed.startsWith("-");
+  const [intRaw = "0", fracRaw = ""] = (negative ? trimmed.slice(1) : trimmed).split(".");
+  const cents = Number(intRaw || "0") * 100 + Number((fracRaw + "00").slice(0, 2));
+  return negative ? -cents : cents;
+}
+
+/** `"3.93"` minus `"1.10"` as `"2.83"`, in cents so no float ever sees it. */
+export function subtractUsd(a: string, b: string): string {
+  const cents = toCents(a) - toCents(b);
+  const sign = cents < 0 ? "-" : "";
+  const abs = Math.abs(cents);
+  return `${sign}${String(Math.floor(abs / 100))}.${String(abs % 100).padStart(2, "0")}`;
 }
 
 /** Whether two Decimal strings denote the same amount (`"10"` vs `"10.00"`). */
