@@ -28,6 +28,13 @@ rest of the minute. G-Engine was worse — its two-phase pay means the _payment_
 waits for the next tick, not just the news of it, so a minute of the customer's
 wait was our own scheduling.
 
+**A check that advanced the task is not deferred at all.** The next step may
+be available right now, and for G-Engine it always is: the tick that sees
+`verified` banks the pay intent and spends nothing, so deferring there would
+move the delay from the news to the money. "Advanced" means `status` or the
+task's metadata changed — not `updated_at`, which moves whenever an attempt
+row is written, including on a check that learned nothing.
+
 The stamp is written in **its own transaction**, after every check including a
 failed one. Inside the reconcile transaction it would roll back with the
 failure it is meant to outlive, and the task would be due again immediately —

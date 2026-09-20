@@ -16,13 +16,14 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import html
+import json
 import sys
 from collections.abc import Coroutine, Iterable
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import Any, Final
 
-from sqlalchemy import Row, func, or_, select, text
+from sqlalchemy import Row, case, func, literal_column, or_, select, text
 from sqlalchemy import update as sa_update
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1649,9 +1650,20 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     return ran
 
 
-#: How soon after a check the next one is allowed. The steady cadence, for an
-#: order that is genuinely still working upstream.
+#: How soon after a check the next one is allowed, once an order has stopped
+#: looking new. The steady cadence for something genuinely still working
+#: upstream.
 RECHECK_AFTER_SECONDS = 60
+
+#: How long an order counts as new, and how often it is checked while it does.
+#:
+#: Not a nicety for the customer's sake alone. G-Engine's pay is two-phase: the
+#: tick that sees ``verified`` banks the intent and spends nothing, and the
+#: *next* tick pays. Backing off to a minute straight after the first check
+#: would therefore make the payment itself wait a minute — the very delay this
+#: cadence exists to remove, moved from the news to the money.
+FAST_RECHECK_WINDOW_SECONDS = 120
+FAST_RECHECK_SECONDS = 10
 
 
 async def due_reconcile_task_ids(db: AsyncSession, *, supplier: str, limit: int = 500) -> list[str]:
@@ -1684,20 +1696,57 @@ async def due_reconcile_task_ids(db: AsyncSession, *, supplier: str, limit: int 
     return [str(r) for r in rows.scalars().all()]
 
 
+async def task_progress_mark(db: AsyncSession, *, task_id: str) -> tuple[str, str] | None:
+    """A cheap fingerprint of the two fields a check can advance.
+
+    ``status`` and ``extra_metadata``, because those are what "the check got
+    somewhere" means: a task that reached a terminal state, or one that banked
+    a decision for the next tick to act on. Deliberately not ``updated_at`` —
+    that moves whenever an attempt row is written, which happens on a check
+    that learned nothing.
+    """
+    row = (
+        await db.execute(
+            select(FulfillmentTask.status, FulfillmentTask.extra_metadata).where(
+                FulfillmentTask.id == task_id
+            )
+        )
+    ).first()
+    if row is None:
+        return None
+    return str(row[0]), json.dumps(row[1] or {}, sort_keys=True)
+
+
 async def schedule_next_check(
-    db: AsyncSession, *, task_id: str, seconds: int = RECHECK_AFTER_SECONDS
+    db: AsyncSession, *, task_id: str, seconds: int | None = None
 ) -> None:
-    """Push a task's next status check out by ``seconds``.
+    """Push a task's next status check out.
+
+    ``seconds`` defaults to the task's own age: :data:`FAST_RECHECK_SECONDS`
+    while it is younger than :data:`FAST_RECHECK_WINDOW_SECONDS`, and
+    :data:`RECHECK_AFTER_SECONDS` after that. Decided in SQL so one statement
+    does it without reading the row first.
 
     Written after every check, including one that failed: a supplier we could
     not read is not a supplier to hammer every few seconds. A task that has
-    since gone terminal keeps the stamp harmlessly — the query above filters
-    on status first.
+    since gone terminal keeps the stamp harmlessly — ``due_reconcile_task_ids``
+    filters on status first.
     """
+    delay = (
+        literal_column(f"interval '{seconds} seconds'")
+        if seconds is not None
+        else case(
+            (
+                FulfillmentTask.created_at > now() - timedelta(seconds=FAST_RECHECK_WINDOW_SECONDS),
+                literal_column(f"interval '{FAST_RECHECK_SECONDS} seconds'"),
+            ),
+            else_=literal_column(f"interval '{RECHECK_AFTER_SECONDS} seconds'"),
+        )
+    )
     await db.execute(
         sa_update(FulfillmentTask)
         .where(FulfillmentTask.id == task_id)
-        .values(next_attempt_at=now() + timedelta(seconds=seconds))
+        .values(next_attempt_at=now() + delay)
     )
 
 

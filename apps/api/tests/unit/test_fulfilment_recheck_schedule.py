@@ -15,15 +15,12 @@ poll an order it asked about nine seconds ago.
 
 from __future__ import annotations
 
-from datetime import timedelta
-
 import pytest
 
 # Compiling a select needs every mapper configured, and the fulfilment models
 # reference Order/Payment/Sku. Importing the API package registers them all;
 # `test_player_check_service.py` carries the same line for the same reason.
 import yupay.api.v1  # noqa: F401
-from yupay.core.clock import now
 from yupay.modules.fulfillment import service as ff
 
 pytestmark = pytest.mark.asyncio
@@ -53,6 +50,9 @@ class _Session:
             def all(self) -> list[str]:
                 return self._rows
 
+            def first(self) -> object | None:
+                return self._rows[0] if self._rows else None
+
         return _R(self.rows)
 
 
@@ -78,26 +78,48 @@ async def test_the_query_is_scoped_to_one_supplier_and_in_flight_work() -> None:
     assert "fulfillment_tasks.status" in sql
 
 
-async def test_the_next_check_is_pushed_out_by_the_steady_cadence() -> None:
+async def test_a_young_order_is_checked_again_quickly() -> None:
+    """The default delay is decided in SQL from the task's own age, so both
+    cadences appear in the statement: fast while it is young, steady after.
+
+    This is not only for the customer's sake. G-Engine's pay is two-phase —
+    the tick that sees `verified` banks the intent and spends nothing, the
+    *next* tick pays — so backing off to a minute right after the first check
+    moves the delay from the news to the money. CI caught exactly that.
+    """
     session = _Session()
-    before = now()
 
     await ff.schedule_next_check(session, task_id="t1")  # type: ignore[arg-type]
 
-    stmt = session.statements[0]
-    scheduled = stmt.compile().params["next_attempt_at"]  # type: ignore[attr-defined]
-    delta = scheduled - before
-    assert timedelta(seconds=ff.RECHECK_AFTER_SECONDS - 2) <= delta
-    assert delta <= timedelta(seconds=ff.RECHECK_AFTER_SECONDS + 2)
+    sql = _stmt_sql(session.statements[0])
+    assert f"interval '{ff.FAST_RECHECK_SECONDS} seconds'" in sql
+    assert f"interval '{ff.RECHECK_AFTER_SECONDS} seconds'" in sql
+    assert "CASE" in sql.upper()
 
 
-async def test_a_caller_may_ask_for_a_shorter_wait() -> None:
-    """The knob exists so a supplier that answers fast can be asked again
-    sooner without changing the default for everyone."""
+async def test_a_caller_may_pin_the_wait() -> None:
+    """An explicit `seconds` skips the age test entirely — one interval, no
+    branch."""
     session = _Session()
-    before = now()
 
     await ff.schedule_next_check(session, task_id="t1", seconds=5)  # type: ignore[arg-type]
 
-    scheduled = session.statements[0].compile().params["next_attempt_at"]  # type: ignore[attr-defined]
-    assert scheduled - before <= timedelta(seconds=7)
+    sql = _stmt_sql(session.statements[0])
+    assert "interval '5 seconds'" in sql
+    assert "CASE" not in sql.upper()
+
+
+async def test_the_fingerprint_covers_what_a_check_can_advance() -> None:
+    """Status and metadata, because those are what "it got somewhere" means:
+    a task that reached a terminal state, or one that banked a decision the
+    next tick will act on."""
+    session = _Session()
+
+    await ff.task_progress_mark(session, task_id="t1")  # type: ignore[arg-type]
+
+    sql = _stmt_sql(session.statements[0])
+    assert "fulfillment_tasks.status" in sql
+    assert "fulfillment_tasks.metadata" in sql
+    # `updated_at` moves whenever an attempt row is written, including on a
+    # check that learned nothing — keying on it would defer nothing, ever.
+    assert "updated_at" not in sql

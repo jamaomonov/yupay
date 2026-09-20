@@ -31,6 +31,7 @@ from yupay.modules.fulfillment.service import (
     due_reconcile_task_ids,
     process_webhook_update,
     schedule_next_check,
+    task_progress_mark,
 )
 
 log = get_logger("yupay.scheduler.nova_reconcile")
@@ -54,18 +55,28 @@ async def _list_stuck_task_ids() -> list[str]:
 
 
 async def _reconcile_one(task_id: str) -> None:
-    """Reconcile a single task in its own session/transaction."""
+    """Reconcile a single task in its own session/transaction.
+
+    A check that **advanced** the task is not deferred: the next step may be
+    available right now, and for G-Engine it always is — the tick that sees
+    ``verified`` banks the pay intent and spends nothing, so deferring here
+    would make the payment itself wait for the cadence.
+    """
     factory = get_session_factory()
+    advanced = False
     try:
         async with factory() as session, session.begin():
+            before = await task_progress_mark(session, task_id=task_id)
             await process_webhook_update(session, task_id=task_id)
+            advanced = await task_progress_mark(session, task_id=task_id) != before
     finally:
-        # Its own transaction, deliberately. Inside the one above it would
-        # roll back with the failure it is meant to outlive, leaving the task
-        # due again immediately — so a supplier we could not read would be
-        # asked again in ten seconds, which is the opposite of the point.
-        async with factory() as session, session.begin():
-            await schedule_next_check(session, task_id=task_id)
+        if not advanced:
+            # Its own transaction, deliberately. Inside the one above it would
+            # roll back with the failure it is meant to outlive, leaving the
+            # task due again immediately — so a supplier we could not read
+            # would be asked again in ten seconds, the opposite of the point.
+            async with factory() as session, session.begin():
+                await schedule_next_check(session, task_id=task_id)
 
 
 async def run_nova_reconcile() -> None:
