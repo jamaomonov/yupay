@@ -48,6 +48,7 @@ class _FakeClient:
         self._raises = raises
         self.calls: list[dict[str, Any]] = []
         self.steam_calls: list[dict[str, Any]] = []
+        self.fragment_calls: list[tuple[str, dict[str, Any]]] = []
 
     async def create_topup_order(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
@@ -64,6 +65,18 @@ class _FakeClient:
         if self._raises is not None:
             raise self._raises
         return self._steam_order
+
+    async def create_fragment_stars_order(self, **kwargs: Any) -> dict[str, Any]:
+        self.fragment_calls.append(("stars", kwargs))
+        if self._raises is not None:
+            raise self._raises
+        return self._order
+
+    async def create_fragment_premium_order(self, **kwargs: Any) -> dict[str, Any]:
+        self.fragment_calls.append(("premium", kwargs))
+        if self._raises is not None:
+            raise self._raises
+        return self._order
 
     async def get_order(self, order_id: str) -> dict[str, Any]:
         if self._raises is not None:
@@ -639,3 +652,175 @@ async def test_the_refusal_carries_their_sentence_and_our_balance(
 
     assert result.extra_metadata["supplier_message"] == "Insufficient internal balance"
     assert result.extra_metadata["current_balance"] == "112.7547"
+
+
+# ---------------------------------------------------------------------------
+# Fragment: Telegram Stars and Premium
+# ---------------------------------------------------------------------------
+
+
+def _fragment_item(**over: Any) -> Any:
+    base = {
+        "sku_id": "sku-tg",
+        "qty": 1,
+        "fulfillment_data": {"username": "@someone"},
+        "unit_price_usd": Decimal("0.93"),
+    }
+    base.update(over)
+    return SimpleNamespace(**base)
+
+
+def _patch_quantity(monkeypatch: pytest.MonkeyPatch, value: int) -> list[tuple[Any, Any]]:
+    """Replace the shared counter and record what NOVA handed it.
+
+    The point of the assertion is not the number — `quantity_for` has its own
+    tests — it is that NOVA *asks* rather than counting Stars itself.
+    """
+    import yupay.modules.fulfillment.suppliers.nova as mod
+
+    seen: list[tuple[Any, Any]] = []
+
+    async def _fake(_db: Any, *, item: Any, mapping: Any) -> int:
+        seen.append((item, mapping))
+        return value
+
+    monkeypatch.setattr(mod, "quantity_for", _fake)
+    return seen
+
+
+async def test_a_stars_line_buys_the_count_the_shared_counter_returns(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen = _patch_quantity(monkeypatch, 5000)
+    client = _FakeClient(order={"id": "frg_1", "status": "PROCESSING"})
+    item = _fragment_item(qty=5000)
+
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=item,
+        mapping=_mapping(external_product_id="fragment-stars", external_variant_id=None),
+    )
+
+    kind, kwargs = client.fragment_calls[0]
+    assert kind == "stars"
+    assert kwargs["stars_amount"] == 5000
+    assert kwargs["username"] == "@someone"
+    # It delegated, with this order's own row — not a count of its own.
+    assert seen
+    assert seen[0][0] is item
+    assert result.outcome == "in_progress"
+
+
+async def test_a_premium_line_takes_its_months_from_the_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient(order={"id": "frg_2", "status": "SUCCESS"})
+
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=_fragment_item(unit_price_usd=Decimal("14.77")),
+        mapping=_mapping(external_product_id="fragment-premium", external_variant_id="12"),
+    )
+
+    kind, kwargs = client.fragment_calls[0]
+    assert kind == "premium"
+    assert kwargs["months"] == 12
+    assert result.outcome == "succeeded"
+
+
+async def test_a_premium_mapping_without_months_is_refused_before_any_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Three Premium products differ only by their month count, so a mapping
+    that lost it would otherwise gift whatever NOVA defaults to."""
+    client = _FakeClient(order={"id": "frg_3", "status": "SUCCESS"})
+
+    with pytest.raises(FulfillerError) as err:
+        await _fulfill(
+            client,
+            monkeypatch,
+            item=_fragment_item(),
+            mapping=_mapping(external_product_id="fragment-premium", external_variant_id=None),
+        )
+
+    assert client.fragment_calls == []
+    assert err.value.money_outcome == MoneyOutcome.RETURNED
+
+
+async def test_a_missing_username_is_refused_before_any_call(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_quantity(monkeypatch, 50)
+    client = _FakeClient(order={"id": "frg_4", "status": "SUCCESS"})
+
+    with pytest.raises(FulfillerError) as err:
+        await _fulfill(
+            client,
+            monkeypatch,
+            item=_fragment_item(fulfillment_data={}),
+            mapping=_mapping(external_product_id="fragment-stars", external_variant_id=None),
+        )
+
+    assert client.fragment_calls == []
+    assert err.value.money_outcome == MoneyOutcome.RETURNED
+
+
+async def test_the_older_field_name_still_names_the_recipient(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """G-Engine's mapper accepts `telegram_username` beside `username`; a line
+    carrying the older one must not fail here."""
+    _patch_quantity(monkeypatch, 50)
+    client = _FakeClient(order={"id": "frg_5", "status": "PROCESSING"})
+
+    await _fulfill(
+        client,
+        monkeypatch,
+        item=_fragment_item(fulfillment_data={"telegram_username": "@other"}),
+        mapping=_mapping(external_product_id="fragment-stars", external_variant_id=None),
+    )
+
+    assert client.fragment_calls[0][1]["username"] == "@other"
+
+
+async def test_a_dry_run_answer_is_a_failure_that_cost_nothing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Their sandbox returns a complete-looking order that bought nothing.
+    Read as an unknown word it would sit in-flight waiting for a delivery that
+    is never coming."""
+    _patch_quantity(monkeypatch, 50)
+    client = _FakeClient(order={"id": "frg_6", "status": "DRY_RUN"})
+
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=_fragment_item(),
+        mapping=_mapping(external_product_id="fragment-stars", external_variant_id=None),
+    )
+
+    assert result.outcome == "failed"
+    assert result.money_outcome == MoneyOutcome.RETURNED
+    assert "dry-run" in (result.error or "")
+
+
+async def test_the_fragment_charge_is_recorded_from_their_own_field(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Fragment calls it `customer_amount_usd`; the v2 orders call it
+    `chargedUsd`. Miss it and a Telegram line has no real cost basis."""
+    _patch_quantity(monkeypatch, 1000)
+    client = _FakeClient(
+        order={"id": "frg_7", "status": "SUCCESS", "customer_amount_usd": "15.225000"}
+    )
+
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=_fragment_item(qty=1000),
+        mapping=_mapping(external_product_id="fragment-stars", external_variant_id=None),
+    )
+
+    assert result.extra_metadata.get("supplier_charged_usd") == "15.225000"

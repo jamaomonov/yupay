@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.suppliers.amount import quantity_for
 from yupay.modules.fulfillment.suppliers.base import (
     Fulfiller,
     FulfillerError,
@@ -51,7 +52,11 @@ from yupay.modules.fulfillment.suppliers.nova_grading import (
     _shortfall_side,
     _without_our_inputs,
 )
-from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
+from yupay.modules.integrations.models import (
+    NOVA_FRAGMENT_PREMIUM,
+    NOVA_FRAGMENT_STARS,
+    NOVA_STEAM_SENTINEL,
+)
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -78,6 +83,8 @@ _FIELD_MAP: dict[str, str] = {
 #: ``integrations.models`` because the admin's mapping validator needs the same
 #: one. See it there for why a sentinel rather than a fourth ``kind``.
 STEAM_SENTINEL = NOVA_STEAM_SENTINEL
+FRAGMENT_STARS = NOVA_FRAGMENT_STARS
+FRAGMENT_PREMIUM = NOVA_FRAGMENT_PREMIUM
 
 
 #: They document no code for it, so we sniff the message. A false positive only
@@ -146,16 +153,27 @@ class NovaFulfiller(Fulfiller):
         if not self.available:
             raise FulfillerError("NOVA_API_KEY is not configured", money_outcome=_NOTHING_SPENT)
 
-        if item.qty > 1:
+        mapping = await _mapping_for(db, sku_id=item.sku_id)
+        category_id = str(mapping.external_product_id or "").strip()
+
+        # One call buys one thing — for a game offer, a Steam wallet and a
+        # Premium gift alike. **Stars are the exception**, and it is not a
+        # nicety: on the free-amount line ``item.qty`` *is* the star count
+        # (5000 Stars is one order of qty 5000, mapping quantity 1), so the
+        # guard that protects the other three would refuse every such order.
+        # That is why this sits after the mapping is known and not before.
+        if item.qty > 1 and category_id != FRAGMENT_STARS:
             raise FulfillerError(
                 "nova has no quantity on a top-up order — one call buys one offer",
                 money_outcome=_NOTHING_SPENT,
             )
 
-        mapping = await _mapping_for(db, sku_id=item.sku_id)
-        category_id = str(mapping.external_product_id or "").strip()
         if category_id == STEAM_SENTINEL:
             return await self._fulfill_steam(item=item, idempotency_key=idempotency_key)
+        if category_id in (FRAGMENT_STARS, FRAGMENT_PREMIUM):
+            return await self._fulfill_fragment(
+                db=db, item=item, mapping=mapping, idempotency_key=idempotency_key
+            )
 
         offer_id = str(mapping.external_variant_id or "").strip()
         if not category_id or not offer_id:
@@ -199,8 +217,9 @@ class NovaFulfiller(Fulfiller):
         money grading — same client, same exceptions, same guard — because a
         different endpoint is not a different money story.
 
-        ``item.qty > 1`` is already refused by :meth:`fulfill` before the
-        mapping is even loaded, so it is not repeated here.
+        ``item.qty > 1`` is already refused by :meth:`fulfill` — just after
+        the mapping is loaded rather than before, because Stars need the
+        mapping to claim their exemption — so it is not repeated here.
         """
         steam_login = str((item.fulfillment_data or {}).get("steam_login") or "").strip()
         if not steam_login:
@@ -224,6 +243,82 @@ class NovaFulfiller(Fulfiller):
                 )
             raise FulfillerError(
                 _without_our_inputs(str(exc), {"steam_login": steam_login}),
+                money_outcome=_refusal_money(exc),
+            ) from exc
+        except NovaUnavailableError as exc:
+            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+
+        return _finish(obj)
+
+    async def _fulfill_fragment(
+        self,
+        *,
+        db: AsyncSession,
+        item: OrderItem,
+        mapping: Any,
+        idempotency_key: str,
+    ) -> FulfillResult:
+        """Telegram Stars and Premium, through NOVA's Fragment API.
+
+        A third endpoint pair with a third shape, and the money grading is
+        deliberately identical to the other two — a different URL is not a
+        different money story.
+
+        The star count is **not** computed here. ``quantity_for`` is the same
+        function G-Engine's Telegram service calls, and it has to be: a package
+        SKU carries its pack size on the mapping and is bought ``qty=1``, while
+        the free-amount line carries ``1`` and arrives with the customer's own
+        count as ``item.qty``. Two adapters reading that row differently is how
+        somebody gets 1 Star instead of 5000.
+
+        Premium takes its months from the mapping variant, which is the only
+        thing separating its three products.
+        """
+        username = str(
+            (item.fulfillment_data or {}).get("username")
+            or (item.fulfillment_data or {}).get("telegram_username")
+            or ""
+        ).strip()
+        if not username:
+            raise FulfillerError(
+                "order item is missing fulfillment_data.username",
+                money_outcome=_NOTHING_SPENT,
+            )
+
+        is_premium = str(mapping.external_product_id or "").strip() == FRAGMENT_PREMIUM
+        months = 0
+        stars = 0
+        if is_premium:
+            try:
+                months = int(str(mapping.external_variant_id or "").strip())
+            except ValueError:
+                months = 0
+            if months <= 0:
+                raise FulfillerError(
+                    "nova premium mapping carries no month count in its variant",
+                    money_outcome=_NOTHING_SPENT,
+                )
+        else:
+            stars = int(await quantity_for(db, item=item, mapping=mapping))
+
+        try:
+            if is_premium:
+                obj = await self._client().create_fragment_premium_order(
+                    username=username, months=months, idempotency_key=idempotency_key
+                )
+            else:
+                obj = await self._client().create_fragment_stars_order(
+                    username=username, stars_amount=stars, idempotency_key=idempotency_key
+                )
+        except NovaError as exc:
+            if _looks_like_low_balance(exc):
+                return _low_balance_result(
+                    message=_without_our_inputs(str(exc), {"username": username}),
+                    side=_shortfall_side(exc),
+                    our_balance=await self._balance_or_none(),
+                )
+            raise FulfillerError(
+                _without_our_inputs(str(exc), {"username": username}),
                 money_outcome=_refusal_money(exc),
             ) from exc
         except NovaUnavailableError as exc:
