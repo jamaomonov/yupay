@@ -161,3 +161,50 @@ def test_ordinary_text_is_left_alone(captured_init: dict[str, Any]) -> None:
 
     crumb = {"message": "robot: connection reset by peer /bot/help", "data": {"n": 7}}
     assert before_breadcrumb(dict(crumb), {}) == crumb
+
+
+# ---------- a deploy cancelling a running job is not an error ----------
+#
+# `AsyncIOExecutor.shutdown` cancels every in-flight coroutine job (its own
+# source: "There is no way to honor wait=True"), the scheduler container gets
+# ten seconds before SIGKILL, and a merchant-feed tick runs for minutes. So a
+# deploy landing mid-tick WILL cut the job. `CancelledError` derives from
+# `BaseException`, so the job's own `except Exception` never sees it and
+# APScheduler logs it — turning every such deploy into a Sentry alert.
+
+
+def test_a_cancelled_scheduler_job_is_dropped(captured_init: dict[str, Any]) -> None:
+    _, before_send = _hooks(captured_init)
+
+    event = {
+        "logger": "apscheduler.executors.default",
+        "exception": {"values": [{"type": "CancelledError", "value": ""}]},
+    }
+    assert before_send(event, {}) is None
+
+
+def test_a_cancellation_anywhere_else_still_reports(captured_init: dict[str, Any]) -> None:
+    """The filter is narrow on purpose.
+
+    A `CancelledError` in a request handler or the fulfilment drain is a real
+    finding — a task killed mid-flight where nothing expected it. Only the
+    APScheduler logger's own is routine.
+    """
+    _, before_send = _hooks(captured_init)
+
+    event = {
+        "logger": "yupay.modules.fulfillment.service",
+        "exception": {"values": [{"type": "CancelledError", "value": ""}]},
+    }
+    assert before_send(event, {}) is not None
+
+
+def test_another_scheduler_failure_still_reports(captured_init: dict[str, Any]) -> None:
+    """Only cancellation is routine — a job that actually failed is not."""
+    _, before_send = _hooks(captured_init)
+
+    event = {
+        "logger": "apscheduler.executors.default",
+        "exception": {"values": [{"type": "ValueError", "value": "boom"}]},
+    }
+    assert before_send(event, {}) is not None

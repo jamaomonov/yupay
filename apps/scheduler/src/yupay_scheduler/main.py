@@ -114,7 +114,23 @@ async def run() -> None:
         loop.add_signal_handler(sig, stop.set)
     await stop.wait()
 
-    scheduler.shutdown(wait=True)
+    # ``wait=False`` because ``wait=True`` is a promise APScheduler cannot
+    # keep and we were making it anyway. ``AsyncIOExecutor.shutdown`` says so
+    # in its own source — "There is no way to honor wait=True without
+    # converting this method into a coroutine method" — and cancels every
+    # in-flight coroutine job either way.
+    #
+    # Draining properly is not available to us either: this container gets
+    # Docker's default ten seconds before SIGKILL, and one merchant-feed tick
+    # pushes 205 SKUs to Google over minutes. So a deploy landing mid-tick
+    # cuts the job, and that is correct — every job here is periodic and
+    # re-runnable, and the next tick redoes the work.
+    #
+    # The honest spelling is `False`. The resulting `CancelledError` is not
+    # reported as an error either: `core.observability._is_shutdown_cancellation`
+    # drops exactly that event, because an alert that fires on every deploy is
+    # an alert nobody reads.
+    scheduler.shutdown(wait=False)
     # The G2B jobs share one connection pool for the process lifetime (see
     # ``g2b_client._pool``); the API closes it in its lifespan, this is the
     # same courtesy here.

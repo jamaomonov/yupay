@@ -64,8 +64,38 @@ def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb:
     return _scrub_deep(crumb)  # type: ignore[no-any-return]
 
 
-def _before_send(event: Event, _hint: Hint) -> Event:
-    """The same, for the event itself — message, exception values, request."""
+def _is_shutdown_cancellation(event: Event) -> bool:
+    """Is this APScheduler reporting that shutdown cancelled a running job?
+
+    Not an error, and unavoidable. ``AsyncIOExecutor.shutdown`` cancels every
+    in-flight coroutine job — its own source says "There is no way to honor
+    wait=True without converting this method into a coroutine method" — and
+    the scheduler container gets Docker's default ten seconds before SIGKILL,
+    while one merchant-feed tick pushes 205 SKUs to Google and runs for
+    minutes. So a deploy that lands mid-tick WILL cut the job, and the next
+    hourly tick redoes it; every one of these jobs is periodic and
+    re-runnable.
+
+    What was wrong is only that it arrived as an **error**. `CancelledError`
+    derives from ``BaseException``, so a job's own ``except Exception`` guard
+    never sees it, APScheduler logs it, and the logging integration turns a
+    routine deploy into a Sentry alert. An alert that fires on every deploy is
+    an alert people learn to close.
+
+    Narrow on purpose — the APScheduler logger AND a cancellation. A
+    `CancelledError` anywhere else still reports, because one in a request
+    handler or the fulfilment drain is a real finding.
+    """
+    if not str(event.get("logger") or "").startswith("apscheduler"):
+        return False
+    values = (event.get("exception") or {}).get("values") or []
+    return any(v.get("type") == "CancelledError" for v in values)
+
+
+def _before_send(event: Event, _hint: Hint) -> Event | None:
+    """Scrub the event, and drop the one class of non-error it reports."""
+    if _is_shutdown_cancellation(event):
+        return None
     return _scrub_deep(event)  # type: ignore[no-any-return]
 
 
