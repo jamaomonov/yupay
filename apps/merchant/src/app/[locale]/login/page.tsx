@@ -31,13 +31,20 @@ export default function LoginPage() {
       storeTokens(tokens);
       router.replace(pathFor(locale, "/cabinet"));
     } catch (err) {
-      // One message for every failure, because the API answers the same for
-      // every failure — and the copy says what an unconfirmed operator should
-      // actually do, since that is the one case they can fix themselves.
+      // Three answers, not one. A suspended account now gets its own 403 and
+      // its own sentence: folding it into "wrong email or password" sent a
+      // real operator round the password-reset loop twice without ever
+      // learning the account was frozen. The other failures stay identical on
+      // purpose — registration is open, so distinguishing "no such address"
+      // from "wrong password" would tell a prober about somebody else's
+      // mailbox.
+      const status = err instanceof ApiError ? err.status : 0;
       setError(
-        err instanceof ApiError && err.status === 429
+        status === 429
           ? t("tooManyAttempts")
-          : t("invalidCredentials"),
+          : status === 403
+            ? t("accountSuspended")
+            : t("invalidCredentials"),
       );
       setBusy(false);
     }

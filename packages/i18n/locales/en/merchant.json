@@ -186,6 +186,7 @@
     "confirmFailedTitle": "The link did not work",
     "confirmFailedBody": "It may have expired or already been used. Ask for a new email — or contact support.",
     "invalidCredentials": "Wrong email or password. If you have just registered, confirm your address using the link we mailed.",
+    "accountSuspended": "This account is suspended. Contact support — @yupay_support.",
     "emailTaken": "This address is already registered.",
     "tooManyAttempts": "Too many attempts. Try again in a few minutes.",
     "offerRequired": "Accept the offer terms to continue.",

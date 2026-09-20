@@ -366,3 +366,54 @@ async def test_every_webhook_route_refuses_a_signed_out_browser(
     assert (await integration_client.post(f"{BASE}/webhook/rotate-secret")).status_code == 401
     assert (await integration_client.post(f"{BASE}/webhook/test")).status_code == 401
     assert (await integration_client.delete(f"{BASE}/webhook")).status_code == 401
+
+
+# ---------- a suspended account is told so, not "wrong password" ----------
+
+
+async def test_a_frozen_merchant_is_told_the_account_is_suspended(
+    integration_client: AsyncClient, sent: list[dict[str, str]], db_session: AsyncSession
+) -> None:
+    """Folding this into "invalid credentials" cost a real operator the truth.
+
+    They reset the password, failed again, reset again, and never learned the
+    account was frozen. The caller has already proven they know the password
+    by the time this branch is reached, so naming the state leaks nothing a
+    prober could use — and `resolve_user`'s own docstring already promised
+    that "the cabinet says which on the sign-in attempt that follows".
+    """
+    from yupay.modules.merchants.models import Merchant
+
+    _access, merchant_id = await _signed_up(integration_client, sent, "frozen@acme.example.com")
+    merchant = await db_session.get(Merchant, merchant_id)
+    assert merchant is not None
+    merchant.status = "frozen"
+    await db_session.commit()
+
+    r = await integration_client.post(
+        f"{BASE}/login", json={"email": "frozen@acme.example.com", "password": PASSWORD}
+    )
+    assert r.status_code == 403, r.text
+    assert r.json()["type"].endswith("/account-suspended")
+
+
+async def test_a_wrong_password_is_still_indistinguishable(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """The other half, and the reason the fix is narrow.
+
+    Registration is open, so "no such address" and "wrong password" must stay
+    one answer — distinguishing them tells a prober about somebody else's
+    mailbox. Only the frozen branch, which is past the password check, says
+    more.
+    """
+    await _signed_up(integration_client, sent, "active@acme.example.com")
+
+    wrong = await integration_client.post(
+        f"{BASE}/login", json={"email": "active@acme.example.com", "password": "Wrong-Pass-1234"}
+    )
+    unknown = await integration_client.post(
+        f"{BASE}/login", json={"email": "nobody@acme.example.com", "password": PASSWORD}
+    )
+    assert wrong.status_code == unknown.status_code == 401
+    assert wrong.json()["type"] == unknown.json()["type"]

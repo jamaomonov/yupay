@@ -186,6 +186,7 @@
     "confirmFailedTitle": "Havola ishlamadi",
     "confirmFailedBody": "Muddati oʻtgan yoki allaqachon ishlatilgan boʻlishi mumkin. Yangi xat soʻrang — yoki qoʻllab-quvvatlash xizmatiga yozing.",
     "invalidCredentials": "Pochta yoki parol notoʻgʻri. Endigina roʻyxatdan oʻtgan boʻlsangiz — xatdagi havola orqali manzilni tasdiqlang.",
+    "accountSuspended": "Akkaunt toʻxtatilgan. Qoʻllab-quvvatlashga yozing — @yupay_support.",
     "emailTaken": "Bu manzil allaqachon roʻyxatdan oʻtgan.",
     "tooManyAttempts": "Urinishlar juda koʻp. Bir necha daqiqadan soʻng qayta urinib koʻring.",
     "offerRequired": "Davom etish uchun oferta shartlarini qabul qiling.",

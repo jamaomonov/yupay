@@ -48,7 +48,17 @@ export default async function OfferPage({ params }: { params: Promise<{ locale: 
   const t = await getTranslations("merchant.offer");
 
   const file = path.join(process.cwd(), "../../docs/legal/merchant-offer.ru.md");
-  const raw = await readFile(file, "utf8").catch(() => "");
+  // NOT `.catch(() => "")`. That swallow shipped a blank contract to
+  // production in all three locales — `.dockerignore` excluded `docs/`
+  // wholesale, the read ENOENT'd inside the image, and the page rendered its
+  // draft banner over nothing while registration kept hard-blocking on "I
+  // accept the offer". It built fine on a developer's machine, where the file
+  // is simply there, which is exactly why it went unnoticed.
+  //
+  // A missing contract must fail the build, the way the API contract already
+  // does. There is no useful degraded state for this page: an empty offer is
+  // worse than no offer page, because the checkbox still claims consent.
+  const raw = await readFile(file, "utf8");
   // Strip the HTML comment and the in-document banner — the page shows its own,
   // and a duplicated warning reads as boilerplate rather than as a warning —
   // then the two markers this document actually uses. Not a markdown parser: a

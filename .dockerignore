@@ -29,6 +29,14 @@ docs/
 # BuildKit honours a re-include under an excluded directory; keep it to the one
 # file so the rest of docs/ stays out of every context.
 !docs/api/merchant-openapi.json
+# The same trap, found the same way and missed the first time: the merchant
+# offer page reads this at build time, `docs/` excluded it, and the read was
+# wrapped in `.catch(() => "")` — so instead of dying like the contract did, it
+# shipped a BLANK CONTRACT to production in all three locales while every
+# registration made the merchant tick "I accept" against it. Re-included here;
+# the swallow is removed at the call site so a third file cannot repeat this
+# quietly.
+!docs/legal/merchant-offer.ru.md
 e2e/
 playwright-report/
 test-results/

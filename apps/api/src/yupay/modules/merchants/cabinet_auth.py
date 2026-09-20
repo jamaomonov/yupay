@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
-from yupay.core.errors import ConflictError, UnauthorizedError
+from yupay.core.errors import AccountSuspendedError, ConflictError, UnauthorizedError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
@@ -197,13 +197,23 @@ async def login(
     """Authenticate an operator and open a session.
 
     Raises:
-        UnauthorizedError: Unknown address, wrong password, an unconfirmed
-            address, or a frozen merchant — all surfaced identically and all
-            after an argon2 verification. "Not confirmed" is tempting to say
-            and is not ours to say: registration is open, so telling a prober
-            that an address is registered is telling them about someone else's
-            mailbox. The resend endpoint is the actionable path, and it answers
-            the same to everyone.
+        UnauthorizedError: Unknown address, wrong password, or an unconfirmed
+            address — all surfaced identically and all after an argon2
+            verification. "Not confirmed" is tempting to say and is not ours to
+            say: registration is open, so telling a prober that an address is
+            registered is telling them about someone else's mailbox. The resend
+            endpoint is the actionable path, and it answers the same to
+            everyone.
+        AccountSuspendedError: The merchant is frozen. **Not** folded into the
+            wording above, and the difference is the password: this branch is
+            only reached by a caller who has already verified it and confirmed
+            the address, so naming the state leaks nothing a prober could use.
+            Folding it in cost a real operator the truth — they were told
+            "wrong email or password", so they reset the password, failed
+            again, reset again, and never learned the account was suspended.
+            ``resolve_user``'s own docstring already promised that "the cabinet
+            says which on the sign-in attempt that follows"; this is that
+            promise being kept.
     """
     s = _settings(settings)
     normalised = email.strip().lower()
@@ -217,8 +227,13 @@ async def login(
     if user.email_confirmed_at is None:
         raise UnauthorizedError("invalid credentials")
     merchant = await db.get(Merchant, user.merchant_id)
-    if merchant is None or merchant.status != "active":
+    if merchant is None:
+        # A user row whose merchant vanished is a broken invariant, not a
+        # suspension — it stays indistinguishable rather than telling a prober
+        # something is odd about this address.
         raise UnauthorizedError("invalid credentials")
+    if merchant.status != "active":
+        raise AccountSuspendedError("merchant account is suspended")
     return await open_session(db, user=user, settings=s)
 
 
