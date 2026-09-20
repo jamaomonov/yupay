@@ -102,6 +102,29 @@ it is not just a logging concern (ADR-0038 §6): a signature-valid provider webh
 raw JSON body (e.g. Octo's masked PAN / `rrn`) is shown to admins through that feed,
 and is now masked by key before being returned rather than forwarded verbatim.
 
+### Sentry is a third surface, and the logger's redactor does not reach it
+
+The structured logger's blocklist covers our own log lines. Sentry receives three
+other things, and each needed its own switch:
+
+| What                                            | Covered by                          |
+| ----------------------------------------------- | ----------------------------------- |
+| Request bodies, headers, cookies, user identity | `send_default_pii=False`            |
+| Stack-frame locals on every exception           | `include_local_variables=False`     |
+| **Breadcrumbs, and the event's own strings**    | `before_breadcrumb` / `before_send` |
+
+The third row was added 2026-09-21 after a live bot event was found carrying the
+**Telegram bot token in plain text**: aiogram calls
+`https://api.telegram.org/bot<token>/<method>`, and the SDK records every outgoing
+request as a breadcrumb _including its URL_. Neither of the first two switches touches
+a breadcrumb, so the token — which is full control of the bot — shipped with every
+event the bot reported. `core.observability` now walks each breadcrumb and event and
+redacts the secret half of that URL.
+
+A credential that appears in a **URL** rather than a header is the shape to watch for
+here: it slips past field-name blocklists, because there is no field name. If a new
+integration is called that way, scrub it in the same place and add a row above.
+
 ## Right to deletion
 
 Implemented as a tombstone:

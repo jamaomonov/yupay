@@ -96,3 +96,68 @@ def test_every_service_that_can_crash_reports(captured_init: dict[str, Any]) -> 
         + ". They load the same api.env as the API and hold the DSN; what they "
         "lack is the call."
     )
+
+
+# ---------- the third leak: a bot token inside a breadcrumb URL ----------
+#
+# Neither switch above touches a breadcrumb. aiogram talks to
+# `https://api.telegram.org/bot<token>/<method>`, the SDK records every
+# outgoing request as a breadcrumb WITH its URL, and so every event the bot
+# reported carried full control of the bot in plain text. Found 2026-09-21 in
+# a real event, legible beside the stack trace.
+
+_URL = "https://api.telegram.org/bot8702808191:AAHZi3f7JL2te_qYhQUoWt_s8O1WzrAPFiE/sendMessage"
+
+
+def _hooks(captured: dict[str, Any]) -> tuple[Any, Any]:
+    init_sentry(Settings(sentry_dsn="https://public@example.invalid/1"))
+    return captured["before_breadcrumb"], captured["before_send"]
+
+
+def test_a_token_in_a_breadcrumb_url_is_redacted(captured_init: dict[str, Any]) -> None:
+    before_breadcrumb, _ = _hooks(captured_init)
+
+    out = before_breadcrumb({"type": "http", "data": {"url": _URL}}, {})
+
+    assert "AAHZi3f7JL2te" not in str(out)
+    # The numeric bot id survives: it is public, and without it the breadcrumb
+    # stops answering "which bot was this?".
+    assert out["data"]["url"] == ("https://api.telegram.org/bot8702808191:[redacted]/sendMessage")
+
+
+def test_a_token_in_a_breadcrumb_message_is_redacted(captured_init: dict[str, Any]) -> None:
+    """The stdlib-logging integration puts the same text in ``message``.
+
+    A scrubber that knew only ``data["url"]`` would have left this one
+    shipping the token — which is why the walk is deep.
+    """
+    before_breadcrumb, _ = _hooks(captured_init)
+
+    out = before_breadcrumb({"category": "httplib", "message": f"GET {_URL}"}, {})
+
+    assert "AAHZi3f7JL2te" not in str(out)
+
+
+def test_a_token_in_an_exception_value_is_redacted(captured_init: dict[str, Any]) -> None:
+    _, before_send = _hooks(captured_init)
+
+    event = {
+        "exception": {"values": [{"type": "ClientError", "value": f"POST {_URL} failed"}]},
+        "request": {"url": _URL},
+    }
+    out = before_send(event, {})
+
+    assert "AAHZi3f7JL2te" not in str(out)
+    assert out["exception"]["values"][0]["type"] == "ClientError"
+
+
+def test_ordinary_text_is_left_alone(captured_init: dict[str, Any]) -> None:
+    """The pattern is anchored on ``/bot<digits>:`` so it cannot fire on prose.
+
+    Over-scrubbing an error message is its own bug: it makes an incident
+    harder to read in exchange for nothing.
+    """
+    before_breadcrumb, _ = _hooks(captured_init)
+
+    crumb = {"message": "robot: connection reset by peer /bot/help", "data": {"n": 7}}
+    assert before_breadcrumb(dict(crumb), {}) == crumb

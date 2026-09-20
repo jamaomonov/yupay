@@ -9,6 +9,7 @@ second i18n stack.
 
 from __future__ import annotations
 
+from html import escape
 from typing import Literal
 
 Locale = Literal["ru", "en", "uz"]
@@ -39,8 +40,33 @@ def resolve_locale(language_code: str | None) -> Locale:
 
 
 def welcome_message(locale: Locale, first_name: str) -> str:
-    """Welcome text the bot sends in response to ``/start``."""
-    safe_name = first_name.strip() or _GENERIC_GREETING[locale]
+    """Welcome text the bot sends in response to ``/start``.
+
+    **The name is HTML-escaped, and that is not defensive tidiness.** The bot
+    sends with ``parse_mode=HTML`` (``DefaultBotProperties`` in ``main``) and
+    the copy below carries real ``<b>`` tags, so Telegram parses the whole
+    string. ``first_name`` is whatever the user typed into their Telegram
+    profile, and a ``<`` in it makes Telegram reject the **entire**
+    ``sendMessage`` with ``can't parse entities`` — the person gets no welcome
+    at all and ``/start`` is simply broken for them, silently, forever.
+
+    That is not hypothetical: Sentry, 2026-09-19 11:08 UTC —
+    ``Unsupported start tag "!" at byte offset 9``, raised from ``on_start``
+    for a display name containing ``<!``.
+
+    ``quote=False`` because the name lands in text, never in an attribute:
+    escaping ``"`` there would put a visible ``&quot;`` in front of anyone
+    whose name contains a quotation mark.
+
+    Args:
+        locale: Which copy block to use.
+        first_name: The user's Telegram display name, unescaped and
+            untrusted.
+
+    Returns:
+        HTML-safe message text.
+    """
+    safe_name = escape(first_name.strip(), quote=False) or _GENERIC_GREETING[locale]
     return _WELCOME[locale].format(name=safe_name)
 
 

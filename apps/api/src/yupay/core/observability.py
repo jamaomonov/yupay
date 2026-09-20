@@ -16,10 +16,57 @@ The two PII switches are the load-bearing part and are explained at the call.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import re
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
+    from sentry_sdk.types import Breadcrumb, BreadcrumbHint, Event, Hint
+
     from yupay.core.config import Settings
+
+#: A Telegram bot token as it appears inside an API URL:
+#: ``https://api.telegram.org/bot<numeric id>:<secret>/sendMessage``.
+#:
+#: The secret half is what this matches. Anchored on ``/bot<digits>:`` so it
+#: cannot fire on ordinary text — the numeric id, the colon and the ``/bot``
+#: prefix together are specific to this one shape.
+_TELEGRAM_TOKEN_IN_URL = re.compile(r"(/bot\d+:)[A-Za-z0-9_-]{20,}")
+
+_REDACTED = "[redacted]"
+
+
+def _scrub(value: str) -> str:
+    """Replace a Telegram bot token inside a URL with a placeholder."""
+    return _TELEGRAM_TOKEN_IN_URL.sub(rf"\1{_REDACTED}", value)
+
+
+def _scrub_deep(value: Any) -> Any:
+    """Walk strings, lists and dicts, scrubbing every string it reaches.
+
+    Deep rather than "check the two keys we expect": the SDK puts the URL in
+    ``breadcrumb["data"]["url"]``, the stdlib-logging integration puts the
+    same text in ``breadcrumb["message"]``, and an exception raised by an HTTP
+    client can carry it in its own message. A scrubber that knew only the
+    first would have left the other two shipping the token, which is exactly
+    the shape that made this necessary.
+    """
+    if isinstance(value, str):
+        return _scrub(value)
+    if isinstance(value, list):
+        return [_scrub_deep(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _scrub_deep(v) for k, v in value.items()}
+    return value
+
+
+def _before_breadcrumb(crumb: Breadcrumb, _hint: BreadcrumbHint) -> Breadcrumb:
+    """Strip Telegram bot tokens out of every breadcrumb before it is sent."""
+    return _scrub_deep(crumb)  # type: ignore[no-any-return]
+
+
+def _before_send(event: Event, _hint: Hint) -> Event:
+    """The same, for the event itself — message, exception values, request."""
+    return _scrub_deep(event)  # type: ignore[no-any-return]
 
 
 def init_sentry(settings: Settings, *, integrations: str = "asgi") -> None:
@@ -76,6 +123,17 @@ def init_sentry(settings: Settings, *, integrations: str = "asgi") -> None:
         # the frame carries no ``vars`` key. See docs/runbooks/first-deploy.md.
         send_default_pii=False,
         include_local_variables=False,
+        # A THIRD leak the two switches above do not cover. aiogram talks to
+        # ``https://api.telegram.org/bot<token>/<method>``, and the SDK records
+        # every outgoing request as a breadcrumb **with its URL** — so the bot
+        # token, which is full control of the bot, was riding along on every
+        # event the bot reported. Neither ``send_default_pii`` nor
+        # ``include_local_variables`` touches a breadcrumb.
+        #
+        # Found 2026-09-21 in a real bot event, where the token was legible in
+        # the httplib breadcrumbs beside the stack trace.
+        before_breadcrumb=_before_breadcrumb,
+        before_send=_before_send,
         integrations=extras,
     )
 
