@@ -31,6 +31,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from yupay.core.idempotency import MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -43,6 +44,21 @@ BOT_TOKEN = "123456:TEST"
 # rather than a conftest one. The suite runs under `-n auto`, so two files
 # sharing an id would be two workers racing for the same user row.
 _ADMIN_TG_ID = 98
+
+
+def _key(name: str) -> str:
+    """An Idempotency-Key that the endpoint will actually accept.
+
+    The endpoint refuses anything under ``MIN_IDEMPOTENCY_KEY_LENGTH``, and a
+    key one character short answers ``422`` — which is indistinguishable, from
+    the test's side, from the endpoint being broken. Every key in this file
+    goes through here, and the floor is imported rather than copied so the two
+    cannot drift apart.
+    """
+    assert len(name) >= MIN_IDEMPOTENCY_KEY_LENGTH, (
+        f"test key {name!r} is {len(name)} chars, under the endpoint's {MIN_IDEMPOTENCY_KEY_LENGTH}"
+    )
+    return name
 
 
 def _sign_init_data(fields: dict[str, str]) -> str:
@@ -88,7 +104,7 @@ async def _credit(
 ) -> None:
     r = await client.post(
         f"/api/v1/admin/merchants/{merchant_id}/deposit-credits",
-        headers={**headers, "Idempotency-Key": key},
+        headers={**headers, "Idempotency-Key": _key(key)},
         json={"amount": amount, "note": "funding"},
     )
     assert r.status_code == 201, r.text
@@ -105,11 +121,11 @@ async def test_a_debit_lowers_the_balance_by_its_amount(
     integration_client: AsyncClient, admin_headers: dict[str, str]
 ) -> None:
     merchant = await _create_merchant(integration_client, admin_headers, "Debit me")
-    await _credit(integration_client, admin_headers, merchant, "10.00", "debit-test-credit-1")
+    await _credit(integration_client, admin_headers, merchant, "10.00", _key("debit-test-credit-1"))
 
     r = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": "debit-test-0001"},
+        headers={**admin_headers, "Idempotency-Key": _key("debit-deposit-0001")},
         json={"amount": "4.00", "reason": "credited in error"},
     )
     assert r.status_code == 201, r.text
@@ -124,11 +140,11 @@ async def test_the_whole_balance_can_be_taken_to_zero(
 ) -> None:
     """The case this endpoint was built for: zeroing a balance exactly."""
     merchant = await _create_merchant(integration_client, admin_headers, "Zero me")
-    await _credit(integration_client, admin_headers, merchant, "1.10", "debit-test-credit-2")
+    await _credit(integration_client, admin_headers, merchant, "1.10", _key("debit-test-credit-2"))
 
     r = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": "debit-test-0002"},
+        headers={**admin_headers, "Idempotency-Key": _key("debit-deposit-0002")},
         json={"amount": "1.10", "reason": "test balance, zeroed"},
     )
     assert r.status_code == 201, r.text
@@ -147,18 +163,18 @@ async def test_a_replayed_key_books_nothing_and_echoes_the_first_amount(
     that visible to the operator instead of silent.
     """
     merchant = await _create_merchant(integration_client, admin_headers, "Replay")
-    await _credit(integration_client, admin_headers, merchant, "10.00", "debit-test-credit-3")
+    await _credit(integration_client, admin_headers, merchant, "10.00", _key("debit-test-credit-3"))
     key = "debit-test-replay-0003"
 
     first = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": key},
+        headers={**admin_headers, "Idempotency-Key": _key(key)},
         json={"amount": "2.00", "reason": "correction"},
     )
     assert first.status_code == 201, first.text
     second = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": key},
+        headers={**admin_headers, "Idempotency-Key": _key(key)},
         json={"amount": "5.00", "reason": "correction"},
     )
     assert second.status_code == 201, second.text
@@ -173,11 +189,11 @@ async def test_a_debit_may_not_overdraw_the_deposit(
 ) -> None:
     """A negative deposit is a debt with nothing behind it, so it is refused."""
     merchant = await _create_merchant(integration_client, admin_headers, "Overdraw")
-    await _credit(integration_client, admin_headers, merchant, "3.00", "debit-test-credit-4")
+    await _credit(integration_client, admin_headers, merchant, "3.00", _key("debit-test-credit-4"))
 
     r = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": "debit-test-0004"},
+        headers={**admin_headers, "Idempotency-Key": _key("debit-deposit-0004")},
         json={"amount": "3.01", "reason": "too much"},
     )
     assert r.status_code == 409, r.text
@@ -192,7 +208,7 @@ async def test_an_empty_deposit_refuses_rather_than_going_negative(
     merchant = await _create_merchant(integration_client, admin_headers, "Never funded")
     r = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": "debit-test-0005"},
+        headers={**admin_headers, "Idempotency-Key": _key("debit-deposit-0005")},
         json={"amount": "0.01", "reason": "nothing there"},
     )
     assert r.status_code == 409, r.text
@@ -205,11 +221,13 @@ async def test_a_blank_reason_is_refused(
 ) -> None:
     """The ledger row is the only record of why a balance fell."""
     merchant = await _create_merchant(integration_client, admin_headers, "No reason")
-    await _credit(integration_client, admin_headers, merchant, "5.00", f"dt-credit-{len(reason)}")
+    await _credit(
+        integration_client, admin_headers, merchant, "5.00", f"debit-deposit-credit-{len(reason)}"
+    )
 
     r = await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": f"debit-test-blank-{len(reason)}"},
+        headers={**admin_headers, "Idempotency-Key": _key(f"debit-deposit-blank-{len(reason)}")},
         json={"amount": "1.00", "reason": reason},
     )
     assert r.status_code in (400, 422), r.text
@@ -234,10 +252,10 @@ async def test_the_reason_is_readable_on_the_audit_trail(
     """The writer/reader pair: a reason stored under the wrong metadata key
     moves the money and shows a blank line here."""
     merchant = await _create_merchant(integration_client, admin_headers, "Audit")
-    await _credit(integration_client, admin_headers, merchant, "6.00", "debit-test-credit-6")
+    await _credit(integration_client, admin_headers, merchant, "6.00", _key("debit-test-credit-6"))
     await integration_client.post(
         _PATH.format(merchant),
-        headers={**admin_headers, "Idempotency-Key": "debit-test-0006"},
+        headers={**admin_headers, "Idempotency-Key": _key("debit-deposit-0006")},
         json={"amount": "6.00", "reason": "wrong merchant funded"},
     )
 
