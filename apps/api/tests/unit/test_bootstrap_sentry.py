@@ -106,7 +106,18 @@ def test_every_service_that_can_crash_reports(captured_init: dict[str, Any]) -> 
 # reported carried full control of the bot in plain text. Found 2026-09-21 in
 # a real event, legible beside the stack trace.
 
-_URL = "https://api.telegram.org/bot8702808191:AAHZi3f7JL2te_qYhQUoWt_s8O1WzrAPFiE/sendMessage"
+#: A token-SHAPED string that is unmistakably not a token. The first version
+#: of this test pasted the real one out of the Sentry event, one character
+#: altered — which GitHub's secret scanning flagged, correctly: a scanner
+#: matches the shape, and so does anyone reading the file. Test data that
+#: looks like a live credential is a live credential as far as every reader
+#: and every scanner is concerned.
+#:
+#: The digits stay numeric and the secret half stays in `[A-Za-z0-9_-]{20,}`
+#: because that is what `_TELEGRAM_TOKEN_IN_URL` matches; the content says
+#: what it is.
+_FAKE_SECRET = "NOT-A-REAL-TOKEN-example-only"
+_URL = f"https://api.telegram.org/bot1234567890:{_FAKE_SECRET}/sendMessage"
 
 
 def _hooks(captured: dict[str, Any]) -> tuple[Any, Any]:
@@ -119,10 +130,10 @@ def test_a_token_in_a_breadcrumb_url_is_redacted(captured_init: dict[str, Any]) 
 
     out = before_breadcrumb({"type": "http", "data": {"url": _URL}}, {})
 
-    assert "AAHZi3f7JL2te" not in str(out)
+    assert _FAKE_SECRET not in str(out)
     # The numeric bot id survives: it is public, and without it the breadcrumb
     # stops answering "which bot was this?".
-    assert out["data"]["url"] == ("https://api.telegram.org/bot8702808191:[redacted]/sendMessage")
+    assert out["data"]["url"] == "https://api.telegram.org/bot1234567890:[redacted]/sendMessage"
 
 
 def test_a_token_in_a_breadcrumb_message_is_redacted(captured_init: dict[str, Any]) -> None:
@@ -135,7 +146,7 @@ def test_a_token_in_a_breadcrumb_message_is_redacted(captured_init: dict[str, An
 
     out = before_breadcrumb({"category": "httplib", "message": f"GET {_URL}"}, {})
 
-    assert "AAHZi3f7JL2te" not in str(out)
+    assert _FAKE_SECRET not in str(out)
 
 
 def test_a_token_in_an_exception_value_is_redacted(captured_init: dict[str, Any]) -> None:
@@ -147,7 +158,7 @@ def test_a_token_in_an_exception_value_is_redacted(captured_init: dict[str, Any]
     }
     out = before_send(event, {})
 
-    assert "AAHZi3f7JL2te" not in str(out)
+    assert _FAKE_SECRET not in str(out)
     assert out["exception"]["values"][0]["type"] == "ClientError"
 
 
