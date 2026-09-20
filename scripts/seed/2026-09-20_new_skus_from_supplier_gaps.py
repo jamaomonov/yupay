@@ -30,10 +30,15 @@ what every neighbouring SKU carries).
 price refresh re-derives with, so the first cost move does not silently
 rewrite a price that disagreed with the formula.
 
-**Five of the nine have no non-reserve supplier**, because only NOVA sells
-them. Auto routing never picks a reserve (ADR-0081), so each gets an explicit
-``force_supplier: nova`` rule — the same shape the Free Fire lines carry. The
-other four reach G-Engine on their own.
+**Two of the seven reach only G-Engine**; the rest also sell through G2B and
+route there on their own. No ``force_supplier`` rule is needed anywhere here,
+and the five that briefly had one were a mistake worth recording: this list
+was built from ``check_catalog_gaps.py``, which read
+``supplier_catalog_cache`` — and **G2B has no rows there**, because it answers
+denominations live. So five packs G2B sells, about 2 % cheaper than NOVA,
+were created as NOVA-only, forced onto the reserve, and priced off the wrong
+cost. That was corrected on production the same day, and the report now asks
+G2B directly.
 
 Dry run by default:
 
@@ -102,27 +107,36 @@ SPECS: tuple[NewSku, ...] = (
         "9999 Frost Stars",
         FROST_STARS,
         "GLOBAL",
-        Decimal("108.169980"),
+        Decimal("106.049"),
         7,
-        {"nova": ("whiteout_survival", "9999_frost_stars")},
+        {
+            "g2b": ("whiteout_survival", "9999"),
+            "nova": ("whiteout_survival", "9999_frost_stars"),
+        },
     ),
     NewSku(
         "wos-18495",
         "18495 Frost Stars",
         FROST_STARS,
         "GLOBAL",
-        Decimal("200.110740"),
+        Decimal("196.187"),
         8,
-        {"nova": ("whiteout_survival", "18495_frost_stars")},
+        {
+            "g2b": ("whiteout_survival", "18495"),
+            "nova": ("whiteout_survival", "18495_frost_stars"),
+        },
     ),
     NewSku(
         "wos-29999",
         "29999 Frost Stars",
         FROST_STARS,
         "GLOBAL",
-        Decimal("315.584940"),
+        Decimal("309.397"),
         9,
-        {"nova": ("whiteout_survival", "29999_frost_stars")},
+        {
+            "g2b": ("whiteout_survival", "29999"),
+            "nova": ("whiteout_survival", "29999_frost_stars"),
+        },
     ),
     # --- Arena Breakout ---------------------------------------------------
     NewSku(
@@ -149,18 +163,24 @@ SPECS: tuple[NewSku, ...] = (
         "Battle for Discounts",
         MCGG_RU,
         "ru",
-        Decimal("0.978180"),
+        Decimal("0.959"),
         11,
-        {"nova": ("magic_chess_gogo_ru", "battle_for_discounts")},
+        {
+            "g2b": ("mcgg_ru", "Battle for Discounts"),
+            "nova": ("magic_chess_gogo_ru", "battle_for_discounts"),
+        },
     ),
     NewSku(
         "mcgg_ru-lukas-battle-bounty",
         "Lukas's Battle Bounty",
         MCGG_RU,
         "ru",
-        Decimal("0.978180"),
+        Decimal("0.959"),
         12,
-        {"nova": ("magic_chess_gogo_ru", "lukas_s_battle_bounty")},
+        {
+            "g2b": ("mcgg_ru", "Lukas's Battle Bounty"),
+            "nova": ("magic_chess_gogo_ru", "lukas_s_battle_bounty"),
+        },
     ),
 )
 

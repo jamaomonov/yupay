@@ -12,6 +12,16 @@ Two gaps, and they are different kinds of opportunity:
    is one they can both actually deliver, and it keeps a 306-row dump from
    drowning the answer.
 
+**G2B is included, and was not.** Its denominations never reach
+``supplier_catalog_cache`` — it answers them live on
+``GET /g2b/games/{code}/catalogue`` — so a report built on that cache was
+blind to the supplier that serves most of our orders. On 2026-09-20 that
+cost five of seven newly created SKUs: Whiteout Survival's 9999/18495/29999
+Frost Stars and two Magic Chess RU passes were listed as NOVA-only gaps,
+given a ``force_supplier: nova`` rule each, and priced off NOVA's cost — while
+G2B sold all five about 2 % cheaper. So this asks G2B directly, one call per
+mapped game.
+
 The denomination matcher is the one from
 ``scripts/seed/2026-09-19_backfill_nova_gengine_mappings.py`` — suppliers
 spell a pack "base + bonus" where we spell the total, so the join key is
@@ -28,6 +38,7 @@ import asyncio
 import re
 
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.db import get_session_factory
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierCatalogCache
@@ -136,6 +147,77 @@ def game_name(title: str) -> str:
     return norm(re.sub(r"\s*[\(\[][^)\]]*[)\]]\s*$", "", title))
 
 
+async def _g2b_denoms(db: AsyncSession, brand: str) -> dict[str, list[tuple[str, object]]]:
+    """G2B's live denominations for every game this brand maps there.
+
+    One call per game, which is the price of G2B having no denomination cache
+    to read. Returns ``{game_code: [(name, amount), ...]}``; an unavailable
+    client or a failing game yields nothing rather than a false gap — a
+    supplier we could not ask is not a supplier that does not sell it.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+
+    fulfiller = REGISTRY.get("g2b")
+    if fulfiller is None or not getattr(fulfiller, "available", False):
+        return {}
+    codes = (
+        (
+            await db.execute(
+                select(SkuSupplierMapping.external_product_id)
+                .join(Sku, Sku.id == SkuSupplierMapping.sku_id)
+                .join(Product, Product.id == Sku.product_id)
+                .join(Brand, Brand.id == Product.brand_id)
+                .where(
+                    Brand.slug == brand,
+                    SkuSupplierMapping.supplier_slug == "g2b",
+                    SkuSupplierMapping.is_active.is_(True),
+                )
+                .distinct()
+            )
+        )
+        .scalars()
+        .all()
+    )
+    out: dict[str, list[tuple[str, object]]] = {}
+    for code in codes:
+        try:
+            rows = await fulfiller._client().games_catalogue(code)
+        except Exception as exc:  # noqa: BLE001 -- a report must not die on one game
+            print(f"    ! g2b {code}: {str(exc)[:120]}")
+            continue
+        out[code] = [
+            (str(r.get("name") or r.get("catalogue_name") or ""), r.get("amount"))
+            for r in rows
+            if (r.get("name") or r.get("catalogue_name"))
+        ]
+    return out
+
+
+async def _g2b_mapped_variants(db: AsyncSession, brand: str) -> dict[str, set[str]]:
+    """What this brand's G2B mappings already point at, per game."""
+    rows = (
+        await db.execute(
+            select(
+                SkuSupplierMapping.external_product_id,
+                SkuSupplierMapping.external_variant_id,
+            )
+            .join(Sku, Sku.id == SkuSupplierMapping.sku_id)
+            .join(Product, Product.id == Sku.product_id)
+            .join(Brand, Brand.id == Product.brand_id)
+            .where(
+                Brand.slug == brand,
+                SkuSupplierMapping.supplier_slug == "g2b",
+                SkuSupplierMapping.is_active.is_(True),
+            )
+        )
+    ).all()
+    out: dict[str, set[str]] = {}
+    for game, variant in rows:
+        if variant:
+            out.setdefault(game, set()).add(variant)
+    return out
+
+
 async def main() -> None:
     async with get_session_factory()() as db:
         # ---------- 1. denominations missing inside brands we sell ----------
@@ -159,10 +241,25 @@ async def main() -> None:
             )
             ours_titles = {norm(s.denomination) for s in skus if s.denomination}
             ours_amounts = {amount_key(s.denomination) for s in skus if s.denomination} - {None}
+            already_g2b = await _g2b_mapped_variants(db, brand)
 
             # supplier denom -> the suppliers offering it, keyed so the same
             # pack from two suppliers is one line, not two.
             gaps: dict[tuple[str, str], list[tuple[str, object]]] = {}
+
+            # G2B first, live: it has no cache rows to read (see the module
+            # docstring), and leaving it out is what made five real matches
+            # read as gaps.
+            for game_code, rows in (await _g2b_denoms(db, brand)).items():
+                for name, amount in rows:
+                    key = amount_key(name)
+                    if norm(name) in ours_titles or (key is not None and key in ours_amounts):
+                        continue
+                    if name in already_g2b.get(game_code, set()):
+                        continue
+                    label = (str(key[0]).rjust(9), key[1]) if key else ("", norm(name))
+                    gaps.setdefault(label, []).append(("g2b", amount, name))
+
             for supplier, game_id in per_supplier.items():
                 # What an active mapping already points at. Matching titles is
                 # how the *backfill* finds candidates, but it is the wrong
