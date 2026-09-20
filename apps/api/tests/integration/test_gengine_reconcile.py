@@ -20,7 +20,7 @@ from typing import Any
 import httpx
 import pytest
 import respx
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from yupay.core import config as cfg
 from yupay.core.clock import now
@@ -209,6 +209,22 @@ def _order_json(order_id: int, uuid: str, status: str) -> dict[str, Any]:
 #: that stale cached instance instead of what the job just wrote.
 #: ``populate_existing`` forces every reload below to re-read off the DB.
 _FRESH = {"populate_existing": True}
+
+
+async def _ten_seconds_pass(db: AsyncSession, task_id: str) -> None:
+    """Make a task due again without waiting.
+
+    A tick that learned nothing — including one that crashed — pushes its own
+    next check out, so two `run_gengine_reconcile()` calls in a row are no
+    longer two *checks* in a row. These tests are about the ordering of the
+    pay and the intent, not about the cadence, so the wait is skipped rather
+    than slept through; the cadence has its own tests in
+    `test_fulfilment_recheck_schedule.py`.
+    """
+    await db.execute(
+        update(FulfillmentTask).where(FulfillmentTask.id == task_id).values(next_attempt_at=None)
+    )
+    await db.commit()
 
 
 async def _reload_task(db: AsyncSession, task_id: str) -> FulfillmentTask:
@@ -464,6 +480,9 @@ async def test_the_intent_survives_a_paying_tick_that_rolls_back(
 
     assert pay.call_count == 1, "the money left on the tick that then died"
     monkeypatch.undo()
+    # The crashed tick deferred its own next check, as any tick that
+    # learned nothing does. Tick 3 is what this test is about.
+    await _ten_seconds_pass(db_session, task.id)
 
     survived = await _reload_task(db_session, task.id)
     assert survived.extra_metadata[PAY_REQUESTED_KEY] is True, "committed before the pay"
