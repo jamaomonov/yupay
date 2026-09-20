@@ -13,6 +13,26 @@ worker container runs the same consumer loop regardless, it just finds an
 empty queue. **One caller ignores the flag entirely:** the merchant machine
 API always enqueues — see "The merchant channel does not read the flag" below.
 
+## How often an in-flight order is re-checked
+
+NOVA and G-Engine have no webhook, so a finished order is only noticed by a
+poll. Both sweeps tick every **10 seconds** and pick only the tasks that are
+_due_: `next_attempt_at` in the past, **or unset**. Unset is what a fresh
+order carries, so a new order is looked at on the next tick — within ten
+seconds — and then every `RECHECK_AFTER_SECONDS` (60) after that.
+
+Before 2026-09-20 both swept every in-flight task every 60 seconds. That is
+the wrong shape for work that often finishes in seconds: a NOVA Telegram Stars
+order delivered within seconds and the customer watched "в обработке" for the
+rest of the minute. G-Engine was worse — its two-phase pay means the _payment_
+waits for the next tick, not just the news of it, so a minute of the customer's
+wait was our own scheduling.
+
+The stamp is written in **its own transaction**, after every check including a
+failed one. Inside the reconcile transaction it would roll back with the
+failure it is meant to outlive, and the task would be due again immediately —
+a supplier we could not read would then be asked every ten seconds.
+
 ## The flag
 
 - **Env var**: `FULFILMENT_ASYNC`. **Home: `secrets/api.env` on prod only.**

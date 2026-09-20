@@ -44,57 +44,45 @@ from yupay.core.logging import get_logger
 # here — see ``expire_orders.py`` for the same trap with ``orders.api``).
 # Reach into ``service`` directly; both functions are in
 # ``fulfillment.api.__all__`` so this stays inside the module's public surface.
-from yupay.modules.fulfillment.service import list_tasks_admin, process_webhook_update
+from yupay.modules.fulfillment.service import (
+    due_reconcile_task_ids,
+    process_webhook_update,
+    schedule_next_check,
+)
 
 log = get_logger("yupay.scheduler.gengine_reconcile")
 
 _JOB_ID = "fulfillment.gengine_reconcile"
-_INTERVAL_SECONDS = 60
+_INTERVAL_SECONDS = 10
 _SUPPLIER = "gengine"
 _STATUS = "in_progress"
-_PAGE_SIZE = 100
-# Ceiling on how many pages one tick will walk (100 * 50 = 5,000 tasks). A
-# real backlog that size means something upstream is badly broken; log it
-# loudly rather than silently truncating the sweep to "whatever fit".
-_MAX_PAGES = 50
 
 
 async def _list_stuck_task_ids() -> list[str]:
-    """Page through every ``in_progress`` gengine task, collecting just the
-    ids. One read-only session for the whole listing pass — the tasks
-    themselves are reconciled later, each in its own session."""
+    """The gengine tasks whose next status check is due.
+
+    Due includes a task nobody has asked about yet — a fresh order carries no
+    ``next_attempt_at`` — which is what lets this tick every ten seconds
+    without polling every in-flight order that often.
+    """
     factory = get_session_factory()
-    task_ids: list[str] = []
     async with factory() as session:
-        offset = 0
-        for _page in range(_MAX_PAGES):
-            tasks, total = await list_tasks_admin(
-                session,
-                supplier=_SUPPLIER,
-                status_filter=_STATUS,
-                limit=_PAGE_SIZE,
-                offset=offset,
-            )
-            if not tasks:
-                break
-            task_ids.extend(t.id for t in tasks)
-            offset += len(tasks)
-            if offset >= total:
-                break
-        else:
-            log.warning(
-                "gengine_reconcile.page_limit_hit",
-                pages=_MAX_PAGES,
-                collected=len(task_ids),
-            )
-    return task_ids
+        return await due_reconcile_task_ids(session, supplier=_SUPPLIER)
 
 
 async def _reconcile_one(task_id: str) -> None:
     """Reconcile a single task in its own session/transaction."""
     factory = get_session_factory()
-    async with factory() as session, session.begin():
-        await process_webhook_update(session, task_id=task_id)
+    try:
+        async with factory() as session, session.begin():
+            await process_webhook_update(session, task_id=task_id)
+    finally:
+        # Its own transaction, deliberately. Inside the one above it would
+        # roll back with the failure it is meant to outlive, leaving the task
+        # due again immediately — so a supplier we could not read would be
+        # asked again in ten seconds, which is the opposite of the point.
+        async with factory() as session, session.begin():
+            await schedule_next_check(session, task_id=task_id)
 
 
 async def run_gengine_reconcile() -> None:
