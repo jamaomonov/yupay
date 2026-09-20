@@ -178,9 +178,35 @@ def _map_response(resp: dict[str, Any]) -> PlayerCheckOut:
     return PlayerCheckOut(status="invalid")
 
 
+#: Brands G2B can *validate* for us but does not *sell* for us.
+#:
+#: A brand-keyed table rather than a mapping row, for the same reason
+#: ``player_check_nova.NOVA_VALIDATE`` is one: validation is brand-scoped
+#: where a mapping is SKU-scoped, and the two answer different questions.
+#: Coupling them means a brand can only be checked by a supplier we happen to
+#: buy from, which is not a rule anybody chose — it is just how the lookup was
+#: written.
+#:
+#: ``telegram-stars`` is the case that made the difference visible. G2B sells
+#: Stars only in fixed packs, so it is deliberately not a channel for the
+#: free-amount line the storefront actually renders — and yet its
+#: ``checkPlayerId`` answers for a Telegram username perfectly well
+#: (confirmed 2026-09-20 against a real handle, which came back
+#: ``{"valid": "valid", "name": ...}``). Without this table the field could
+#: not be checked at all, for want of a mapping we do not want.
+#:
+#: ``telegram-premium`` is absent on purpose: it *does* have a G2B mapping on
+#: the same ``Telegram`` game, so the scan below already finds its code. One
+#: source per brand, and the live mapping wins.
+G2B_VALIDATE_ONLY: dict[str, str] = {
+    "telegram-stars": "Telegram",
+}
+
+
 async def resolve_g2b_game_code(session: AsyncSession, brand_id: str) -> str | None:
-    """The G2B game_code for a brand = the one ``external_product_id`` across
-    its active ``g2b/game`` mappings.
+    """The G2B game_code for a brand: the one ``external_product_id`` across
+    its active ``g2b/game`` mappings, or :data:`G2B_VALIDATE_ONLY` for a brand
+    G2B can check but does not sell for us.
 
     A brand is exactly one supplier game (ADR-0079). Two distinct codes means
     the catalog is mid-migration or misconfigured, and picking one would
@@ -215,6 +241,12 @@ async def resolve_g2b_game_code(session: AsyncSession, brand_id: str) -> str | N
         )
         return None
     if not codes:
+        brand_slug = (
+            await session.execute(select(Brand.slug).where(Brand.id == brand_id))
+        ).scalar_one_or_none()
+        override = G2B_VALIDATE_ONLY.get(str(brand_slug or ""))
+        if override is not None:
+            return override
         logger.warning(
             "player_check_no_game_mapping",
             brand_id=brand_id,

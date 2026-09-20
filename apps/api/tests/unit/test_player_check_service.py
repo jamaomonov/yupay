@@ -487,3 +487,72 @@ async def test_primary_error_consults_nova_once_and_its_valid_wins(monkeypatch) 
     assert out.status == "valid"
     assert out.name == "blood moon"
     assert calls["nova"] == 1
+
+
+# ---------------------------------------------------------------------------
+# resolve_g2b_game_code: a brand G2B checks but does not sell
+# ---------------------------------------------------------------------------
+
+
+class _FakeResult:
+    def __init__(self, rows: list[object]) -> None:
+        self._rows = rows
+
+    def scalars(self) -> _FakeResult:
+        return self
+
+    def all(self) -> list[object]:
+        return self._rows
+
+    def scalar_one_or_none(self) -> object | None:
+        return self._rows[0] if self._rows else None
+
+
+class _FakeSession:
+    """Answers the two queries `resolve_g2b_game_code` makes, in order: the
+    mapping scan, then the brand slug it falls back to."""
+
+    def __init__(self, *answers: list[object]) -> None:
+        self._answers = list(answers)
+        self.queries = 0
+
+    async def execute(self, _stmt: object) -> _FakeResult:
+        self.queries += 1
+        return _FakeResult(self._answers.pop(0) if self._answers else [])
+
+
+async def test_a_mapped_brand_uses_its_mapping_and_asks_nothing_else() -> None:
+    """telegram-premium's shape: it does have a G2B mapping, so the table is
+    never consulted and the live row wins."""
+    session = _FakeSession(["Telegram"])
+
+    code = await pc.resolve_g2b_game_code(session, "brand-1")  # type: ignore[arg-type]
+
+    assert code == "Telegram"
+    assert session.queries == 1
+
+
+async def test_a_validate_only_brand_resolves_from_the_table() -> None:
+    """telegram-stars: G2B sells Stars only in fixed packs, so it is not a
+    channel for the free-amount line — and its checkPlayerId still answers for
+    a Telegram username. Without the table the field could not be checked at
+    all, for want of a mapping we do not want."""
+    session = _FakeSession([], ["telegram-stars"])
+
+    code = await pc.resolve_g2b_game_code(session, "brand-2")  # type: ignore[arg-type]
+
+    assert code == "Telegram"
+
+
+async def test_a_brand_with_neither_still_answers_nothing() -> None:
+    """The table is an allow-list, not a catch-all: an unmapped brand nobody
+    listed keeps the old "no check" behaviour rather than guessing a code."""
+    session = _FakeSession([], ["some-other-brand"])
+
+    assert await pc.resolve_g2b_game_code(session, "brand-3") is None  # type: ignore[arg-type]
+
+
+def test_the_table_never_shadows_a_brand_we_sell_through_g2b() -> None:
+    """telegram-premium is deliberately absent: it has a real mapping on the
+    same `Telegram` game, and one source per brand means the live row wins."""
+    assert "telegram-premium" not in pc.G2B_VALIDATE_ONLY
