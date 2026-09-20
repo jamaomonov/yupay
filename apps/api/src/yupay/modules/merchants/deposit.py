@@ -1,4 +1,4 @@
-"""The merchant USD deposit ledger — the accounts, the reads, and two of three movements.
+"""The merchant USD deposit ledger — the accounts, the reads, and two of four movements.
 
 The deposit is a **ledger balance, never a column**: ``merchant_deposit`` is
 debit-normal exactly like ``user_wallet``, and every movement goes through
@@ -14,11 +14,12 @@ person or an order causes are here — including the grouped ledger listing,
 which M1 first wrote in ``admin.py`` and which both the admin surface and
 ``/merchant/v1/transactions`` now read from one place.
 
-The **third** movement is not here. M3b Task 3's automatic refund lives in
-``refund.py``: this file was already past AGENTS.md's split point before it,
-and a reviewer of a refund should be able to read it without the machine-API
-listing beside them. The posting table in the module README is authoritative
-for all three.
+The **third and fourth** movements are not here. M3b Task 3's automatic refund
+lives in ``refund.py`` and the operator's correction in ``debit.py``: this
+file was already past AGENTS.md's split point before either, and a reviewer of
+a movement that returns or takes money should be able to read it without the
+machine-API listing beside them. The posting table in the module README is
+authoritative for all four.
 
 Reaches into ``wallet.service`` rather than the ``wallet.api`` facade for the
 same reason ``affiliate/ledger.py`` does: the facade imports the wallet
@@ -84,6 +85,17 @@ ORDER_REFERENCE_TYPE: Final = "order"
 #: ``reference_type`` for a movement that belongs to the merchant at large —
 #: an ordinary prepayment, which settles no particular order.
 MERCHANT_REFERENCE_TYPE: Final = "merchant"
+
+#: ``WalletTransaction.extra_metadata`` key holding an operator's free text —
+#: the credit's optional ``note`` and the debit's required ``reason``.
+#:
+#: One word for one concept, for the reason ``ORDER_REFERENCE_TYPE`` is one:
+#: the writer here and the reader in ``admin_routes`` each carried their own
+#: literal, and ``extra_metadata`` is an unvalidated JSON blob. A writer that
+#: spelled it ``"reason"`` would move the money and show a blank line in the
+#: audit trail — no error, no test failing, and the justification for a
+#: balance dropping gone.
+OPERATOR_NOTE_KEY: Final = "note"
 
 #: RFC 7807 ``code`` for an ``order_id`` this merchant has no order under.
 #: One refusal whether the order belongs to another merchant or never existed
@@ -418,7 +430,7 @@ async def credit_deposit(
         idempotency_key=idempotency_key,
         reference=reference,
         actor=actor,
-        metadata={"note": note} if note is not None else {},
+        metadata={OPERATOR_NOTE_KEY: note} if note is not None else {},
     )
     if not replayed:
         # In this transaction, with the credit, so a merchant is told about

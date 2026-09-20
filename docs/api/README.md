@@ -257,10 +257,20 @@ stale failed response and writes nothing; a retry after remediation needs a fres
 ## Merchant B2B admin (M1)
 
 `/admin/merchants` (create, list-with-USD-balance, freeze/unfreeze,
-deposit-credits, and the read-only per-merchant deposit ledger at
+deposit-credits, deposit-debits, and the read-only per-merchant deposit ledger at
 `GET /admin/merchants/{id}/transactions`) and the catalog B2B knobs (`PATCH /admin/catalog/skus/{id}/b2b`,
 `POST /admin/catalog/b2b/bulk-markup`, `PATCH /admin/catalog/brands/{id}/b2b`)
 — all admin-gated.
+
+`POST /admin/merchants/{id}/deposit-debits` is the credit's mirror — the
+operator's correction, taking money back off a prepaid balance. Same
+`Idempotency-Key` rules under its own namespace
+(`merchant-debit:{merchant_id}:{client_key}`), same echoed-amount-on-replay
+contract. It requires a `reason` and accepts no `order_id`, refuses a debit
+past the balance with `409 insufficient_deposit`, and emits **no webhook**:
+there is no `balance.debited` event and adding one is a `/merchant/v2`
+decision, so a reseller sees the movement on `/merchant/v1/transactions`
+rather than in their receiver.
 
 `POST /admin/merchants/{id}/deposit-credits` **requires** `Idempotency-Key`:
 the header is the client half of the namespaced ledger key

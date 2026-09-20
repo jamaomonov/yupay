@@ -6336,6 +6336,68 @@
         "title": "DepositCreditOut",
         "type": "object"
       },
+      "DepositDebitIn": {
+        "additionalProperties": false,
+        "description": "Body of ``POST /admin/merchants/{id}/deposit-debits``.",
+        "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Amount"
+          },
+          "reason": {
+            "maxLength": 512,
+            "minLength": 1,
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "amount",
+          "reason"
+        ],
+        "title": "DepositDebitIn",
+        "type": "object"
+      },
+      "DepositDebitOut": {
+        "description": "Result of a deposit debit.\n\n``amount`` is read off the returned ledger transaction, so on an\nidempotent replay it is the ORIGINAL call's and not this request's \u2014 the\nsame reason ``DepositCreditOut`` echoes its own back. There is no\n``order_id``: a debit is booked against the merchant, never an order, or\nit would land on that order's ``refunded_usd`` as money the merchant\nnever got back.",
+        "properties": {
+          "amount": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount",
+            "type": "string"
+          },
+          "balance": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Balance",
+            "type": "string"
+          },
+          "merchant_id": {
+            "title": "Merchant Id",
+            "type": "string"
+          },
+          "transaction_id": {
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "merchant_id",
+          "amount",
+          "balance"
+        ],
+        "title": "DepositDebitOut",
+        "type": "object"
+      },
       "EngagementOut": {
         "description": "Fresh like/view counts after a guest records a view or toggles a like.",
         "properties": {
@@ -9238,7 +9300,7 @@
         "type": "object"
       },
       "MerchantTxnOut": {
-        "description": "One ledger movement of a merchant's USD deposit.\n\n``amount`` is the signed deposit delta: positive means the balance went\nup (a credit), negative means it went down (an M2 order charge). ``note``\nis the operator's free text from the credit; ``actor`` the\n``admin:<id>`` who booked it.",
+        "description": "One ledger movement of a merchant's USD deposit.\n\n``amount`` is the signed deposit delta: positive means the balance went\nup (a credit or a refund), negative means it went down \u2014 an M2 order\ncharge, or an operator's correction (``merchant_deposit_debit``). The\nsign comes from the posting's direction, so a new movement needs no\nchange here; ``kind`` is what tells the two apart. ``note`` is the\noperator's free text \u2014 the credit's ``note`` or the debit's ``reason``;\n``actor`` the ``admin:<id>`` who booked it.",
         "properties": {
           "actor": {
             "anyOf": [
@@ -24796,6 +24858,91 @@
           }
         },
         "summary": "Credit a merchant's USD deposit (idempotent via key)",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/deposit-debits": {
+      "post": {
+        "description": "Book ``C merchant_deposit / D house_payments_received`` on the ledger.\n\nThe operator's correction: a top-up credited in error, a test balance\nbeing zeroed, money settled with a reseller outside the system. It is the\nexact mirror of ``deposit-credits`` and shares its rules \u2014 the\n``Idempotency-Key`` header is REQUIRED and is the client half of the\nnamespaced ledger key, and the ledger replays by key WITHOUT comparing\nparameters, so the response echoes the POSTED amount rather than the\nrequest's.\n\nTwo things differ from the credit, both deliberate:\n\n``reason`` is required. A debit's justification is the only one that lives\nentirely outside the system \u2014 no order, no supplier outcome, no payment \u2014\nso the ledger row is the only place it can be recorded, and it is what the\ndetail screen's audit trail shows.\n\nThere is no ``order_id``. A debit is booked against the merchant; pointing\nit at an order would put it on that order's ``refunded_usd``, publishing\nmoney the merchant never got back. Taking back a credit that DID settle an\norder is still a debit \u2014 the order's settlement is a separate fact and\ncorrecting it is ``deposit-credits`` territory, not this.\n\nA debit may not take the balance below zero: ``409 insufficient_deposit``,\nthe same code and the same locked-row guard the order path uses, so a\ndebit racing an order charge cannot overdraw between them. A FROZEN\nmerchant may be debited \u2014 freezing blocks orders, never the ledger.\n\nThe merchant is NOT notified. There is no ``balance.debited`` in the\npublished webhook set and this endpoint does not invent one; the movement\nappears on their ``/merchant/v1/transactions`` with its own ``kind``.",
+        "operationId": "debit_deposit_api_v1_admin_merchants__merchant_id__deposit_debits_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DepositDebitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DepositDebitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Debit a merchant's USD deposit (idempotent via key)",
         "tags": [
           "admin:merchants"
         ]

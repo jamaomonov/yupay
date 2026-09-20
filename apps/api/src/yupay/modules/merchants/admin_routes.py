@@ -47,6 +47,8 @@ from yupay.modules.merchants.schemas import (
     ApiKeyOut,
     DepositCreditIn,
     DepositCreditOut,
+    DepositDebitIn,
+    DepositDebitOut,
     MerchantCreateIn,
     MerchantListOut,
     MerchantOut,
@@ -260,6 +262,82 @@ async def credit_deposit(
     )
 
 
+@admin_router.post(
+    "/{merchant_id}/deposit-debits",
+    response_model=DepositDebitOut,
+    status_code=status.HTTP_201_CREATED,
+    summary="Debit a merchant's USD deposit (idempotent via key)",
+)
+async def debit_deposit(
+    merchant_id: str,
+    body: DepositDebitIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> DepositDebitOut:
+    """Book ``C merchant_deposit / D house_payments_received`` on the ledger.
+
+    The operator's correction: a top-up credited in error, a test balance
+    being zeroed, money settled with a reseller outside the system. It is the
+    exact mirror of ``deposit-credits`` and shares its rules — the
+    ``Idempotency-Key`` header is REQUIRED and is the client half of the
+    namespaced ledger key, and the ledger replays by key WITHOUT comparing
+    parameters, so the response echoes the POSTED amount rather than the
+    request's.
+
+    Two things differ from the credit, both deliberate:
+
+    ``reason`` is required. A debit's justification is the only one that lives
+    entirely outside the system — no order, no supplier outcome, no payment —
+    so the ledger row is the only place it can be recorded, and it is what the
+    detail screen's audit trail shows.
+
+    There is no ``order_id``. A debit is booked against the merchant; pointing
+    it at an order would put it on that order's ``refunded_usd``, publishing
+    money the merchant never got back. Taking back a credit that DID settle an
+    order is still a debit — the order's settlement is a separate fact and
+    correcting it is ``deposit-credits`` territory, not this.
+
+    A debit may not take the balance below zero: ``409 insufficient_deposit``,
+    the same code and the same locked-row guard the order path uses, so a
+    debit racing an order charge cannot overdraw between them. A FROZEN
+    merchant may be debited — freezing blocks orders, never the ledger.
+
+    The merchant is NOT notified. There is no ``balance.debited`` in the
+    published webhook set and this endpoint does not invent one; the movement
+    appears on their ``/merchant/v1/transactions`` with its own ``kind``.
+    """
+    if not idempotency_key or len(idempotency_key) < MIN_IDEMPOTENCY_KEY_LENGTH:
+        raise ValidationError(
+            f"Idempotency-Key header is required (>={MIN_IDEMPOTENCY_KEY_LENGTH} chars)",
+            extra={"header": IDEMPOTENCY_HEADER},
+        )
+    if len(idempotency_key) > MAX_DEPOSIT_CLIENT_KEY_LENGTH:
+        raise ValidationError(
+            f"Idempotency-Key header must be <={MAX_DEPOSIT_CLIENT_KEY_LENGTH} chars "
+            "on this endpoint — it is namespaced into a bounded ledger column",
+            extra={"header": IDEMPOTENCY_HEADER},
+        )
+    txn = await merchants.debit_deposit(
+        db,
+        merchant_id=merchant_id,
+        amount=body.amount,
+        actor=f"admin:{admin.id}",
+        idempotency_key=merchants.debit_key(merchant_id, idempotency_key),
+        reason=body.reason,
+    )
+    balance = await merchants.deposit_balance(db, merchant_id=merchant_id)
+    # Both legs carry the same amount; either one is the transaction's — and
+    # on a replay it is the ORIGINAL amount, which is what makes a reused key
+    # with an amended amount visible to the admin UI instead of silent.
+    return DepositDebitOut(
+        transaction_id=txn.id,
+        merchant_id=merchant_id,
+        amount=txn.postings[0].amount,
+        balance=balance,
+    )
+
+
 @admin_router.get(
     "/{merchant_id}/transactions",
     response_model=MerchantTxnListOut,
@@ -279,7 +357,7 @@ async def list_merchant_transactions(
     rows = await merchants.list_deposit_transactions(db, merchant_id=merchant_id, limit=limit)
     items: list[MerchantTxnOut] = []
     for txn, amount in rows:
-        note = txn.extra_metadata.get("note")
+        note = txn.extra_metadata.get(merchants.OPERATOR_NOTE_KEY)
         items.append(
             MerchantTxnOut(
                 transaction_id=txn.id,

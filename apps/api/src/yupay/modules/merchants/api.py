@@ -58,8 +58,14 @@ from yupay.modules.merchants.credentials import (
     list_api_keys,
     revoke_api_key,
 )
+from yupay.modules.merchants.debit import (
+    DEBIT_KIND,
+    debit_deposit,
+    debit_key,
+)
 from yupay.modules.merchants.deposit import (
     DEPOSIT_CURRENCY,
+    OPERATOR_NOTE_KEY,
     charge_deposit,
     credit_deposit,
     deposit_balance,
@@ -118,10 +124,12 @@ from yupay.modules.merchants.webhooks import (
 )
 
 __all__ = [
+    "DEBIT_KIND",
     "DEPOSIT_CURRENCY",
     "EVENT_BALANCE_CREDITED",
     "EVENT_ORDER_STATUS_CHANGED",
     "EVENT_TYPES",
+    "OPERATOR_NOTE_KEY",
     "VALIDATE_RATE_BUCKET",
     "WEBHOOK_QUEUE_CHANNEL",
     "ConfiguredWebhook",
@@ -142,6 +150,8 @@ __all__ = [
     "create_api_key",
     "create_merchant",
     "credit_deposit",
+    "debit_deposit",
+    "debit_key",
     "deposit_balance",
     "disable_webhook",
     "drain_pending_deliveries",

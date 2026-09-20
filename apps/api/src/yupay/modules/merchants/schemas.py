@@ -110,13 +110,47 @@ class DepositCreditOut(BaseModel):
     order_id: str | None = None
 
 
+class DepositDebitIn(BaseModel):
+    """Body of ``POST /admin/merchants/{id}/deposit-debits``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    amount: Decimal = Field(gt=0, max_digits=12, decimal_places=2)
+    #: Required, unlike the credit's optional ``note``. A debit is the only
+    #: movement whose justification lives entirely outside the system — no
+    #: order, no supplier outcome, no payment — so this string is the only
+    #: record of why the balance dropped, and an operator who cannot name a
+    #: reason is one who should not be taking the money.
+    reason: str = Field(min_length=1, max_length=512)
+
+
+class DepositDebitOut(BaseModel):
+    """Result of a deposit debit.
+
+    ``amount`` is read off the returned ledger transaction, so on an
+    idempotent replay it is the ORIGINAL call's and not this request's — the
+    same reason ``DepositCreditOut`` echoes its own back. There is no
+    ``order_id``: a debit is booked against the merchant, never an order, or
+    it would land on that order's ``refunded_usd`` as money the merchant
+    never got back.
+    """
+
+    transaction_id: str
+    merchant_id: str
+    amount: Decimal
+    balance: Decimal
+
+
 class MerchantTxnOut(BaseModel):
     """One ledger movement of a merchant's USD deposit.
 
     ``amount`` is the signed deposit delta: positive means the balance went
-    up (a credit), negative means it went down (an M2 order charge). ``note``
-    is the operator's free text from the credit; ``actor`` the
-    ``admin:<id>`` who booked it.
+    up (a credit or a refund), negative means it went down — an M2 order
+    charge, or an operator's correction (``merchant_deposit_debit``). The
+    sign comes from the posting's direction, so a new movement needs no
+    change here; ``kind`` is what tells the two apart. ``note`` is the
+    operator's free text — the credit's ``note`` or the debit's ``reason``;
+    ``actor`` the ``admin:<id>`` who booked it.
     """
 
     transaction_id: str

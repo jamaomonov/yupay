@@ -444,15 +444,36 @@ owned by `owner_type="merchant", owner_id=<merchant_id>, currency="USD"`
 inherited from the ledger, not rebuilt here.
 
 It lives in `deposit.py` — the accounts, the reads and the two movements an
-operator or an order causes — and, since M3b Task 3, in `refund.py`, which
-owns the third. The posting table below is authoritative for all three and no
-caller may re-derive a direction from it:
+operator or an order causes — in `refund.py`, which owns the third since M3b
+Task 3, and in `debit.py`, which owns the fourth. The posting table below is
+authoritative for all four and no caller may re-derive a direction from it:
 
 | Event                       | Legs                                             | Kind                      |
 | --------------------------- | ------------------------------------------------ | ------------------------- |
 | Support credits top-up (M1) | `D merchant_deposit / C house_payments_received` | `merchant_deposit_credit` |
 | Order charge (M2)           | `C merchant_deposit / D house_payments_received` | `merchant_order_charge`   |
 | Refund on failure (M3b)     | `D merchant_deposit / C house_payments_received` | `merchant_order_refund`   |
+| Support debits balance      | `C merchant_deposit / D house_payments_received` | `merchant_deposit_debit`  |
+
+The fourth row is the operator's correction — a top-up credited in error, a
+test balance being zeroed, money settled outside the system. It has **no
+automatic trigger**: nothing in the order path, the fulfilment saga or the
+webhook drain reaches `debit.debit_deposit`, and nothing should. Its legs are
+the charge's, but its reference is the merchant's, so it never lands on an
+order's `refunded_usd` as money that came back. Its ledger key is
+`merchant-debit:{merchant_id}:{the operator's key}`, a namespace disjoint
+from the other three by the same argument as the refund's — pinned in
+`tests/unit/test_merchant_debit_keys.py` over all four families at once. It
+carries `charge_deposit`'s overdraw guard, locked row and all, because a
+deposit may not go negative: a debit past the balance answers
+`409 insufficient_deposit`. A **frozen** merchant may be debited; freezing
+blocks orders, never the ledger.
+
+It enqueues **no webhook**. There is no `balance.debited` in the published
+event set and this does not invent one — a receiver written against a table
+of two events would be handed a third. The movement reaches the merchant on
+`/merchant/v1/transactions`, with its own `kind` and a negative signed
+amount. Announcing it is a `/merchant/v2` decision.
 
 The first two rows are live. `deposit.credit_deposit` posts the credit with
 the caller's idempotency key, so a replay returns the original transaction;
@@ -491,6 +512,15 @@ failed order.
 | Order charge             | `order`          | our `order_id` |
 | Credit settling an order | `order`          | our `order_id` |
 | Automatic refund (M3b)   | `order`          | our `order_id` |
+| Support debit            | `merchant`       | `merchant_id`  |
+
+An operator's free text is a third axis and has one key of its own,
+`deposit.OPERATOR_NOTE_KEY` — the credit's optional `note` and the debit's
+required `reason` both land under it, and `admin_routes` reads it back
+through the same constant. `extra_metadata` is an unvalidated JSON blob, so a
+writer spelling it `"reason"` against a reader filtering `"note"` would move
+the money and show a blank line in the audit trail: the `ORDER_REFERENCE_TYPE`
+defect again, one field over.
 
 Both words are spelled once, in `deposit.ORDER_REFERENCE_TYPE` /
 `MERCHANT_REFERENCE_TYPE`, and read back through one function,
@@ -870,6 +900,17 @@ back through the route stack, same rule as `affiliate.routes`):
 - `POST /admin/merchants/{id}/freeze|unfreeze` — persists `status`. M1 only
   recorded it; since M2 it is enforced, by `merchant_auth` refusing every
   `/merchant/v1` request from a frozen merchant with `403 merchant_frozen`.
+- `POST /admin/merchants/{id}/deposit-debits` — posts via
+  `debit.debit_deposit`, the mirror of the credit below and subject to the
+  same `Idempotency-Key` rules under its own namespace
+  (`merchant-debit:{merchant_id}:{client_key}`). Two things differ, both
+  deliberate: **`reason` is required** (a debit's justification lives
+  entirely outside the system, so the ledger row is the only record of it),
+  and there is **no `order_id`** (a debit is booked against the merchant;
+  attributing it to an order would publish money on that order's
+  `refunded_usd` that the merchant never got back). Refuses a debit past the
+  balance with `409 insufficient_deposit`, under `charge_deposit`'s locked-row
+  guard. Sends no webhook — see the deposit-ledger section.
 - `POST /admin/merchants/{id}/deposit-credits` — posts via
   `deposit.credit_deposit`. **Requires** `Idempotency-Key`; the ledger key
   is namespaced `merchant-credit:{merchant_id}:{client_key}` so one
