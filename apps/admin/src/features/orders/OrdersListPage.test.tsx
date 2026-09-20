@@ -235,3 +235,46 @@ it("refetches the list when the refresh button is pressed", async () => {
     expect(after).toBeGreaterThan(before);
   });
 });
+
+it("shows a merchant order's deposit charge, not the amount delivered", async () => {
+  // The shape reported from production: a $1.00 Steam top-up placed through
+  // /merchant/v1 debited the reseller $1.05. `total_charged` carries the face
+  // value the supplier loads, so the cell used to read «1,00 USD» for a
+  // charge of $1.05 — see `amount.ts`.
+  renderPage([
+    makeOrder({
+      merchant_id: "01a0be98-0000-0000-0000-000000000000",
+      merchant_title: "Dodsonshop",
+      guest_email: null,
+      currency: "USD",
+      total_charged: "1.000000",
+      deposit_charged_usd: "1.050000",
+    }),
+  ]);
+
+  const row = await findDataRow();
+  expect(within(row).getByText(/1[.,]05/)).toBeInTheDocument();
+  expect(within(row).queryByText(/^1[.,]00\s*USD$/)).not.toBeInTheDocument();
+});
+
+it("adds a merchant order to the USD total, not to the UZS pile", async () => {
+  // The page total is keyed by currency. Reading `o.currency` for the key but
+  // the deposit charge for the value would put dollars in the so'm column.
+  renderPage([
+    makeOrder({ id: "01a00001-0000-0000-0000-000000000000", total_charged: "13438.00" }),
+    makeOrder({
+      id: "01a00002-0000-0000-0000-000000000000",
+      merchant_id: "01a0be98-0000-0000-0000-000000000000",
+      merchant_title: "Dodsonshop",
+      guest_email: null,
+      currency: "USD",
+      total_charged: "1.000000",
+      deposit_charged_usd: "1.050000",
+    }),
+  ]);
+
+  await findDataRow();
+  const total = await screen.findByText(/Сумма на этой странице/);
+  expect(total.textContent).toMatch(/1[.,]05/);
+  expect(total.textContent).toMatch(/13\s?438/);
+});

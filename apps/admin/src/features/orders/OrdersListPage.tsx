@@ -4,6 +4,7 @@ import { Ban, RefreshCw, Search } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
+import { orderAmount, orderAmountValue } from "./amount";
 import { OrderActorRef } from "./OrderActorRef";
 import { OrderStateBadge } from "./OrderStateBadge";
 import {
@@ -167,9 +168,11 @@ export function OrdersListPage() {
   const totalCharged = useMemo(
     () =>
       rows.reduce<Record<string, number>>((acc, o) => {
-        const key = o.currency;
-        const v = Number.parseFloat(o.total_charged) || 0;
-        acc[key] = (acc[key] ?? 0) + v;
+        // Through `orderAmount`, like the Сумма column: a merchant order's
+        // money is its deposit charge in USD, so keying this by
+        // `o.currency` would add a USD figure to the UZS pile.
+        const { value, currency } = orderAmount(o);
+        acc[currency] = (acc[currency] ?? 0) + (Number.parseFloat(value) || 0);
         return acc;
       }, {}),
     [rows],
@@ -246,11 +249,14 @@ export function OrdersListPage() {
     {
       key: "total",
       header: "Сумма",
-      render: (o) => (
-        <span className="font-medium">{formatMoney(o.total_charged, o.currency)}</span>
-      ),
+      /* What was charged, which on a merchant order is the deposit debit and
+         not the order row — see `orderAmount`. */
+      render: (o) => {
+        const { value, currency } = orderAmount(o);
+        return <span className="font-medium">{formatMoney(value, currency)}</span>;
+      },
       className: "w-32 text-right",
-      sortAccessor: (o) => Number.parseFloat(o.total_charged) || 0,
+      sortAccessor: orderAmountValue,
     },
     {
       key: "status",
