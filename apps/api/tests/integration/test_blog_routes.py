@@ -501,3 +501,67 @@ async def test_indexnow_drain_posts_when_live(
     ping = (await db_session.execute(select(BlogIndexNowPing))).scalar_one()
     assert ping.status == "done"
     assert ping.last_error is None
+
+
+async def test_a_brandless_draft_can_be_archived(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """Sentry 2026-09-19: archiving an imported brandless post answered 500.
+
+    ``ck_blog_posts_brand_unless_draft`` allowed only ``draft`` to be
+    brandless, so the one transition that HIDES a post was blocked for exactly
+    the posts most likely to need hiding — imported ones, which arrive before
+    anyone has decided what they sell. The operator's only outs were deleting
+    the post or inventing a brand for it.
+
+    ``archived`` is not reader-reachable (every public query filters to
+    ``published``), so the constraint had no reason to block it. Widened in
+    migration 0085.
+    """
+    payload = _draft_payload("", slug="importirovannyy-chernovik")
+    payload.pop("primary_brand_id")
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts", headers=admin_headers, json=payload
+    )
+    assert created.status_code == 201, created.text
+    post_id = created.json()["id"]
+    assert created.json()["primary_brand_id"] is None
+
+    archived = await integration_client.post(
+        f"/api/v1/admin/blog/posts/{post_id}/archive", headers=admin_headers
+    )
+    assert archived.status_code == 200, archived.text
+    assert archived.json()["status"] == "archived"
+
+
+async def test_a_brandless_post_still_cannot_be_published_or_scheduled(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """The half of the invariant that must survive the widening.
+
+    The constraint still forbids a brandless `published` or `scheduled` row,
+    and the service refuses first with a sentence an editor can read rather
+    than letting Postgres answer 500. This is the test that would fail if
+    somebody widened the constraint to `status != 'published'` and assumed the
+    service layer would catch the rest.
+    """
+    payload = _draft_payload("", slug="bez-brenda-publikatsiya")
+    payload.pop("primary_brand_id")
+    created = await integration_client.post(
+        "/api/v1/admin/blog/posts", headers=admin_headers, json=payload
+    )
+    assert created.status_code == 201, created.text
+    post_id = created.json()["id"]
+
+    published = await integration_client.post(
+        f"/api/v1/admin/blog/posts/{post_id}/publish", headers=admin_headers
+    )
+    assert published.status_code in (400, 422), published.text
+    assert "brand" in published.text.lower()
+
+    scheduled = await integration_client.post(
+        f"/api/v1/admin/blog/posts/{post_id}/schedule",
+        headers=admin_headers,
+        json={"scheduled_for": "2030-01-01T00:00:00Z"},
+    )
+    assert scheduled.status_code in (400, 422), scheduled.text

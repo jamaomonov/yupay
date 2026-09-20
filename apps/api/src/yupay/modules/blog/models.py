@@ -53,8 +53,18 @@ class BlogPost(Base):
         # anyone has decided what it sells. Everything a reader can reach
         # must have one: every public query inner-joins ``brands`` through
         # this column, and they all filter to ``published``.
+        #
+        # ``archived`` is on this list for the same reason ``draft`` is, and
+        # was missing until 0085: a reader cannot reach it either, so the
+        # constraint had no business blocking the transition — and blocking it
+        # meant an imported brandless post could never be hidden, only
+        # deleted. Sentry 2026-09-19: archive answered 500.
+        #
+        # The two states that ARE reachable stay covered twice: this, and
+        # ``admin_service.publish_post`` / ``schedule_post``, which each refuse
+        # a brandless post with a sentence an editor can read.
         CheckConstraint(
-            "primary_brand_id IS NOT NULL OR status = 'draft'",
+            "primary_brand_id IS NOT NULL OR status IN ('draft', 'archived')",
             name="brand_unless_draft",
         ),
         Index("ix_blog_posts_status_published", "status", "published_at"),
