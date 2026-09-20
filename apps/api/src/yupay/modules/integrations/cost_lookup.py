@@ -14,11 +14,14 @@ function here; it never touches ``cost_refresh.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
 from yupay.modules.integrations.models import (
+    NOVA_FRAGMENT_PREMIUM,
+    NOVA_FRAGMENT_STARS,
     NOVA_STEAM_SENTINEL,
     SkuSupplierMapping,
     SupplierCatalogCache,
@@ -105,6 +108,70 @@ async def _g2b_raw_price(  # noqa: PLR0911 -- discriminated outcome reads cleare
         return _RawPrice(amount=None, source="", reason=f"ошибка обращения к G2B: {exc!s}"[:200])
 
 
+#: The Fragment quote needs a username and ignores it — see
+#: :func:`_nova_fragment_price`. Nothing of a customer's goes upstream to
+#: learn a price that does not depend on them.
+_QUOTE_PLACEHOLDER = "yupay"
+
+
+async def _nova_fragment_price(fulfiller: Any, mapping: SkuSupplierMapping) -> _RawPrice:
+    """NOVA's Telegram price, from the Fragment API rather than the catalogue.
+
+    Two shapes, one per product, because they are priced differently: Stars
+    from a single constant, Premium from a quote. Both refusals come back as
+    a ``reason`` rather than an exception — a supplier we could not price is
+    not a price of zero.
+    """
+    from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
+
+    client = fulfiller._client()
+    try:
+        if mapping.external_product_id.strip() == NOVA_FRAGMENT_STARS:
+            return await _nova_stars_price(client, mapping)
+        return await _nova_premium_price(client, mapping)
+    except (NovaError, NovaUnavailableError) as exc:
+        return _RawPrice(amount=None, source="", reason=str(exc)[:200])
+    except (ArithmeticError, TypeError, ValueError) as exc:
+        return _RawPrice(amount=None, source="", reason=f"нечитаемая цена NOVA: {exc!s}"[:200])
+
+
+async def _nova_stars_price(client: Any, mapping: SkuSupplierMapping) -> _RawPrice:
+    """One constant prices every pack.
+
+    Stars are linear — 50 quoted at $0.761250 and 1000 at $15.225000 against
+    a per-star $0.015225 — and the mapping's ``quantity`` *is* the pack size.
+    The free-amount line carries ``1``, so the same multiplication gives its
+    per-Star cost without a special case.
+    """
+    body = await client.fragment_stars_price()
+    per_star = body.get("price_per_star_usd")
+    if per_star in (None, ""):
+        return _RawPrice(amount=None, source="", reason="NOVA не вернула цену звезды")
+    amount = Decimal(str(per_star)) * Decimal(int(mapping.quantity))
+    return _RawPrice(amount=amount, source="nova.fragment.stars_price", reason="")
+
+
+async def _nova_premium_price(client: Any, mapping: SkuSupplierMapping) -> _RawPrice:
+    """Premium has no per-unit constant, so it is quoted.
+
+    The quote takes a username and **does not validate it** — checked
+    2026-09-20: it priced one that does not exist and echoed it back — and the
+    answer does not depend on the recipient. So a placeholder is the honest
+    input here; sending a real customer's handle to learn a price that ignores
+    it would be worse.
+    """
+    months = int(str(mapping.external_variant_id or "").strip() or 0)
+    if months <= 0:
+        return _RawPrice(
+            amount=None, source="", reason="у Premium-маппинга не указано число месяцев"
+        )
+    body = await client.fragment_premium_quote(username=_QUOTE_PLACEHOLDER, months=months)
+    value = body.get("customer_amount_usd")
+    if value in (None, ""):
+        return _RawPrice(amount=None, source="", reason="NOVA не вернула цену Premium")
+    return _RawPrice(amount=Decimal(str(value)), source="nova.fragment.premium_quote", reason="")
+
+
 async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be wrong, each with its own operator-facing reason
     mapping: SkuSupplierMapping,
     *,
@@ -140,13 +207,17 @@ async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be
                 "от суммы, которую выбирает покупатель"
             ),
         )
+    fragment = category_id in (NOVA_FRAGMENT_STARS, NOVA_FRAGMENT_PREMIUM)
     offer_id = (mapping.external_variant_id or "").strip()
-    if not offer_id:
+    if not offer_id and not fragment:
         return _RawPrice(amount=None, source="", reason="у маппинга не указан offer_id")
 
     fulfiller = REGISTRY.get("nova")
     if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
         return _RawPrice(amount=None, source="", reason="NOVA is not configured")
+
+    if fragment:
+        return await _nova_fragment_price(fulfiller, mapping)
 
     try:
         body = (

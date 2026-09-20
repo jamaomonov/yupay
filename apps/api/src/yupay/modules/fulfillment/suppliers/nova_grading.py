@@ -91,6 +91,12 @@ _SUCCESS = frozenset({"completed", "success", "delivered", "done"})
 _REFUNDED = frozenset({"refunded", "refund"})
 _FAILED = frozenset({"failed", "error", "cancelled", "canceled"})
 
+#: Fragment answers this when their sandbox is on: the order object looks
+#: complete and nothing was bought. Left to the unknown-status branch it would
+#: read as in-flight and the task would wait for a delivery that is never
+#: coming, so it is graded a failure — of the kind that cost us nothing.
+_DRY_RUN = frozenset({"dry_run", "dryrun"})
+
 #: A refusal raised before any call, or one their API answered with — nothing
 #: was charged.
 _NOTHING_SPENT = MoneyOutcome.RETURNED
@@ -159,10 +165,11 @@ def _charged_usd(obj: dict[str, Any]) -> str | None:
 
     ``chargedUsd`` is what a fetched order carries and what the client folds a
     create's ``novaDebit`` into; ``charged_usd`` is the snake-case twin their
-    API also returns. For a game these equal the price; for Steam they do not,
-    which is the whole point of recording them.
+    API also returns. ``customer_amount_usd`` is the Fragment API's name for
+    the same fact. For a game these equal the price; for Steam and Telegram
+    they do not, which is the whole point of recording them.
     """
-    for key in ("chargedUsd", "charged_usd"):
+    for key in ("chargedUsd", "charged_usd", "customer_amount_usd"):
         value = obj.get(key)
         if value not in (None, ""):
             return str(value)
@@ -269,12 +276,24 @@ def _result(obj: dict[str, Any]) -> FulfillResult:
             extra_metadata={**_meta(status, obj), "supplier_refunded": True},
             money_outcome=MoneyOutcome.RETURNED,
         )
+    if status in _DRY_RUN:
+        log.warning("nova.fragment_dry_run", order_id=order_id)
+        return FulfillResult(
+            outcome="failed",
+            external_order_id=order_id,
+            artifact_kind=None,
+            artifact=None,
+            error="nova answered in dry-run mode — nothing was bought",
+            extra_metadata={**_meta(status, obj), "needs_reconciliation": True},
+            money_outcome=_NOTHING_SPENT,
+        )
     if status in _FAILED:
         # `fail_reason` is a real field on their order (null on a healthy one,
         # observed on the first live order) and it is the only thing that tells
         # an operator *why* — without it the inbox says "nova order failed" and
         # the next step is a shell.
-        reason = str(obj.get("fail_reason") or "").strip()
+        # ``fail_reason`` on the v2 order, ``error`` on a Fragment one.
+        reason = str(obj.get("fail_reason") or obj.get("error") or "").strip()
         return FulfillResult(
             outcome="failed",
             external_order_id=order_id,

@@ -80,6 +80,19 @@ RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova"})
 #: drift and the admin starts refusing a mapping the adapter would have used.
 NOVA_STEAM_SENTINEL = "steam-topup"
 
+#: The same sentinel trick for NOVA's Fragment (Telegram) API, which is a
+#: second API on the same host with its own namespace, its own envelope and
+#: the opposite idempotency contract — see ``nova_client``.
+#:
+#: ``fragment-stars`` carries the recipient's star count in the mapping's
+#: ``quantity`` and no variant at all, exactly as G-Engine's Telegram service
+#: does: a package SKU puts its pack size there and buys ``qty=1``, the
+#: free-amount line puts ``1`` there and the customer's own count arrives as
+#: ``item.qty``. ``fragment-premium`` does carry a variant — the months, the
+#: only thing that distinguishes its three products.
+NOVA_FRAGMENT_STARS = "fragment-stars"
+NOVA_FRAGMENT_PREMIUM = "fragment-premium"
+
 
 class SkuSupplierMapping(Base):
     """Mapping between one YuPay SKU and one supplier's external product id."""

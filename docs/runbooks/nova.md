@@ -92,6 +92,34 @@ fine. The alert now names the side, quotes NOVA's own sentence and prints our
 real balance beside it; `shortfall` (`ours` / `supplier`) and
 `supplier_message` are on the task's metadata if you need them after the fact.
 
+### Telegram (Fragment) — a second API on the same key
+
+Stars and Premium do not go through `/api/v2/topups`. NOVA runs a separate
+**Fragment** namespace, and it disagrees with the v2 API on three things that
+matter when something breaks (ADR-0084):
+
+- **no `ok` envelope** — a Fragment 200 is the payload itself;
+- **a reused `Idempotency-Key` returns the original order** rather than being
+  refused with `409`, which is the opposite of every other NOVA endpoint;
+- **`DRY_RUN`** is a real status. It means their sandbox answered and nothing
+  was bought. We grade it a failure that cost nothing; if you see it in the
+  inbox, ask NOVA whether the account is in test mode before retrying.
+
+Mappings carry a sentinel in `external_product_id`:
+
+| Product | `external_product_id` | variant               | `quantity`                                   |
+| ------- | --------------------- | --------------------- | -------------------------------------------- |
+| Stars   | `fragment-stars`      | none                  | the pack size; **1** on the free-amount line |
+| Premium | `fragment-premium`    | months (`3`/`6`/`12`) | 1                                            |
+
+Get `quantity` wrong on a Stars mapping and the order buys the wrong number of
+Stars — it is the multiplier, not a formality.
+
+**There is no username validation at NOVA.** Their quote endpoints take one and
+ignore it: `premium/quote` priced a username that does not exist and echoed it
+back. So a typo reaches the supplier. G2B's `checkPlayerId` does answer for
+Telegram, and wiring it up is separate work.
+
 ### Retrying a NOVA task
 
 NOVA burns an `Idempotency-Key` the moment it sees one and answers a reuse

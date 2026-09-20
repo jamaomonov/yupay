@@ -313,6 +313,120 @@ class NovaClient:
         )
         return bool(body.get("can_refill"))
 
+    # ---------- Fragment (Telegram) ----------
+    #
+    # A second API on the same host and the same key, and it agrees with the
+    # v2 one on almost nothing. Verified against their published spec and by
+    # calling the quote endpoints on 2026-09-20:
+    #
+    # * **No ``ok`` envelope.** A Fragment 200 is the payload itself, so
+    #   :meth:`_request` — which refuses anything without ``ok: true`` —
+    #   raises on every successful call. Hence the separate path below.
+    # * **A reused ``Idempotency-Key`` returns the existing order**, the exact
+    #   opposite of the v2 endpoints, where a repeat is refused with ``409``.
+    #   Their key pattern is ``^[A-Za-z0-9._:-]+$``, max 128.
+    # * A quote is **not** a validation. ``premium/quote`` answered
+    #   ``customer_amount_usd`` for a username that does not exist and simply
+    #   echoed it back as ``recipient`` — it is a calculator, nothing more.
+    #   Anything that needs to know a username is real must ask elsewhere.
+
+    async def _fragment_request(
+        self,
+        method: str,
+        path: str,
+        *,
+        timeout: float | None = None,
+        headers: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """One Fragment call. Same errors as :meth:`_request`, no envelope."""
+        try:
+            async with self._session(timeout=timeout) as client:
+                resp = await client.request(method, path, headers=headers, **kwargs)
+        except httpx.HTTPError as exc:
+            raise NovaUnavailableError(str(exc)) from exc
+
+        text = resp.text[:500]
+        log.info("nova.fragment_request", method=method, path=path, status=resp.status_code)
+        try:
+            body = resp.json()
+        except ValueError:
+            body = None
+        if not isinstance(body, dict):
+            raise NovaError("nova fragment returned non-JSON", status=resp.status_code, body=text)
+        if resp.status_code >= 400:
+            # Fragment reports a refusal in ``detail``; ``_message_of`` already
+            # reads that key, and falls back to the v2 shapes for a body that
+            # turns out to use them after all.
+            raise NovaError(
+                _message_of(body, resp.status_code),
+                status=resp.status_code,
+                code=str(body.get("code") or ""),
+                body=text,
+            )
+        return body
+
+    async def fragment_stars_price(self) -> dict[str, Any]:
+        """Price of one Star, in USD. One number for the whole catalogue.
+
+        Stars are linear: 50 quoted at $0.761250 and 1000 at $15.225000
+        against a per-star $0.015225. So a cost basis for every Stars pack
+        costs this one call rather than a quote each.
+        """
+        return await self._fragment_request("GET", "/fragment-api/api/v1/fragment/stars/price")
+
+    async def fragment_stars_quote(self, *, username: str, stars_amount: int) -> dict[str, Any]:
+        """What this many Stars would cost us. Does not validate ``username``."""
+        return await self._fragment_request(
+            "POST",
+            "/fragment-api/api/v1/fragment/stars/quote",
+            json={"username": username, "stars_amount": int(stars_amount)},
+        )
+
+    async def fragment_premium_quote(self, *, username: str, months: int) -> dict[str, Any]:
+        """What this Premium gift would cost us. Does not validate ``username``."""
+        return await self._fragment_request(
+            "POST",
+            "/fragment-api/api/v1/fragment/premium/quote",
+            json={"username": username, "months": int(months)},
+        )
+
+    async def create_fragment_stars_order(
+        self, *, username: str, stars_amount: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Buy Stars for a Telegram account.
+
+        Args:
+            username: The recipient. Never logged.
+            stars_amount: Whole Stars. Their free-amount shape — no pack ids.
+            idempotency_key: Truncated to their 128-char ceiling. Unlike the
+                v2 endpoints, a repeat returns the original order.
+        """
+        return await self._fragment_request(
+            "POST",
+            "/fragment-api/api/v1/fragment/stars",
+            json={"username": username, "stars_amount": int(stars_amount)},
+            headers={"Idempotency-Key": idempotency_key[:128]},
+        )
+
+    async def create_fragment_premium_order(
+        self, *, username: str, months: int, idempotency_key: str
+    ) -> dict[str, Any]:
+        """Gift Telegram Premium. See :meth:`create_fragment_stars_order`."""
+        return await self._fragment_request(
+            "POST",
+            "/fragment-api/api/v1/fragment/premium",
+            json={"username": username, "months": int(months)},
+            headers={"Idempotency-Key": idempotency_key[:128]},
+        )
+
+    async def get_fragment_order(self, order_id: str) -> dict[str, Any]:
+        """One Fragment order by their id — a different namespace from
+        ``/api/v2/orders/{id}``, which does not know these."""
+        return await self._fragment_request(
+            "GET", f"/fragment-api/api/v1/fragment/orders/{order_id}"
+        )
+
 
 __all__ = [
     "MAX_PAGE",

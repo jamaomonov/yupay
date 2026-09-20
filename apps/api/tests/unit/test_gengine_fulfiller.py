@@ -353,7 +353,7 @@ async def test_a_zero_quantity_is_refused_rather_than_creating_an_order() -> Non
     a real order can never reach this — the guard is belt-and-suspenders
     against a duck-typed caller that skips those constraints, not a state a
     persisted row can be in."""
-    from yupay.modules.fulfillment.suppliers.gengine import _quantity_for
+    from yupay.modules.fulfillment.suppliers.amount import quantity_for as _quantity_for
 
     class Mapping:
         quantity = 0
@@ -997,7 +997,7 @@ async def test_a_money_denominated_variable_sku_sends_its_face_value(
 
 
 async def test_a_money_denominated_line_of_nothing_is_refused() -> None:
-    from yupay.modules.fulfillment.suppliers.gengine import _quantity_for
+    from yupay.modules.fulfillment.suppliers.amount import quantity_for as _quantity_for
 
     class Mapping:
         quantity = 1

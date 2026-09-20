@@ -22,6 +22,7 @@ from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.image_url_safety import validate_optional_public_image_url
 from yupay.modules.integrations.models import (
+    NOVA_FRAGMENT_STARS,
     NOVA_STEAM_SENTINEL,
     SkuSupplierMapping,
     SupplierCatalogCache,
@@ -154,9 +155,12 @@ def _is_amount_priced(payload: MappingUpsert) -> bool:
     """
     if payload.supplier_slug in _AMOUNT_PRICED_SUPPLIERS:
         return True
-    return (
-        payload.supplier_slug == "nova"
-        and payload.external_product_id.strip() == NOVA_STEAM_SENTINEL
+    # ``fragment-premium`` is deliberately absent: its months *are* the
+    # variant, so a Premium mapping saved without one is a mistake the admin
+    # form should still catch.
+    return payload.supplier_slug == "nova" and payload.external_product_id.strip() in (
+        NOVA_STEAM_SENTINEL,
+        NOVA_FRAGMENT_STARS,
     )
 
 
