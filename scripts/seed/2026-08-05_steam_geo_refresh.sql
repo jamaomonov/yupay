@@ -22,7 +22,7 @@ UPDATE brand_translations SET
 
 Комиссия сервиса 0%: сколько вы вводите, столько и зачисляется на кошелёк, один к одному; наша маржа заложена в курс, а итог виден до оплаты. Пополнить можно на любую сумму от $1 до $300 за одну операцию — итог в сумах по текущему курсу показывается сразу.
 
-Оплата — в узбекских сумах картами Uzcard и Humo через Click, Payme или Uzum. Средства зачисляются на баланс Steam моментально и автоматически после подтверждения платежа. Поддерживаются аккаунты в регионах СНГ (РФ, Беларусь, Казахстан, Узбекистан) и Турции.$c$,
+Оплата — в узбекских сумах картами Uzcard и Humo через Click, Payme или Uzum. Средства зачисляются на баланс Steam моментально и автоматически после подтверждения платежа. Поддерживаются аккаунты в регионах СНГ (РФ, Беларусь, Казахстан, Узбекистан).$c$,
     instructions = $c$Как пополнить кошелёк Steam в Узбекистане:
 
 1. Введите логин Steam (имя для входа в аккаунт) — пароль не нужен.
@@ -30,7 +30,7 @@ UPDATE brand_translations SET
 3. Выберите способ оплаты: Click, Payme или Uzum.
 4. Оплатите — средства зачисляются на баланс Steam моментально и автоматически.
 
-Где найти логин Steam: откройте приложение Steam или сайт store.steampowered.com, нажмите на имя профиля в правом верхнем углу и перейдите в «Об аккаунте» — логин для входа указан там же. Это именно логин (имя аккаунта), а не отображаемое имя. Пароль передавать не требуется. Поддерживаемые регионы: СНГ (РФ, Беларусь, Казахстан, Узбекистан) и Турция.$c$
+Где найти логин Steam: откройте приложение Steam или сайт store.steampowered.com, нажмите на имя профиля в правом верхнем углу и перейдите в «Об аккаунте» — логин для входа указан там же. Это именно логин (имя аккаунта), а не отображаемое имя. Пароль передавать не требуется. Поддерживаемые регионы: СНГ (РФ, Беларусь, Казахстан, Узбекистан).$c$
 WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'ru';
 
 UPDATE brand_translations SET
@@ -40,7 +40,7 @@ UPDATE brand_translations SET
 
 The service commission is 0%: what you enter is exactly what lands on your wallet, one to one; our margin is in the rate, and the total is shown before you pay. You can top up any amount from $1 to $300 per transaction — the total in sum at the current rate is shown right away.
 
-You pay in Uzbek sum with Uzcard and Humo cards via Click, Payme or Uzum. Funds are credited to your Steam balance instantly and automatically after the payment is confirmed. Accounts in the CIS region (Russia, Belarus, Kazakhstan, Uzbekistan) and Turkey are supported.$c$,
+You pay in Uzbek sum with Uzcard and Humo cards via Click, Payme or Uzum. Funds are credited to your Steam balance instantly and automatically after the payment is confirmed. Accounts in the CIS region (Russia, Belarus, Kazakhstan, Uzbekistan) are supported.$c$,
     instructions = $c$How to top up a Steam wallet in Uzbekistan:
 
 1. Enter your Steam login (the account name you sign in with) — no password needed.
@@ -48,7 +48,7 @@ You pay in Uzbek sum with Uzcard and Humo cards via Click, Payme or Uzum. Funds 
 3. Choose a payment method: Click, Payme or Uzum.
 4. Pay — the funds are credited to your Steam balance instantly and automatically.
 
-Where to find your Steam login: open the Steam app or store.steampowered.com, click your profile name in the top-right corner and open Account details — your login is shown there. This is the login (account name), not your display name. No password is needed. Supported regions: CIS (Russia, Belarus, Kazakhstan, Uzbekistan) and Turkey.$c$
+Where to find your Steam login: open the Steam app or store.steampowered.com, click your profile name in the top-right corner and open Account details — your login is shown there. This is the login (account name), not your display name. No password is needed. Supported regions: CIS (Russia, Belarus, Kazakhstan, Uzbekistan).$c$
 WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'en';
 
 UPDATE brand_translations SET
@@ -58,7 +58,7 @@ UPDATE brand_translations SET
 
 Xizmat komissiyasi 0%: qancha kiritsangiz, shuncha hamyonga tushadi, bir xil; marjamiz kursda, yakuniy summa toʻlovdan oldin koʻrinadi. Bir operatsiyada $1 dan $300 gacha istalgan summani toʻldirish mumkin — joriy kurs boʻyicha soʻmdagi summa darhol koʻrsatiladi.
 
-Toʻlov — oʻzbek soʻmida Uzcard va Humo kartalari orqali Click, Payme yoki Uzum bilan. Mablagʻ toʻlov tasdiqlangach Steam balansiga bir zumda va avtomatik tushadi. MDH mintaqasidagi (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston) va Turkiyadagi akkauntlar qoʻllab-quvvatlanadi.$c$,
+Toʻlov — oʻzbek soʻmida Uzcard va Humo kartalari orqali Click, Payme yoki Uzum bilan. Mablagʻ toʻlov tasdiqlangach Steam balansiga bir zumda va avtomatik tushadi. MDH mintaqasidagi (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston) akkauntlar qoʻllab-quvvatlanadi.$c$,
     instructions = $c$Steam hamyonini Oʻzbekistonda qanday toʻldirish:
 
 1. Steam login (kirish uchun hisob nomi) ni kiriting — parol kerak emas.
@@ -66,7 +66,7 @@ Toʻlov — oʻzbek soʻmida Uzcard va Humo kartalari orqali Click, Payme yoki U
 3. Toʻlov usulini tanlang: Click, Payme yoki Uzum.
 4. Toʻlang — mablagʻ Steam balansiga bir zumda va avtomatik tushadi.
 
-Steam login ni qayerdan topish: Steam ilovasini yoki store.steampowered.com saytini oching, yuqori oʻng burchakdagi profil nomini bosing va «Hisob haqida» boʻlimiga oʻting — login shu yerda koʻrsatilgan. Bu aynan login (hisob nomi), koʻrsatiladigan nom emas. Parol kerak emas. Qoʻllab-quvvatlanadigan mintaqalar: MDH (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston) va Turkiya.$c$
+Steam login ni qayerdan topish: Steam ilovasini yoki store.steampowered.com saytini oching, yuqori oʻng burchakdagi profil nomini bosing va «Hisob haqida» boʻlimiga oʻting — login shu yerda koʻrsatilgan. Bu aynan login (hisob nomi), koʻrsatiladigan nom emas. Parol kerak emas. Qoʻllab-quvvatlanadigan mintaqalar: MDH (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston).$c$
 WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'uz';
 
 DELETE FROM brand_faqs WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam');
@@ -119,11 +119,11 @@ JOIN (
 
         -- 5. NEW: регион аккаунта
         (5, 'ru', $q$В каком регионе должен быть аккаунт Steam?$q$,
-            $a$Пополнение работает для аккаунтов Steam в регионах СНГ (Россия, Беларусь, Казахстан, Узбекистан) и Турции. Валюта кошелька зависит от региона аккаунта; средства зачисляются в валюте вашего кошелька Steam.$a$),
+            $a$Пополнение работает для аккаунтов Steam в регионах СНГ (Россия, Беларусь, Казахстан, Узбекистан). Валюта кошелька зависит от региона аккаунта; средства зачисляются в валюте вашего кошелька Steam.$a$),
         (5, 'en', $q$Which region does my Steam account need to be in?$q$,
-            $a$Top-ups work for Steam accounts in the CIS region (Russia, Belarus, Kazakhstan, Uzbekistan) and Turkey. The wallet currency depends on the account region; funds are credited in your Steam wallet's currency.$a$),
+            $a$Top-ups work for Steam accounts in the CIS region (Russia, Belarus, Kazakhstan, Uzbekistan). The wallet currency depends on the account region; funds are credited in your Steam wallet's currency.$a$),
         (5, 'uz', $q$Steam akkaunti qaysi mintaqada boʻlishi kerak?$q$,
-            $a$Toʻldirish MDH mintaqasidagi (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston) va Turkiyadagi Steam akkauntlari uchun ishlaydi. Hamyon valyutasi akkaunt mintaqasiga bogʻliq; mablagʻ Steam hamyoningiz valyutasida tushadi.$a$),
+            $a$Toʻldirish MDH mintaqasidagi (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston) Steam akkauntlari uchun ishlaydi. Hamyon valyutasi akkaunt mintaqasiga bogʻliq; mablagʻ Steam hamyoningiz valyutasida tushadi.$a$),
 
         -- 6. NEW: где найти логин
         (6, 'ru', $q$Где найти логин Steam?$q$,

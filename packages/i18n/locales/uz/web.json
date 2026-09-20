@@ -58,11 +58,11 @@
     "commission": "Komissiya",
     "speed": "Tezlik",
     "rating": "Reyting",
-    "steamDesc": "MDH, Qozogʻiston, Turkiya. Avtomatik, darhol tushadi, parolsiz.",
+    "steamDesc": "MDH, Qozogʻiston. Avtomatik, darhol tushadi, parolsiz.",
     "cards": {
       "steam": {
         "name": "Steam\nHamyon",
-        "eyebrow": "Valve · MDH / KZ / TR",
+        "eyebrow": "Valve · MDH / KZ",
         "tag": "HIT",
         "statCommission": "0%",
         "statSpeed": "Darhol",
@@ -240,7 +240,7 @@
     "brandMetaDescription": "{name} ni ID orqali toʻldiring, avtomatik tushadi. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — yupay.",
     "brands": {
       "steam": {
-        "about": "MDH, Qozogʻiston va Turkiya akkauntlari uchun Steam hamyonini toʻldirish. Pul balansga avtomatik tushadi — login va parolsiz, soʻmda toʻlov."
+        "about": "MDH va Qozogʻiston akkauntlari uchun Steam hamyonini toʻldirish. Pul balansga avtomatik tushadi — login va parolsiz, soʻmda toʻlov."
       },
       "pubg-mobile": {
         "about": "PUBG Mobile uchun UC oʻyinchi IDsi orqali. Akkauntga kirmasdan avtomatik tushadi — faqat ommaviy ID. Click, Payme yoki Uzum bilan toʻlang."

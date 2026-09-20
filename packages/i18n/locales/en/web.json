@@ -58,11 +58,11 @@
     "commission": "Commission",
     "speed": "Speed",
     "rating": "Rating",
-    "steamDesc": "Any CIS country, Kazakhstan, Turkey. Instant automatic crediting, no password handover.",
+    "steamDesc": "Any CIS country, Kazakhstan. Instant automatic crediting, no password handover.",
     "cards": {
       "steam": {
         "name": "Steam\nWallet",
-        "eyebrow": "Valve · CIS / KZ / TR",
+        "eyebrow": "Valve · CIS / KZ",
         "tag": "HOT",
         "statCommission": "0%",
         "statSpeed": "Instant",
@@ -240,7 +240,7 @@
     "brandMetaDescription": "Top up {name} by ID, credited automatically. Prices in som, pay with Click, Payme or Uzum. No password handover — yupay.",
     "brands": {
       "steam": {
-        "about": "Steam wallet top-ups for CIS, Kazakhstan and Turkey accounts. Funds are credited to your balance automatically — no login or password handover, pay in som."
+        "about": "Steam wallet top-ups for CIS and Kazakhstan accounts. Funds are credited to your balance automatically — no login or password handover, pay in som."
       },
       "pubg-mobile": {
         "about": "UC for PUBG Mobile by player ID. Credited automatically without logging in — just your public ID. Pay with Click, Payme or Uzum."
