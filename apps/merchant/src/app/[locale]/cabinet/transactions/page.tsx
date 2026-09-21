@@ -100,7 +100,19 @@ export default function TransactionsList() {
             {profile === null ? "—" : `$${formatUsd(toCents(profile.balance_usd))}`}
           </p>
         </div>
-        <p className="text-tx-dim max-w-md text-[12.5px] leading-relaxed">{t("topUpHint")}</p>
+        {/* The hint said "write to support" with nothing to click, while the
+            string for the link sat unused in all three locales. */}
+        <p className="text-tx-dim max-w-md text-[12.5px] leading-relaxed">
+          {t("topUpHint")}{" "}
+          <a
+            href="https://t.me/yupay_support"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="underline"
+          >
+            {t("requestDeposit")}
+          </a>
+        </p>
       </section>
 
       {rows !== null && rows.length === 0 && (

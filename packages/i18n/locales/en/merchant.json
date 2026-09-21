@@ -233,7 +233,11 @@
     "groupCatalog": "PRODUCTS",
     "groupAccount": "ACCOUNT",
     "groupDevelopers": "FOR DEVELOPERS",
-    "navAllBrands": "All brands"
+    "navAllBrands": "All brands",
+    "accountRef": "Account number",
+    "whatToSend": "Include your account number and the amount — that is what the manager needs to find you.",
+    "copy": "Copy",
+    "copied": "Copied"
   },
   "catalog": {
     "title": "Catalog",

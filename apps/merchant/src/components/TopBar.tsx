@@ -89,8 +89,12 @@ export function TopBar() {
           <span className="text-primary-ink font-mono text-sm font-extrabold">
             {balance === null ? "—" : `$${formatUsd(balance)}`}
           </span>
+          {/* New tab. It navigated the cabinet away to Telegram, so an
+              operator mid-order lost the page they were on. */}
           <a
             href="https://t.me/yupay_support"
+            target="_blank"
+            rel="noopener noreferrer"
             className="bg-primary text-primary-foreground rounded-btn whitespace-nowrap px-3 py-1.5 text-xs font-bold"
           >
             {t("topUp")}

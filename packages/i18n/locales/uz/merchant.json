@@ -233,7 +233,11 @@
     "groupCatalog": "MAHSULOTLAR",
     "groupAccount": "HISOB",
     "groupDevelopers": "DASTURCHILAR UCHUN",
-    "navAllBrands": "Barcha brendlar"
+    "navAllBrands": "Barcha brendlar",
+    "accountRef": "Hisob raqami",
+    "whatToSend": "Xabarda hisob raqamingiz va summani koʻrsating — menejer sizni shu boʻyicha topadi.",
+    "copy": "Nusxa olish",
+    "copied": "Nusxa olindi"
   },
   "catalog": {
     "title": "Katalog",

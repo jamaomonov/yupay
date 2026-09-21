@@ -24,6 +24,7 @@ function countLabel(sku: Sku): "none" | "quantity" | "amount" {
 export default function BrandPage() {
   const t = useTranslations("merchant.catalog");
   const tOrders = useTranslations("merchant.orders");
+  const tCabinet = useTranslations("merchant.cabinet");
   const locale = useLocale();
   const { locale: routeLocale, slug } = useParams<{ locale: string; slug: string }>();
   const { catalog, profile, refreshProfile } = useCabinet();
@@ -277,6 +278,27 @@ export default function BrandPage() {
                     ? t("createOrder")
                     : `${t("createOrder")} · $${formatUsd(total)}`}
               </button>
+
+              {!affordable && total !== null && (
+                // The string existed and was unreachable: `notEnough` was only
+                // set from an API error, and the request can never be sent
+                // because the button above is disabled. So a fresh account —
+                // every account, on day one — saw a greyed button and a red
+                // negative number, and had to infer the rest. The dashboard
+                // card that explains it is two screens away and does not
+                // follow you here.
+                <p className="text-danger mt-3 text-[12px] leading-relaxed">
+                  {t("notEnough")}{" "}
+                  <a
+                    href="https://t.me/yupay_support"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="underline"
+                  >
+                    {tCabinet("requestDeposit")}
+                  </a>
+                </p>
+              )}
 
               <p className="text-tx-dim mt-3 text-[12px] leading-relaxed">{t("whatsNext")}</p>
             </div>

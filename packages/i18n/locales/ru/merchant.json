@@ -233,7 +233,11 @@
     "groupCatalog": "ТОВАРЫ",
     "groupAccount": "АККАУНТ",
     "groupDevelopers": "ДЛЯ РАЗРАБОТЧИКОВ",
-    "navAllBrands": "Все бренды"
+    "navAllBrands": "Все бренды",
+    "accountRef": "Номер счёта",
+    "whatToSend": "В сообщении укажите номер счёта и сумму — так менеджер найдёт вас сразу.",
+    "copy": "Скопировать",
+    "copied": "Скопировано"
   },
   "catalog": {
     "title": "Каталог",
