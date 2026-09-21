@@ -71,11 +71,16 @@ export function StatusBlock({ status, isTopUp }: { status: string; isTopUp?: boo
   const isDeliveredTopUp = status === "delivered" && Boolean(isTopUp);
   const { tone, Icon, spin } = toneFor(status);
 
+  // `status.unknown`, never the raw code. `KNOWN` is complete today, so this
+  // is unreachable — and it was `: status`, which means the day the API grows
+  // an eleventh status a customer reads `partially_shipped` as the heading of
+  // their own order. Degrading beats crashing (the Mini App did crash on the
+  // same drift, 2026-09-21), but an enum is not copy.
   const heading = isDeliveredTopUp
     ? t("status.deliveredTopup")
     : known
       ? t(`status.${status}`)
-      : status;
+      : t("status.unknown");
   const body = isDeliveredTopUp ? t("body.deliveredTopup") : known ? t(`body.${status}`) : null;
 
   return (

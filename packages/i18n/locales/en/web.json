@@ -709,7 +709,8 @@
       "cancelled": "Cancelled",
       "expired": "Expired",
       "refunded": "Refunded",
-      "partially_refunded": "Partially refunded"
+      "partially_refunded": "Partially refunded",
+      "unknown": "Checking the status"
     },
     "body": {
       "pending_payment": "Waiting for your payment.",

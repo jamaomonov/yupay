@@ -38,7 +38,9 @@ export function OrderCard({
     ? t("status.deliveredTopup")
     : order.status in STATUS_CLS
       ? t(`status.${order.status}`)
-      : order.status;
+      : // Same reasoning as `StatusBlock`'s heading: a status this build has
+        // not met is described, not printed.
+        t("status.unknown");
 
   const dateText = new Intl.DateTimeFormat(locale).format(new Date(order.created_at));
   const subtitleText = orderSubtitle(order);

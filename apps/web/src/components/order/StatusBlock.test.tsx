@@ -23,6 +23,7 @@ const messages = {
         expired: "Expired",
         refunded: "Refunded",
         partially_refunded: "Partially refunded",
+        unknown: "Checking the status",
       },
       body: {
         pending_payment: "Waiting for your payment.",
@@ -60,9 +61,12 @@ it("still shows the status heading alongside the body copy", () => {
   expect(screen.getByRole("heading", { name: "Processing" })).toBeInTheDocument();
 });
 
-it("falls back to the raw status code with no body for an unknown status", () => {
+it("describes an unknown status instead of printing it, and shows no body", () => {
+  // It used to render the raw code, which meant an eleventh status on the API
+  // would read `some_future_status` as the heading of somebody's own order.
   wrap(<StatusBlock status="some_future_status" />);
-  expect(screen.getByRole("heading", { name: "some_future_status" })).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Checking the status" })).toBeInTheDocument();
+  expect(screen.queryByText("some_future_status")).not.toBeInTheDocument();
 });
 
 it("shows top-up-flavored wording for a delivered top-up order", () => {

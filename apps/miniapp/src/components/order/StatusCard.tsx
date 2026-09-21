@@ -132,7 +132,7 @@ export function stageFor(order: OrderOut): StageCopy {
  * risk telling somebody their money is coming back when it is not.
  */
 function assertNever(_status: never): StageCopy {
-  return { title: translate("success.processingAria"), subtitle: "" };
+  return { title: translate("success.stage.unknownTitle"), subtitle: "" };
 }
 
 function StatusIcon({ tone }: { tone: "delivered" | "failed" | "processing" | "neutral" }) {

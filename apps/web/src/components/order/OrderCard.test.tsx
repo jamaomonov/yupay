@@ -25,6 +25,7 @@ const messages = {
         expired: "Expired",
         refunded: "Refunded",
         partially_refunded: "Partially refunded",
+        unknown: "Checking the status",
       },
     },
   },

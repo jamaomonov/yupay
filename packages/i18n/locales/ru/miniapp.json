@@ -224,6 +224,7 @@
   "success.stage.failedSub": "Деньги вернутся на карту, с которой вы платили. Решение примем в течение 24 часов.",
   "success.stage.partiallyRefundedTitle": "Частичный возврат",
   "success.stage.partiallyRefundedSub": "По этому заказу оформлен частичный возврат.",
+  "success.stage.unknownTitle": "Уточняем статус",
   "success.delayedSub": "Заказ задерживается. Мы уже следим — обычно решается без вашего участия.",
   "success.processingAria": "Обработка заказа",
   "success.supportWrite": "Написать в поддержку",

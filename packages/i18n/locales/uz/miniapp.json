@@ -224,6 +224,7 @@
   "success.stage.failedSub": "Pul toʻlagan kartangizga qaytadi. Qaror 24 soat ichida qabul qilinadi.",
   "success.stage.partiallyRefundedTitle": "Qisman qaytarildi",
   "success.stage.partiallyRefundedSub": "Bu buyurtma boʻyicha mablagʻ qisman qaytarildi.",
+  "success.stage.unknownTitle": "Holatni aniqlamoqdamiz",
   "success.delayedSub": "Buyurtma kechikyapti. Biz kuzatyapmiz — odatda sizsiz hal bo'ladi.",
   "success.processingAria": "Buyurtma qayta ishlanmoqda",
   "success.supportWrite": "Qo'llab-quvvatlashga yozish",

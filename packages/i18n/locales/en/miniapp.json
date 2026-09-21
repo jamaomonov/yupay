@@ -224,6 +224,7 @@
   "success.stage.failedSub": "Your money returns to the card you paid with. We'll decide within 24 hours.",
   "success.stage.partiallyRefundedTitle": "Partially refunded",
   "success.stage.partiallyRefundedSub": "This order was partially refunded.",
+  "success.stage.unknownTitle": "Checking the status",
   "success.delayedSub": "The order is delayed. We're on it — it usually resolves without you.",
   "success.processingAria": "Processing the order",
   "success.supportWrite": "Message support",

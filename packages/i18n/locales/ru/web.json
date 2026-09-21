@@ -709,7 +709,8 @@
       "cancelled": "Отменён",
       "expired": "Истёк",
       "refunded": "Возврат",
-      "partially_refunded": "Частичный возврат"
+      "partially_refunded": "Частичный возврат",
+      "unknown": "Уточняем статус"
     },
     "body": {
       "pending_payment": "Ожидаем вашу оплату.",

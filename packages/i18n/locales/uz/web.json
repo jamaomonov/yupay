@@ -709,7 +709,8 @@
       "cancelled": "Bekor qilindi",
       "expired": "Muddati oʻtdi",
       "refunded": "Qaytarildi",
-      "partially_refunded": "Qisman qaytarildi"
+      "partially_refunded": "Qisman qaytarildi",
+      "unknown": "Holatni aniqlamoqdamiz"
     },
     "body": {
       "pending_payment": "Toʻlovingizni kutmoqdamiz.",
