@@ -334,7 +334,7 @@
       "howTitle": "Bu qanday ishlaydi",
       "step1": "Oʻyin, nashr va mintaqani tanlang",
       "step2": "Qabul qiluvchining profil havolasini kiriting",
-      "step3": "Bot sovgʻani doʻstlik taklifi sifatida yuboradi — odatda bir soat ichida"
+      "step3": "Bot sovgʻani yuboradi — odatda bir soat ichida"
     },
     "hot": {
       "title": "Qaynoq takliflar"
@@ -378,7 +378,7 @@
       ],
       "buy": "Sotib olish",
       "timeline": "Sovgʻani bot yuboradi",
-      "accept": "Qabul qiluvchiga doʻstlik taklifi keladi — sovgʻani Steamʻda 30 kun ichida qabul qilish kerak",
+      "accept": "Sovgʻa botdan keladi — qabul qiluvchi uni 30 kun ichida qabul qilishi kerak",
       "buyError": "Buyurtmani rasmiylashtirib boʻlmadi. Qayta urinib koʻring.",
       "payHintInvite": "Qabul qiluvchining Steam profil havolasini kiriting",
       "payHintInviteInvalid": "Profil havolasini tekshiring",
@@ -390,11 +390,12 @@
       "payHintProfileNotFound": "Profil topilmadi — havolani tekshiring",
       "confirmRegion": "Mintaqa",
       "confirmProfile": "Qabul qiluvchi profili",
-      "confirmWarning": "Toʻlovdan keyin sovgʻani bekor qilib boʻlmaydi — u yuqoridagi havolaga yuboriladi. Toʻlovdan oldin qabul qiluvchi profilini tekshiring."
+      "confirmWarning": "Toʻlovdan keyin sovgʻani bekor qilib boʻlmaydi — u yuqoridagi havolaga yuboriladi. Toʻlovdan oldin qabul qiluvchi profilini tekshiring.",
+      "inviteGuideTitle": "Profil havolasini qayerdan olaman?"
     },
     "delivered": {
       "title": "Sovgʻa yuborildi",
-      "step1": "Steam bildirishnomalari yoki pochtangizni tekshiring — bot sovgʻa bilan doʻstlik taklifini yubordi",
+      "step1": "Steam bildirishnomalari yoki pochtangizni tekshiring — bot sovgʻani yubordi",
       "step2": "Yuboruvchi — YuPay bot-akkaunti: Steam notanish yuboruvchi haqida odatdagi ogohlantirishni koʻrsatadi, bu kutilgan holat",
       "step3": "Sovgʻani Steamʻda 30 kun ichida qabul qiling",
       "sender": "Yuboruvchi: YuPay bot-akkaunti"

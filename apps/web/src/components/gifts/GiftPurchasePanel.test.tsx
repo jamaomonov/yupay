@@ -844,11 +844,30 @@ describe("the Buy button carries the amount, or names the missing step", () => {
   });
 });
 
-it('drops "inviteGuideTitle" — it only restated the field label right above it', () => {
-  mockProvidersResponse();
-  renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+describe("the profile-link guide", () => {
+  // Reversed 2026-09-21 on owner direction. The old pin — "drops
+  // inviteGuideTitle, it only restated the field label right above it" —
+  // was right about an always-open box, where the heading is a second
+  // sentence saying what `inviteLabel` already said. Collapsed, the heading
+  // is the only affordance: without it nothing tells a reader the steps are
+  // there at all.
+  it("is collapsed, with the title as the thing you open", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
 
-  expect(screen.queryByText("inviteGuideTitle")).not.toBeInTheDocument();
+    const summary = screen.getByText("inviteGuideTitle");
+    expect(summary).toBeInTheDocument();
+    expect(summary.closest("details")).not.toBeNull();
+    expect(summary.closest("details")).not.toHaveAttribute("open");
+  });
+
+  it("still carries every step, so a reader who opens it gets all three", () => {
+    mockProvidersResponse();
+    renderPanel(<GiftPurchasePanel detail={makeDetail()} skuId="sku-1" locale="ru" />);
+
+    expect(screen.getByText("Step one")).toBeInTheDocument();
+    expect(screen.getByText("Step two")).toBeInTheDocument();
+  });
 });
 
 describe('the "Открыть профиль" link', () => {

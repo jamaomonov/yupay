@@ -334,7 +334,7 @@
       "howTitle": "How it works",
       "step1": "Pick the game, edition, and region",
       "step2": "Enter the recipient's profile link",
-      "step3": "Our bot sends the gift as a friend invite — usually within an hour"
+      "step3": "Our bot sends the gift — usually within an hour"
     },
     "hot": {
       "title": "Hot offers"
@@ -378,7 +378,7 @@
       ],
       "buy": "Buy",
       "timeline": "The bot sends the gift",
-      "accept": "The recipient gets a friend invite — the gift must be accepted in Steam within 30 days",
+      "accept": "The gift arrives from our bot — the recipient has 30 days to accept it in Steam",
       "buyError": "Couldn't create the order. Please try again.",
       "payHintInvite": "Add the recipient's Steam profile link",
       "payHintInviteInvalid": "Check the profile link",
@@ -390,11 +390,12 @@
       "payHintProfileNotFound": "Profile not found — check the link",
       "confirmRegion": "Region",
       "confirmProfile": "Recipient's profile",
-      "confirmWarning": "The gift can't be cancelled after payment — it goes to the link above. Double-check the recipient's profile before paying."
+      "confirmWarning": "The gift can't be cancelled after payment — it goes to the link above. Double-check the recipient's profile before paying.",
+      "inviteGuideTitle": "Where do I find the profile link?"
     },
     "delivered": {
       "title": "Gift sent",
-      "step1": "Check Steam notifications or email — our bot sent a friend invite with the gift",
+      "step1": "Check Steam notifications or email — our bot sent the gift",
       "step2": "The sender is a bot account: Steam shows its usual warning about an unfamiliar sender — that's expected",
       "step3": "Accept the gift in Steam within 30 days",
       "sender": "Sender: YuPay's bot account"

@@ -476,7 +476,7 @@
   "gifts.game.confirmAttest": "I checked the recipient's profile link — the gift will go to them",
   "gifts.game.confirmWarning": "The gift can't be cancelled after payment — it goes to the link above. Double-check the recipient's profile before paying.",
   "gifts.game.timeline": "The bot sends the gift",
-  "gifts.game.accept": "The recipient gets a friend invite — the gift must be accepted in Steam within 30 days",
+  "gifts.game.accept": "The gift arrives from our bot — the recipient has 30 days to accept it in Steam",
   "gifts.game.notFound": "Game not found, or this section isn't available right now",
   "gifts.checkout.priceChanged": "The price changed — we refreshed it for you",
   "gifts.checkout.noMethods": "Payment methods are temporarily unavailable",
