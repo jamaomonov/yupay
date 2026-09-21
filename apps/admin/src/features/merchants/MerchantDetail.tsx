@@ -26,7 +26,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
-import { Snowflake, Sun } from "lucide-react";
+import { Plug, Snowflake, Sun, Users, Wallet } from "lucide-react";
 import { useId, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
@@ -34,7 +34,6 @@ import {
   T,
   creditDeposit,
   fetchMerchants,
-  fetchMerchantTxns,
   fill,
   formatUsd,
   parseOrderId,
@@ -44,11 +43,10 @@ import {
   type DepositCreditOut,
   type MerchantListOut,
   type MerchantOut,
-  type MerchantTxnListOut,
-  type MerchantTxnOut,
 } from "./api";
 import { DepositDebitCard } from "./DepositDebitCard";
 import { MerchantKeysCard } from "./MerchantKeysCard";
+import { MerchantLedgerCard } from "./MerchantLedgerCard";
 import { MerchantMarkupCard } from "./MerchantMarkupCard";
 import { MerchantUsersCard } from "./MerchantUsersCard";
 import { MerchantWebhookCard } from "./MerchantWebhookCard";
@@ -56,15 +54,19 @@ import { MerchantWebhookCard } from "./MerchantWebhookCard";
 import type { ApiError } from "@/lib/api";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
-import { DataTable, type Column } from "@/components/DataTable";
 import { MoneyInput } from "@/components/MoneyInput";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
+import { Tabs } from "@/components/Tabs";
 import { useToast } from "@/components/Toast";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
+
+/** The three errands this page exists for. */
+type MerchantTab = "money" | "integration" | "people";
 
 /** What the UI renders where a value is absent — the ledger table's own dash. */
 const EMPTY_VALUE = "—";
@@ -85,14 +87,9 @@ export function MerchantDetail() {
   });
   const merchant = listQuery.data?.items.find((m) => m.id === id) ?? null;
 
-  const txnsQuery = useQuery<MerchantTxnListOut>({
-    queryKey: qk.merchantTxns(id),
-    queryFn: () => fetchMerchantTxns(id),
-    enabled: Boolean(id),
-  });
-
   // ----- freeze / unfreeze -----
   const [confirmFreeze, setConfirmFreeze] = useState<boolean | null>(null);
+  const [tab, setTab] = useSearchParamsState<MerchantTab>("tab", "money");
   const freezeKeyRef = useRef("");
 
   const patchList = (updated: MerchantOut) => {
@@ -212,56 +209,6 @@ export function MerchantDetail() {
 
   const isFrozen = merchant?.status === "frozen";
 
-  const txnColumns: Column<MerchantTxnOut>[] = [
-    {
-      key: "created",
-      header: T.ledger.columns.created,
-      render: (t) => (
-        <span className="text-[var(--text-secondary)]">
-          {new Date(t.created_at).toLocaleString("ru")}
-        </span>
-      ),
-      className: "w-40",
-    },
-    {
-      key: "kind",
-      header: T.ledger.columns.kind,
-      render: (t) => <StatusChip domain="walletTxKind" value={t.kind} />,
-    },
-    {
-      key: "amount",
-      header: T.ledger.columns.amount,
-      render: (t) => (
-        <span
-          className={`font-medium ${
-            t.amount.startsWith("-") ? "text-[var(--danger-fg)]" : "text-[var(--success-fg)]"
-          }`}
-        >
-          {t.amount.startsWith("-") ? "" : "+"}
-          {formatUsd(t.amount)}
-        </span>
-      ),
-      className: "w-32 text-right",
-    },
-    {
-      key: "note",
-      header: T.ledger.columns.note,
-      render: (t) =>
-        t.note ? <span>«{t.note}»</span> : <span className="text-[var(--text-secondary)]">—</span>,
-    },
-    {
-      key: "actor",
-      header: T.ledger.columns.actor,
-      render: (t) =>
-        t.actor ? (
-          <span className="font-mono text-xs text-[var(--text-secondary)]">{t.actor}</span>
-        ) : (
-          <span className="text-[var(--text-secondary)]">—</span>
-        ),
-      className: "w-44",
-    },
-  ];
-
   if (listQuery.isLoading) return <Spinner label={T.detail.loading} />;
   if (listQuery.isError) return <p className="text-sm text-[var(--danger)]">{T.list.loadError}</p>;
   if (!merchant) {
@@ -341,114 +288,134 @@ export function MerchantDetail() {
         </div>
       )}
 
-      <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
-        <h2 className="mb-1 text-sm font-semibold">{T.credit.title}</h2>
-        <p className="mb-3 text-xs text-[var(--text-secondary)]">{T.credit.hint}</p>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          <div>
-            <label
-              htmlFor={amountFieldId}
-              className="text-xs uppercase text-[var(--text-secondary)]"
-            >
-              {T.credit.amountLabel}
-            </label>
-            <MoneyInput
-              id={amountFieldId}
-              value={amount}
-              onChange={setAmount}
-              placeholder={T.credit.amountPlaceholder}
-              className="mt-1 font-mono"
-            />
-          </div>
-          <div className="md:col-span-2">
-            <label htmlFor={noteFieldId} className="text-xs uppercase text-[var(--text-secondary)]">
-              {T.credit.noteLabel} <span className="normal-case">{T.credit.noteHint}</span>
-            </label>
-            <Input
-              id={noteFieldId}
-              value={note}
-              onChange={(e) => {
-                setNote(e.target.value);
-              }}
-              placeholder={T.credit.notePlaceholder}
-              className="mt-1"
-            />
-          </div>
-          <div className="md:col-span-3">
-            <label
-              htmlFor={orderFieldId}
-              className="text-xs uppercase text-[var(--text-secondary)]"
-            >
-              {T.credit.orderLabel} <span className="normal-case">{T.credit.orderHint}</span>
-            </label>
-            <Input
-              id={orderFieldId}
-              value={orderId}
-              onChange={(e) => {
-                setOrderId(e.target.value);
-              }}
-              placeholder={T.credit.orderPlaceholder}
-              className="mt-1 font-mono"
-            />
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <Button onClick={submitCredit} disabled={creditMutation.isPending}>
-            {creditMutation.isPending ? T.credit.submitBusy : T.credit.submit}
-          </Button>
-          {lastCredit && (
-            <p className="text-sm text-[var(--text-secondary)]">
-              {fill(T.credit.resultBalance, { balance: formatUsd(lastCredit.balance) })}
-              {lastCredit.order_id !== null && (
-                // Off the response, not off the form: this is what the ledger
-                // actually booked, and it is the merchant's `refunded_usd`.
-                <span className="ml-2 font-mono">
-                  {fill(T.credit.resultOrder, { order: lastCredit.order_id })}
-                </span>
-              )}
-            </p>
-          )}
-        </div>
-      </section>
+      {/* Ten stacked sections made this page a scroll on a phone, and the
+          admin is used on one. Grouped rather than collapsed: an operator
+          arrives here for one of three errands — move money, fix an
+          integration, or find out why somebody cannot sign in — and each tab
+          is one of them. The identity strip above stays put, because "who is
+          this and is anything wrong" is the question all three share.
 
-      <DepositDebitCard
-        merchantId={id}
-        merchantTitle={merchant.title}
-        balance={merchant.deposit_balance}
-        onBalance={(balance) => {
-          patchList({ ...merchant, deposit_balance: balance });
+          The active tab lives in the URL, like every other filter in this
+          admin, so a refresh or a back button lands where you were. */}
+      <Tabs
+        value={tab}
+        onChange={(next) => {
+          setTab(next);
         }}
+        ariaLabel={T.tabs.aria}
+        tabs={[
+          { id: "money", label: T.tabs.money, icon: Wallet },
+          { id: "integration", label: T.tabs.integration, icon: Plug },
+          { id: "people", label: T.tabs.people, icon: Users },
+        ]}
+        className="mb-5"
       />
 
-      {/* Credentials after money, before the ledger: the money cards are what
+      {tab === "money" && (
+        <>
+          <section className="mb-6 rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
+            <h2 className="mb-1 text-sm font-semibold">{T.credit.title}</h2>
+            <p className="mb-3 text-xs text-[var(--text-secondary)]">{T.credit.hint}</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div>
+                <label
+                  htmlFor={amountFieldId}
+                  className="text-xs uppercase text-[var(--text-secondary)]"
+                >
+                  {T.credit.amountLabel}
+                </label>
+                <MoneyInput
+                  id={amountFieldId}
+                  value={amount}
+                  onChange={setAmount}
+                  placeholder={T.credit.amountPlaceholder}
+                  className="mt-1 font-mono"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label
+                  htmlFor={noteFieldId}
+                  className="text-xs uppercase text-[var(--text-secondary)]"
+                >
+                  {T.credit.noteLabel} <span className="normal-case">{T.credit.noteHint}</span>
+                </label>
+                <Input
+                  id={noteFieldId}
+                  value={note}
+                  onChange={(e) => {
+                    setNote(e.target.value);
+                  }}
+                  placeholder={T.credit.notePlaceholder}
+                  className="mt-1"
+                />
+              </div>
+              <div className="md:col-span-3">
+                <label
+                  htmlFor={orderFieldId}
+                  className="text-xs uppercase text-[var(--text-secondary)]"
+                >
+                  {T.credit.orderLabel} <span className="normal-case">{T.credit.orderHint}</span>
+                </label>
+                <Input
+                  id={orderFieldId}
+                  value={orderId}
+                  onChange={(e) => {
+                    setOrderId(e.target.value);
+                  }}
+                  placeholder={T.credit.orderPlaceholder}
+                  className="mt-1 font-mono"
+                />
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <Button onClick={submitCredit} disabled={creditMutation.isPending}>
+                {creditMutation.isPending ? T.credit.submitBusy : T.credit.submit}
+              </Button>
+              {lastCredit && (
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {fill(T.credit.resultBalance, { balance: formatUsd(lastCredit.balance) })}
+                  {lastCredit.order_id !== null && (
+                    // Off the response, not off the form: this is what the ledger
+                    // actually booked, and it is the merchant's `refunded_usd`.
+                    <span className="ml-2 font-mono">
+                      {fill(T.credit.resultOrder, { order: lastCredit.order_id })}
+                    </span>
+                  )}
+                </p>
+              )}
+            </div>
+          </section>
+
+          <DepositDebitCard
+            merchantId={id}
+            merchantTitle={merchant.title}
+            balance={merchant.deposit_balance}
+            onBalance={(balance) => {
+              patchList({ ...merchant, deposit_balance: balance });
+            }}
+          />
+
+          {/* Credentials after money, before the ledger: the money cards are what
           an operator opens this page for, and the ledger is the long tail they
           scroll to. The two integration cards sit between because they are
           what a support conversation needs — "is his key live", "are his
           webhooks arriving" — and both were answerable only by psql before. */}
-      {/* Price before credentials: what this reseller pays is a commercial
+          {/* Price before credentials: what this reseller pays is a commercial
           decision an operator makes on purpose, and the integration cards
           below are what they open when something is broken. */}
-      <MerchantMarkupCard merchant={merchant} onChange={patchList} />
+          <MerchantMarkupCard merchant={merchant} onChange={patchList} />
+          <MerchantLedgerCard merchantId={id} />
+        </>
+      )}
 
-      <MerchantKeysCard merchantId={id} />
-      <MerchantWebhookCard merchantId={id} />
-      <MerchantUsersCard merchantId={id} />
+      {tab === "integration" && (
+        <>
+          <MerchantKeysCard merchantId={id} />
+          <MerchantWebhookCard merchantId={id} />
+        </>
+      )}
 
-      <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--text-secondary)]">
-          {T.ledger.title}
-        </h2>
-        {txnsQuery.isError && <p className="text-sm text-[var(--danger)]">{T.ledger.loadError}</p>}
-        <DataTable
-          rows={txnsQuery.data?.items ?? []}
-          columns={txnColumns}
-          rowKey={(t) => t.transaction_id}
-          loading={txnsQuery.isLoading}
-          empty={T.ledger.empty}
-          ariaLabel={T.ledger.title}
-          sortable={false}
-        />
-      </section>
+      {tab === "people" && <MerchantUsersCard merchantId={id} />}
 
       {confirmFreeze !== null && (
         <ConfirmDialog

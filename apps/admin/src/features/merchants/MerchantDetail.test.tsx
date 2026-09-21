@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { MerchantDetail } from "./MerchantDetail";
@@ -136,17 +136,35 @@ const USERS: MerchantUserListOut = {
   ],
 };
 
-function renderPage(qc?: QueryClient) {
+/** The page groups its ten sections into three tabs, and the tab lives in the
+ *  URL — so a test that wants the keys card asks for it the way a link would,
+ *  rather than clicking through the chrome on every assertion. */
+function renderPage(qc?: QueryClient, tab?: "money" | "integration" | "people") {
   qc ??= new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  const entry = tab === undefined ? "/merchants/m1" : `/merchants/m1?tab=${tab}`;
+  let url = "";
+  function Spy() {
+    url = useLocation().search;
+    return null;
+  }
+  render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={["/merchants/m1"]}>
+      <MemoryRouter initialEntries={[entry]}>
         <Routes>
-          <Route path="/merchants/:id" element={<MerchantDetail />} />
+          <Route
+            path="/merchants/:id"
+            element={
+              <>
+                <MerchantDetail />
+                <Spy />
+              </>
+            }
+          />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  return { search: () => url };
 }
 
 beforeEach(() => {
@@ -576,7 +594,7 @@ it("ignores a double-click while the debit is in flight", async () => {
 // used, or whether an IP allowlist was turning their requests away.
 
 it("lists a live key with its last use and its IP filter", async () => {
-  renderPage();
+  renderPage(undefined, "integration");
 
   expect(await screen.findByText("ypm_live")).toBeInTheDocument();
   expect(screen.getByText(/прод-сервер/)).toBeInTheDocument();
@@ -584,7 +602,7 @@ it("lists a live key with its last use and its IP filter", async () => {
 });
 
 it("keeps a revoked key listed, and offers no way to revoke it twice", async () => {
-  renderPage();
+  renderPage(undefined, "integration");
 
   expect(await screen.findByText("ypm_old")).toBeInTheDocument();
   expect(screen.getByText(/Отозван /)).toBeInTheDocument();
@@ -594,7 +612,7 @@ it("keeps a revoked key listed, and offers no way to revoke it twice", async () 
 
 it("asks before revoking, and names the key it is about to kill", async () => {
   mockedApi.mockResolvedValue({ ...KEYS.items[1], key_id: "ypm_live" });
-  renderPage();
+  renderPage(undefined, "integration");
 
   fireEvent.click(await screen.findByRole("button", { name: "Отозвать" }));
 
@@ -617,7 +635,7 @@ it("asks before revoking, and names the key it is about to kill", async () => {
 // ---------- Webhook ----------
 
 it("shows the delivery health, which is what a support conversation needs", async () => {
-  renderPage();
+  renderPage(undefined, "integration");
 
   expect(await screen.findByDisplayValue("https://shop.example.com/yupay")).toBeInTheDocument();
   // The failure streak is the number that says "this is about to auto-disable".
@@ -638,7 +656,7 @@ it("says a merchant simply has no webhook rather than reporting a failure", asyn
     return Promise.resolve(LIST);
   });
 
-  renderPage();
+  renderPage(undefined, "integration");
 
   expect(await screen.findByText(/Вебхук не настроен/)).toBeInTheDocument();
 });
@@ -648,7 +666,7 @@ it("says a merchant simply has no webhook rather than reporting a failure", asyn
 it("separates an unconfirmed address from an operator who simply has not signed in", async () => {
   // The two states "I cannot log in" collapses into, and the reason a
   // password reset fixes only one of them.
-  renderPage();
+  renderPage(undefined, "people");
 
   expect(await screen.findByText("new@acme.example.com")).toBeInTheDocument();
   expect(screen.getByText("Почта не подтверждена")).toBeInTheDocument();
@@ -657,7 +675,7 @@ it("separates an unconfirmed address from an operator who simply has not signed 
 });
 
 it("says when the offer was never accepted, which a support ticket will ask about", async () => {
-  renderPage();
+  renderPage(undefined, "people");
 
   expect(await screen.findByText("Оферта не принята")).toBeInTheDocument();
   expect(screen.getByText(/Оферта принята .*версия 2026-09/)).toBeInTheDocument();
@@ -724,4 +742,34 @@ it("renders the floor refusal as the number to type next", () => {
 it("leaves any other failure to the generic message", () => {
   expect(floorMessage(new ApiError(500, "Server Error", null))).toBeNull();
   expect(floorMessage(new ApiError(409, "Conflict", { code: "something_else" }))).toBeNull();
+});
+
+// ---------- the three tabs ----------
+
+it("opens on money, because that is what this page is mostly used for", async () => {
+  renderPage();
+
+  expect(await screen.findByLabelText("Сумма (USD)")).toBeInTheDocument();
+  // The integration cards are not merely hidden — they are not mounted, so
+  // their queries do not run on a visit that never needed them.
+  expect(screen.queryByText("ypm_live")).not.toBeInTheDocument();
+});
+
+it("keeps the identity strip on every tab, because it is what they share", async () => {
+  renderPage(undefined, "people");
+
+  // Who this is, what they hold, and whether they are frozen — the context
+  // for all three errands. (The title appears in the heading and again in
+  // the freeze dialog's copy, so the heading is what is asserted.)
+  expect(await screen.findByRole("heading", { name: "Pilot Reseller" })).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Заказы этого мерчанта/ })).toBeInTheDocument();
+});
+
+it("puts the tab in the URL, so a refresh or a shared link lands on it", async () => {
+  const page = renderPage(undefined, "integration");
+
+  fireEvent.click(await screen.findByRole("tab", { name: /Доступ/ }));
+
+  expect(await screen.findByText("new@acme.example.com")).toBeInTheDocument();
+  expect(page.search()).toContain("tab=people");
 });

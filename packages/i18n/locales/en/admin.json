@@ -223,6 +223,12 @@
       "confirmBody": "It takes effect immediately and across the whole catalogue: {title} will buy at {value} pp against the base markup. Orders already placed do not change.",
       "confirm": "Yes, change it",
       "cancel": "Cancel"
+    },
+    "tabs": {
+      "money": "Money",
+      "integration": "Integration",
+      "people": "Access",
+      "aria": "Merchant page sections"
     }
   },
   "catalogB2b": {

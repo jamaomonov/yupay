@@ -223,6 +223,12 @@
       "confirmBody": "Darhol va butun katalog boʻyicha kuchga kiradi: {title} bazaviy ustamaga {value} p.p. bilan sotib oladi. Allaqachon rasmiylashtirilgan buyurtmalar oʻzgarmaydi.",
       "confirm": "Ha, oʻzgartirilsin",
       "cancel": "Bekor qilish"
+    },
+    "tabs": {
+      "money": "Pul",
+      "integration": "Integratsiya",
+      "people": "Kirish",
+      "aria": "Merchant sahifasi boʻlimlari"
     }
   },
   "catalogB2b": {
