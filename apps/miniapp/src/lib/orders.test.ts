@@ -8,11 +8,16 @@ import {
   performCheckout,
   providerStatusMap,
   requiresAcquirerAvailabilityCheck,
+  orderToHistoryRow,
   selectActiveMethodId,
   type OrderOut,
+  type OrderStatus,
   type PaymentOut,
   type ProviderStatus,
 } from "./orders";
+
+import { PROCESSING, TERMINAL_FAIL } from "@/components/order/order-helpers";
+import { stageFor } from "@/components/order/StatusCard";
 
 import type * as ApiModule from "./api";
 
@@ -390,5 +395,68 @@ describe("polling backs off instead of piling on", () => {
     expect(orderRefetchInterval("pending_payment", { ...opts, realtimeConnected: true })).toBe(
       false,
     );
+  });
+});
+
+/**
+ * The two places a status the build had not heard of went wrong silently.
+ *
+ * Order `01a0c1e2-…` on 2026-09-21: support closed it by hand as problematic,
+ * the API started answering `failed`, and the Mini App both crashed on the
+ * order page ("undefined is not an object (evaluating 'a.subtitle')") and
+ * kept the row in the history list labelled «Обработка».
+ *
+ * `ALL_STATUSES` is written out rather than derived, on purpose: a type
+ * cannot be enumerated at runtime, so this list is what actually fails when
+ * the backend grows a status and nobody tells the Mini App.
+ */
+describe("every order status the API can send", () => {
+  const ALL_STATUSES: OrderStatus[] = [
+    "pending_payment",
+    "paid",
+    "fulfilling",
+    "fulfilled",
+    "delivered",
+    "failed",
+    "cancelled",
+    "expired",
+    "refunded",
+    "partially_refunded",
+  ];
+
+  function orderWith(status: OrderStatus): OrderOut {
+    return {
+      id: "01a0c1e2-28a6-70f1-ad69-15665c8bbd5b",
+      status,
+      currency: "UZS",
+      total_usd: "0.31",
+      total_charged: "3907",
+      created_at: "2026-09-21T07:53:00Z",
+      items: [],
+    } as unknown as OrderOut;
+  }
+
+  it("has a history bucket for each — none falls through to «Обработка»", () => {
+    for (const status of ALL_STATUSES) {
+      const row = orderToHistoryRow(orderWith(status));
+      expect(row.status, status).toBeDefined();
+    }
+    expect(orderToHistoryRow(orderWith("failed")).status).toBe("failed");
+    expect(orderToHistoryRow(orderWith("partially_refunded")).status).toBe("refunded");
+  });
+
+  it("has stage copy for each — `stageFor` never returns undefined", () => {
+    for (const status of ALL_STATUSES) {
+      const stage = stageFor(orderWith(status));
+      expect(stage, status).toBeDefined();
+      expect(typeof stage.title, status).toBe("string");
+      expect(typeof stage.subtitle, status).toBe("string");
+    }
+  });
+
+  it("counts a failed order as terminal, and a partial refund as not", () => {
+    expect(TERMINAL_FAIL).toContain("failed");
+    expect(TERMINAL_FAIL).not.toContain("partially_refunded");
+    expect(PROCESSING).not.toContain("failed");
   });
 });

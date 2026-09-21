@@ -19,7 +19,12 @@ import { ICON_BY_PROVIDER } from "@/lib/payment-methods";
 
 export const PROCESSING: OrderStatus[] = ["pending_payment", "paid", "fulfilling", "fulfilled"];
 
-export const TERMINAL_FAIL: OrderStatus[] = ["cancelled", "expired", "refunded"];
+// `failed` belongs here and was missing: a support-closed order rendered
+// with the neutral tone and without the "write to us" escape, i.e. it looked
+// like nothing had gone wrong. `partially_refunded` is deliberately absent —
+// that order WAS delivered and part of the money came back, which is not a
+// failure.
+export const TERMINAL_FAIL: OrderStatus[] = ["failed", "cancelled", "expired", "refunded"];
 
 // Subset of PROCESSING where a delivery is actually being attempted. We hide
 // "ожидаем выдачу…" / "пополняем аккаунт…" placeholders outside of these

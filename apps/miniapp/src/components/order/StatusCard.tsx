@@ -101,7 +101,38 @@ export function stageFor(order: OrderOut): StageCopy {
         title: translate("success.stage.refundedTitle"),
         subtitle: translate("success.stage.refundedSub"),
       };
+    case "failed":
+      return {
+        title: translate("success.stage.failedTitle"),
+        subtitle: translate("success.stage.failedSub"),
+      };
+    case "partially_refunded":
+      return {
+        title: translate("success.stage.partiallyRefundedTitle"),
+        subtitle: translate("success.stage.partiallyRefundedSub"),
+      };
+    default:
+      // Exhaustive over `OrderStatus` — `never` makes a status added to the
+      // union without a case here a compile error. The branch still RETURNS
+      // rather than throwing, and that is the whole lesson of this bug: with
+      // no default at all the function quietly returned `undefined`, and the
+      // order page died on `stage.subtitle` for every `failed` order. A
+      // status we have never heard of should read as "we are looking at it",
+      // not as a white screen.
+      return assertNever(order.status);
   }
+}
+
+/**
+ * Compile-time exhaustiveness, runtime safety net.
+ *
+ * Deliberately neutral: a status this build has not heard of says only that
+ * the order is being looked at, with no second line. Naming the raw status
+ * would put an enum in front of a buyer, and guessing at copy for it would
+ * risk telling somebody their money is coming back when it is not.
+ */
+function assertNever(_status: never): StageCopy {
+  return { title: translate("success.processingAria"), subtitle: "" };
 }
 
 function StatusIcon({ tone }: { tone: "delivered" | "failed" | "processing" | "neutral" }) {

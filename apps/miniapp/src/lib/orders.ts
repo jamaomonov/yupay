@@ -18,15 +18,31 @@ import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 
 // --- DTOs -----------------------------------------------------------------
 
+/**
+ * Every status the API can send, transcribed from `orders.schemas.OrderStatus`.
+ *
+ * It was missing `failed` and `partially_refunded`, and both holes were live
+ * bugs rather than latent ones: `stageFor` switches exhaustively over this
+ * union with no `default`, so a `failed` order made it return `undefined` and
+ * the order page died on `stage.subtitle`; `orderToHistoryRow` fell through to
+ * `"processing"`, so the same order sat in the list saying «Обработка» forever
+ * after support had already closed it.
+ *
+ * Nothing syncs this with the backend automatically. When a status is added
+ * there, it is added here, and `tsc` then points at every switch that has to
+ * decide what to do with it.
+ */
 export type OrderStatus =
   | "pending_payment"
   | "paid"
   | "fulfilling"
   | "fulfilled"
   | "delivered"
+  | "failed"
   | "cancelled"
   | "expired"
-  | "refunded";
+  | "refunded"
+  | "partially_refunded";
 
 export type ProductKind = "top_up" | "voucher";
 
@@ -549,17 +565,32 @@ function summariseOrder(o: OrderOut): {
   };
 }
 
+/**
+ * Order status → the four buckets the history list paints.
+ *
+ * A total map, not a ternary chain ending in `: "processing"`. The chain is
+ * how a support-closed order kept telling its buyer «Обработка»: `failed` was
+ * in no branch, so it landed on the fallback and looked in-flight forever.
+ * A `Record` over the union cannot have a hole — `tsc` refuses to compile one
+ * — which is the property that chain could never have.
+ */
+const HISTORY_STATUS: Record<OrderStatus, HistoryRow["status"]> = {
+  pending_payment: "processing",
+  paid: "processing",
+  fulfilling: "processing",
+  fulfilled: "processing",
+  delivered: "success",
+  failed: "failed",
+  cancelled: "failed",
+  expired: "failed",
+  refunded: "refunded",
+  // Money partly back on an order that was delivered — closer to a refund
+  // than to a failure, and the row's amount still stands.
+  partially_refunded: "refunded",
+};
+
 export function orderToHistoryRow(o: OrderOut): HistoryRow {
-  const status: HistoryRow["status"] =
-    o.status === "delivered"
-      ? "success"
-      : o.status === "refunded"
-        ? "refunded"
-        : o.status === "fulfilled" || o.status === "paid" || o.status === "fulfilling"
-          ? "processing"
-          : o.status === "cancelled" || o.status === "expired"
-            ? "failed"
-            : "processing";
+  const status: HistoryRow["status"] = HISTORY_STATUS[o.status];
   const summary = summariseOrder(o);
   return {
     id: o.id,
