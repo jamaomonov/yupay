@@ -1,6 +1,7 @@
 "use client";
 
 import { Webhook } from "lucide-react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
@@ -11,6 +12,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { PageHeading } from "@/components/PageHeading";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
+import { pathFor } from "@/lib/locale-href";
 
 /** `status` → a key. Explicit and partial, like `labels.ts`: the worker's
  *  vocabulary is four words today and a fifth must show as itself. */
@@ -33,7 +35,8 @@ const TONE: Record<string, string> = {
  *
  * Configuration lives on Настройки — the design separates "what I set up"
  * from "what happened", and a person arriving to read a 502 is not the person
- * arriving to change a URL.
+ * arriving to change a URL. The intro links there rather than merely naming
+ * it: this is the screen somebody opens while their integration is broken.
  */
 export default function WebhookLog() {
   const t = useTranslations("merchant.webhooks");
@@ -62,9 +65,20 @@ export default function WebhookLog() {
   return (
     <div>
       <PageHeading icon={Webhook} title={t("logTitle")} />
-      <p className="text-tx-mute mt-2 max-w-2xl text-sm leading-relaxed">{t("logIntro")}</p>
+      <p className="text-tx-mute mt-2 max-w-2xl text-sm leading-relaxed">
+        {t("logIntro")}{" "}
+        {/* The sentence used to END "...live in Настройки" as flat prose, on
+            the one screen somebody reaches while their integration is broken.
+            Naming a destination without linking to it makes the reader hunt a
+            sidebar; the two screens are one click apart. */}
+        <Link href={pathFor(locale, "/cabinet/settings")} className="underline underline-offset-4">
+          {t("logConfigLink")}
+        </Link>
+      </p>
 
-      {rows !== null && rows.length === 0 && <EmptyState icon={Webhook} title={t("logEmpty")} />}
+      {rows !== null && rows.length === 0 && (
+        <EmptyState icon={Webhook} title={t("logEmpty")} hint={t("logEmptyHint")} />
+      )}
 
       {rows !== null && rows.length > 0 && (
         <ul className="border-border divide-border mt-5 divide-y border-t">

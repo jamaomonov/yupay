@@ -51,7 +51,20 @@ export default function RegisterPage() {
   if (sent) {
     // No token, no session, no redirect into the cabinet: the address is not
     // proven until the link is opened, and registration is open to anyone.
-    return <AuthShell title={t("checkMailTitle")} subtitle={t("checkMailBody", { email })} />;
+    //
+    // With a footer, because without one this screen was the end of the
+    // funnel: a confirmation mail that lands in spam — or never arrives,
+    // since a failed send deliberately leaves the account standing rather
+    // than rolling the registration back — left the reader on a page with no
+    // links at all. `/forgot` is where the resend lives, the same place
+    // `/confirm` sends a reader with an expired link.
+    return (
+      <AuthShell
+        title={t("checkMailTitle")}
+        subtitle={t("checkMailBody", { email })}
+        footer={<AuthLink href={pathFor(locale, "/forgot")} label={t("resendLink")} />}
+      />
+    );
   }
 
   return (

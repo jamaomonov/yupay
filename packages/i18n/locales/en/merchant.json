@@ -225,7 +225,7 @@
     "comingSoon": "This section is coming soon",
     "themeToggle": "Switch theme",
     "navLabel": "Cabinet sections",
-    "navWebhooks": "Webhooks",
+    "navWebhooks": "Delivery log",
     "todayTitle": "Today",
     "todayDelivered": "Delivered",
     "todayHint": "Since midnight on your browser's clock",
@@ -320,7 +320,7 @@
     "authWindow": "The time window",
     "authWindowBody": "Your timestamp must be within ±300 seconds of ours. A signature is **not single-use**, so replaying the same request is safe and an at-least-once retry needs no fresh idempotency key.",
     "authKeys": "Keys",
-    "authKeysBody": "Issue a key in the cabinet, under Настройки. The secret is shown once. Rotation has no downtime: issue a new key, deploy it, revoke the old one — several keys can be live at once.",
+    "authKeysBody": "Issue a key in the cabinet, under Settings. The secret is shown once. Rotation has no downtime: issue a new key, deploy it, revoke the old one — several keys can be live at once.",
     "quickTitle": "Your first order",
     "quickLead": "From an empty project to a delivered product, in four requests.",
     "errorsTitle": "Errors",
@@ -340,7 +340,7 @@
     "colCode": "code",
     "colWhen": "When",
     "step1Title": "Issue a key",
-    "step1Body": "Cabinet → Настройки → «Создать ключ». The secret is shown once; put it wherever your other server secrets live.",
+    "step1Body": "Cabinet → Settings → «Create key». The secret is shown once; put it wherever your other server secrets live.",
     "step2Title": "Prove your signing",
     "step2Body": "The cheapest way to know your signature is right: a request with no body and no parameters. The answer is your profile and balance.",
     "step3Title": "Pick a sku_id",
@@ -428,7 +428,8 @@
     "statSuccess": "delivered",
     "statSuccessHint": "of the ones that finished",
     "statSpend": "spent today",
-    "openOrder": "Open the order"
+    "openOrder": "Open the order",
+    "emptyHint": "Place the first one from the catalog — or send it over the API."
   },
   "transactions": {
     "title": "Transactions",
@@ -444,7 +445,8 @@
     "requestDeposit": "Request a deposit",
     "balance": "Balance",
     "topUpHint": "Top-ups are in USD. Message support — the amount lands once the transfer is confirmed.",
-    "colBalanceAfter": "Balance after"
+    "colBalanceAfter": "Balance after",
+    "emptyHint": "Deposit credits and per-order charges will show up here."
   },
   "settings": {
     "title": "Settings",
@@ -474,7 +476,14 @@
     "saved": "Saved",
     "ipAllowlist": "Allowed IPs",
     "ipAllowlistHint": "One per line: an address or a block (203.0.113.5 or 10.0.0.0/8). Empty means no filter. It cannot be edited on an issued key — create a new one and revoke the old.",
-    "noFilter": "no filter"
+    "noFilter": "no filter",
+    "keyIdLabel": "Key id",
+    "keyIdHint": "Public, starts with ypm_. This is what goes in the X-Merchant-Key header.",
+    "secretLabel": "Signing secret",
+    "secretHint": "Starts with ypms_. You sign the request with it — it is never sent in a header. It is not the webhook secret: that one starts with ypmw_ and lives in the Webhook block below.",
+    "copyKeyId": "Copy the key id",
+    "copySecret": "Copy the secret",
+    "savedIt": "I have saved it"
   },
   "webhooks": {
     "title": "Webhooks",
@@ -521,6 +530,10 @@
     "sendTest": "Send a test event",
     "testSent": "Sent — look in the log",
     "logLink": "Delivery log →",
-    "logIntro": "What we sent, where it went and what your server answered. The address and secret live in Настройки."
+    "logIntro": "What we sent, where it went and what your server answered.",
+    "disabledWhy": "We stopped sending: too many deliveries in a row went unanswered, and we mailed you about it. Once your endpoint is fixed, press «Turn it back on» — the counter resets, the address and secret stay as they are.",
+    "reenable": "Turn it back on",
+    "logConfigLink": "Webhook address and secret →",
+    "logEmptyHint": "Set an address in Settings, then press «Send a test event»."
   }
 }

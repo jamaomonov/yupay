@@ -225,7 +225,7 @@
     "comingSoon": "Boʻlim tez orada ochiladi",
     "themeToggle": "Mavzuni almashtirish",
     "navLabel": "Kabinet boʻlimlari",
-    "navWebhooks": "Vebhuklar",
+    "navWebhooks": "Yetkazishlar jurnali",
     "todayTitle": "Bugun",
     "todayDelivered": "Yetkazildi",
     "todayHint": "Brauzeringiz soati boʻyicha yarim tundan beri",
@@ -428,7 +428,8 @@
     "statSuccess": "yetkazildi",
     "statSuccessHint": "tugaganlaridan",
     "statSpend": "bugun sarflandi",
-    "openOrder": "Buyurtmani ochish"
+    "openOrder": "Buyurtmani ochish",
+    "emptyHint": "Birinchisini katalogdan rasmiylashtiring — yoki API orqali yuboring."
   },
   "transactions": {
     "title": "Tranzaksiyalar",
@@ -444,7 +445,8 @@
     "requestDeposit": "Depozit soʻrash",
     "balance": "Balans",
     "topUpHint": "Toʻldirish USD da. Qoʻllab-quvvatlash xizmatiga yozing — summa oʻtkazma tasdiqlangach tushadi.",
-    "colBalanceAfter": "Keyingi balans"
+    "colBalanceAfter": "Keyingi balans",
+    "emptyHint": "Bu yerda depozitga tushumlar va buyurtmalar uchun yechimlar koʻrinadi."
   },
   "settings": {
     "title": "Sozlamalar",
@@ -474,7 +476,14 @@
     "saved": "Saqlandi",
     "ipAllowlist": "Ruxsat etilgan IP",
     "ipAllowlistHint": "Har biri alohida qatorda: manzil yoki tarmoq (203.0.113.5 yoki 10.0.0.0/8). Boʻsh — cheklovsiz. Chiqarilgan kalitda oʻzgartirib boʻlmaydi: yangisini yarating va eskisini bekor qiling.",
-    "noFilter": "cheklovsiz"
+    "noFilter": "cheklovsiz",
+    "keyIdLabel": "Kalit identifikatori",
+    "keyIdHint": "Ochiq, ypm_ bilan boshlanadi. Aynan u X-Merchant-Key sarlavhasida yuboriladi.",
+    "secretLabel": "Imzo kaliti",
+    "secretHint": "ypms_ bilan boshlanadi. Siz u bilan soʻrovni imzolaysiz — sarlavhada hech qachon yuborilmaydi. Bu vebhuk kaliti emas: u ypmw_ bilan boshlanadi va quyidagi «Vebhuk» blokida turadi.",
+    "copyKeyId": "Identifikatorni nusxalash",
+    "copySecret": "Kalitni nusxalash",
+    "savedIt": "Saqlab oldim"
   },
   "webhooks": {
     "title": "Vebhuklar",
@@ -521,6 +530,10 @@
     "sendTest": "Test hodisa yuborish",
     "testSent": "Yuborildi — jurnalga qarang",
     "logLink": "Yuborishlar jurnali →",
-    "logIntro": "Nima yuborganimiz, qayerga va serveringiz nima javob bergani. Manzil va kalit — Sozlamalarda."
+    "logIntro": "Nima yuborganimiz, qayerga va serveringiz nima javob bergani.",
+    "disabledWhy": "Yuborishni toʻxtatdik: ketma-ket juda koʻp yetkazishga javob kelmadi, bu haqda pochtangizga xat yubordik. Qabulni tuzatganingizdan soʻng «Yana yoqish» ni bosing: hisoblagich nolga tushadi, manzil va kalit oʻzgarmaydi.",
+    "reenable": "Yana yoqish",
+    "logConfigLink": "Vebhuk manzili va kaliti →",
+    "logEmptyHint": "Sozlamalarda manzilni koʻrsating va «Test hodisa yuborish» ni bosing."
   }
 }

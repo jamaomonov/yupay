@@ -138,7 +138,9 @@ export default function OrdersList() {
         })}
       </div>
 
-      {rows !== null && rows.length === 0 && <EmptyState icon={Package} title={t("empty")} />}
+      {rows !== null && rows.length === 0 && (
+        <EmptyState icon={Package} title={t("empty")} hint={t("emptyHint")} />
+      )}
 
       {rows !== null && rows.length > 0 && (
         <div className="border-border bg-card mt-6 overflow-x-auto rounded-xl border">

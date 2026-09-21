@@ -116,7 +116,7 @@ export default function TransactionsList() {
       </section>
 
       {rows !== null && rows.length === 0 && (
-        <EmptyState icon={ArrowLeftRight} title={t("empty")} />
+        <EmptyState icon={ArrowLeftRight} title={t("empty")} hint={t("emptyHint")} />
       )}
 
       {rows !== null && rows.length > 0 && (

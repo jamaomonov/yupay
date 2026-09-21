@@ -18,9 +18,11 @@ function newKey(): string {
 /**
  * Where a merchant points our deliveries, and how that endpoint is behaving.
  *
- * On Настройки rather than on Вебхуки, which is the delivery **log**: the
- * design separates "what I configured" from "what happened", and a person
- * arriving to change a URL is not the same person arriving to read a 502.
+ * On Настройки rather than on «Журнал доставок», which is the delivery
+ * **log**: the design separates "what I configured" from "what happened", and
+ * a person arriving to change a URL is not the same person arriving to read a
+ * 502. The sidebar used to call the log «Вебхуки», which put the two one word
+ * apart and sent everybody hunting for the URL field on the wrong screen.
  */
 export function WebhookCard({ locale }: { locale: string }) {
   const t = useTranslations("merchant.webhooks");
@@ -171,6 +173,39 @@ export function WebhookCard({ locale }: { locale: string }) {
                 </dd>
               </div>
             </dl>
+
+            {/* An auto-disabled hook used to be a red word and nothing else.
+                The recovery path existed all along — `PUT /webhook` clears
+                `disabled_at` and the streak, and does NOT rotate the secret —
+                but the only way to find it was to re-type the URL you already
+                had into the form above and press Save, which reads like a
+                no-op. So a hook that fell over during an outage stayed off
+                until somebody wrote to support. */}
+            {hook.disabled_at !== null && (
+              <div className="border-danger bg-card-2 mt-5 rounded-xl border p-4">
+                <p className="text-tx-mute text-sm leading-relaxed">{t("disabledWhy")}</p>
+                <button
+                  type="button"
+                  disabled={busy || url.trim() === ""}
+                  onClick={() => {
+                    const key = newKey();
+                    // The URL as it stands in the field, which `loadHook`
+                    // filled from the server: re-enabling is the same write
+                    // as confirming the address, and the API says so.
+                    write(() =>
+                      api<WebhookWithSecret>("/webhook", {
+                        method: "PUT",
+                        body: { url },
+                        idempotencyKey: key,
+                      }),
+                    );
+                  }}
+                  className="bg-primary text-primary-foreground rounded-btn mt-3 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                >
+                  {t("reenable")}
+                </button>
+              </div>
+            )}
 
             <div className="mt-5 flex flex-wrap items-center gap-2">
               {confirming === null && (

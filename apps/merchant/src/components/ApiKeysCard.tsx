@@ -50,14 +50,51 @@ export function ApiKeysCard() {
         // Rendered above the list and never re-rendered from it: this is the
         // only moment the secret exists outside our encryption, so the panel
         // has to be impossible to miss and impossible to get back.
+        //
+        // Both halves are LABELLED, and the labels name the prefix and the
+        // header, because the unlabelled version cost a real integration a
+        // day: the panel showed two monospace lines, `ypm_…` above `ypms_…`,
+        // with one copy button on the lower one. The merchant sent us a
+        // config with `MERCHANT_KEY = "ypms…"` and `MERCHANT_SECRET =
+        // "ypmw_…"` — every credential in the wrong slot, and every request
+        // failing `invalid_credentials` with nothing to say which one was
+        // wrong. Three secrets whose names all begin `ypm` need the page to
+        // say which is which; a reader cannot infer it from the shape.
         <div role="status" className="border-primary bg-card-2 mt-5 rounded-xl border p-5">
           <p className="font-semibold">{t("secretOnceTitle")}</p>
           <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("secretOnceBody")}</p>
-          <p className="mt-4 break-all font-mono text-xs">{issued.key_id}</p>
-          <p className="mt-1.5 break-all font-mono text-sm">{issued.secret}</p>
-          <div className="mt-3">
-            <CopyButton value={issued.secret} label={t("copy")} done={t("copied")} />
+
+          <div className="mt-4">
+            <p className="text-tx-mute text-sm">{t("keyIdLabel")}</p>
+            <p className="mt-1 break-all font-mono text-sm">{issued.key_id}</p>
+            <p className="text-tx-dim mt-1 text-xs leading-relaxed">{t("keyIdHint")}</p>
+            <div className="mt-2">
+              <CopyButton value={issued.key_id} label={t("copyKeyId")} done={t("copied")} />
+            </div>
           </div>
+
+          <div className="mt-5">
+            <p className="text-tx-mute text-sm">{t("secretLabel")}</p>
+            <p className="mt-1 break-all font-mono text-sm">{issued.secret}</p>
+            <p className="text-tx-dim mt-1 max-w-xl text-xs leading-relaxed">{t("secretHint")}</p>
+            <div className="mt-2">
+              <CopyButton value={issued.secret} label={t("copySecret")} done={t("copied")} />
+            </div>
+          </div>
+
+          {/* The panel used to sit there until something else re-rendered the
+              page, so the way it left was a reload — which is the one event
+              that loses the secret without asking. Dismissing it is now a
+              deliberate click that says what it means. */}
+          <button
+            type="button"
+            onClick={() => {
+              setIssued(null);
+            }}
+            className="border-border rounded-btn mt-5 border px-4 py-2 text-sm font-semibold"
+          >
+            {t("savedIt")}
+          </button>
         </div>
       )}
 
@@ -139,7 +176,14 @@ export function ApiKeysCard() {
           {keys.map((key) => (
             <li key={key.id} className="flex flex-wrap items-center gap-x-4 gap-y-2 py-3.5">
               <div className="min-w-0 flex-1">
-                <p className="break-all font-mono text-xs">{key.key_id}</p>
+                {/* The key id is the one credential that survives the panel
+                    above, and it is the one a merchant comes back for — it
+                    goes in a header on every request. Selecting 40 monospace
+                    characters by hand is where a trailing space comes from. */}
+                <div className="flex items-center gap-2">
+                  <p className="min-w-0 break-all font-mono text-xs">{key.key_id}</p>
+                  <CopyButton value={key.key_id} label={t("copy")} done={t("copied")} />
+                </div>
                 <p className="text-tx-dim mt-0.5 text-xs">
                   {key.label || "—"} · {t("lastUsed")}:{" "}
                   {key.last_used_at === null ? t("never") : formatMoment(key.last_used_at, locale)}
