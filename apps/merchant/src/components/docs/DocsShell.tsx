@@ -182,7 +182,7 @@ export function DocsShell({
 
         <nav aria-label={t("navLabel")} className="min-h-0 flex-1 overflow-y-auto px-3 pb-6">
           {shown.length === 0 && (
-            <p role="status" className="text-tx-dim px-2 py-3 text-xs">
+            <p role="status" translate="no" className="text-tx-dim px-2 py-3 text-xs">
               {t("noMatches")}
             </p>
           )}

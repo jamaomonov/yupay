@@ -60,7 +60,11 @@ export function ApiKeysCard() {
         // failing `invalid_credentials` with nothing to say which one was
         // wrong. Three secrets whose names all begin `ypm` need the page to
         // say which is which; a reader cannot infer it from the shape.
-        <div role="status" className="border-primary bg-card-2 mt-5 rounded-xl border p-5">
+        <div
+          role="status"
+          translate="no"
+          className="border-primary bg-card-2 mt-5 rounded-xl border p-5"
+        >
           <p className="font-semibold">{t("secretOnceTitle")}</p>
           <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("secretOnceBody")}</p>
 
@@ -207,7 +211,7 @@ export function ApiKeysCard() {
                 </button>
               )}
               {key.revoked_at === null && confirming === key.key_id && (
-                <div className="flex flex-wrap items-center gap-2">
+                <div translate="no" className="flex flex-wrap items-center gap-2">
                   <p className="text-tx-mute w-full text-xs">{t("revokeConfirm")}</p>
                   <button
                     type="button"

@@ -244,12 +244,12 @@ export default function BrandPage() {
               </dl>
 
               {error && (
-                <p role="alert" className="text-danger mt-3 text-sm">
+                <p role="alert" translate="no" className="text-danger mt-3 text-sm">
                   {error}
                 </p>
               )}
               {placed && (
-                <p role="status" className="text-primary-ink mt-3 text-sm">
+                <p role="status" translate="no" className="text-primary-ink mt-3 text-sm">
                   {t("created")} · {orderStatusLabel(placed.status, tOrders)}
                   {" · "}
                   <Link

@@ -23,6 +23,14 @@ export function CopyButton({ value, label, done }: CopyButtonProps) {
   return (
     <button
       type="button"
+      // The label swaps to «Скопировано» and back on a two-second timer, and
+      // a text node a page translator has replaced is a node React can no
+      // longer remove — `NotFoundError: Failed to execute 'removeChild'`,
+      // which takes the whole cabinet to its error boundary. Reported from a
+      // merchant reading the Russian cabinet through Chrome's translator on
+      // 2026-09-21. `translate="no"` on the elements React rewrites, not on
+      // the app: the rest of the page still translates.
+      translate="no"
       aria-label={copied ? done : label}
       onClick={() => {
         // `writeText` rejects without a user gesture or on an insecure origin.

@@ -75,7 +75,7 @@ export function SubmitButton({ label, busy }: { label: string; busy: boolean }) 
 export function FormError({ message }: { message: string | null }) {
   if (!message) return null;
   return (
-    <p role="alert" className="text-danger mb-4 text-sm leading-relaxed">
+    <p role="alert" translate="no" className="text-danger mb-4 text-sm leading-relaxed">
       {message}
     </p>
   );

@@ -113,7 +113,7 @@ export default function SettingsPage() {
             {t("save")}
           </button>
           {savedZone && (
-            <p role="status" className="text-tx-mute text-sm">
+            <p role="status" translate="no" className="text-tx-mute text-sm">
               {t("saved")}
             </p>
           )}

@@ -80,7 +80,11 @@ export function WebhookCard({ locale }: { locale: string }) {
       <p className="text-tx-mute mt-1.5 max-w-2xl text-sm leading-relaxed">{t("intro")}</p>
 
       {secret !== null && (
-        <div role="status" className="border-primary bg-card-2 mt-6 rounded-xl border p-5">
+        <div
+          role="status"
+          translate="no"
+          className="border-primary bg-card-2 mt-6 rounded-xl border p-5"
+        >
           <p className="font-semibold">{t("secretOnceTitle")}</p>
           <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("secretOnceBody")}</p>
           <p className="mt-4 break-all font-mono text-sm">{secret}</p>
@@ -132,7 +136,7 @@ export function WebhookCard({ locale }: { locale: string }) {
         </form>
 
         {error !== null && (
-          <p role="alert" className="text-danger mt-3 text-sm leading-relaxed">
+          <p role="alert" translate="no" className="text-danger mt-3 text-sm leading-relaxed">
             {error}
           </p>
         )}
@@ -182,7 +186,7 @@ export function WebhookCard({ locale }: { locale: string }) {
                 no-op. So a hook that fell over during an outage stayed off
                 until somebody wrote to support. */}
             {hook.disabled_at !== null && (
-              <div className="border-danger bg-card-2 mt-5 rounded-xl border p-4">
+              <div translate="no" className="border-danger bg-card-2 mt-5 rounded-xl border p-4">
                 <p className="text-tx-mute text-sm leading-relaxed">{t("disabledWhy")}</p>
                 <button
                   type="button"
@@ -234,7 +238,7 @@ export function WebhookCard({ locale }: { locale: string }) {
                     {t("sendTest")}
                   </button>
                   {sent && (
-                    <span role="status" className="text-primary-ink text-xs">
+                    <span role="status" translate="no" className="text-primary-ink text-xs">
                       {t("testSent")}
                     </span>
                   )}
@@ -262,7 +266,7 @@ export function WebhookCard({ locale }: { locale: string }) {
               )}
               {confirming !== null && (
                 <>
-                  <p className="text-tx-mute w-full text-xs">
+                  <p translate="no" className="text-tx-mute w-full text-xs">
                     {confirming === "rotate" ? t("rotateConfirm") : t("disableConfirm")}
                   </p>
                   <button
