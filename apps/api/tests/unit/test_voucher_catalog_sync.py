@@ -30,6 +30,24 @@ from yupay.modules.integrations import catalog_sync_nova_vouchers as gift
 pytestmark = pytest.mark.asyncio
 
 
+#: These functions never touch the session — ``service`` is faked out below —
+#: so the argument exists only to satisfy the signature. Widened once here
+#: rather than cast at each of the twenty call sites; ``mypy --strict`` checks
+#: test files too, and a per-call ``cast`` would bury the assertions.
+_NO_DB: Any = None
+
+
+def _as_client(fake: object) -> Any:
+    """Hand a fake to a function typed for the real supplier client.
+
+    The adapters these modules take are used for two or three methods and are
+    duck-typed on purpose — what is under test is "what did the supplier say,
+    and what do I do about it", not the HTTP client. One widening point keeps
+    that from becoming an argument at every call.
+    """
+    return fake
+
+
 class _Writes:
     """Stands in for ``integrations.service``, recording what was written."""
 
@@ -97,7 +115,7 @@ async def test_a_category_with_no_id_is_skipped_not_written(_svc: Any) -> None:
     writes = _svc(gift, _Writes())
     client = _NovaClient(categories=[{"name": "nameless"}, {"category_id": "roblox_global"}])
 
-    written, error = await gift.sync_giftcard_categories(None, client)
+    written, error = await gift.sync_giftcard_categories(_NO_DB, _as_client(client))
 
     assert (written, error) == (1, None)
     assert [row[1] for row in writes.rows] == ["roblox_global"]
@@ -107,7 +125,7 @@ async def test_a_failing_category_sweep_reports_rather_than_raises(_svc: Any) ->
     _svc(gift, _Writes())
     client = _NovaClient(categories=RuntimeError("upstream is down"))
 
-    written, error = await gift.sync_giftcard_categories(None, client)
+    written, error = await gift.sync_giftcard_categories(_NO_DB, _as_client(client))
 
     assert written == 0
     assert "gift-card sync failed" in (error or "")
@@ -122,7 +140,7 @@ async def test_a_404_on_a_category_is_missing_not_an_error(_svc: Any) -> None:
     _svc(gift, _Writes(mapped=["roblox_global"]))
     client = _NovaClient(cards=NovaError("not found", status=404))
 
-    written, missing, error = await gift.refresh_mapped_giftcards(None, client)
+    written, missing, error = await gift.refresh_mapped_giftcards(_NO_DB, _as_client(client))
 
     assert (written, missing, error) == (0, 1, None)
 
@@ -135,7 +153,9 @@ async def test_a_404_on_a_category_is_missing_not_an_error(_svc: Any) -> None:
 async def test_an_ambiguous_refusal_is_an_error_not_a_delisting(_svc: Any, boom: Exception) -> None:
     _svc(gift, _Writes(mapped=["roblox_global"]))
 
-    written, missing, error = await gift.refresh_mapped_giftcards(None, _NovaClient(cards=boom))
+    written, missing, error = await gift.refresh_mapped_giftcards(
+        _NO_DB, _as_client(_NovaClient(cards=boom))
+    )
 
     assert (written, missing) == (0, 0)
     assert "failed to refresh" in (error or "")
@@ -145,7 +165,7 @@ async def test_a_malformed_card_is_reported_not_raised(_svc: Any) -> None:
     _svc(gift, _Writes(mapped=["roblox_global"]))
     client = _NovaClient(cards=[{"card_id": "50_robux", "price_usd": "not a number"}])
 
-    written, missing, error = await gift.refresh_mapped_giftcards(None, client)
+    written, missing, error = await gift.refresh_mapped_giftcards(_NO_DB, _as_client(client))
 
     assert missing == 0
     assert "failed to refresh" in (error or "")
@@ -155,7 +175,7 @@ async def test_a_card_with_no_id_is_skipped_and_never_pruned_against(_svc: Any) 
     writes = _svc(gift, _Writes(mapped=["roblox_global"]))
     client = _NovaClient(cards=[{"name": "nameless"}, {"card_id": "50_robux", "price_usd": "1.5"}])
 
-    written, _missing, error = await gift.refresh_mapped_giftcards(None, client)
+    written, _missing, error = await gift.refresh_mapped_giftcards(_NO_DB, _as_client(client))
 
     assert (written, error) == (1, None)
     # The prune keeps exactly what was seen — an id-less row must not make
@@ -169,7 +189,7 @@ async def test_the_mapped_category_fetch_is_capped(_svc: Any, monkeypatch: Any) 
     _svc(gift, _Writes(mapped=["a", "b", "c", "d"]))
     client = _NovaClient(cards=[])
 
-    await gift.refresh_mapped_giftcards(None, client)
+    await gift.refresh_mapped_giftcards(_NO_DB, _as_client(client))
 
     assert client.asked == ["a", "b"]
 
@@ -178,7 +198,9 @@ async def test_the_on_demand_pull_names_a_category_that_does_not_exist(_svc: Any
     _svc(gift, _Writes())
     client = _NovaClient(cards=NovaError("not found", status=404))
 
-    written, error = await gift.sync_one_category_cards(None, client, category_id="nope")
+    written, error = await gift.sync_one_category_cards(
+        _NO_DB, _as_client(client), category_id="nope"
+    )
 
     assert written == 0
     assert "nope" in (error or "")
@@ -188,7 +210,9 @@ async def test_the_on_demand_pull_returns_what_it_wrote(_svc: Any) -> None:
     _svc(gift, _Writes())
     client = _NovaClient(cards=[{"card_id": "50_robux", "price_usd": "0.87"}])
 
-    written, error = await gift.sync_one_category_cards(None, client, category_id="roblox_global")
+    written, error = await gift.sync_one_category_cards(
+        _NO_DB, _as_client(client), category_id="roblox_global"
+    )
 
     assert (written, error) == (1, None)
 
@@ -222,7 +246,7 @@ async def test_a_full_first_page_is_followed_by_a_second(_svc: Any) -> None:
 
     client = _ShopClient(pages=[_page(MAX_PAGE), _page(3)])
 
-    items, truncated = await shop.list_all_shop_products(client)
+    items, truncated = await shop.list_all_shop_products(_as_client(client))
 
     assert (len(items), truncated) == (MAX_PAGE + 3, False)
 
@@ -234,7 +258,7 @@ async def test_a_full_second_page_says_it_was_truncated(_svc: Any) -> None:
 
     client = _ShopClient(pages=[_page(MAX_PAGE), _page(MAX_PAGE)])
 
-    _items, truncated = await shop.list_all_shop_products(client)
+    _items, truncated = await shop.list_all_shop_products(_as_client(client))
 
     assert truncated is True
 
@@ -243,7 +267,7 @@ async def test_a_shop_product_with_no_id_is_skipped(_svc: Any) -> None:
     writes = _svc(shop, _Writes())
     client = _ShopClient(pages=[[{"name": "nameless"}, {"id": 9, "name": "Roblox"}]])
 
-    products, _denoms, error = await shop.sync_shop_catalog(None, client)
+    products, _denoms, error = await shop.sync_shop_catalog(_NO_DB, _as_client(client))
 
     assert (products, error) == (1, None)
     assert [row[1] for row in writes.rows] == ["9"]
@@ -258,7 +282,7 @@ async def test_a_failing_shop_sweep_still_refreshes_the_mapped_ladders(_svc: Any
 
     client = _Broken(denoms=[{"id": 727, "name": "2000 Robux", "price": 22.09}])
 
-    products, denoms, error = await shop.sync_shop_catalog(None, client)
+    products, denoms, error = await shop.sync_shop_catalog(_NO_DB, _as_client(client))
 
     assert (products, denoms) == (0, 1)
     assert "shop sync failed" in (error or "")
@@ -269,7 +293,7 @@ async def test_a_denomination_call_that_fails_names_its_product(_svc: Any) -> No
     _svc(shop, _Writes(mapped=["9"]))
     client = _ShopClient(denoms=RuntimeError("500 from upstream"))
 
-    written, error = await shop.refresh_mapped_shop_denoms(None, client)
+    written, error = await shop.refresh_mapped_shop_denoms(_NO_DB, _as_client(client))
 
     assert written == 0
     assert (error or "").startswith("9:")
@@ -279,7 +303,7 @@ async def test_a_malformed_denomination_is_reported_not_raised(_svc: Any) -> Non
     _svc(shop, _Writes(mapped=["9"]))
     client = _ShopClient(denoms=[{"id": 727, "price": "not a number"}])
 
-    _written, error = await shop.refresh_mapped_shop_denoms(None, client)
+    _written, error = await shop.refresh_mapped_shop_denoms(_NO_DB, _as_client(client))
 
     assert "malformed denomination" in (error or "")
 
@@ -288,7 +312,7 @@ async def test_a_denomination_with_no_id_is_skipped(_svc: Any) -> None:
     writes = _svc(shop, _Writes(mapped=["9"]))
     client = _ShopClient(denoms=[{"name": "nameless"}, {"id": 727, "price": 22.09}])
 
-    written, error = await shop.refresh_mapped_shop_denoms(None, client)
+    written, error = await shop.refresh_mapped_shop_denoms(_NO_DB, _as_client(client))
 
     assert (written, error) == (1, None)
     assert writes.pruned == [("9", {"727"})]
@@ -300,7 +324,7 @@ async def test_a_non_numeric_product_id_is_a_mapping_typo_not_a_crash(_svc: Any)
     _svc(shop, _Writes(mapped=["roblox_global"]))
     client = _ShopClient()
 
-    written, error = await shop.refresh_mapped_shop_denoms(None, client)
+    written, error = await shop.refresh_mapped_shop_denoms(_NO_DB, _as_client(client))
 
     assert written == 0
     assert "not a numeric shop product id" in (error or "")
@@ -310,7 +334,7 @@ async def test_a_non_numeric_product_id_is_a_mapping_typo_not_a_crash(_svc: Any)
 async def test_a_failing_mapped_lookup_is_reported(_svc: Any) -> None:
     _svc(shop, _Writes(boom=True))
 
-    written, error = await shop.refresh_mapped_shop_denoms(None, _ShopClient())
+    written, error = await shop.refresh_mapped_shop_denoms(_NO_DB, _as_client(_ShopClient()))
 
     assert written == 0
     assert "mapped shop lookup failed" in (error or "")
@@ -321,7 +345,7 @@ async def test_the_mapped_product_fetch_is_capped(_svc: Any, monkeypatch: Any) -
     _svc(shop, _Writes(mapped=["1", "2", "3", "4"]))
     client = _ShopClient()
 
-    await shop.refresh_mapped_shop_denoms(None, client)
+    await shop.refresh_mapped_shop_denoms(_NO_DB, _as_client(client))
 
     assert client.asked == [1, 2]
 
@@ -331,7 +355,7 @@ async def test_the_on_demand_shop_pull_refuses_a_non_numeric_id(_svc: Any) -> No
     client = _ShopClient()
 
     written, error = await shop.sync_one_shop_product_denoms(
-        None, client, product_id="roblox_global"
+        _NO_DB, _as_client(client), product_id="roblox_global"
     )
 
     assert written == 0
@@ -343,7 +367,9 @@ async def test_the_on_demand_shop_pull_returns_what_it_wrote(_svc: Any) -> None:
     _svc(shop, _Writes())
     client = _ShopClient(denoms=[{"id": 727, "price": 22.09}])
 
-    written, error = await shop.sync_one_shop_product_denoms(None, client, product_id="9")
+    written, error = await shop.sync_one_shop_product_denoms(
+        _NO_DB, _as_client(client), product_id="9"
+    )
 
     assert (written, error) == (1, None)
 
@@ -360,7 +386,7 @@ async def test_an_unknown_supplier_has_no_voucher_syncer() -> None:
 
     with pytest.raises(NotFoundError):
         await catalog_sync.run_voucher_denomination_sync(
-            None, supplier_slug="g2b", product_id="1234"
+            _NO_DB, supplier_slug="g2b", product_id="1234"
         )
 
 
@@ -387,7 +413,7 @@ async def test_an_unconfigured_supplier_reports_rather_than_syncs(
         else module.sync_gengine_voucher_denominations
     )
 
-    written, error = await func(None, product_id="9")
+    written, error = await func(_NO_DB, product_id="9")
 
     assert written == 0
     assert "not configured" in (error or "")
@@ -414,15 +440,16 @@ async def test_the_whole_nova_sync_survives_a_gift_card_half_that_raises(
     async def _raise(*_args: Any, **_kw: Any) -> Any:
         raise RuntimeError("the inner promise broke")
 
-    monkeypatch.setattr(nova, "_nova_client_or_none", lambda: _NovaClient(categories=[]))
+    fake_nova = _NovaClient(categories=[])
+    monkeypatch.setattr(nova, "_nova_client_or_none", lambda: fake_nova)
 
     async def _no_games(_db: Any) -> tuple[int, int, str | None]:
         return 0, 0, None
 
     monkeypatch.setattr(nova, "_refresh_mapped_game_denoms", _no_games)
-    monkeypatch.setattr(nova.vouchers_sync, broken, _raise)
+    monkeypatch.setattr(f"yupay.modules.integrations.catalog_sync_nova_vouchers.{broken}", _raise)
 
-    report = await nova.sync_nova_catalog(None)
+    report = await nova.sync_nova_catalog(_NO_DB)
 
     assert "gift-card" in (report.error or "")
 
@@ -438,8 +465,10 @@ async def test_the_whole_gengine_sync_survives_a_shop_half_that_raises(
     client = _ShopClient()
     monkeypatch.setattr(gengine, "_gengine_client_or_none", lambda: client)
     monkeypatch.setattr(gengine, "svc", _Writes(mapped=[]))
-    monkeypatch.setattr(gengine.shop_sync, "sync_shop_catalog", _raise)
+    monkeypatch.setattr(
+        "yupay.modules.integrations.catalog_sync_gengine_vouchers.sync_shop_catalog", _raise
+    )
 
-    report = await gengine.sync_gengine_catalog(None)
+    report = await gengine.sync_gengine_catalog(_NO_DB)
 
     assert "shop sync failed" in (report.error or "")

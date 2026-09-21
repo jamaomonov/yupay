@@ -29,6 +29,16 @@ class _Row:
         self.price_usdt = price
 
 
+def _db(row: Any) -> Any:
+    """A session that answers one cache lookup with ``row``.
+
+    Widened to ``Any`` here rather than cast at each call: these lookups take
+    an ``AsyncSession`` and use exactly one method of it, and ``mypy --strict``
+    checks test files too.
+    """
+    return _Session(row)
+
+
 class _Session:
     """Answers one cache lookup with whatever the test put in it."""
 
@@ -62,9 +72,7 @@ async def test_gengine_without_a_denomination_cannot_be_priced() -> None:
     """Telegram Stars and the free-amount lines carry their size in
     ``quantity`` and no variant at all — there is no catalogue row to read,
     and a per-unit number would not be this SKU's cost anyway."""
-    lookup = await _gengine_raw_price(
-        _Session(None), _mapping(kind="game", product="72", variant=None)
-    )
+    lookup = await _gengine_raw_price(_db(None), _mapping(kind="game", product="72", variant=None))
 
     assert lookup.amount is None
     assert "не указан номинал" in (lookup.reason or "")
@@ -72,7 +80,7 @@ async def test_gengine_without_a_denomination_cannot_be_priced() -> None:
 
 async def test_gengine_sends_the_operator_to_the_sync_button() -> None:
     lookup = await _gengine_raw_price(
-        _Session(None), _mapping(kind="voucher", product="9", variant="727")
+        _db(None), _mapping(kind="voucher", product="9", variant="727")
     )
 
     assert lookup.amount is None
@@ -81,7 +89,7 @@ async def test_gengine_sends_the_operator_to_the_sync_button() -> None:
 
 async def test_gengine_a_cached_row_without_a_price_is_not_a_price_of_zero() -> None:
     lookup = await _gengine_raw_price(
-        _Session(_Row(None)), _mapping(kind="voucher", product="9", variant="727")
+        _db(_Row(None)), _mapping(kind="voucher", product="9", variant="727")
     )
 
     assert lookup.amount is None
@@ -90,7 +98,7 @@ async def test_gengine_a_cached_row_without_a_price_is_not_a_price_of_zero() -> 
 
 async def test_gengine_reads_the_cached_price_and_says_where_it_came_from() -> None:
     lookup = await _gengine_raw_price(
-        _Session(_Row(Decimal("22.0932"))), _mapping(kind="voucher", product="9", variant="727")
+        _db(_Row(Decimal("22.0932"))), _mapping(kind="voucher", product="9", variant="727")
     )
 
     assert lookup.reason is None
@@ -104,7 +112,7 @@ async def test_a_nova_gift_card_mapping_with_no_card_is_refused() -> None:
     mapping = _mapping(kind="voucher", product="roblox_global", variant=None)
     mapping.supplier_slug = "nova"
 
-    lookup = await _nova_giftcard_price(_Session(None), mapping)
+    lookup = await _nova_giftcard_price(_db(None), mapping)
 
     assert lookup.amount is None
     assert "card_id" in (lookup.reason or "")
@@ -114,7 +122,7 @@ async def test_an_unsynced_nova_category_says_so() -> None:
     mapping = _mapping(kind="voucher", product="roblox_global", variant="50_robux")
     mapping.supplier_slug = "nova"
 
-    lookup = await _nova_giftcard_price(_Session(None), mapping)
+    lookup = await _nova_giftcard_price(_db(None), mapping)
 
     assert "синхронизируйте каталог NOVA" in (lookup.reason or "")
 
@@ -123,7 +131,7 @@ async def test_a_nova_card_row_without_a_price_is_refused_not_zeroed() -> None:
     mapping = _mapping(kind="voucher", product="roblox_global", variant="50_robux")
     mapping.supplier_slug = "nova"
 
-    lookup = await _nova_giftcard_price(_Session(_Row(None)), mapping)
+    lookup = await _nova_giftcard_price(_db(_Row(None)), mapping)
 
     assert lookup.amount is None
     assert "не сообщила цену" in (lookup.reason or "")
