@@ -68,6 +68,7 @@ from yupay.modules.merchants.deposit import (
     DEPOSIT_CURRENCY,
     INSUFFICIENT_DEPOSIT_CODE,
     MERCHANT_REFERENCE_TYPE,
+    NOTE_VISIBLE_KEY,
     OPERATOR_NOTE_KEY,
     deposit_account,
     house_received_account,
@@ -205,7 +206,10 @@ async def debit_deposit(
         # an operator's text back under that one word, and a debit whose
         # reason landed under another key would show a blank line in the
         # audit trail — the justification gone, silently.
-        metadata={OPERATOR_NOTE_KEY: reason},
+        # ``NOTE_VISIBLE_KEY``: the reseller sees this line as an unexplained
+        # negative number otherwise, and the reason was written to answer
+        # exactly the question they would open a ticket to ask.
+        metadata={OPERATOR_NOTE_KEY: reason, NOTE_VISIBLE_KEY: True},
     )
 
 

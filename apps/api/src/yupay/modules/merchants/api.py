@@ -65,6 +65,7 @@ from yupay.modules.merchants.debit import (
 )
 from yupay.modules.merchants.deposit import (
     DEPOSIT_CURRENCY,
+    NOTE_VISIBLE_KEY,
     OPERATOR_NOTE_KEY,
     charge_deposit,
     credit_deposit,
@@ -129,6 +130,7 @@ __all__ = [
     "EVENT_BALANCE_CREDITED",
     "EVENT_ORDER_STATUS_CHANGED",
     "EVENT_TYPES",
+    "NOTE_VISIBLE_KEY",
     "OPERATOR_NOTE_KEY",
     "VALIDATE_RATE_BUCKET",
     "WEBHOOK_QUEUE_CHANNEL",

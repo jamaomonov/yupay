@@ -41,6 +41,11 @@ const FAILURE_REASON: Record<string, string> = {
 /** Ledger `kind` → a key under `merchant.transactions`. */
 const TRANSACTION_KIND: Record<string, string> = {
   merchant_deposit_credit: "kindDepositCredit",
+  // Shipped without this one, so the rarest movement on the ledger — and the
+  // only one that takes money off a reseller — rendered as the raw string
+  // `merchant_deposit_debit`, by the very rule above that keeps an unknown
+  // kind readable. The map is partial on purpose; it still has to be current.
+  merchant_deposit_debit: "kindDepositDebit",
   merchant_order_charge: "kindOrderCharge",
   merchant_order_refund: "kindOrderRefund",
 };

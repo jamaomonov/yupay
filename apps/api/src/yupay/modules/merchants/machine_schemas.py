@@ -726,12 +726,20 @@ class MerchantTransactionOut(BaseModel):
 
     ``amount_usd`` is **signed**: positive credited the deposit, negative spent
     it. The column adds up to the balance ``GET /merchant/v1/me`` reports.
+
+    ``description`` carries the operator's note on the two movements a person
+    makes by hand. Without it a manual debit reached the reseller as an
+    unexplained negative number against an account they cannot ask about
+    except by writing to us — which is precisely the ticket the note was
+    written to answer.
     """
 
     transaction_id: str = Field(description="Our id for this ledger entry.")
     kind: str = Field(
         description=(
             "- `merchant_deposit_credit` — we credited your deposit.\n"
+            "- `merchant_deposit_debit` — we took money back off it. Rare, and "
+            "`description` says why.\n"
             "- `merchant_order_charge` — an order spent it.\n"
             "- `merchant_order_refund` — we returned a failed order's charge.\n\n"
             'More may be added. Treat an unknown kind as "some movement" and trust '
@@ -756,6 +764,15 @@ class MerchantTransactionOut(BaseModel):
             "The same order's id in **your** system, so a statement line reconciles "
             "against your books without a second lookup."
         )
+    )
+    description: str | None = Field(
+        default=None,
+        description=(
+            "Why we moved the money, when a person moved it by hand — the note the "
+            "operator wrote on a manual credit or debit. `null` on everything the "
+            "system posts by itself, which is every order charge and every refund: "
+            "those explain themselves through `order_id`."
+        ),
     )
     created_at: datetime = Field(description="When it was posted, ISO 8601 UTC.")
 

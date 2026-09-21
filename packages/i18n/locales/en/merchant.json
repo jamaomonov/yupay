@@ -440,6 +440,7 @@
     "colOrder": "Order",
     "loadMore": "Show more",
     "kindDepositCredit": "Deposit credited",
+    "kindDepositDebit": "Deposit debit",
     "kindOrderCharge": "Order charge",
     "kindOrderRefund": "Order refund",
     "requestDeposit": "Request a deposit",

@@ -122,12 +122,16 @@ async def _new_key(
 
 
 async def _credit(
-    client: AsyncClient, headers: dict[str, str], merchant_id: str, amount: str
+    client: AsyncClient,
+    headers: dict[str, str],
+    merchant_id: str,
+    amount: str,
+    note: str | None = None,
 ) -> str:
     r = await client.post(
         f"/api/v1/admin/merchants/{merchant_id}/deposit-credits",
         headers={**headers, "Idempotency-Key": f"credit-{new_id()}"},
-        json={"amount": amount},
+        json={"amount": amount, **({"note": note} if note is not None else {})},
     )
     assert r.status_code == 201, r.text
     txn_id: str = r.json()["transaction_id"]
@@ -289,6 +293,39 @@ async def test_money_leaves_this_endpoint_as_a_string_never_a_float(
 
     assert r.status_code == 200, r.text
     json.loads(r.text, parse_float=_no_floats, parse_int=_no_floats)
+
+
+async def test_an_operators_note_reaches_the_reseller_as_description(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """The one movement a reseller cannot explain from `order_id`.
+
+    A manual credit or debit has no order behind it, so before this field the
+    row was a bare signed number against an account they could only ask about
+    by writing to us — while the operator had already typed the answer into
+    the admin form.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00", note="invoice #14")
+
+    r = await _page(integration_client, key_id, secret)
+
+    assert r.status_code == 200, r.text
+    assert [item["description"] for item in r.json()["items"]] == ["invoice #14"]
+
+
+async def test_a_credit_with_no_note_carries_no_description(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "10.00")
+
+    r = await _page(integration_client, key_id, secret)
+
+    assert r.status_code == 200, r.text
+    assert [item["description"] for item in r.json()["items"]] == [None]
 
 
 async def test_an_untouched_deposit_is_an_empty_page_not_a_404(

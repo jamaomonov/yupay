@@ -522,6 +522,24 @@ writer spelling it `"reason"` against a reader filtering `"note"` would move
 the money and show a blank line in the audit trail: the `ORDER_REFERENCE_TYPE`
 defect again, one field over.
 
+That text is now **merchant-visible**, as `description` on
+`GET /merchant/v1/transactions` and a column in the statement CSV. It has to
+be: a support debit reached a reseller as an unexplained negative number
+against an account they could only ask about by writing to us, and the
+operator had already typed the answer. It is the only movement they cannot
+explain from `order_id`.
+
+Exposure is gated on a second key, `deposit.NOTE_VISIBLE_KEY`, and not on the
+note's presence — because the admin form used to promise the opposite in as
+many words («видно только нам»), and notes were written under that promise.
+Publishing them retroactively would break it for text nobody can now review.
+So the flag is set at the write: a movement booked by a form that says the
+note is read by the merchant carries it, every earlier row does not, and
+`transactions._operator_note` shows only the flagged ones. A new writer that
+sets `OPERATOR_NOTE_KEY` without the flag is not a bug — it is a note that
+stays internal, which is the safe default and the reason the gate is a flag
+rather than a rule about the note key.
+
 Both words are spelled once, in `deposit.ORDER_REFERENCE_TYPE` /
 `MERCHANT_REFERENCE_TYPE`, and read back through one function,
 `deposit.order_reference_of`. That is not tidiness. Until M3b Task 2 the

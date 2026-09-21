@@ -81,6 +81,9 @@ async def statement_csv(db: AsyncSession, *, merchant_id: str) -> tuple[str, str
                     _text(item.merchant_order_id),
                     item.order_id or "",
                     item.transaction_id,
+                    # Free text an operator typed, so through `_text` like the
+                    # reseller's own id beside it.
+                    _text(item.description),
                 ]
             )
         cursor = page.next_cursor
@@ -90,7 +93,15 @@ async def statement_csv(db: AsyncSession, *, merchant_id: str) -> tuple[str, str
         if cursor is None or not page.items:
             break
 
-    header = ["created_at", "kind", "amount_usd", "merchant_order_id", "order_id", "transaction_id"]
+    header = [
+        "created_at",
+        "kind",
+        "amount_usd",
+        "merchant_order_id",
+        "order_id",
+        "transaction_id",
+        "description",
+    ]
     span = f"{rows[-1][0][:10]}_{rows[0][0][:10]}" if rows else "empty"
     return _render(header, rows[:MAX_ROWS]), f"yupay-statement-{span}.csv"
 

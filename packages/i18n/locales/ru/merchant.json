@@ -440,6 +440,7 @@
     "colOrder": "Заказ",
     "loadMore": "Показать ещё",
     "kindDepositCredit": "Пополнение депозита",
+    "kindDepositDebit": "Списание с депозита",
     "kindOrderCharge": "Списание за заказ",
     "kindOrderRefund": "Возврат за заказ",
     "requestDeposit": "Запросить пополнение",

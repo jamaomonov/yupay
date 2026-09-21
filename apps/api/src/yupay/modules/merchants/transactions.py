@@ -80,6 +80,8 @@ from yupay.modules.orders.models import Order
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from yupay.modules.wallet.models import WalletTransaction
+
 #: RFC 7807 ``code`` for a cursor we cannot read. Its own code rather than a
 #: bare 422 because it is the one parameter a client constructs from our own
 #: output: telling them *which* input was wrong is the difference between a
@@ -200,6 +202,24 @@ async def _merchant_order_ids(
     }
 
 
+def _operator_note(txn: WalletTransaction) -> str | None:
+    """The note a person wrote on a manual movement, if this is one.
+
+    Merchant-visible, deliberately: an operator writes it to justify taking
+    money off somebody's deposit, and the person it was taken from is the one
+    who needs the justification.
+
+    Gated on `deposit.NOTE_VISIBLE_KEY` rather than on the note's presence.
+    Rows written before the admin form said the text would be read by the
+    merchant carry no flag and stay internal — see that constant for why the
+    promise is kept rather than quietly revised.
+    """
+    if txn.extra_metadata.get(deposit.NOTE_VISIBLE_KEY) is not True:
+        return None
+    note = txn.extra_metadata.get(deposit.OPERATOR_NOTE_KEY)
+    return note.strip() or None if isinstance(note, str) else None
+
+
 async def build(
     db: AsyncSession, *, merchant_id: str, limit: int, cursor: str | None = None
 ) -> MerchantTransactionsOut:
@@ -243,6 +263,12 @@ async def build(
             amount_usd=amount,
             order_id=deposit.order_reference_of(txn),
             merchant_order_id=own_ids.get(deposit.order_reference_of(txn) or ""),
+            # The operator's own words, read back under the one key the admin
+            # ledger writes them to (`deposit.OPERATOR_NOTE_KEY`). Anything
+            # else in `metadata` stays internal — this projects one field by
+            # name rather than handing over the blob, so a key added later for
+            # our own bookkeeping is not published by accident.
+            description=_operator_note(txn),
             created_at=txn.created_at,
         )
         for txn, amount in rows

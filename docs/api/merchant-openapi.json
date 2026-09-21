@@ -756,7 +756,7 @@
         "type": "object"
       },
       "MerchantTransactionOut": {
-        "description": "One movement of the merchant's deposit.\n\n``amount_usd`` is **signed**: positive credited the deposit, negative spent\nit. The column adds up to the balance ``GET /merchant/v1/me`` reports.",
+        "description": "One movement of the merchant's deposit.\n\n``amount_usd`` is **signed**: positive credited the deposit, negative spent\nit. The column adds up to the balance ``GET /merchant/v1/me`` reports.\n\n``description`` carries the operator's note on the two movements a person\nmakes by hand. Without it a manual debit reached the reseller as an\nunexplained negative number against an account they cannot ask about\nexcept by writing to us \u2014 which is precisely the ticket the note was\nwritten to answer.",
         "properties": {
           "amount_usd": {
             "description": "**Signed**: positive credited the deposit, negative spent it. The column adds up to the balance `GET /merchant/v1/me` reports.",
@@ -770,8 +770,20 @@
             "title": "Created At",
             "type": "string"
           },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why we moved the money, when a person moved it by hand \u2014 the note the operator wrote on a manual credit or debit. `null` on everything the system posts by itself, which is every order charge and every refund: those explain themselves through `order_id`.",
+            "title": "Description"
+          },
           "kind": {
-            "description": "- `merchant_deposit_credit` \u2014 we credited your deposit.\n- `merchant_order_charge` \u2014 an order spent it.\n- `merchant_order_refund` \u2014 we returned a failed order's charge.\n\nMore may be added. Treat an unknown kind as \"some movement\" and trust `amount_usd`.",
+            "description": "- `merchant_deposit_credit` \u2014 we credited your deposit.\n- `merchant_deposit_debit` \u2014 we took money back off it. Rare, and `description` says why.\n- `merchant_order_charge` \u2014 an order spent it.\n- `merchant_order_refund` \u2014 we returned a failed order's charge.\n\nMore may be added. Treat an unknown kind as \"some movement\" and trust `amount_usd`.",
             "title": "Kind",
             "type": "string"
           },

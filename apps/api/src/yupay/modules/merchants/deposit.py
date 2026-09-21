@@ -97,6 +97,18 @@ MERCHANT_REFERENCE_TYPE: Final = "merchant"
 #: balance dropping gone.
 OPERATOR_NOTE_KEY: Final = "note"
 
+#: Marks an operator note as one the **merchant** may read, on
+#: ``GET /merchant/v1/transactions`` and in their statement CSV.
+#:
+#: A flag rather than a rule about ``OPERATOR_NOTE_KEY`` itself, because the
+#: admin form used to promise the opposite in as many words — «видно только
+#: нам» — and notes were written under that promise. Publishing them
+#: retroactively would break it for text nobody can now review. So exposure
+#: starts at the write: a movement booked by a form that says the note is
+#: merchant-visible carries this flag, every row written before does not, and
+#: the reader shows only the flagged ones.
+NOTE_VISIBLE_KEY: Final = "note_visible_to_merchant"
+
 #: RFC 7807 ``code`` for an ``order_id`` this merchant has no order under.
 #: One refusal whether the order belongs to another merchant or never existed
 #: at all — see :func:`_resolve_order_reference`. ``order_status`` re-exports
@@ -430,7 +442,7 @@ async def credit_deposit(
         idempotency_key=idempotency_key,
         reference=reference,
         actor=actor,
-        metadata={OPERATOR_NOTE_KEY: note} if note is not None else {},
+        metadata=({OPERATOR_NOTE_KEY: note, NOTE_VISIBLE_KEY: True} if note is not None else {}),
     )
     if not replayed:
         # In this transaction, with the credit, so a merchant is told about

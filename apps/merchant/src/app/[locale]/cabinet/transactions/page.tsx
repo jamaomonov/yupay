@@ -152,8 +152,18 @@ export default function TransactionsList() {
                       </span>
                     </td>
                     <td className="px-4 py-3">
+                      {/* A manual movement has no order, so this cell was a
+                          dash — and a debit reached the reseller as an
+                          unexplained negative number against an account they
+                          could only ask about by writing to us. The operator
+                          already wrote the reason down; it just never left
+                          the admin panel. */}
                       {row.merchant_order_id === null ? (
-                        <span className="text-tx-dim">—</span>
+                        row.description === null ? (
+                          <span className="text-tx-dim">—</span>
+                        ) : (
+                          <span className="text-tx-mute">{row.description}</span>
+                        )
                       ) : (
                         <Link
                           href={pathFor(

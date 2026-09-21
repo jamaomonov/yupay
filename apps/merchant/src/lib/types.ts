@@ -135,6 +135,9 @@ export interface Transaction {
   amount_usd: string;
   order_id: string | null;
   merchant_order_id: string | null;
+  /** The operator's note on a manual credit or debit; `null` on everything
+   *  the system posts by itself. */
+  description: string | null;
   created_at: string;
 }
 
