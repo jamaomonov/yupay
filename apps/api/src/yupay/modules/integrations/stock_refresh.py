@@ -6,13 +6,17 @@ large share of its catalogue sits at zero at any moment. Selling one we cannot
 deliver costs a manual refund, so the count is pulled on a schedule and checkout
 refuses SKUs that have run dry (``orders.service.sku_is_buyable``).
 
-Both voucher suppliers are swept, and they report stock at different levels:
+All three voucher suppliers are swept, and they report stock at different levels:
 
 * **G2B** — one count per product (``GET /products/{id}``).
 * **G-Engine** — a count per *denomination* (``GET /shop/denominations/{product}``),
   which returns every denomination of a product in one call. Standoff 2 alone is
   four SKUs behind one product id, so the responses are cached per product for
   the length of a run rather than fetched once per SKU.
+* **NOVA** — a count per ``card_id`` inside one call for the whole gift-card
+  category (``GET /api/v2/giftcards/cards``), so the same per-id caching as
+  G-Engine. Added 2026-09-21 with the Roblox cards: until then a NOVA-only
+  voucher SKU was untracked, which the catalogue reads as always sellable.
 
 Invoked from the hourly scheduler job
 (``apps/scheduler/.../jobs/refresh_voucher_stock.py``).
@@ -77,7 +81,10 @@ def normalise_stock(raw: Any) -> int | None:
 
 
 async def refresh_voucher_stock(
-    *, client: Any | None = None, gengine_client: Any | None = None
+    *,
+    client: Any | None = None,
+    gengine_client: Any | None = None,
+    nova_client: Any | None = None,
 ) -> StockRefreshReport:
     """Pull stock for every active voucher mapping and persist it.
 
@@ -97,7 +104,10 @@ async def refresh_voucher_stock(
     gengine = gengine_client if gengine_client is not None else _gengine_client()
     if gengine is not None:
         sources["gengine"] = gengine
-    for slug in ("g2b", "gengine"):
+    nova = nova_client if nova_client is not None else _nova_client()
+    if nova is not None:
+        sources["nova"] = nova
+    for slug in ("g2b", "gengine", "nova"):
         if slug not in sources:
             log.info("stock_refresh.supplier_skipped", supplier=slug)
     if not sources:
@@ -126,8 +136,11 @@ async def refresh_voucher_stock(
             for sku_id, supplier, product_id, variant_id in rows
         ]
 
-    #: G-Engine answers with every denomination of a product at once, so one
-    #: response serves all the SKUs behind that product id.
+    #: G-Engine answers with every denomination of a product at once, and NOVA
+    #: with every card of a category, so one response serves all the SKUs
+    #: behind that id. Keyed by supplier as well as id: the two namespaces are
+    #: unrelated and a bare `roblox_global` could otherwise collide with a
+    #: G-Engine product id.
     denominations: dict[str, dict[str, Any] | None] = {}
 
     checked = updated = out = errors = 0
@@ -188,6 +201,8 @@ async def _stock_for(
         return await _gengine_stock(
             client, product_id=product_id, variant_id=variant_id, cache=cache
         )
+    if supplier == "nova":
+        return await _nova_stock(client, category_id=product_id, card_id=variant_id, cache=cache)
     product = await client.fetch_product(product_id)
     # Withdrawn upstream is not "unknown" — it is zero. Leaving it NULL would
     # keep selling a product G2B no longer lists.
@@ -240,6 +255,51 @@ async def _gengine_stock(
         real = [c for c in counts if c is not None]
         return max(real) if real else None
     row = by_id.get(str(variant_id))
+    return 0 if row is None else normalise_stock(row.get("stock"))
+
+
+def _nova_client() -> Any | None:
+    """The NOVA read client, or None when the adapter is not registered."""
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+
+    fulfiller = REGISTRY.get("nova")
+    if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
+        return None
+    return fulfiller.client_for_reads()
+
+
+async def _nova_stock(
+    client: Any,
+    *,
+    category_id: str,
+    card_id: str | None,
+    cache: dict[str, dict[str, Any] | None],
+) -> int | None:
+    """Stock for one NOVA gift-card denomination.
+
+    NOVA reports a count per ``card_id`` inside one call for the whole
+    category, so this is G-Engine's shape rather than G2B's — cached per
+    category for the length of a run.
+
+    Without this, a NOVA-only SKU carried ``supplier_stock = NULL``, which the
+    catalogue reads as "not tracked" and therefore always sellable: a card
+    NOVA had run out of stayed on the shelf and clickable, and the order died
+    at the supplier. Roblox 2500 ships with nine in stock, so that was not a
+    theoretical window.
+    """
+    key = f"nova:{category_id}"
+    if key not in cache:
+        rows = await client.list_giftcard_cards(category_id)
+        cache[key] = {str(row.get("card_id")): row for row in rows if isinstance(row, dict)}
+    by_id = cache[key] or {}
+    if card_id is None:
+        counts = [normalise_stock(r.get("stock")) for r in by_id.values()]
+        real = [c for c in counts if c is not None]
+        return max(real) if real else None
+    row = by_id.get(str(card_id))
+    # A denomination that has vanished from the category reads as zero, for
+    # the same reason a withdrawn G2B product does: it cannot be delivered.
     return 0 if row is None else normalise_stock(row.get("stock"))
 
 

@@ -1,8 +1,8 @@
 """The loop inside ``refresh_voucher_stock``.
 
-Two suppliers report stock at different levels — G2B one count per product,
-G-Engine one per denomination — so the loop dispatches per mapping and the
-G-Engine branch is covered alongside the G2B one.
+Three suppliers report stock at different levels — G2B one count per product,
+G-Engine one per denomination, NOVA one per card inside a gift-card category —
+so the loop dispatches per mapping and each branch is covered beside the G2B one.
 
 ``normalise_stock`` is pinned next door; this covers what wraps it — that a
 withdrawn product becomes zero rather than staying unknown, that one failing id
@@ -253,4 +253,119 @@ async def test_the_two_suppliers_are_swept_in_one_run(_harness: Any) -> None:
 
     assert (robux.supplier_stock, gold.supplier_stock) == (3, 9)
     assert report.checked == 2
+    assert report.errors == 0
+
+
+# ---------- NOVA: stock lives on the card, inside a category ----------
+
+
+class _NovaClient:
+    """`GET /api/v2/giftcards/cards?category_id=…` — a whole category at once."""
+
+    def __init__(self, answers: dict[str, list[dict[str, Any]]]) -> None:
+        self.answers = answers
+        self.asked: list[str] = []
+
+    async def list_giftcard_cards(self, category_id: str) -> list[dict[str, Any]]:
+        self.asked.append(category_id)
+        return self.answers.get(category_id, [])
+
+
+async def test_nova_stock_is_read_per_card(_harness: Any) -> None:
+    install, alerts = _harness
+    r50, r2500 = _sku("roblox-gc-50", 4), _sku("roblox-gc-2500", 9)
+    install(
+        [
+            ("id-roblox-gc-50", "nova", "roblox_global", "c-50"),
+            ("id-roblox-gc-2500", "nova", "roblox_global", "c-2500"),
+        ],
+        [r50, r2500],
+    )
+    client = _NovaClient(
+        {
+            "roblox_global": [
+                {"card_id": "c-50", "stock": 6},
+                {"card_id": "c-2500", "stock": 0},
+                {"card_id": "c-100", "stock": 3},
+            ]
+        }
+    )
+
+    report = await mod.refresh_voucher_stock(client=None, nova_client=client)
+
+    # One call for nine Roblox denominations, not nine.
+    assert client.asked == ["roblox_global"]
+    assert r50.supplier_stock == 6
+    assert r2500.supplier_stock == 0
+    assert r2500.in_stock is False
+    assert report.went_out_of_stock == 1
+    assert alerts == ["voucher_out_of_stock"]
+
+
+async def test_a_nova_card_that_vanished_reads_as_empty(_harness: Any) -> None:
+    """The whole point of sweeping NOVA at all.
+
+    Before 2026-09-21 a NOVA-only voucher SKU was never asked about, so it
+    kept ``supplier_stock = NULL`` — which the catalogue reads as untracked
+    and therefore always sellable. A sold-out card stayed clickable and the
+    order died at the supplier.
+    """
+    install, _alerts = _harness
+    sku = _sku("roblox-gc-3000", 2)
+    install([("id-roblox-gc-3000", "nova", "roblox_global", "c-3000")], [sku])
+    client = _NovaClient({"roblox_global": [{"card_id": "c-50", "stock": 6}]})
+
+    await mod.refresh_voucher_stock(client=None, nova_client=client)
+
+    assert sku.supplier_stock == 0
+    assert sku.in_stock is False
+
+
+async def test_the_nova_category_is_fetched_once_per_run(_harness: Any) -> None:
+    install, _alerts = _harness
+    a, b, c = _sku("gc-a", 1), _sku("gc-b", 1), _sku("gc-c", 1)
+    install(
+        [
+            ("id-gc-a", "nova", "roblox_global", "c-50"),
+            ("id-gc-b", "nova", "roblox_global", "c-100"),
+            ("id-gc-c", "nova", "roblox_global", "c-200"),
+        ],
+        [a, b, c],
+    )
+    client = _NovaClient(
+        {
+            "roblox_global": [
+                {"card_id": "c-50", "stock": 6},
+                {"card_id": "c-100", "stock": 7},
+                {"card_id": "c-200", "stock": 8},
+            ]
+        }
+    )
+
+    await mod.refresh_voucher_stock(client=None, nova_client=client)
+
+    assert client.asked == ["roblox_global"]
+    assert (a.supplier_stock, b.supplier_stock, c.supplier_stock) == (6, 7, 8)
+
+
+async def test_all_three_suppliers_are_swept_in_one_run(_harness: Any) -> None:
+    install, _alerts = _harness
+    robux, gold, card = _sku("roblox-800", 5), _sku("so2-gold-100", 5), _sku("gc-50", 5)
+    install(
+        [
+            ("id-roblox-800", "g2b", "107", None),
+            ("id-so2-gold-100", "gengine", "140", "788"),
+            ("id-gc-50", "nova", "roblox_global", "c-50"),
+        ],
+        [robux, gold, card],
+    )
+
+    report = await mod.refresh_voucher_stock(
+        client=_Client({"107": {"stock": 3}}),
+        gengine_client=_GEngineClient({140: [{"id": 788, "stock": 9}]}),
+        nova_client=_NovaClient({"roblox_global": [{"card_id": "c-50", "stock": 4}]}),
+    )
+
+    assert (robux.supplier_stock, gold.supplier_stock, card.supplier_stock) == (3, 9, 4)
+    assert report.checked == 3
     assert report.errors == 0

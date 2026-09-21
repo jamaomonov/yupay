@@ -100,7 +100,25 @@ Three things worth knowing on call:
 
 Denominations come from `GET /api/v2/giftcards/cards?category_id=…`, which is
 also where `card_id` and the live `stock` live. The endpoint is not
-`/giftcards/offers` — that 404s, and guessing it cost a probe.
+`/giftcards/offers` — that 404s, and guessing it cost a probe. The array in
+the body sits under `offers`, not `items` — a detail worth a line because the
+call succeeds and looks empty when you read the wrong key.
+
+### The card that is sold out must stop being clickable
+
+The same hourly sweep that keeps G2B and G-Engine honest
+(`integrations/stock_refresh.py`, `refresh_voucher_stock`) asks NOVA one
+question per **category**, not per SKU, and writes `Sku.supplier_stock` per
+`card_id`; `orders.service.sku_is_buyable` then refuses the dry ones and the
+storefront greys them out. A `card_id` that has vanished from the category is
+written as **0**, not left unknown — delisted upstream cannot be delivered.
+
+NOVA was added to that sweep on 2026-09-21, with the Roblox cards. Until then
+a NOVA-only voucher SKU was never asked about, so it kept `supplier_stock =
+NULL`, which the catalogue reads as _untracked and therefore always sellable_.
+Roblox 2500 shipped with nine in stock, so the window was not theoretical. If
+a NOVA card ever looks permanently in stock, check that its mapping is
+`kind = "voucher"` and `is_active` — the sweep selects on both.
 
 ### The pre-emptive warning, before any order is refused
 

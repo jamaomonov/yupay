@@ -116,6 +116,15 @@ class NovaFulfiller(Fulfiller):
         # a hot-reloaded key takes effect without a restart (same as g2b).
         self._client_override = client
 
+    def client_for_reads(self) -> NovaClient:
+        """A client for read-only catalogue calls made outside fulfilment.
+
+        The stock refresh lives in ``integrations`` but the credentials and
+        retry policy belong here, so it borrows a client instead of building a
+        second one from settings and drifting apart from this adapter.
+        """
+        return self._client()
+
     def _client(self) -> NovaClient:
         if self._client_override is not None:
             return self._client_override

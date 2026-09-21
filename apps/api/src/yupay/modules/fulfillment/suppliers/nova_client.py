@@ -272,6 +272,24 @@ class NovaClient:
         )
         return _order_with_debit(body)
 
+    async def list_giftcard_cards(self, category_id: str) -> list[dict[str, Any]]:
+        """Every denomination of one gift-card category, with its live stock.
+
+        ``GET /api/v2/giftcards/cards?category_id=…``. One call answers the
+        whole category — nine rows for ``roblox_global`` — so the stock sweep
+        caches it per category instead of asking once per SKU, the same shape
+        G-Engine's denominations take.
+
+        The endpoint is **not** ``/giftcards/offers``; that 404s. The array is
+        under ``offers``, not ``items``, which is worth saying because every
+        other list on this API uses ``items``.
+        """
+        body = await self._request(
+            "GET", "/api/v2/giftcards/cards", params={"category_id": category_id}
+        )
+        rows = body.get("offers")
+        return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+
     async def create_giftcard_order(
         self,
         *,
