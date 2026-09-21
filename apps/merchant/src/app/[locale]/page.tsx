@@ -18,13 +18,14 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { DocsLinks } from "@/components/landing/DocsLinks";
 import { Faq } from "@/components/landing/Faq";
 import { Hero } from "@/components/landing/Hero";
 import { PageFrame } from "@/components/landing/PageFrame";
 import { CARD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
 import { faqPage, organization, service, website } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
-import { alternates, OPENAPI_URL, ROBOTS, SITE } from "@/lib/seo";
+import { alternates, ROBOTS, SITE } from "@/lib/seo";
 
 export const revalidate = 3600;
 
@@ -64,13 +65,6 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
     { icon: Webhook, title: t("dev3Title"), body: t("dev3Body") },
     { icon: UserSearch, title: t("dev4Title"), body: t("dev4Body") },
     { icon: RotateCcw, title: t("dev5Title"), body: t("dev5Body") },
-  ];
-
-  const docsLinks = [
-    { href: "/docs/quickstart", label: t("devQuickstart") },
-    { href: "/docs/authentication", label: t("devAuth") },
-    { href: "/docs/webhooks", label: t("devWebhooks") },
-    { href: "/docs/errors", label: t("devErrors") },
   ];
 
   // String suffixes, not numbers: the key is built by concatenation and a
@@ -201,16 +195,7 @@ export default async function Landing({ params }: { params: Promise<{ locale: st
             ))}
           </div>
           <p className="text-tx-dim mt-5 text-[13px]">{t("devTest")}</p>
-          <div className="text-tx-mute mt-4 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
-            <a href={OPENAPI_URL} className="text-primary-ink font-semibold">
-              {t("devSpec")}
-            </a>
-            {docsLinks.map(({ href, label }) => (
-              <Link key={href} href={pathFor(locale, href)}>
-                {label}
-              </Link>
-            ))}
-          </div>
+          <DocsLinks locale={locale} />
         </section>
 
         <section className="mt-20">

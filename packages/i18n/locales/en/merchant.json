@@ -68,6 +68,7 @@
     "dev5Body": "If it is not delivered, the money returns to the deposit.",
     "devTest": "Test on the cheapest denomination.",
     "devSpec": "OpenAPI 3.1 specification",
+    "devDocsCta": "Open the documentation",
     "devQuickstart": "Quickstart",
     "devAuth": "Authentication",
     "devWebhooks": "Webhooks",

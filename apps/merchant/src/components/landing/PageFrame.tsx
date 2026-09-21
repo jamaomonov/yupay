@@ -11,9 +11,11 @@ import { pathFor } from "@/lib/locale-href";
  * Extracted from the landing the moment a second public page was planned —
  * `/telegram`, `/api` and `/faq` all need the same header, and a header that
  * lives in one page file is a header that drifts as soon as it is copied. The
- * nav is the site map: the two audience pages, the questions page, and the
- * developer link kept deliberately small — a reseller who does not write code
- * should not meet the word "API" twice before the fold.
+ * nav is the site map: the two audience pages, the questions page and the
+ * documentation. `/api` — the intent page for "do you have an API" — sits in
+ * the footer and on the landing's own card instead: the header has room for
+ * one developer door, and the one a person who decided to integrate needs is
+ * the reference.
  *
  * A server component with no state: every entry is a link, so there is
  * nothing here to hydrate.
@@ -27,6 +29,10 @@ export async function PageFrame({
 }) {
   const t = await getTranslations("merchant.landing");
   const tOffer = await getTranslations("merchant.offer");
+  // The nav label is the documentation's own title, from its own namespace:
+  // a nav entry and the page it opens saying two different words is how a
+  // reader decides they landed somewhere else.
+  const tDocs = await getTranslations("merchant.docs");
 
   return (
     <>
@@ -42,11 +48,16 @@ export async function PageFrame({
             <LocaleSwitcher />
             <Link href={pathFor(locale, "/telegram")}>{t("navTelegram")}</Link>
             <Link href={pathFor(locale, "/faq")}>{t("navFaq")}</Link>
-            {/* Smaller and dimmer than its neighbours on purpose: it is the
-                door for the minority audience, and it sits above the fold. */}
-            <Link href={pathFor(locale, "/api")} className="text-tx-dim text-[12.5px]">
-              {t("navDocs")}
-            </Link>
+            {/* The reference, at the same weight as its neighbours. This slot
+                used to hold `/api` — the "do you have an API" marketing page
+                — one size smaller and dimmed, on the theory that a reseller
+                who does not write code should not meet the word twice before
+                the fold. The cost was that the developer who DID come to
+                integrate had no visible way into the documentation from any
+                public page: the only accented link anywhere near it was the
+                raw OpenAPI JSON. `/api` keeps its door — the «Для
+                разработчиков» card above the fold, and the footer. */}
+            <Link href={pathFor(locale, "/docs")}>{tDocs("title")}</Link>
             <Link
               href={pathFor(locale, "/login")}
               className="border-border rounded-btn text-foreground border px-4 py-2 font-semibold"
@@ -69,6 +80,7 @@ export async function PageFrame({
         <span>© YuPay · reseller.yupay.uz</span>
         <span className="flex flex-wrap gap-4">
           <Link href={pathFor(locale, "/faq")}>{t("navFaq")}</Link>
+          <Link href={pathFor(locale, "/api")}>{t("navDocs")}</Link>
           <Link href={pathFor(locale, "/offer")}>{tOffer("title")}</Link>
           <a href="https://t.me/yupay_support">{t("supportCta")}</a>
         </span>

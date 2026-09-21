@@ -5,6 +5,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/JsonLd";
+import { DocsLinks } from "@/components/landing/DocsLinks";
 import { Faq } from "@/components/landing/Faq";
 import { PageFrame } from "@/components/landing/PageFrame";
 import { LEAD, PAGE_MAIN, SECTION_HEADING } from "@/components/landing/styles";
@@ -95,13 +96,6 @@ export default async function ApiPage({ params }: { params: Promise<{ locale: st
     { heading: t("h2Pubg"), body: t("bodyPubg") },
   ];
 
-  const docsLinks = [
-    { href: "/docs/quickstart", label: tLanding("devQuickstart") },
-    { href: "/docs/authentication", label: tLanding("devAuth") },
-    { href: "/docs/webhooks", label: tLanding("devWebhooks") },
-    { href: "/docs/errors", label: tLanding("devErrors") },
-  ];
-
   return (
     <PageFrame locale={locale}>
       <JsonLd
@@ -165,16 +159,7 @@ export default async function ApiPage({ params }: { params: Promise<{ locale: st
         <section className="border-border bg-card mt-14 rounded-2xl border p-8">
           <h2 className={SECTION_HEADING}>{t("h2Start")}</h2>
           <p className="text-tx-mute mt-3 max-w-3xl text-sm leading-relaxed">{t("bodyStart")}</p>
-          <div className="text-tx-mute mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px]">
-            <a href={OPENAPI_URL} className="text-primary-ink font-semibold">
-              {tLanding("devSpec")}
-            </a>
-            {docsLinks.map(({ href, label }) => (
-              <Link key={href} href={pathFor(locale, href)}>
-                {label}
-              </Link>
-            ))}
-          </div>
+          <DocsLinks locale={locale} />
         </section>
 
         <section id="faq" className="mt-16 scroll-mt-8">
