@@ -385,8 +385,14 @@ class MerchantBrandOut(BaseModel):
         default=None,
         description=(
             "Which storefront section this brand sits in — the same split a person sees "
-            "on yupay.uz. `null` if it has none; the brand is still listed, because the "
-            "price list's job is prices."
+            "on yupay.uz, and there are exactly two:\n\n"
+            "- `top-ups` — you send an account id and a balance is credited to it.\n"
+            "- `gift-cards` — you get a code back and redeem it yourself.\n\n"
+            "That is how the goods reach the buyer, not a genre — which is what makes "
+            "it worth grouping a storefront by. What a given order must send is still "
+            "each product's own `required_fields`, never inferred from this. `null` if "
+            "the brand has no section; it is still listed, because the price list's job "
+            "is prices."
         ),
     )
     category_name: str | None = Field(

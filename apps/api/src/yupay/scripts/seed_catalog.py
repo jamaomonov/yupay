@@ -130,15 +130,20 @@ def _server_field(options: list[tuple[str, str, str, str]]) -> dict[str, Any]:
     }
 
 
+#: The catalogue splits two ways, matching ``products.kind``: a balance
+#: credited against an id the buyer types, or a code handed over to redeem.
+#: Production holds the same two (``scripts/seed/2026-09-21_two_catalog_categories.sql``);
+#: the dev seed carries only the first because everything it creates is a
+#: top-up.
 CATEGORIES: list[CategorySpec] = [
     CategorySpec(
-        slug="games",
-        icon="gamepad-2",
+        slug="top-ups",
+        icon="wallet",
         sort_order=0,
         translations=[
-            TranslationSpec("ru", "Игры"),
-            TranslationSpec("en", "Games"),
-            TranslationSpec("uz", "Oʻyinlar"),
+            TranslationSpec("ru", "Пополнения"),
+            TranslationSpec("en", "Top-ups"),
+            TranslationSpec("uz", "Toʻldirishlar"),
         ],
     ),
 ]
@@ -491,7 +496,7 @@ def _build_brands() -> list[BrandSpec]:
         brands.append(
             BrandSpec(
                 slug=game.brand_slug,
-                category_slug="games",
+                category_slug="top-ups",
                 logo_url=None,
                 hero_image_url=None,
                 accent_color=None,
@@ -529,7 +534,7 @@ _STEAM_LOGIN_FIELD: dict[str, Any] = {
 
 _STEAM_BRAND = BrandSpec(
     slug="steam",
-    category_slug="games",
+    category_slug="top-ups",
     logo_url=None,
     hero_image_url=None,
     accent_color=None,

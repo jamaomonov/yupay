@@ -139,10 +139,23 @@ export interface FormField {
 
 // --- adapters --------------------------------------------------------------
 
-/** Bucket an arbitrary category slug into one of the UI's three chips. */
+/**
+ * Bucket a category slug into the legacy three-value `Category` union.
+ *
+ * The catalogue itself now has **two** categories — `top-ups` and
+ * `gift-cards`, one per `products.kind` — and Home's chips come straight from
+ * `GET /catalog/categories`, so nothing on screen goes through here. This
+ * stays only because `Game.category` is part of the shape `constants.ts`'s
+ * fixtures are written in.
+ *
+ * It is kept correct rather than left to rot: without the first test a
+ * `top-ups` brand fell through to `"services"`, so the day something rendered
+ * `Game.category` again, every top-up in the catalogue would have been
+ * labelled «Сервисы».
+ */
 function bucketCategory(slug: string): Category {
   const s = slug.toLowerCase();
-  if (s.includes("game")) return "games";
+  if (s.includes("top") || s.includes("game")) return "games";
   if (s.includes("card") || s.includes("gift") || s.includes("voucher")) return "cards";
   return "services";
 }

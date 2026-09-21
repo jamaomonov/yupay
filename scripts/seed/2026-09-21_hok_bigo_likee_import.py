@@ -69,7 +69,13 @@ from yupay.modules.integrations.service import MappingUpsert, upsert_mapping
 
 MARGIN_PERCENT = Decimal("15")
 ADMIN_ID = "00000000-0000-7000-8000-000000000001"
-CATEGORY_SLUG = "games"
+#: `top-ups`, not `games`: the catalogue went to two categories on
+#: 2026-09-21 (`2026-09-21_two_catalog_categories.sql`), one per
+#: `products.kind`. All three brands here are `top_up`. This seed had not
+#: been applied when the rename landed, so it is corrected rather than
+#: superseded — applied as it stood it would have died on a category that
+#: no longer exists.
+CATEGORY_SLUG = "top-ups"
 
 #: Rungs the suppliers sell that we choose not to shelve. Kept as a record so
 #: "why is there no 700-diamond tier" has an answer that is not "nobody looked".
