@@ -359,37 +359,44 @@ function ProductGroup({
           </p>
         </div>
       ) : (
-        <table className="w-full text-sm">
-          <thead className="bg-[var(--bg-surface)] text-xs uppercase text-[var(--text-secondary)]">
-            <tr>
-              <th className="px-5 py-2 text-left font-medium">Номинал</th>
-              <th className="px-3 py-2 text-left font-medium">Регион</th>
-              <th className="px-3 py-2 text-left font-medium">SKU code</th>
-              <th className="px-3 py-2 text-right font-medium">USD</th>
-              <th className="px-3 py-2 text-right font-medium">Cost ₮</th>
-              <th className="px-3 py-2 text-left font-medium">Override</th>
-              <th className="px-3 py-2 text-center font-medium">Активен</th>
-              <th className="px-3 py-2 text-right font-medium">∑</th>
-              <th className="px-3 py-2" />
-            </tr>
-          </thead>
-          <tbody>
-            {group.skus.map((sku) => (
-              <SkuRow
-                key={sku.id}
-                sku={sku}
-                onToggle={(next) => {
-                  onToggle(sku, next);
-                }}
-                onEdit={() => navigate(`/skus/${sku.id}`, { state: { listSearch } })}
-                onDelete={() => {
-                  onDelete(sku);
-                }}
-                disabled={isToggling || isDeleting}
-              />
-            ))}
-          </tbody>
-        </table>
+        // Nine columns. `w-full` alone lets the browser squeeze them all into
+        // a phone's width instead of overflowing, so `overflow-x-auto` on the
+        // wrapper never had anything to scroll and the right-hand columns were
+        // crushed to nothing. A minimum width is what turns compression into
+        // a scroll.
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[56rem] text-sm">
+            <thead className="bg-[var(--bg-surface)] text-xs uppercase text-[var(--text-secondary)]">
+              <tr>
+                <th className="px-5 py-2 text-left font-medium">Номинал</th>
+                <th className="px-3 py-2 text-left font-medium">Регион</th>
+                <th className="px-3 py-2 text-left font-medium">SKU code</th>
+                <th className="px-3 py-2 text-right font-medium">USD</th>
+                <th className="px-3 py-2 text-right font-medium">Cost ₮</th>
+                <th className="px-3 py-2 text-left font-medium">Override</th>
+                <th className="px-3 py-2 text-center font-medium">Активен</th>
+                <th className="px-3 py-2 text-right font-medium">∑</th>
+                <th className="px-3 py-2" />
+              </tr>
+            </thead>
+            <tbody>
+              {group.skus.map((sku) => (
+                <SkuRow
+                  key={sku.id}
+                  sku={sku}
+                  onToggle={(next) => {
+                    onToggle(sku, next);
+                  }}
+                  onEdit={() => navigate(`/skus/${sku.id}`, { state: { listSearch } })}
+                  onDelete={() => {
+                    onDelete(sku);
+                  }}
+                  disabled={isToggling || isDeleting}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </article>
   );
@@ -464,7 +471,14 @@ function SkuRow({
       </td>
       <td className="px-3 py-2.5 text-right">
         <div
-          className="flex justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100"
+          // Visible by default, hover-revealed only from `md` up. The
+          // reveal was unconditional, and a touch device has no hover — so
+          // «Редактировать» was permanently invisible on every phone and the
+          // row carries no click of its own, which made the edit page
+          // unreachable rather than merely awkward. `group-focus-within`
+          // brings it back for a keyboard too, which had the same problem
+          // and nobody had noticed.
+          className="flex justify-end gap-1 opacity-100 transition-opacity md:opacity-0 md:group-focus-within:opacity-100 md:group-hover:opacity-100"
           onClick={(e) => {
             e.stopPropagation();
           }}

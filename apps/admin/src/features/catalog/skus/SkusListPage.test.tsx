@@ -136,3 +136,38 @@ it("shows the brand logo and the SKU picture beside their names", async () => {
   expect(sources).toContain("https://cdn.example/roblox.png");
   expect(sources).toContain("https://cdn.example/sku.png");
 });
+
+/**
+ * Two defects that made this page unusable on a phone, reported 2026-09-21:
+ * "таблица не листается вправо из-за чего нельзя зайти на страницу
+ * редактирования".
+ *
+ * Both are CSS, and jsdom computes no layout — so these assert the classes
+ * that carry the behaviour. That is a weaker instrument than a click, and it
+ * is the only one that can see a control hidden by `opacity`: the button was
+ * always in the DOM, always focusable by testing-library, and invisible to
+ * every finger that has ever touched this page.
+ */
+
+it("shows the row actions without a hover, because a phone has none", async () => {
+  renderList();
+  const edit = await screen.findByRole("button", { name: "Редактировать" });
+  const actions = edit.parentElement;
+
+  // `opacity-0` only from `md` up. Unconditional, it made the only route to
+  // the edit page invisible on touch — and on a keyboard, which is why the
+  // focus-within reveal is here too.
+  expect(actions?.className).not.toMatch(/(^|\s)opacity-0(\s|$)/);
+  expect(actions?.className).toContain("md:opacity-0");
+  expect(actions?.className).toContain("md:group-focus-within:opacity-100");
+});
+
+it("lets the table be wider than the screen, so it can actually scroll", async () => {
+  renderList();
+  const table = (await screen.findByRole("table")) as HTMLTableElement;
+
+  // `w-full` alone lets nine columns compress into a phone's width; nothing
+  // overflows, so the wrapper's `overflow-x-auto` has nothing to scroll.
+  expect(table.className).toMatch(/min-w-\[/);
+  expect(table.parentElement?.className).toContain("overflow-x-auto");
+});
