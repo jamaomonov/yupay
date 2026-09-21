@@ -316,7 +316,7 @@
     "authLead": "Three headers on every request. The signature is HMAC-SHA256 of a canonical string, keyed by your secret.",
     "authHeaders": "Headers",
     "authCanonical": "The canonical string",
-    "authCanonicalBody": "Exactly five fields joined by `\\n`. The fifth is the SHA-256 of the body in lowercase hex; for a request with no body that is the hash of the empty string. The order and the count are fixed — an empty query string still takes its place.",
+    "authCanonicalBody": "Exactly five fields joined by `\\n` — a single LF (0x0A), never CRLF. The fifth is the lowercase hex SHA-256 of the body; with no body that is the hash of the empty string, the constant `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`. The order and the count are fixed: an absent query string still takes its place.\n\n- `raw_path` and `raw_query` are the bytes **exactly as they appear on the request line**, percent-encoded. Not the decoded path: sign what goes down the socket.\n- The query string is signed, without the `?`. When there is none the field is empty — but it is still there.\n- Hash **the body bytes you actually send**, not a re-serialisation of them: key order and whitespace change the digest.\n- Everything is UTF-8, and the method is upper-case.",
     "authWindow": "The time window",
     "authWindowBody": "Your timestamp must be within ±300 seconds of ours. A signature is **not single-use**, so replaying the same request is safe and an at-least-once retry needs no fresh idempotency key.",
     "authKeys": "Keys",
@@ -379,8 +379,27 @@
       "out_of_stock": "Temporarily unavailable upstream.",
       "not_for_sale": "Withdrawn from sale.",
       "no_cost": "No supplier price, so it cannot be quoted.",
-      "variable_amount": "Priced by amount — send `amount_usd`, not a bare order."
-    }
+      "variable_amount": "Priced by amount — send `amount_usd`, not a bare order.",
+      "unknown_brand": "No brand with that `brand` slug. Comes from `validate/player`, and the body echoes `brand` rather than `sku_id`."
+    },
+    "hdrTimestamp": "Unix seconds, as sent.",
+    "hdrDelivery": "Stable across every retry of the same event. Dedupe on this — delivery is at-least-once.",
+    "hdrEvent": "The event type.",
+    "hdrSignature": "Lowercase hex HMAC-SHA256 of the four fields below.",
+    "webhooksEvents": "Events",
+    "colEvent": "Event",
+    "colPayload": "In the body",
+    "evOrderStatus": "An order's status moved. `merchant_order_id`, `order_id`, `status`, `at`. Never the voucher code — only the order read hands that over.",
+    "evBalanceCredited": "The deposit went up, by hand or by the automatic refund of a failed order. `amount_usd`, `balance_usd`.",
+    "evTest": "«Send a test event» in the cabinet. The same path and the same signature, but no order and no money — accept it and ignore it.",
+    "webhooksDelivery": "How we deliver",
+    "webhooksDeliveryBody": "- `POST` with `Content-Type: application/json`. The timeout is **10 seconds** for the whole attempt, not per phase.\n- We read at most **64 KiB** of your response and ask for `Accept-Encoding: identity`. A compressed response is refused unread. Your body is only for the delivery log — keep it short.\n- Delivery is **at-least-once**: the same `X-Yupay-Delivery` can arrive twice. Dedupe on it, not on the contents.\n- There is **no event for a debit** from the deposit. A debit shows only on the statement — `GET /merchant/v1/transactions`.",
+    "webhooksRetries": "Retries and auto-disable",
+    "webhooksRetriesBody": "- `2xx` is delivered. `408`, `429` and any `5xx` back off. Everything else is terminal and will not be retried.\n- Up to **10 attempts**: 30 seconds, then doubling, never more than an hour per wait — a little over three hours in all.\n- `Retry-After` is honoured only on `429` and `503`, where RFC 9110 defines it, clamped to between one second and one hour.\n- **20 consecutive failures** disable the webhook and mail you. Any success resets the counter. A button in Settings turns it back on, and the secret does not change.",
+    "authLimits": "Rate limits",
+    "authLimitsBody": "- 600 requests a minute per **key** and 600 a minute per **IP address**. Two independent axes; you hit whichever is lower for your deployment.\n- `POST /merchant/v1/validate/player` has a further 120 a minute **per merchant**: what it spends is a supplier's quota rather than ours, and rotating a key does not double it.\n- Over the limit you get a `429` with `Retry-After`. Read it and wait — retrying without the pause spends the same budget.",
+    "noSandboxTitle": "There is no sandbox",
+    "noSandboxBody": "Every request hits production. `POST /merchant/v1/orders` buys for real and takes the money off your deposit — there is no undo.\n\n- Prove your signing on `GET /merchant/v1/me`: it costs nothing and answers the same `401` when something is off.\n- Prove your webhook with «Send a test event» in the cabinet — the same path and the same signature, but no order and no money.\n- Make your first real order on the cheapest denomination you can find."
   },
   "offer": {
     "title": "Wholesale supply agreement (offer)",

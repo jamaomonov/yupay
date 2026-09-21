@@ -1,8 +1,7 @@
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
-import type { ReactNode } from "react";
-
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { Code, DocsPage, Section, Table } from "@/components/docs/Page";
@@ -79,8 +78,13 @@ const ORDERS: [string, string, string][] = [
 // The `reason` on `item_unavailable`. The page told a reader to read this
 // field and never said what it can hold, so the one thing they were pointed
 // at was the one thing they could not branch on.
+//
+// Seven values, not the six the order path can produce: `validate/player`
+// shares the code and the vocabulary (`quote.unavailable_brand`) and answers
+// `unknown_brand`, echoing `brand` where the order path echoes `sku_id`.
 const UNAVAILABLE_REASONS = [
   "unknown_sku",
+  "unknown_brand",
   "not_b2b_visible",
   "out_of_stock",
   "not_for_sale",

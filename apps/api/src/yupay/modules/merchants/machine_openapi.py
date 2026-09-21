@@ -107,6 +107,46 @@ _SHARED_ERRORS: Final[dict[str, str]] = {
     ),
 }
 
+#: Errors a **particular** operation can answer, on top of :data:`_SHARED_ERRORS`.
+#:
+#: These come from the handler rather than from the auth dependency, so they
+#: cannot be declared once for everything — and being per-route is exactly why
+#: they were missing from all six. The published contract promised only
+#: ``401/403/422/429``, so an integrator generating a client from it had no
+#: branch for the two answers that decide whether an order happened: a ``404``
+#: on a SKU or brand that cannot be sold, and a ``409`` for a deposit that
+#: does not cover the order or an id already used for something else. Both
+#: were documented in prose on the site and in the module README, and neither
+#: was in the machine-readable document the site's own reference renders.
+#:
+#: Keyed by ``(method, path)`` because ``POST /orders`` and the order read
+#: answer different things under the same status.
+_ROUTE_ERRORS: Final[dict[tuple[str, str], dict[str, str]]] = {
+    ("post", "/merchant/v1/orders"): {
+        "404": (
+            "`item_unavailable` — this SKU cannot be ordered right now. The body carries "
+            "`sku_id` and a `reason`: `unknown_sku`, `not_b2b_visible`, `out_of_stock`, "
+            "`not_for_sale`, `no_cost` or `variable_amount`."
+        ),
+        "409": (
+            "`insufficient_deposit` — the body carries `balance_usd` and `required_usd`; "
+            "top up and retry the **same** `merchant_order_id`. Or `order_id_reused` — "
+            "that id already belongs to an order placed with a different body, and the "
+            "body names the order it belongs to."
+        ),
+    },
+    ("get", "/merchant/v1/orders/{merchant_order_id}"): {
+        "404": "`order_not_found` — you have no order under this `merchant_order_id`."
+    },
+    ("post", "/merchant/v1/validate/player"): {
+        "404": (
+            "`item_unavailable` — the body carries `brand` (not `sku_id`) and a `reason`: "
+            "`unknown_brand` for a slug that names nothing, `not_b2b_visible` for a brand "
+            "you cannot buy from."
+        )
+    },
+}
+
 #: Built once per process. ``app.openapi()`` walks every route and model, and
 #: this endpoint takes no credential — rebuilding per request would make it
 #: the cheapest way to spend our CPU from the outside.
@@ -152,6 +192,12 @@ def build(full: dict[str, Any], *, base_url: str | None = None) -> dict[str, Any
     # passes ``PUBLISHED_BASE_URL`` instead — see its docstring.
     base = (base_url or get_settings().base_url).rstrip("/")
     tags: list[dict[str, str]] = []
+    #: Which ``_ROUTE_ERRORS`` keys actually landed on an operation. A key
+    #: naming a path that no longer exists is how the first draft of that
+    #: table shipped with the order read left out — Starlette's ``:path``
+    #: convertor is in the route and not in the document, so the tuple matched
+    #: nothing and the operation silently kept the shared errors alone.
+    matched: set[tuple[str, str]] = set()
     for path, item in paths.items():
         named = _TAGS.get(path) or _TAGS.get(path.rsplit("/", 1)[0])
         if named is None:  # pragma: no cover -- every path above is mapped
@@ -168,11 +214,18 @@ def build(full: dict[str, Any], *, base_url: str | None = None) -> dict[str, Any
             operation.setdefault("security", [{"MerchantKey": [], "MerchantSignature": []}])
             for status, text in _SHARED_ERRORS.items():
                 operation["responses"].setdefault(status, {"description": text})
+            for status, text in _ROUTE_ERRORS.get((method, path), {}).items():
+                operation["responses"].setdefault(status, {"description": text})
+            matched.add((method, path))
             # FastAPI's default is the function name plus the route —
             # `place_order_merchant_v1_orders_post` — which becomes the method
             # name in every generated client. The summary is what a reader
             # already sees, so derive from it and keep the two in step.
             operation["operationId"] = _operation_id(method, path)
+
+    stale = set(_ROUTE_ERRORS) - matched
+    if stale:  # pragma: no cover -- a rename, caught at build time
+        raise RuntimeError(f"_ROUTE_ERRORS names operations that do not exist: {sorted(stale)}")
 
     document: dict[str, Any] = {
         "openapi": full["openapi"],

@@ -45,6 +45,36 @@ async def test_the_published_schema_is_the_machine_api_and_nothing_else(
     assert document["info"]["title"] == "YuPay Merchant API"
 
 
+async def test_every_operation_documents_the_failures_it_can_answer(
+    integration_client: AsyncClient,
+) -> None:
+    """The two statuses that decide whether an order happened.
+
+    The contract promised only `401/403/422/429`, so a client generated from
+    it had no branch for a `404` on a SKU that cannot be sold or a `409` for
+    a deposit that does not cover the order — both documented in prose on the
+    site and in the module README, and in neither machine-readable place.
+
+    `_ROUTE_ERRORS` is keyed by `(method, path)` and raises at build time when
+    a key matches nothing, which is how the first draft shipped with the order
+    read left out: Starlette's `:path` convertor is in the route and not in
+    the document.
+    """
+    document = (await integration_client.get(SCHEMA)).json()
+
+    def codes(method: str, path: str) -> set[str]:
+        return set(document["paths"][path][method]["responses"])
+
+    assert {"404", "409"} <= codes("post", "/merchant/v1/orders")
+    assert "404" in codes("get", "/merchant/v1/orders/{merchant_order_id}")
+    assert "404" in codes("post", "/merchant/v1/validate/player")
+    # Every one of them still carries the shared four, which come from the
+    # auth dependency in front of all six.
+    for path, item in document["paths"].items():
+        for method in item:
+            assert {"401", "403", "422", "429"} <= codes(method, path), (method, path)
+
+
 async def test_no_internal_schema_rides_along(integration_client: AsyncClient) -> None:
     """Every exported schema is reachable from an exported path.
 

@@ -117,6 +117,14 @@ export default async function AuthenticationPage({
         <Section id="keys" title={t("authKeys")}>
           <Prose text={t("authKeysBody")} className="text-tx-mute text-sm" />
         </Section>
+
+        {/* Both numbers are enforced on every call and neither was written
+            down anywhere a merchant could read. An integrator sizing a nightly
+            catalogue sync has to know the ceiling BEFORE they write the loop,
+            not after a 429 they have no documented `Retry-After` for. */}
+        <Section id="limits" title={t("authLimits")}>
+          <Prose text={t("authLimitsBody")} className="text-tx-mute text-sm" />
+        </Section>
       </DocsPage>
     </>
   );

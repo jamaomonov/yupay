@@ -5,10 +5,10 @@ import type { Metadata } from "next";
 
 import { CodeTabs } from "@/components/docs/CodeTabs";
 import { DocsPage, Section } from "@/components/docs/Page";
+import { Prose } from "@/components/docs/Prose";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
-import { apiBaseUrl, contract, endpoints } from "@/lib/contract";
-import { bodySchema } from "@/lib/contract";
+import { apiBaseUrl, bodySchema, endpoints } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { pathFor } from "@/lib/locale-href";
@@ -79,6 +79,16 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
         })}
       />
       <DocsPage eyebrow={t("groupStart")} title={t("quickTitle")} lead={t("quickLead")}>
+        {/* Before step 1, because it changes how somebody tests rather than
+            what they build. The site never said this anywhere: an integrator
+            reasonably assumes a wholesale API has a test mode, and the way
+            they find out it does not is by placing a real order to see what
+            comes back. Both cost-free ways to prove the two halves of the
+            integration are named here for the same reason. */}
+        <div className="border-gold/40 bg-gold/5 mb-8 rounded-xl border p-5">
+          <p className="text-sm font-semibold">{t("noSandboxTitle")}</p>
+          <Prose text={t("noSandboxBody")} className="text-tx-mute mt-1.5 text-sm" />
+        </div>
         {steps.map(({ key, sample }, index) => (
           <Section key={key} id={key} title={`${String(index + 1)}. ${t(`${key}Title`)}`}>
             <p className="text-tx-mute text-sm leading-relaxed">{t(`${key}Body`)}</p>

@@ -316,7 +316,7 @@
     "authLead": "Har bir soʻrovda uchta sarlavha. Imzo — kanonik satrning maxfiy kalitingiz bilan HMAC-SHA256 i.",
     "authHeaders": "Sarlavhalar",
     "authCanonical": "Kanonik satr",
-    "authCanonicalBody": "`\\n` bilan ajratilgan roppa-rosa besh maydon. Beshinchisi — tananing kichik harfli hex dagi SHA-256 i; tanasiz soʻrov uchun bu boʻsh satrning xeshi. Tartib va soni qatʼiy — boʻsh soʻrov satri ham oʻz oʻrnini egallaydi.",
+    "authCanonicalBody": "`\\n` bilan ajratilgan roppa-rosa besh maydon — bu bitta LF (0x0A), hech qachon CRLF emas. Beshinchisi — tananing kichik harfli hex SHA-256 i; tanasiz soʻrovda bu boʻsh satr hashi, yaʼni `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` konstantasi. Tartib va soni qatʼiy: boʻlmagan soʻrov satri ham oʻz oʻrnini egallaydi.\n\n- `raw_path` va `raw_query` — **soʻrov satridagidek**, percent-kodlangan baytlar. Dekodlangan yoʻl emas: soketga ketayotgan narsani imzolang.\n- Soʻrov satri `?` siz imzolanadi. U boʻlmasa maydon boʻsh — lekin baribir bor.\n- **Aynan yuborayotgan tana baytlarini** hashlang, qayta serializatsiya natijasini emas: kalitlar tartibi va boʻshliqlar hashni oʻzgartiradi.\n- Hammasi UTF-8, metod esa bosh harflarda.",
     "authWindow": "Vaqt oynasi",
     "authWindowBody": "Vaqt belgisi bizning vaqtimizdan ±300 soniyadan koʻp farq qilmasligi kerak. Imzo **bir martalik emas**, shuning uchun bir xil soʻrovni qayta yuborish xavfsiz.",
     "authKeys": "Kalitlar",
@@ -379,8 +379,27 @@
       "out_of_stock": "Yetkazib beruvchida vaqtincha yo‘q.",
       "not_for_sale": "Sotuvdan olingan.",
       "no_cost": "Xarid narxi yo‘q — kotirovka berib bo‘lmaydi.",
-      "variable_amount": "Narx summaga bog‘liq — bo‘sh buyurtma emas, `amount_usd` yuboring."
-    }
+      "variable_amount": "Narx summaga bog‘liq — bo‘sh buyurtma emas, `amount_usd` yuboring.",
+      "unknown_brand": "Bunday `brand` slugli brend yoʻq. `validate/player` dan keladi va tanada `sku_id` emas, `brand` qaytadi."
+    },
+    "hdrTimestamp": "Yuborilgan vaqt, Unix soniyalarda.",
+    "hdrDelivery": "Bitta hodisaning har bir qayta urinishida bir xil. Shu boʻyicha dublikatni ajrating — yetkazish «kamida bir marta».",
+    "hdrEvent": "Hodisa turi.",
+    "hdrSignature": "Quyidagi toʻrt maydon boʻyicha HMAC-SHA256, kichik harfli hex.",
+    "webhooksEvents": "Hodisalar",
+    "colEvent": "Hodisa",
+    "colPayload": "Tanada nima bor",
+    "evOrderStatus": "Buyurtma holati oʻzgardi. `merchant_order_id`, `order_id`, `status`, `at`. Vaucher kodi bu yerda yoʻq — uni faqat buyurtmani oʻqish beradi.",
+    "evBalanceCredited": "Depozit toʻldi — qoʻlda yoki muvaffaqiyatsiz buyurtmaning avtomatik qaytarimi bilan. `amount_usd`, `balance_usd`.",
+    "evTest": "Kabinetdagi «Test hodisa yuborish» tugmasi. Yoʻl ham, imzo ham oʻsha, lekin na buyurtma, na pul — qabul qiling va eʼtiborsiz qoldiring.",
+    "webhooksDelivery": "Qanday yetkazamiz",
+    "webhooksDeliveryBody": "- `Content-Type: application/json` bilan `POST`. Taymaut — butun urinish uchun **10 soniya**, bosqich uchun emas.\n- Javobingizdan koʻpi bilan **64 KiB** oʻqiymiz va `Accept-Encoding: identity` soʻraymiz. Siqilgan javobni oʻqimasdan rad etamiz. Javob tanasi bizga faqat yetkazishlar jurnali uchun kerak — qisqa javob bering.\n- Yetkazish **kamida bir marta**: bitta `X-Yupay-Delivery` ikki marta kelishi mumkin. Mazmuni boʻyicha emas, shu boʻyicha dublikatni ajrating.\n- Depozitdan **yechish uchun hodisa yoʻq**. Yechish faqat koʻchirmada koʻrinadi — `GET /merchant/v1/transactions`.",
+    "webhooksRetries": "Qayta urinishlar va oʻchirish",
+    "webhooksRetriesBody": "- `2xx` — yetkazildi. `408`, `429` va har qanday `5xx` — qayta urinamiz. Qolgani yakuniy: qayta urinish boʻlmaydi.\n- **10 tagacha urinish**: 30 soniya, keyin ikki barobar, bir martalik kutish bir soatdan oshmaydi — jami uch soatdan sal koʻproq.\n- `Retry-After` ni faqat `429` va `503` da — RFC 9110 uni aniqlagan joyda — hisobga olamiz va bir soniyadan bir soatgacha qisamiz.\n- **Ketma-ket 20 ta muvaffaqiyatsizlik** vebhukni oʻchiradi va sizga xat yuboradi. Har qanday muvaffaqiyat hisoblagichni nolga tushiradi. Sozlamalardagi tugma uni yana yoqadi, kalit esa oʻzgarmaydi.",
+    "authLimits": "Limitlar",
+    "authLimitsBody": "- **Kalitga** daqiqasiga 600 soʻrov va **IP-manzilga** daqiqasiga 600 ta. Bular ikkita mustaqil oʻq; sizning sxemangizda qaysi biri pastroq boʻlsa, oʻshanga tiralasiz.\n- `POST /merchant/v1/validate/player` uchun qoʻshimcha ravishda **har bir merchantga** daqiqasiga 120 ta: u yerda bizning emas, yetkazib beruvchining kvotasi sarflanadi va kalitni almashtirish uni ikki barobar qilmaydi.\n- Limitdan oshsa, `Retry-After` bilan `429` keladi. Uni oʻqing va kuting: pauzasiz qayta urinish oʻsha kvotani sarflaydi.",
+    "noSandboxTitle": "Sinov muhiti yoʻq",
+    "noSandboxBody": "Har bir soʻrov jangovar konturga tushadi. `POST /merchant/v1/orders` haqiqatan sotib oladi va depozitdan pulni yechadi — ortga qaytarish yoʻq.\n\n- Imzoni `GET /merchant/v1/me` da tekshiring: u hech nima turmaydi va nimadir notoʻgʻri boʻlsa oʻsha `401` ni qaytaradi.\n- Vebhukni kabinetdagi «Test hodisa yuborish» tugmasi bilan tekshiring — yoʻl ham, imzo ham oʻsha, lekin na buyurtma, na pul.\n- Birinchi haqiqiy buyurtmani eng arzon nominalda qiling."
   },
   "offer": {
     "title": "Optom yetkazib berish shartnomasi (oferta)",

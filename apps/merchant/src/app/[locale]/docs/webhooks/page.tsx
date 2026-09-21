@@ -36,6 +36,21 @@ export async function generateMetadata({
  * page is code that is proven to verify a real delivery, not code that looks
  * like it should.
  */
+/** The four headers on every delivery, paired with their catalogue key. */
+const HEADERS: [string, string][] = [
+  ["X-Yupay-Timestamp", "hdrTimestamp"],
+  ["X-Yupay-Delivery", "hdrDelivery"],
+  ["X-Yupay-Event", "hdrEvent"],
+  ["X-Yupay-Signature", "hdrSignature"],
+];
+
+/** The complete v1 event vocabulary — `webhooks.EVENT_TYPES`. */
+const EVENTS: [string, string][] = [
+  ["order.status_changed", "evOrderStatus"],
+  ["balance.credited", "evBalanceCredited"],
+  ["webhook.test", "evTest"],
+];
+
 const PYTHON = `import hashlib, hmac, time
 
 SECRET = "ypmw_…"  # the webhook secret — a different credential from ypms_
@@ -97,22 +112,39 @@ export default async function WebhooksPage({ params }: { params: Promise<{ local
         <Section id="headers" title={t("authHeaders")}>
           <Table
             head={[t("colHeader"), t("colDescription")]}
-            rows={[
-              [<Code key="h">X-Yupay-Timestamp</Code>, <span key="d">Unix seconds, as sent.</span>],
-              [
-                <Code key="h">X-Yupay-Delivery</Code>,
-                <span key="d">
-                  Stable across every retry of the same event. Dedupe on this — delivery is
-                  at-least-once.
-                </span>,
-              ],
-              [<Code key="h">X-Yupay-Event</Code>, <span key="d">The event type.</span>],
-              [
-                <Code key="h">X-Yupay-Signature</Code>,
-                <span key="d">Lowercase hex HMAC-SHA256 of the four fields below.</span>,
-              ],
-            ]}
+            rows={HEADERS.map(([name, key]) => [
+              <Code key="h">{name}</Code>,
+              <Prose key="d" text={t(key)} />,
+            ])}
           />
+        </Section>
+
+        {/* The vocabulary a receiver switches on. The page described how to
+            verify a delivery and never said what could arrive in one, so the
+            `event_type` a reader was told to branch on was the one thing they
+            could not enumerate — and `balance.debited`, which people assume
+            exists because a debit is a thing that happens, is named here as
+            absent rather than left to be discovered from a missing webhook. */}
+        <Section id="events" title={t("webhooksEvents")}>
+          <Table
+            head={[t("colEvent"), t("colPayload")]}
+            rows={EVENTS.map(([name, key]) => [
+              <Code key="e">{name}</Code>,
+              <Prose key="p" text={t(key)} />,
+            ])}
+          />
+        </Section>
+
+        <Section id="delivery" title={t("webhooksDelivery")}>
+          <Prose text={t("webhooksDeliveryBody")} className="text-tx-mute text-sm" />
+        </Section>
+
+        {/* Every number here is a constant somebody has to plan around — a
+            receiver that holds a request for 12 seconds is a receiver we
+            never see succeed — and none of them were written down anywhere a
+            merchant could read. */}
+        <Section id="retries" title={t("webhooksRetries")}>
+          <Prose text={t("webhooksRetriesBody")} className="text-tx-mute text-sm" />
         </Section>
 
         <Section id="verify" title={t("webhooksVerify")}>

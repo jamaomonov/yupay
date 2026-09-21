@@ -1103,6 +1103,12 @@
           "403": {
             "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
           },
+          "404": {
+            "description": "`item_unavailable` \u2014 this SKU cannot be ordered right now. The body carries `sku_id` and a `reason`: `unknown_sku`, `not_b2b_visible`, `out_of_stock`, `not_for_sale`, `no_cost` or `variable_amount`."
+          },
+          "409": {
+            "description": "`insufficient_deposit` \u2014 the body carries `balance_usd` and `required_usd`; top up and retry the **same** `merchant_order_id`. Or `order_id_reused` \u2014 that id already belongs to an order placed with a different body, and the body names the order it belongs to."
+          },
           "422": {
             "content": {
               "application/problem+json": {
@@ -1208,6 +1214,9 @@
           },
           "403": {
             "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "404": {
+            "description": "`order_not_found` \u2014 you have no order under this `merchant_order_id`."
           },
           "422": {
             "content": {
@@ -1434,6 +1443,9 @@
           },
           "403": {
             "description": "Authenticated and refused. `merchant_frozen` \u2014 the account is suspended; `ip_not_allowed` \u2014 this address is not on the key's allowlist."
+          },
+          "404": {
+            "description": "`item_unavailable` \u2014 the body carries `brand` (not `sku_id`) and a `reason`: `unknown_brand` for a slug that names nothing, `not_b2b_visible` for a brand you cannot buy from."
           },
           "422": {
             "content": {
