@@ -343,10 +343,11 @@ async def _gengine_stock(
     same reason a withdrawn G2B product does: it cannot be delivered, and
     leaving it NULL would keep it on the shelf.
     """
-    if product_id not in cache:
+    key = f"gengine:{product_id}"
+    if key not in cache:
         rows = await client.list_shop_denominations(int(product_id))
-        cache[product_id] = {str(row.get("id")): row for row in rows if isinstance(row, dict)}
-    by_id = cache[product_id] or {}
+        cache[key] = {str(row.get("id")): row for row in rows if isinstance(row, dict)}
+    by_id = cache[key] or {}
     if variant_id is None:
         # No denomination pinned: the whole product is the line, so it is in
         # stock while any of its denominations is.
