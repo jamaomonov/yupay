@@ -33952,9 +33952,25 @@
         ]
       },
       "post": {
-        "description": "Buy one SKU, minting the idempotency key on the merchant's behalf.\n\n``manual-<uuid>`` (spec \u00a711): unique per click, and visibly not a\nreseller's own id, so a support conversation about \"order acme-417\" is\nnever about one of these.\n\nThe trade this makes, deliberately: a double-click is two orders, where an\nAPI caller re-sending one id gets one. A person can see both in the list\nand ask for a refund; an invented key that collapsed two intentional\npurchases into one would be the worse failure, and the browser prevents the\ncommon case by disabling the button.",
+        "description": "Buy one SKU, deriving the ``merchant_order_id`` from the caller's key.\n\n``manual-<digest>`` (spec \u00a711): visibly not a reseller's own id, so a\nsupport conversation about \"order acme-417\" is never about one of these.\n\n**The key is the browser's, when it sends one.** It used to be minted here\nper call, which made every retry a second order and a second charge \u2014 and\nthe cabinet's own client had already been fixed to hold one key per intent\nin React state and put it on ``Idempotency-Key``, so the header arrived on\nevery request and was dropped on the floor. A POST that moves money and\nignores the header it is handed is also the one thing AGENTS.md \u00a79 says a\nstate-changing endpoint may not do; the published exemption covers\n``POST /merchant/v1/orders``, which is idempotent on an id the caller\nminted, not this route, which invents that id itself.\n\nDerived by digest rather than used verbatim: the header is client-\ncontrolled free text with only a minimum length enforced, while\n``merchant_order_id`` is bounded at 128 printable non-space ASCII\ncharacters and becomes a path segment and part of a signed string on the\nmachine API. Hashing makes the shape ours whatever the browser sent, and\na 128-bit prefix does not collide. Scoping is unchanged \u2014 the lookup and\n``uq_orders_idem_merchant`` are both per merchant \u2014 so two resellers who\nhappen to mint the same key still get their own orders.\n\nWith no header, one is minted as before: a double-click is then two\norders, which a person can see in the list and ask about, and which is\nthe better failure than an invented key collapsing two real purchases.",
         "operationId": "place_order_merchant_cabinet_orders_post",
         "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
           {
             "in": "header",
             "name": "authorization",

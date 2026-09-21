@@ -230,6 +230,69 @@ async def test_the_orders_list_shows_what_the_deposit_paid_not_the_line(
     assert rows[0]["merchant_order_id"].startswith("manual-")
 
 
+async def test_one_click_retried_is_one_order_and_one_charge(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """The header the cabinet has always sent, now honoured.
+
+    The route minted a fresh `merchant_order_id` per call, so a retry after a
+    timeout — or the client's own re-send — was a second order and a second
+    charge against the deposit. The browser holds one key per intent; the
+    same key must buy the same order.
+    """
+    access, merchant_id = await _signed_up(integration_client, sent, "twice@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+
+    body = {"sku_id": sku_id, "quantity": 1000, "expected_price": "16.54"}
+    key = "0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b34"
+    first = await integration_client.post(
+        f"{BASE}/orders", headers={**_auth(access), "Idempotency-Key": key}, json=body
+    )
+    second = await integration_client.post(
+        f"{BASE}/orders", headers={**_auth(access), "Idempotency-Key": key}, json=body
+    )
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["order_id"] == second.json()["order_id"]
+
+    listed = await integration_client.get(f"{BASE}/orders", headers=_auth(access))
+    assert len(listed.json()["items"]) == 1, listed.text
+    # $40.00 credited, one order at $16.54 — the second call took nothing.
+    assert second.json()["balance_usd"] == "23.46"
+
+
+async def test_two_clicks_without_a_key_are_still_two_orders(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """The fallback, kept deliberately.
+
+    With no header there is nothing to be idempotent on, and inventing a key
+    that collapsed two intentional purchases into one is the worse failure: a
+    person can see two orders in the list and ask about them.
+    """
+    access, merchant_id = await _signed_up(integration_client, sent, "nokey@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    sku_id = _seed_stars(db_session)
+    await db_session.commit()
+
+    body = {"sku_id": sku_id, "quantity": 1000, "expected_price": "16.54"}
+    first = await integration_client.post(f"{BASE}/orders", headers=_auth(access), json=body)
+    second = await integration_client.post(f"{BASE}/orders", headers=_auth(access), json=body)
+
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
+    assert first.json()["order_id"] != second.json()["order_id"]
+
+
 async def test_the_order_detail_names_the_product_too(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],

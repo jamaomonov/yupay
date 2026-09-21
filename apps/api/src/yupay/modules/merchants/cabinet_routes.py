@@ -10,9 +10,9 @@ never from a parameter: that is the single rule keeping one reseller out of
 another's catalog, deposit and orders.
 
 **Ordering here walks the machine API's path exactly** — ``quote``, the margin
-floor, the deposit charge, the fulfilment enqueue — with a minted
-``manual-<uuid>`` standing in for the ``merchant_order_id`` a person should not
-have to invent (spec §11). A cabinet order and an API order are therefore the
+floor, the deposit charge, the fulfilment enqueue — with a derived
+``manual-<digest>`` standing in for the ``merchant_order_id`` a person should
+not have to invent (spec §11). A cabinet order and an API order are therefore the
 same kind of thing in history, in the ledger and in a dispute, which is what
 lets the catalog page double as the no-code first purchase.
 
@@ -24,10 +24,12 @@ credential routes carry the two-axis ``ip_guard`` besides.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Response, status
 
+from yupay.core.idempotency import normalize_idempotency_key
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.merchants import (
@@ -59,6 +61,7 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantOrderOut,
     MerchantTransactionsOut,
 )
+from yupay.modules.merchants.route_replay import IdempotencyKeyHeader
 
 log = get_logger("yupay.merchants.cabinet_routes")
 
@@ -137,31 +140,70 @@ async def catalog(user: CurrentUser, db: Db) -> MerchantCatalogOut:
     return await price_list.build(db, merchant=await merchant_of(db, user))
 
 
+#: Marks an order placed from the cabinet rather than by a reseller's server.
+#: Read back by the frontend (three screens hide the "your id" row on it), so
+#: it is one spelling here and not a literal at each site.
+_MANUAL_PREFIX = "manual-"
+
+
+def _manual_order_id(key: str | None) -> str:
+    """The ``merchant_order_id`` for a cabinet purchase.
+
+    Deterministic in the caller's idempotency key, so a retry of one click is
+    one order; random when there is no key. See :func:`place_order` for why it
+    is a digest of the header and not the header.
+    """
+    if key is None:
+        return f"{_MANUAL_PREFIX}{new_id()}"
+    return f"{_MANUAL_PREFIX}{hashlib.sha256(key.encode()).hexdigest()[:32]}"
+
+
 @router.post(
     "/orders",
     response_model=MerchantOrderOut,
     status_code=status.HTTP_201_CREATED,
     summary="Order from the catalog page",
 )
-async def place_order(body: CabinetOrderIn, user: CurrentUser, db: Db) -> MerchantOrderOut:
-    """Buy one SKU, minting the idempotency key on the merchant's behalf.
+async def place_order(
+    body: CabinetOrderIn,
+    user: CurrentUser,
+    db: Db,
+    idempotency_key: IdempotencyKeyHeader = None,
+) -> MerchantOrderOut:
+    """Buy one SKU, deriving the ``merchant_order_id`` from the caller's key.
 
-    ``manual-<uuid>`` (spec §11): unique per click, and visibly not a
-    reseller's own id, so a support conversation about "order acme-417" is
-    never about one of these.
+    ``manual-<digest>`` (spec §11): visibly not a reseller's own id, so a
+    support conversation about "order acme-417" is never about one of these.
 
-    The trade this makes, deliberately: a double-click is two orders, where an
-    API caller re-sending one id gets one. A person can see both in the list
-    and ask for a refund; an invented key that collapsed two intentional
-    purchases into one would be the worse failure, and the browser prevents the
-    common case by disabling the button.
+    **The key is the browser's, when it sends one.** It used to be minted here
+    per call, which made every retry a second order and a second charge — and
+    the cabinet's own client had already been fixed to hold one key per intent
+    in React state and put it on ``Idempotency-Key``, so the header arrived on
+    every request and was dropped on the floor. A POST that moves money and
+    ignores the header it is handed is also the one thing AGENTS.md §9 says a
+    state-changing endpoint may not do; the published exemption covers
+    ``POST /merchant/v1/orders``, which is idempotent on an id the caller
+    minted, not this route, which invents that id itself.
+
+    Derived by digest rather than used verbatim: the header is client-
+    controlled free text with only a minimum length enforced, while
+    ``merchant_order_id`` is bounded at 128 printable non-space ASCII
+    characters and becomes a path segment and part of a signed string on the
+    machine API. Hashing makes the shape ours whatever the browser sent, and
+    a 128-bit prefix does not collide. Scoping is unchanged — the lookup and
+    ``uq_orders_idem_merchant`` are both per merchant — so two resellers who
+    happen to mint the same key still get their own orders.
+
+    With no header, one is minted as before: a double-click is then two
+    orders, which a person can see in the list and ask about, and which is
+    the better failure than an invented key collapsing two real purchases.
     """
     merchant = await merchant_of(db, user)
     return await orders.place(
         db,
         merchant=merchant,
         body=MerchantOrderCreateIn(
-            merchant_order_id=f"manual-{new_id()}",
+            merchant_order_id=_manual_order_id(normalize_idempotency_key(idempotency_key)),
             sku_id=body.sku_id,
             quantity=body.quantity,
             amount_usd=body.amount_usd,
