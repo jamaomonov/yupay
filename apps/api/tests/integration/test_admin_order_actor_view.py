@@ -96,7 +96,15 @@ async def _buyer(db: AsyncSession) -> str:
 
 
 def _order(**actor: str | None) -> Order:
-    """One order with the given actor column set and neutral money fields."""
+    """One order with the given actor column set and neutral money fields.
+
+    Exactly one arm, always: ``ck_orders_actor_exclusive`` counts them and
+    rejects zero as firmly as two. Checked here so a call that forgets fails
+    on this line instead of as a `CheckViolationError` three frames deep in
+    asyncpg — which is how it was found, in CI.
+    """
+    if sum(1 for value in actor.values() if value is not None) != 1:
+        raise AssertionError(f"an order needs exactly one actor, got {sorted(actor)}")
     return Order(
         id=str(uuid.uuid4()),
         status="fulfilling",
@@ -218,7 +226,11 @@ async def test_the_merchant_filter_narrows_to_one_reseller_exactly(
     mine = await _merchant(db_session, "Reseller Alpha")
     theirs = await _merchant(db_session, "Reseller Beta")
     ours = _order(merchant_id=mine)
-    db_session.add_all([ours, _order(merchant_id=theirs), _order()])
+    # A guest order stands in for "somebody else entirely" — an order with no
+    # actor at all is not a row the database allows.
+    db_session.add_all(
+        [ours, _order(merchant_id=theirs), _order(guest_email="someone@example.com")]
+    )
     await db_session.commit()
 
     r = await integration_client.get(
@@ -239,7 +251,7 @@ async def test_an_unknown_merchant_id_matches_nothing_rather_than_everything(
     """A filter that silently widens is worse than one that returns nothing:
     an operator seeing the whole list reads it as "this reseller bought all
     of this"."""
-    db_session.add(_order())
+    db_session.add(_order(guest_email="someone-else@example.com"))
     await db_session.commit()
 
     r = await integration_client.get(
