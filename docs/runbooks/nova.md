@@ -74,6 +74,34 @@ the admin inbox (Fulfilment → "Failed" tab) with an ops alert
 (`kind="supplier_low_balance"`), and the **order item stays `in_progress`**
 so the storefront keeps saying "обработка" instead of erroring out.
 
+### Gift cards — a second endpoint, and a second artifact
+
+NOVA sells 576 gift-card categories beside its top-ups, and they do **not**
+go through `/api/v2/topups/order`. A card has no player to credit, so that
+endpoint's required `fields` cannot be built and a voucher mapping refused
+every order with "no nova fields could be built". Since 2026-09-21 the
+adapter dispatches on `SkuSupplierMapping.kind == "voucher"` to
+`_fulfill_giftcard`, which calls `POST /api/v2/giftcards/order` with
+`{category_id, card_id, quantity}` and no fields at all.
+
+Three things worth knowing on call:
+
+- **The create never carries the codes.** It answers `status: "created"`,
+  `cards: []`, and the money is already gone. The codes appear on
+  `GET /api/v2/orders/{id}` — about a second later on the first live order,
+  but it is `check_status` that finishes the task, not the create.
+- **`completed` with an empty `cards` is graded a FAILURE**, not a success,
+  with `MoneyOutcome.UNKNOWN`. We were charged and have nothing to hand over;
+  a success there would close the order with an empty code and the customer
+  would be the one to find out. It lands in the Fulfilment inbox.
+- **Quantity is real here.** Their endpoint takes 1–100 and stock caps it
+  lower, so the "one call buys one offer" guard that protects top-ups is
+  deliberately skipped for cards — see the dispatch order in `fulfill`.
+
+Denominations come from `GET /api/v2/giftcards/cards?category_id=…`, which is
+also where `card_id` and the live `stock` live. The endpoint is not
+`/giftcards/offers` — that 404s, and guessing it cost a probe.
+
 ### The pre-emptive warning, before any order is refused
 
 Since 2026-09-21 the hourly price refresh also probes NOVA's wallet through

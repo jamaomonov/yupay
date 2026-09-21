@@ -272,6 +272,46 @@ class NovaClient:
         )
         return _order_with_debit(body)
 
+    async def create_giftcard_order(
+        self,
+        *,
+        category_id: str,
+        card_id: str,
+        quantity: int,
+        idempotency_key: str,
+    ) -> dict[str, Any]:
+        """Buy gift-card codes. Their gift-card endpoint, not the top-ups one.
+
+        A gift card has no player to credit, so this sends no ``fields`` at all
+        — which is exactly why it could not ride on :meth:`create_topup_order`,
+        whose body requires them.
+
+        Delivery is **asynchronous even when it is fast**. Measured on the
+        first live order (2026-09-21, `roblox_global` / `50_robux`): the create
+        answered ``status: "created"`` with ``cards: []`` and the money already
+        debited, and ``GET /api/v2/orders/{id}`` answered ``completed`` with one
+        code about a second later. So a caller must poll rather than read codes
+        off the create — the codes are on the ORDER, never in the create
+        response.
+
+        Args:
+            category_id: ``category_id`` from ``GET /api/v2/giftcards``.
+            card_id: ``card_id`` from ``GET /api/v2/giftcards/cards`` — the
+                denomination within that category.
+            quantity: How many codes. Their schema allows 1-100 and stock caps
+                it lower; the caller is responsible for not asking for more
+                than ``max_order_quantity``.
+            idempotency_key: Required, as on every purchase of theirs. A reused
+                key is refused with a ``409``, never replayed.
+        """
+        body = await self._request(
+            "POST",
+            "/api/v2/giftcards/order",
+            json={"category_id": category_id, "card_id": card_id, "quantity": quantity},
+            headers={"Idempotency-Key": idempotency_key[:255]},
+        )
+        return _order_with_debit(body)
+
     async def get_order(self, order_id: str) -> dict[str, Any]:
         """One order by their public id."""
         body = await self._request("GET", f"/api/v2/orders/{order_id}")

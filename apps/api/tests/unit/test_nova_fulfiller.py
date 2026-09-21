@@ -49,6 +49,7 @@ class _FakeClient:
         self.calls: list[dict[str, Any]] = []
         self.steam_calls: list[dict[str, Any]] = []
         self.fragment_calls: list[tuple[str, dict[str, Any]]] = []
+        self.giftcard_calls: list[dict[str, Any]] = []
 
     async def create_topup_order(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
@@ -74,6 +75,12 @@ class _FakeClient:
 
     async def create_fragment_premium_order(self, **kwargs: Any) -> dict[str, Any]:
         self.fragment_calls.append(("premium", kwargs))
+        if self._raises is not None:
+            raise self._raises
+        return self._order
+
+    async def create_giftcard_order(self, **kwargs: Any) -> dict[str, Any]:
+        self.giftcard_calls.append(kwargs)
         if self._raises is not None:
             raise self._raises
         return self._order
@@ -907,3 +914,145 @@ async def test_a_games_order_still_polls_the_v2_endpoint(
 
     assert asked == ["v2"]
     assert status.outcome == "succeeded"
+
+
+# ---------- gift cards ----------
+#
+# NOVA sells Roblox (and 575 other) gift cards through a second endpoint that
+# takes a category, a denomination and a count — and no player fields, because
+# a card has nobody to credit. Until this path existed the adapter could only
+# call `/topups/order`, so a voucher mapping refused every order with "no nova
+# fields could be built": mapping a card to NOVA would have looked like it
+# worked and failed at purchase.
+#
+# Shapes below are the first live order (2026-09-21, `roblox_global` /
+# `50_robux`, $0.87873): the create answers `created` with `cards: []` and the
+# money already gone; the codes appear on the order about a second later.
+
+
+def _card_mapping(**over: Any) -> Any:
+    base: dict[str, Any] = {
+        "kind": "voucher",
+        "external_product_id": "roblox_global",
+        "external_variant_id": "50_robux",
+        "quantity": 1,
+    }
+    base.update(over)
+    return _mapping(**base)
+
+
+def _card_item(**over: Any) -> Any:
+    # No `fulfillment_data`: a gift card has no player id, and the default
+    # path's `_fields_from` would have refused this order outright.
+    return _item(fulfillment_data={}, **over)
+
+
+async def test_a_card_order_goes_to_the_giftcard_endpoint_with_no_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient(order={"id": "ord-1", "kind": "gift_card", "status": "created"})
+
+    await _fulfill(client, monkeypatch, item=_card_item(), mapping=_card_mapping())
+
+    assert client.calls == [], "a card must not go to the top-ups endpoint"
+    assert len(client.giftcard_calls) == 1
+    call = client.giftcard_calls[0]
+    assert call["category_id"] == "roblox_global"
+    assert call["card_id"] == "50_robux"
+    assert call["quantity"] == 1
+    assert "fields" not in call
+
+
+async def test_buying_several_cards_is_one_call_with_a_quantity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Their endpoint takes 1-100, so the top-up guard must not reach a card.
+
+    That guard sits one line below the dispatch for exactly this reason: it is
+    right for a top-up, where one call buys one offer, and would refuse every
+    multi-card purchase.
+    """
+    client = _FakeClient(order={"id": "ord-1", "kind": "gift_card", "status": "created"})
+
+    await _fulfill(client, monkeypatch, item=_card_item(qty=3), mapping=_card_mapping())
+
+    assert client.giftcard_calls[0]["quantity"] == 3
+
+
+async def test_a_completed_card_order_hands_over_the_codes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient(
+        order={
+            "id": "ord-1481455",
+            "kind": "gift_card",
+            "category_id": "roblox_global",
+            "status": "completed",
+            "cards": ["AAAA-BBBB-CCCC", "DDDD-EEEE-FFFF"],
+        }
+    )
+
+    result = await _fulfill(client, monkeypatch, item=_card_item(qty=2), mapping=_card_mapping())
+
+    assert result.outcome == "succeeded"
+    assert result.artifact_kind == "voucher_code"
+    # Same shape G2B's voucher artifact uses, so a delivery reads identically
+    # whichever supplier filled it.
+    assert result.artifact["code"] == "AAAA-BBBB-CCCC"
+    assert result.artifact["codes"] == ["AAAA-BBBB-CCCC", "DDDD-EEEE-FFFF"]
+    assert result.artifact["source"] == "nova"
+    assert result.artifact["external_order_id"] == "ord-1481455"
+
+
+async def test_completed_with_no_codes_fails_loudly_instead_of_succeeding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Charged, marked complete, nothing to hand over.
+
+    Graded a success this would close the order with an empty code, and the
+    customer would be the one to discover it. UNKNOWN money, because the
+    charge did land.
+    """
+    client = _FakeClient(order={"id": "ord-1", "kind": "gift_card", "status": "completed"})
+
+    with pytest.raises(FulfillerError) as exc:
+        await _fulfill(client, monkeypatch, item=_card_item(), mapping=_card_mapping())
+
+    assert exc.value.money_outcome is MoneyOutcome.UNKNOWN
+
+
+async def test_a_created_card_order_waits_for_the_reconciler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Their create answers `created` with the money already gone — the codes
+    arrive on the order a moment later, which is `check_status`'s job."""
+    client = _FakeClient(order={"id": "ord-1", "kind": "gift_card", "status": "created"})
+
+    result = await _fulfill(client, monkeypatch, item=_card_item(), mapping=_card_mapping())
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id == "ord-1"
+
+
+async def test_a_card_mapping_without_a_denomination_is_refused_before_paying(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient(order={"id": "ord-1", "kind": "gift_card", "status": "created"})
+
+    with pytest.raises(FulfillerError) as exc:
+        await _fulfill(
+            client,
+            monkeypatch,
+            item=_card_item(),
+            mapping=_card_mapping(external_variant_id=""),
+        )
+
+    assert exc.value.money_outcome is MoneyOutcome.RETURNED
+    assert client.giftcard_calls == []
+
+
+async def test_a_top_up_is_still_a_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The gift-card branch keys on the mapping kind, so nothing else moved."""
+    result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "completed"}), monkeypatch)
+
+    assert result.artifact_kind == "topup_receipt"

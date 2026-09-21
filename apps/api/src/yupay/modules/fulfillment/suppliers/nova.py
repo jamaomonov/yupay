@@ -82,6 +82,12 @@ _FIELD_MAP: dict[str, str] = {
 #: Re-exported so this module reads as one story; the fact itself lives in
 #: ``integrations.models`` because the admin's mapping validator needs the same
 #: one. See it there for why a sentinel rather than a fourth ``kind``.
+#: ``SkuSupplierMapping.kind`` for a SKU that hands over a code rather than
+#: crediting an account. The catalogue's own word, shared with G2B's voucher
+#: mappings — the dispatch below reads it rather than sniffing the category,
+#: because a category id says what is being bought and not how it arrives.
+_VOUCHER_KIND = "voucher"
+
 STEAM_SENTINEL = NOVA_STEAM_SENTINEL
 FRAGMENT_STARS = NOVA_FRAGMENT_STARS
 FRAGMENT_PREMIUM = NOVA_FRAGMENT_PREMIUM
@@ -156,6 +162,15 @@ class NovaFulfiller(Fulfiller):
         mapping = await _mapping_for(db, sku_id=item.sku_id)
         category_id = str(mapping.external_product_id or "").strip()
 
+        # Gift cards first, ahead of the quantity guard below: their endpoint
+        # takes a real ``quantity`` (1-100), so the guard that is right for a
+        # top-up would refuse every multi-card purchase. Same reason the Stars
+        # carve-out exists, one line down.
+        if mapping.kind == _VOUCHER_KIND:
+            return await self._fulfill_giftcard(
+                item=item, mapping=mapping, idempotency_key=idempotency_key
+            )
+
         # One call buys one thing — for a game offer, a Steam wallet and a
         # Premium gift alike. **Stars are the exception**, and it is not a
         # nicety: on the free-amount line ``item.qty`` *is* the star count
@@ -208,6 +223,55 @@ class NovaFulfiller(Fulfiller):
         except NovaUnavailableError as exc:
             # A transport failure carries no body, so there is nothing of ours
             # in it to take back out.
+            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+
+        return _finish(obj)
+
+    async def _fulfill_giftcard(
+        self, *, item: OrderItem, mapping: Any, idempotency_key: str
+    ) -> FulfillResult:
+        """Buy gift-card codes — their gift-card endpoint, not the top-ups one.
+
+        A card has no player to credit, so nothing is read out of
+        ``fulfillment_data``: the whole order is a category, a denomination and
+        a count. That is why this cannot ride on the default path, whose body
+        requires ``fields`` and which would refuse every voucher SKU with "no
+        nova fields could be built".
+
+        Delivery is asynchronous even when it is fast. Their create answers
+        ``created`` with ``cards: []`` and the money already gone; the codes
+        appear on ``GET /api/v2/orders/{id}`` about a second later. So this
+        returns whatever ``_finish`` grades the create as — ``in_progress``
+        with an id — and ``check_status`` finishes it through the same
+        ``_result`` that now knows how to hand a code over.
+        """
+        category_id = str(mapping.external_product_id or "").strip()
+        card_id = str(mapping.external_variant_id or "").strip()
+        if not category_id or not card_id:
+            raise FulfillerError(
+                "no active nova mapping for this SKU", money_outcome=_NOTHING_SPENT
+            )
+        # ``mapping.quantity`` is how many supplier units make one of ours; a
+        # card is one for one today, and multiplying keeps that an assumption
+        # of the DATA rather than of this function.
+        quantity = item.qty * max(1, int(mapping.quantity or 1))
+
+        try:
+            obj = await self._client().create_giftcard_order(
+                category_id=category_id,
+                card_id=card_id,
+                quantity=quantity,
+                idempotency_key=idempotency_key,
+            )
+        except NovaError as exc:
+            if _looks_like_low_balance(exc):
+                return _low_balance_result(
+                    message=str(exc),
+                    side=_shortfall_side(exc),
+                    our_balance=await self._balance_or_none(),
+                )
+            raise FulfillerError(str(exc), money_outcome=_refusal_money(exc)) from exc
+        except NovaUnavailableError as exc:
             raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
 
         return _finish(obj)

@@ -252,11 +252,85 @@ def _low_balance_result(
     )
 
 
+#: Their own word for a gift-card order, on ``order.kind``. A top-up order
+#: carries a different one, so this is what tells the two apart without the
+#: grader needing to be told which call produced the object.
+_GIFT_CARD_KIND = "gift_card"
+
+
+def _is_gift_card(obj: dict[str, Any]) -> bool:
+    """Whether this order hands over codes rather than crediting an account.
+
+    Reads their ``kind`` first and falls back to the presence of a ``cards``
+    key: the field is on every gift-card order we have seen, and a top-up has
+    never carried one. Two signals because their order object is untyped in
+    their own spec, and a gift card graded as a top-up would report success
+    while handing the customer nothing.
+    """
+    if str(obj.get("kind") or "").strip().lower() == _GIFT_CARD_KIND:
+        return True
+    return "cards" in obj
+
+
+def _cards_of(obj: dict[str, Any]) -> list[str]:
+    """The codes on a completed gift-card order, in their order.
+
+    ``order.cards`` is a plain list of strings — observed on the first live
+    order. Anything that is not a non-empty string is dropped rather than
+    rendered, because a blank in this list would reach a customer as a code.
+    """
+    raw = obj.get("cards")
+    if not isinstance(raw, list):
+        return []
+    return [text for item in raw if (text := str(item).strip())]
+
+
+def _voucher_artifact(obj: dict[str, Any], order_id: str | None) -> dict[str, Any]:
+    """Customer-facing voucher artifact. Contains the actual codes.
+
+    Same shape as the G2B one (``g2b._voucher_artifact``) so a delivery reads
+    identically whoever filled it: ``code`` for the ordinary single purchase,
+    ``codes`` for the whole list. `source` names the supplier, and an operator
+    reading a delivery should never have to guess which one it came from.
+    """
+    codes = _cards_of(obj)
+    return {
+        "code": codes[0] if codes else "",
+        "codes": codes,
+        "qty": len(codes),
+        "source": "nova",
+        "external_order_id": order_id,
+        "external_product_id": obj.get("category_id"),
+    }
+
+
 def _result(obj: dict[str, Any]) -> FulfillResult:
     """Interpret one order object into a fulfilment result."""
     status = _status_of(obj)
     order_id = _order_id_of(obj)
     if status in _SUCCESS:
+        if _is_gift_card(obj):
+            codes = _cards_of(obj)
+            if not codes:
+                # Charged, marked complete, nothing to hand over. Graded a
+                # failure with UNKNOWN money rather than a success, because a
+                # success here would close the order with an empty code and
+                # the customer would be the one to discover it.
+                log.warning("nova.giftcard_completed_without_codes", order_id=order_id)
+                raise FulfillerError(
+                    "nova completed the gift-card order without returning a code — "
+                    "the charge landed; reconcile it by hand",
+                    money_outcome=_MAY_HAVE_SPENT,
+                )
+            return FulfillResult(
+                outcome="succeeded",
+                external_order_id=order_id,
+                artifact_kind="voucher_code",
+                artifact=_voucher_artifact(obj, order_id),
+                error=None,
+                extra_metadata=_meta(status, obj),
+                money_outcome=None,
+            )
         return FulfillResult(
             outcome="succeeded",
             external_order_id=order_id,
