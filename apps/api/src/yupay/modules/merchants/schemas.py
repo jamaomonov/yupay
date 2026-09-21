@@ -62,12 +62,47 @@ class MerchantOut(BaseModel):
     status: str
     created_at: datetime
     deposit_balance: Decimal
+    #: Percentage POINTS added to every SKU's ``b2b_markup_pct`` for this
+    #: merchant, or ``None`` for the catalogue price everyone else pays.
+    #: Negative is the ordinary case — a negotiated rate for volume.
+    markup_adjustment_pp: Decimal | None = None
 
 
 class MerchantListOut(BaseModel):
     """Body of ``GET /admin/merchants``."""
 
     items: list[MerchantOut]
+
+
+class MerchantMarkupPatchIn(BaseModel):
+    """Body of ``PATCH /admin/merchants/{id}/markup``.
+
+    Percentage **points**, added to each SKU's own ``b2b_markup_pct`` — not a
+    multiplier and not a price. With the catalogue at 7 %, ``-2`` prices that
+    merchant at 5 % over cost, on everything.
+
+    ``None`` clears the adjustment back to the catalogue price. It is a
+    distinct value from ``0``, which is an operator saying "no discount" out
+    loud; both compute the same price and only one of them records a decision.
+
+    The range is the column's (``Numeric(5, 2)``) and is deliberately wider
+    than anything sensible: what makes a value safe is the margin floor, not
+    an arbitrary cap, and that check needs the catalogue rather than a
+    validator.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    markup_adjustment_pp: Decimal | None = Field(
+        default=None,
+        ge=Decimal("-999.99"),
+        le=Decimal("999.99"),
+        decimal_places=2,
+        description=(
+            "Percentage points added to every SKU's markup for this merchant. "
+            "Negative for a negotiated discount; `null` restores the catalogue price."
+        ),
+    )
 
 
 class DepositCreditIn(BaseModel):

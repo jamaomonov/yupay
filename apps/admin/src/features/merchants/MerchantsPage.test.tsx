@@ -28,6 +28,7 @@ const LIST: MerchantListOut = {
       status: "active",
       created_at: "2026-09-01T10:00:00Z",
       deposit_balance: "1250.00",
+      markup_adjustment_pp: null,
     },
     {
       id: "m-frozen",
@@ -35,6 +36,7 @@ const LIST: MerchantListOut = {
       status: "frozen",
       created_at: "2026-08-20T10:00:00Z",
       deposit_balance: "0",
+      markup_adjustment_pp: null,
     },
   ],
 };
@@ -77,6 +79,7 @@ it("creates a merchant from the dialog with an Idempotency-Key and lands on its 
     status: "active",
     created_at: "2026-09-06T10:00:00Z",
     deposit_balance: "0",
+    markup_adjustment_pp: null,
   });
   renderPage();
 

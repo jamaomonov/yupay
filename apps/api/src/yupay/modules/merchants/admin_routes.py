@@ -52,6 +52,7 @@ from yupay.modules.merchants.schemas import (
     DepositDebitOut,
     MerchantCreateIn,
     MerchantListOut,
+    MerchantMarkupPatchIn,
     MerchantOut,
     MerchantTxnListOut,
     MerchantTxnOut,
@@ -91,6 +92,7 @@ def _merchant_out(merchant: merchants.Merchant, balance: Decimal) -> MerchantOut
         status=merchant.status,
         created_at=merchant.created_at,
         deposit_balance=balance,
+        markup_adjustment_pp=merchant.markup_adjustment_pp,
     )
 
 
@@ -524,6 +526,38 @@ async def read_webhook(
     registered an endpoint.
     """
     return WebhookOut.model_validate(await merchants.get_webhook(db, merchant_id=merchant_id))
+
+
+@admin_router.patch(
+    "/{merchant_id}/markup",
+    response_model=MerchantOut,
+    summary="Set this merchant's catalogue-wide price adjustment",
+)
+async def patch_markup(
+    merchant_id: str,
+    body: MerchantMarkupPatchIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> MerchantOut:
+    """Percentage points added to every SKU's own markup, for this merchant.
+
+    The column has been on the row since M1 and nothing could write it; the
+    arithmetic in ``pricing.merchant_markup_pct`` has been reading it all
+    along. ``null`` clears it back to the catalogue price — a different thing
+    from ``0``, which is an operator saying "no discount" on the record.
+
+    Refuses with ``markup_below_floor`` when the value would put the cheapest
+    SKU on sale to resellers under ``merchant_margin_floor_pct``, and names
+    the lowest value that would work. Without that, the mistake surfaces one
+    refused order at a time with nothing on this page explaining why.
+
+    No ``Idempotency-Key``: this sets a field to a value rather than
+    appending anything, so a replayed request lands on the same state. It is
+    the same shape as ``freeze``/``unfreeze`` one screen over.
+    """
+    merchant = await merchants.set_markup_adjustment(
+        db, merchant_id=merchant_id, adjustment=body.markup_adjustment_pp
+    )
+    return _merchant_out(merchant, await merchants.deposit_balance(db, merchant_id=merchant_id))
 
 
 @admin_router.get(

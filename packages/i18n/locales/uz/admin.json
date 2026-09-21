@@ -203,6 +203,26 @@
       "error": "Xatolik",
       "nextAttempt": "Keyingi urinish",
       "loadMore": "Yana koʻrsatish"
+    },
+    "markup": {
+      "title": "Merchantga individual ustama",
+      "hint": "Bu merchant uchun har bir SKU ning oʻz ustamasiga qoʻshiladigan foiz punktlari. Katalogda odatda 7% — demak −2 unga tannarx ustiga 5% beradi, hammasiga birdan. Manfiy qiymat — chegirma.",
+      "current": "Hozir: {value} p.p.",
+      "none": "Hozir: hammadagidek katalog narxi",
+      "label": "Ustama, p.p.",
+      "placeholder": "masalan: -2",
+      "save": "Saqlash",
+      "saveBusy": "Saqlanmoqda…",
+      "clear": "Katalog narxiga qaytarish",
+      "savedToast": "Ustama saqlandi",
+      "clearedToast": "Katalog narxiga qaytarildi",
+      "invalid": "Ustama — foiz punktlaridagi son, nuqtadan keyin koʻpi bilan ikki xona.",
+      "error": "Saqlab boʻlmadi: {message}",
+      "floorError": "Bundan past boʻlmaydi: katalogdagi eng yupqa SKU {thinnest} p.p. bilan ketadi, marja poli — {floor}%. Bu merchant uchun minimum: {lowest} p.p.",
+      "confirmTitle": "Bu merchant uchun narx oʻzgartirilsinmi?",
+      "confirmBody": "Darhol va butun katalog boʻyicha kuchga kiradi: {title} bazaviy ustamaga {value} p.p. bilan sotib oladi. Allaqachon rasmiylashtirilgan buyurtmalar oʻzgarmaydi.",
+      "confirm": "Ha, oʻzgartirilsin",
+      "cancel": "Bekor qilish"
     }
   },
   "catalogB2b": {

@@ -8592,6 +8592,32 @@
         "title": "MerchantListOut",
         "type": "object"
       },
+      "MerchantMarkupPatchIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PATCH /admin/merchants/{id}/markup``.\n\nPercentage **points**, added to each SKU's own ``b2b_markup_pct`` \u2014 not a\nmultiplier and not a price. With the catalogue at 7 %, ``-2`` prices that\nmerchant at 5 % over cost, on everything.\n\n``None`` clears the adjustment back to the catalogue price. It is a\ndistinct value from ``0``, which is an operator saying \"no discount\" out\nloud; both compute the same price and only one of them records a decision.\n\nThe range is the column's (``Numeric(5, 2)``) and is deliberately wider\nthan anything sensible: what makes a value safe is the margin floor, not\nan arbitrary cap, and that check needs the catalogue rather than a\nvalidator.",
+        "properties": {
+          "markup_adjustment_pp": {
+            "anyOf": [
+              {
+                "maximum": 999.99,
+                "minimum": -999.99,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Percentage points added to every SKU's markup for this merchant. Negative for a negotiated discount; `null` restores the catalogue price.",
+            "title": "Markup Adjustment Pp"
+          }
+        },
+        "title": "MerchantMarkupPatchIn",
+        "type": "object"
+      },
       "MerchantOrderCreateIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /merchant/v1/orders`` (spec \u00a79.1).\n\nOne SKU per order, deliberately: a reseller's own basket does not have to\nbe ours, and a single line keeps \"the order failed\" from meaning \"part of\nthe order failed\". An ``items`` array can still be *added* later without a\n``/merchant/v2`` \u2014 a new optional request field is additive; removing one\nis not, which is the escape hatch ``quantity`` below was added through.\n\n``extra=\"forbid\"`` on purpose. On a response, ignoring an unknown field is\nright; on a *request* it is how a typo'd ``fulfilment_data`` silently\nbecomes an order with no player id, delivered to nobody.",
@@ -8877,6 +8903,18 @@
           "id": {
             "title": "Id",
             "type": "string"
+          },
+          "markup_adjustment_pp": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Markup Adjustment Pp"
           },
           "status": {
             "title": "Status",
@@ -25133,6 +25171,75 @@
           }
         },
         "summary": "Freeze a merchant (blocks orders in M2, never money in)",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
+    "/api/v1/admin/merchants/{merchant_id}/markup": {
+      "patch": {
+        "description": "Percentage points added to every SKU's own markup, for this merchant.\n\nThe column has been on the row since M1 and nothing could write it; the\narithmetic in ``pricing.merchant_markup_pct`` has been reading it all\nalong. ``null`` clears it back to the catalogue price \u2014 a different thing\nfrom ``0``, which is an operator saying \"no discount\" on the record.\n\nRefuses with ``markup_below_floor`` when the value would put the cheapest\nSKU on sale to resellers under ``merchant_margin_floor_pct``, and names\nthe lowest value that would work. Without that, the mistake surfaces one\nrefused order at a time with nothing on this page explaining why.\n\nNo ``Idempotency-Key``: this sets a field to a value rather than\nappending anything, so a replayed request lands on the same state. It is\nthe same shape as ``freeze``/``unfreeze`` one screen over.",
+        "operationId": "patch_markup_api_v1_admin_merchants__merchant_id__markup_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantMarkupPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set this merchant's catalogue-wide price adjustment",
         "tags": [
           "admin:merchants"
         ]

@@ -49,6 +49,7 @@ import {
 } from "./api";
 import { DepositDebitCard } from "./DepositDebitCard";
 import { MerchantKeysCard } from "./MerchantKeysCard";
+import { MerchantMarkupCard } from "./MerchantMarkupCard";
 import { MerchantUsersCard } from "./MerchantUsersCard";
 import { MerchantWebhookCard } from "./MerchantWebhookCard";
 
@@ -424,6 +425,11 @@ export function MerchantDetail() {
           scroll to. The two integration cards sit between because they are
           what a support conversation needs — "is his key live", "are his
           webhooks arriving" — and both were answerable only by psql before. */}
+      {/* Price before credentials: what this reseller pays is a commercial
+          decision an operator makes on purpose, and the integration cards
+          below are what they open when something is broken. */}
+      <MerchantMarkupCard merchant={merchant} onChange={patchList} />
+
       <MerchantKeysCard merchantId={id} />
       <MerchantWebhookCard merchantId={id} />
       <MerchantUsersCard merchantId={id} />

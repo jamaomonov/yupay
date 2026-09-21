@@ -160,6 +160,7 @@ def _seed_catalog_unit(db: AsyncSession, tag: str, *, sku_count: int = 1) -> tup
         ("POST", "/api/v1/admin/merchants/x/api-keys"),
         ("GET", "/api/v1/admin/merchants/x/api-keys"),
         ("DELETE", "/api/v1/admin/merchants/x/api-keys/ypm_x"),
+        ("PATCH", "/api/v1/admin/merchants/x/markup"),
         ("GET", "/api/v1/admin/merchants/x/webhook/deliveries"),
         ("GET", "/api/v1/admin/merchants/x/users"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
@@ -186,6 +187,7 @@ async def test_every_endpoint_requires_a_token(
         ("POST", "/api/v1/admin/merchants/x/api-keys"),
         ("GET", "/api/v1/admin/merchants/x/api-keys"),
         ("DELETE", "/api/v1/admin/merchants/x/api-keys/ypm_x"),
+        ("PATCH", "/api/v1/admin/merchants/x/markup"),
         ("GET", "/api/v1/admin/merchants/x/webhook/deliveries"),
         ("GET", "/api/v1/admin/merchants/x/users"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
@@ -1255,3 +1257,145 @@ async def test_operators_of_a_merchant_that_does_not_exist_is_a_404(
         f"/api/v1/admin/merchants/{new_id()}/users", headers=admin_headers
     )
     assert r.status_code == 404, r.text
+
+
+# ---------- the per-merchant price adjustment ----------
+
+
+async def _open_sku(db: AsyncSession, tag: str, markup: Decimal) -> None:
+    """One SKU a reseller can actually buy, at a given markup."""
+    brand_id, (sku_id,) = _seed_catalog_unit(db, tag)
+    await db.flush()
+    await db.execute(update(Brand).where(Brand.id == brand_id).values(visible_b2b=True))
+    await db.execute(
+        update(Sku).where(Sku.id == sku_id).values(visible_b2b=True, b2b_markup_pct=markup)
+    )
+
+
+async def test_a_negotiated_discount_is_stored_and_published(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Percentage POINTS off every SKU's own markup — the whole catalogue at once."""
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Big reseller")
+    await _open_sku(db_session, "markup-ok", Decimal("7"))
+    await db_session.commit()
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": "-2"},
+    )
+
+    assert r.status_code == 200, r.text
+    assert Decimal(r.json()["markup_adjustment_pp"]) == Decimal("-2")
+    # And it rides along on the ordinary read, so the list can show it.
+    listed = await integration_client.get("/api/v1/admin/merchants", headers=admin_headers)
+    row = next(m for m in listed.json()["items"] if m["id"] == merchant_id)
+    assert Decimal(row["markup_adjustment_pp"]) == Decimal("-2")
+
+
+async def test_an_adjustment_under_the_floor_is_refused_with_the_number_that_works(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """The mistake that would otherwise surface one refused order at a time.
+
+    The catalogue at 7 % and the floor at 2 % make -5 the edge: -6 puts the
+    cheapest SKU under it, and EVERY order that merchant places would come
+    back `margin_floor` with nothing on their page explaining why.
+    """
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Too greedy")
+    await _open_sku(db_session, "markup-thin", Decimal("7"))
+    await db_session.commit()
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": "-6"},
+    )
+
+    assert r.status_code == 422, r.text
+    body = r.json()
+    assert body["code"] == "markup_below_floor"
+    # The fix is a value, not an experiment.
+    assert Decimal(body["lowest_allowed_pp"]) == Decimal("-5")
+    assert Decimal(body["thinnest_markup_pct"]) == Decimal("7")
+
+
+async def test_the_floor_is_measured_against_the_thinnest_sku_not_the_average(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """One cheap SKU is enough to bind the whole adjustment — it is the one
+    whose orders would start failing."""
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Mixed")
+    await _open_sku(db_session, "markup-fat", Decimal("20"))
+    await _open_sku(db_session, "markup-lean", Decimal("4"))
+    await db_session.commit()
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": "-3"},
+    )
+
+    assert r.status_code == 422, r.text
+    assert Decimal(r.json()["thinnest_markup_pct"]) == Decimal("4")
+
+
+async def test_a_sku_a_reseller_cannot_see_does_not_bind_their_price(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A markup on something not for sale to resellers is not a constraint."""
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Unbound")
+    await _open_sku(db_session, "markup-visible", Decimal("10"))
+    # Seeded but never opened to B2B: `visible_b2b` stays false on both rows.
+    _seed_catalog_unit(db_session, "markup-hidden")
+    await db_session.commit()
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": "-7"},
+    )
+
+    assert r.status_code == 200, r.text
+
+
+async def test_raising_the_price_is_never_refused(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Only a discount can cross the floor; a surcharge needs no catalogue read."""
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Surcharged")
+    await _open_sku(db_session, "markup-up", Decimal("3"))
+    await db_session.commit()
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": "5"},
+    )
+
+    assert r.status_code == 200, r.text
+    assert Decimal(r.json()["markup_adjustment_pp"]) == Decimal("5")
+
+
+async def test_null_clears_the_adjustment_back_to_the_catalogue_price(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """`null` and `0` compute the same price; only one of them records a decision."""
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Cleared")
+    await _open_sku(db_session, "markup-clear", Decimal("7"))
+    await db_session.commit()
+
+    await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": "-1"},
+    )
+    r = await integration_client.patch(
+        f"/api/v1/admin/merchants/{merchant_id}/markup",
+        headers=admin_headers,
+        json={"markup_adjustment_pp": None},
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["markup_adjustment_pp"] is None

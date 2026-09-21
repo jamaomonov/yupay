@@ -203,6 +203,26 @@
       "error": "Error",
       "nextAttempt": "Next attempt",
       "loadMore": "Show more"
+    },
+    "markup": {
+      "title": "Per-merchant markup",
+      "hint": "Percentage points added to every SKU's own markup for this merchant. The catalogue usually sits at 7%, so −2 prices them at 5% over cost, on everything at once. Negative is a discount.",
+      "current": "Now: {value} pp",
+      "none": "Now: the catalogue price, like everyone else",
+      "label": "Markup, pp",
+      "placeholder": "e.g. -2",
+      "save": "Save",
+      "saveBusy": "Saving…",
+      "clear": "Back to catalogue",
+      "savedToast": "Markup saved",
+      "clearedToast": "Back to the catalogue price",
+      "invalid": "The markup is a number in percentage points, at most two decimals.",
+      "error": "Could not save: {message}",
+      "floorError": "That is too low: the thinnest SKU in the catalogue carries {thinnest} pp and the margin floor is {floor}%. The lowest that works here is {lowest} pp.",
+      "confirmTitle": "Change this merchant's price?",
+      "confirmBody": "It takes effect immediately and across the whole catalogue: {title} will buy at {value} pp against the base markup. Orders already placed do not change.",
+      "confirm": "Yes, change it",
+      "cancel": "Cancel"
     }
   },
   "catalogB2b": {

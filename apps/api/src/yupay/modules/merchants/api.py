@@ -74,6 +74,7 @@ from yupay.modules.merchants.deposit import (
     list_deposit_transactions,
     order_reference_of,
 )
+from yupay.modules.merchants.markup import set_markup_adjustment
 from yupay.modules.merchants.models import (
     Merchant,
     MerchantApiKey,
@@ -178,6 +179,7 @@ __all__ = [
     "revoke_api_key",
     "rotate_webhook_secret",
     "set_brand_b2b",
+    "set_markup_adjustment",
     "set_sku_b2b",
     "set_status",
     "set_webhook",

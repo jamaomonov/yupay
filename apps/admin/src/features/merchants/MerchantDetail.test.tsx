@@ -6,6 +6,7 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { MerchantDetail } from "./MerchantDetail";
+import { floorMessage } from "./MerchantMarkupCard";
 
 import type {
   ApiKeyListOut,
@@ -16,12 +17,13 @@ import type {
   WebhookOut,
 } from "./api";
 
-import { ApiError, api, apiGet, apiPost } from "@/lib/api";
+import { ApiError, api, apiGet, apiPatch, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 vi.mock("@/lib/api", () => ({
   api: vi.fn(),
   apiGet: vi.fn(),
+  apiPatch: vi.fn(),
   apiPost: vi.fn(),
   apiPut: vi.fn(),
   // The real shape, because the webhook card branches on `status` to tell a
@@ -45,6 +47,7 @@ const mockedApiPost = vi.mocked(apiPost);
 // row and carry an idempotency key, so they go through `api` rather than the
 // `void`-typed `apiDelete` helper.
 const mockedApi = vi.mocked(api);
+const mockedApiPatch = vi.mocked(apiPatch);
 
 const LIST: MerchantListOut = {
   items: [
@@ -54,6 +57,7 @@ const LIST: MerchantListOut = {
       status: "active",
       created_at: "2026-09-01T10:00:00Z",
       deposit_balance: "25.00",
+      markup_adjustment_pp: null,
     },
   ],
 };
@@ -149,6 +153,7 @@ beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiPost.mockReset();
   mockedApi.mockReset();
+  mockedApiPatch.mockReset();
   // Route by path rather than "transactions or else": the detail page now
   // also loads the merchant's keys and webhook, and a catch-all that handed
   // both of them the merchant LIST crashed the page on `ip_allowlist.join`.
@@ -664,4 +669,59 @@ it("links to this merchant's orders by id, never by their title", async () => {
 
   const link = await screen.findByRole("link", { name: /Заказы этого мерчанта/ });
   expect(link).toHaveAttribute("href", "/orders?merchant_id=m1");
+});
+
+// ---------- per-merchant markup ----------
+
+it("asks before changing a price, and names the whole catalogue", async () => {
+  mockedApiPatch.mockResolvedValue({ ...LIST.items[0], markup_adjustment_pp: "-2.00" });
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Наценка, п.п."), { target: { value: "-2" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  // One number decides what this reseller pays for everything, so the
+  // confirm says so rather than echoing the digits back.
+  const dialog = screen.getByRole("dialog");
+  expect(within(dialog).getByText(/весь каталог/)).toBeInTheDocument();
+  expect(mockedApiPatch).not.toHaveBeenCalled();
+
+  fireEvent.click(within(dialog).getByRole("button", { name: "Да, изменить" }));
+
+  await waitFor(() => {
+    expect(mockedApiPatch).toHaveBeenCalledWith("/api/v1/admin/merchants/m1/markup", {
+      markup_adjustment_pp: "-2",
+    });
+  });
+});
+
+it("refuses a value that is not points, without asking the server", async () => {
+  renderPage();
+
+  fireEvent.change(await screen.findByLabelText("Наценка, п.п."), { target: { value: "два" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(mockedApiPatch).not.toHaveBeenCalled();
+});
+
+it("renders the floor refusal as the number to type next", () => {
+  // Toasts are not rendered in this harness, so the branch is asserted on the
+  // pure function the card calls — which is why it is exported.
+  const refusal = new ApiError(422, "Unprocessable", {
+    code: "markup_below_floor",
+    thinnest_markup_pct: "7",
+    floor_pct: "2",
+    lowest_allowed_pp: "-5",
+  });
+
+  const message = floorMessage(refusal);
+
+  expect(message).toContain("-5");
+  expect(message).toContain("7");
+});
+
+it("leaves any other failure to the generic message", () => {
+  expect(floorMessage(new ApiError(500, "Server Error", null))).toBeNull();
+  expect(floorMessage(new ApiError(409, "Conflict", { code: "something_else" }))).toBeNull();
 });

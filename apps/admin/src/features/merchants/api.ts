@@ -19,7 +19,7 @@
 
 import adminRu from "@yupay/i18n/locales/ru/admin.json";
 
-import { api, apiGet, apiPost, apiPut } from "@/lib/api";
+import { api, apiGet, apiPatch, apiPost, apiPut } from "@/lib/api";
 
 /** The feature's Russian string catalog (see module docstring). */
 export const T = adminRu.merchants;
@@ -37,6 +37,10 @@ export interface MerchantOut {
   status: string;
   created_at: string;
   deposit_balance: string;
+  /** Percentage POINTS added to every SKU's markup for this merchant, or
+   *  `null` for the catalogue price everyone else pays. Negative is the
+   *  ordinary case — a negotiated rate. */
+  markup_adjustment_pp: string | null;
 }
 
 export interface MerchantListOut {
@@ -304,6 +308,17 @@ export interface MerchantUserOut {
 
 export interface MerchantUserListOut {
   items: MerchantUserOut[];
+}
+
+/** `null` clears the adjustment back to the catalogue price — a different
+ *  thing from `"0"`, which records an operator deciding on no discount. */
+export function setMerchantMarkup(
+  merchantId: string,
+  adjustment: string | null,
+): Promise<MerchantOut> {
+  return apiPatch<MerchantOut>(`/api/v1/admin/merchants/${merchantId}/markup`, {
+    markup_adjustment_pp: adjustment,
+  });
 }
 
 export function fetchMerchantUsers(merchantId: string): Promise<MerchantUserListOut> {
