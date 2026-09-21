@@ -28,11 +28,15 @@ from yupay.modules.integrations.models import (
     SupplierCatalogCache,
 )
 
+# Declared in ``schemas`` and imported rather than re-declared here. They used
+# to be written out in both files, and the copies drifted the moment
+# ``voucher_denom`` joined one of them (migration 0086): mypy refused a write
+# the HTTP layer would have accepted. ``schemas`` imports nothing from this
+# module, so the direction is safe.
+from yupay.modules.integrations.schemas import CatalogKind, MappingKind
+
 if TYPE_CHECKING:
     from yupay.modules.integrations.schemas import DenomImportIn, GameImportIn
-
-MappingKind = Literal["voucher", "game", "gift"]
-CatalogKind = Literal["voucher", "game", "game_denom"]
 
 # Locales every catalog entity carries a translation for. Typed so the import
 # helper below can feed them straight into ``TranslationIn(locale=...)``.

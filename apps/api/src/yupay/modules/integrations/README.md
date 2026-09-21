@@ -24,18 +24,37 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   `sourcing/brand_overview.py` and `cost_lookup.py` were split out on) behind
   the shared `CatalogSyncReport` type in `catalog_sync_types.py`.
 
-  **Denominations (`game_denom`) are never swept wholesale** — only synced
-  for a game an active mapping already points at (`svc.mapped_external_product_ids`),
+  **Every supplier here has two catalogues**, and both are swept (ADR-0090).
+  G2B sells flat vouchers beside its games. NOVA sells top-up categories
+  (`/api/v2/topups`) beside gift-card categories (`/api/v2/giftcards`, whose
+  cards carry their own `card_id`, price and stock). G-Engine sells recharge
+  services (`/recharge/services`) beside shop products (`/shop/products`).
+  The second catalogue of each of the last two was added on 2026-09-21, after
+  an operator reported that NOVA's sync refreshed only games and that
+  G-Engine's catalogue was permanently unsynced — it had never been read at
+  all. The gift-card halves live in `catalog_sync_nova_vouchers.py` and
+  `catalog_sync_gengine_vouchers.py`.
+
+  **Mind the id namespaces.** G-Engine's shop product `9` is Roblox Global;
+  its recharge service `9` is Delta Force. They are told apart by cache
+  `kind` alone, which is why a voucher's ladder is `voucher_denom` and not a
+  reused `game_denom` (migration 0086).
+
+  **Denominations (`game_denom`, `voucher_denom`) are never swept wholesale** —
+  only synced
+  for a product an active mapping already points at (`svc.mapped_external_product_ids`),
   the same restriction the pre-existing G2B mapped-voucher refresh applies to
   vouchers. Reading a game's denominations costs a separate upstream call per
   game for every supplier except G-Engine, whose `GET /recharge/services`
   already returns each service's denominations inline — so its mapped-only
   filter costs nothing extra, it just declines to cache the unmapped ones.
-  For a game the cache has never seen, `POST
-/admin/integrations/{supplier}/games/{game_id}/sync-denominations`
-  (`nova | gengine`; G2B keeps its own pre-existing live picker,
-  `GET /g2b/games/{game_code}/catalogue`, uncached) pulls exactly that one
-  game's denominations in, on demand — a `POST`, explicitly triggered by an
+  For a product the cache has never seen, `POST
+/admin/integrations/{supplier}/games/{game_id}/sync-denominations` — or its
+  voucher twin `POST /admin/integrations/{supplier}/vouchers/{product_id}/sync-denominations`
+  — (`nova | gengine`; G2B keeps its own pre-existing live picker,
+  `GET /g2b/games/{game_code}/catalogue`, uncached, and its vouchers really
+  are flat so there is no ladder to pull) pulls exactly that one
+  product's denominations in, on demand — a `POST`, explicitly triggered by an
   operator, off the order path: the deviation-free shape AGENTS.md §10 asks
   for, not a violation of it. `GET /admin/integrations/catalog` itself never
   calls a supplier; it only ever reads what one of the two sync routes (or
@@ -51,7 +70,15 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   catalog cache or calls `games_catalogue` live; NOVA calls
   `GET /topups/offers` per category, cached per refresh run so a 19-SKU
   brand makes one call, not nineteen; a NOVA Steam mapping is skipped, it
-  has no catalogue price to look up).
+  has no catalogue price to look up; a NOVA **gift-card** mapping reads the
+  cache instead, because its price lives in the other catalogue and the
+  top-up endpoint would 404 on a perfectly real category id; G-Engine reads
+  the cache for both of its catalogues, since the sync already holds every
+  number it would otherwise re-fetch per mapping).
+  So for G-Engine and for NOVA gift cards, **«Синхронизировать каталог» is
+  the button that moves the price** — a stale cache is a stale cost. That
+  coupling is deliberate (ADR-0090); the alternative was ~120 redundant
+  upstream calls an hour.
   **Only the supplier a SKU actually routes to may write `Sku.cost_usdt`.**
   Every other active mapping still gets refreshed — it just records a
   `supplier_price_history` row and touches nothing else. `Sku.cost_usdt` is

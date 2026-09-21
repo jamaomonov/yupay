@@ -1,8 +1,14 @@
 """Pull NOVA's catalogue into ``supplier_catalog_cache``.
 
-NOVA has no voucher concept — its whole catalogue is game/top-up categories
-(``list_topups()``) plus, per category, a list of purchasable offers
-(``get_offers(category_id)``). That second call is the reason denominations
+NOVA has **two** catalogues, and this module owns the games half. Its whole
+top-up catalogue is game categories (``list_topups()``) plus, per category, a
+list of purchasable offers (``get_offers(category_id)``). The gift-card half
+— 576 categories, each holding cards with their own price and stock — lives
+in ``catalog_sync_nova_vouchers`` and is called from :func:`sync_nova_catalog`
+below; until 2026-09-21 it did not exist at all, and pressing
+«Синхронизировать каталог» quietly refreshed only the games.
+
+The per-category call is the reason denominations
 are not swept wholesale: it is one call *per game*, and NOVA's own catalogue
 was 306 categories the last time anyone counted (see ``nova_client.py``) —
 pulling every one hourly for data almost none of which is ever looked at
@@ -33,6 +39,7 @@ from yupay.modules.fulfillment.suppliers.nova_client import (
     NovaError,
     NovaUnavailableError,
 )
+from yupay.modules.integrations import catalog_sync_nova_vouchers as vouchers_sync
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
 from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
@@ -178,10 +185,11 @@ async def _refresh_mapped_game_denoms(db: AsyncSession) -> tuple[int, int, str |
 async def sync_nova_catalog(db: AsyncSession) -> CatalogSyncReport:
     """Refresh the NOVA half of ``supplier_catalog_cache``.
 
-    Best-effort: the category sweep and the mapped-denomination refresh are
-    independent, so one failing does not lose the other. Never raises — the
-    route (``routes.sync_catalog``) and the scheduler tick both depend on
-    that. The caller commits.
+    Four passes, all best-effort and all independent so one failing does not
+    lose the others: the game-category sweep, the mapped games' offers, the
+    gift-card category sweep, and the mapped gift-card categories' cards.
+    Never raises — the route (``routes.sync_catalog``) and the scheduler tick
+    both depend on that. The caller commits.
     """
     client = _nova_client_or_none()
     if client is None:
@@ -218,10 +226,35 @@ async def sync_nova_catalog(db: AsyncSession) -> CatalogSyncReport:
     if mapped_error:
         error = f"{error}; {mapped_error}" if error else mapped_error
 
+    # The gift-card half. Independent of the games sweep above for the same
+    # reason the mapped-denomination refresh is: one catalogue failing must
+    # not lose the other, and an operator pressing the button wants whatever
+    # could be refreshed refreshed.
+    try:
+        vouchers, voucher_error = await vouchers_sync.sync_giftcard_categories(db, client)
+    except Exception as exc:  # noqa: BLE001 -- best-effort sync
+        vouchers, voucher_error = 0, f"gift-card sync failed: {exc!s}"[:200]
+        log.warning("integrations.nova.sync.giftcards_failed", error=str(exc))
+    if voucher_error:
+        error = f"{error}; {voucher_error}" if error else voucher_error
+
+    try:
+        cards, cards_missing, cards_error = await vouchers_sync.refresh_mapped_giftcards(db, client)
+    except Exception as exc:  # noqa: BLE001 -- best-effort sync
+        cards, cards_missing = 0, 0
+        cards_error = f"mapped gift-card refresh failed: {exc!s}"[:200]
+        log.warning("integrations.nova.sync.mapped_giftcards_failed", error=str(exc))
+    if cards_error:
+        error = f"{error}; {cards_error}" if error else cards_error
+
     return CatalogSyncReport(
+        vouchers=vouchers,
         games=games,
-        mapped_vouchers=mapped,
-        missing_upstream=missing,
+        # One counter for "everything refreshed beyond the sweep", as the
+        # report type documents: offers for mapped games, cards for mapped
+        # gift-card categories.
+        mapped_vouchers=mapped + cards,
+        missing_upstream=missing + cards_missing,
         error=error,
     )
 
@@ -243,4 +276,22 @@ async def sync_nova_game_denominations(db: AsyncSession, *, game_id: str) -> tup
     return written, error
 
 
-__all__ = ["sync_nova_catalog", "sync_nova_game_denominations"]
+async def sync_nova_voucher_denominations(
+    db: AsyncSession, *, product_id: str
+) -> tuple[int, str | None]:
+    """On-demand: pull one gift-card category's cards into the cache.
+
+    The voucher twin of :func:`sync_nova_game_denominations`, for the
+    operator mapping a category the mapped-only sweep has never touched.
+    """
+    client = _nova_client_or_none()
+    if client is None:
+        return 0, "NOVA_API_KEY is not configured"
+    return await vouchers_sync.sync_one_category_cards(db, client, category_id=product_id)
+
+
+__all__ = [
+    "sync_nova_catalog",
+    "sync_nova_game_denominations",
+    "sync_nova_voucher_denominations",
+]

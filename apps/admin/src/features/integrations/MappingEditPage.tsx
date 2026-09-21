@@ -145,6 +145,17 @@ export function MappingEditPage() {
   //: row has no denomination, while its game rows still need their offer id.
   const amountPriced = isAmountPriced(supplier, catalog?.external_id ?? "");
 
+  //: A voucher with a ladder under it. G2B's codes are one product at one
+  //: price and stay flat, but NOVA sells a gift-card *category* of cards and
+  //: G-Engine a shop *product* of denominations — each card carrying its own
+  //: id, price and stock. Until 2026-09-21 this page had no denomination step
+  //: for a voucher at all and saved `external_variant_id: null`, so a
+  //: gift-card mapping made here pointed at a category and named no card:
+  //: every Roblox mapping in production had to be written by a seed script.
+  const voucherHasLadder = kind === "voucher" && DENOM_CACHE_SUPPLIERS.has(supplier);
+  //: Step 4 exists for a game, or for one of those laddered vouchers.
+  const hasDenomStep = kind === "game" || voucherHasLadder;
+
   // ---- derived completeness ----
   const stepStatus = useMemo(() => {
     const s1 = Boolean(sku);
@@ -154,10 +165,12 @@ export function MappingEditPage() {
     // no denominations at all — what to buy is the quantity in step 5. The
     // backend allows the null variant for those suppliers, so requiring one
     // here would block by hand exactly what the seed does in bulk.
-    const s4 = kind !== "game" || amountPriced || denom.trim().length > 0;
+    // A laddered voucher must name its card: the category alone does not say
+    // what to buy, and the adapter refuses an order without it.
+    const s4 = !hasDenomStep || amountPriced || denom.trim().length > 0;
     const s5 = quantity > 0;
     return { s1, s2, s3, s4, s5, all: s1 && s2 && s3 && s4 && s5 };
-  }, [sku, kind, catalog, denom, quantity, amountPriced]);
+  }, [sku, catalog, denom, quantity, amountPriced, hasDenomStep]);
 
   // ---- save ----
   const save = useMutation<SupplierMappingUpsertResult, ApiError>({
@@ -168,7 +181,7 @@ export function MappingEditPage() {
           supplier_slug: supplier,
           kind,
           external_product_id: catalog?.external_id ?? "",
-          external_variant_id: kind === "game" && denom.trim() ? denom.trim() : null,
+          external_variant_id: hasDenomStep && denom.trim() ? denom.trim() : null,
           quantity,
           extra: parseExtra(extraJson),
           is_active: isActive,
@@ -189,8 +202,7 @@ export function MappingEditPage() {
     if (!sku) return "Шаг 1 не заполнен: выберите SKU";
     if (!kind) return "Шаг 2 не заполнен: выберите тип";
     if (!catalog?.external_id.trim()) return "Шаг 3 не заполнен: укажите продукт поставщика";
-    if (kind === "game" && !amountPriced && !denom.trim())
-      return "Шаг 4 не заполнен: укажите номинал";
+    if (hasDenomStep && !amountPriced && !denom.trim()) return "Шаг 4 не заполнен: укажите номинал";
     if (quantity <= 0) return "Шаг 5: множитель должен быть положительным";
     try {
       parseExtra(extraJson);
@@ -348,11 +360,15 @@ export function MappingEditPage() {
         </div>
       </Step>
 
-      {kind === "game" && (
+      {hasDenomStep && (
         <Step
           number={4}
           title={
-            amountPriced ? "Номинал (если у сервиса он есть)" : "Какой номинал из каталога игры?"
+            amountPriced
+              ? "Номинал (если у сервиса он есть)"
+              : voucherHasLadder
+                ? "Какой номинал из каталога продукта?"
+                : "Какой номинал из каталога игры?"
           }
           done={stepStatus.s4}
           active={stepStatus.s3 && !stepStatus.s4}
@@ -365,6 +381,7 @@ export function MappingEditPage() {
                 gameExternalId={catalog?.external_id ?? null}
                 value={denom}
                 onChange={setDenom}
+                scope={voucherHasLadder ? "voucher" : "game"}
               />
             ) : (
               <DenomPicker
@@ -378,8 +395,12 @@ export function MappingEditPage() {
                 label="ID номинала у поставщика"
                 hint={
                   supplier === "gengine"
-                    ? "denomination id — из denominations[] в GET /recharge/services"
-                    : "Идентификатор номинала в системе поставщика"
+                    ? voucherHasLadder
+                      ? "denomination id — из GET /shop/denominations/{product}"
+                      : "denomination id — из denominations[] в GET /recharge/services"
+                    : voucherHasLadder
+                      ? "card_id — из GET /api/v2/giftcards/cards"
+                      : "Идентификатор номинала в системе поставщика"
                 }
                 value={denom}
                 onChange={setDenom}
@@ -398,11 +419,11 @@ export function MappingEditPage() {
       )}
 
       <Step
-        number={kind === "game" ? 5 : 4}
+        number={hasDenomStep ? 5 : 4}
         title="Финальные параметры"
         done={stepStatus.s5}
-        active={kind === "game" ? stepStatus.s4 && !stepStatus.s5 : stepStatus.s3 && !stepStatus.s5}
-        disabled={kind === "game" ? !stepStatus.s4 : !stepStatus.s3}
+        active={hasDenomStep ? stepStatus.s4 && !stepStatus.s5 : stepStatus.s3 && !stepStatus.s5}
+        disabled={hasDenomStep ? !stepStatus.s4 : !stepStatus.s3}
       >
         <div className="flex flex-wrap items-end gap-6">
           <div className="block">
@@ -563,7 +584,7 @@ function KindPicker({
         <KindCard
           icon={ShoppingCart}
           label="Ваучер"
-          description="Одноразовый код (gift card, PSN, Steam). G2B возвращает строку — мы кладём её в delivery."
+          description="Одноразовый код (gift card, PSN, Steam). У G2B это один продукт с одной ценой; у NOVA и G-Engine — набор номиналов, номинал выбирается на шаге 4."
           selected={value === "voucher"}
           recommended={recommended === "voucher"}
           onSelect={() => {

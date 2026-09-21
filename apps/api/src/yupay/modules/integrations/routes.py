@@ -29,7 +29,11 @@ from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.integrations import service as svc
-from yupay.modules.integrations.catalog_sync import run_catalog_sync, run_game_denomination_sync
+from yupay.modules.integrations.catalog_sync import (
+    run_catalog_sync,
+    run_game_denomination_sync,
+    run_voucher_denomination_sync,
+)
 from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.integrations.player_check import check_player_for_brand
 from yupay.modules.integrations.schemas import (
@@ -56,6 +60,7 @@ from yupay.modules.integrations.schemas import (
     SupplierMappingListOut,
     SupplierMappingOut,
     SupplierMappingUpsertOut,
+    VoucherDenomSyncOut,
 )
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.users.models import User
@@ -356,6 +361,49 @@ async def sync_game_denominations(
     count, error = await run_game_denomination_sync(db, supplier_slug=supplier, game_id=game_id)
     await db.commit()
     out = DenomSyncOut(supplier=supplier, game_id=game_id, denominations_synced=count, error=error)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.post(
+    "/{supplier}/vouchers/{product_id}/sync-denominations",
+    response_model=VoucherDenomSyncOut,
+    summary="Pull one voucher product's denominations into the cache, on demand",
+)
+async def sync_voucher_denominations(
+    supplier: Literal["nova", "gengine"],
+    product_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> VoucherDenomSyncOut:
+    """The voucher twin of :func:`sync_game_denominations`, and the same
+    deviation-free shape under AGENTS.md §10: a ``POST``, triggered by an
+    operator, off the order path, syncing exactly one product's ladder.
+
+    It exists because a gift card is not flat at either of these suppliers —
+    NOVA sells a category of cards, G-Engine a shop product of denominations
+    — and the mapped-only sweep cannot have cached a product nobody has
+    mapped yet, which is precisely the product an operator is looking at
+    when they open the wizard.
+
+    G2B is not accepted, and for its own reason: its vouchers really are one
+    product at one price, so there is no ladder to pull.
+    """
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "integrations.sync_voucher_denominations"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return VoucherDenomSyncOut.model_validate(cached.body)
+    count, error = await run_voucher_denomination_sync(
+        db, supplier_slug=supplier, product_id=product_id
+    )
+    await db.commit()
+    out = VoucherDenomSyncOut(
+        supplier=supplier, product_id=product_id, denominations_synced=count, error=error
+    )
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out

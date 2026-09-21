@@ -30,7 +30,11 @@ from sqlalchemy import select
 
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
-from yupay.modules.integrations.cost_lookup import _g2b_raw_price, _nova_raw_price
+from yupay.modules.integrations.cost_lookup import (
+    _g2b_raw_price,
+    _gengine_raw_price,
+    _nova_raw_price,
+)
 from yupay.modules.integrations.models import SkuSupplierMapping, SupplierPriceHistory
 
 if TYPE_CHECKING:
@@ -102,7 +106,7 @@ def _route_label(decision: Decision) -> str:
 #: force-routed to a supplier outside this set has no live price to call
 #: "current", however recently `Sku.cost_usdt` was written by a *previous*
 #: routed supplier.
-PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "nova"})
+PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "gengine", "nova"})
 
 
 def supports_price_collection(supplier_slug: str) -> bool:
@@ -180,6 +184,28 @@ async def _last_history_cost(db: AsyncSession, *, sku_id: str, supplier_slug: st
     ).scalar_one_or_none()
 
 
+async def _lookup_price(
+    db: AsyncSession,
+    mapping: SkuSupplierMapping,
+    *,
+    nova_offers_cache: dict[str, Any] | None,
+) -> Any:
+    """Ask whichever supplier owns ``mapping`` what it costs right now.
+
+    A function rather than three branches inside
+    :func:`refresh_sku_cost_for_mapping`: that one is already at the
+    branch ceiling ruff enforces, and the third supplier is exactly the
+    point at which "one more elif" stops being the honest shape. Callers
+    reach this only after :func:`supports_price_collection` has said yes,
+    so the final ``else`` is total rather than a default.
+    """
+    if mapping.supplier_slug == "g2b":
+        return await _g2b_raw_price(db, mapping)
+    if mapping.supplier_slug == "gengine":
+        return await _gengine_raw_price(db, mapping)
+    return await _nova_raw_price(db, mapping, offers_cache=nova_offers_cache)
+
+
 async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcome reads clearer than nested branches
     db: AsyncSession,
     *,
@@ -190,9 +216,9 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
 ) -> CostRefreshOutcome:
     """Pull the upstream price for ``mapping`` and persist it.
 
-    Handles ``g2b`` (:func:`_g2b_raw_price`) and ``nova``
-    (:func:`_nova_raw_price`); any other supplier is reported through the
-    outcome, not raised. Every active mapping that produces a usable price
+    Handles ``g2b`` (:func:`_g2b_raw_price`), ``gengine``
+    (:func:`_gengine_raw_price`) and ``nova`` (:func:`_nova_raw_price`); any
+    other supplier is reported through the outcome, not raised. Every active mapping that produces a usable price
     gets a ``supplier_price_history`` row — that table is the per-supplier
     comparison the admin screen reads, and it is written whoever the
     supplier is.
@@ -255,10 +281,7 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
             updated=False,
             reason=f"сбор цен не поддержан для поставщика «{mapping.supplier_slug}»",
         )
-    if mapping.supplier_slug == "g2b":
-        lookup = await _g2b_raw_price(db, mapping)
-    else:  # nova — the only other slug supports_price_collection allows through
-        lookup = await _nova_raw_price(mapping, offers_cache=nova_offers_cache)
+    lookup = await _lookup_price(db, mapping, nova_offers_cache=nova_offers_cache)
 
     if lookup.reason is not None:
         return CostRefreshOutcome(updated=False, reason=lookup.reason, source=lookup.source or None)

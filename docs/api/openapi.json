@@ -4537,7 +4537,8 @@
             "enum": [
               "voucher",
               "game",
-              "game_denom"
+              "game_denom",
+              "voucher_denom"
             ],
             "title": "Kind",
             "type": "string"
@@ -16920,6 +16921,41 @@
         "title": "VolumeRow",
         "type": "object"
       },
+      "VoucherDenomSyncOut": {
+        "description": "Result of an on-demand single-voucher ladder sync\n(``POST /{supplier}/vouchers/{product_id}/sync-denominations``).\n\nA separate shape from :class:`DenomSyncOut` rather than a reused one with\n``game_id`` holding a product id: the two catalogues have colliding id\nsequences (G-Engine shop product 9 is Roblox Global, recharge service 9\nis Delta Force), and a field named ``game_id`` carrying a shop product id\nis exactly how that collision gets acted on by mistake.",
+        "properties": {
+          "denominations_synced": {
+            "default": 0,
+            "title": "Denominations Synced",
+            "type": "integer"
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "product_id": {
+            "title": "Product Id",
+            "type": "string"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier",
+          "product_id"
+        ],
+        "title": "VoucherDenomSyncOut",
+        "type": "object"
+      },
       "WalletLiabilityOut": {
         "description": "Customer money we are holding, per currency. Ours to return, not to spend.",
         "properties": {
@@ -23307,7 +23343,8 @@
                   "enum": [
                     "voucher",
                     "game",
-                    "game_denom"
+                    "game_denom",
+                    "voucher_denom"
                   ],
                   "type": "string"
                 },
@@ -24287,6 +24324,94 @@
           }
         },
         "summary": "Refresh ``supplier_catalog_cache`` from one supplier's API",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/{supplier}/vouchers/{product_id}/sync-denominations": {
+      "post": {
+        "description": "The voucher twin of :func:`sync_game_denominations`, and the same\ndeviation-free shape under AGENTS.md \u00a710: a ``POST``, triggered by an\noperator, off the order path, syncing exactly one product's ladder.\n\nIt exists because a gift card is not flat at either of these suppliers \u2014\nNOVA sells a category of cards, G-Engine a shop product of denominations\n\u2014 and the mapped-only sweep cannot have cached a product nobody has\nmapped yet, which is precisely the product an operator is looking at\nwhen they open the wizard.\n\nG2B is not accepted, and for its own reason: its vouchers really are one\nproduct at one price, so there is no ladder to pull.",
+        "operationId": "sync_voucher_denominations_api_v1_admin_integrations__supplier__vouchers__product_id__sync_denominations_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "supplier",
+            "required": true,
+            "schema": {
+              "enum": [
+                "nova",
+                "gengine"
+              ],
+              "title": "Supplier",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VoucherDenomSyncOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pull one voucher product's denominations into the cache, on demand",
         "tags": [
           "admin:integrations"
         ]

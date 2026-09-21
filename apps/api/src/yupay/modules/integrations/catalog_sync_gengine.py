@@ -20,13 +20,15 @@ sweep above has never written — G-Engine has no "one service" endpoint, so it
 re-walks the (small) services list and picks the match.
 
 G-Engine's *shop* catalogue (``list_shop_products``/``list_shop_denominations``
-— fixed-price gift codes and keys) is intentionally out of scope here: the
-owner's complaint and this task's contract are both about the game/top-up
-service+denomination pair (``service_id``/``denomination_id``, the "ID
-сервиса"/"ID номинала" fields), and G-Engine's shop catalogue would need a
-fourth cache kind (``game_denom`` doesn't fit a shop denomination
-semantically) that nothing here asked for. Left for a follow-up if an
-operator hits the same manual-id problem mapping a shop product.
+— fixed-price gift codes and keys) was out of scope here until 2026-09-21,
+on the grounds that it would need a fourth cache kind (``game_denom`` doesn't
+fit a shop denomination semantically) that nothing had asked for. Somebody
+asked: an operator reported that G-Engine's catalogue was permanently
+unsynced and that the brand-comparison screen showed no G-Engine price for
+any voucher SKU, which is what "never written" looks like from the outside.
+The fourth kind is ``voucher_denom`` (migration 0086) and the shop sweep
+lives in ``catalog_sync_gengine_vouchers``, called from
+:func:`sync_gengine_catalog` below.
 """
 
 from __future__ import annotations
@@ -38,6 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.suppliers.gengine_client import MAX_PAGE, GEngineClient
+from yupay.modules.integrations import catalog_sync_gengine_vouchers as shop_sync
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
 
@@ -121,10 +124,13 @@ async def _write_denoms(db: AsyncSession, service: dict[str, Any]) -> int:
 async def sync_gengine_catalog(db: AsyncSession) -> CatalogSyncReport:
     """Refresh the G-Engine half of ``supplier_catalog_cache``.
 
-    One (occasionally two) calls to ``GET /recharge/services`` write every
-    service as a ``game`` row; denominations are written too, but only for
-    services an active mapping already points at (see module docstring) —
-    straight out of the same response, no extra call. The caller commits.
+    Two catalogues. One (occasionally two) calls to ``GET /recharge/services``
+    write every service as a ``game`` row, with denominations for the mapped
+    ones straight out of the same response and no extra call. Then the shop
+    sweep (``catalog_sync_gengine_vouchers``) writes every shop product as a
+    ``voucher`` row and re-reads the mapped ones' ladders, which *is* a call
+    per product. Independent: one failing does not lose the other. The caller
+    commits.
     """
     client = _gengine_client_or_none()
     if client is None:
@@ -168,9 +174,22 @@ async def sync_gengine_catalog(db: AsyncSession) -> CatalogSyncReport:
     # just past where this tick stopped looking.
     missing_upstream = 0 if (error or truncated) else len(mapped_ids - seen_ids)
 
+    try:
+        shop_products, shop_denoms, shop_error = await shop_sync.sync_shop_catalog(db, client)
+    except Exception as exc:  # noqa: BLE001 -- best-effort sync, mirrors the recharge sweep
+        shop_products, shop_denoms = 0, 0
+        shop_error = f"shop sync failed: {exc!s}"[:200]
+        log.warning("integrations.gengine.sync.shop_failed", error=str(exc))
+    if shop_error:
+        error = f"{error}; {shop_error}" if error else shop_error
+
     return CatalogSyncReport(
+        vouchers=shop_products,
         games=games,
-        mapped_vouchers=mapped_denoms,
+        # One counter for "everything written beyond the top-level sweeps",
+        # as the report type documents: a mapped service's denominations and
+        # a mapped shop product's ladder are the same kind of work.
+        mapped_vouchers=mapped_denoms + shop_denoms,
         missing_upstream=missing_upstream,
         error=error,
     )
@@ -205,4 +224,22 @@ async def sync_gengine_game_denominations(
         return 0, str(exc)[:200]
 
 
-__all__ = ["sync_gengine_catalog", "sync_gengine_game_denominations"]
+async def sync_gengine_voucher_denominations(
+    db: AsyncSession, *, product_id: str
+) -> tuple[int, str | None]:
+    """On-demand: pull one shop product's denominations into the cache.
+
+    The voucher twin of :func:`sync_gengine_game_denominations`. Unlike that
+    one it needs no re-walk of a list: the shop has a per-product endpoint.
+    """
+    client = _gengine_client_or_none()
+    if client is None:
+        return 0, "GENGINE_API_KEY is not configured"
+    return await shop_sync.sync_one_shop_product_denoms(db, client, product_id=product_id)
+
+
+__all__ = [
+    "sync_gengine_catalog",
+    "sync_gengine_game_denominations",
+    "sync_gengine_voucher_denominations",
+]

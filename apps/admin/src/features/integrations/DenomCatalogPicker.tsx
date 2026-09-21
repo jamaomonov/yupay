@@ -9,9 +9,17 @@
  *  the two.
  *
  * Same cache as `CatalogPicker` (`supplier_catalog_cache` through
- * `GET /admin/integrations/catalog`), narrowed with `kind=game_denom` and
- * `parent_external_id=<the chosen game>`. Row rendering is `CatalogRow`,
+ * `GET /admin/integrations/catalog`), narrowed with a `*_denom` kind and
+ * `parent_external_id=<the chosen product>`. Row rendering is `CatalogRow`,
  * imported rather than re-implemented — see `pickers.tsx`.
+ *
+ * `scope` picks which of the supplier's two catalogues: `"game"` for a
+ * top-up service (`game_denom`, pulled from `.../games/{id}/...`) or
+ * `"voucher"` for a gift card (`voucher_denom`, `.../vouchers/{id}/...`).
+ * They are separate namespaces with colliding ids — G-Engine shop product 9
+ * is Roblox Global, recharge service 9 is Delta Force — so the scope is not
+ * cosmetic: reading the wrong one would show a plausible ladder belonging to
+ * another product entirely.
  *
  * This is not just `CatalogPicker` with a different `kind`: denominations are
  * only ever cached for a game some mapping already points at (see the
@@ -45,14 +53,18 @@ import { apiGet, apiPost, formatApiError, type ApiError } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
+type DenomScope = "game" | "voucher";
+
 interface DenomCatalogPickerProps {
   supplier: string;
-  /** The game's `external_id`, chosen in step 3 — null until then. */
+  /** The product's `external_id`, chosen in step 3 — null until then. */
   gameExternalId: string | null;
   value: string;
   onChange: (nextExternalId: string) => void;
   disabled?: boolean;
   id?: string;
+  /** Which catalogue the parent belongs to. Defaults to the top-up one. */
+  scope?: DenomScope;
 }
 
 export function DenomCatalogPicker({
@@ -62,14 +74,18 @@ export function DenomCatalogPicker({
   onChange,
   disabled,
   id,
+  scope = "game",
 }: DenomCatalogPickerProps) {
+  const denomKind = scope === "voucher" ? "voucher_denom" : "game_denom";
+  const syncSegment = scope === "voucher" ? "vouchers" : "games";
+  const parentPhrase = scope === "voucher" ? "этого продукта" : "этой игры";
   const [query, setQuery] = useState("");
   const debounced = useDebouncedValue(query, 200);
   const qc = useQueryClient();
 
   const catalogFilters = {
     supplierSlug: supplier,
-    kind: "game_denom",
+    kind: denomKind,
     search: debounced,
     parentExternalId: gameExternalId,
   };
@@ -79,7 +95,7 @@ export function DenomCatalogPicker({
     queryFn: () => {
       const params = new URLSearchParams({
         supplier_slug: supplier,
-        kind: "game_denom",
+        kind: denomKind,
         parent_external_id: gameExternalId ?? "",
         limit: "50",
       });
@@ -97,7 +113,7 @@ export function DenomCatalogPicker({
       // wrong: it would replay a stale (possibly empty) result instead of
       // trying again.
       apiPost<SyncDenominationsResult>(
-        `/api/v1/admin/integrations/${supplier}/games/${encodeURIComponent(gameExternalId ?? "")}/sync-denominations`,
+        `/api/v1/admin/integrations/${supplier}/${syncSegment}/${encodeURIComponent(gameExternalId ?? "")}/sync-denominations`,
         {},
         { "Idempotency-Key": crypto.randomUUID() },
       ),
@@ -109,7 +125,7 @@ export function DenomCatalogPicker({
   if (!gameExternalId) {
     return (
       <p className="text-xs text-[var(--text-tertiary)]">
-        Выберите игру выше, чтобы загрузить список номиналов.
+        Выберите {scope === "voucher" ? "продукт" : "игру"} выше, чтобы загрузить список номиналов.
       </p>
     );
   }
@@ -123,15 +139,15 @@ export function DenomCatalogPicker({
 
   const selected: CatalogEntry | null = value.trim()
     ? (items.find((e) => e.external_id === value) ??
-      syntheticCatalogEntry(supplier, "game_denom", value, gameExternalId))
+      syntheticCatalogEntry(supplier, denomKind, value, gameExternalId))
     : null;
 
   if (cacheEmpty) {
     return (
       <div className="space-y-2 rounded-md border border-dashed border-[var(--border-default)] bg-[var(--bg-muted)] p-3">
         <p className="text-xs text-[var(--text-secondary)]">
-          В кэше нет номиналов для этой игры — возможно, поставщик только что добавил позицию, а
-          каталог ещё не подтягивался.
+          В кэше нет номиналов для {parentPhrase} — возможно, поставщик только что добавил позицию,
+          а каталог ещё не подтягивался.
         </p>
         <Button
           type="button"
@@ -160,7 +176,7 @@ export function DenomCatalogPicker({
         )}
         {sync.isSuccess && !sync.data.error && sync.data.denominations_synced === 0 && (
           <p className="text-xs text-[var(--text-tertiary)]">
-            Поставщик не вернул ни одного номинала для этой игры.
+            Поставщик не вернул ни одного номинала для {parentPhrase}.
           </p>
         )}
       </div>
@@ -184,8 +200,8 @@ export function DenomCatalogPicker({
       disabled={disabled}
       placeholder="Выберите номинал…"
       keyFor={(e) => `${e.kind}-${e.external_id}`}
-      renderSelected={(e) => <CatalogRow entry={e} kind="game_denom" compact />}
-      renderItem={(e) => <CatalogRow entry={e} kind="game_denom" />}
+      renderSelected={(e) => <CatalogRow entry={e} kind={denomKind} compact />}
+      renderItem={(e) => <CatalogRow entry={e} kind={denomKind} />}
     />
   );
 }

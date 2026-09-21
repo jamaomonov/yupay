@@ -208,6 +208,31 @@ class NovaClient:
             log.warning("nova.topups_page_limit_hit", pages=_MAX_PAGES, collected=len(items))
         return items
 
+    async def list_giftcards(self) -> list[dict[str, Any]]:
+        """Every gift-card category, walking their cursor to the end.
+
+        ``GET /api/v2/giftcards`` — the top-up catalogue's twin, and paged the
+        same way, but a separate namespace: ``roblox_global`` is a gift-card
+        category id and means nothing to ``/topups``. 576 categories the first
+        time this was walked, against 306 top-ups.
+        """
+        items: list[dict[str, Any]] = []
+        cursor: str | None = None
+        for _page in range(_MAX_PAGES):
+            params: dict[str, Any] = {"limit": MAX_PAGE}
+            if cursor:
+                params["cursor"] = cursor
+            body = await self._request("GET", "/api/v2/giftcards", params=params)
+            items += [i for i in (body.get("items") or []) if isinstance(i, dict)]
+            cursor = ((body.get("meta") or {}).get("next_cursor")) or None
+            if not cursor:
+                break
+        else:
+            # Same guard, same reason as ``list_topups``: a silently short
+            # catalogue reads as a supplier dropping what we sell.
+            log.warning("nova.giftcards_page_limit_hit", pages=_MAX_PAGES, collected=len(items))
+        return items
+
     async def get_offers(self, category_id: str) -> dict[str, Any]:
         """Offers and input fields for one category."""
         return await self._request(

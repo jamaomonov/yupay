@@ -93,16 +93,23 @@ const DENOM_PUBG_60 = {
  *  of `path.includes(...)` checks that are easy to get subtly wrong — e.g.
  *  `"kind=game_denom".includes("kind=game")` is true, so ordering matters
  *  and a URL parse sidesteps it entirely. */
-function mockCatalogEndpoint(byKind: { game?: unknown[]; game_denom?: Record<string, unknown[]> }) {
+function mockCatalogEndpoint(byKind: {
+  game?: unknown[];
+  game_denom?: Record<string, unknown[]>;
+  voucher?: unknown[];
+  voucher_denom?: Record<string, unknown[]>;
+}) {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/catalog/skus/search")) return Promise.resolve([SKU]);
     if (path.includes("/admin/integrations/catalog")) {
       const url = new URL(path, "http://test.local");
       const kind = url.searchParams.get("kind");
       if (kind === "game") return Promise.resolve({ items: byKind.game ?? [] });
-      if (kind === "game_denom") {
+      if (kind === "voucher") return Promise.resolve({ items: byKind.voucher ?? [] });
+      if (kind === "game_denom" || kind === "voucher_denom") {
         const parent = url.searchParams.get("parent_external_id") ?? "";
-        return Promise.resolve({ items: byKind.game_denom?.[parent] ?? [] });
+        const table = kind === "game_denom" ? byKind.game_denom : byKind.voucher_denom;
+        return Promise.resolve({ items: table?.[parent] ?? [] });
       }
     }
     return Promise.resolve({ items: [] });
@@ -470,4 +477,85 @@ it("prefills an edited SKU by id, not by hoping it fits the first search page", 
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Сохранить" })).toBeEnabled();
   });
+});
+
+/** A gift card is not flat at NOVA or G-Engine: the product is a category
+ *  and the ladder under it is what an order actually names. The wizard used
+ *  to have no step for that and saved `external_variant_id: null`, so every
+ *  gift-card mapping in production had to be written by a seed script — and
+ *  opening one here and pressing save would have erased its card id. */
+
+const GC_ROBLOX = {
+  supplier_slug: "nova",
+  kind: "voucher",
+  external_id: "roblox_global",
+  title: "Roblox (Global)",
+  raw: {},
+  fetched_at: "2026-09-21T00:00:00Z",
+  parent_external_id: null,
+  price_usdt: null,
+};
+
+const CARD_50 = {
+  supplier_slug: "nova",
+  kind: "voucher_denom",
+  external_id: "50_robux",
+  title: "50 Robux",
+  raw: { stock: 10922 },
+  fetched_at: "2026-09-21T00:00:00Z",
+  parent_external_id: "roblox_global",
+  price_usdt: "0.878730",
+};
+
+it("names the card, not just the category, when saving a gift-card mapping", async () => {
+  mockCatalogEndpoint({
+    voucher: [GC_ROBLOX],
+    voucher_denom: { roblox_global: [CARD_50] },
+  });
+  renderPage();
+  const picker = await reachSupplierStep();
+  fireEvent.change(picker, { target: { value: "nova" } });
+  fireEvent.click(screen.getByText("Ваучер"));
+
+  await pickFromCombobox("Продукт поставщика", /Roblox \(Global\)/);
+  await pickFromCombobox("Номинал", /50 Robux/);
+
+  fireEvent.click(screen.getByRole("button", { name: /Сохранить/ }));
+
+  await waitFor(() => {
+    expect(mockedApi).toHaveBeenCalled();
+  });
+  const raw = mockedApi.mock.calls[0]?.[1]?.body as string | undefined;
+  const body: unknown = JSON.parse(raw ?? "{}");
+  expect(body).toMatchObject({
+    kind: "voucher",
+    external_product_id: "roblox_global",
+    // The whole point: null here is an order with nothing to buy.
+    external_variant_id: "50_robux",
+  });
+});
+
+it("will not let a gift-card mapping be saved without a card", async () => {
+  mockCatalogEndpoint({ voucher: [GC_ROBLOX], voucher_denom: {} });
+  renderPage();
+  const picker = await reachSupplierStep();
+  fireEvent.change(picker, { target: { value: "nova" } });
+  fireEvent.click(screen.getByText("Ваучер"));
+  await pickFromCombobox("Продукт поставщика", /Roblox \(Global\)/);
+
+  expect(screen.getByRole("button", { name: /Сохранить/ })).toBeDisabled();
+});
+
+it("keeps a G2B voucher flat — one product, one price, no ladder", async () => {
+  mockCatalogEndpoint({
+    voucher: [{ ...GC_ROBLOX, supplier_slug: "g2b", external_id: "1234", title: "Roblox 800" }],
+  });
+  renderPage();
+  await reachSupplierStep(); // stays on g2b
+  fireEvent.click(screen.getByText("Ваучер"));
+  await pickFromCombobox("Продукт поставщика", /Roblox 800/);
+
+  // No denomination step at all, and the save is already reachable.
+  expect(screen.queryByRole("combobox", { name: "Номинал" })).toBeNull();
+  expect(screen.getByRole("button", { name: /Сохранить/ })).toBeEnabled();
 });

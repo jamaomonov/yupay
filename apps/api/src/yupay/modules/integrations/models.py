@@ -158,6 +158,12 @@ class SupplierCatalogCache(Base):
     #: every denomination of every supplier game at once. ``''`` for a flat
     #: ``voucher``/``game`` row, which has no parent.
     #:
+    #: ``voucher_denom`` (0086) is the same relationship one shelf over: a
+    #: NOVA gift-card category or a G-Engine shop product holding a ladder of
+    #: cards, each with its own id, price and stock. Its parent is the
+    #: ``voucher`` row. A voucher is only flat for suppliers where it is —
+    #: G2B's codes are one product, one price, and they keep the bare kind.
+    #:
     #: Part of the primary key since 0084, and it has to be: denomination ids
     #: are unique per *game*, not per supplier. NOVA calls the 55-diamond pack
     #: ``55_diamonds`` in both Magic Chess Go Go (RU) and Mobile Legends (RU);
@@ -184,7 +190,7 @@ class SupplierCatalogCache(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('voucher','game','game_denom')",
+            "kind IN ('voucher','game','game_denom','voucher_denom')",
             name="ck_supplier_catalog_cache_kind",
         ),
         Index(

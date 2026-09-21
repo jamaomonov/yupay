@@ -40,7 +40,7 @@ export interface SupplierMappingListOut {
   items: SupplierMapping[];
 }
 
-export type CatalogKind = "voucher" | "game" | "game_denom";
+export type CatalogKind = "voucher" | "game" | "game_denom" | "voucher_denom";
 
 export interface CatalogEntry {
   supplier_slug: string;
@@ -49,8 +49,13 @@ export interface CatalogEntry {
   title: string;
   raw: Record<string, unknown>;
   fetched_at: string;
-  /** For a `game_denom` row, the `external_id` of the game it belongs to.
-   *  Null for `game`/`voucher` rows, which have no parent. */
+  /** For a `game_denom` row, the `external_id` of the game it belongs to;
+   *  for a `voucher_denom` row, the voucher product's. Null for
+   *  `game`/`voucher` rows, which have no parent.
+   *
+   *  A voucher is flat only where the supplier sells it flat: G2B's codes
+   *  are one product at one price, while NOVA's gift-card categories and
+   *  G-Engine's shop products each hold a ladder. */
   parent_external_id: string | null;
   /** The supplier's own price for this entry, when they report one —
    *  a string straight through from the API (§9: money never becomes a

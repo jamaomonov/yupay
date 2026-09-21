@@ -3,8 +3,14 @@ supplier-catalog-pickers feature.
 
 Mirrors ``test_integrations_catalog_sync.py`` (G2B) in shape: real routes,
 respx-mocked NOVA responses, assertions against ``supplier_catalog_cache``
-through the admin ``GET /catalog`` listing. NOVA has no voucher concept, so
-every test here is games/denominations only.
+through the admin ``GET /catalog`` listing.
+
+NOVA has **two** catalogues, and every full sync touches both — so every
+test that posts ``/sync-catalog`` registers the gift-card endpoint too, via
+:func:`_mock_giftcards`, even when it has nothing to say about gift cards.
+An unregistered route is a respx failure, which is the point: a sync that
+silently stopped calling one of the two catalogues would pass a test that
+mocked it "just in case", and fail this one.
 """
 
 from __future__ import annotations
@@ -78,10 +84,20 @@ async def _login_admin(client: AsyncClient, db: AsyncSession, tg_id: int) -> str
 
 
 async def _seed_mapped_sku(
-    db: AsyncSession, *, slug: str, supplier_slug: str, external_product_id: str
+    db: AsyncSession,
+    *,
+    slug: str,
+    supplier_slug: str,
+    external_product_id: str,
+    kind: str = "game",
 ) -> str:
-    """A SKU with an active ``game`` mapping to ``external_product_id`` —
-    what makes the sync treat that game's denominations as "already mapped"."""
+    """A SKU with an active mapping to ``external_product_id`` — what makes
+    the sync treat that id as "already mapped" and worth a second call.
+
+    ``kind`` picks which of NOVA's two catalogues the mapping belongs to:
+    ``game`` for a top-up category, ``voucher`` for a gift-card one. They
+    are separate namespaces, so the same id in the other kind means nothing.
+    """
     category = Category(
         id=new_id(),
         slug=f"cat-{slug}",
@@ -123,7 +139,7 @@ async def _seed_mapped_sku(
         SkuSupplierMapping(
             sku_id=sku.id,
             supplier_slug=supplier_slug,
-            kind="game",
+            kind=kind,
             external_product_id=external_product_id,
             is_active=True,
         )
@@ -132,10 +148,30 @@ async def _seed_mapped_sku(
     return sku.id
 
 
+def _mock_giftcards(items: list[dict[str, object]] | None = None) -> respx.Route:
+    """``GET /api/v2/giftcards`` — the gift-card category sweep.
+
+    Empty by default: most tests here are about games and only need the call
+    to succeed. A test that cares passes its own categories.
+    """
+    rows = items or []
+    return respx.get(f"{BASE}/api/v2/giftcards", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": rows,
+                "meta": {"total": len(rows), "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+
+
 @respx.mock
 async def test_nova_games_sync_writes_game_rows(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    _mock_giftcards()
     respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
         return_value=httpx.Response(
             200,
@@ -182,6 +218,7 @@ async def test_sync_writes_denominations_only_for_a_mapped_game(
         db_session, slug="mlbb", supplier_slug="nova", external_product_id="mobile_legends_ru"
     )
 
+    _mock_giftcards()
     respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
         return_value=httpx.Response(
             200,
@@ -348,6 +385,7 @@ async def test_steam_sentinel_mapping_causes_no_call_and_no_missing_upstream(
         external_product_id=NOVA_STEAM_SENTINEL,
     )
 
+    _mock_giftcards()
     respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
         return_value=httpx.Response(
             200,
@@ -383,6 +421,7 @@ async def test_malformed_offer_payload_is_reported_not_raised(
     await _seed_mapped_sku(
         db_session, slug="mlbb2", supplier_slug="nova", external_product_id="mobile_legends_ru"
     )
+    _mock_giftcards()
     respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
         return_value=httpx.Response(
             200,
@@ -460,3 +499,165 @@ async def test_a_denomination_the_supplier_dropped_leaves_the_cache(
         headers=headers,
     )
     assert {it["external_id"] for it in listing.json()["items"]} == {"60_crystals"}
+
+
+# ---------- gift cards: NOVA's second catalogue ----------
+
+
+@respx.mock
+async def test_giftcard_categories_are_swept_as_voucher_rows(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The reported bug, in one assertion.
+
+    «я только что сделал синхронизацию новы, там синхронизировались только
+    игры, ваучеры нет» — the sync knew one of NOVA's two catalogues.
+    """
+    _mock_giftcards(
+        [
+            {"category_id": "roblox_global", "name": "Roblox (Global)", "note": "Region: Global"},
+            {"category_id": "acash_my", "name": "A-Cash (MY)"},
+        ]
+    )
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [],
+                "meta": {"total": 0, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=711)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/nova/sync-catalog", headers=headers
+    )
+
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["vouchers_synced"] == 2
+    assert body["games_synced"] == 0
+    assert body["error"] is None
+
+    listing = await integration_client.get(
+        "/api/v1/admin/integrations/catalog?supplier_slug=nova&kind=voucher", headers=headers
+    )
+    ids = {it["external_id"] for it in listing.json()["items"]}
+    assert ids == {"roblox_global", "acash_my"}
+
+
+@respx.mock
+async def test_cards_are_read_only_for_a_mapped_giftcard_category(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """576 categories, one call each, would be the whole tick. Only the
+    mapped one is asked — the unmapped category's cards endpoint is never
+    registered, so calling it would fail on the network, not an assertion."""
+    await _seed_mapped_sku(
+        db_session,
+        slug="roblox",
+        supplier_slug="nova",
+        external_product_id="roblox_global",
+        kind="voucher",
+    )
+    _mock_giftcards(
+        [
+            {"category_id": "roblox_global", "name": "Roblox (Global)"},
+            {"category_id": "acash_my", "name": "A-Cash (MY)"},
+        ]
+    )
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [],
+                "meta": {"total": 0, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+    cards = respx.get(
+        f"{BASE}/api/v2/giftcards/cards", params={"category_id": "roblox_global"}
+    ).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                # Under `offers`, not `items` — the trap that cost a probe.
+                "offers": [
+                    {
+                        "card_id": "50_robux",
+                        "name": "50 Robux",
+                        "price_usd": "0.878730",
+                        "stock": 10922,
+                    },
+                    {
+                        "card_id": "2500_robux",
+                        "name": "2500 Robux",
+                        "price_usd": "28.412916",
+                        "stock": 9,
+                    },
+                ],
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=712)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/nova/sync-catalog", headers=headers
+    )
+
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["mapped_vouchers_refreshed"] == 2
+    assert body["error"] is None
+    assert cards.called
+
+    listing = await integration_client.get(
+        "/api/v1/admin/integrations/catalog"
+        "?supplier_slug=nova&kind=voucher_denom&parent_external_id=roblox_global",
+        headers=headers,
+    )
+    items = listing.json()["items"]
+    by_id = {it["external_id"]: it for it in items}
+    assert set(by_id) == {"50_robux", "2500_robux"}
+    # The price is what makes the row worth having: the cost refresh reads
+    # it, and before this existed a NOVA gift card had no price anywhere.
+    assert Decimal(by_id["50_robux"]["price_usdt"]) == Decimal("0.878730")
+
+
+@respx.mock
+async def test_a_failing_giftcard_sweep_does_not_lose_the_games(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Four independent passes. An operator pressing the button wants
+    whatever could be refreshed refreshed, and a reason for the rest."""
+    respx.get(f"{BASE}/api/v2/giftcards", params={"limit": "100"}).mock(
+        return_value=httpx.Response(500, json={"ok": False, "message": "boom"})
+    )
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [{"category_id": "pubg_mobile_auto", "name": "PUBG Mobile (Auto)"}],
+                "meta": {"total": 1, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=713)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/nova/sync-catalog", headers=headers
+    )
+
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["games_synced"] == 1
+    assert body["vouchers_synced"] == 0
+    assert "gift-card" in (body["error"] or "")

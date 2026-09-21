@@ -78,7 +78,16 @@ async def _login_admin(client: AsyncClient, db: AsyncSession, tg_id: int) -> str
     return token
 
 
-async def _seed_mapped_sku(db: AsyncSession, *, slug: str, external_product_id: str) -> str:
+async def _seed_mapped_sku(
+    db: AsyncSession, *, slug: str, external_product_id: str, kind: str = "game"
+) -> str:
+    """A SKU with an active mapping to ``external_product_id``.
+
+    ``kind`` picks which G-Engine catalogue: ``game`` for a recharge
+    service, ``voucher`` for a shop product. The two id sequences collide —
+    shop product 9 is Roblox Global, recharge service 9 is Delta Force — so
+    the kind is the only thing telling them apart.
+    """
     category = Category(
         id=new_id(),
         slug=f"cat-{slug}",
@@ -120,7 +129,7 @@ async def _seed_mapped_sku(db: AsyncSession, *, slug: str, external_product_id: 
         SkuSupplierMapping(
             sku_id=sku.id,
             supplier_slug="gengine",
-            kind="game",
+            kind=kind,
             external_product_id=external_product_id,
             is_active=True,
         )
@@ -155,10 +164,26 @@ _SERVICES_PAGE = {
 }
 
 
+def _mock_shop(products: list[dict[str, object]] | None = None) -> respx.Route:
+    """``GET /shop/products`` — the gift-code catalogue beside the recharge one.
+
+    Empty by default. Every full sync sweeps both catalogues, so a test that
+    posts ``/sync-catalog`` has to register this even when it has nothing to
+    say about shop products: an unregistered route is a respx failure, which
+    is how a sync that quietly stopped sweeping one of the two would be
+    caught.
+    """
+    rows = products or []
+    return respx.get(f"{BASE}/shop/products", params={"limit": "100", "offset": "0"}).mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"items": rows}})
+    )
+
+
 @respx.mock
 async def test_gengine_games_sync_writes_game_rows(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    _mock_shop()
     respx.get(f"{BASE}/recharge/services").mock(
         return_value=httpx.Response(200, json=_SERVICES_PAGE)
     )
@@ -191,6 +216,7 @@ async def test_sync_writes_denominations_only_for_a_mapped_service_no_extra_call
     service's denominations land in the cache."""
     await _seed_mapped_sku(db_session, slug="mlbb", external_product_id="5")
 
+    _mock_shop()
     route = respx.get(f"{BASE}/recharge/services").mock(
         return_value=httpx.Response(200, json=_SERVICES_PAGE)
     )
@@ -226,6 +252,7 @@ async def test_sync_writes_denominations_only_for_a_mapped_service_no_extra_call
 async def test_on_demand_denomination_sync_for_an_unmapped_service(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    _mock_shop()
     respx.get(f"{BASE}/recharge/services").mock(
         return_value=httpx.Response(200, json=_SERVICES_PAGE)
     )
@@ -255,6 +282,7 @@ async def test_on_demand_denomination_sync_for_an_unmapped_service(
 async def test_on_demand_sync_of_an_unknown_service_reports_not_crashes(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    _mock_shop()
     respx.get(f"{BASE}/recharge/services").mock(
         return_value=httpx.Response(200, json=_SERVICES_PAGE)
     )
@@ -278,6 +306,7 @@ async def test_on_demand_sync_reports_a_malformed_denomination_not_raises(
     ``try`` — a junk price ``Decimal(str(...))`` can't parse would raise
     ``decimal.InvalidOperation`` straight out of the route. It must report
     as ``error`` on a 200 instead."""
+    _mock_shop()
     respx.get(f"{BASE}/recharge/services").mock(
         return_value=httpx.Response(
             200,
@@ -345,6 +374,7 @@ async def test_two_page_ceiling_warns_and_suppresses_missing_upstream(
             for i in range(101, 201)
         ],
     }
+    _mock_shop()
     respx.get(f"{BASE}/recharge/services", params={"limit": "100", "offset": "0"}).mock(
         return_value=httpx.Response(200, json=page_one)
     )
@@ -366,3 +396,117 @@ async def test_two_page_ceiling_warns_and_suppresses_missing_upstream(
         entry.get("event") == "integrations.gengine.sync.services_page_limit_hit"
         for entry in captured
     )
+
+
+# ---------- the shop catalogue: gift codes, beside the recharge services ----------
+
+
+@respx.mock
+async def test_shop_products_are_swept_as_voucher_rows(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """«у g engine постоянно каталог не синхронизирован» — because half of it
+    was never read. The shop catalogue is where the gift codes live."""
+    _mock_shop(
+        [
+            {"id": 9, "name": "Roblox Global"},
+            {"id": 140, "name": "Standoff 2"},
+        ]
+    )
+    respx.get(f"{BASE}/recharge/services").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"items": []}})
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=811)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/gengine/sync-catalog", headers=headers
+    )
+
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["vouchers_synced"] == 2
+    assert body["error"] is None
+
+    listing = await integration_client.get(
+        "/api/v1/admin/integrations/catalog?supplier_slug=gengine&kind=voucher", headers=headers
+    )
+    ids = {it["external_id"] for it in listing.json()["items"]}
+    assert ids == {"9", "140"}
+
+
+@respx.mock
+async def test_shop_denominations_are_read_only_for_a_mapped_product(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Unlike ``/recharge/services``, the shop list does **not** embed its
+    ladder — each product is its own call. So the mapped-only rule is not a
+    tidiness preference here, it is the request budget: the unmapped
+    product's endpoint is never registered, and calling it would fail on the
+    network."""
+    await _seed_mapped_sku(db_session, slug="roblox", external_product_id="9", kind="voucher")
+    _mock_shop([{"id": 9, "name": "Roblox Global"}, {"id": 140, "name": "Standoff 2"}])
+    respx.get(f"{BASE}/recharge/services").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"items": []}})
+    )
+    denoms = respx.get(f"{BASE}/shop/denominations/9").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "success": True,
+                "data": [
+                    {"id": 727, "name": "2000 Robux", "price": 22.0932, "stock": 10},
+                    {"id": 199, "name": "10000 Robux", "price": 97.6242, "stock": 0},
+                ],
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=812)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/gengine/sync-catalog", headers=headers
+    )
+
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["mapped_vouchers_refreshed"] == 2
+    assert body["error"] is None
+    assert denoms.called
+
+    listing = await integration_client.get(
+        "/api/v1/admin/integrations/catalog"
+        "?supplier_slug=gengine&kind=voucher_denom&parent_external_id=9",
+        headers=headers,
+    )
+    by_id = {it["external_id"]: it for it in listing.json()["items"]}
+    assert set(by_id) == {"727", "199"}
+    assert Decimal(by_id["727"]["price_usdt"]) == Decimal("22.0932")
+
+
+@respx.mock
+async def test_a_failing_shop_sweep_does_not_lose_the_recharge_services(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Two catalogues, two independent passes."""
+    respx.get(f"{BASE}/shop/products", params={"limit": "100", "offset": "0"}).mock(
+        return_value=httpx.Response(500, json={"success": False, "message": "boom"})
+    )
+    respx.get(f"{BASE}/recharge/services").mock(
+        return_value=httpx.Response(
+            200,
+            json={"success": True, "data": {"items": [{"id": 44, "name": "Mobile Legends"}]}},
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=813)
+    headers = {"Authorization": f"Bearer {admin}"}
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/gengine/sync-catalog", headers=headers
+    )
+
+    assert sync.status_code == 200, sync.text
+    body = sync.json()
+    assert body["games_synced"] == 1
+    assert body["vouchers_synced"] == 0
+    assert "shop" in (body["error"] or "")

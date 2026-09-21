@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from yupay.modules.catalog.schemas import FormField
 
 MappingKind = Literal["voucher", "game", "gift"]
-CatalogKind = Literal["voucher", "game", "game_denom"]
+CatalogKind = Literal["voucher", "game", "game_denom", "voucher_denom"]
 
 # Mirror catalog.admin_schemas._SLUG_PATTERN so a bad slug fails fast at import
 # time with a clear 422 instead of deep inside create_brand/create_product.
@@ -205,6 +205,23 @@ class DenomSyncOut(BaseModel):
     error: str | None = None
 
 
+class VoucherDenomSyncOut(BaseModel):
+    """Result of an on-demand single-voucher ladder sync
+    (``POST /{supplier}/vouchers/{product_id}/sync-denominations``).
+
+    A separate shape from :class:`DenomSyncOut` rather than a reused one with
+    ``game_id`` holding a product id: the two catalogues have colliding id
+    sequences (G-Engine shop product 9 is Roblox Global, recharge service 9
+    is Delta Force), and a field named ``game_id`` carrying a shop product id
+    is exactly how that collision gets acted on by mistake.
+    """
+
+    supplier: str
+    product_id: str
+    denominations_synced: int = 0
+    error: str | None = None
+
+
 class GameDenomOut(BaseModel):
     """One catalogue (denomination) entry for a G2B game."""
 
@@ -371,4 +388,5 @@ __all__ = [
     "SupplierMappingListOut",
     "SupplierMappingOut",
     "SupplierMappingUpsertOut",
+    "VoucherDenomSyncOut",
 ]

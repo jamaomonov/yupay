@@ -28,6 +28,24 @@ differently:
 | NOVA     | `watch_cached_variants` | `run_game_denomination_sync` refreshes the game, then the mapping is diffed against `supplier_catalog_cache`. |
 | G-Engine | `watch_cached_variants` | Same as NOVA.                                                                                                 |
 
+### What the watch does **not** cover: NOVA and G-Engine gift cards
+
+The watch reads `kind='game'` mappings for NOVA and G-Engine, and G2B's flat
+vouchers. Since ADR-0090 those two suppliers also carry **voucher** mappings
+with a ladder under them — NOVA gift-card cards, G-Engine shop denominations
+— and no watch tick looks at them. That is a real gap, recorded here rather
+than left to be rediscovered.
+
+What does cover the customer-facing half: the hourly voucher stock sweep
+(`integrations/stock_refresh.py`) writes `supplier_stock = 0` for a `card_id`
+or shop denomination that has vanished from its parent, so the SKU stops being
+buyable within the hour without anyone doing anything. What is missing is the
+rest of the watch's behaviour — the two-strike stamp, `skus.active=false`, and
+the Telegram alert. So a delisted gift card goes quiet rather than announced.
+
+Closing it means teaching `watch_cached_variants` the voucher kind and
+pointing it at `run_voucher_denomination_sync`, which already exists.
+
 ### A denomination missing from the mapping picker
 
 Two different causes, and they look identical from the admin:

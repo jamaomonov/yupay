@@ -108,6 +108,121 @@ async def _g2b_raw_price(  # noqa: PLR0911 -- discriminated outcome reads cleare
         return _RawPrice(amount=None, source="", reason=f"ошибка обращения к G2B: {exc!s}"[:200])
 
 
+async def _cached_price(
+    db: AsyncSession,
+    *,
+    supplier_slug: str,
+    kind: str,
+    external_id: str,
+    parent_external_id: str = "",
+) -> SupplierCatalogCache | None:
+    """One ``supplier_catalog_cache`` row by its full key.
+
+    ``parent_external_id`` joined the primary key in 0084 because a
+    denomination id is unique per game, not per supplier — so a lookup that
+    omits it is not a lookup, it is a guess. Flat rows carry ``''``.
+    """
+    return (
+        await db.execute(
+            select(SupplierCatalogCache).where(
+                SupplierCatalogCache.supplier_slug == supplier_slug,
+                SupplierCatalogCache.kind == kind,
+                SupplierCatalogCache.external_id == external_id,
+                SupplierCatalogCache.parent_external_id == parent_external_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def _gengine_raw_price(db: AsyncSession, mapping: SkuSupplierMapping) -> _RawPrice:
+    """G-Engine's price for one mapping, read from the catalogue cache.
+
+    Cache rather than a live call, for both of its catalogues, and that is
+    the whole design: ``GET /recharge/services`` answers with *every*
+    service's denominations inline, so the hourly catalogue sync already
+    holds the number this function wants, and asking again per mapping would
+    be ~120 redundant calls an hour for data that arrived in one. The shop
+    half is cached for the same reason one level down — one call per mapped
+    product, made by the sync, not by each of that product's SKUs.
+
+    That makes «Синхронизировать каталог» the button that moves G-Engine
+    prices, which is the honest coupling: before this function existed
+    G-Engine simply had no price at all, and the brand-comparison screen
+    showed a blank for every SKU mapped to it.
+
+    Both kinds are two-level, and the parent matters: a shop denomination id
+    and a recharge denomination id come from different sequences that
+    collide (shop product 9 is Roblox Global, recharge service 9 is Delta
+    Force), which is why the cache keys them apart by ``kind`` and this
+    lookup passes the parent.
+    """
+    variant_id = (mapping.external_variant_id or "").strip()
+    if not variant_id:
+        # Telegram Stars and the free-amount lines carry their size in
+        # ``quantity`` and no variant at all — there is no catalogue row to
+        # price, and a per-unit number would not be this SKU's cost anyway.
+        return _RawPrice(
+            amount=None,
+            source="",
+            reason="у маппинга не указан номинал — цену по каталогу не определить",
+        )
+    kind = "voucher_denom" if mapping.kind == "voucher" else "game_denom"
+    row = await _cached_price(
+        db,
+        supplier_slug="gengine",
+        kind=kind,
+        external_id=variant_id,
+        parent_external_id=mapping.external_product_id.strip(),
+    )
+    if row is None:
+        return _RawPrice(
+            amount=None,
+            source="",
+            reason="номинал не найден в кэше — синхронизируйте каталог G-Engine",
+        )
+    if row.price_usdt is None:
+        return _RawPrice(
+            amount=None,
+            source="",
+            reason="G-Engine не сообщил цену для этого номинала",
+        )
+    return _RawPrice(amount=row.price_usdt, source="supplier_catalog_cache.price_usdt")
+
+
+async def _nova_giftcard_price(db: AsyncSession, mapping: SkuSupplierMapping) -> _RawPrice:
+    """NOVA's price for a gift-card mapping, read from the catalogue cache.
+
+    Gift cards are a second NOVA catalogue with its own endpoint
+    (``GET /api/v2/giftcards/cards``), so the offers path above — which asks
+    ``/topups/offers`` — cannot answer for them: it would 404 on a category
+    id that is perfectly real, and report a live mapping as a broken one.
+
+    Cached rather than live, unlike NOVA's top-ups, because one call answers
+    a whole category: the hourly sync already fetches every mapped
+    category's cards, and nine Roblox rungs behind one category would
+    otherwise be nine identical requests an hour.
+    """
+    card_id = (mapping.external_variant_id or "").strip()
+    if not card_id:
+        return _RawPrice(amount=None, source="", reason="у маппинга не указан card_id")
+    row = await _cached_price(
+        db,
+        supplier_slug="nova",
+        kind="voucher_denom",
+        external_id=card_id,
+        parent_external_id=mapping.external_product_id.strip(),
+    )
+    if row is None:
+        return _RawPrice(
+            amount=None,
+            source="",
+            reason="карта не найдена в кэше — синхронизируйте каталог NOVA",
+        )
+    if row.price_usdt is None:
+        return _RawPrice(amount=None, source="", reason="NOVA не сообщила цену для этой карты")
+    return _RawPrice(amount=row.price_usdt, source="supplier_catalog_cache.price_usdt")
+
+
 #: The Fragment quote needs a username and ignores it — see
 #: :func:`_nova_fragment_price`. Nothing of a customer's goes upstream to
 #: learn a price that does not depend on them.
@@ -173,12 +288,17 @@ async def _nova_premium_price(client: Any, mapping: SkuSupplierMapping) -> _RawP
 
 
 async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be wrong, each with its own operator-facing reason
+    db: AsyncSession,
     mapping: SkuSupplierMapping,
     *,
     offers_cache: dict[str, dict[str, Any]] | None,
 ) -> _RawPrice:
-    """NOVA's price for one mapping: ``GET /topups/offers`` for the
-    mapping's category (``external_product_id``), matched on the offer id
+    """NOVA's price for one mapping.
+
+    A ``voucher`` mapping is a gift card and goes to
+    :func:`_nova_giftcard_price`, which reads the catalogue cache. Everything
+    else is a top-up: ``GET /topups/offers`` for the mapping's category
+    (``external_product_id``), matched on the offer id
     (``external_variant_id``), reading ``price_usd`` off the match.
 
     Steam (:data:`NOVA_STEAM_SENTINEL`) has no catalogue price to look up —
@@ -196,6 +316,12 @@ async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be
     """
     from yupay.modules.fulfillment.suppliers import REGISTRY
     from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+
+    if mapping.kind == "voucher":
+        # A second catalogue with a second endpoint. Checked before anything
+        # else so a gift-card category never reaches the top-up path, which
+        # would 404 on it and report a healthy mapping as broken.
+        return await _nova_giftcard_price(db, mapping)
 
     category_id = mapping.external_product_id.strip()
     if category_id == NOVA_STEAM_SENTINEL:

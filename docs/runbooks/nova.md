@@ -120,6 +120,21 @@ Roblox 2500 shipped with nine in stock, so the window was not theoretical. If
 a NOVA card ever looks permanently in stock, check that its mapping is
 `kind = "voucher"` and `is_active` — the sweep selects on both.
 
+### The catalogue sync reads both catalogues, since 2026-09-21
+
+Pressing «Синхронизировать каталог» on NOVA used to refresh the top-up
+categories and nothing else — the gift-card catalogue was never read, and its
+cards had no price anywhere in our system. Four passes now run, independently,
+so one failing does not lose the others: top-up categories, the mapped
+categories' offers, gift-card categories, and the mapped gift-card categories'
+cards.
+
+The cards are what matter for money: a NOVA gift-card mapping takes its cost
+from `supplier_catalog_cache`, not from a live call, so **the sync is what
+moves its price**. If a Roblox rung's cost looks frozen, sync the catalogue
+before suspecting the price refresh. The report's `vouchers_synced` counts
+categories and `mapped_vouchers_refreshed` folds in the cards.
+
 **A SKU mapped to two suppliers takes the count of the one it routes to.**
 The five older Roblox rungs are mapped to NOVA _and_ G2B, and pinned to G2B by
 a `force_supplier` rule; 10000 Robux sits at zero on G2B and twenty-nine on

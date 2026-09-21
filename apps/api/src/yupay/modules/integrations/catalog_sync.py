@@ -28,10 +28,12 @@ from yupay.modules.integrations.catalog_sync_g2b import sync_g2b_catalog
 from yupay.modules.integrations.catalog_sync_gengine import (
     sync_gengine_catalog,
     sync_gengine_game_denominations,
+    sync_gengine_voucher_denominations,
 )
 from yupay.modules.integrations.catalog_sync_nova import (
     sync_nova_catalog,
     sync_nova_game_denominations,
+    sync_nova_voucher_denominations,
 )
 from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
 
@@ -51,6 +53,16 @@ class _DenomSyncer(Protocol):
     """
 
     def __call__(self, db: AsyncSession, *, game_id: str) -> Awaitable[tuple[int, str | None]]: ...
+
+
+class _VoucherDenomSyncer(Protocol):
+    """The same shape for a *voucher's* ladder — a NOVA gift-card category or
+    a G-Engine shop product — which is a different catalogue with a different
+    endpoint, not the same call with another id."""
+
+    def __call__(
+        self, db: AsyncSession, *, product_id: str
+    ) -> Awaitable[tuple[int, str | None]]: ...
 
 
 #: Suppliers a full catalogue sweep is wired up for. Mirrors
@@ -74,6 +86,11 @@ _SYNCERS: dict[str, Callable[[AsyncSession], Awaitable[CatalogSyncReport]]] = {
 _DENOM_SYNCERS: dict[str, _DenomSyncer] = {
     "nova": sync_nova_game_denominations,
     "gengine": sync_gengine_game_denominations,
+}
+
+_VOUCHER_DENOM_SYNCERS: dict[str, _VoucherDenomSyncer] = {
+    "nova": sync_nova_voucher_denominations,
+    "gengine": sync_gengine_voucher_denominations,
 }
 
 
@@ -108,11 +125,30 @@ async def run_game_denomination_sync(
     return await syncer(db, game_id=game_id)
 
 
+async def run_voucher_denomination_sync(
+    db: AsyncSession, *, supplier_slug: str, product_id: str
+) -> tuple[int, str | None]:
+    """Pull one voucher product's ladder into the cache, on demand.
+
+    Same suppliers as :data:`DENOM_SYNCABLE_SUPPLIERS`, and G2B is absent for
+    a different reason than it is there: a G2B voucher genuinely is flat —
+    one product, one price — so it has no ladder to pull.
+    """
+    try:
+        syncer = _VOUCHER_DENOM_SYNCERS[supplier_slug]
+    except KeyError:
+        raise NotFoundError(
+            f"no voucher denomination sync for supplier {supplier_slug!r}"
+        ) from None
+    return await syncer(db, product_id=product_id)
+
+
 __all__ = [
     "DENOM_SYNCABLE_SUPPLIERS",
     "SYNCABLE_SUPPLIERS",
     "CatalogSyncReport",
     "run_catalog_sync",
     "run_game_denomination_sync",
+    "run_voucher_denomination_sync",
     "sync_g2b_catalog",
 ]
