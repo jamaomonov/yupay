@@ -64,7 +64,12 @@ async def test_credit_shows_up_in_balance(db_session: AsyncSession) -> None:
     assert directions == {deposit_acc.id: "D", house_acc.id: "C"}
     assert txn.kind == "merchant_deposit_credit"
     assert txn.actor == "admin:test"
-    assert txn.extra_metadata == {"note": "first top-up"}
+    # Two keys, not one: `note_visible_to_merchant` is what lets
+    # `GET /merchant/v1/transactions` publish the text as `description`
+    # (ADR-0087). Exposure begins at the write, so a credit booked without
+    # this flag stays internal forever — which is exactly what every row
+    # written before the flag existed does.
+    assert txn.extra_metadata == {"note": "first top-up", "note_visible_to_merchant": True}
 
 
 async def test_credit_is_idempotent_by_key(db_session: AsyncSession) -> None:

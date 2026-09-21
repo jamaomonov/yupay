@@ -648,11 +648,18 @@ async def test_the_statement_export_is_the_screen_in_a_file(
         "merchant_order_id",
         "order_id",
         "transaction_id",
+        # The operator's note on a manual movement. A debit reached a reseller
+        # as a bare negative number before this column existed, and the
+        # statement is the file they reconcile against.
+        "description",
     ]
     # The charge and the credit, newest first, with the screen's own numbers.
     assert [row[1] for row in rows[1:]] == ["merchant_order_charge", "merchant_deposit_credit"]
     assert [row[2] for row in rows[1:]] == ["-16.54", "40.00"]
     assert rows[1][3].startswith("manual-"), "an ordinary id is not rewritten"
+    # Both blank here: `_credit` sends no note, and an order charge is posted
+    # by the system and explains itself through `order_id`.
+    assert [row[6] for row in rows[1:]] == ["", ""]
 
 
 async def test_the_statement_defuses_a_formula_without_touching_the_numbers(
