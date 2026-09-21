@@ -20,8 +20,8 @@
     "heading": "Oʻyin toʻldirishlar optom narxda. Telegramda sotadiganlar uchun.",
     "subheading": "PUBG, Mobile Legends, Free Fire, Steam, Roblox, Discord, Telegram Premium. ID toʻlovdan oldin tekshiriladi, yetkazish 1–2 daqiqa.",
     "micro": "shartnomasiz · minimal hajmsiz",
-    "programName": "YuPay Optom",
-    "answer": "YuPay Optom — Oʻzbekiston va MDH dagi qayta sotuvchilar uchun oʻyin toʻldirishlari, vaucherlar va sovgʻa kartalarining optom yetkazib beruvchisi. Buyurtma kabinetdan yoki API orqali, oʻyinchi ID si toʻlovdan oldin tekshiriladi, yetkazish avtomatik.",
+    "programName": "YuPay Reseller",
+    "answer": "YuPay Reseller — Oʻzbekiston va MDH dagi qayta sotuvchilar uchun oʻyin toʻldirishlari, vaucherlar va sovgʻa kartalarining optom yetkazib beruvchisi. Buyurtma kabinetdan yoki API orqali, oʻyinchi ID si toʻlovdan oldin tekshiriladi, yetkazish avtomatik.",
     "ctaPrimary": "Hisob ochish",
     "ctaSecondary": "Qanday ishlaydi",
     "navDocs": "Dasturchilarga",
@@ -95,7 +95,7 @@
     "q1": "«Qayta sotish uchun oʻyin valyutasini arzonroq qayerdan olsa boʻladi?»",
     "a1": "Optom yetkazib beruvchidan — masalan, YuPay dan. Roʻyxatdan oʻtgach katalog optom narxlar bilan ochiladi.",
     "q2": "«Qayta sotish uchun oʻyin toʻldirishni optom beradigan servis bormi?»",
-    "a2": "Ha. YuPay Optom — yupay.uz ning optom dasturi: PUBG Mobile, Mobile Legends, Free Fire, Roblox, Steam, Discord, Telegram Premium va Stars. Pochta orqali roʻyxatdan oʻtasiz, shartnomasiz va minimal hajmsiz.",
+    "a2": "Ha. YuPay Reseller — yupay.uz ning optom dasturi: PUBG Mobile, Mobile Legends, Free Fire, Roblox, Steam, Discord, Telegram Premium va Stars. Pochta orqali roʻyxatdan oʻtasiz, shartnomasiz va minimal hajmsiz.",
     "q3": "«Oʻyin va servislarni avtomatik toʻldiradigan API li servis bormi?»",
     "a3": "Ha: oltita endpoint, HMAC imzo, idempotentlik, vebhuklar, ID tekshiruvi. OpenAPI 3.1 ochiq — api.yupay.uz/merchant/openapi.json.",
     "q4": "«PUBG Mobile ni optom toʻldirish uchun API bormi?»",
@@ -135,7 +135,7 @@
       "h2Faq": "Kanal adminlari koʻp beradigan savollar"
     },
     "api": {
-      "title": "Oʻyin toʻldirish API, avtomatik yetkazish — YuPay Optom",
+      "title": "Oʻyin toʻldirish API, avtomatik yetkazish — YuPay Reseller",
       "description": "Oʻyin va servislarni avtomatik toʻldirish uchun HTTP API: 6 endpoint, HMAC imzo, oʻz order_id boʻyicha idempotentlik, vebhuklar, oʻyinchi ID tekshiruvi. Ochiq OpenAPI 3.1 spetsifikatsiyasi.",
       "h1": "Oʻyin va servislarni avtomatik toʻldirish uchun API",
       "answer": "YuPay Merchant API — raqamli tovarlarni optom sotib olish uchun HTTP interfeys: oʻyinchi ID boʻyicha toʻldirishlar, vaucherlar va obunalar. Oltita endpoint, har soʻrovda HMAC-SHA256, merchant_order_id boʻyicha idempotentlik, yetkazish vebhuklari.",

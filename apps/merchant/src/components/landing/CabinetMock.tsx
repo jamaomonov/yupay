@@ -1,4 +1,4 @@
-import { Check } from "lucide-react";
+import { LayoutGrid, Package, Settings, Check, type LucideIcon } from "lucide-react";
 
 /** The cabinet words the picture repeats, translated by the caller. */
 export interface CabinetMockLabels {
@@ -9,8 +9,33 @@ export interface CabinetMockLabels {
   delivered: string;
 }
 
-/** Brand names are the same in every locale, so they stay out of the catalogs. */
-const TILES = ["PUBG Mobile", "Mobile Legends", "Free Fire", "Roblox", "Steam", "Discord"] as const;
+/**
+ * The six tiles, each with the brand's own square art.
+ *
+ * The files are **ours and local** — pulled once from `GET /catalog/brands`
+ * and squared down to 64px — rather than fetched at render. This figure is a
+ * drawing, and a drawing that makes six CDN requests above the fold is a
+ * drawing that can arrive half-empty on the slowest connection it is meant to
+ * impress. A brand whose logo changes is a file to refresh here, which is the
+ * right trade for the one illustration on the site.
+ *
+ * Brand names are the same in every locale, so they stay out of the catalogs.
+ */
+const TILES: { name: string; art: string }[] = [
+  { name: "PUBG Mobile", art: "/brands/pubg-mobile.png" },
+  { name: "Mobile Legends", art: "/brands/mobile-legends.png" },
+  { name: "Free Fire", art: "/brands/free-fire.png" },
+  { name: "Roblox", art: "/brands/roblox.png" },
+  { name: "Steam", art: "/brands/steam.png" },
+  { name: "Discord", art: "/brands/discord.png" },
+];
+
+/** The sidebar, with the icons each of those screens actually carries. */
+const NAV: { key: keyof CabinetMockLabels; icon: LucideIcon }[] = [
+  { key: "catalog", icon: LayoutGrid },
+  { key: "orders", icon: Package },
+  { key: "settings", icon: Settings },
+];
 
 /**
  * A drawing of the cabinet, in place of the JSON window that used to open this
@@ -22,6 +47,10 @@ const TILES = ["PUBG Mobile", "Mobile Legends", "Free Fire", "Roblox", "Steam", 
  * and a claim nobody updates is a lie by the time the catalog moves — which is
  * why `countBrands()` exists for the one number on this page and why there is
  * not a second source of them here.
+ *
+ * The sidebar icons are the ones those screens really carry (`Shell.tsx` and
+ * the catalog's own empty state), so the picture stays a picture of the
+ * product rather than of something adjacent to it.
  *
  * `aria-hidden` on the whole figure, with a caption that only a screen reader
  * gets: read aloud, a fake sidebar and six brand tiles are noise, but silence
@@ -35,35 +64,53 @@ export function CabinetMock({ labels, caption }: { labels: CabinetMockLabels; ca
         aria-hidden="true"
         className="border-border bg-card select-none overflow-hidden rounded-2xl border shadow-sm"
       >
+        {/* The window controls, in their real colours. Three identical grey
+            dots read as a loading placeholder as readily as a title bar; the
+            traffic light is the one piece of chrome everybody parses without
+            looking at it, and it is what says "this is an application". */}
         <div className="border-border flex items-center gap-1.5 border-b px-4 py-3">
-          <span className="bg-border-2 h-2 w-2 rounded-full" />
-          <span className="bg-border-2 h-2 w-2 rounded-full" />
-          <span className="bg-border-2 h-2 w-2 rounded-full" />
+          <span className="bg-danger h-2.5 w-2.5 rounded-full" />
+          <span className="bg-gold h-2.5 w-2.5 rounded-full" />
+          <span className="bg-primary h-2.5 w-2.5 rounded-full" />
         </div>
 
-        <div className="grid grid-cols-[6.5rem_1fr]">
-          <nav className="border-border text-tx-dim space-y-1.5 border-r p-3 text-[11px]">
-            <p className="text-primary-ink bg-muted rounded-md px-2 py-1 font-semibold">
-              {labels.catalog}
-            </p>
-            <p className="px-2 py-1">{labels.orders}</p>
-            <p className="px-2 py-1">{labels.settings}</p>
+        {/* 7rem, and the labels wrap rather than truncate: these three words
+            are the longest in Uzbek — «Buyurtmalar», «Sozlamalar» — and a
+            picture of the product that cuts the product's own nav labels in
+            half is worse than one that lets a word wrap. */}
+        <div className="grid grid-cols-[7rem_1fr]">
+          <nav className="border-border text-tx-dim space-y-1 border-r p-2.5 text-[10.5px]">
+            {NAV.map(({ key, icon: Icon }) => (
+              <p
+                key={key}
+                className={`flex items-center gap-1.5 rounded-md px-2 py-1 leading-tight ${
+                  key === "catalog" ? "text-primary-ink bg-muted font-semibold" : ""
+                }`}
+              >
+                <Icon size={12} className="shrink-0" strokeWidth={2} />
+                <span className="min-w-0">{labels[key]}</span>
+              </p>
+            ))}
           </nav>
 
           <div className="p-3">
             <div className="grid grid-cols-3 gap-2">
-              {TILES.map((tile) => (
+              {TILES.map(({ name, art }) => (
                 <div
-                  key={tile}
-                  className="border-border bg-card-2 text-tx-mute rounded-lg border px-2 py-3 text-center text-[10.5px] leading-tight"
+                  key={name}
+                  className="border-border bg-card-2 text-tx-mute flex items-center gap-1 rounded-lg border px-1.5 py-2 text-[10px] leading-tight"
                 >
-                  {tile}
+                  <Art src={art} size={16} />
+                  <span className="min-w-0">{name}</span>
                 </div>
               ))}
             </div>
 
             <div className="border-border bg-card-2 mt-3 rounded-xl border p-3">
-              <p className="text-[11.5px] font-semibold">{TILES[0]}</p>
+              <p className="flex items-center gap-2 text-[11.5px] font-semibold">
+                <Art src={TILES[0]?.art ?? ""} size={20} />
+                {TILES[0]?.name}
+              </p>
               {/* The ID field, mid-check: the line below is the whole reason
                   this card is in the picture. */}
               <div className="border-border text-tx-dim mt-2 rounded-lg border px-2.5 py-2 font-mono text-[11px] tracking-[0.3em]">
@@ -83,5 +130,29 @@ export function CabinetMock({ labels, caption }: { labels: CabinetMockLabels; ca
         </div>
       </div>
     </figure>
+  );
+}
+
+/**
+ * One square piece of brand art.
+ *
+ * A plain `<img>`, not `next/image`: these are six decorative 64px files we
+ * ship ourselves, inside a figure that is already `aria-hidden`, and routing
+ * them through the optimizer would trade a static asset for a request per
+ * tile to save nothing. `width`/`height` are on the element so the tiles do
+ * not reflow while the art loads.
+ */
+function Art({ src, size }: { src: string; size: number }) {
+  return (
+    /* eslint-disable-next-line @next/next/no-img-element --
+       see the note above: a local decorative asset at a fixed pixel size. */
+    <img
+      src={src}
+      alt=""
+      width={size}
+      height={size}
+      className="shrink-0 rounded-[5px] object-cover"
+      style={{ width: size, height: size }}
+    />
   );
 }

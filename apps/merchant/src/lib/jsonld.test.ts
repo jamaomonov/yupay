@@ -25,14 +25,16 @@ describe("jsonld builders", () => {
   });
 
   it("service refers back to the organization by @id, not by copy", () => {
-    const node = service("https://reseller.yupay.uz", "YuPay Wholesale");
+    const node = service("https://reseller.yupay.uz", "YuPay Reseller");
     expect(node.provider).toEqual({ "@id": ORGANIZATION_ID });
     expect(node.areaServed).toEqual(["UZ", "RU", "KZ"]);
   });
 
-  it("service takes its name from the caller rather than hardcoding one locale", () => {
-    expect(service("https://reseller.yupay.uz", "YuPay Оптом").name).toBe("YuPay Оптом");
-    expect(service("https://reseller.yupay.uz", "YuPay Optom").name).toBe("YuPay Optom");
+  it("service takes its name from the caller rather than hardcoding one", () => {
+    // Two strings that are not the current name, on purpose: what is pinned
+    // is the pass-through, so renaming the programme must not touch this.
+    expect(service("https://reseller.yupay.uz", "Программа").name).toBe("Программа");
+    expect(service("https://reseller.yupay.uz", "Dastur").name).toBe("Dastur");
   });
 
   it("faqPage turns q/a pairs into Question/Answer nodes", () => {

@@ -38,8 +38,9 @@ export function website(site: string): Record<string, unknown> {
 }
 
 /** The wholesale program itself, as a Service offered by the Organization.
- *  `name` is locale-appropriate copy from the caller — "YuPay Оптом" (ru),
- *  "YuPay Wholesale" (en) or "YuPay Optom" (uz) — never hardcoded here, so
+ *  `name` is copy from the caller — "YuPay Reseller" today, in every locale,
+ *  because it is a proper name and the header badge has always said the
+ *  English word — never hardcoded here, so
  *  a ru-only name cannot leak into the en/uz pages' structured data. */
 export function service(site: string, name: string): Record<string, unknown> {
   return {
