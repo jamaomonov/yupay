@@ -348,7 +348,39 @@
     "step4Title": "Buyurtma bering",
     "step4Body": "merchant_order_id — sizning identifikatoringiz va idempotentlik kaliti: bir xilini qayta yuborsangiz, ikkinchi yechim emas, oʻsha buyurtma qaytadi.",
     "quickPoll": "Buyurtma holatini soʻrang",
-    "swaggerUiHint": "Xuddi shu shartnoma interaktiv koʻrinishda. «Try it out» ishlamaydi: soʻrov sizning maxfiy kalitingiz bilan imzolanishi kerak, u esa sizning serveringizda turishi lozim — tayyor imzolangan misollar Tez start boʻlimida."
+    "swaggerUiHint": "Xuddi shu shartnoma interaktiv koʻrinishda. «Try it out» ishlamaydi: soʻrov sizning maxfiy kalitingiz bilan imzolanishi kerak, u esa sizning serveringizda turishi lozim — tayyor imzolangan misollar Tez start boʻlimida.",
+    "errorsReasons": "item_unavailable uchun reason qiymatlari",
+    "colReason": "reason",
+    "colMeaning": "Maʼnosi",
+    "errCodes": {
+      "missing_credentials": "Uchta sarlavhadan biri yuborilmagan.",
+      "stale_timestamp": "Raqam emas yoki bizning soatimizdan ±300 s dan ko‘proq farq qiladi.",
+      "invalid_credentials": "Notanish yoki bekor qilingan kalit, yoki imzo mos kelmadi.",
+      "merchant_frozen": "Hisob muzlatilgan. O‘qish ishlaydi, yozish — yo‘q.",
+      "ip_not_allowed": "Bu manzil kalitning ruxsat ro‘yxatida yo‘q.",
+      "rate_limited": "So‘rovlar juda ko‘p. `Retry-After` ni o‘qing va kuting.",
+      "invalid_request": "Tana validatsiyadan o‘tmadi. Maydonlar bo‘yicha tafsilot — `errors` ichida.",
+      "item_unavailable": "Bu SKU ni hozir buyurtma qilib bo‘lmaydi. Tanada — `reason`.",
+      "order_not_found": "Sizda bunday `merchant_order_id` li buyurtma yo‘q.",
+      "insufficient_deposit": "Tanada `balance_usd` va `required_usd`. Depozitni to‘ldiring va **o‘sha** id bilan qayta yuboring.",
+      "order_id_reused": "Bu `merchant_order_id` allaqachon boshqa buyurtmaga tegishli.",
+      "price_changed": "Farq ±2% dan ortiq. Tanada `current_price`. Qaror qiling va qayta yuboring.",
+      "quantity_required": "Dona narxli SKU. `quantity` yuboring.",
+      "quantity_not_accepted": "Qat’iy nominal. `quantity` yubormang.",
+      "quantity_out_of_range": "SKU ning e’lon qilingan `min_qty` / `max_qty` doirasidan tashqarida.",
+      "amount_required": "Erkin summali SKU (hamyon). `amount_usd` yuboring.",
+      "amount_not_accepted": "Bu SKU dollarda o‘lchanmaydi. `amount_usd` yubormang.",
+      "amount_out_of_range": "SKU ning e’lon qilingan summa chegarasidan tashqarida.",
+      "margin_floor": "Narxingiz bu SKU uchun ruxsat etilgan eng past chegaradan past."
+    },
+    "errReasons": {
+      "unknown_sku": "Bunday id li SKU yo‘q.",
+      "not_b2b_visible": "U bor, lekin resellerlarga taklif qilinmaydi.",
+      "out_of_stock": "Yetkazib beruvchida vaqtincha yo‘q.",
+      "not_for_sale": "Sotuvdan olingan.",
+      "no_cost": "Xarid narxi yo‘q — kotirovka berib bo‘lmaydi.",
+      "variable_amount": "Narx summaga bog‘liq — bo‘sh buyurtma emas, `amount_usd` yuboring."
+    }
   },
   "offer": {
     "title": "Optom yetkazib berish shartnomasi (oferta)",

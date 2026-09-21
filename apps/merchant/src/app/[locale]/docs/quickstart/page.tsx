@@ -82,6 +82,24 @@ export default async function QuickstartPage({ params }: { params: Promise<{ loc
         {steps.map(({ key, sample }, index) => (
           <Section key={key} id={key} title={`${String(index + 1)}. ${t(`${key}Title`)}`}>
             <p className="text-tx-mute text-sm leading-relaxed">{t(`${key}Body`)}</p>
+            {key === "step4" && (
+              // The one branch every integrator's order-building code needs,
+              // and it was on no guide page. These four strings were written
+              // and translated into all three locales and then referenced by
+              // zero components — a section that never shipped.
+              //
+              // It belongs here, above the sample: the generated body is the
+              // `fixed` shape, so a reader on a `unit` or `amount` SKU needs
+              // to be told what to add before they paste it.
+              <div className="border-border bg-card-2 mt-4 rounded-lg border p-4">
+                <p className="text-sm font-semibold">{t("kindsTitle")}</p>
+                <ul className="text-tx-mute mt-2 space-y-1 text-sm leading-relaxed">
+                  <li>{t("kindFixed")}</li>
+                  <li>{t("kindUnit")}</li>
+                  <li>{t("kindAmount")}</li>
+                </ul>
+              </div>
+            )}
             {sample !== null && (
               <CodeTabs
                 copyLabel={t("copy")}

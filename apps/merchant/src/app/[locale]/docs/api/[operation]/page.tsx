@@ -11,7 +11,7 @@ import { ResponseTabs } from "@/components/docs/ResponseTabs";
 import { SchemaTable } from "@/components/docs/SchemaTable";
 import { JsonLd } from "@/components/JsonLd";
 import { routing } from "@/i18n/routing";
-import { apiBaseUrl, bodySchema, contract, endpoints, typeLabel } from "@/lib/contract";
+import { apiBaseUrl, bodySchema, endpoints, typeLabel } from "@/lib/contract";
 import { exampleJson } from "@/lib/example";
 import { techArticle } from "@/lib/jsonld";
 import { LANGUAGES, canonicalString, sampleFor } from "@/lib/samples";
@@ -58,6 +58,17 @@ function examplePath(path: string): string {
     .replaceAll(/\{[^}]+\}/g, "example");
 }
 
+/** `limit=50` from a parameter's schema — its example, else its default. */
+function queryExample(param: Parameter | undefined): string {
+  if (param === undefined) return "";
+  const value = param.schema?.examples?.[0] ?? param.schema?.default;
+  // Scalars only. An object or array default would render as `[object Object]`
+  // in a URL we are telling somebody to sign, which is worse than no example.
+  const scalar =
+    typeof value === "string" || typeof value === "number" || typeof value === "boolean";
+  return scalar ? `${param.name}=${String(value)}` : "";
+}
+
 export default async function OperationPage({
   params,
 }: {
@@ -80,7 +91,11 @@ export default async function OperationPage({
   const sample = {
     method,
     path: examplePath(path),
-    query: query.length > 0 ? `${query[0]?.name ?? ""}=` : "",
+    // The parameter's own default or example, never a bare `name=`. An empty
+    // value fails parsing — `limit` is `integer, 1..200` — so the only sample
+    // on the site that shows a SIGNED query string, the part of the scheme
+    // most easily got wrong, was a request that 422s.
+    query: query.length > 0 ? queryExample(query[0]) : "",
     body: request === undefined ? null : exampleJson(request),
     baseUrl: base,
   };

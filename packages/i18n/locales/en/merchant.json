@@ -348,7 +348,39 @@
     "step4Title": "Order",
     "step4Body": "merchant_order_id is your own id and the idempotency key: send the same one again and you get the same order back, not a second charge.",
     "quickPoll": "Poll the order status",
-    "swaggerUiHint": "The same contract, rendered. \"Try it out\" will not work: a request has to be signed with your secret, and that belongs on your server — signed samples are in the Quickstart."
+    "swaggerUiHint": "The same contract, rendered. \"Try it out\" will not work: a request has to be signed with your secret, and that belongs on your server — signed samples are in the Quickstart.",
+    "errorsReasons": "item_unavailable reason values",
+    "colReason": "reason",
+    "colMeaning": "Meaning",
+    "errCodes": {
+      "missing_credentials": "One of the three headers is absent.",
+      "stale_timestamp": "Not digits, or more than ±300 s from our clock.",
+      "invalid_credentials": "Unknown key, revoked key, or a signature that does not match.",
+      "merchant_frozen": "The account is suspended. Reads still work; writes do not.",
+      "ip_not_allowed": "This address is not on the key's allowlist.",
+      "rate_limited": "Rate limited. Read `Retry-After` and back off.",
+      "invalid_request": "The body failed validation. `errors` carries the per-field detail.",
+      "item_unavailable": "This SKU cannot be ordered right now. The body carries a `reason`.",
+      "order_not_found": "No order of yours under this `merchant_order_id`.",
+      "insufficient_deposit": "Body carries `balance_usd` and `required_usd`. Top up and retry the **same** id.",
+      "order_id_reused": "This `merchant_order_id` already belongs to a different order.",
+      "price_changed": "Drift beyond ±2%. Body carries `current_price`. Decide, then re-send.",
+      "quantity_required": "A unit-priced SKU. Send `quantity`.",
+      "quantity_not_accepted": "A fixed denomination. Do not send `quantity`.",
+      "quantity_out_of_range": "Outside the SKU's published `min_qty` / `max_qty`.",
+      "amount_required": "An amount-priced SKU (a wallet). Send `amount_usd`.",
+      "amount_not_accepted": "This SKU is not sized in dollars. Do not send `amount_usd`.",
+      "amount_out_of_range": "Outside the SKU's published amount bounds.",
+      "margin_floor": "Your price is below the floor we allow for this SKU."
+    },
+    "errReasons": {
+      "unknown_sku": "No SKU with that id.",
+      "not_b2b_visible": "It exists, but is not offered to resellers.",
+      "out_of_stock": "Temporarily unavailable upstream.",
+      "not_for_sale": "Withdrawn from sale.",
+      "no_cost": "No supplier price, so it cannot be quoted.",
+      "variable_amount": "Priced by amount — send `amount_usd`, not a bare order."
+    }
   },
   "offer": {
     "title": "Wholesale supply agreement (offer)",

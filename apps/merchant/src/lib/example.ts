@@ -25,6 +25,10 @@ const BY_NAME: Record<string, unknown> = {
   merchant_id: "01a0a399-fd8b-7432-83dc-fd3cc6f3d5f9",
   sku_code: "pubgm-660",
   slug: "pubg-mobile",
+  // Without this, `brand` falls through to the last resort below and the
+  // sample sends `"brand": "brand"` — well-formed, and a 404 the reader has
+  // no clue about.
+  brand: "pubg-mobile",
   name: "660 UC",
   title: "ACME Resale",
   status: "delivered",
@@ -83,6 +87,29 @@ function scalar(name: string, node: SchemaNode): unknown {
 }
 
 /**
+ * Properties this generator must NOT emit together, and the one it keeps.
+ *
+ * `MerchantOrderCreateIn` declares `quantity` and `amount_usd` side by side,
+ * but they are mutually exclusive AND mutually exhaustive per SKU kind
+ * (`merchants/quote.py`): a fixed denomination refuses `quantity`
+ * (`422 quantity_not_accepted`), a unit-priced or amount-priced SKU refuses
+ * `amount_usd` (`422 amount_not_accepted`). There is no third case — so a
+ * body carrying both, which is what walking every property produced, is
+ * rejected for EVERY sku_id a reader could substitute.
+ *
+ * That body was the quickstart's step 4 and the reference's `post-orders`
+ * sample: the one call that spends money, guaranteed to 422, right after the
+ * reader has just proven their signature works. The natural first suspicion
+ * is the signature, which is the one thing that is fine.
+ *
+ * Both are dropped rather than one being picked, because the remaining shape
+ * is then exactly a `fixed` order — the most common kind, and correct as
+ * pasted. Which field to add for the other two kinds is stated in prose on
+ * the quickstart (`docs.kinds*`), where a rule belongs.
+ */
+const OMIT_FROM_EXAMPLES: ReadonlySet<string> = new Set(["quantity", "amount_usd"]);
+
+/**
  * Build an example value for `node`.
  *
  * `depth` stops a self-referential model — none today, but a catalog that
@@ -107,6 +134,7 @@ export function exampleOf(node: SchemaNode | undefined, name = "", depth = 0): u
   if (target.properties !== undefined) {
     const out: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(target.properties)) {
+      if (OMIT_FROM_EXAMPLES.has(key)) continue;
       out[key] = exampleOf(child, key, depth + 1);
     }
     return out;
