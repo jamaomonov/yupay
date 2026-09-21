@@ -52,6 +52,7 @@ from yupay.modules.merchants.admin import (
     set_webhook,
     validate_webhook_url,
 )
+from yupay.modules.merchants.cabinet_webhooks import list_deliveries
 from yupay.modules.merchants.credentials import (
     IssuedApiKey,
     create_api_key,
@@ -80,6 +81,7 @@ from yupay.modules.merchants.models import (
     MerchantWebhook,
     MerchantWebhookDelivery,
 )
+from yupay.modules.merchants.operators import list_operators
 from yupay.modules.merchants.order_status import read as read_order_status
 from yupay.modules.merchants.orders import place as place_order
 from yupay.modules.merchants.price_list import build as build_price_list
@@ -164,8 +166,10 @@ __all__ = [
     "expected_signature",
     "get_webhook",
     "list_api_keys",
+    "list_deliveries",
     "list_deposit_transactions",
     "list_merchants_with_balances",
+    "list_operators",
     "merchant_markup_pct",
     "merchant_price",
     "order_reference_of",

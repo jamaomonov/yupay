@@ -24,6 +24,7 @@ import hmac
 import json
 import time
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from decimal import Decimal
 from urllib.parse import urlencode
 
@@ -42,7 +43,12 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
-from yupay.modules.merchants.models import Merchant, MerchantApiKey
+from yupay.modules.merchants.models import (
+    Merchant,
+    MerchantApiKey,
+    MerchantSession,
+    MerchantUser,
+)
 from yupay.modules.users.models import TelegramLink, User
 from yupay.modules.wallet.models import WalletTransaction
 
@@ -154,6 +160,8 @@ def _seed_catalog_unit(db: AsyncSession, tag: str, *, sku_count: int = 1) -> tup
         ("POST", "/api/v1/admin/merchants/x/api-keys"),
         ("GET", "/api/v1/admin/merchants/x/api-keys"),
         ("DELETE", "/api/v1/admin/merchants/x/api-keys/ypm_x"),
+        ("GET", "/api/v1/admin/merchants/x/webhook/deliveries"),
+        ("GET", "/api/v1/admin/merchants/x/users"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
         ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
         ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
@@ -178,6 +186,8 @@ async def test_every_endpoint_requires_a_token(
         ("POST", "/api/v1/admin/merchants/x/api-keys"),
         ("GET", "/api/v1/admin/merchants/x/api-keys"),
         ("DELETE", "/api/v1/admin/merchants/x/api-keys/ypm_x"),
+        ("GET", "/api/v1/admin/merchants/x/webhook/deliveries"),
+        ("GET", "/api/v1/admin/merchants/x/users"),
         ("PATCH", "/api/v1/admin/catalog/skus/x/b2b"),
         ("POST", "/api/v1/admin/catalog/b2b/bulk-markup"),
         ("PATCH", "/api/v1/admin/catalog/brands/x/b2b"),
@@ -1140,3 +1150,108 @@ async def test_bulk_markup_replay_scope_is_per_target(
     by_code = {sku.sku_code: sku.b2b_markup_pct for sku in skus}
     assert by_code["sku-bulkscope-a-0"] == Decimal("4")
     assert by_code["sku-bulkscope-b-0"] == Decimal("9")
+
+
+# ---------- who can sign in ----------
+
+
+async def test_operators_answer_the_half_of_a_login_problem_a_reset_cannot(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Confirmed? Ever signed in? Those are two different conversations.
+
+    Support's first question on "I cannot get in" is not the password. Until
+    this endpoint there was no screen that told an unconfirmed address from
+    an operator who simply has not tried this month.
+    """
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="With people")
+    user = MerchantUser(
+        id=new_id(),
+        merchant_id=merchant_id,
+        email="ops@acme.example.com",
+        password_hash="x",
+        email_confirmed_at=None,
+    )
+    db_session.add(user)
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/users", headers=admin_headers
+    )
+
+    assert r.status_code == 200, r.text
+    items = r.json()["items"]
+    assert len(items) == 1
+    assert items[0]["email"] == "ops@acme.example.com"
+    assert items[0]["email_confirmed_at"] is None
+    # Never signed in — the state a password reset does not fix.
+    assert items[0]["last_login_at"] is None
+    # Nothing replayable leaves this endpoint.
+    assert "password_hash" not in items[0]
+
+
+async def test_a_session_is_what_last_login_means(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """`merchant_sessions.created_at` is written at sign-in, so the newest row
+    under a person IS their last login — no second column to drift."""
+    merchant_id = await _create_merchant(integration_client, admin_headers, title="Logged in")
+    user = MerchantUser(
+        id=new_id(),
+        merchant_id=merchant_id,
+        email="in@acme.example.com",
+        password_hash="x",
+        email_confirmed_at=datetime(2026, 9, 1, tzinfo=UTC),
+    )
+    db_session.add(user)
+    await db_session.flush()
+    for at in (datetime(2026, 9, 1, tzinfo=UTC), datetime(2026, 9, 20, tzinfo=UTC)):
+        db_session.add(
+            MerchantSession(
+                id=new_id(),
+                merchant_user_id=user.id,
+                token_hash=f"h{at.day}",
+                expires_at=datetime(2026, 12, 1, tzinfo=UTC),
+                created_at=at,
+            )
+        )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{merchant_id}/users", headers=admin_headers
+    )
+
+    assert r.status_code == 200, r.text
+    # The NEWEST session, not the first and not a count.
+    assert r.json()["items"][0]["last_login_at"].startswith("2026-09-20")
+
+
+async def test_one_merchants_operators_are_never_anothers(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    mine = await _create_merchant(integration_client, admin_headers, title="Mine")
+    theirs = await _create_merchant(integration_client, admin_headers, title="Theirs")
+    db_session.add(
+        MerchantUser(
+            id=new_id(),
+            merchant_id=theirs,
+            email="other@acme.example.com",
+            password_hash="x",
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(f"/api/v1/admin/merchants/{mine}/users", headers=admin_headers)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == []
+
+
+async def test_operators_of_a_merchant_that_does_not_exist_is_a_404(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    """An empty list for a typo'd id would read as "this reseller has nobody"."""
+    r = await integration_client.get(
+        f"/api/v1/admin/merchants/{new_id()}/users", headers=admin_headers
+    )
+    assert r.status_code == 404, r.text

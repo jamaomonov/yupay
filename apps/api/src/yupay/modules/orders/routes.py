@@ -341,6 +341,7 @@ async def admin_list_orders(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     status_filter: Annotated[str | None, "status"] = None,
+    merchant_id: Annotated[str | None, Query(max_length=64)] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
     since: datetime | None = None,
     until: datetime | None = None,
@@ -356,10 +357,16 @@ async def admin_list_orders(
     brand or product name, or a merchant title; it filters in the database so
     a result on page 7 is still findable from page 1, and ``total`` describes
     the search rather than the page.
+
+    ``merchant_id`` narrows to one reseller exactly. ``q`` can match a
+    merchant title and that is the wrong tool for this job: titles collide
+    and titles get renamed, and "everything this account bought" is a
+    question about an id.
     """
     orders, total = await svc.list_orders_admin(
         db,
         status_filter=status_filter,
+        merchant_id=merchant_id,
         q=q,
         since=since,
         until=until,

@@ -39,6 +39,7 @@ from yupay.core.idempotency import (
 )
 from yupay.modules.admin.api import require_admin
 from yupay.modules.merchants import api as merchants
+from yupay.modules.merchants.cabinet_schemas import CabinetDeliveriesOut
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader, remember, replayed
 from yupay.modules.merchants.schemas import (
     ApiKeyCreatedOut,
@@ -54,6 +55,7 @@ from yupay.modules.merchants.schemas import (
     MerchantOut,
     MerchantTxnListOut,
     MerchantTxnOut,
+    MerchantUserListOut,
     WebhookOut,
     WebhookSecretOut,
     WebhookSetIn,
@@ -522,6 +524,53 @@ async def read_webhook(
     registered an endpoint.
     """
     return WebhookOut.model_validate(await merchants.get_webhook(db, merchant_id=merchant_id))
+
+
+@admin_router.get(
+    "/{merchant_id}/webhook/deliveries",
+    response_model=CabinetDeliveriesOut,
+    summary="A merchant's webhook delivery attempts, newest first",
+)
+async def read_webhook_deliveries(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
+    cursor: Annotated[str | None, Query()] = None,
+) -> CabinetDeliveriesOut:
+    """The same log the merchant reads in their own cabinet.
+
+    One reader, ``cabinet_webhooks.list_deliveries``, not a second query:
+    support asking "what did we send you" must see exactly what the reseller
+    sees, and two queries over one table is how those two answers start to
+    differ. It takes ``merchant_id`` as an argument rather than off a
+    session, which is what makes it reusable here at all.
+
+    The rows carry the request body we sent and the response we got, so this
+    is an admin route and stays one.
+    """
+    return await merchants.list_deliveries(db, merchant_id=merchant_id, limit=limit, cursor=cursor)
+
+
+@admin_router.get(
+    "/{merchant_id}/users",
+    response_model=MerchantUserListOut,
+    summary="Who can sign into this merchant's cabinet",
+)
+async def read_merchant_users(
+    merchant_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> MerchantUserListOut:
+    """Operators, with whether the address is confirmed and when they last got in.
+
+    ``last_login_at`` is derived from ``merchant_sessions`` — see
+    ``operators.list_operators``. It answers the half of "I cannot sign in"
+    that a password reset does not: never confirmed, or never signed in at
+    all, is a different conversation from signed in last month.
+
+    Returns e-mail addresses, which is why it is admin-only and why nothing
+    in the path logs them.
+    """
+    return await merchants.list_operators(db, merchant_id=merchant_id)
 
 
 @admin_router.post(

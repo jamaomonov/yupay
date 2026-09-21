@@ -189,6 +189,9 @@ export const qk = {
   merchantTxns: (merchantId: string) => ["admin", "merchants", merchantId, "transactions"] as const,
   merchantKeys: (merchantId: string) => ["admin", "merchants", merchantId, "api-keys"] as const,
   merchantWebhook: (merchantId: string) => ["admin", "merchants", merchantId, "webhook"] as const,
+  merchantDeliveries: (merchantId: string, cursor: string | null) =>
+    ["admin", "merchants", merchantId, "deliveries", cursor] as const,
+  merchantUsers: (merchantId: string) => ["admin", "merchants", merchantId, "users"] as const,
 
   // promo
   promoCodes: () => ["admin", "promo"] as const,

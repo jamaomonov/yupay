@@ -39,7 +39,8 @@
       "unfreezeConfirm": "Yes, unfreeze",
       "frozenToast": "Merchant frozen.",
       "unfrozenToast": "Merchant unfrozen.",
-      "statusError": "Failed to change status: {message}"
+      "statusError": "Failed to change status: {message}",
+      "ordersLink": "This merchant's orders →"
     },
     "credit": {
       "title": "Credit the deposit",
@@ -176,6 +177,32 @@
       "disableError": "Could not disable: {message}",
       "disabledToast": "Webhook disabled",
       "cancel": "Cancel"
+    },
+    "users": {
+      "title": "Cabinet operators",
+      "hint": "Who can sign into this merchant's cabinet. “I cannot log in” is usually an unconfirmed address rather than a password.",
+      "empty": "No operators — nobody has opened the cabinet; the account was created by hand",
+      "loadError": "Could not load the operators: {message}",
+      "confirmed": "Address confirmed {date}",
+      "unconfirmed": "Address not confirmed",
+      "lastLogin": "Last sign-in",
+      "neverLoggedIn": "never signed in",
+      "offerAccepted": "Offer accepted {date}, version {version}",
+      "offerMissing": "Offer not accepted"
+    },
+    "log": {
+      "title": "Delivery log",
+      "hint": "The same one the merchant sees. When they say nothing is arriving, the answer is here.",
+      "show": "Show the log",
+      "hide": "Hide the log",
+      "empty": "No deliveries yet",
+      "loadError": "Could not load the log: {message}",
+      "attempts": "attempts",
+      "sent": "What we sent",
+      "received": "What came back",
+      "error": "Error",
+      "nextAttempt": "Next attempt",
+      "loadMore": "Show more"
     }
   },
   "catalogB2b": {

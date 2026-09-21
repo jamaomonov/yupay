@@ -39,7 +39,8 @@
       "unfreezeConfirm": "Ha, chiqarish",
       "frozenToast": "Merchant muzlatildi.",
       "unfrozenToast": "Merchant muzlatishdan chiqarildi.",
-      "statusError": "Holatni o'zgartirib bo'lmadi: {message}"
+      "statusError": "Holatni o'zgartirib bo'lmadi: {message}",
+      "ordersLink": "Bu merchantning buyurtmalari →"
     },
     "credit": {
       "title": "Depozitni to'ldirish",
@@ -176,6 +177,32 @@
       "disableError": "Oʻchirib boʻlmadi: {message}",
       "disabledToast": "Vebhuk oʻchirildi",
       "cancel": "Bekor qilish"
+    },
+    "users": {
+      "title": "Kabinet operatorlari",
+      "hint": "Bu merchant kabinetiga kim kira oladi. «Kira olmayapman» koʻpincha parol emas, tasdiqlanmagan pochta haqida.",
+      "empty": "Operatorlar yoʻq — kabinetni hech kim ochmagan, hisob qoʻlda yaratilgan",
+      "loadError": "Operatorlarni yuklab boʻlmadi: {message}",
+      "confirmed": "Pochta {date} da tasdiqlangan",
+      "unconfirmed": "Pochta tasdiqlanmagan",
+      "lastLogin": "Oxirgi kirish",
+      "neverLoggedIn": "hech qachon kirmagan",
+      "offerAccepted": "Oferta {date} da qabul qilingan, versiya {version}",
+      "offerMissing": "Oferta qabul qilinmagan"
+    },
+    "log": {
+      "title": "Yetkazishlar jurnali",
+      "hint": "Merchant oʻzida koʻrayotgan jurnalning aynan oʻzi. «Hech nima kelmayapti» desa, javob shu yerda.",
+      "show": "Jurnalni koʻrsatish",
+      "hide": "Jurnalni yashirish",
+      "empty": "Hali yetkazishlar boʻlmagan",
+      "loadError": "Jurnalni yuklab boʻlmadi: {message}",
+      "attempts": "urinish",
+      "sent": "Nima yubordik",
+      "received": "Nima javob keldi",
+      "error": "Xatolik",
+      "nextAttempt": "Keyingi urinish",
+      "loadMore": "Yana koʻrsatish"
     }
   },
   "catalogB2b": {

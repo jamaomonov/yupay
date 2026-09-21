@@ -203,3 +203,48 @@ async def test_two_merchants_on_one_page_are_not_confused(
 
     assert (await _row(integration_client, admin_headers, first.id))["merchant_title"] == "Alpha"
     assert (await _row(integration_client, admin_headers, second.id))["merchant_title"] == "Beta"
+
+
+async def test_the_merchant_filter_narrows_to_one_reseller_exactly(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """`?merchant_id=` is an exact filter, and it has to be.
+
+    `q` already matches a merchant *title*, which finds a reseller and is the
+    wrong tool for reading one: two titles sharing a word land in the same
+    result, and a title is something an operator can rename. "Everything this
+    account bought" is a question about an id.
+    """
+    mine = await _merchant(db_session, "Reseller Alpha")
+    theirs = await _merchant(db_session, "Reseller Beta")
+    ours = _order(merchant_id=mine)
+    db_session.add_all([ours, _order(merchant_id=theirs), _order()])
+    await db_session.commit()
+
+    r = await integration_client.get(
+        ADMIN_ORDERS, headers=admin_headers, params={"merchant_id": mine}
+    )
+
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert [row["id"] for row in body["items"]] == [ours.id]
+    # `total` describes the filter, not the page — the same contract the
+    # status and search filters hold.
+    assert body["total"] == 1
+
+
+async def test_an_unknown_merchant_id_matches_nothing_rather_than_everything(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """A filter that silently widens is worse than one that returns nothing:
+    an operator seeing the whole list reads it as "this reseller bought all
+    of this"."""
+    db_session.add(_order())
+    await db_session.commit()
+
+    r = await integration_client.get(
+        ADMIN_ORDERS, headers=admin_headers, params={"merchant_id": str(uuid.uuid4())}
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["items"] == []

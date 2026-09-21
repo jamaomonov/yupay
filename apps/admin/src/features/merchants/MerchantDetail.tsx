@@ -28,7 +28,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
 import { Snowflake, Sun } from "lucide-react";
 import { useId, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 
 import {
   T,
@@ -49,6 +49,7 @@ import {
 } from "./api";
 import { DepositDebitCard } from "./DepositDebitCard";
 import { MerchantKeysCard } from "./MerchantKeysCard";
+import { MerchantUsersCard } from "./MerchantUsersCard";
 import { MerchantWebhookCard } from "./MerchantWebhookCard";
 
 import type { ApiError } from "@/lib/api";
@@ -303,6 +304,18 @@ export function MerchantDetail() {
         />
       </section>
 
+      {/* An exact filter on the id, not a search for the title: two resellers
+          whose names share a word land in the same search, and a title is
+          something an operator can rename. */}
+      <p className="mb-6">
+        <Link
+          to={`/orders?merchant_id=${encodeURIComponent(id)}`}
+          className="text-sm font-semibold text-[var(--accent-soft-fg)]"
+        >
+          {T.detail.ordersLink}
+        </Link>
+      </p>
+
       {mismatch && (
         <div
           role="alert"
@@ -413,6 +426,7 @@ export function MerchantDetail() {
           webhooks arriving" — and both were answerable only by psql before. */}
       <MerchantKeysCard merchantId={id} />
       <MerchantWebhookCard merchantId={id} />
+      <MerchantUsersCard merchantId={id} />
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--text-secondary)]">

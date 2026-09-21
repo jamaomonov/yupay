@@ -12,6 +12,7 @@ import type {
   DepositCreditOut,
   MerchantListOut,
   MerchantTxnListOut,
+  MerchantUserListOut,
   WebhookOut,
 } from "./api";
 
@@ -104,6 +105,33 @@ const HOOK: WebhookOut = {
   updated_at: "2026-09-21T05:00:00Z",
 };
 
+/** One confirmed operator who has signed in, one who never confirmed — the
+ *  two states support is trying to tell apart. */
+const USERS: MerchantUserListOut = {
+  items: [
+    {
+      id: "u1",
+      email: "ops@acme.example.com",
+      email_confirmed_at: "2026-09-01T10:00:00Z",
+      last_login_at: "2026-09-20T09:00:00Z",
+      timezone: "Asia/Tashkent",
+      offer_version: "2026-09",
+      offer_accepted_at: "2026-09-01T10:05:00Z",
+      created_at: "2026-09-01T10:00:00Z",
+    },
+    {
+      id: "u2",
+      email: "new@acme.example.com",
+      email_confirmed_at: null,
+      last_login_at: null,
+      timezone: "Asia/Tashkent",
+      offer_version: null,
+      offer_accepted_at: null,
+      created_at: "2026-09-19T10:00:00Z",
+    },
+  ],
+};
+
 function renderPage(qc?: QueryClient) {
   qc ??= new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -127,6 +155,7 @@ beforeEach(() => {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/transactions")) return Promise.resolve(TXNS);
     if (path.includes("/api-keys")) return Promise.resolve(KEYS);
+    if (path.includes("/users")) return Promise.resolve(USERS);
     if (path.includes("/webhook")) return Promise.resolve(HOOK);
     return Promise.resolve(LIST);
   });
@@ -607,4 +636,32 @@ it("says a merchant simply has no webhook rather than reporting a failure", asyn
   renderPage();
 
   expect(await screen.findByText(/Вебхук не настроен/)).toBeInTheDocument();
+});
+
+// ---------- operators ----------
+
+it("separates an unconfirmed address from an operator who simply has not signed in", async () => {
+  // The two states "I cannot log in" collapses into, and the reason a
+  // password reset fixes only one of them.
+  renderPage();
+
+  expect(await screen.findByText("new@acme.example.com")).toBeInTheDocument();
+  expect(screen.getByText("Почта не подтверждена")).toBeInTheDocument();
+  expect(screen.getByText(/ни разу не входил/)).toBeInTheDocument();
+  expect(screen.getByText(/Почта подтверждена /)).toBeInTheDocument();
+});
+
+it("says when the offer was never accepted, which a support ticket will ask about", async () => {
+  renderPage();
+
+  expect(await screen.findByText("Оферта не принята")).toBeInTheDocument();
+  expect(screen.getByText(/Оферта принята .*версия 2026-09/)).toBeInTheDocument();
+});
+
+it("links to this merchant's orders by id, never by their title", async () => {
+  // `q` matches a title, and titles collide and get renamed.
+  renderPage();
+
+  const link = await screen.findByRole("link", { name: /Заказы этого мерчанта/ });
+  expect(link).toHaveAttribute("href", "/orders?merchant_id=m1");
 });

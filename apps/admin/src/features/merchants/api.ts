@@ -251,6 +251,65 @@ export function disableWebhook(merchantId: string, idempotencyKey: string): Prom
   });
 }
 
+/** One delivery attempt, exactly as the merchant's own cabinet shows it
+ *  (`CabinetDeliveryRowOut`). `payload` is the body we sent; `response_body`
+ *  is what came back, capped at 64 KiB on the wire. */
+export interface WebhookDeliveryOut {
+  id: string;
+  event_type: string;
+  status: string;
+  url: string;
+  attempts_count: number;
+  response_code: number | null;
+  response_body: string | null;
+  last_error: string | null;
+  next_attempt_at: string;
+  payload: unknown;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WebhookDeliveriesOut {
+  items: WebhookDeliveryOut[];
+  next_cursor: string | null;
+}
+
+/** The same reader the cabinet uses, so support and the reseller cannot end
+ *  up looking at two different answers to "what did you send me". */
+export function fetchWebhookDeliveries(
+  merchantId: string,
+  cursor: string | null,
+): Promise<WebhookDeliveriesOut> {
+  const q = cursor === null ? "" : `?cursor=${encodeURIComponent(cursor)}`;
+  return apiGet<WebhookDeliveriesOut>(
+    `/api/v1/admin/merchants/${merchantId}/webhook/deliveries${q}`,
+  );
+}
+
+/** One person who can sign into the cabinet (`MerchantUserOut`).
+ *
+ *  `last_login_at` is derived from `merchant_sessions`, whose rows are
+ *  written at sign-in: `null` means never got in, which is a different
+ *  problem from "signed in last month and cannot now". */
+export interface MerchantUserOut {
+  id: string;
+  email: string;
+  email_confirmed_at: string | null;
+  last_login_at: string | null;
+  timezone: string;
+  offer_version: string | null;
+  offer_accepted_at: string | null;
+  created_at: string;
+}
+
+export interface MerchantUserListOut {
+  items: MerchantUserOut[];
+}
+
+export function fetchMerchantUsers(merchantId: string): Promise<MerchantUserListOut> {
+  return apiGet<MerchantUserListOut>(`/api/v1/admin/merchants/${merchantId}/users`);
+}
+
 /**
  * `"$1 250.00"` from `"1250.00"` (and `"−$5.00"` from `"-5.000000"`) —
  * trims ledger-precision trailing zeros down to at least two decimals and

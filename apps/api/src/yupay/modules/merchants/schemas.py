@@ -269,6 +269,46 @@ class WebhookSecretOut(WebhookOut):
     secret: str | None
 
 
+class MerchantUserOut(BaseModel):
+    """One person who can sign into a reseller's cabinet.
+
+    Carries ``email``, which is PII: this shape is returned on an admin route
+    and nowhere else, and nothing here is ever logged — the same rule
+    ``users.email`` already lives under (``docs/security/pii-handling.md``).
+
+    ``last_login_at`` is **derived**, not stored: the newest row in
+    ``merchant_sessions`` for this person, whose ``created_at`` is written at
+    sign-in. ``None`` means they have never got in, which is the first thing
+    worth knowing when somebody says they cannot — and it is a different
+    answer from "signed in last month and cannot now".
+
+    There is deliberately no field for the password hash, the session tokens
+    or anything else that could be replayed.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    email: str
+    email_confirmed_at: datetime | None
+    last_login_at: datetime | None
+    timezone: str
+    offer_version: str | None
+    offer_accepted_at: datetime | None
+    created_at: datetime
+
+
+class MerchantUserListOut(BaseModel):
+    """Body of ``GET /admin/merchants/{id}/users``, oldest first.
+
+    Oldest first, unlike every other list on this surface: the first operator
+    is the one who registered the account, and on an account with two people
+    that is the one support is usually asking about.
+    """
+
+    items: list[MerchantUserOut]
+
+
 class SkuB2bPatchIn(BaseModel):
     """Body of ``PATCH /admin/catalog/skus/{id}/b2b``; absent fields stay untouched."""
 

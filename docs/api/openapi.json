@@ -9371,6 +9371,104 @@
         "title": "MerchantTxnOut",
         "type": "object"
       },
+      "MerchantUserListOut": {
+        "description": "Body of ``GET /admin/merchants/{id}/users``, oldest first.\n\nOldest first, unlike every other list on this surface: the first operator\nis the one who registered the account, and on an account with two people\nthat is the one support is usually asking about.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/MerchantUserOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MerchantUserListOut",
+        "type": "object"
+      },
+      "MerchantUserOut": {
+        "description": "One person who can sign into a reseller's cabinet.\n\nCarries ``email``, which is PII: this shape is returned on an admin route\nand nowhere else, and nothing here is ever logged \u2014 the same rule\n``users.email`` already lives under (``docs/security/pii-handling.md``).\n\n``last_login_at`` is **derived**, not stored: the newest row in\n``merchant_sessions`` for this person, whose ``created_at`` is written at\nsign-in. ``None`` means they have never got in, which is the first thing\nworth knowing when somebody says they cannot \u2014 and it is a different\nanswer from \"signed in last month and cannot now\".\n\nThere is deliberately no field for the password hash, the session tokens\nor anything else that could be replayed.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "email": {
+            "title": "Email",
+            "type": "string"
+          },
+          "email_confirmed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Email Confirmed At"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_login_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Login At"
+          },
+          "offer_accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Accepted At"
+          },
+          "offer_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Version"
+          },
+          "timezone": {
+            "title": "Timezone",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "email_confirmed_at",
+          "last_login_at",
+          "timezone",
+          "offer_version",
+          "offer_accepted_at",
+          "created_at"
+        ],
+        "title": "MerchantUserOut",
+        "type": "object"
+      },
       "NewBrandIn": {
         "additionalProperties": false,
         "description": "New brand to create when importing a game (target='new_brand').",
@@ -25186,6 +25284,65 @@
         ]
       }
     },
+    "/api/v1/admin/merchants/{merchant_id}/users": {
+      "get": {
+        "description": "Operators, with whether the address is confirmed and when they last got in.\n\n``last_login_at`` is derived from ``merchant_sessions`` \u2014 see\n``operators.list_operators``. It answers the half of \"I cannot sign in\"\nthat a password reset does not: never confirmed, or never signed in at\nall, is a different conversation from signed in last month.\n\nReturns e-mail addresses, which is why it is admin-only and why nothing\nin the path logs them.",
+        "operationId": "read_merchant_users_api_v1_admin_merchants__merchant_id__users_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantUserListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Who can sign into this merchant's cabinet",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
     "/api/v1/admin/merchants/{merchant_id}/webhook": {
       "delete": {
         "description": "Set ``disabled_at``; nothing is enqueued or delivered while it is set.\n\nNaturally idempotent \u2014 a second call returns the FIRST timestamp rather\nthan moving it \u2014 and it is a disable, not a delete: the row and the\ndelivery log stay readable, and re-enabling is a ``PUT`` with the URL.",
@@ -25401,6 +25558,93 @@
         ]
       }
     },
+    "/api/v1/admin/merchants/{merchant_id}/webhook/deliveries": {
+      "get": {
+        "description": "The same log the merchant reads in their own cabinet.\n\nOne reader, ``cabinet_webhooks.list_deliveries``, not a second query:\nsupport asking \"what did we send you\" must see exactly what the reseller\nsees, and two queries over one table is how those two answers start to\ndiffer. It takes ``merchant_id`` as an argument rather than off a\nsession, which is what makes it reusable here at all.\n\nThe rows carry the request body we sent and the response we got, so this\nis an admin route and stays one.",
+        "operationId": "read_webhook_deliveries_api_v1_admin_merchants__merchant_id__webhook_deliveries_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "merchant_id",
+            "required": true,
+            "schema": {
+              "title": "Merchant Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CabinetDeliveriesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A merchant's webhook delivery attempts, newest first",
+        "tags": [
+          "admin:merchants"
+        ]
+      }
+    },
     "/api/v1/admin/merchants/{merchant_id}/webhook/rotate-secret": {
       "post": {
         "description": "Mint a new secret and return it once; the old one stops signing immediately.\n\nOne live key at a time, unlike the machine credential's overlapping\nrotation \u2014 there the merchant redeploys between issue and revoke and only\nthey know when that finished, whereas here we are the sender and the\nswitch is ours to make. A replay answers ``secret: null`` rather than\nrotating a second time.",
@@ -25478,7 +25722,7 @@
     },
     "/api/v1/admin/orders": {
       "get": {
-        "description": "Admin order list with optional status filter and created-at date range.\n\n``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601\nquery params (matching the audit feed's convention \u2014 see\n``modules/audit/routes.py``). ``q`` matches an order id (full or prefix),\nan owner's user id, a guest email, the owner's name/email, a catalog\nbrand or product name, or a merchant title; it filters in the database so\na result on page 7 is still findable from page 1, and ``total`` describes\nthe search rather than the page.",
+        "description": "Admin order list with optional status filter and created-at date range.\n\n``since``/``until`` are inclusive bounds on ``Order.created_at``, ISO 8601\nquery params (matching the audit feed's convention \u2014 see\n``modules/audit/routes.py``). ``q`` matches an order id (full or prefix),\nan owner's user id, a guest email, the owner's name/email, a catalog\nbrand or product name, or a merchant title; it filters in the database so\na result on page 7 is still findable from page 1, and ``total`` describes\nthe search rather than the page.\n\n``merchant_id`` narrows to one reseller exactly. ``q`` can match a\nmerchant title and that is the wrong tool for this job: titles collide\nand titles get renamed, and \"everything this account bought\" is a\nquestion about an id.",
         "operationId": "admin_list_orders_api_v1_admin_orders_get",
         "parameters": [
           {
@@ -25495,6 +25739,23 @@
                 }
               ],
               "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "merchant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 64,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merchant Id"
             }
           },
           {

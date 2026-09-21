@@ -1371,6 +1371,7 @@ async def list_orders_admin(
     db: AsyncSession,
     *,
     status_filter: str | None = None,
+    merchant_id: str | None = None,
     q: str | None = None,
     since: datetime | None = None,
     until: datetime | None = None,
@@ -1383,12 +1384,21 @@ async def list_orders_admin(
     ends), mirroring the audit feed's date-range convention. ``q`` searches
     order id, owner id, guest email, the owner's name/email, catalog
     brand/product names and merchant title — see ``admin_search_clause``.
+
+    ``merchant_id`` is an exact filter, not a search. ``q`` already matches a
+    merchant *title*, which is fine for finding a reseller and wrong for
+    reading one: two resellers whose names share a word land in the same
+    result, and a title is a thing an operator can rename. "Everything this
+    account bought" has to key on the id.
     """
     base = select(Order).options(*_order_load_options(), selectinload(Order.events))
     count_stmt = select(func.count()).select_from(Order)
     if status_filter is not None:
         base = base.where(Order.status == status_filter)
         count_stmt = count_stmt.where(Order.status == status_filter)
+    if merchant_id is not None:
+        base = base.where(Order.merchant_id == merchant_id)
+        count_stmt = count_stmt.where(Order.merchant_id == merchant_id)
     if q is not None and q.strip():
         # An unusable term must narrow to nothing, not silently widen to
         # "every order" — an operator seeing the full list would read it as

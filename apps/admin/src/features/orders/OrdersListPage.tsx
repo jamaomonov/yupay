@@ -63,13 +63,27 @@ export function OrdersListPage() {
   // day-boundary instants before hitting the API (see `toSinceIso`/`toUntilIso`).
   const [dateFrom] = useSearchParamsState("from", "");
   const [dateTo] = useSearchParamsState("to", "");
+  // Set by the link on a merchant's page, never by a control here: this is a
+  // "show me everything THIS reseller bought" view, arrived at from the
+  // account, not a filter an operator builds from scratch. `q` already
+  // matches a merchant title and is the wrong tool — titles collide and get
+  // renamed, and the question is about an id.
+  const [merchantId] = useSearchParamsState("merchant_id", "");
   const [, setSearchParams] = useSearchParams();
 
   // Atomically applies one or more filter changes and resets pagination back
   // to page 0 in a single URL update — see the comment above for why this
   // can't be three separate `useSearchParamsState` setter calls.
   const applyFilters = useCallback(
-    (patch: Partial<{ status: string; q: string; from: string; to: string }>) => {
+    (
+      patch: Partial<{
+        status: string;
+        q: string;
+        from: string;
+        to: string;
+        merchant_id: string;
+      }>,
+    ) => {
       setSearchParams(
         (prev) => {
           const next = new URLSearchParams(prev);
@@ -122,10 +136,12 @@ export function OrdersListPage() {
       query || null,
       dateFrom || null,
       dateTo || null,
+      merchantId || null,
     ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (status) params.set("status_filter", status);
+      if (merchantId) params.set("merchant_id", merchantId);
       if (query.trim()) params.set("q", query.trim());
       const since = toSinceIso(dateFrom);
       if (since) params.set("since", since);
@@ -445,6 +461,28 @@ export function OrdersListPage() {
           }}
         />
       </div>
+
+      {/* A filtered list that does not say it is filtered is worse than no
+          filter at all: an operator reads an empty table as "this reseller
+          bought nothing" and a short one as the whole picture. The title
+          comes off the rows when there are any — every merchant order
+          carries it — and falls back to the id when there are none. */}
+      {merchantId !== "" && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border bg-[var(--bg-muted)] px-3 py-2 text-sm">
+          <span>
+            Показаны заказы мерчанта <strong>{rows[0]?.merchant_title ?? merchantId}</strong>
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              applyFilters({ merchant_id: "" });
+            }}
+            className="rounded-btn border px-2.5 py-1 text-xs"
+          >
+            Показать все
+          </button>
+        </div>
+      )}
 
       {ordersQuery.isError && <p className="text-sm text-[var(--danger)]">Не удалось загрузить.</p>}
 
