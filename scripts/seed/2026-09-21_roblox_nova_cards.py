@@ -2,7 +2,7 @@
 
 Run inside the api container:
 
-    docker exec -i yupay-prod-api-1 python - < scripts/seed/2026-09-21_roblox_nova.sql.py
+    docker exec -i yupay-prod-api-1 python - < scripts/seed/2026-09-21_roblox_nova_cards.py
 
 ## What NOVA has that we did not
 
@@ -36,6 +36,12 @@ which is exactly what the five existing Roblox SKUs already carry for G2B.
 
 The five existing SKUs keep their G2B rule untouched. Their NOVA mapping is a
 second source for the sourcing screen and an operator's switch, nothing more.
+
+They are also the first SKUs in the catalogue with two active voucher
+mappings, which is why the stock sweep had to learn to route before this seed
+could run: 10000 Robux is at zero on G2B and twenty-nine on NOVA, and it is
+pinned to G2B. Writing NOVA's count over it would have put a line we cannot
+deliver back on the shelf.
 
 ## The adapter had to come first
 

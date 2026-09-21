@@ -120,6 +120,14 @@ Roblox 2500 shipped with nine in stock, so the window was not theoretical. If
 a NOVA card ever looks permanently in stock, check that its mapping is
 `kind = "voucher"` and `is_active` — the sweep selects on both.
 
+**A SKU mapped to two suppliers takes the count of the one it routes to.**
+The five older Roblox rungs are mapped to NOVA _and_ G2B, and pinned to G2B by
+a `force_supplier` rule; 10000 Robux sits at zero on G2B and twenty-nine on
+NOVA. The sweep asks `sourcing.resolve_for_sku` and reads only the routed
+supplier, so flipping that rule to NOVA also flips which warehouse the
+storefront believes. When no rule names a supplier, every source is asked and
+the SKU stays sellable while any of them has it.
+
 ### The pre-emptive warning, before any order is refused
 
 Since 2026-09-21 the hourly price refresh also probes NOVA's wallet through

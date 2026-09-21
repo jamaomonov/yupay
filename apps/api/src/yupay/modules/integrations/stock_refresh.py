@@ -18,6 +18,14 @@ All three voucher suppliers are swept, and they report stock at different levels
   G-Engine. Added 2026-09-21 with the Roblox cards: until then a NOVA-only
   voucher SKU was untracked, which the catalogue reads as always sellable.
 
+A SKU can be mapped to more than one of them, and then "in stock" is not a
+property of the SKU but of the route: Roblox 10000 sits at zero on G2B and
+twenty-nine on NOVA while a ``force_supplier`` rule pins it to G2B. The sweep
+therefore works per SKU, not per mapping, and asks ``sourcing.resolve_for_sku``
+which supplier an order would actually reach. Only when that answers nothing
+useful are all the sources asked, and then the SKU stays sellable while any of
+them has it.
+
 Invoked from the hourly scheduler job
 (``apps/scheduler/.../jobs/refresh_voucher_stock.py``).
 
@@ -48,6 +56,15 @@ from yupay.modules.integrations.models import SkuSupplierMapping
 from yupay.modules.notifications import api as notifications
 
 log = get_logger("yupay.integrations.stock_refresh")
+
+
+@dataclass(frozen=True)
+class _Mapping:
+    """One active voucher mapping: where to ask, and of whom."""
+
+    supplier: str
+    product_id: str
+    variant_id: str | None
 
 
 @dataclass(frozen=True)
@@ -131,10 +148,12 @@ async def refresh_voucher_stock(
                 )
             )
         ).all()
-        targets = [
-            (str(sku_id), str(supplier), str(product_id), variant_id)
-            for sku_id, supplier, product_id, variant_id in rows
-        ]
+        by_sku: dict[str, list[_Mapping]] = {}
+        for sku_id, supplier, product_id, variant_id in rows:
+            by_sku.setdefault(str(sku_id), []).append(
+                _Mapping(str(supplier), str(product_id), variant_id)
+            )
+        routes = await _routes_for(session, [s for s, m in by_sku.items() if len(m) > 1])
 
     #: G-Engine answers with every denomination of a product at once, and NOVA
     #: with every card of a category, so one response serves all the SKUs
@@ -144,22 +163,29 @@ async def refresh_voucher_stock(
     denominations: dict[str, dict[str, Any] | None] = {}
 
     checked = updated = out = errors = 0
-    for sku_id, supplier, product_id, variant_id in targets:
+    for sku_id, mappings in by_sku.items():
         checked += 1
+        asked = _mappings_to_ask(mappings, routes.get(sku_id))
         try:
-            new_stock = await _stock_for(
-                supplier,
-                sources[supplier],
-                product_id=product_id,
-                variant_id=variant_id,
-                cache=denominations,
-            )
+            counts = [
+                await _stock_for(
+                    m.supplier,
+                    sources[m.supplier],
+                    product_id=m.product_id,
+                    variant_id=m.variant_id,
+                    cache=denominations,
+                )
+                for m in asked
+            ]
         except Exception:
             log.exception(
-                "stock_refresh.fetch_failed", supplier=supplier, external_product_id=product_id
+                "stock_refresh.fetch_failed",
+                supplier=asked[0].supplier,
+                external_product_id=asked[0].product_id,
             )
             errors += 1
             continue
+        new_stock = _combine(counts)
 
         async with factory() as session:
             sku = (await session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
@@ -176,8 +202,11 @@ async def refresh_voucher_stock(
 
         if was_in_stock and not now_in_stock:
             out += 1
+            first = asked[0]
             await _alert_out_of_stock(
-                sku_code=sku_code, external_id=variant_id or product_id, supplier=supplier
+                sku_code=sku_code,
+                external_id=first.variant_id or first.product_id,
+                supplier=first.supplier,
             )
 
     log.info(
@@ -186,6 +215,76 @@ async def refresh_voucher_stock(
     return StockRefreshReport(
         checked=checked, updated=updated, went_out_of_stock=out, errors=errors
     )
+
+
+async def _routes_for(session: Any, sku_ids: list[str]) -> dict[str, str | None]:
+    """Which supplier fulfilment would actually use, for multi-source SKUs.
+
+    Asked only of SKUs that have more than one active voucher mapping, because
+    for the rest the answer is the only mapping there is.
+
+    ``sourcing.resolve_for_sku`` is the single definition of that route, and
+    the one an order takes; re-deriving it here (cheapest, or oldest, or
+    whatever) would be a second answer, and the one that quietly disagrees.
+    """
+    from yupay.modules.sourcing.service import resolve_for_sku
+
+    routes: dict[str, str | None] = {}
+    for sku_id in sku_ids:
+        try:
+            decision = await resolve_for_sku(session, sku_id)
+        except Exception:
+            log.exception("stock_refresh.route_unknown", sku_id=sku_id)
+            routes[sku_id] = None
+            continue
+        # 'inventory' primary with a supplier fallback is the default voucher
+        # shape: the warehouse first, the supplier when it is empty. The
+        # supplier is what `supplier_stock` describes either way.
+        for target in (decision.primary, decision.fallback):
+            if target and target.startswith("supplier:"):
+                routes[sku_id] = target.split(":", 1)[1]
+                break
+        else:
+            routes[sku_id] = None
+    return routes
+
+
+def _mappings_to_ask(mappings: list[_Mapping], route: str | None) -> list[_Mapping]:
+    """Narrow a SKU's mappings to the ones its stock should be read from.
+
+    A SKU with two suppliers is not "in stock" in general — it is in stock at
+    the one an order would go to. Roblox 10000 was the case that forced this:
+    zero at G2B, twenty-nine at NOVA, and pinned to G2B by a `force_supplier`
+    rule. Writing whichever count the query returned last would have put a
+    line we cannot deliver back on the shelf.
+
+    When the route names a supplier we have a mapping for, that one wins.
+    When it does not — no rule, or a rule pointing somewhere unmapped — every
+    mapping is asked and `_combine` keeps the SKU sellable if any source has
+    it, which is the safer direction of the two.
+    """
+    if len(mappings) == 1:
+        return mappings
+    if route is not None:
+        routed = [m for m in mappings if m.supplier == route]
+        if routed:
+            return routed
+    return mappings
+
+
+def _combine(counts: list[int | None]) -> int | None:
+    """One number for a SKU read from several suppliers.
+
+    ``None`` means "not tracked", which the catalogue reads as sellable — so
+    one untracked source makes the whole SKU untracked rather than being
+    averaged away. Otherwise the largest count wins: the SKU is deliverable
+    while any source still has it.
+    """
+    if not counts:
+        return None
+    if any(c is None for c in counts):
+        return None
+    return max(c for c in counts if c is not None)
 
 
 async def _stock_for(

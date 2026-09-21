@@ -1,8 +1,8 @@
 """Periodically pull supplier stock for voucher SKUs.
 
-Gift cards and vouchers are finite: G2B holds a real pile of codes per product
-and reports what is left. Game top-ups are minted on demand, so they are not
-touched — only mappings with ``kind='voucher'`` are swept.
+Gift cards and vouchers are finite: G2B, G-Engine and NOVA each hold a real
+pile of codes and report what is left. Game top-ups are minted on demand, so
+they are not touched — only mappings with ``kind='voucher'`` are swept.
 
 Runs on the same interval as the price refresh, for the same reason: both read
 the supplier's view of a product, and there is no value in learning that a code
@@ -12,6 +12,9 @@ Each SKU is written in its own transaction inside
 ``integrations.stock_refresh.refresh_voucher_stock`` — one bad product id never
 blocks the rest. A SKU crossing into out-of-stock raises one Telegram alert on
 the transition, not on every tick.
+
+``checked`` counts SKUs, not mappings: a SKU mapped to two suppliers is one
+question, answered by whichever supplier its orders actually route to.
 """
 
 from __future__ import annotations
