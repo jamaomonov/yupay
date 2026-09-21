@@ -187,6 +187,8 @@ export const qk = {
   // merchants (B2B resellers)
   merchants: () => ["admin", "merchants"] as const,
   merchantTxns: (merchantId: string) => ["admin", "merchants", merchantId, "transactions"] as const,
+  merchantKeys: (merchantId: string) => ["admin", "merchants", merchantId, "api-keys"] as const,
+  merchantWebhook: (merchantId: string) => ["admin", "merchants", merchantId, "webhook"] as const,
 
   // promo
   promoCodes: () => ["admin", "promo"] as const,

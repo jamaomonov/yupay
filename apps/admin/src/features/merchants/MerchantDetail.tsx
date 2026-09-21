@@ -48,6 +48,8 @@ import {
   type MerchantTxnOut,
 } from "./api";
 import { DepositDebitCard } from "./DepositDebitCard";
+import { MerchantKeysCard } from "./MerchantKeysCard";
+import { MerchantWebhookCard } from "./MerchantWebhookCard";
 
 import type { ApiError } from "@/lib/api";
 
@@ -403,6 +405,14 @@ export function MerchantDetail() {
           patchList({ ...merchant, deposit_balance: balance });
         }}
       />
+
+      {/* Credentials after money, before the ledger: the money cards are what
+          an operator opens this page for, and the ledger is the long tail they
+          scroll to. The two integration cards sit between because they are
+          what a support conversation needs — "is his key live", "are his
+          webhooks arriving" — and both were answerable only by psql before. */}
+      <MerchantKeysCard merchantId={id} />
+      <MerchantWebhookCard merchantId={id} />
 
       <section>
         <h2 className="mb-3 text-sm font-semibold uppercase text-[var(--text-secondary)]">

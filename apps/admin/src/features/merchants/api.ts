@@ -19,7 +19,7 @@
 
 import adminRu from "@yupay/i18n/locales/ru/admin.json";
 
-import { apiGet, apiPost } from "@/lib/api";
+import { api, apiGet, apiPost, apiPut } from "@/lib/api";
 
 /** The feature's Russian string catalog (see module docstring). */
 export const T = adminRu.merchants;
@@ -135,6 +135,119 @@ export function debitDeposit(
 ): Promise<DepositDebitOut> {
   return apiPost<DepositDebitOut>(`/api/v1/admin/merchants/${merchantId}/deposit-debits`, body, {
     "Idempotency-Key": idempotencyKey,
+  });
+}
+
+/** One machine credential as the admin lists it (`ApiKeyOut`).
+ *
+ *  Never carries a secret — the response model has no such field. Revoked
+ *  keys stay in the list on purpose: "which credential was live when this
+ *  broke" is the question this screen exists to answer. */
+export interface ApiKeyOut {
+  key_id: string;
+  label: string;
+  ip_allowlist: string[] | null;
+  created_at: string;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+/** `ApiKeyCreatedOut` — the one response that carries the secret.
+ *
+ *  `secret` is `null` on an idempotent replay: the stored snapshot omits it
+ *  deliberately, because `idempotent_responses` has no reaper and a usable
+ *  credential must not sit there in the clear. The card says so rather than
+ *  showing a blank line. */
+export interface ApiKeyCreatedOut extends ApiKeyOut {
+  secret: string | null;
+}
+
+export interface ApiKeyListOut {
+  items: ApiKeyOut[];
+}
+
+export function fetchApiKeys(merchantId: string): Promise<ApiKeyListOut> {
+  return apiGet<ApiKeyListOut>(`/api/v1/admin/merchants/${merchantId}/api-keys`);
+}
+
+export function createApiKey(
+  merchantId: string,
+  body: { label: string; ip_allowlist: string[] | null },
+  idempotencyKey: string,
+): Promise<ApiKeyCreatedOut> {
+  return apiPost<ApiKeyCreatedOut>(`/api/v1/admin/merchants/${merchantId}/api-keys`, body, {
+    "Idempotency-Key": idempotencyKey,
+  });
+}
+
+/** `api` rather than `apiDelete`: this DELETE answers with the revoked row
+ *  and takes an idempotency key, and the shared helper is typed `void` with
+ *  no header argument. */
+export function revokeApiKey(
+  merchantId: string,
+  keyId: string,
+  idempotencyKey: string,
+): Promise<ApiKeyOut> {
+  return api<ApiKeyOut>(
+    `/api/v1/admin/merchants/${merchantId}/api-keys/${encodeURIComponent(keyId)}`,
+    { method: "DELETE", headers: { "Idempotency-Key": idempotencyKey } },
+  );
+}
+
+/** A merchant's outgoing webhook and its delivery health (`WebhookOut`).
+ *
+ *  `failure_streak` counts ATTEMPTS, not events, and resets on any success
+ *  or on a re-save of the URL. At the configured threshold the worker sets
+ *  `disabled_at` and mails the operator. */
+export interface WebhookOut {
+  merchant_id: string;
+  url: string;
+  failure_streak: number;
+  last_success_at: string | null;
+  last_failure_at: string | null;
+  disabled_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** `WebhookSecretOut` — `secret` is non-null only when THIS call minted one:
+ *  the first configuration, or a rotation. A URL change re-enables and
+ *  returns `null`, because the merchant's existing verifier still works. */
+export interface WebhookSecretOut extends WebhookOut {
+  secret: string | null;
+}
+
+export function fetchWebhook(merchantId: string): Promise<WebhookOut> {
+  return apiGet<WebhookOut>(`/api/v1/admin/merchants/${merchantId}/webhook`);
+}
+
+export function setWebhook(
+  merchantId: string,
+  url: string,
+  idempotencyKey: string,
+): Promise<WebhookSecretOut> {
+  return apiPut<WebhookSecretOut>(
+    `/api/v1/admin/merchants/${merchantId}/webhook`,
+    { url },
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function rotateWebhookSecret(
+  merchantId: string,
+  idempotencyKey: string,
+): Promise<WebhookSecretOut> {
+  return apiPost<WebhookSecretOut>(
+    `/api/v1/admin/merchants/${merchantId}/webhook/rotate-secret`,
+    {},
+    { "Idempotency-Key": idempotencyKey },
+  );
+}
+
+export function disableWebhook(merchantId: string, idempotencyKey: string): Promise<WebhookOut> {
+  return api<WebhookOut>(`/api/v1/admin/merchants/${merchantId}/webhook`, {
+    method: "DELETE",
+    headers: { "Idempotency-Key": idempotencyKey },
   });
 }
 

@@ -1,25 +1,49 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { MerchantDetail } from "./MerchantDetail";
 
-import type { DepositCreditOut, MerchantListOut, MerchantTxnListOut } from "./api";
+import type {
+  ApiKeyListOut,
+  DepositCreditOut,
+  MerchantListOut,
+  MerchantTxnListOut,
+  WebhookOut,
+} from "./api";
 
-import { apiGet, apiPost } from "@/lib/api";
+import { ApiError, api, apiGet, apiPost } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
 
 vi.mock("@/lib/api", () => ({
+  api: vi.fn(),
   apiGet: vi.fn(),
   apiPost: vi.fn(),
-  ApiError: class ApiError extends Error {},
+  apiPut: vi.fn(),
+  // The real shape, because the webhook card branches on `status` to tell a
+  // merchant with no webhook from an actual failure — a stub without it
+  // would make that branch untestable.
+  ApiError: class ApiError extends Error {
+    constructor(
+      public status: number,
+      public statusText: string,
+      public body: unknown,
+    ) {
+      super(`${status.toString()} ${statusText}`);
+      this.name = "ApiError";
+    }
+  },
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
 const mockedApiPost = vi.mocked(apiPost);
+// The key-revoke and webhook-disable calls are DELETEs that answer with a
+// row and carry an idempotency key, so they go through `api` rather than the
+// `void`-typed `apiDelete` helper.
+const mockedApi = vi.mocked(api);
 
 const LIST: MerchantListOut = {
   items: [
@@ -46,6 +70,40 @@ const TXNS: MerchantTxnListOut = {
   ],
 };
 
+/** One live key and one revoked one: the list keeps both on purpose, and
+ *  "which credential was live when this broke" is why. */
+const KEYS: ApiKeyListOut = {
+  items: [
+    {
+      key_id: "ypm_live",
+      label: "прод-сервер",
+      ip_allowlist: ["203.0.113.5"],
+      created_at: "2026-09-01T10:00:00Z",
+      last_used_at: "2026-09-20T09:00:00Z",
+      revoked_at: null,
+    },
+    {
+      key_id: "ypm_old",
+      label: "старый",
+      ip_allowlist: null,
+      created_at: "2026-08-01T10:00:00Z",
+      last_used_at: null,
+      revoked_at: "2026-09-01T09:00:00Z",
+    },
+  ],
+};
+
+const HOOK: WebhookOut = {
+  merchant_id: "m1",
+  url: "https://shop.example.com/yupay",
+  failure_streak: 3,
+  last_success_at: "2026-09-20T09:00:00Z",
+  last_failure_at: "2026-09-21T05:00:00Z",
+  disabled_at: null,
+  created_at: "2026-09-01T10:00:00Z",
+  updated_at: "2026-09-21T05:00:00Z",
+};
+
 function renderPage(qc?: QueryClient) {
   qc ??= new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
@@ -62,9 +120,16 @@ function renderPage(qc?: QueryClient) {
 beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiPost.mockReset();
-  mockedApiGet.mockImplementation((path: string) =>
-    Promise.resolve(path.includes("/transactions") ? TXNS : LIST),
-  );
+  mockedApi.mockReset();
+  // Route by path rather than "transactions or else": the detail page now
+  // also loads the merchant's keys and webhook, and a catch-all that handed
+  // both of them the merchant LIST crashed the page on `ip_allowlist.join`.
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/transactions")) return Promise.resolve(TXNS);
+    if (path.includes("/api-keys")) return Promise.resolve(KEYS);
+    if (path.includes("/webhook")) return Promise.resolve(HOOK);
+    return Promise.resolve(LIST);
+  });
 });
 
 async function typeAmountAndSubmit(amount: string, orderId?: string) {
@@ -467,4 +532,79 @@ it("ignores a double-click while the debit is in flight", async () => {
   await waitFor(() => {
     expect(mockedApiPost).toHaveBeenCalledTimes(1);
   });
+});
+
+// ---------- API keys ----------
+//
+// These endpoints shipped with the B2B milestone and had no button for
+// weeks. The cost was concrete: a merchant sent `ypms…` as their key id and
+// support could not see whether the account had a live key, when it was last
+// used, or whether an IP allowlist was turning their requests away.
+
+it("lists a live key with its last use and its IP filter", async () => {
+  renderPage();
+
+  expect(await screen.findByText("ypm_live")).toBeInTheDocument();
+  expect(screen.getByText(/прод-сервер/)).toBeInTheDocument();
+  expect(screen.getByText("203.0.113.5")).toBeInTheDocument();
+});
+
+it("keeps a revoked key listed, and offers no way to revoke it twice", async () => {
+  renderPage();
+
+  expect(await screen.findByText("ypm_old")).toBeInTheDocument();
+  expect(screen.getByText(/Отозван /)).toBeInTheDocument();
+  // One live key, so exactly one revoke button — the revoked row has none.
+  expect(screen.getAllByRole("button", { name: "Отозвать" })).toHaveLength(1);
+});
+
+it("asks before revoking, and names the key it is about to kill", async () => {
+  mockedApi.mockResolvedValue({ ...KEYS.items[1], key_id: "ypm_live" });
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: "Отозвать" }));
+
+  // Scoped to the dialog: the id is also in the row behind it, and a bare
+  // text query would pass on the list alone — proving nothing about what the
+  // operator is being asked to confirm.
+  expect(within(screen.getByRole("dialog")).getByText(/ypm_live/)).toBeInTheDocument();
+  expect(mockedApi).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "Да, отозвать" }));
+
+  await waitFor(() => {
+    expect(mockedApi).toHaveBeenCalledWith(
+      "/api/v1/admin/merchants/m1/api-keys/ypm_live",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+  });
+});
+
+// ---------- Webhook ----------
+
+it("shows the delivery health, which is what a support conversation needs", async () => {
+  renderPage();
+
+  expect(await screen.findByDisplayValue("https://shop.example.com/yupay")).toBeInTheDocument();
+  // The failure streak is the number that says "this is about to auto-disable".
+  expect(screen.getByText("3")).toBeInTheDocument();
+  expect(screen.getByText("Работает")).toBeInTheDocument();
+});
+
+it("says a merchant simply has no webhook rather than reporting a failure", async () => {
+  // A real `ApiError`, not a look-alike: the card stops React Query
+  // retrying on `instanceof ApiError && status === 404`, and a plain Error
+  // would be retried three times — the state under test would arrive after
+  // the assertion gave up.
+  const notFound = new ApiError(404, "Not Found", null);
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/transactions")) return Promise.resolve(TXNS);
+    if (path.includes("/api-keys")) return Promise.resolve(KEYS);
+    if (path.includes("/webhook")) return Promise.reject(notFound);
+    return Promise.resolve(LIST);
+  });
+
+  renderPage();
+
+  expect(await screen.findByText(/Вебхук не настроен/)).toBeInTheDocument();
 });
