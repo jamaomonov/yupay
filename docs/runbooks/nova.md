@@ -74,6 +74,29 @@ the admin inbox (Fulfilment → "Failed" tab) with an ops alert
 (`kind="supplier_low_balance"`), and the **order item stays `in_progress`**
 so the storefront keeps saying "обработка" instead of erroring out.
 
+### The pre-emptive warning, before any order is refused
+
+Since 2026-09-21 the hourly price refresh also probes NOVA's wallet through
+the same `health()` the integrations page reads, and pings ops when it falls
+below `SUPPLIER_LOW_BALANCE_THRESHOLD` (default **$50**). G2B has had this
+since it was the only supplier we funded; G-Engine, NOVA and Waxpeer hold our
+prepaid money the same way and had nothing, so an empty wallet was discovered
+from failed orders.
+
+Two things worth knowing when it does not fire:
+
+- **A supplier that is down is not an empty wallet.** A failed probe is
+  skipped — reachability has its own alerts — so a silent NOVA can mean
+  unreachable rather than funded.
+- **A currency the threshold does not describe is skipped and logged**, not
+  compared: `integrations.lowbal.unknown_currency`. NOVA passes its own
+  `currency` through from `GET /api/v2/balance`, so if that ever stops being
+  USD-like this warning goes quiet by design. Grep that event before trusting
+  silence.
+
+One dedupe key per supplier (`alert:low_balance_warn:nova`, 6 h), so a quiet
+G2B cannot mask a draining NOVA.
+
 ### Which balance is short — read the alert, not the label
 
 NOVA has **two** refusals that both say a balance is insufficient, and they

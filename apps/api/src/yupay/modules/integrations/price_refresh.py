@@ -26,7 +26,7 @@ from __future__ import annotations
 import html
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
 
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
@@ -184,14 +184,74 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
     return PriceRefreshReport(checked=checked, moved=moved, alerts_sent=alerts, errors=errors)
 
 
-async def _maybe_warn_low_balance() -> None:  # noqa: PLR0911 -- discriminated short-circuits
-    """Ping ops when G2B's wallet is dangerously low — before an order
+#: Suppliers whose wallet holds OUR prepaid money, so an empty one stops
+#: fulfilment rather than merely degrading it. A fulfiller belongs here when
+#: we top it up and it spends down; `manual`, `mock` and the reserved stubs
+#: do not. Each is probed through the same `health()` the integrations page
+#: reads, so this list is the only thing to touch when a fifth arrives.
+_WALLET_SUPPLIERS: Final = ("g2b", "gengine", "nova", "waxpeer")
+
+#: Units the dollar threshold can be compared against. `health()` normalises
+#: everything it can — waxpeer converts from thousandths, nova and gengine
+#: pass their API's own `currency` through, g2b reports USDT and sends no
+#: currency at all. Anything else is a number in an unknown unit, and
+#: comparing it to 50 would either shout forever or never fire.
+_DOLLARISH: Final = frozenset({"USD", "USDT", "USDC"})
+
+
+@runtime_checkable
+class _HasHealth(Protocol):
+    """The probe every funded supplier already implements.
+
+    Not on the `Fulfiller` protocol itself: `manual` and `mock` have no
+    upstream to probe, and widening the protocol to make four adapters
+    reachable would force two more to grow a method that means nothing.
+    """
+
+    async def health(self) -> dict[str, Any]: ...
+
+
+def _dollar_balance(health: dict[str, Any], *, supplier: str = "?") -> float | None:
+    """A supplier's wallet as a number we may compare to the threshold.
+
+    ``None`` when it cannot be read or cannot be trusted: the probe says the
+    supplier is down, the balance is missing or unparseable, or the currency
+    is one this threshold does not describe. Every one of those is a reason
+    to stay quiet rather than to guess — a false "your wallet is empty" at
+    3am costs more than the alert saves.
+    """
+    if not health.get("available"):
+        return None
+    raw = health.get("balance")
+    if raw is None:
+        return None
+    currency = health.get("currency")
+    if currency is not None and str(currency).upper() not in _DOLLARISH:
+        # Logged rather than swallowed: this is the one skip that means the
+        # alert will NEVER fire for this supplier, and silence would read
+        # exactly like a healthy wallet.
+        log.warning(
+            "integrations.lowbal.unknown_currency", supplier=supplier, currency=str(currency)
+        )
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _maybe_warn_low_balance() -> None:
+    """Ping ops when a supplier's wallet is dangerously low — before an order
     actually rejects.
 
-    Distinct from the per-order ``supplier_low_balance`` alert: that one
-    fires only when a real customer order gets rejected; this one is a
-    pre-emptive heads-up. Both reuse ``send_admin_alert`` but each owns
-    a separate Redis dedupe key.
+    Distinct from the per-order ``supplier_low_balance`` alert: that one fires
+    only when a real customer order has already been rejected, which is one
+    order too late. This one runs on the hourly price refresh, which is
+    already talking to every supplier anyway.
+
+    One dedupe key per supplier, so a quiet G2B does not silence a draining
+    NOVA. Six hours, so a wallet sitting under the threshold overnight pings
+    ops once rather than on every tick.
     """
     settings = get_settings()
     threshold = float(settings.supplier_low_balance_threshold)
@@ -199,36 +259,28 @@ async def _maybe_warn_low_balance() -> None:  # noqa: PLR0911 -- discriminated s
         return
     from yupay.modules.fulfillment.service import _set_redis_dedupe
     from yupay.modules.fulfillment.suppliers import REGISTRY
-    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 
-    fulfiller = REGISTRY.get("g2b")
-    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
-        return
-    try:
-        me = await fulfiller._client().get_me()
-    except Exception as exc:  # noqa: BLE001
-        log.warning("integrations.lowbal.getme_failed", error=str(exc))
-        return
-    raw_balance = me.get("balance")
-    if raw_balance is None:
-        return
-    try:
-        balance = float(raw_balance)
-    except (TypeError, ValueError):
-        return
-    if balance >= threshold:
-        return
-    # 6h dedupe so we don't ping ops on every hourly tick while the
-    # wallet stays below threshold overnight.
-    if await _set_redis_dedupe("alert:low_balance_warn:g2b", ttl_seconds=6 * 3600):
-        return
-    text = (
-        "<b>ℹ️ Баланс G2B заканчивается</b>\n"
-        f"Текущий баланс: <b>${balance:.2f}</b>\n"
-        f"Порог: <b>${threshold:.2f}</b>\n"
-        "Пополни счёт у G2B заранее, чтобы клиенты не зависли в «обработке»."
-    )
-    await notifications.send_admin_alert(text, kind="supplier_balance_low")
+    for slug in _WALLET_SUPPLIERS:
+        fulfiller = REGISTRY.get(slug)
+        if fulfiller is None or not fulfiller.available or not isinstance(fulfiller, _HasHealth):
+            continue
+        try:
+            health = await fulfiller.health()
+        except Exception as exc:  # noqa: BLE001 -- a probe must not break the refresh
+            log.warning("integrations.lowbal.probe_failed", supplier=slug, error=str(exc))
+            continue
+        balance = _dollar_balance(health, supplier=slug)
+        if balance is None or balance >= threshold:
+            continue
+        if await _set_redis_dedupe(f"alert:low_balance_warn:{slug}", ttl_seconds=6 * 3600):
+            continue
+        text = (
+            f"<b>ℹ️ Баланс {slug.upper()} заканчивается</b>\n"
+            f"Текущий баланс: <b>${balance:.2f}</b>\n"
+            f"Порог: <b>${threshold:.2f}</b>\n"
+            "Пополни счёт заранее, чтобы клиенты не зависли в «обработке»."
+        )
+        await notifications.send_admin_alert(text, kind="supplier_balance_low")
 
 
 async def _should_alert(

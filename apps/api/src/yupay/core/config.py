@@ -936,7 +936,19 @@ class Settings(BaseSettings):
     price_refresh_interval_minutes: int = Field(default=60)
     # Send an ops alert when the supplier's USDT wallet falls below this
     # value (USD-equivalent). Set to 0 to disable.
-    supplier_low_balance_threshold: float = Field(default=50.0)
+    supplier_low_balance_threshold: float = Field(
+        default=50.0,
+        description=(
+            "Dollars below which a supplier's prepaid wallet raises a Telegram "
+            "warning on the hourly price refresh, before any order is rejected. "
+            "One figure for every funded supplier (g2b, gengine, nova, waxpeer) "
+            "with one dedupe key each, so a quiet wallet cannot silence a "
+            "draining one. A supplier whose balance is reported in a currency "
+            "this number does not describe is skipped and logged rather than "
+            "compared — see `price_refresh._dollar_balance`. <= 0 switches the "
+            "warning off entirely."
+        ),
+    )
 
     # --- blog import (Bunzy) ---
     # A third party writes one article a day and we pull it in as a
