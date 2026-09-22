@@ -37,12 +37,27 @@ def _order(status: str, *, order_id: int = 9001, refunded: bool = False) -> GEng
 class FakeClient:
     """Records what was called, so "did it pay twice" is answerable."""
 
-    def __init__(self, *, created: Any = None, fetched: Any = None, paid: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        created: Any = None,
+        fetched: Any = None,
+        paid: Any = None,
+        balance: Any = 1000.0,
+    ) -> None:
         self._created = created
         self._fetched = fetched
         self._paid = paid
+        self._balance = balance
         self.pay_calls = 0
         self.create_calls = 0
+
+    async def get_balance(self) -> dict[str, Any]:
+        # Funded by default so the pre-flight is invisible to every test that
+        # is not about it; a test that cares passes ``balance=``.
+        if isinstance(self._balance, Exception):
+            raise self._balance
+        return {"balance": self._balance, "currency": "USD"}
 
     async def create_recharge_order(self, **_kw: Any) -> GEngineOrder:
         self.create_calls += 1
@@ -184,13 +199,72 @@ async def test_an_unreachable_supplier_mid_payment_stays_in_progress() -> None:
 
 
 async def test_a_refused_payment_fails_with_the_supplier_s_own_words() -> None:
-    client = FakeClient(paid=GEngineError("insufficient funds"))
+    """A refusal that is *not* about money keeps carrying their sentence.
+
+    This used to be asserted with "insufficient funds", which now takes the
+    low-balance branch below instead — the two refusals mean opposite things
+    to whoever reads the alert, so they no longer share a test.
+    """
+    client = FakeClient(paid=GEngineError("order already cancelled"))
     f = GEngineFulfiller(client)  # type: ignore[arg-type]
 
     result = await f._advance(_order("verified"), first_call=False, paid_before=True)
 
     assert result.outcome == "failed"
-    assert "insufficient funds" in (result.error or "")
+    assert "order already cancelled" in (result.error or "")
+
+
+async def test_an_empty_wallet_is_caught_before_the_pay_call() -> None:
+    """The pre-flight, which is the whole point: no spend attempt is made.
+
+    Production order 01a0c95b paid for the absence of this — it reached
+    ``pay_recharge_order``, came back ``g-engine HTTP 400``, and paged ops
+    with an alert that named neither money nor an amount. An operator topped
+    the wallet up and pressed Retry by hand.
+    """
+    client = FakeClient(paid=_order("paid"), balance=0.10)
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("verified"), first_call=False, paid_before=True)
+
+    assert client.pay_calls == 0
+    assert result.error == "supplier_low_balance"
+    assert result.outcome == "failed"
+    # The numbers the ops alert prints instead of "$?".
+    assert (result.extra_metadata or {})["current_balance"] == "0.10"
+    assert (result.extra_metadata or {})["required"] == "0.60"
+    # Not graded: nothing was spent and the sale is not over.
+    assert result.money_outcome is None
+
+
+async def test_a_refusal_that_says_no_funds_lands_as_low_balance_too() -> None:
+    """The backstop, for when the probe could not answer or the wallet moved.
+
+    We have never seen G-Engine's own wording, so this is the one path built
+    on a guess — which is why it is a backstop and not the mechanism.
+    """
+    client = FakeClient(
+        paid=GEngineError("g-engine HTTP 400", status=400, body='{"message":"Insufficient funds"}')
+    )
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("verified"), first_call=False, paid_before=True)
+
+    assert result.error == "supplier_low_balance"
+    # Their sentence survives into the alert, escaped there.
+    assert "Insufficient funds" in (result.extra_metadata or {})["supplier_message"]
+
+
+async def test_a_balance_probe_that_blows_up_never_blocks_the_sale() -> None:
+    """Best-effort means best-effort: an unusable probe falls through to pay."""
+    client = FakeClient(paid=_order("shipped"), balance=RuntimeError("probe exploded"))
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._advance(_order("verified"), first_call=False, paid_before=True)
+
+    assert client.pay_calls == 1
+    assert result.outcome == "succeeded"
+    assert result.error != "supplier_low_balance"
 
 
 async def test_check_status_before_an_order_exists_is_not_an_error() -> None:
@@ -405,12 +479,25 @@ class FakeShopClient:
     """Counts reserve/pay separately — the whole safety argument rests on
     which of the two ran."""
 
-    def __init__(self, *, reserved: Any = None, paid: Any = None, fetched: Any = None) -> None:
+    def __init__(
+        self,
+        *,
+        reserved: Any = None,
+        paid: Any = None,
+        fetched: Any = None,
+        balance: Any = 1000.0,
+    ) -> None:
         self._reserved = reserved
         self._paid = paid
         self._fetched = fetched
+        self._balance = balance
         self.reserve_calls = 0
         self.pay_calls = 0
+
+    async def get_balance(self) -> dict[str, Any]:
+        if isinstance(self._balance, Exception):
+            raise self._balance
+        return {"balance": self._balance, "currency": "USD"}
 
     async def create_shop_order(self, **_kw: Any) -> Any:
         self.reserve_calls += 1
