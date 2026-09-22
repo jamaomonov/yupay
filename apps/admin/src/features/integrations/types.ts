@@ -95,6 +95,13 @@ export interface CatalogSyncResult {
   supplier: string;
   vouchers_synced: number;
   games_synced: number;
+  /** Mappings re-priced from the cache this sync just wrote, and how many
+   *  moved. The sync used to stop at `supplier_catalog_cache`, which nothing
+   *  an operator looks at reads — the sourcing comparison reads
+   *  `supplier_price_history` — so a sync appeared to do nothing until the
+   *  hourly re-price caught up. */
+  prices_checked: number;
+  prices_moved: number;
   error: string | null;
 }
 

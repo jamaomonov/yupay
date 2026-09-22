@@ -87,7 +87,13 @@ export function SupplierDetailPage() {
       // matches every catalog query for this supplier regardless of
       // kind/search/parent.
       void qc.invalidateQueries({ queryKey: ["admin", "integrations", "catalog", slug] });
-      const summary = `ваучеры: ${data.vouchers_synced.toString()}, игры: ${data.games_synced.toString()}`;
+      // Prices too: the sync re-prices the supplier it just swept, and the
+      // moved count is the part an operator is actually waiting to see —
+      // the cache counts above are invisible on every other screen.
+      void qc.invalidateQueries({ queryKey: ["admin", "sourcing"] });
+      const summary =
+        `ваучеры: ${data.vouchers_synced.toString()}, игры: ${data.games_synced.toString()}` +
+        `, цены: ${data.prices_moved.toString()} из ${data.prices_checked.toString()}`;
       if (data.error) {
         toast.error(`Каталог синхронизирован частично — ${summary}. ${data.error}`);
       } else {

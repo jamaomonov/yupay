@@ -192,6 +192,12 @@ class CatalogSyncOut(BaseModel):
     #: Mapped products G2B no longer lists. Their cached price is kept, so a
     #: non-zero count here is worth a look rather than an outage.
     missing_upstream: int = 0
+    #: Mappings re-priced from the freshly-written cache, and how many of them
+    #: actually moved. A sync used to stop at the cache, which nothing on the
+    #: sourcing screen reads — that screen reads ``supplier_price_history``,
+    #: written here. See the endpoint docstring.
+    prices_checked: int = 0
+    prices_moved: int = 0
     error: str | None = None
 
 

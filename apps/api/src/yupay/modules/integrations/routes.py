@@ -286,6 +286,19 @@ async def sync_catalog(
     fulfilment does NOT depend on this cache — the source of truth is
     ``sku_supplier_mapping``.
 
+    **It re-prices afterwards, and that is not a bonus — it is the point.**
+    Writing ``supplier_catalog_cache`` alone moves nothing an operator can
+    see: the sourcing screen's per-supplier figures come from
+    ``supplier_price_history``, and ``Sku.cost_usdt`` from the same pass, both
+    written by ``price_refresh.refresh_all_mappings`` on its hourly tick. So
+    a sync used to leave the screen showing the *previous* sweep's numbers
+    until the next tick — on 2026-09-22 a NOVA sync put 100 Robux at
+    $1.410762 in the cache while the screen kept showing $1.603032, and the
+    operator who pressed the button had no way to tell it had worked.
+    Re-pricing here is scoped to the supplier just synced, and its cost is
+    dominated by the catalogue sweep above it, not by a pass over that
+    supplier's mappings.
+
     Generalised from the G2B-only ``POST /g2b/sync-catalog`` (kept working —
     ``supplier="g2b"`` is one of the three literal values this path accepts,
     so the old URL still resolves to this same handler) to also cover NOVA
@@ -303,6 +316,8 @@ async def sync_catalog(
     replayed key should get back the report that already ran rather than pay
     for a second one.
     """
+    from yupay.modules.integrations.price_refresh import refresh_all_mappings
+
     key = normalize_idempotency_key(idempotency_key)
     scope = "integrations.sync_catalog"
     if key is not None:
@@ -310,13 +325,20 @@ async def sync_catalog(
         if cached is not None:
             return CatalogSyncOut.model_validate(cached.body)
     report = await run_catalog_sync(db, supplier_slug=supplier)
+    # Commit before re-pricing: ``refresh_all_mappings`` opens its own
+    # sessions and reads the cache rows this sweep just wrote. Uncommitted,
+    # it would re-price from the previous sweep and the button would appear
+    # to do nothing.
     await db.commit()
+    prices = await refresh_all_mappings(supplier_slug=supplier)
     out = CatalogSyncOut(
         supplier=supplier,
         vouchers_synced=report.vouchers,
         games_synced=report.games,
         mapped_vouchers_refreshed=report.mapped_vouchers,
         missing_upstream=report.missing_upstream,
+        prices_checked=prices.checked,
+        prices_moved=prices.moved,
         error=report.error,
     )
     if key is not None:

@@ -40,6 +40,7 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL, SkuSupplierMapping
+from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -661,3 +662,91 @@ async def test_a_failing_giftcard_sweep_does_not_lose_the_games(
     assert body["games_synced"] == 1
     assert body["vouchers_synced"] == 0
     assert "gift-card" in (body["error"] or "")
+
+
+@respx.mock
+async def test_a_sync_also_re_prices_so_the_sourcing_screen_moves(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The reported bug, one layer down from the one above it.
+
+    «у 100 robux у нас цена показывает 1,60 хотя в их ui 1,41,
+    синхронизацию каталога я делал» — and the sync had worked: the cache held
+    1.410762. What the operator was reading was ``supplier_price_history``,
+    written by the hourly re-price, which had last run before the sync and
+    still said 1.603032. Two jobs, one button, and no way to tell.
+
+    So a sync now re-prices the supplier it just swept, and this asserts the
+    end the operator actually looks at — ``Sku.cost_usdt`` — not the cache
+    row, which was never the thing that was wrong.
+    """
+    sku_id = await _seed_mapped_sku(
+        db_session,
+        slug="roblox-reprice",
+        supplier_slug="nova",
+        external_product_id="roblox_global",
+        kind="voucher",
+    )
+    await db_session.execute(
+        update(Sku).where(Sku.id == sku_id).values(cost_usdt=Decimal("1.603032"))
+    )
+    await db_session.execute(
+        update(SkuSupplierMapping)
+        .where(SkuSupplierMapping.sku_id == sku_id)
+        .values(external_variant_id="100_robux")
+    )
+    # NOVA is a reserve supplier, so auto-routing never picks it and only the
+    # *routed* supplier writes ``Sku.cost_usdt``. Every real NOVA-only SKU
+    # therefore carries an explicit rule (see the 2026-09-21 Roblox seed);
+    # without one here the refresh would run, find nothing to route to, and
+    # this test would pass for the wrong reason on a broken chain.
+    db_session.add(
+        SkuSourcingRule(
+            sku_id=sku_id,
+            mode="force_supplier",
+            supplier_slug="nova",
+            updated_by="00000000-0000-7000-8000-000000000001",
+        )
+    )
+    await db_session.commit()
+
+    _mock_giftcards([{"category_id": "roblox_global", "name": "Roblox (Global)"}])
+    respx.get(f"{BASE}/api/v2/topups", params={"limit": "100"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "items": [],
+                "meta": {"total": 0, "limit": 100, "next_cursor": None, "has_more": False},
+            },
+        )
+    )
+    respx.get(f"{BASE}/api/v2/giftcards/cards", params={"category_id": "roblox_global"}).mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "ok": True,
+                "offers": [
+                    {
+                        "card_id": "100_robux",
+                        "name": "100 Robux",
+                        "price_usd": "1.410762",
+                        "stock": 958,
+                    }
+                ],
+            },
+        )
+    )
+
+    admin = await _login_admin(integration_client, db_session, tg_id=717)
+    sync = await integration_client.post(
+        "/api/v1/admin/integrations/nova/sync-catalog",
+        headers={"Authorization": f"Bearer {admin}"},
+    )
+
+    assert sync.status_code == 200, sync.text
+    assert sync.json()["prices_checked"] >= 1
+
+    db_session.expire_all()
+    cost = (await db_session.execute(select(Sku.cost_usdt).where(Sku.id == sku_id))).scalar_one()
+    assert cost == Decimal("1.410762")
