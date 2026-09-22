@@ -1,5 +1,35 @@
 # Runbook — G2B (G2Bulk) integration
 
+## «no player identifier» на игровом заказе
+
+Адаптер не нашёл, кого пополнять. Он читает `fulfillment_data` по списку
+`_IDENTIFIER_KEYS` — `player_id`, `username`, `telegram_username`, `account` —
+и берёт первое непустое. На проводе всё это уходит как `player_id`: у G2B
+`POST /games/fields` называет поле `userid` **для всех** игр, Telegram включая,
+но это их слово для понятия, а не ключ запроса — MLBB и PUBG всегда работали с
+`player_id`.
+
+Девятнадцать из двадцати наших продуктов на G2B называют поле `player_id`,
+Telegram Premium — `username`. До 2026-09-22 адаптер читал только `player_id` и
+отказывал этому продукту. Больно это било именно на **переподборе**: NOVA
+отклонила заказ Premium, фулфилмент переключился на G2B как и задумано, а G2B
+отказался от строки, которую мог выдать. Купили руками через их панель.
+
+Если ошибка появилась снова — значит у продукта в форме ключ, которого нет в
+списке. Посмотреть, что реально лежит в заказе:
+
+```sql
+SELECT p.slug, jsonb_object_keys(i.fulfillment_data)
+FROM order_items i JOIN skus s ON s.id = i.sku_id JOIN products p ON p.id = s.product_id
+WHERE i.order_id = '<order-id>';
+```
+
+Чинится добавлением ключа в `_IDENTIFIER_KEYS` (`suppliers/g2b.py`), а не
+переименованием поля в форме: ключ формы виден покупателю через `label`, и
+называть @handle «player id» — бессмыслица. Список явный, а не «любой ключ
+кроме server/charname», ровно по той же причине, по какой у G-Engine есть
+`_PARAM_MAP`: угадывающее правило однажды отправит поставщику не то поле.
+
 ## Symptoms → diagnosis
 
 | Symptom (admin sees)                                                                                               | Likely cause                                                                                                              | First action                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |

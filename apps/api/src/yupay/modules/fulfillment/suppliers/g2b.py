@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import json
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Final
 
 from yupay.core.config import get_settings
 from yupay.core.logging import hash_short
@@ -124,6 +124,43 @@ if TYPE_CHECKING:
     from yupay.modules.fulfillment.models import FulfillmentTask
     from yupay.modules.integrations.models import SkuSupplierMapping
     from yupay.modules.orders.models import Order, OrderItem
+
+
+#: Form-field keys that carry the identifier G2B calls ``player_id`` on the
+#: wire, most specific first.
+#:
+#: Nineteen of the twenty G2B-mapped products name it ``player_id``; Telegram
+#: Premium names it ``username``, because what credits a Telegram account is an
+#: @handle and calling that a player id on a customer-facing form would be
+#: nonsense. Reading only ``player_id`` therefore refused the one product whose
+#: form is different — and refused it on the **failover** path, which is where
+#: it hurts most: on 2026-09-22 NOVA declined a Premium order, fulfilment fell
+#: over to G2B exactly as designed, and G2B then refused a line it could have
+#: filled. The operator bought it by hand from G2B's own panel.
+#:
+#: An alias list rather than "whichever key is not server/charname": this is
+#: the same shape ``gengine._PARAM_MAP`` already uses to fold ``username`` and
+#: ``player_id`` into its single ``Account`` slot, and an explicit list cannot
+#: quietly send a supplier the wrong field when a form grows one.
+#:
+#: G2B's own ``POST /games/fields`` calls it ``userid`` for **every** game,
+#: Telegram included — that is their documentation of the concept, not the
+#: request key. The wire key is ``player_id`` for all of them, which is why
+#: MLBB and PUBG have always worked while sending it.
+_IDENTIFIER_KEYS: Final = ("player_id", "username", "telegram_username", "account")
+
+
+def _player_identifier(fulfillment_data: dict[str, Any]) -> str:
+    """The account to credit, under whichever key this product's form used.
+
+    Returns ``""`` when none of the known keys carries a value, which the
+    caller turns into a refusal that never reaches the supplier.
+    """
+    for key in _IDENTIFIER_KEYS:
+        value = str(fulfillment_data.get(key) or "").strip()
+        if value:
+            return value
+    return ""
 
 
 class G2bFulfiller(Fulfiller):
@@ -403,10 +440,11 @@ class G2bFulfiller(Fulfiller):
         idempotency_key: str,
     ) -> FulfillResult:
         fulfillment_data = dict(item.fulfillment_data or {})
-        player_id = str(fulfillment_data.get("player_id") or "").strip()
+        player_id = _player_identifier(fulfillment_data)
         if not player_id:
             raise FulfillerError(
-                "order item is missing fulfillment_data.player_id required by g2b",
+                "order item carries no player identifier for g2b — expected one of "
+                f"{', '.join(_IDENTIFIER_KEYS)}",
                 money_outcome=_NEVER_SENT,
             )
         # The product's server/zone field is keyed ``server`` in its form schema

@@ -372,7 +372,7 @@ async def test_voucher_purchase_error_mapping(_g2b_env: None) -> None:
 
 async def test_game_order_requires_player_and_variant(_g2b_env: None) -> None:
     gw = _fulfiller(_FakeClient(), _mapping("game"))
-    with pytest.raises(FulfillerError, match="player_id"):
+    with pytest.raises(FulfillerError, match="no player identifier"):
         await gw.fulfill(
             db=cast(Any, None), order=cast(Any, None), item=_item(), idempotency_key="k"
         )
@@ -385,6 +385,49 @@ async def test_game_order_requires_player_and_variant(_g2b_env: None) -> None:
             item=_item(player_id="p-1"),
             idempotency_key="k",
         )
+
+
+async def test_a_telegram_username_is_a_player_identifier_too(_g2b_env: None) -> None:
+    """The failover bug, in one call.
+
+    Nineteen of the twenty G2B-mapped products key the identifier
+    ``player_id``; Telegram Premium keys it ``username``, because what credits
+    a Telegram account is an @handle. Reading only ``player_id`` refused that
+    one product — and refused it exactly where it mattered: on 2026-09-22 NOVA
+    declined a Premium order, fulfilment fell over to G2B as designed, and G2B
+    turned down a line it could have filled. It was bought by hand instead.
+    """
+    client = _FakeClient(create_game_order=GameOrderCreated(g2b_order_id="go1", status="completed"))
+    gw = _fulfiller(client, _mapping("game"))
+
+    await gw.fulfill(
+        db=cast(Any, None),
+        order=cast(Any, None),
+        item=_item(username="@durov"),
+        idempotency_key="k",
+    )
+
+    # The wire key stays ``player_id`` for every game — G2B's own
+    # ``/games/fields`` calls it ``userid`` everywhere, Telegram included, and
+    # that is their word for the concept, not the request field.
+    assert client.game_order_kwargs.get("player_id") == "@durov"
+
+
+async def test_player_id_still_wins_when_a_form_carries_both(_g2b_env: None) -> None:
+    """Order matters, and it is not alphabetical: every line that works today
+    carries ``player_id``, so it keeps priority and nothing existing can change
+    behaviour because a second key appeared beside it."""
+    client = _FakeClient(create_game_order=GameOrderCreated(g2b_order_id="go1", status="completed"))
+    gw = _fulfiller(client, _mapping("game"))
+
+    await gw.fulfill(
+        db=cast(Any, None),
+        order=cast(Any, None),
+        item=_item(player_id="719918738", username="@someone"),
+        idempotency_key="k",
+    )
+
+    assert client.game_order_kwargs.get("player_id") == "719918738"
 
 
 async def test_game_order_passes_the_server_field_to_g2b(_g2b_env: None) -> None:
