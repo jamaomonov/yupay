@@ -29,7 +29,6 @@ money.
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
@@ -42,6 +41,18 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillResult,
     FulfillStatus,
     MoneyOutcome,
+)
+from yupay.modules.fulfillment.suppliers.gengine_balance import (
+    afford as _afford,
+)
+from yupay.modules.fulfillment.suppliers.gengine_balance import (
+    log_shortfall as _log_shortfall,
+)
+from yupay.modules.fulfillment.suppliers.gengine_balance import (
+    looks_like_low_balance as _looks_like_low_balance,
+)
+from yupay.modules.fulfillment.suppliers.gengine_balance import (
+    low_balance_result as _low_balance_result,
 )
 from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineClient,
@@ -120,140 +131,6 @@ PAY_REQUESTED_KEY = "gengine_pay_requested"
 #: and "they charged us and then fell over" arrive here as the same exception.
 _PAY_MAY_HAVE_LANDED = MoneyOutcome.UNKNOWN
 
-#: Must equal ``fulfillment.service._LOW_BALANCE_ERROR``. The saga keys on this
-#: exact string to park the task in the admin inbox while the customer's line
-#: stays ``in_progress`` — an empty wallet is not a failed sale, it is a sale
-#: waiting for a top-up. Duplicated rather than imported for the same reason
-#: ``nova_grading`` duplicates it: an adapter importing the saga inverts the
-#: dependency.
-LOW_BALANCE_ERROR = "supplier_low_balance"
-
-#: Same pair rule as ``nova_grading._LOW_BALANCE_WORDS``, and for a weaker
-#: reason: with NOVA we had their real sentence in hand, here we have never
-#: seen G-Engine's. Production order ``01a0c95b`` refused payment on
-#: 2026-09-22 with nothing but ``g-engine HTTP 400`` recorded, because their
-#: envelope's ``message`` never reached the log — so these words are a guess.
-#: That is why this is only the **backstop**: :func:`_afford` asks their
-#: balance endpoint outright and does not depend on any wording at all. A
-#: false positive here only demotes a hard failure to a retryable stall,
-#: which is the safer mistake in both directions.
-_LOW_BALANCE_WORDS = ("insufficient", "not enough", "too low", "недостаточно")
-_LOW_BALANCE_PHRASES = ("insufficient funds", "no funds", "недостаточно средств")
-
-
-def _as_status(result: FulfillResult) -> FulfillStatus:
-    """Re-shape a ``FulfillResult`` as the ``FulfillStatus`` a poll returns.
-
-    The two carry the same fields; only the class differs. Having it here
-    means the low-balance result is built once and read the same way whether
-    it came out of the purchase path or a later poll.
-    """
-    return FulfillStatus(
-        outcome=result.outcome,
-        artifact_kind=result.artifact_kind,
-        artifact=result.artifact,
-        error=result.error,
-        extra_metadata=result.extra_metadata,
-        money_outcome=result.money_outcome,
-    )
-
-
-def _looks_like_low_balance(exc: GEngineError) -> bool:
-    """Whether a refusal is a "top up your wallet" one.
-
-    Reads ``exc.body`` rather than only the message because the message is
-    just ``g-engine HTTP <status>`` — their reason lives in the JSON envelope
-    the body carries.
-    """
-    text = f"{exc} {exc.body}".lower()
-    if any(phrase in text for phrase in _LOW_BALANCE_PHRASES):
-        return True
-    return ("balance" in text or "баланс" in text) and any(
-        word in text for word in _LOW_BALANCE_WORDS
-    )
-
-
-async def _afford(client: GEngineClient, required: float) -> Decimal | None:
-    """Our wallet balance when it cannot cover ``required``; ``None`` if it can.
-
-    ``None`` also covers "we could not find out" — an unreachable balance
-    endpoint, a malformed number, a price of zero. A pre-flight that blocked
-    a sale because a *probe* failed would be worse than the problem it exists
-    to prevent, so every uncertainty here falls through to the real call and
-    lets its answer decide.
-
-    Why pre-flight at all, when :func:`_looks_like_low_balance` would catch
-    the refusal anyway: their order is created unpaid and paid a tick later,
-    so a refusal at the pay step leaves a reserved order and a scary generic
-    alert, and it costs a round trip to their most expensive endpoint. Asking
-    a cheap ``GET /users/balance`` first turns that into a clean stall with a
-    number in it.
-    """
-    if required <= 0:
-        return None
-    try:
-        data = await client.get_balance()
-    except Exception:  # noqa: BLE001 -- a probe must never block a sale
-        # Deliberately wider than ``GEngineError | GEngineUnavailableError``,
-        # for the same reason G2B's ``_check_balance_or_none`` is: this is an
-        # optional question asked before the real call, and *any* way it can
-        # fail — a changed payload shape, a client that does not implement it —
-        # must fall through to the purchase rather than refuse a sale we could
-        # have made. The refusal path below is what catches a genuinely empty
-        # wallet when this cannot answer.
-        return None
-    raw = data.get("balance")
-    if raw is None:
-        return None
-    try:
-        current = Decimal(str(raw))
-    except (InvalidOperation, ValueError):
-        return None
-    return current if current < Decimal(str(required)) else None
-
-
-def _low_balance_result(
-    *,
-    current_balance: Decimal | None,
-    required: float | None,
-    mapping: Any | None,
-    source: str,
-    supplier_message: str = "",
-) -> FulfillResult:
-    """The soft failure the saga parks in the inbox and alerts on.
-
-    Metadata keys are the ones ``_maybe_alert_low_balance`` renders — get one
-    wrong and the alert prints ``$?`` where a number belongs.
-    """
-    extra: dict[str, Any] = {
-        "supplier": "gengine",
-        "low_balance": True,
-        # Two decimals, not ``str(Decimal)``: the alert renders this straight
-        # after a "$" and ``Decimal("0.1")`` prints as "$0.1", which does not
-        # read as money next to the "$0.60" beside it.
-        "current_balance": f"{current_balance:.2f}" if current_balance is not None else None,
-        "required": f"{required:.2f}" if required else None,
-        "source": source,
-    }
-    if mapping is not None:
-        extra["external_product_id"] = mapping.external_product_id
-        extra["external_variant_id"] = mapping.external_variant_id
-    if supplier_message:
-        # Their own sentence, the only evidence about a refusal nobody can
-        # reproduce. ``_maybe_alert_low_balance`` HTML-escapes it.
-        extra["supplier_message"] = supplier_message[:500]
-    return FulfillResult(
-        outcome="failed",
-        external_order_id=None,
-        artifact_kind=None,
-        artifact=None,
-        error=LOW_BALANCE_ERROR,
-        extra_metadata=extra,
-        # Deliberately unclassified: nothing was spent and the order is not
-        # finished failing — an operator tops up and retries it.
-        money_outcome=None,
-    )
-
 
 def _recharge_money_outcome(order: GEngineOrder, *, pay_may_have_landed: bool) -> MoneyOutcome:
     """What a terminal recharge failure means for our money.
@@ -298,6 +175,23 @@ def _recharge_money_outcome(order: GEngineOrder, *, pay_may_have_landed: bool) -
     if order.status in _CUSTOMER_FAULT and not pay_may_have_landed:
         return _NOTHING_LEFT_OUR_BALANCE
     return MoneyOutcome.UNKNOWN
+
+
+def _as_status(result: FulfillResult) -> FulfillStatus:
+    """Re-shape a ``FulfillResult`` as the ``FulfillStatus`` a poll returns.
+
+    The two carry the same fields; only the class differs. Having it here
+    means the low-balance result is built once and read the same way whether
+    it came out of the purchase path or a later poll.
+    """
+    return FulfillStatus(
+        outcome=result.outcome,
+        artifact_kind=result.artifact_kind,
+        artifact=result.artifact,
+        error=result.error,
+        extra_metadata=result.extra_metadata,
+        money_outcome=result.money_outcome,
+    )
 
 
 class GEngineFulfiller(Fulfiller):
@@ -494,12 +388,7 @@ class GEngineFulfiller(Fulfiller):
             # The reservation costs stock, not money, and survives for the
             # poller to settle once somebody tops up — so this parks rather
             # than failing, exactly like the recharge path.
-            log.warning(
-                "gengine.low_balance_preflight",
-                order_id=reserved.id,
-                balance=str(short),
-                required=reserved.price,
-            )
+            _log_shortfall(order_id=reserved.id, balance=short, required=reserved.price)
             return _low_balance_result(
                 current_balance=short,
                 required=reserved.price,
@@ -538,12 +427,7 @@ class GEngineFulfiller(Fulfiller):
                 # on, and the reservation keeps until someone tops up.
                 short = await _afford(client, order.price)
                 if short is not None:
-                    log.warning(
-                        "gengine.low_balance_preflight",
-                        order_id=order.id,
-                        balance=str(short),
-                        required=order.price,
-                    )
+                    _log_shortfall(order_id=order.id, balance=short, required=order.price)
                     return _as_status(
                         _low_balance_result(
                             current_balance=short,
@@ -618,12 +502,7 @@ class GEngineFulfiller(Fulfiller):
                 # Refuse before the spend rather than after it. ``pay_may_have_landed``
                 # stays out of this exit on purpose: no pay call went out, so the
                 # intent key is not re-emitted and the next tick starts clean.
-                log.warning(
-                    "gengine.low_balance_preflight",
-                    order_id=order.id,
-                    balance=str(short),
-                    required=order.price,
-                )
+                _log_shortfall(order_id=order.id, balance=short, required=order.price)
                 return _low_balance_result(
                     current_balance=short,
                     required=order.price,

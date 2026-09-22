@@ -67,14 +67,23 @@ class FakeGiftClient:
         created: Any = None,
         fetched: Any = None,
         listed: Any = None,
+        balance: Any = 1000.0,
     ) -> None:
         self._created = created
         self._fetched = fetched
         self._listed = listed if listed is not None else []
+        self._balance = balance
         self.create_calls = 0
         self.get_calls = 0
         self.list_calls = 0
         self.last_create_kwargs: dict[str, Any] | None = None
+
+    async def get_balance(self) -> dict[str, Any]:
+        # Funded by default, so the pre-flight stays invisible to every test
+        # that is not about it.
+        if isinstance(self._balance, Exception):
+            raise self._balance
+        return {"balance": self._balance, "currency": "USD"}
 
     async def create_gift_order(self, **kw: Any) -> GEngineGiftOrder:
         self.create_calls += 1
@@ -125,6 +134,43 @@ class _Task:
 
 
 # ---------- fulfill_gift: the money-safety rules ----------
+
+
+async def test_an_empty_wallet_stops_a_gift_before_it_is_bought() -> None:
+    """The pre-flight is the only chance this path gets.
+
+    ``create_gift_order`` buys and pays in one call, so unlike the recharge
+    and shop paths there is no second step to refuse at. The price comes from
+    ``supplier_price_usd``, which ``gifts.checkout`` resolves and stores when
+    the order is placed — we have always known what a gift costs us.
+    """
+    client = FakeGiftClient(created=_gift(order_id=501, status="processing"), balance=1.25)
+
+    result = await fulfill_gift(
+        client,  # type: ignore[arg-type]
+        item=_item(supplier_price_usd="18.40"),  # type: ignore[arg-type]
+        order_created_at=datetime.now(UTC),  # type: ignore[arg-type]
+    )
+
+    assert client.create_calls == 0
+    assert result.error == "supplier_low_balance"
+    assert (result.extra_metadata or {})["current_balance"] == "1.25"
+    assert (result.extra_metadata or {})["required"] == "18.40"
+    assert result.money_outcome is None
+
+
+async def test_a_gift_line_without_a_stored_price_still_buys() -> None:
+    """Rows written before checkout stored the key keep their old behaviour."""
+    client = FakeGiftClient(created=_gift(order_id=501, status="processing"), balance=0.01)
+
+    result = await fulfill_gift(
+        client,  # type: ignore[arg-type]
+        item=_item(),  # type: ignore[arg-type]
+        order_created_at=datetime.now(UTC),  # type: ignore[arg-type]
+    )
+
+    assert client.create_calls == 1
+    assert result.error != "supplier_low_balance"
 
 
 async def test_a_fresh_line_creates_a_gift_order_in_progress() -> None:

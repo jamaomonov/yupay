@@ -34,6 +34,12 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillStatus,
     MoneyOutcome,
 )
+from yupay.modules.fulfillment.suppliers.gengine_balance import (
+    afford,
+    log_shortfall,
+    looks_like_low_balance,
+    low_balance_result,
+)
 from yupay.modules.fulfillment.suppliers.gengine_client import (
     GEngineClient,
     GEngineError,
@@ -94,6 +100,31 @@ def _gift_money_outcome(order: GEngineGiftOrder) -> MoneyOutcome:
     if order.is_refunded or order.status == "refunded":
         return MoneyOutcome.RETURNED
     return MoneyOutcome.UNKNOWN
+
+
+def _supplier_price(item: OrderItem) -> float | None:
+    """What this gift costs *us*, from the line checkout priced it at.
+
+    ``gifts.checkout`` resolves the package's per-zone price at order time and
+    stores it as ``supplier_price_usd`` — the supplier's own number, not the
+    customer-facing one, and deliberately hidden from customer-facing order
+    DTOs (``orders.schemas._CUSTOMER_HIDDEN_FULFILLMENT_KEYS``) because it
+    would let a buyer read our margin straight off the page.
+
+    It can be stale — the stored figure is what the package cost when the
+    order was placed, and G-Engine may have moved it since. That is fine for
+    this purpose: the pre-flight only has to be right about "we are nowhere
+    near able to afford this", and a wallet that cannot cover the old price
+    cannot cover a new one either, to within the drift checkout already caps
+    at 2%. ``None`` for a line written before checkout stored the key.
+    """
+    raw = (item.fulfillment_data or {}).get("supplier_price_usd")
+    if raw in (None, ""):
+        return None
+    try:
+        return float(str(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 async def fulfill_gift(
@@ -171,11 +202,33 @@ async def fulfill_gift(
         log.info("gengine_gifts.adopted_before_create", order_id=existing.id)
         return _gift_created_result(existing, package_id=package_id, invite_url=invite_url)
 
+    required = _supplier_price(item)
+    short = await afford(client, required) if required is not None else None
+    if short is not None:
+        # One call both buys and pays here, so there is no second step to be
+        # refused at — which makes the pre-flight the *only* chance to turn an
+        # empty wallet into a "top up and retry" instead of a failed sale.
+        log_shortfall(order_id=None, balance=short, required=required or 0.0)
+        return low_balance_result(
+            current_balance=short,
+            required=required,
+            mapping=None,
+            source="gengine.balance/gift",
+        )
+
     try:
         order = await client.create_gift_order(
             invite_url=invite_url, package_id=package_id, region=wire_region
         )
     except GEngineError as exc:
+        if looks_like_low_balance(exc):
+            return low_balance_result(
+                current_balance=None,
+                required=required,
+                mapping=None,
+                source="gengine.refusal/gift",
+                supplier_message=exc.body,
+            )
         raise FulfillerError(str(exc), money_outcome=_ONE_CALL_BOTH_BUYS_AND_PAYS) from exc
     except GEngineUnavailableError as exc:
         # Ambiguous: the create may have landed upstream even though we
