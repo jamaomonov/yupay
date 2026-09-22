@@ -26,6 +26,7 @@ from decimal import Decimal
 from typing import Any, Final
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
@@ -43,6 +44,7 @@ from yupay.modules.paynet.errors import (
     order_already_paid,
     order_not_found,
     order_not_payable,
+    transaction_already_exists,
     transaction_not_found,
     unknown_service,
 )
@@ -50,6 +52,7 @@ from yupay.modules.paynet.models import (
     STATE_CANCELLED,
     STATE_NOT_FOUND,
     STATE_SUCCESS,
+    UQ_EXTERNAL_TRANSACTION,
     PaynetTransaction,
 )
 
@@ -96,24 +99,34 @@ async def get_information(
         fields: The account object, carrying ``order_id``.
 
     Returns:
-        ``{"status": 0, "timestamp", "fields"}`` — ``fields`` echoes the order
-        and the exact amount owed, in tiyin, as a string.
+        ``{"status": "0", "timestamp", "fields"}`` — ``fields`` echoes the
+        order and the exact amount owed, in soʻm (not tiyin — see
+        :func:`_expected_som`), as a string.
 
     Raises:
-        PaynetError: unknown service, unknown order, or an order that is not
-            awaiting payment.
+        PaynetError: unknown service, unknown order, an order that is not
+            awaiting payment, or (``302``) one already paid — see
+            :func:`_load_payable_order`'s ``paid_is_not_found``: a settled
+            bill has nothing left to show a payer, so this method answers the
+            same as "no such order" rather than ``PerformTransaction``'s 201.
     """
     _assert_service(service_id)
-    order = await _load_payable_order(db, _account(fields))
+    order = await _load_payable_order(db, _account(fields), paid_is_not_found=True)
     return {
-        "status": 0,
+        # String, not int (2026-09-22, Дильшод/Paynet certification): every
+        # other field in this envelope that carries a business value is
+        # already a string for the same reason ``amount`` below is — a JSON
+        # number has been through a float somewhere on the way.
+        "status": "0",
         "timestamp": stamp(now()),
         "fields": {
             ACCOUNT_FIELD: order.id,
-            # String, not int: the spec recommends string values throughout
-            # ``fields``, and an amount that arrives as a JSON number has
-            # already been through a float somewhere on the way.
-            "amount": str(_expected_tiyin(order)),
+            # Soʻm, not tiyin (2026-09-22, Дильшод/Paynet certification):
+            # unlike PerformTransaction's `amount` param, which the spec
+            # fixes in tiyin, GetInformation's is read by a human on a
+            # terminal screen before they confirm — tiyin there would show
+            # "13000000" for a 130 000 soʻm order.
+            "amount": str(_expected_som(order)),
             "currency": order.currency,
         },
     }
@@ -129,10 +142,14 @@ async def perform_transaction(
 ) -> dict[str, Any]:
     """Handle ``PerformTransaction``: take the money and settle the order.
 
-    Idempotent on ``transactionId``. A replay re-validates nothing and echoes
-    the stored row — the amount was already checked when the row was written,
-    and re-checking it against an order that has since moved on would turn a
-    harmless retry into an error.
+    A replay of a ``transactionId`` we already hold answers ``201`` —
+    "Транзакция уже существует" — rather than re-echoing the original success
+    (2026-09-22, Дильшод/Paynet certification: their own checklist tests this
+    exact call twice and expects the error, not a silent second 200). Nothing
+    is re-validated or charged twice either way; only the response shape
+    changed. The row itself is untouched, so a genuine transport retry that
+    never saw our first answer still has ``CheckTransaction``/``GetStatement``
+    to confirm the money actually moved.
 
     Args:
         db: Active session.
@@ -145,13 +162,14 @@ async def perform_transaction(
         ``{"providerTrnId", "fields", "timestamp"}``.
 
     Raises:
-        PaynetError: unknown service, unknown/unpayable order, or an amount
-            that does not match the order to the tiyin.
+        PaynetError: unknown service, unknown/unpayable order, an amount that
+            does not match the order to the tiyin, or (``201``) a
+            ``transactionId`` already on file.
     """
     _assert_service(service_id)
     existing = await _find(db, transaction_id)
     if existing is not None:
-        return _performed_result(existing)
+        raise transaction_already_exists()
 
     order = await _load_payable_order(db, _account(fields))
     expected = _expected_tiyin(order)
@@ -179,7 +197,18 @@ async def perform_transaction(
     db.add(txn)
     # Flush before settling so a duplicate ``transactionId`` racing this one
     # trips the unique index here, rather than after the order is already paid.
-    await db.flush()
+    #
+    # The race is the same duplicate the ``_find`` above catches when the two
+    # calls are sequential, so it gets the same answer: ``201``. Without this
+    # the loser of the race fell through to the generic handler in ``routes``
+    # and answered ``-32603`` — a protocol error for what is, on Paynet's own
+    # retry-happy network, an ordinary event.
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        if _is_duplicate_transaction(exc):
+            raise transaction_already_exists() from exc
+        raise
     await pay_svc.settle_provider_payment(
         db, payment=payment, external_event_id=str(transaction_id)
     )
@@ -363,6 +392,16 @@ def _account(fields: dict[str, Any]) -> str:
     return value.strip()
 
 
+def _is_duplicate_transaction(exc: IntegrityError) -> bool:
+    """Whether this integrity error is the duplicate-``transactionId`` one.
+
+    Named rather than assumed: the same flush also writes a ``payments`` row
+    and an FK to ``orders``, and answering ``201`` to *any* integrity failure
+    would tell Paynet "already done" about a transaction we never wrote.
+    """
+    return UQ_EXTERNAL_TRANSACTION in str(getattr(exc, "orig", exc))
+
+
 async def _find(db: AsyncSession, transaction_id: int) -> PaynetTransaction | None:
     return (
         await db.execute(
@@ -373,8 +412,22 @@ async def _find(db: AsyncSession, transaction_id: int) -> PaynetTransaction | No
     ).scalar_one_or_none()
 
 
-async def _load_payable_order(db: AsyncSession, order_id: str) -> Order:
-    """Load an order that may still be paid, or say precisely why it may not."""
+async def _load_payable_order(
+    db: AsyncSession, order_id: str, *, paid_is_not_found: bool = False
+) -> Order:
+    """Load an order that may still be paid, or say precisely why it may not.
+
+    Args:
+        db: Active session.
+        order_id: The account field, already extracted and stripped.
+        paid_is_not_found: ``GetInformation`` passes ``True`` — an already-paid
+            order answers ``302`` there, the same as "no such order", because
+            a settled bill has nothing left to show a payer.
+            ``PerformTransaction`` leaves this ``False`` and keeps ``201``: a
+            client actively trying to pay is owed the specific reason. See the
+            comment above :data:`~yupay.modules.paynet.errors.ORDER_NOT_FOUND`
+            in ``errors.py``.
+    """
     try:
         order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
     except Exception as exc:  # a malformed UUID never reaches the database as one
@@ -382,7 +435,7 @@ async def _load_payable_order(db: AsyncSession, order_id: str) -> Order:
     if order is None:
         raise order_not_found()
     if order.status in _PAID_STATUSES:
-        raise order_already_paid()
+        raise order_not_found() if paid_is_not_found else order_already_paid()
     if order.status != _PAYABLE:
         raise order_not_payable()
     if order.expires_at <= datetime.now(UTC):
@@ -396,11 +449,28 @@ def _expected_tiyin(order: Order) -> int:
     ``total_charged`` is a major-unit ``Decimal`` with 6 dp. A non-integral
     result after ``* 100`` means corrupt order data, and rounding it would
     move money by a fraction nobody authorised.
+
+    This is what ``PerformTransaction``'s ``amount`` is checked against — the
+    spec fixes that one in tiyin. ``GetInformation`` shows the same charge in
+    soʻm instead; see :func:`_expected_som`.
     """
     raw = order.total_charged * Decimal(100)
     if raw != raw.to_integral_value():
         raise invalid_amount()
     return int(raw)
+
+
+def _expected_som(order: Order) -> Decimal:
+    """The order's charge in soʻm, for ``GetInformation`` alone.
+
+    Routed through :func:`_expected_tiyin` rather than reading
+    ``total_charged`` directly, so both methods refuse the same corrupt data
+    the same way instead of one silently accepting what the other rejects.
+    Dividing the validated tiyin integer back down keeps the result exact —
+    ``Decimal(130000) / 100 == Decimal("1300")``, ``Decimal(130050) / 100 ==
+    Decimal("1300.5")`` — with no trailing zeros Paynet never asked for.
+    """
+    return Decimal(_expected_tiyin(order)) / Decimal(100)
 
 
 async def _ensure_payment(db: AsyncSession, order: Order) -> Payment:

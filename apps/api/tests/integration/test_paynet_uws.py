@@ -157,8 +157,11 @@ async def test_get_information_returns_the_exact_amount_owed(
 
     assert response.status_code == 200
     result = response.json()["result"]
-    assert result["status"] == 0
-    assert result["fields"]["amount"] == str(EXPECTED_TIYIN)
+    # String, not int/number (2026-09-22, Paynet certification feedback).
+    assert result["status"] == "0"
+    # Soʻm, not tiyin: 13_000_000 tiyin / 100 = 130_000 soʻm — unlike
+    # PerformTransaction's `amount` param, which the spec fixes in tiyin.
+    assert result["fields"]["amount"] == "130000"
     assert result["fields"]["order_id"] == order_id
     # GMT+5, "YYYY-MM-dd HH:mm:ss" — the format every method but one uses.
     datetime.strptime(result["timestamp"], "%Y-%m-%d %H:%M:%S").replace(tzinfo=TASHKENT)
@@ -191,23 +194,51 @@ async def test_a_malformed_order_id_is_302_not_a_500(
     assert response.json()["error"]["code"] == 302
 
 
-async def test_a_paid_order_is_201_and_an_expired_one_is_501(
+async def test_get_information_on_a_paid_order_is_302_not_201(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    # The two cases need different answers from support — "you already paid"
-    # versus "order again" — so they must not collapse into one code.
+    """A settled bill has nothing left to show a payer, so ``GetInformation``
+    answers the same as "no such order" (2026-09-22, Paynet certification
+    feedback) — unlike ``PerformTransaction``, which keeps 201 for the same
+    order because a client actively trying to pay is owed the reason.
+    See :func:`test_a_second_transaction_on_a_paid_order_is_201` below.
+    """
     paid = await _seed_order(db_session, status="paid")
-    expired = await _seed_order(db_session, expires_in=timedelta(minutes=-5))
+    response = await integration_client.post(
+        UWS_URL,
+        json=_rpc("GetInformation", {"serviceId": SERVICE_ID, "fields": {"order_id": paid}}),
+        headers=_auth(),
+    )
+    assert response.json()["error"]["code"] == 302
 
-    for order_id, code in ((paid, 201), (expired, 501)):
-        response = await integration_client.post(
-            UWS_URL,
-            json=_rpc(
-                "GetInformation", {"serviceId": SERVICE_ID, "fields": {"order_id": order_id}}
-            ),
-            headers=_auth(),
-        )
-        assert response.json()["error"]["code"] == code, order_id
+
+async def test_an_expired_order_is_501(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    # Distinct from both "no such order" (302) and "already paid": the two
+    # need different answers from support — "check the number" versus
+    # "place the order again" — so they must not collapse into one code.
+    expired = await _seed_order(db_session, expires_in=timedelta(minutes=-5))
+    response = await integration_client.post(
+        UWS_URL,
+        json=_rpc("GetInformation", {"serviceId": SERVICE_ID, "fields": {"order_id": expired}}),
+        headers=_auth(),
+    )
+    assert response.json()["error"]["code"] == 501
+
+
+async def test_get_information_amount_keeps_a_fractional_som(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """130050 tiyin is an odd number of tiyin — 1300.5 soʻm, not a round one.
+    Pins that ``_expected_som`` preserves it rather than truncating."""
+    order_id = await _seed_order(db_session, total_charged=Decimal("1300.50"))
+    response = await integration_client.post(
+        UWS_URL,
+        json=_rpc("GetInformation", {"serviceId": SERVICE_ID, "fields": {"order_id": order_id}}),
+        headers=_auth(),
+    )
+    assert response.json()["result"]["fields"]["amount"] == "1300.5"
 
 
 async def test_a_foreign_service_id_is_305(
@@ -251,19 +282,70 @@ async def test_perform_settles_the_order_and_returns_an_integer_provider_id(
     assert payment.status == "succeeded"
 
 
-async def test_perform_is_idempotent_on_the_paynet_transaction_id(
+async def test_a_replayed_transaction_id_is_201_not_a_silent_success(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    """A ``transactionId`` we already hold answers 201 — "Транзакция уже
+    существует" — rather than re-echoing the original 200 (2026-09-22,
+    Paynet certification feedback: their own checklist sends this exact call
+    twice and expects the error). The money still moves exactly once either
+    way; only the response shape changed.
+    """
     order_id = await _seed_order(db_session)
 
     first = await _perform(integration_client, order_id, transaction_id=90_002)
-    second = await _perform(integration_client, order_id, transaction_id=90_002)
+    assert "result" in first, first
 
-    assert first["result"] == second["result"]
+    second = await integration_client.post(
+        UWS_URL,
+        json=_rpc(
+            "PerformTransaction",
+            {
+                "serviceId": SERVICE_ID,
+                "transactionId": 90_002,
+                "amount": EXPECTED_TIYIN,
+                "fields": {"order_id": order_id},
+            },
+        ),
+        headers=_auth(),
+    )
+    assert second.json()["error"]["code"] == 201
+
     rows = (
         await db_session.execute(select(func.count()).select_from(PaynetTransaction))
     ).scalar_one()
     assert rows == 1
+
+
+async def test_a_duplicate_that_races_past_the_lookup_is_201_not_32603(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The same duplicate, arriving concurrently instead of sequentially.
+
+    Two calls can both pass the ``_find`` lookup before either has flushed;
+    the unique index then rejects the loser. That must answer ``201`` like
+    the sequential case rather than falling through to ``-32603``, because on
+    Paynet's retry-happy network it is an ordinary event, not a protocol
+    failure. Simulated by pre-inserting the row the way the winner would have,
+    which is exactly the state the loser flushes into.
+    """
+    order_id = await _seed_order(db_session)
+    db_session.add(
+        PaynetTransaction(
+            id=str(uuid.uuid4()),
+            paynet_transaction_id=90_011,
+            order_id=order_id,
+            payment_id=None,
+            amount_tiyin=EXPECTED_TIYIN,
+            service_id=SERVICE_ID,
+            state=1,
+            performed_at=datetime.now(UTC),
+        )
+    )
+    await db_session.commit()
+
+    body = await _perform(integration_client, order_id, transaction_id=90_011)
+    assert body["error"]["code"] == 201
 
 
 async def test_an_amount_that_does_not_match_the_order_is_413(
@@ -420,6 +502,10 @@ async def test_statement_lists_successful_transactions_only(
     # A cancelled row here would read as money we claim to hold and do not.
     assert [row["transactionId"] for row in statements] == [90_009]
     assert statements[0]["amount"] == EXPECTED_TIYIN
+    # int, not a string (2026-09-22, Paynet asked to confirm this explicitly)
+    # — already true, since a string here would have failed the equality
+    # check two lines up against a bare Python int.
+    assert isinstance(statements[0]["transactionId"], int)
 
 
 async def test_a_bad_statement_window_is_414(

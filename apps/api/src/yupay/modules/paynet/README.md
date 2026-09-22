@@ -33,6 +33,15 @@ is not a copy of `payme`, and the specs are explicitly opposite: Payme demands
 200-with-an-error-object, Paynet demands _"HTTP 401 Unauthorized (а не 200 OK с
 JSON-RPC ошибкой)"_. Everything past the auth check is a 200.
 
+**`GetInformation`'s `status` is the string `"0"`, and its `amount` is soʻm, not
+tiyin.** Both were flagged in Paynet's own certification pass (2026-09-22):
+`status` because every other business value in the envelope is already a
+string for the reason the code comments give (a JSON number has been through a
+float somewhere on the way), and `amount` because that field is read by a
+human on a terminal screen before they confirm — `"13000000"` for a 130 000
+soʻm order is not that. `PerformTransaction`'s own `amount` **param** stays
+tiyin; the spec fixes that one and does not fix `GetInformation`'s.
+
 ## The five methods
 
 | Method               | What it does                                    |
@@ -74,8 +83,10 @@ require the field and never read it, so the format never has to be parsed.
   offset rather than `ZoneInfo("Asia/Tashkent")`: the contract says +5, and a
   tzdata update that gave Uzbekistan a DST rule must not silently move our
   reconciliation stamps away from what Paynet expects.
-- Amounts are **tiyin** (1 soʻm = 100 tiyin). `PerformTransaction` must match
-  `order.total_charged * 100` exactly; anything else is `413`, never rounded.
+- Amounts are **tiyin** everywhere except `GetInformation`'s `fields.amount`,
+  which is **soʻm** (1 soʻm = 100 tiyin) — see above. `PerformTransaction`'s
+  `amount` param must match `order.total_charged * 100` exactly; anything else
+  is `413`, never rounded.
 
 ## The error map
 
@@ -83,19 +94,46 @@ Paynet's catalogue was written for utility billing, where an account either
 exists or does not. An order has more states, so three of these are a decision
 rather than a translation:
 
-| Code  | When                                             |
-| ----- | ------------------------------------------------ |
-| `302` | No order carries that id (also: a malformed id)  |
-| `201` | The order exists and is already paid             |
-| `501` | The order exists but is expired, cancelled, held |
-| `413` | Amount ≠ the order's charge, to the tiyin        |
-| `203` | `CancelTransaction` on an unknown transaction    |
-| `306` | Cancel refused — goods already delivered         |
-| `305` | `serviceId` is not the one we are contracted for |
-| `414` | `GetStatement` window is not in the format       |
+| Code  | When                                                                                                                                       |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `302` | No order carries that id (also: a malformed id); **also `GetInformation` on an order already paid** — see below                            |
+| `201` | `PerformTransaction`: a _new_ `transactionId` targets an order already paid by a different one, **or** the same `transactionId` sent twice |
+| `501` | The order exists but is expired, cancelled, held                                                                                           |
+| `413` | Amount ≠ the order's charge, to the tiyin                                                                                                  |
+| `203` | `CancelTransaction` on an unknown transaction                                                                                              |
+| `306` | Cancel refused — goods already delivered                                                                                                   |
+| `305` | `serviceId` is not the one we are contracted for                                                                                           |
+| `414` | `GetStatement` window is not in the format                                                                                                 |
 
 `201` and `501` are split deliberately: they need different answers from
 support — "you already paid" versus "place the order again".
+
+**`GetInformation` on an already-paid order answers `302`, not `201`**
+(2026-09-22, Paynet certification feedback) — the one place this module's own
+error map is method-aware rather than a flat order-status → code lookup. A
+settled bill has nothing left to show a payer, so a status check reads it the
+same as "no such order"; `PerformTransaction` keeps `201` for the identical
+order, because a client actively trying to pay a second time is owed the
+specific reason it is refused. `_load_payable_order`'s `paid_is_not_found`
+flag is what the two methods disagree on — see `service.py`.
+
+**A replayed `PerformTransaction` (same `transactionId`) also answers `201`**,
+not a silent second success (2026-09-22, same feedback: Paynet's own
+certification checklist sends this call twice on purpose and checks for the
+error). Nothing re-validates or charges twice either way — the stored row is
+untouched — only the response shape changed. `order_already_paid()` and
+`transaction_already_exists()` share the numeric code and differ only in the
+message, because a support agent reading either off a receipt needs to know
+which one actually happened.
+
+The same answer holds when the duplicate arrives _concurrently_ rather than
+sequentially: two calls can both pass the lookup before either flushes, and
+the unique index rejects the loser. That `IntegrityError` is matched by
+constraint name and converted to the same `201` — before this it fell through
+to the generic handler and answered `-32603`, a protocol error for what is,
+on a retry-happy network, an ordinary event. The match is by name on purpose:
+the same flush also writes a `payments` row, and answering "already done" to
+_any_ integrity failure would claim a transaction we never wrote.
 
 **`202` ("транзакция уже отменена") is deliberately unused.** Paynet retries a
 cancel it never got an answer to, so a second `CancelTransaction` for the same

@@ -39,6 +39,13 @@ from yupay.core.db import Base
 #: and indistinguishable from a typo.
 PROVIDER_TRN_ID_SEQ = Sequence("paynet_provider_trn_id_seq", start=1000)
 
+#: Name of the unique index on Paynet's own ``transactionId``. Lives here,
+#: beside the constraint it names, because ``service.perform_transaction``
+#: matches on it to tell the duplicate-transaction race apart from any other
+#: integrity failure in the same flush — and a renamed constraint must break
+#: that match loudly rather than silently stop matching.
+UQ_EXTERNAL_TRANSACTION = "uq_paynet_transactions_external"
+
 STATE_SUCCESS = 1
 STATE_CANCELLED = 2
 #: Not a stored state — the answer ``CheckTransaction`` gives for a
@@ -90,7 +97,7 @@ class PaynetTransaction(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("paynet_transaction_id", name="uq_paynet_transactions_external"),
+        UniqueConstraint("paynet_transaction_id", name=UQ_EXTERNAL_TRANSACTION),
         UniqueConstraint("provider_trn_id", name="uq_paynet_transactions_provider_trn"),
         CheckConstraint("state IN (1, 2)", name="state_known"),
         Index("ix_paynet_transactions_order", "order_id"),
@@ -104,5 +111,6 @@ __all__ = [
     "STATE_CANCELLED",
     "STATE_NOT_FOUND",
     "STATE_SUCCESS",
+    "UQ_EXTERNAL_TRANSACTION",
     "PaynetTransaction",
 ]

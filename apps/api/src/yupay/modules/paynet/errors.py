@@ -56,13 +56,20 @@ def _err(code: int, ru: str, uz: str, en: str) -> PaynetError:
 # read off a terminal receipt:
 #
 #   302  the order id does not exist at all       — "клиент не найден"
-#   201  the order exists and is already paid     — "транзакция уже существует"
+#   201  a NEW transactionId targets an order
+#        already paid by a DIFFERENT one           — "заказ уже оплачен"
 #   501  the order exists but cannot be paid now  — expired, cancelled, on hold
 #
 # 501 is the honest home for the third case: Paynet words it "транзакции
 # запрещены для данного плательщика", which is exactly what an expired order
 # is. Splitting it out from 302 matters because the two need different answers
 # from support — "check the number" versus "place the order again".
+#
+# GetInformation is a fourth case, not a variant of the second: an already-paid
+# order answers 302 there — a settled bill has nothing left to show a payer —
+# while PerformTransaction keeps 201 for the same order, because a client
+# actively trying to pay is owed the reason it is being refused. See
+# ``paynet.service.get_information`` and ``_load_payable_order``.
 
 ORDER_NOT_FOUND: Final = 302
 ORDER_ALREADY_PAID: Final = 201
@@ -80,12 +87,31 @@ def order_not_found() -> PaynetError:
 
 
 def order_already_paid() -> PaynetError:
-    """``201`` — the order is paid; a second payment would be a double charge."""
+    """``201`` — a *new* ``transactionId`` targets an order already paid by a
+    different one. ``PerformTransaction`` only; see :func:`transaction_already_exists`
+    for the sibling case of the *same* ``transactionId`` sent twice."""
     return _err(
         ORDER_ALREADY_PAID,
         "Заказ уже оплачен.",
         "Buyurtma allaqachon toʻlangan.",
         "The order is already paid.",
+    )
+
+
+def transaction_already_exists() -> PaynetError:
+    """``201`` — ``PerformTransaction`` replayed with a ``transactionId`` we
+    already hold, on purpose: Paynet's own certification checklist requires a
+    replay to answer this code rather than a bare success echo (2026-09-22,
+    Дильшод). Same numeric code as :func:`order_already_paid`, different
+    message — one is "you already paid", this one is "we already have this
+    exact transaction id" — because a support agent reading either off a
+    receipt needs to know which happened.
+    """
+    return _err(
+        ORDER_ALREADY_PAID,
+        "Транзакция уже существует.",
+        "Tranzaksiya allaqachon mavjud.",
+        "The transaction already exists.",
     )
 
 
@@ -285,6 +311,7 @@ __all__ = [
     "order_not_found",
     "order_not_payable",
     "system_error",
+    "transaction_already_exists",
     "transaction_not_found",
     "unknown_service",
 ]

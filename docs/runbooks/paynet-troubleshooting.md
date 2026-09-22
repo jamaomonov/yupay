@@ -45,19 +45,19 @@ than a `KeyError` — that message names the typo.
 Everything except an auth failure is an HTTP 200 carrying a JSON-RPC `error`.
 Grep the api logs for `paynet.`:
 
-| Line / code                               | Means                                                      |
-| ----------------------------------------- | ---------------------------------------------------------- |
-| HTTP 401, no body                         | Wrong or missing Basic credentials. Check the env pair     |
-| `305`                                     | Their call carried a `serviceId` that is not ours          |
-| `302`                                     | The `order_id` in the link does not exist                  |
-| `201`                                     | The order is already paid — usually a duplicate tap        |
-| `501`                                     | The order expired or was cancelled before they called      |
-| `413` + `paynet.amount_mismatch`          | Amount ≠ the order's charge. The log line has both figures |
-| `203`                                     | Cancel for a transaction we never performed                |
-| `306` + `paynet.cancel_refused_delivered` | Reversal refused: goods already handed over                |
-| `414`                                     | `GetStatement` window is not `YYYY-MM-dd HH:mm:ss`         |
-| `-32600` / `-32601`                       | Their envelope or method name. Ours to report, not to fix  |
-| `paynet.uws.internal_error`               | We broke. Read the traceback above it                      |
+| Line / code                               | Means                                                                                                                                    |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| HTTP 401, no body                         | Wrong or missing Basic credentials. Check the env pair                                                                                   |
+| `305`                                     | Their call carried a `serviceId` that is not ours                                                                                        |
+| `302`                                     | The `order_id` in the link does not exist — **or** `GetInformation` on an order already paid (302 there, not 201: see the module README) |
+| `201`                                     | `PerformTransaction`: a duplicate tap (new `transactionId`, order already paid) **or** an exact replay (same `transactionId` sent twice) |
+| `501`                                     | The order expired or was cancelled before they called                                                                                    |
+| `413` + `paynet.amount_mismatch`          | Amount ≠ the order's charge. The log line has both figures                                                                               |
+| `203`                                     | Cancel for a transaction we never performed                                                                                              |
+| `306` + `paynet.cancel_refused_delivered` | Reversal refused: goods already handed over                                                                                              |
+| `414`                                     | `GetStatement` window is not `YYYY-MM-dd HH:mm:ss`                                                                                       |
+| `-32600` / `-32601`                       | Their envelope or method name. Ours to report, not to fix                                                                                |
+| `paynet.uws.internal_error`               | We broke. Read the traceback above it                                                                                                    |
 
 Where a payment stands:
 
