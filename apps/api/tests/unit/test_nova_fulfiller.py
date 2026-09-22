@@ -719,6 +719,48 @@ def _patch_quantity(monkeypatch: pytest.MonkeyPatch, value: int) -> list[tuple[A
     return seen
 
 
+async def test_the_alert_can_say_how_much_was_needed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The right-hand half of "Баланс: $X · Нужно: $Y".
+
+    Until 2026-09-22 NOVA filled in only the balance, so an operator learned
+    the wallet was short without learning by how much. ``required`` comes from
+    the same place G2B's pre-flight takes it: ``Sku.cost_usdt``, per unit,
+    multiplied by the line quantity.
+    """
+    client = _FakeClient(raises=NovaError("Insufficient internal balance", status=400))
+    item = _item(sku=SimpleNamespace(cost_usdt=Decimal("3.75")))
+
+    result = await _fulfill(client, monkeypatch, item=item)
+
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.extra_metadata["required"] == "3.75"
+
+
+@pytest.mark.filterwarnings("ignore::pytest.PytestWarning")
+async def test_the_needed_figure_multiplies_out_a_stars_line() -> None:
+    """``qty`` is the star count on a Fragment line, and cost is per star.
+
+    Tested against the helper rather than through ``fulfill`` because every
+    other NOVA path refuses ``qty > 1`` outright — one call buys one offer —
+    so Stars is the only place the multiplication can ever matter.
+    """
+    item = _item(qty=5000, sku=SimpleNamespace(cost_usdt=Decimal("0.0154")))
+
+    assert NovaFulfiller._required_or_none(item) == "77.00"
+
+
+async def test_a_line_without_a_loaded_sku_still_alerts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A missing number is a worse alert; an exception would be a worse outcome."""
+    client = _FakeClient(raises=NovaError("Insufficient internal balance", status=400))
+
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.error == LOW_BALANCE_ERROR
+    assert result.extra_metadata.get("required") is None
+
+
 async def test_a_stars_line_buys_the_count_the_shared_counter_returns(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -22,7 +22,7 @@ Two facts from their API shape this adapter:
 
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
@@ -141,6 +141,29 @@ class NovaFulfiller(Fulfiller):
 
     # ---------- protocol ----------
 
+    @staticmethod
+    def _required_or_none(item: OrderItem) -> str | None:
+        """What this line costs us, for the alert's "Нужно:" figure.
+
+        ``Sku.cost_usdt`` is per unit, so it is multiplied out — the same
+        source and the same arithmetic G2B's pre-flight uses. ``None`` when
+        the SKU was not loaded or carries no cost, which the alert renders as
+        the ``$?`` it has always rendered.
+
+        Like :meth:`_balance_or_none`, this only ever decorates a refusal that
+        has already happened, so it must not be able to raise. Every read is
+        defensive for that reason and not out of superstition: a missing
+        number is a worse alert, an exception here would be a worse outcome.
+        """
+        sku = getattr(item, "sku", None)
+        cost = getattr(sku, "cost_usdt", None) if sku is not None else None
+        if cost is None:
+            return None
+        try:
+            return f"{Decimal(str(cost)) * Decimal(int(getattr(item, 'qty', 1) or 1)):.2f}"
+        except (InvalidOperation, TypeError, ValueError):
+            return None
+
     async def _balance_or_none(self) -> str | None:
         """Our wallet, for the alert. Never fails the refusal it decorates.
 
@@ -225,6 +248,7 @@ class NovaFulfiller(Fulfiller):
                     message=_without_our_inputs(str(exc), fields),
                     side=_shortfall_side(exc),
                     our_balance=await self._balance_or_none(),
+                    required=self._required_or_none(item),
                 )
             raise FulfillerError(
                 _without_our_inputs(str(exc), fields), money_outcome=_refusal_money(exc)
@@ -278,6 +302,7 @@ class NovaFulfiller(Fulfiller):
                     message=str(exc),
                     side=_shortfall_side(exc),
                     our_balance=await self._balance_or_none(),
+                    required=self._required_or_none(item),
                 )
             raise FulfillerError(str(exc), money_outcome=_refusal_money(exc)) from exc
         except NovaUnavailableError as exc:
@@ -313,6 +338,7 @@ class NovaFulfiller(Fulfiller):
                     message=_without_our_inputs(str(exc), {"steam_login": steam_login}),
                     side=_shortfall_side(exc),
                     our_balance=await self._balance_or_none(),
+                    required=self._required_or_none(item),
                 )
             raise FulfillerError(
                 _without_our_inputs(str(exc), {"steam_login": steam_login}),
@@ -389,6 +415,7 @@ class NovaFulfiller(Fulfiller):
                     message=_without_our_inputs(str(exc), {"username": username}),
                     side=_shortfall_side(exc),
                     our_balance=await self._balance_or_none(),
+                    required=self._required_or_none(item),
                 )
             raise FulfillerError(
                 _without_our_inputs(str(exc), {"username": username}),

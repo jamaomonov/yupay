@@ -219,7 +219,11 @@ def _shortfall_side(exc: NovaError) -> str:
 
 
 def _low_balance_result(
-    *, message: str, side: str, our_balance: str | None = None
+    *,
+    message: str,
+    side: str,
+    our_balance: str | None = None,
+    required: str | None = None,
 ) -> FulfillResult:
     """A soft low-balance failure the saga parks in the inbox and alerts on.
 
@@ -232,6 +236,11 @@ def _low_balance_result(
     * ``shortfall`` — whether the missing money is ours or theirs;
     * ``current_balance`` — what our wallet actually held, so the alert can
       print a number instead of the ``$?`` it printed before.
+
+    ``required`` closes the other half of that same ``$?``: the alert renders
+    "Баланс: $X · Нужно: $Y", and until 2026-09-22 only the left number was
+    ever filled in, so an operator learned the wallet was short without
+    learning by how much.
     """
     extra: dict[str, Any] = {
         "supplier": "nova",
@@ -240,6 +249,8 @@ def _low_balance_result(
     }
     if our_balance is not None:
         extra["current_balance"] = our_balance
+    if required is not None:
+        extra["required"] = required
     return FulfillResult(
         outcome="failed",
         external_order_id=None,
