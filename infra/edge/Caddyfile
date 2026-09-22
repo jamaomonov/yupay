@@ -81,11 +81,16 @@ admin.yupay.uz, api.yupay.uz, grafana.yupay.uz {
 # This mirrors what streamers-parser's own Caddy did before it moved behind
 # this proxy — do not "fix" it into a Let's Encrypt block without checking the
 # Cloudflare SSL mode first.
+#
+# ksgm.io replaces click.kolikosoft.com as of 2026-09-22: the short-link host
+# moved to its own domain (shorter, and off the kolikosoft.com zone). DNS for
+# click.kolikosoft.com is already gone — this is catching the edge up to a
+# move made elsewhere, not the move itself.
 http://marketing.kolikosoft.com, https://marketing.kolikosoft.com,
 http://marketing-api.kolikosoft.com, https://marketing-api.kolikosoft.com,
 http://ops.kolikosoft.com, https://ops.kolikosoft.com,
 http://crm.kolikosoft.com, https://crm.kolikosoft.com,
-http://click.kolikosoft.com, https://click.kolikosoft.com,
+http://ksgm.io, https://ksgm.io,
 http://marketing-grafana.kolikosoft.com, https://marketing-grafana.kolikosoft.com {
 	tls internal
 	# No X-Forwarded-For rewrite here, unlike the YuPay block: the peer is
