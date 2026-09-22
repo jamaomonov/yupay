@@ -116,7 +116,11 @@ export function SourcingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sku?.id, existingRule]);
 
-  const save = useMutation<SourcingRuleOut | unknown, ApiError>({
+  // `unknown`, not `SourcingRuleOut | unknown` (which collapses to
+  // `unknown` anyway and eslint rightly rejects): the DELETE branch below
+  // returns no body, so the two arms genuinely disagree and `onSuccess`
+  // narrows for the one that does.
+  const save = useMutation<unknown, ApiError>({
     // AGENTS.md §9: every state-changing request carries a fresh
     // Idempotency-Key, minted per attempt (here, inside mutationFn — same
     // "per attempt, never reused" policy `bulkSwitch.ts` documents, just
