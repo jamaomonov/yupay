@@ -553,6 +553,7 @@ async def list_price_history(
 from yupay.modules.integrations.cost_refresh import (  # noqa: E402
     CostRefreshOutcome,
     is_routed_supplier,
+    refresh_routed_cost,
     refresh_sku_cost_for_mapping,
     supports_price_collection,
 )
@@ -610,6 +611,7 @@ __all__ = [
     "list_mappings",
     "list_price_history",
     "mapped_external_product_ids",
+    "refresh_routed_cost",
     "refresh_sku_cost_for_mapping",
     "sku_codes_for",
     "supports_price_collection",

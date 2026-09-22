@@ -176,6 +176,14 @@ export interface CostSyncResult {
   new_cost: string | null;
   source: string | null;
   reason: string | null;
+  /** Populated only when a margin was on file and the shelf price actually
+   *  moved with the cost. */
+  old_price: string | null;
+  new_price: string | null;
+  /** The cost fell, a margin was on file, and the lower candidate price was
+   *  refused — the ratchet. Cost updated, `price_usd` deliberately did not.
+   *  Distinct from "no margin at all", which leaves all of the above null. */
+  price_drop_blocked: boolean;
 }
 
 export interface SupplierMappingUpsertResult {

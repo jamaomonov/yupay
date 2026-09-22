@@ -1,3 +1,5 @@
+import type { CostSyncResult } from "../integrations/types";
+
 export type SourcingMode = "auto" | "force_inventory" | "force_supplier" | "manual";
 
 export interface SourcingRuleOut {
@@ -8,6 +10,10 @@ export interface SourcingRuleOut {
   supplier_slug: string | null;
   updated_by: string | null;
   updated_at: string;
+  /** What the switch did to our cost basis. A route change changes who we
+   *  buy from, so the cost becomes the new supplier's price in the same
+   *  request. `null` on a listing, which re-priced nothing. */
+  cost_sync: CostSyncResult | null;
 }
 
 export interface SourcingRuleListOut {

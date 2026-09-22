@@ -14,7 +14,9 @@ from yupay.core.idempotency import (
     normalize_idempotency_key,
     save_replay,
 )
+from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
+from yupay.modules.integrations.schemas import CostSyncResult
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import brand_overview as brand_overview_svc
 from yupay.modules.sourcing import bulk_rules as bulk_rules_svc
@@ -31,6 +33,8 @@ from yupay.modules.sourcing.schemas import (
 )
 from yupay.modules.users.models import User
 
+log = get_logger("yupay.sourcing.routes")
+
 admin_router = APIRouter(
     prefix="/admin/sourcing",
     tags=["admin:sourcing"],
@@ -38,11 +42,53 @@ admin_router = APIRouter(
 )
 
 
-def _rule_out(row: SkuSourcingRule, sku_code: str) -> SourcingRuleOut:
+def _rule_out(
+    row: SkuSourcingRule, sku_code: str, *, cost_sync: CostSyncResult | None = None
+) -> SourcingRuleOut:
     """Build ``SourcingRuleOut`` from the ORM row plus a separately resolved
     ``sku_code`` (no ORM relationship to ``Sku`` to pull it from — see
-    ``svc.sku_codes_for``)."""
-    return SourcingRuleOut.model_validate({**row.__dict__, "sku_code": sku_code})
+    ``svc.sku_codes_for``).
+
+    ``cost_sync`` is only ever populated by a write — a listing has not
+    re-priced anything and says so by leaving it ``None``."""
+    return SourcingRuleOut.model_validate(
+        {**row.__dict__, "sku_code": sku_code, "cost_sync": cost_sync}
+    )
+
+
+async def _reprice_after_switch(db: AsyncSession, sku_id: str) -> CostSyncResult:
+    """Re-price a SKU onto the supplier it was just routed to.
+
+    Best-effort by design: the operator's decision was the route, and it is
+    already written. A supplier that will not answer, a catalogue that has
+    not been synced, a bug in the lookup — none of those should turn a
+    successful switch into a 5xx that leaves the operator unsure whether the
+    route moved. The failure travels back in ``reason`` instead.
+
+    ``allow_price_drop=False``, unlike the on-save mapping refresh: choosing
+    where we buy is not choosing what we charge. Cheaper supplier, same shelf
+    price and a wider margin; dearer supplier, price re-derived from the new
+    cost, because the alternative is selling below cost until the next tick.
+    """
+    from yupay.modules.integrations.cost_refresh import refresh_routed_cost
+
+    try:
+        outcome = await refresh_routed_cost(db, sku_id=sku_id, allow_price_drop=False)
+    except Exception as exc:  # noqa: BLE001 -- the route change must still stand
+        log.warning("sourcing.reprice_failed", sku_id=sku_id, error=str(exc)[:200])
+        return CostSyncResult(
+            updated=False, reason=f"не удалось обновить себестоимость: {exc}"[:200]
+        )
+    return CostSyncResult(
+        updated=outcome.updated,
+        old_cost=str(outcome.old_cost) if outcome.old_cost is not None else None,
+        new_cost=str(outcome.new_cost) if outcome.new_cost is not None else None,
+        source=outcome.source,
+        reason=outcome.reason,
+        old_price=str(outcome.old_price) if outcome.old_price is not None else None,
+        new_price=str(outcome.new_price) if outcome.new_price is not None else None,
+        price_drop_blocked=outcome.price_drop_blocked,
+    )
 
 
 @admin_router.get("/rules", response_model=SourcingRuleListOut, summary="List all explicit rules")
@@ -122,8 +168,9 @@ async def upsert_rule(
         supplier_slug=body.supplier_slug,
         admin_id=admin.id,
     )
+    cost_sync = await _reprice_after_switch(db, sku_id)
     sku_codes = await svc.sku_codes_for(db, [sku_id])
-    out = _rule_out(rule, sku_codes.get(sku_id, sku_id))
+    out = _rule_out(rule, sku_codes.get(sku_id, sku_id), cost_sync=cost_sync)
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out
@@ -177,6 +224,11 @@ async def bulk_upsert_rules(
         supplier_slug=body.supplier_slug,
         admin_id=admin.id,
     )
+    # Only the SKUs whose rule actually landed: a failed write routed nothing,
+    # so there is nothing to re-price and a cost move there would be a lie.
+    for item in items:
+        if item.ok:
+            item.cost_sync = await _reprice_after_switch(db, item.sku_id)
     out = SourcingBulkRuleOut(items=items)
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))

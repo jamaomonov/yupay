@@ -21,7 +21,12 @@ import { autoHintFor, disabledReasonFor, MODE_CARDS, ModeOption } from "./Sourci
 import { RoutePreview, SkuSummary } from "./SourcingSkuPanel";
 import { SUPPLIER_OPTIONS } from "./supplierOptions";
 
-import type { SourcingDecisionOut, SourcingMode, SourcingRuleListOut } from "./types";
+import type {
+  SourcingDecisionOut,
+  SourcingMode,
+  SourcingRuleListOut,
+  SourcingRuleOut,
+} from "./types";
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
 
 import { PageHeader } from "@/components/PageHeader";
@@ -111,7 +116,7 @@ export function SourcingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sku?.id, existingRule]);
 
-  const save = useMutation<unknown, ApiError>({
+  const save = useMutation<SourcingRuleOut | unknown, ApiError>({
     // AGENTS.md §9: every state-changing request carries a fresh
     // Idempotency-Key, minted per attempt (here, inside mutationFn — same
     // "per attempt, never reused" policy `bulkSwitch.ts` documents, just
@@ -133,10 +138,15 @@ export function SourcingPage() {
         }),
       });
     },
-    onSuccess: () => {
-      toast.success(mode === "auto" ? "Сброшено в авто" : "Правило сохранено");
+    onSuccess: (data) => {
+      toast.success(
+        mode === "auto" ? "Сброшено в авто" : formatSwitchSuccess(data as SourcingRuleOut),
+      );
       void qc.invalidateQueries({ queryKey: qk.sourcingRules() });
       void qc.invalidateQueries({ queryKey: qk.sourcingDecision(sku?.id ?? "") });
+      // The cost basis may have just moved, so anything priced off it is stale.
+      void qc.invalidateQueries({ queryKey: ["admin", "sourcing", "brand"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "catalog", "skus"] });
     },
     onError: (err) => {
       toast.error(extractApiMessage(err));
@@ -297,4 +307,32 @@ export function SourcingPage() {
       </section>
     </div>
   );
+}
+
+/** What a route switch did to the money, in one line.
+ *
+ * A switch that only said "saved" was the whole problem this reports on: the
+ * cost basis moves to the new supplier in the same request, and whether the
+ * shelf price followed is the part an operator needs to see. Mirrors
+ * `formatSaveSuccess` in `MappingEditPage`, which does the same job for the
+ * other write that touches cost.
+ */
+function formatSwitchSuccess(rule: SourcingRuleOut | null | undefined): string {
+  const cs = rule?.cost_sync ?? null;
+  if (!cs) return "Правило сохранено";
+  if (cs.updated && cs.new_cost) {
+    const cost =
+      cs.old_cost && cs.old_cost !== cs.new_cost
+        ? `$${cs.old_cost} → $${cs.new_cost}`
+        : `$${cs.new_cost}`;
+    if (cs.price_drop_blocked) {
+      return `Правило сохранено · себестоимость ${cost}, цена не снижена — маржа выросла`;
+    }
+    if (cs.new_price) {
+      return `Правило сохранено · себестоимость ${cost}, цена → $${cs.new_price}`;
+    }
+    return `Правило сохранено · себестоимость ${cost}`;
+  }
+  if (cs.reason) return `Правило сохранено · себестоимость не обновлена (${cs.reason})`;
+  return "Правило сохранено";
 }

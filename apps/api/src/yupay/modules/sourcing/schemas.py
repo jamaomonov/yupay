@@ -8,6 +8,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from yupay.modules.integrations.schemas import CostSyncResult
+
 Mode = Literal["auto", "force_inventory", "force_supplier", "manual"]
 
 
@@ -30,6 +32,14 @@ class SourcingRuleOut(BaseModel):
     supplier_slug: str | None
     updated_by: str | None
     updated_at: datetime
+    #: What the switch did to our cost basis, and to the shelf price.
+    #:
+    #: Changing a route changes who we buy from, so the cost must become the
+    #: new supplier's price in the same request — see
+    #: ``integrations.cost_refresh.refresh_routed_cost``. ``None`` only on a
+    #: replayed request cached before this field existed; a switch that could
+    #: not price anything still returns the object, carrying ``reason``.
+    cost_sync: CostSyncResult | None = None
 
 
 class SourcingRuleListOut(BaseModel):
@@ -185,6 +195,9 @@ class SourcingBulkRuleResultOut(BaseModel):
     sku_id: str
     ok: bool
     error: str | None = None
+    #: Per-SKU cost outcome, same meaning as ``SourcingRuleOut.cost_sync``.
+    #: ``None`` when the rule write itself failed, so nothing was re-priced.
+    cost_sync: CostSyncResult | None = None
 
 
 class SourcingBulkRuleOut(BaseModel):

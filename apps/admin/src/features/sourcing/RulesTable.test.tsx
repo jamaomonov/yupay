@@ -56,6 +56,7 @@ const RULES_NAME_COLLISION: SourcingRuleOut[] = [
     supplier_slug: "g2b",
     updated_by: "admin-1",
     updated_at: "2026-09-10T00:00:00Z",
+    cost_sync: null,
   },
   {
     sku_id: "sku-b",
@@ -64,6 +65,7 @@ const RULES_NAME_COLLISION: SourcingRuleOut[] = [
     supplier_slug: null,
     updated_by: "admin-1",
     updated_at: "2026-09-11T00:00:00Z",
+    cost_sync: null,
   },
 ];
 
@@ -75,6 +77,7 @@ const RULES: SourcingRuleOut[] = [
     supplier_slug: "g2b",
     updated_by: "admin-1",
     updated_at: "2026-09-10T00:00:00Z",
+    cost_sync: null,
   },
   {
     sku_id: "sku-2",
@@ -83,6 +86,7 @@ const RULES: SourcingRuleOut[] = [
     supplier_slug: null,
     updated_by: "admin-1",
     updated_at: "2026-09-11T00:00:00Z",
+    cost_sync: null,
   },
 ];
 
@@ -99,6 +103,7 @@ const RULES_GROUPED: SourcingRuleOut[] = [
     supplier_slug: null,
     updated_by: "admin-1",
     updated_at: "2026-09-12T00:00:00Z",
+    cost_sync: null,
   },
 ];
 

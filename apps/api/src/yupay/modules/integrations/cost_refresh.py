@@ -402,3 +402,79 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
         margin_percent=cost_update.margin_percent,
         price_drop_blocked=cost_update.price_drop_blocked,
     )
+
+
+async def refresh_routed_cost(
+    db: AsyncSession, *, sku_id: str, allow_price_drop: bool = False
+) -> CostRefreshOutcome:
+    """Re-price one SKU from whichever supplier it now routes to.
+
+    The mapping-shaped callers above ask "what does *this* supplier cost?"
+    and let :func:`is_routed_supplier` decide whether the answer may touch
+    ``Sku.cost_usdt``. This one asks the opposite question — "who do we buy
+    from now, and what do they charge?" — which is what an operator has just
+    answered by changing a sourcing rule.
+
+    Without it, changing a route moved *who is allowed to write the cost*
+    without moving the cost: ``Sku.cost_usdt`` kept the previous supplier's
+    number, the old supplier had lost the right to update it, and the new one
+    had not yet exercised it. Margin, B2B markup and the sourcing screen's
+    "current" column all read that stale figure until the hourly tick — up to
+    ``price_refresh_interval_minutes``, and forever if the new route is a
+    supplier with no automatic price collection at all.
+
+    ``allow_price_drop`` defaults to ``False`` here, unlike the on-save
+    mapping refresh: an operator choosing a route is choosing *where we buy*,
+    not *what we charge*. A cheaper supplier therefore widens the margin and
+    leaves the shelf price alone, which is the whole point of the switch; a
+    dearer one raises the price off the new cost, because the alternative is
+    selling below cost until the next tick.
+
+    Returns:
+        The outcome of the refresh, or one carrying only ``reason`` when
+        there was nothing to refresh: an unrouted SKU (``force_inventory``,
+        ``manual``), a route with no active mapping, or a supplier we cannot
+        pull a price for. None of those is an error — the rule change itself
+        has already succeeded and the caller reports the reason rather than
+        failing on it.
+    """
+    from yupay.modules.sourcing.service import resolve_for_sku
+
+    decision = await resolve_for_sku(db, sku_id)
+    mappings = (
+        (
+            await db.execute(
+                select(SkuSupplierMapping).where(
+                    SkuSupplierMapping.sku_id == sku_id,
+                    SkuSupplierMapping.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    routed = [m for m in mappings if is_routed_supplier(decision, m.supplier_slug)]
+    if not routed:
+        return CostRefreshOutcome(
+            updated=False,
+            reason=(
+                "у SKU нет активного маппинга на поставщика, к которому он "
+                "маршрутизирован — себестоимость оставлена как была"
+            ),
+        )
+    mapping = routed[0]
+    if not supports_price_collection(mapping.supplier_slug):
+        # Not an error and not silently fine: the cost is now a *previous*
+        # supplier's number that nothing will ever update. Blanking it would
+        # be worse — a NULL cost breaks margin and every B2B price derived
+        # from it — so the stale figure stays and the operator is told.
+        return CostRefreshOutcome(
+            updated=False,
+            reason=(
+                f"{mapping.supplier_slug} не отдаёт цены автоматически — "
+                "себестоимость осталась прежней, задайте её вручную"
+            ),
+        )
+    return await refresh_sku_cost_for_mapping(
+        db, mapping=mapping, allow_price_drop=allow_price_drop
+    )

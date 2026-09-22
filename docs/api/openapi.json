@@ -15399,6 +15399,16 @@
       "SourcingBulkRuleResultOut": {
         "description": "One SKU's outcome inside a bulk write \u2014 success or a named failure.",
         "properties": {
+          "cost_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostSyncResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "error": {
             "anyOf": [
               {
@@ -15512,6 +15522,16 @@
       },
       "SourcingRuleOut": {
         "properties": {
+          "cost_sync": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/CostSyncResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "mode": {
             "enum": [
               "auto",

@@ -113,6 +113,7 @@ const RULES: SourcingRuleListOut = {
       supplier_slug: "g2b",
       updated_by: "admin-1",
       updated_at: "2026-09-10T00:00:00Z",
+      cost_sync: null,
     },
   ],
 };
