@@ -110,14 +110,17 @@ letting a counterparty rewrite our credential store buys nothing.
   into their app. `PAYNET_PAY_URL_TEMPLATE` therefore stays unset, the gateway
   stays `available=False`, and Paynet does not appear at checkout. Unblocking
   it needs Paynet either to accept the account as a link parameter or to agree
-  a short public order number, which is a schema change on our side. See the
-  module README, "The link format is expected to be wrong at first".
-- **`transactionState` is unresolved.** We send it as a JSON number (`1`, `2`,
-  `3`). Asked whether it should become a string like `status` did, Paynet
-  answered _"не нужно менять пусть остается строкой"_ — which says both "leave
-  it" and "as a string", and it is not a string today. Do not change it on
-  that sentence alone; get a yes or no first. Certification passed with the
-  number, so the number is the safer default meanwhile.
+  a short public order number, which is a schema change on our side. **Paynet
+  said 2026-09-22 they will send the exact format after integration**, so this
+  waits on them rather than on us — do not invent a template meanwhile, and do
+  not treat the gateway's `available=False` as a bug. See the module README,
+  "The link format is expected to be wrong at first".
+- **`transactionState` stays a JSON number** (`1`, `2`, `3`) — settled
+  2026-09-22. Paynet's answer, _"не нужно менять пусть остается строкой"_,
+  read both ways at once: it says "leave it" and "as a string", and it is not
+  a string today. The owner resolved it as "leave it". Certification passed
+  with the number, so the number is also what Paynet has actually accepted.
+  Do not "fix" this to a string on the strength of that sentence.
 
 ## The IP allowlist
 
