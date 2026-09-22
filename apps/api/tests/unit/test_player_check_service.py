@@ -395,21 +395,49 @@ async def test_the_fallback_releases_even_when_g2b_returned_early(monkeypatch) -
     assert seen["in_transaction"] is False
 
 
-async def test_a_steam_login_error_consults_nova_too(monkeypatch) -> None:  # type: ignore[no-untyped-def]
-    """The Waxpeer half of the same dispatch.
-
-    `fallback_for_steam` has unit tests of its own, but the one line that
-    reaches it had none — and a `return out` there would have left the suite
-    green while the Steam fallback never ran.
-    """
+async def test_a_steam_login_is_checked_via_nova_first(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """The 2026-09-22 swap. NOVA answers `valid` on its own, no Waxpeer
+    call at all — the common case, and it must not cost a second request."""
     monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "waxpeer"}}))
-    calls = {"nova": 0, "brand": 0}
-
-    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
-        return pc.PlayerCheckOut(status="error")
+    calls = {"nova": 0, "waxpeer": 0}
 
     async def fake_nova_steam(steam_login):  # type: ignore[no-untyped-def]
         calls["nova"] += 1
+        assert steam_login == "someone"
+        return pc.PlayerCheckOut(status="valid")
+
+    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
+        calls["waxpeer"] += 1
+        return pc.PlayerCheckOut(status="invalid")
+
+    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
+    monkeypatch.setattr(pc, "_check_waxpeer_login", fake_waxpeer)
+    monkeypatch.setattr(pc, "_waxpeer_fulfiller_or_none", lambda: None, raising=False)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("steam"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="someone",
+        server_id=None,
+    )
+
+    assert out.status == "valid"
+    assert calls == {"nova": 1, "waxpeer": 0}
+
+
+async def test_a_steam_login_falls_back_to_waxpeer_only_when_nova_errors(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """This is the branch a broken Waxpeer can no longer reach on its own —
+    a real Waxpeer verdict still counts, but only once NOVA has nothing."""
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "waxpeer"}}))
+    calls = {"nova": 0, "brand": 0}
+
+    async def fake_nova_steam(steam_login):  # type: ignore[no-untyped-def]
+        calls["nova"] += 1
+        return pc.PlayerCheckOut(status="error")
+
+    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
         assert steam_login == "someone"
         return pc.PlayerCheckOut(status="valid")
 
@@ -417,9 +445,9 @@ async def test_a_steam_login_error_consults_nova_too(monkeypatch) -> None:  # ty
         calls["brand"] += 1
         return pc.PlayerCheckOut(status="error")
 
+    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
     monkeypatch.setattr(pc, "_check_waxpeer_login", fake_waxpeer)
     monkeypatch.setattr(pc, "_waxpeer_fulfiller_or_none", lambda: None, raising=False)
-    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
     monkeypatch.setattr(pc, "_nova_brand", fake_nova_brand)
 
     out = await pc.check_player_for_brand_id(
@@ -435,20 +463,23 @@ async def test_a_steam_login_error_consults_nova_too(monkeypatch) -> None:  # ty
     assert calls["brand"] == 0
 
 
-async def test_a_steam_login_verdict_is_never_second_guessed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+async def test_a_nova_steam_verdict_is_never_second_guessed(monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    """NOVA's own `valid` is not retried against Waxpeer — only an `error`
+    is. Waxpeer's current false-`invalid` outage is exactly why this must
+    not fall through to it on a clean primary answer."""
     monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "waxpeer"}}))
-    calls = {"nova": 0}
-
-    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
-        return pc.PlayerCheckOut(status="invalid")
+    calls = {"waxpeer": 0}
 
     async def fake_nova_steam(steam_login):  # type: ignore[no-untyped-def]
-        calls["nova"] += 1
         return pc.PlayerCheckOut(status="valid")
 
+    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
+        calls["waxpeer"] += 1
+        return pc.PlayerCheckOut(status="invalid")
+
+    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
     monkeypatch.setattr(pc, "_check_waxpeer_login", fake_waxpeer)
     monkeypatch.setattr(pc, "_waxpeer_fulfiller_or_none", lambda: None, raising=False)
-    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
 
     out = await pc.check_player_for_brand_id(
         _FakeSlugSession("steam"),  # type: ignore[arg-type]
@@ -457,8 +488,35 @@ async def test_a_steam_login_verdict_is_never_second_guessed(monkeypatch) -> Non
         server_id=None,
     )
 
-    assert out.status == "invalid"
-    assert calls["nova"] == 0
+    assert out.status == "valid"
+    assert calls["waxpeer"] == 0
+
+
+async def test_a_steam_login_stays_unverified_when_both_suppliers_have_nothing(
+    monkeypatch,
+) -> None:  # type: ignore[no-untyped-def]
+    """NOVA errors, Waxpeer errors too — the honest answer is "we could
+    not check", never a rejection neither supplier actually made."""
+    monkeypatch.setattr(pc, "brand_check_field", _fixed_field({"check": {"provider": "waxpeer"}}))
+
+    async def fake_nova_steam(steam_login):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="error")
+
+    async def fake_waxpeer(_fulfiller, *, steam_login):  # type: ignore[no-untyped-def]
+        return pc.PlayerCheckOut(status="error")
+
+    monkeypatch.setattr(pc, "_nova_steam", fake_nova_steam)
+    monkeypatch.setattr(pc, "_check_waxpeer_login", fake_waxpeer)
+    monkeypatch.setattr(pc, "_waxpeer_fulfiller_or_none", lambda: None, raising=False)
+
+    out = await pc.check_player_for_brand_id(
+        _FakeSlugSession("steam"),  # type: ignore[arg-type]
+        brand_id="b1",
+        player_id="someone",
+        server_id=None,
+    )
+
+    assert out.status == "error"
 
 
 async def test_primary_error_consults_nova_once_and_its_valid_wins(monkeypatch) -> None:  # type: ignore[no-untyped-def]

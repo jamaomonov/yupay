@@ -9,11 +9,26 @@ key. Either way the result carries the same three-way ``status``
 (``valid``/``invalid``/``error``); faults degrade to ``status="error"`` so the
 storefront never hits an error boundary. See ADR-0031.
 
-An ``error`` from either provider — G2B rate-limited us, refused, or could not
+An ``error`` from the primary — G2B rate-limited us, refused, or could not
 be reached, or the same for Waxpeer — is retried once against NOVA
 (``player_check_nova``) before it reaches the caller. The fallback can turn
 that ``error`` into ``valid``; it never turns anything into ``invalid`` — only
 the primary's own verdict may block Pay.
+
+**The Steam pair runs NOVA-first, not Waxpeer-first, since 2026-09-22.**
+Every other pair here has G2B or Waxpeer as the primary and NOVA as the
+"no verdict at all" fallback — Steam had that shape too, until Waxpeer's
+``/steam-topup/validate`` started answering ``valid: false`` for every
+login it was asked about, known-good Steam accounts (five already-delivered
+orders) included. That is a ``200`` with a boolean body, not a fault, so it
+never raised and the old ``error``-only fallback never ran: every Steam
+check failed closed, which blocks Pay. NOVA cannot say ``invalid`` either
+(``player_check_nova.fallback_for_steam``'s own contract) — while Waxpeer is
+in this state, nothing here can confidently reject a login, which is the
+honest answer, and better than rejecting all of them. Waxpeer is still
+consulted when NOVA itself cannot answer, so a genuine Waxpeer verdict
+still reaches a customer on that path. Swap the two calls back in
+:func:`check_player_for_brand_id` once Waxpeer's validate is fixed.
 """
 
 from __future__ import annotations
@@ -449,8 +464,12 @@ async def check_player_for_brand_id(
 ) -> PlayerCheckOut:
     """As :func:`check_player_for_brand`, for a caller that already has the id.
 
-    An ``error`` from either provider is retried once against NOVA before it
-    reaches the caller; see the module docstring and ``player_check_nova``.
+    An ``error`` from the primary is retried once against NOVA before it
+    reaches the caller — for a game brand, G2B is primary. For a Steam
+    login the pair runs the other way round since 2026-09-22 (Waxpeer's own
+    validate started rejecting every login, including known-good ones): NOVA
+    is primary there, and Waxpeer is the one retried on an ``error``. See
+    the module docstring and ``player_check_nova``.
     """
     from yupay.modules.integrations.routes import _waxpeer_fulfiller_or_none
 
@@ -460,8 +479,31 @@ async def check_player_for_brand_id(
 
     if field["check"]["provider"] == "waxpeer":
         await session.rollback()
-        out = await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
-        return out if out.status != "error" else await _nova_steam(player_id)
+        # NOVA primary, Waxpeer as the fallback — the reverse of every other
+        # pair here, and deliberately so since 2026-09-22. Waxpeer's own
+        # `/steam-topup/validate` started answering `valid: false` for
+        # literally every login, ours and known-good Steam accounts alike —
+        # a real upstream regression, not a customer's typo, confirmed
+        # against five logins from already-delivered orders. It never raised
+        # (a 200 with a boolean body is not a fault), so the old
+        # `error`-only fallback never triggered and every Steam check failed
+        # closed, which blocks Pay (ADR-0031). `_nova_steam` cannot say
+        # `invalid` either (see its own docstring) — the honest state while
+        # Waxpeer is in this mode is that *nothing* can confidently reject a
+        # login, so nothing does, which beats rejecting all of them.
+        #
+        # Waxpeer is still asked when NOVA cannot answer at all (breaker
+        # open, unconfigured, network failure) — a real Waxpeer verdict,
+        # `valid` or `invalid`, is better than none, and this is the one
+        # path where a Waxpeer `invalid` can still reach a customer. Revert
+        # by swapping the two calls back once Waxpeer's validate is fixed —
+        # nothing else here depends on which one goes first.
+        out = await _nova_steam(player_id)
+        return (
+            out
+            if out.status != "error"
+            else await _check_waxpeer_login(_waxpeer_fulfiller_or_none(), steam_login=player_id)
+        )
 
     out = await _check_g2b_player(
         session, brand_id=brand_id, player_id=player_id, server_id=server_id

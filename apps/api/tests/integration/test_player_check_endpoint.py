@@ -599,6 +599,30 @@ async def test_steam_login_valid(client: httpx.AsyncClient, seed_waxpeer_product
 
 
 @respx.mock
+async def test_steam_login_is_checked_via_nova_when_it_is_configured(
+    client: httpx.AsyncClient, seed_waxpeer_product: Product, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The 2026-09-22 swap, end to end. When NOVA is configured it answers
+    first, and a real answer from it must never reach Waxpeer at all —
+    `/steam-topup/validate` is deliberately left unmocked, so a fallthrough
+    to it would fail on the network, not on an assertion, exactly like the
+    catalogue-sync tests that pin "the unmapped one is never asked"."""
+    monkeypatch.setenv("NOVA_API_KEY", "test-nova-key")
+    monkeypatch.setenv("NOVA_BASE_URL", "https://nova.test")
+    cfg.get_settings.cache_clear()
+    respx.post(url__regex=r".*/api/v2/steam-topup/check-login").mock(
+        return_value=httpx.Response(200, json={"ok": True, "can_refill": True})
+    )
+    r = await client.post(
+        "/api/v1/catalog/brands/steam-wallet-check/check-player",
+        json={"player_id": "gaben-valid"},
+    )
+    cfg.get_settings.cache_clear()
+    assert r.status_code == 200
+    assert r.json() == {"status": "valid", "name": None}
+
+
+@respx.mock
 async def test_steam_login_invalid(
     client: httpx.AsyncClient, seed_waxpeer_product: Product
 ) -> None:

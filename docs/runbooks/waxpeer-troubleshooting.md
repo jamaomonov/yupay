@@ -267,10 +267,59 @@ surprising Waxpeer response) never blocks the rest of the backlog.
   a task that's already terminal) — you don't need to worry about triggering
   a double-reconcile by waiting out two ticks.
 
+## Pre-purchase login validation (`/steam-topup/validate`) — a different concern from everything above
+
+Everything above is about fulfilment — crediting a Steam wallet after the
+customer paid. `WaxpeerClient.validate_login` is upstream of that entirely:
+the check that runs **before** checkout, at `check-player`, to catch a
+typo'd Steam login before money moves. It shares no code path with
+fulfilment beyond the `WaxpeerClient` transport.
+
+**Since 2026-09-22 it is not the primary check.** Waxpeer's
+`/steam-topup/validate` started answering `valid: false` for every login —
+confirmed against `gaben`, an obviously-real login, and against five logins
+pulled from already-delivered orders, all five rejected identically with
+`"Failed to verify Steam account"`. That is a `200`, not a fault, so the old
+`error`-only NOVA fallback never triggered: every Steam login check failed
+closed, which blocks Pay (ADR-0031) — every Steam-gift checkout was refusing
+every customer.
+
+`integrations.player_check.check_player_for_brand_id` now checks **NOVA
+first** for a Steam login (`NovaClient.check_steam_login`,
+`POST /api/v2/steam-topup/check-login`) and asks Waxpeer only when NOVA
+itself cannot answer (unconfigured, breaker open, network failure) — the
+reverse of every other pair on this page, and the reverse of the G2B/NOVA
+pair in `player_check.py`. NOVA cannot say `invalid` either (see
+`player_check_nova.fallback_for_steam`'s own docstring), so while Waxpeer is
+in this state, nothing rejects a Steam login pre-purchase — better than
+rejecting all of them, and a real Waxpeer verdict still reaches a customer
+on the one path that still asks it.
+
+**To check whether Waxpeer's validate has recovered**, call it directly with
+a known-good login — a login from a recently _delivered_ Steam order, never
+a made-up one, since Waxpeer's `Failed to verify Steam account` message gave
+zero signal either way during the outage — from inside the api container's
+Python shell:
+
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.waxpeer import WaxpeerFulfiller
+
+    f = REGISTRY["waxpeer"]
+    assert isinstance(f, WaxpeerFulfiller)
+    await f._client().validate_login("<a real login, never logged>")
+
+If it correctly answers `(True, None)` for a login you know is real, **swap
+the two calls back** in `player_check.check_player_for_brand_id`'s Steam
+branch (Waxpeer primary, NOVA on `error`) — that function's docstring names
+exactly the two lines to swap.
+
 ## Related
 
 - ADR-0032 — variable-amount SKUs, the FX trust gate, and why refunds here
   are manual.
+- `apps/api/src/yupay/modules/integrations/player_check.py`,
+  `player_check_nova.py` — the pre-purchase check this section describes,
+  and the NOVA fallback/primary it now runs against.
 - `apps/api/src/yupay/modules/pricing/README.md` — amount→units,
   amount→price, the FX trust gate and its settings.
 - `apps/api/src/yupay/modules/fulfillment/suppliers/waxpeer.py`,
