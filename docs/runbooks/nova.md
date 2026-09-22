@@ -104,6 +104,26 @@ also where `card_id` and the live `stock` live. The endpoint is not
 the body sits under `offers`, not `items` — a detail worth a line because the
 call succeeds and looks empty when you read the wrong key.
 
+### «no active nova mapping for this SKU»
+
+The adapter refused before calling NOVA, so **no money moved and there is
+nothing to reconcile** — the task is `failed` with no `external_order_id`.
+Fix the mapping and re-run the task from the Fulfilment inbox.
+
+It means the SKU has no active `nova` row of kind `game` or `voucher`. Check
+`kind` first: a gift card needs `voucher` with a `card_id` in
+`external_variant_id`, a top-up needs `game` with an `offer_id`. `gift` is
+Waxpeer's shape and is refused on purpose.
+
+**A version of this message was our own bug, on 2026-09-21–22.** It read "no
+active nova **game** mapping" and fired for every gift-card order, because
+`_mapping_for` still filtered `kind == "game"` after the gift-card branch was
+added to `fulfill` — so that branch was unreachable and named the wrong thing
+on the way out. One paid order hit it
+(`01a0c666-0f1a-7c00-b94f-d3c2326abd7f`, Roblox 50). If this message ever
+appears again with the word "game" in it, the deployed image predates the
+fix.
+
 ### The card that is sold out must stop being clickable
 
 The same hourly sweep that keeps G2B and G-Engine honest

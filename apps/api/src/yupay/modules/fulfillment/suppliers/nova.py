@@ -528,19 +528,29 @@ async def _mapping_for(db: AsyncSession, *, sku_id: str) -> Any:
             select(SkuSupplierMapping).where(
                 SkuSupplierMapping.sku_id == sku_id,
                 SkuSupplierMapping.supplier_slug == "nova",
-                # A NOVA row of any other kind is not a top-up route. The
-                # composite primary key makes a second row impossible, so this
-                # is not about ambiguity: it is about failing at our own guard,
-                # with a message an operator can act on, rather than at NOVA
-                # with whatever they say about an id from the wrong namespace.
-                SkuSupplierMapping.kind == "game",
+                # NOVA sells two things and this adapter buys both: a top-up
+                # (``game``) and a gift card (``voucher``). ``gift`` is still
+                # not a NOVA route, so the filter stays a filter — it is about
+                # failing at our own guard, with a message an operator can act
+                # on, rather than at NOVA with whatever they say about an id
+                # from the wrong namespace. The composite primary key makes a
+                # second row impossible, so ``scalar_one_or_none`` is safe
+                # with two kinds listed.
+                #
+                # It read ``== "game"`` until 2026-09-22, which made the
+                # gift-card branch in ``fulfill`` unreachable: every NOVA card
+                # order died here, at a guard, with a message naming the wrong
+                # thing. One customer's Roblox 50 order
+                # (01a0c666-0f1a-7c00-b94f-d3c2326abd7f) is what found it.
+                SkuSupplierMapping.kind.in_(("game", _VOUCHER_KIND)),
                 SkuSupplierMapping.is_active.is_(True),
             )
         )
     ).scalar_one_or_none()
     if row is None:
         raise FulfillerError(
-            "no active nova game mapping for this SKU", money_outcome=_NOTHING_SPENT
+            "no active nova mapping for this SKU (need kind=game or kind=voucher)",
+            money_outcome=_NOTHING_SPENT,
         )
     return row
 

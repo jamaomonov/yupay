@@ -366,7 +366,16 @@ async def test_order_id_of_an_object_with_no_recognisable_key_is_none() -> None:
 
 
 class _FakeDb:
-    """Stands in for the session ``_mapping_for`` uses to look the SKU up."""
+    """Stands in for the session ``_mapping_for`` uses to look the SKU up.
+
+    **It answers whatever it was handed, whatever was asked.** That is fine
+    for "does a missing row raise" and useless for "does the WHERE clause
+    select the right rows" — and the second question is the one that bit:
+    ``_mapping_for`` filtered ``kind == "game"``, which made the gift-card
+    branch in ``fulfill`` unreachable, and no test here could see it because
+    none of them run SQL. The filter is pinned against a real database in
+    ``tests/integration/test_nova_mapping_lookup.py``.
+    """
 
     def __init__(self, row: Any = None) -> None:
         self._row = row
