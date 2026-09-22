@@ -104,6 +104,21 @@ also where `card_id` and the live `stock` live. The endpoint is not
 the body sits under `offers`, not `items` — a detail worth a line because the
 call succeeds and looks empty when you read the wrong key.
 
+### `category_fetch_failed` on a gift-card category, at price-refresh time
+
+Log line: `integrations.price_refresh.category_fetch_failed
+category_id=roblox_global error='Unknown or unavailable category_id.'` (or
+`standoff_2_global`, or any other NOVA voucher category). Harmless in the
+sense that no price ever went wrong from it — `_nova_giftcard_price` reads
+`supplier_catalog_cache` for a voucher mapping and never consults this
+cache — but until 2026-09-22 the hourly price-refresh cache-warmer
+(`_fetch_nova_offers_cache`) asked `/topups/offers` about **every** NOVA
+category regardless of `kind`, which 404s for a gift-card category: that
+catalogue lives behind `/giftcards/cards`, a different endpoint entirely.
+Fixed by skipping anything that is not `kind == "game"`, plus the Steam and
+Fragment sentinels (the same bug, pre-existing, caught the same day). If
+this line reappears, the deployed image predates the fix.
+
 ### «no active nova mapping for this SKU»
 
 The adapter refused before calling NOVA, so **no money moved and there is

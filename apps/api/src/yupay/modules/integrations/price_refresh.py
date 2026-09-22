@@ -32,7 +32,11 @@ from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
 from yupay.modules.integrations import service as svc
-from yupay.modules.integrations.models import NOVA_STEAM_SENTINEL
+from yupay.modules.integrations.models import (
+    NOVA_FRAGMENT_PREMIUM,
+    NOVA_FRAGMENT_STARS,
+    NOVA_STEAM_SENTINEL,
+)
 from yupay.modules.notifications import api as notifications
 
 if TYPE_CHECKING:
@@ -68,8 +72,25 @@ async def _fetch_nova_offers_cache(
     normalisation :func:`_nova_raw_price` applies before checking the
     cache — so every mapping in a category actually hits it instead of
     silently missing and falling back to its own live call. Only NOVA
-    mappings are considered; ``g2b`` ignores this cache entirely. The
-    Steam sentinel has no catalogue to fetch and is excluded up front.
+    mappings are considered; ``g2b`` ignores this cache entirely.
+
+    ``GET /topups/offers`` is what this warms, so only ``kind == "game"``
+    mappings feed it — a ``voucher`` mapping's category (a gift-card
+    category like ``roblox_global``) lives in the *other* NOVA catalogue and
+    404s on this endpoint; ``_nova_giftcard_price`` reads
+    ``supplier_catalog_cache`` for those and never touches this cache at
+    all, so warming it for them was pure waste, not a fallback anyone used.
+    Found 2026-09-22 mapping Standoff 2's 500 Gold here: `roblox_global`
+    had been 404ing on every hourly tick since the Roblox mappings landed
+    the day before, silently, because a miss here just degrades to
+    ``_nova_raw_price``'s own live call — which for a voucher mapping never
+    happens either, since that function dispatches on ``kind`` before ever
+    reaching the offers path.
+
+    The Steam and Fragment sentinels have no ``/topups/offers`` entry either
+    — Steam has no catalogue at all, and Fragment is a separate API family
+    (``fragment_stars_price`` / ``fragment_premium_quote``) — so both are
+    excluded up front the same way.
 
     A category whose fetch fails is simply left out of the returned map:
     :func:`_nova_raw_price` treats a cache miss as "fetch it live", so one
@@ -83,12 +104,13 @@ async def _fetch_nova_offers_cache(
     if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
         return {}
 
+    _no_topups_entry = frozenset({NOVA_STEAM_SENTINEL, NOVA_FRAGMENT_STARS, NOVA_FRAGMENT_PREMIUM})
     category_ids: set[str] = set()
     for mapping in mappings:
-        if mapping.supplier_slug != "nova":
+        if mapping.supplier_slug != "nova" or mapping.kind != "game":
             continue
         category_id = mapping.external_product_id.strip()
-        if category_id and category_id != NOVA_STEAM_SENTINEL:
+        if category_id and category_id not in _no_topups_entry:
             category_ids.add(category_id)
 
     cache: dict[str, dict[str, Any]] = {}
