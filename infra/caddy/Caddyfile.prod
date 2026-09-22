@@ -270,6 +270,32 @@ http://api.yupay.uz {
 	# }
 	# respond @uzumMerchantBlocked 403
 
+	# Paynet's UWS endpoint. Their seven source addresses, given by
+	# Дильшод on 2026-09-22 in answer to our certification questions —
+	# individual hosts, not a range, so each carries an implicit /32.
+	# Defense-in-depth alongside the HTTP Basic check in
+	# ``yupay.modules.paynet.routes``, which stays the real gate: unlike
+	# Payme's ``-32504``, a failure there is a bare HTTP 401.
+	#
+	# Same ``client_ip``-not-``remote_ip`` reasoning as the Payme matcher
+	# above — read that comment before touching this one.
+	#
+	# 195.158.21.42 is their **test** address. It is listed here rather
+	# than left out so certification can run against production, and it
+	# should come out once Paynet has signed the integration off. Removing
+	# it is a Caddyfile edit plus ``up -d --force-recreate caddy`` — a
+	# plain ``reload`` re-reads the stale inode behind the bind mount.
+	#
+	# Safe to switch on now: ``PAYNET_PAY_URL_TEMPLATE`` is unset on prod,
+	# so the gateway reports ``available=False`` and no customer is sent
+	# to Paynet yet. There is no live traffic here for a wrong address to
+	# break — which is exactly why it goes in before go-live, not after.
+	@paynetUwsBlocked {
+		path /api/v1/payments/paynet/uws
+		not client_ip 109.207.244.62 62.209.139.94 109.207.244.94 89.236.220.222 91.196.76.52 94.158.63.240 195.158.21.42
+	}
+	respond @paynetUwsBlocked 403
+
 	# WebSocket upgrade has to come first — Caddy stops on the first
 	# matching reverse_proxy directive.
 	@websocket {

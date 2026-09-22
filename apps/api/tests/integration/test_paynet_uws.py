@@ -28,6 +28,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.modules.orders.models import Order
+from yupay.modules.orders.service import _round_to_payable
 from yupay.modules.payments.models import Payment
 from yupay.modules.paynet.models import PaynetTransaction
 from yupay.modules.users.models import User
@@ -227,18 +228,34 @@ async def test_an_expired_order_is_501(
     assert response.json()["error"]["code"] == 501
 
 
-async def test_get_information_amount_keeps_a_fractional_som(
+async def test_a_uzs_order_total_is_always_whole_som(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
-    """130050 tiyin is an odd number of tiyin — 1300.5 soʻm, not a round one.
-    Pins that ``_expected_som`` preserves it rather than truncating."""
-    order_id = await _seed_order(db_session, total_charged=Decimal("1300.50"))
+    """Paynet cannot collect a fraction of a soʻm, so we must never quote one.
+
+    Asked on 2026-09-22 whether they wanted ``"1300.5"`` or ``"1300.50"``,
+    Paynet answered neither: *"желательно целой, у нас нету возможности
+    оплатить дробную часть"*. We already satisfy that, and not by accident —
+    ``orders.service._round_to_payable`` quantizes UZS to
+    ``_CURRENCY_QUANTUM["UZS"] == Decimal("1")``, whole soʻm, before the total
+    is ever stored.
+
+    This asserts the property at the only place it is externally visible, so
+    that adding a sub-soʻm quantum for UZS breaks *here* — where the
+    consequence is a payment Paynet refuses — and not silently in an FX
+    change nobody connects to an acquirer.
+    """
+    order_id = await _seed_order(
+        db_session, total_charged=_round_to_payable(Decimal("1300.4999"), "UZS")
+    )
     response = await integration_client.post(
         UWS_URL,
         json=_rpc("GetInformation", {"serviceId": SERVICE_ID, "fields": {"order_id": order_id}}),
         headers=_auth(),
     )
-    assert response.json()["result"]["fields"]["amount"] == "1300.5"
+    amount = response.json()["result"]["fields"]["amount"]
+    assert "." not in amount, f"Paynet cannot collect {amount} soʻm"
+    assert amount == "1300"
 
 
 async def test_a_foreign_service_id_is_305(

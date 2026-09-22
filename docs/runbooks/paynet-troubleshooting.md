@@ -104,7 +104,43 @@ letting a counterparty rewrite our credential store buys nothing.
 - **No merchant-initiated refund.** The admin refund button refuses on a Paynet
   payment; a reversal starts on their side and arrives as `CancelTransaction`.
   Same as Payme.
-- **No IP allowlist yet.** Payme's path is restricted to its source IPs in
-  `infra/caddy/Caddyfile.prod`. Paynet has not given us theirs. Ask, then add
-  the same `client_ip` block — Basic auth is the control, this is depth.
+- **The deep link Paynet gave us cannot carry an order.** They answered
+  `https://app.paynet.uz/?m=merchant_id` (2026-09-22): merchant only, no
+  account, no amount. The payer would have to type our `order.id` — a UUID —
+  into their app. `PAYNET_PAY_URL_TEMPLATE` therefore stays unset, the gateway
+  stays `available=False`, and Paynet does not appear at checkout. Unblocking
+  it needs Paynet either to accept the account as a link parameter or to agree
+  a short public order number, which is a schema change on our side. See the
+  module README, "The link format is expected to be wrong at first".
+- **`transactionState` is unresolved.** We send it as a JSON number (`1`, `2`,
+  `3`). Asked whether it should become a string like `status` did, Paynet
+  answered _"не нужно менять пусть остается строкой"_ — which says both "leave
+  it" and "as a string", and it is not a string today. Do not change it on
+  that sentence alone; get a yes or no first. Certification passed with the
+  number, so the number is the safer default meanwhile.
+
+## The IP allowlist
+
+Live since 2026-09-22. `infra/caddy/Caddyfile.prod` restricts
+`/api/v1/payments/paynet/uws` to the seven addresses Paynet gave us:
+
+```
+109.207.244.62   62.209.139.94   109.207.244.94   89.236.220.222
+91.196.76.52     94.158.63.240   195.158.21.42 (test)
+```
+
+Individual hosts, not a range. Basic auth stays the real control; this is
+depth, the same shape as Payme's block directly above it in the file.
+
+**195.158.21.42 is their test address and should come out once Paynet signs
+the integration off.** Edit the Caddyfile, then
+`docker compose -f docker-compose.prod.yml up -d --force-recreate caddy` — a
+plain `caddy reload` re-reads the stale inode behind the bind mount and
+reports "config is unchanged".
+
+If genuine Paynet calls start 403ing, this matcher is the first suspect:
+`client_ip` resolves through the shared edge proxy and Cloudflare, so a change
+to either can hand Caddy the wrong address. The Payme comment in the same file
+explains that chain.
+
 - **The link format is unverified** until the first sandbox payment.

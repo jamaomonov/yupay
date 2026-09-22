@@ -87,6 +87,16 @@ require the field and never read it, so the format never has to be parsed.
   which is **soʻm** (1 soʻm = 100 tiyin) — see above. `PerformTransaction`'s
   `amount` param must match `order.total_charged * 100` exactly; anything else
   is `413`, never rounded.
+- **That soʻm figure is always whole**, and Paynet requires it to be: asked
+  whether they wanted `"1300.5"` or `"1300.50"` they answered neither —
+  _"желательно целой, у нас нету возможности оплатить дробную часть"_
+  (2026-09-22). We already satisfy it by construction rather than by
+  formatting: `orders.service._round_to_payable` quantizes UZS to
+  `Decimal("1")` before a total is stored, so no payable order can carry a
+  fraction. Four orders in the table do, all from 2026-07-22, all expired and
+  therefore refused at `_load_payable_order` long before the amount is read.
+  `test_a_uzs_order_total_is_always_whole_som` is what keeps a future
+  sub-soʻm quantum from breaking an acquirer nobody would think to re-test.
 
 ## The error map
 
@@ -173,6 +183,20 @@ disagree about all of them, including whether the amount rides in soʻm or
 tiyin. Placeholders: `{service_id}`, `{account}` (our order id), `{amount}`
 (tiyin) and `{amount_major}` (soʻm) — the template picks the unit. Correcting
 the format is an env edit and a restart, not a release.
+
+**The format Paynet gave us does not fit that shape, and the template is still
+unset.** Asked for the deep link they answered `https://app.paynet.uz/?m=merchant_id`
+(2026-09-22) — merchant only, no account and no amount. Filled in as
+`https://app.paynet.uz/?m=<id>` it opens our page in their app and then asks
+the payer to type the account themselves, and our account is `order.id`, a
+36-character UUID. Nobody types that off a phone screen. Payme and Click do not
+have the problem because their checkout links carry the account; Paynet's does
+not. Two ways out and both need Paynet: either the link accepts the account
+(and ideally the amount) as parameters, or the account field becomes something
+a human can read out, which would mean giving orders a short public number —
+a schema change, not a config one. Until one of them lands, the template stays
+empty and the gateway keeps reporting `available=False`, which is the correct
+failure: better absent from checkout than present and unusable.
 
 ## Files
 
