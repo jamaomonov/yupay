@@ -38,7 +38,11 @@ from yupay.modules.catalog.models import (
     ProductTranslation,
     Sku,
 )
-from yupay.modules.integrations.models import SkuSupplierMapping, SupplierPriceHistory
+from yupay.modules.integrations.models import (
+    SkuSupplierMapping,
+    SupplierCatalogCache,
+    SupplierPriceHistory,
+)
 from yupay.modules.sourcing import service as sourcing_svc
 from yupay.modules.sourcing.models import SkuSourcingRule
 from yupay.modules.users.models import TelegramLink, User
@@ -894,3 +898,95 @@ async def test_overview_sql_query_count_is_bounded(
     assert small_count <= 30, (
         f"query count {small_count} is far above what this endpoint should need"
     )
+
+
+async def _cache_stock(
+    db: AsyncSession,
+    *,
+    supplier_slug: str,
+    stock: object,
+    kind: str = "game_denom",
+    external_id: str = "100",
+    parent: str = "ext-1",
+) -> None:
+    """The catalogue row the screen now reads a per-supplier count from.
+
+    Defaults line up with ``_make_mapping``'s ``ext-1``/``100``, so a test
+    only names the supplier and the number it cares about.
+    """
+    db.add(
+        SupplierCatalogCache(
+            supplier_slug=supplier_slug,
+            kind=kind,
+            external_id=external_id,
+            parent_external_id=parent,
+            title="denom",
+            raw={"stock": stock},
+        )
+    )
+    await db.commit()
+
+
+async def test_overview_reports_each_supplier_s_own_stock(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """The question the screen could not answer before.
+
+    ``Sku.supplier_stock`` holds one number — the routed supplier's — which
+    is right for the shelf and useless for comparing suppliers. Production
+    2026-09-22: ``roblox-2000`` was off sale because G-Engine, the supplier
+    it was pinned to, sat at 0, while NOVA held 19 and G2B 96. Nothing on
+    this screen said so.
+    """
+    brand_slug = "stock-compare-brand-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session, brand_id=brand_id, slug="stock-compare-product-test", kind="top_up"
+    )
+    sku_id = await _make_sku(db_session, product_id=product_id, sku_code="stock-compare-sku-test")
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="gengine")
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="nova")
+    await db_session.commit()
+    await _cache_stock(db_session, supplier_slug="gengine", stock=0)
+    await _cache_stock(db_session, supplier_slug="nova", stock=19)
+
+    resp = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}", headers=_admin_headers
+    )
+
+    assert resp.status_code == 200, resp.text
+    suppliers = {s["supplier_slug"]: s for s in resp.json()["items"][0]["suppliers"]}
+    assert suppliers["gengine"]["stock"] == 0
+    assert suppliers["nova"]["stock"] == 19
+    assert suppliers["nova"]["stock_at"] is not None
+    # g2b is a candidate on every row but this SKU was never mapped to it,
+    # so we have never asked it about this rung. Not zero — unknown.
+    assert suppliers["g2b"]["stock"] is None
+
+
+async def test_overview_untracked_stock_reads_as_unknown_not_zero(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    _admin_headers: dict[str, str],
+) -> None:
+    """``-1`` upstream means "not tracked", and ``normalise_stock`` owns that
+    rule — reading it a second time here would be a second rule to keep in
+    step. Rendering it as 0 would take a sellable line off the comparison."""
+    brand_slug = "stock-untracked-brand-test"
+    _category_id, brand_id = await _seed_category_and_brand(db_session, brand_slug=brand_slug)
+    product_id = await _make_product(
+        db_session, brand_id=brand_id, slug="stock-untracked-product-test", kind="top_up"
+    )
+    sku_id = await _make_sku(db_session, product_id=product_id, sku_code="stock-untracked-sku-test")
+    await _make_mapping(db_session, sku_id=sku_id, supplier_slug="g2b")
+    await db_session.commit()
+    await _cache_stock(db_session, supplier_slug="g2b", stock=-1)
+
+    resp = await integration_client.get(
+        f"/api/v1/admin/sourcing/brands/{brand_slug}", headers=_admin_headers
+    )
+
+    suppliers = {s["supplier_slug"]: s for s in resp.json()["items"][0]["suppliers"]}
+    assert suppliers["g2b"]["stock"] is None

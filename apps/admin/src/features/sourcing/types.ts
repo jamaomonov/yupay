@@ -40,6 +40,14 @@ export interface SourcingBrandSupplierOut {
   has_active_mapping: boolean;
   latest_cost_usdt: string | null;
   captured_at: string | null;
+  /** This supplier's own count for this exact denomination, from their
+   *  catalogue cache. `null` is "we do not know" — no mapping, a catalogue
+   *  never synced, or a supplier that tracks no count (`-1` upstream) — and
+   *  must never render as 0: a sellable line shown as sold out is the
+   *  expensive mistake here, the same one `normalise_stock` avoids
+   *  server-side. `stock_at` is when that row was last fetched. */
+  stock: number | null;
+  stock_at: string | null;
   /** Where `latest_cost_usdt` came from (mirrors the backend's
    *  `cost_source` field, `sourcing/schemas.py`'s `SourcingBrandSupplierOut`).
    *  `supplier_price_history` records a price *change* — a supplier whose

@@ -46,6 +46,8 @@ it("picks every supplier tied for cheapest, among active mappings with a recorde
       latest_cost_usdt: "0.90",
       captured_at: null,
       cost_source: "history",
+      stock: null,
+      stock_at: null,
     },
     {
       supplier_slug: "nova",
@@ -53,6 +55,8 @@ it("picks every supplier tied for cheapest, among active mappings with a recorde
       latest_cost_usdt: "0.79",
       captured_at: null,
       cost_source: "history",
+      stock: null,
+      stock_at: null,
     },
     {
       supplier_slug: "gengine",
@@ -60,6 +64,8 @@ it("picks every supplier tied for cheapest, among active mappings with a recorde
       latest_cost_usdt: "0.10",
       captured_at: null,
       cost_source: "history",
+      stock: null,
+      stock_at: null,
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["nova"]));
@@ -73,6 +79,8 @@ it("treats an exact tie honestly — both suppliers come back, not just the firs
       latest_cost_usdt: "0.90",
       captured_at: null,
       cost_source: "history",
+      stock: null,
+      stock_at: null,
     },
     {
       supplier_slug: "nova",
@@ -80,6 +88,8 @@ it("treats an exact tie honestly — both suppliers come back, not just the firs
       latest_cost_usdt: "0.900000",
       captured_at: null,
       cost_source: "history",
+      stock: null,
+      stock_at: null,
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b", "nova"]));
@@ -93,6 +103,8 @@ it("returns an empty set when no supplier has both an active mapping and a recor
       latest_cost_usdt: null,
       captured_at: null,
       cost_source: null,
+      stock: null,
+      stock_at: null,
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set());
@@ -106,6 +118,8 @@ it("treats a `current` cost exactly like a captured one in the cheapest comparis
       latest_cost_usdt: "1.00",
       captured_at: null,
       cost_source: "current",
+      stock: null,
+      stock_at: null,
     },
     {
       supplier_slug: "nova",
@@ -113,6 +127,8 @@ it("treats a `current` cost exactly like a captured one in the cheapest comparis
       latest_cost_usdt: "1.50",
       captured_at: "2026-09-10T00:00:00Z",
       cost_source: "history",
+      stock: null,
+      stock_at: null,
     },
   ];
   expect(cheapestSlugs(suppliers)).toEqual(new Set(["g2b"]));

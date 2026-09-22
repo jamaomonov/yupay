@@ -118,6 +118,24 @@ class SourcingBrandSupplierOut(BaseModel):
     - ``None`` — none of the above: this supplier's price is genuinely
       unknown to us, or not honestly attributable to it. ``latest_cost_usdt``
       stays ``None``, same as before this field existed.
+
+    ``stock`` is that supplier's own count for this exact denomination, read
+    from ``supplier_catalog_cache.raw["stock"]`` — the same field the hourly
+    voucher sweep normalises into ``Sku.supplier_stock``, and keyed the same
+    way the cost lookup keys its cache read. The SKU column can only ever
+    hold **one** number, the routed supplier's, which is the right answer for
+    the shelf and the wrong one for this screen: comparing suppliers means
+    seeing that the one we are pinned to is at zero while another has
+    hundreds. That is not hypothetical — on 2026-09-22 ``roblox-2000`` was
+    off sale with G-Engine at 0, while NOVA held 19 and G2B 96.
+
+    ``None`` means "we do not know", and is honest about three different
+    causes: no mapping to this supplier, a catalogue never synced for it, or
+    a supplier that reports no count at all. ``-1`` upstream means "not
+    tracked" and normalises to ``None`` too (``stock_refresh.normalise_stock``
+    owns that rule — a second reading of it here would be a second rule).
+    ``stock_at`` is when that row was last fetched, so a stale count is
+    visible as stale rather than trusted.
     """
 
     supplier_slug: str
@@ -125,6 +143,8 @@ class SourcingBrandSupplierOut(BaseModel):
     latest_cost_usdt: str | None
     captured_at: datetime | None
     cost_source: Literal["history", "current"] | None
+    stock: int | None = None
+    stock_at: datetime | None = None
 
 
 class SourcingBrandSkuOut(BaseModel):

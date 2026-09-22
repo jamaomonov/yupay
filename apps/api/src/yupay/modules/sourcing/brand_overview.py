@@ -23,11 +23,12 @@ batch-loaded data instead of once per SKU from a query.
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import NotFoundError, ValidationError
@@ -36,6 +37,7 @@ from yupay.modules.integrations.cost_refresh import is_routed_supplier, supports
 from yupay.modules.integrations.models import (
     MAPPING_REQUIRED_SUPPLIERS,
     SkuSupplierMapping,
+    SupplierCatalogCache,
     SupplierPriceHistory,
 )
 from yupay.modules.sourcing.models import SkuSourcingRule
@@ -61,6 +63,97 @@ from yupay.modules.sourcing.service import (
 #: into memory and 500s or times out the page an operator opens to fix
 #: routing.
 MAX_BRAND_OVERVIEW_SKUS = 500
+
+
+def _cache_key(mapping: SkuSupplierMapping) -> tuple[str, str, str, str]:
+    """The ``supplier_catalog_cache`` primary key a mapping points at.
+
+    Derived, not guessed. A mapping carrying a variant names a rung of a
+    ladder, which the catalogue caches one level down (``voucher_denom`` /
+    ``game_denom``) under its parent; a mapping without one names a flat row
+    whose parent is ``''``. ``kind`` has to be part of this and cannot be
+    dropped for convenience: G-Engine reuses ids across namespaces — id 36 is
+    the game "Love and Deepspace" *and* the shop product "Valorant Russia" —
+    so a lookup on (supplier, external_id, parent) alone returns the wrong
+    catalogue's row.
+    """
+    variant = mapping.external_variant_id
+    if variant:
+        return (
+            mapping.supplier_slug,
+            f"{mapping.kind}_denom",
+            variant,
+            mapping.external_product_id,
+        )
+    return (mapping.supplier_slug, mapping.kind, mapping.external_product_id, "")
+
+
+async def _stock_by_sku_supplier(
+    db: AsyncSession, mappings: Sequence[SkuSupplierMapping]
+) -> dict[tuple[str, str], tuple[int | None, datetime | None]]:
+    """Each mapped supplier's own count for each SKU, in one query.
+
+    ``Sku.supplier_stock`` cannot answer this: it holds a single number, the
+    routed supplier's, because that is what the shelf needs. Comparing
+    suppliers needs one per supplier, and the catalogue cache already has
+    them — the hourly voucher sweep reads the very same field to compute the
+    SKU column.
+
+    One round trip for the whole brand, keyed by the exact cache primary key
+    (see :func:`_cache_key`). A per-mapping lookup would be an N+1 on a screen
+    that renders a hundred rows.
+    """
+    keys = {_cache_key(m) for m in mappings}
+    if not keys:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                SupplierCatalogCache.supplier_slug,
+                SupplierCatalogCache.kind,
+                SupplierCatalogCache.external_id,
+                SupplierCatalogCache.parent_external_id,
+                SupplierCatalogCache.raw["stock"].astext,
+                SupplierCatalogCache.fetched_at,
+            ).where(
+                tuple_(
+                    SupplierCatalogCache.supplier_slug,
+                    SupplierCatalogCache.kind,
+                    SupplierCatalogCache.external_id,
+                    SupplierCatalogCache.parent_external_id,
+                ).in_(keys)
+            )
+        )
+    ).all()
+    by_key = {(slug, kind, ext, parent): (raw, at) for slug, kind, ext, parent, raw, at in rows}
+    out: dict[tuple[str, str], tuple[int | None, datetime | None]] = {}
+    for mapping in mappings:
+        found = by_key.get(_cache_key(mapping))
+        if found is None:
+            continue
+        raw, fetched_at = found
+        out[(mapping.sku_id, mapping.supplier_slug)] = (_stock_int(raw), fetched_at)
+    return out
+
+
+def _stock_int(raw: str | None) -> int | None:
+    """``raw->>'stock'`` as a number, then through the shared rule.
+
+    ``.astext`` is how the count comes out of JSONB without dragging the whole
+    payload across, and it is a *string* — while ``normalise_stock`` takes the
+    parsed value, because its other caller reads an already-decoded API
+    response. So the parse happens here and the meaning stays there: what
+    ``-1`` means, and that a missing or non-numeric value claims nothing, is
+    one rule in one place.
+    """
+    from yupay.modules.integrations.stock_refresh import normalise_stock
+
+    if raw is None:
+        return None
+    try:
+        return normalise_stock(int(raw))
+    except (TypeError, ValueError):
+        return None
 
 
 async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrandOverviewOut:
@@ -194,6 +287,7 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         (sku_id, supplier_slug): (cost_usdt, captured_at)
         for sku_id, supplier_slug, cost_usdt, captured_at in history_rows
     }
+    stock_by_pair = await _stock_by_sku_supplier(db, mapping_rows)
     items: list[SourcingBrandSkuOut] = []
     for sku, product in sku_rows:
         rule = rules_by_sku.get(sku.id)
@@ -223,6 +317,9 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
         suppliers: list[SourcingBrandSupplierOut] = []
         for slug in candidate_slugs:
             history_entry = latest_cost.get((sku.id, slug))
+            # (None, None) for a supplier this SKU has no mapping to, which
+            # is the honest answer: we never asked it about this rung.
+            stock_entry = stock_by_pair.get((sku.id, slug), (None, None))
             cost_source: Literal["history", "current"] | None
             supplier_cost: str | None
             if history_entry is not None:
@@ -255,6 +352,8 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
                     latest_cost_usdt=supplier_cost,
                     captured_at=captured_at,
                     cost_source=cost_source,
+                    stock=stock_entry[0],
+                    stock_at=stock_entry[1],
                 )
             )
 

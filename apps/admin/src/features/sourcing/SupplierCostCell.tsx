@@ -104,6 +104,28 @@ export function SupplierCell({
               </span>
             )
           ))}
+        {/* Per-supplier stock. `Sku.supplier_stock` holds only the routed
+            supplier's number, which is exactly the one an operator
+            comparing suppliers already knows — the useful fact is that the
+            supplier we are pinned to is empty while another is not.
+            `null` stays blank rather than rendering "0": unknown and sold
+            out are different, and conflating them would push someone off a
+            supplier that can actually deliver. */}
+        {supplier.stock !== null && (
+          <span
+            className={[
+              "text-[10px]",
+              supplier.stock === 0 ? "text-[var(--danger-fg)]" : "text-[var(--text-tertiary)]",
+            ].join(" ")}
+            title={
+              supplier.stock_at
+                ? `Остаток по данным каталога от ${new Date(supplier.stock_at).toLocaleString("ru")}`
+                : undefined
+            }
+          >
+            {supplier.stock === 0 ? "нет в наличии" : `в наличии: ${supplier.stock.toString()}`}
+          </span>
+        )}
         {isCurrentRoute ? (
           <span className="text-[10px] text-[var(--accent)]">
             {isFallbackRoute ? "текущий (запасной, после склада)" : "текущий"}
