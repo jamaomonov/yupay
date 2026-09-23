@@ -191,6 +191,21 @@ minversion = "8.0"
 # ``addopts``; declaring it as ``import_mode = "importlib"`` is rejected
 # by ``--strict-config`` on pytest 9.
 addopts = "-ra --strict-markers --strict-config --cov-report=term-missing --import-mode=importlib"
+# No single test may hang the suite. On 2026-09-23 one did: CI went quiet ten
+# minutes in and sat there for an hour, and because GitHub only publishes a
+# job's log after it ends, cancelling it produced no evidence of *which* test.
+# A timeout converts that into a named failure with a traceback.
+#
+# 180 s is deliberately far above any real test. The slowest legitimate one is
+# the first of each xdist worker, which pays for a testcontainers Postgres and
+# the full migration chain — about 15 s locally, and the headroom is for a cold
+# CI runner rather than for slow tests.
+#
+# ``thread`` rather than the default ``signal``: the signal method cannot
+# interrupt a blocked C call or a thread that is not the main one, which is
+# exactly the shape a deadlock takes here.
+timeout = 180
+timeout_method = "thread"
 asyncio_mode = "auto"
 testpaths = ["apps/api/tests", "apps/worker/tests", "apps/scheduler/tests", "apps/bot/tests"]
 markers = [
