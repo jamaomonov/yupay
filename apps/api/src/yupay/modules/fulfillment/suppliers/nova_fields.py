@@ -77,6 +77,12 @@ def _our_value(data: dict[str, Any], role: str, their_key: str) -> str:
     exact = str(data.get(their_key) or "").strip()
     if exact:
         return exact
+    if not role:
+        # A field we cannot place — a promo code, an email, whatever they add
+        # next. Inference here would send our player id under a name that
+        # means something else entirely, which is worse than omitting it: NOVA
+        # refuses a missing field by name, and silently accepts a wrong one.
+        return ""
     candidates = _OUR_SERVER_KEYS if role == "server" else _OUR_IDENTIFIER_KEYS
     for key in candidates:
         value = str(data.get(key) or "").strip()

@@ -116,3 +116,26 @@ def test_a_field_with_no_key_is_ignored() -> None:
     specs: list[dict[str, Any]] = [{"label": "Mystery", "type": "text"}]
 
     assert build_fields(specs, {"player_id": "1"}) == {}
+
+
+def test_a_field_we_cannot_place_is_left_alone() -> None:
+    """Their key is neither a server nor an identifier — a captcha token, an
+    email, whatever comes next. Guessing a value for it would send one of our
+    fields under a name that means something else entirely.
+    """
+    specs: list[dict[str, Any]] = [
+        {"key": "player_id", "type": "text"},
+        {"key": "promo_code", "type": "text"},
+    ]
+
+    built = build_fields(specs, {"player_id": "1", "server": "europe"})
+
+    assert built == {"player_id": "1"}
+
+
+def test_the_server_role_covers_their_other_names_for_it() -> None:
+    """``zone`` and ``region`` mean the same thing to a player and are spelled
+    differently by suppliers — placing them by role is the point."""
+    specs: list[dict[str, Any]] = [{"key": "zone", "type": "text"}]
+
+    assert build_fields(specs, {"server": "12345"}) == {"zone": "12345"}

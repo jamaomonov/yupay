@@ -163,3 +163,99 @@ def _as_client(client: _Client) -> Any:
     """The real parameter is a ``NovaClient``; the fake only implements the one
     method this module calls, and typing it as the real thing would be a lie."""
     return client
+
+
+async def test_a_gift_card_matches_on_card_and_quantity() -> None:
+    """Quantity is part of the match: their gift-card endpoint takes a real
+    one, so two orders for the same card can differ only by it."""
+    order = {
+        "id": "ord-1527495",
+        "kind": "gift_card",
+        "category_id": "roblox_global",
+        "card_id": "50_robux",
+        "quantity": 2,
+        "created_at": NOW.isoformat().replace("+00:00", "Z"),
+    }
+    key = AdoptKey(kind="gift_card", category_id="roblox_global", card_id="50_robux", quantity=2)
+
+    assert await find_order(_as_client(_Client([order])), key=key, since=TASK_STARTED) is not None
+
+    wrong = AdoptKey(kind="gift_card", category_id="roblox_global", card_id="50_robux", quantity=1)
+    assert await find_order(_as_client(_Client([order])), key=wrong, since=TASK_STARTED) is None
+
+
+async def test_steam_matches_on_the_login_and_its_own_timestamp_key() -> None:
+    """Steam orders spell it ``createdAt``, not ``created_at`` — reading only
+    one of the two would make every Steam order look undatable and adoptable
+    regardless of when it happened."""
+    order = {
+        "id": "ord-1526612",
+        "kind": "steam_topup",
+        "steamLogin": "HurrySDM",
+        "createdAt": NOW.isoformat().replace("+00:00", "Z"),
+    }
+    key = AdoptKey(kind="steam_topup", steam_login="HurrySDM")
+
+    assert await find_order(_as_client(_Client([order])), key=key, since=TASK_STARTED) is not None
+
+    old = dict(order, createdAt=(TASK_STARTED - timedelta(minutes=5)).isoformat())
+    assert await find_order(_as_client(_Client([old])), key=key, since=TASK_STARTED) is None
+
+
+async def test_fragment_matches_on_the_key_we_sent_not_on_looks() -> None:
+    """Stars and Premium echo the ``Idempotency-Key`` back, which makes these
+    exact — two identical Stars orders are told apart by it and nothing else."""
+    mine = {
+        "id": "ord-1",
+        "kind": "STARS",
+        "idempotency_key": "task-1",
+        "created_at": NOW.isoformat().replace("+00:00", "Z"),
+    }
+    theirs = dict(mine, id="ord-2", idempotency_key="task-2")
+    key = AdoptKey(kind="STARS", idempotency_key="task-1")
+
+    found = await find_order(_as_client(_Client([theirs, mine])), key=key, since=TASK_STARTED)
+
+    assert found is not None
+    assert found["id"] == "ord-1"
+
+
+async def test_an_order_with_no_readable_timestamp_is_still_adoptable() -> None:
+    """The time bound can only reject what it can read.
+
+    A missing or malformed timestamp must not silently drop an order that
+    matches on every identifying field — that would leave a delivered order
+    unadopted, which is the failure this whole path exists to prevent.
+    """
+    undated = {
+        "id": "ord-1",
+        "kind": "topup",
+        "category_id": "free_fire_cis",
+        "offer_id": "110_diamonds",
+        "fields": {"player_id": "10619597246"},
+    }
+    assert (
+        await find_order(_as_client(_Client([undated])), key=TOPUP_KEY, since=TASK_STARTED)
+        is not None
+    )
+
+    malformed = dict(undated, created_at="the day before yesterday")
+    assert (
+        await find_order(_as_client(_Client([malformed])), key=TOPUP_KEY, since=TASK_STARTED)
+        is not None
+    )
+
+
+async def test_a_different_kind_never_matches() -> None:
+    """A gift card and a top-up can share a category id; the kind is what
+    keeps one from being adopted as the other."""
+    card = {
+        "id": "ord-1",
+        "kind": "gift_card",
+        "category_id": "free_fire_cis",
+        "offer_id": "110_diamonds",
+        "fields": {"player_id": "10619597246"},
+        "created_at": NOW.isoformat().replace("+00:00", "Z"),
+    }
+
+    assert await find_order(_as_client(_Client([card])), key=TOPUP_KEY, since=TASK_STARTED) is None

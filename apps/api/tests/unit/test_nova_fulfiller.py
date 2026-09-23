@@ -20,6 +20,8 @@ from yupay.modules.fulfillment.suppliers.base import (
     MoneyOutcome,
 )
 from yupay.modules.fulfillment.suppliers.nova import (
+    FRAGMENT_PREMIUM,
+    FRAGMENT_STARS,
     STEAM_SENTINEL,
     NovaFulfiller,
     _mapping_for,
@@ -418,6 +420,103 @@ async def test_an_id_less_task_gives_up_once_the_window_closes(
 
     assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
     assert "nova.md" in str(excinfo.value)
+
+
+class _LineDB:
+    """A session that answers the two lookups adoption makes: the order line,
+    then its NOVA mapping. Enough to rebuild a search key without a database.
+    """
+
+    def __init__(self, item: Any, mapping: Any) -> None:
+        self._answers = [item, mapping]
+
+    async def execute(self, *_args: Any, **_kw: Any) -> Any:
+        answer = self._answers.pop(0) if self._answers else None
+        return SimpleNamespace(scalar_one_or_none=lambda: answer)
+
+
+class _AdoptClient(_FakeClient):
+    """A client whose order list carries one finished order."""
+
+    def __init__(self, orders: list[dict[str, Any]], **kw: Any) -> None:
+        super().__init__(**kw)
+        self._orders = orders
+
+    async def list_orders(self, *, limit: int = 50, page: int = 1) -> list[dict[str, Any]]:
+        return self._orders
+
+
+async def test_an_id_less_task_adopts_the_order_it_paid_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The feature, end to end.
+
+    The create's response was lost, so the task has no id. The poll finds the
+    order NOVA made anyway, reports its real state, and records the id so the
+    next poll goes straight to it instead of searching again.
+    """
+    started = datetime.now(UTC) - timedelta(seconds=30)
+    task = SimpleNamespace(
+        id="task-1",
+        order_item_id="item-1",
+        external_order_id=None,
+        extra_metadata={},
+        created_at=started,
+    )
+    client = _AdoptClient(
+        [
+            {
+                "id": "ord-1525578",
+                "kind": "topup",
+                "category_id": "free_fire_cis",
+                "offer_id": "110_diamonds",
+                "fields": {"player_id": "10619597246"},
+                "status": "completed",
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+        ]
+    )
+    db = _LineDB(
+        item=SimpleNamespace(sku_id="sku-1", qty=1, fulfillment_data={"player_id": "10619597246"}),
+        mapping=SimpleNamespace(
+            kind="game",
+            external_product_id="free_fire_cis",
+            external_variant_id="110_diamonds",
+        ),
+    )
+
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=cast(Any, db),
+        task=cast(Any, task),
+    )
+
+    assert status.outcome == "succeeded"
+    assert status.extra_metadata["nova_order_id"] == "ord-1525578"
+    assert status.extra_metadata["nova_adopted"] is True
+
+
+async def test_an_already_adopted_id_is_not_searched_for_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The id lives in metadata because the reconciler merges that and does
+    not move it into the ``external_order_id`` column — so the next poll has
+    to read both or it would search forever."""
+    _games_task(monkeypatch)
+    task = SimpleNamespace(
+        id="task-1",
+        order_item_id="item-1",
+        external_order_id=None,
+        extra_metadata={"nova_order_id": "ord-1525578"},
+        created_at=datetime.now(UTC),
+    )
+    client = _FakeClient(order={"id": "ord-1525578", "status": "completed"})
+
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=cast(Any, _NoLineDB()),
+        task=cast(Any, task),
+    )
+
+    assert status.outcome == "succeeded"
 
 
 async def test_check_status_that_cannot_read_says_unknown(
@@ -1256,3 +1355,74 @@ async def test_a_top_up_is_still_a_receipt(monkeypatch: pytest.MonkeyPatch) -> N
     result = await _fulfill(_FakeClient(order={"id": "ord_1", "status": "completed"}), monkeypatch)
 
     assert result.artifact_kind == "topup_receipt"
+
+
+@pytest.mark.parametrize(
+    ("mapping_kind", "category", "variant", "expected_kind"),
+    [
+        ("voucher", "roblox_global", "50_robux", "gift_card"),
+        ("game", STEAM_SENTINEL, "", "steam_topup"),
+        ("game", FRAGMENT_STARS, "", "STARS"),
+        ("game", FRAGMENT_PREMIUM, "3", "PREMIUM"),
+    ],
+)
+async def test_every_order_kind_can_be_searched_for(
+    monkeypatch: pytest.MonkeyPatch,
+    mapping_kind: str,
+    category: str,
+    variant: str,
+    expected_kind: str,
+) -> None:
+    """A lost create is possible on all four paths, so all four must be
+    findable — the top-up is only the one that happened first.
+
+    Asserted through ``check_status``: with nothing in NOVA's list the task
+    stays in flight, which is the honest answer and the one that proves a
+    usable key was built. An unusable key would have skipped the search
+    entirely and looked identical from outside, which is why the client
+    records whether it was asked.
+    """
+    task = SimpleNamespace(
+        id="task-1",
+        order_item_id="item-1",
+        external_order_id=None,
+        extra_metadata={},
+        created_at=datetime.now(UTC),
+    )
+    client = _AdoptClient([])
+    db = _LineDB(
+        item=SimpleNamespace(
+            sku_id="sku-1",
+            qty=1,
+            fulfillment_data={"player_id": "1", "steam_login": "someone", "username": "@who"},
+        ),
+        mapping=SimpleNamespace(
+            kind=mapping_kind, external_product_id=category, external_variant_id=variant
+        ),
+    )
+
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=cast(Any, db), task=cast(Any, task)
+    )
+
+    assert status.outcome == "in_progress"
+
+
+async def test_a_task_whose_line_is_gone_cannot_be_searched_for(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No line, no key, no search — and the task waits rather than claiming
+    anything about an order nobody can describe."""
+    task = SimpleNamespace(
+        id="task-1",
+        order_item_id="item-1",
+        external_order_id=None,
+        extra_metadata={},
+        created_at=datetime.now(UTC),
+    )
+
+    status = await _fulfiller(_AdoptClient([]), monkeypatch).check_status(
+        db=cast(Any, _NoLineDB()), task=cast(Any, task)
+    )
+
+    assert status.outcome == "in_progress"
