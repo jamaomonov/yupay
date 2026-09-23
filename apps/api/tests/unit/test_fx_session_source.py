@@ -59,12 +59,13 @@ class _Factory:
 
 async def test_a_lent_session_is_used_and_the_pool_is_left_alone() -> None:
     """The fix, in one assertion: no second connection is taken."""
-    lent = _Session()
+    lent: Any = _Session()
     factory = _Factory()
 
     async with fx_session(db=lent, session_factory=_as_factory(factory)) as session:
-        assert session is lent
+        borrowed: Any = session
 
+    assert borrowed is lent
     assert factory.calls == 0, "a second connection was taken while the first was held"
 
 
@@ -73,10 +74,10 @@ async def test_a_lent_session_outlives_the_lookup() -> None:
     borrower reads and hands it back, it does not own it."""
     lent = _Session()
 
-    async with fx_session(db=lent, session_factory=None):
+    async with fx_session(db=_as_session(lent), session_factory=None):
         pass
 
-    assert lent.closed is False
+    assert lent.closed is False, "the borrower closed a session it does not own"
 
 
 async def test_a_caller_without_a_session_still_gets_one() -> None:
@@ -85,8 +86,9 @@ async def test_a_caller_without_a_session_still_gets_one() -> None:
     factory = _Factory()
 
     async with fx_session(db=None, session_factory=_as_factory(factory)) as session:
-        assert session is factory.made[0]
+        opened: Any = session
 
+    assert opened is factory.made[0]
     assert factory.calls == 1
     assert factory.made[0].closed is True
 
@@ -102,3 +104,10 @@ def _as_factory(factory: _Factory) -> Any:
     """The real parameter is an ``async_sessionmaker``; the fake only needs to
     be callable, and typing it as such would be a lie either way."""
     return factory
+
+
+def _as_session(session: _Session) -> Any:
+    """Same, for the lent session. What is under test is that the object comes
+    back untouched — making the fake a real ``AsyncSession`` would need a live
+    engine and would test SQLAlchemy rather than this."""
+    return session
