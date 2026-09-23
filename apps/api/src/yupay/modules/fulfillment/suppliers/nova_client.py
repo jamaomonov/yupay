@@ -356,6 +356,21 @@ class NovaClient:
         )
         return _order_with_debit(body)
 
+    async def list_orders(self, *, limit: int = 50, page: int = 1) -> list[dict[str, Any]]:
+        """``GET /api/v2/orders`` — our recent orders, newest first.
+
+        The only way to find an order whose create response we never saw.
+        There are no filters: the endpoint takes ``page`` and ``limit`` and
+        nothing else, so the match happens on our side (``nova_adopt``).
+
+        Returns ``[]`` rather than raising when the envelope is not the shape
+        we expect — a probe that cannot read the list has not found anything,
+        which is the same answer as an empty list to every caller here.
+        """
+        body = await self._request("GET", "/api/v2/orders", params={"limit": limit, "page": page})
+        items = body.get("items")
+        return [row for row in items if isinstance(row, dict)] if isinstance(items, list) else []
+
     async def get_order(self, order_id: str) -> dict[str, Any]:
         """One order by their public id."""
         body = await self._request("GET", f"/api/v2/orders/{order_id}")

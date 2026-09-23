@@ -22,9 +22,11 @@ Two facts from their API shape this adapter:
 
 from __future__ import annotations
 
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 from typing import TYPE_CHECKING, Any
 
+from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.suppliers.amount import quantity_for
@@ -35,6 +37,12 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillResult,
     FulfillStatus,
     MoneyOutcome,
+)
+from yupay.modules.fulfillment.suppliers.nova_adopt import (
+    ADOPT_WINDOW_MINUTES,
+    AdoptKey,
+    find_order,
+    key_is_usable,
 )
 from yupay.modules.fulfillment.suppliers.nova_client import (
     NovaClient,
@@ -104,6 +112,32 @@ def _fields_from(item: OrderItem) -> dict[str, str]:
         if target and str(value).strip():
             out.setdefault(target, str(value).strip())
     return out
+
+
+def _parked_for_adoption(exc: Exception) -> FulfillResult:
+    """A create whose response was lost: in flight, not failed.
+
+    NOVA charges on create, so a transport failure there leaves the money
+    gone and the order's existence unknown. Declaring a failure invites a
+    human to retry it and buy a second time; declaring success would be a
+    lie. Parking says the true thing — we do not know yet — and
+    ``check_status`` goes looking (``nova_adopt``).
+
+    Deliberately id-less and deliberately ungraded: ``money_outcome`` stays
+    ``None`` because an ``in_progress`` result is not a failure and the saga
+    refuses a money verdict on one. The transport reason survives in the
+    metadata, where ``ReadTimeout`` now actually says something (see
+    ``base.transport_error_text``).
+    """
+    return FulfillResult(
+        outcome="in_progress",
+        external_order_id=None,
+        artifact_kind=None,
+        artifact=None,
+        error=None,
+        extra_metadata={"supplier": "nova", "nova_create_unresolved": str(exc)[:200]},
+        money_outcome=None,
+    )
 
 
 class NovaFulfiller(Fulfiller):
@@ -254,9 +288,12 @@ class NovaFulfiller(Fulfiller):
                 _without_our_inputs(str(exc), fields), money_outcome=_refusal_money(exc)
             ) from exc
         except NovaUnavailableError as exc:
-            # A transport failure carries no body, so there is nothing of ours
-            # in it to take back out.
-            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+            # The create is the call that spends, so a lost response is the
+            # one moment we must not declare anything. Park id-less and let
+            # the poller find the order: on 2026-09-23 NOVA created it eight
+            # seconds *after* our timeout, which a one-shot lookup here would
+            # have missed. See ``nova_adopt``.
+            return _parked_for_adoption(exc)
 
         return _finish(obj)
 
@@ -306,7 +343,7 @@ class NovaFulfiller(Fulfiller):
                 )
             raise FulfillerError(str(exc), money_outcome=_refusal_money(exc)) from exc
         except NovaUnavailableError as exc:
-            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+            return _parked_for_adoption(exc)
 
         return _finish(obj)
 
@@ -345,7 +382,7 @@ class NovaFulfiller(Fulfiller):
                 money_outcome=_refusal_money(exc),
             ) from exc
         except NovaUnavailableError as exc:
-            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+            return _parked_for_adoption(exc)
 
         return _finish(obj)
 
@@ -422,9 +459,68 @@ class NovaFulfiller(Fulfiller):
                 money_outcome=_refusal_money(exc),
             ) from exc
         except NovaUnavailableError as exc:
-            raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
+            return _parked_for_adoption(exc)
 
         return _finish(obj)
+
+    async def _adopt_or_wait(self, db: AsyncSession, task: FulfillmentTask) -> FulfillStatus:
+        """Look for the order this id-less task paid for, and adopt it if found.
+
+        The create charged us and its response was lost. NOVA's order list is
+        the only way to learn whether the order exists, and it may not exist
+        *yet* — on 2026-09-23 it appeared eight seconds after our timeout — so
+        this runs on every poll rather than once.
+
+        Three answers, and they are genuinely different:
+
+        - **found** — record the id in ``extra_metadata`` and report the
+          order's real state, so the next poll goes straight to it;
+        - **not yet** — stay ``in_progress`` and look again, until
+          ``ADOPT_WINDOW_MINUTES`` have passed since the task was created;
+        - **past the window** — fail, with a message that names the runbook.
+          By then a landed create would be findable, so its absence is
+          evidence the create never happened. The money outcome is still
+          ``UNKNOWN``, not ``RETURNED``: evidence is not proof, and a wrong
+          ``RETURNED`` here would refund a customer who has their diamonds.
+
+        An outage while probing is not "not found" — it propagates, because
+        failing a task because NOVA was unreachable would invite exactly the
+        second purchase this whole path exists to prevent.
+        """
+        key = await _adopt_key_for(db, task)
+        found = None
+        if key is not None:
+            found = await find_order(self._client(), key=key, since=task.created_at)
+
+        if found is not None:
+            result = _result(found)
+            extra = dict(result.extra_metadata or {})
+            extra["nova_order_id"] = str(found.get("id") or "")
+            extra["nova_adopted"] = True
+            return FulfillStatus(
+                outcome=result.outcome,
+                artifact_kind=result.artifact_kind,
+                artifact=result.artifact,
+                error=result.error,
+                extra_metadata=extra,
+                money_outcome=result.money_outcome,
+            )
+
+        waited = now() - task.created_at
+        if waited < timedelta(minutes=ADOPT_WINDOW_MINUTES):
+            return FulfillStatus(
+                outcome="in_progress",
+                artifact_kind=None,
+                artifact=None,
+                error=None,
+                money_outcome=None,
+            )
+        raise FulfillerError(
+            "nova create was lost and no matching order appeared in "
+            f"{ADOPT_WINDOW_MINUTES} minutes — check NOVA's panel before retrying "
+            "(docs/runbooks/nova.md)",
+            money_outcome=_MAY_HAVE_SPENT,
+        )
 
     async def check_status(
         self,
@@ -437,16 +533,16 @@ class NovaFulfiller(Fulfiller):
             # order has been placed. A key that went missing since says
             # nothing about the money it was spent with.
             raise FulfillerError("NOVA_API_KEY is not configured", money_outcome=_MAY_HAVE_SPENT)
-        if not task.external_order_id:
-            # The create never got far enough to give us an id — the
-            # reconciler keeps looking rather than treating this as decided.
-            return FulfillStatus(
-                outcome="in_progress",
-                artifact_kind=None,
-                artifact=None,
-                error=None,
-                money_outcome=None,
-            )
+        # An id adopted on an earlier poll counts as ours — the reconciler
+        # merges ``extra_metadata`` onto the task but does not move it into
+        # the ``external_order_id`` column, so read both.
+        order_id = task.external_order_id or str(task.extra_metadata.get("nova_order_id") or "")
+        if not order_id:
+            # The create never got far enough to give us an id. Go looking
+            # before deciding anything: NOVA charges on create, so the order
+            # may well exist — on 2026-09-23 it appeared eight seconds after
+            # our request timed out.
+            return await self._adopt_or_wait(db, task)
 
         # Which of NOVA's two APIs owns this order. `/api/v2/orders/{id}` does
         # not know a Fragment one, and asking it anyway does not 404 — the
@@ -458,9 +554,9 @@ class NovaFulfiller(Fulfiller):
         try:
             fragment = await _is_fragment_task(db, task)
             obj = (
-                await self._client().get_fragment_order(task.external_order_id)
+                await self._client().get_fragment_order(order_id)
                 if fragment
-                else await self._client().get_order(task.external_order_id)
+                else await self._client().get_order(order_id)
             )
         except (NovaError, NovaUnavailableError) as exc:
             raise FulfillerError(str(exc), money_outcome=_MAY_HAVE_SPENT) from exc
@@ -519,6 +615,61 @@ class NovaFulfiller(Fulfiller):
 
 
 # ---------- helpers ----------
+
+
+async def _adopt_key_for(db: AsyncSession, task: FulfillmentTask) -> AdoptKey | None:
+    """Rebuild, from the order line, what the lost create would have sent.
+
+    Read back rather than stashed on the task: the line already holds the
+    player id, and copying it onto ``fulfillment_tasks`` would spread a piece
+    of PII across a second table to save one query (AGENTS.md §9).
+
+    ``None`` when the line or its mapping is gone, or when the mapping does
+    not name enough to identify an order — :func:`key_is_usable` decides that,
+    because a half-built key matches somebody else's order rather than none.
+    """
+    from sqlalchemy import select
+
+    from yupay.modules.orders.models import OrderItem
+
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one_or_none()
+    if item is None:
+        return None
+    try:
+        mapping = await _mapping_for(db, sku_id=str(item.sku_id))
+    except FulfillerError:
+        return None
+
+    category_id = str(mapping.external_product_id or "").strip()
+    offer_id = str(mapping.external_variant_id or "").strip()
+    if mapping.kind == _VOUCHER_KIND:
+        key = AdoptKey(
+            kind="gift_card",
+            category_id=category_id,
+            card_id=offer_id,
+            quantity=max(1, item.qty),
+        )
+    elif category_id == STEAM_SENTINEL:
+        key = AdoptKey(
+            kind="steam_topup", steam_login=str(_fields_from(item).get("steam_login") or "")
+        )
+    elif category_id in (FRAGMENT_STARS, FRAGMENT_PREMIUM):
+        # Fragment orders carry the key we sent, which makes these exact
+        # rather than inferred — and the task id is what we send.
+        key = AdoptKey(
+            kind="STARS" if category_id == FRAGMENT_STARS else "PREMIUM",
+            idempotency_key=str(task.id),
+        )
+    else:
+        key = AdoptKey(
+            kind="topup",
+            category_id=category_id,
+            offer_id=offer_id,
+            player_id=str(_fields_from(item).get("player_id") or ""),
+        )
+    return key if key_is_usable(key) else None
 
 
 async def _is_fragment_task(db: AsyncSession, task: FulfillmentTask) -> bool:

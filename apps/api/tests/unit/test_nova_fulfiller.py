@@ -8,9 +8,10 @@ money being unaccounted for.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from types import SimpleNamespace
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from yupay.modules.fulfillment.suppliers.base import (
@@ -23,6 +24,7 @@ from yupay.modules.fulfillment.suppliers.nova import (
     NovaFulfiller,
     _mapping_for,
 )
+from yupay.modules.fulfillment.suppliers.nova_adopt import ADOPT_WINDOW_MINUTES
 from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
 from yupay.modules.fulfillment.suppliers.nova_grading import (
     LOW_BALANCE_ERROR,
@@ -212,11 +214,33 @@ async def test_refusals_are_graded_by_status(
     assert excinfo.value.money_outcome is money
 
 
-async def test_unreachable_on_the_create_may_have_spent(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = _FakeClient(raises=NovaUnavailableError("boom"))
-    with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(client, monkeypatch)
-    assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
+async def test_a_lost_create_response_parks_instead_of_failing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """NOVA charges on create, so a lost response is the one moment we must
+    not decide anything.
+
+    This used to raise with ``UNKNOWN``, which was honest about the money and
+    wrong about the outcome: it failed the task, and a failed task invites a
+    human to retry it and buy a second time. Production order 01a0cd88 is the
+    case — NOVA created the order eight seconds *after* our timeout and
+    delivered it, while our books said failed.
+
+    Parking keeps the task in flight so ``check_status`` can go looking
+    (``nova_adopt``). ``money_outcome`` is ``None`` because an ``in_progress``
+    result is not a failure and the saga refuses a verdict on one — the money
+    question is answered when the order is found or the window closes.
+    """
+    client = _FakeClient(raises=NovaUnavailableError("ReadTimeout"))
+
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id is None
+    assert result.money_outcome is None
+    # The transport reason survives, and since `transport_error_text` it is
+    # no longer the empty string it was on the night this happened.
+    assert "ReadTimeout" in str(result.extra_metadata.get("nova_create_unresolved"))
 
 
 async def test_low_balance_is_a_stall_not_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -263,15 +287,67 @@ async def test_an_unconfigured_key_never_calls(monkeypatch: pytest.MonkeyPatch) 
     assert client.calls == []
 
 
-async def test_check_status_without_an_id_stays_in_progress(
+class _NoLineDB:
+    """A session whose every lookup comes back empty.
+
+    Enough for the adoption path: with no order line there is nothing to
+    rebuild a search key from, so the probe is skipped and the task falls
+    through to the wait-or-give-up decision these two tests are about. A task
+    whose line has been deleted behaves exactly this way in production.
+    """
+
+    async def execute(self, *_args: Any, **_kw: Any) -> Any:
+        return SimpleNamespace(scalar_one_or_none=lambda: None, scalars=lambda: iter(()))
+
+
+async def test_check_status_without_an_id_looks_for_the_order_then_waits(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    task = SimpleNamespace(external_order_id=None, extra_metadata={})
+    """An id-less task has work to do before it can say anything.
+
+    It stays ``in_progress`` as before — but now because the search came back
+    empty and the window is still open, not because nobody looked.
+    """
+    task = SimpleNamespace(
+        id="task-1",
+        order_item_id="item-1",
+        external_order_id=None,
+        extra_metadata={},
+        created_at=datetime.now(UTC),
+    )
     status = await _fulfiller(_FakeClient(), monkeypatch).check_status(
-        db=None,  # type: ignore[arg-type]
+        db=cast(Any, _NoLineDB()),
         task=task,  # type: ignore[arg-type]
     )
     assert status.outcome == "in_progress"
+
+
+async def test_an_id_less_task_gives_up_once_the_window_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A landed create is findable within minutes, so its absence after the
+    window is evidence the create never happened.
+
+    Evidence, not proof — the money stays ``UNKNOWN`` rather than
+    ``RETURNED``, because a wrong ``RETURNED`` refunds a customer who already
+    has their goods.
+    """
+    task = SimpleNamespace(
+        id="task-1",
+        order_item_id="item-1",
+        external_order_id=None,
+        extra_metadata={},
+        created_at=datetime.now(UTC) - timedelta(minutes=ADOPT_WINDOW_MINUTES + 1),
+    )
+
+    with pytest.raises(FulfillerError) as excinfo:
+        await _fulfiller(_FakeClient(), monkeypatch).check_status(
+            db=cast(Any, _NoLineDB()),
+            task=task,  # type: ignore[arg-type]
+        )
+
+    assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
+    assert "nova.md" in str(excinfo.value)
 
 
 async def test_check_status_that_cannot_read_says_unknown(
@@ -489,16 +565,19 @@ async def test_a_steam_low_balance_is_a_stall_not_a_failure(
     assert result.money_outcome is None
 
 
-async def test_a_steam_call_unreachable_may_have_spent(monkeypatch: pytest.MonkeyPatch) -> None:
-    client = _FakeClient(raises=NovaUnavailableError("boom"))
-    with pytest.raises(FulfillerError) as excinfo:
-        await _fulfill(
-            client,
-            monkeypatch,
-            item=_item(fulfillment_data={"steam_login": "someone"}),
-            mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
-        )
-    assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
+async def test_a_lost_steam_create_parks_too(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Every create spends, so every one of them parks — not just top-ups."""
+    client = _FakeClient(raises=NovaUnavailableError("ReadTimeout"))
+
+    result = await _fulfill(
+        client,
+        monkeypatch,
+        item=_item(fulfillment_data={"steam_login": "someone"}),
+        mapping=_mapping(external_product_id=STEAM_SENTINEL, external_variant_id=""),
+    )
+
+    assert result.outcome == "in_progress"
+    assert result.money_outcome is None
 
 
 async def test_the_steam_charge_reaches_extra_metadata(monkeypatch: pytest.MonkeyPatch) -> None:

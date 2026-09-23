@@ -760,51 +760,60 @@ Only 422/404/400/409 on the _check_ call count as "about what we sent" and
 do **not** open the breaker (a customer's mistyped id must not silence the
 fallback for everyone); a transport failure, a 5xx, 401, 403, or 429 does.
 
-## NOVA delivered it, we recorded a failure
+## A create whose response was lost
 
-The shape to recognise, first seen 2026-09-23 on order
-`01a0cd88-fa53-7ef2-b515-1eae502fa938` (Free Fire CIS, 110 diamonds):
+NOVA charges on create, so a timeout there leaves the money gone and the
+order's existence unknown. Since 2026-09-23 this **recovers by itself** and
+the shape below is what you should see instead of a failed task.
 
-- the task is `failed` on the **first** attempt, with no `external_order_id`;
-- `last_error` is an **empty string**;
-- there is no `nova.request` line in the worker log for it — that line is
-  written _after_ the response, so a call that never came back writes nothing;
-- roughly 20 seconds pass between the attempt and the failure;
-- and NOVA's own panel shows the order delivered.
+What happens now: the create parks the task `in_progress` with no id and
+`nova_create_unresolved` in its metadata. Every poll then reads
+`GET /api/v2/orders`, matches our line against the list, and adopts the order
+when it appears — recording `nova_order_id` so the next poll goes straight to
+it. Matching is by kind: `category_id` + `offer_id` + `player_id` for a
+top-up, `category_id` + `card_id` + quantity for a gift card, `steamLogin`
+for Steam, and the `idempotency_key` we sent for Stars and Premium, which
+makes those two exact.
 
-That is a read timeout on `POST /api/v2/topups/order`
-(`nova_request_timeout_seconds`, 20 s). The request landed, NOVA took the
-money and delivered, and the response was lost on the way back. Since
-2026-09-23 the empty message reads `ReadTimeout` instead — every httpx
-transport exception stringifies to `""`, which is why the alert used to say
-nothing at all (`suppliers/base.transport_error_text`).
+**Adoption is bounded below by the task's creation time, and that bound is
+load-bearing.** On 2026-09-23 the same customer bought the same 110 Diamonds
+twice, ninety seconds apart, and both NOVA orders completed. Without the
+bound the second task would have adopted the first order and reported a
+delivery belonging to another line.
 
-**The order does not recover by itself, and this is the part to understand.**
-`nova_reconcile` sweeps only tasks in `in_progress`, so a failed one is
-invisible to it — and even if it looked, there is no `external_order_id` to
-poll, because we never saw the response that carries it. NOVA exposes
-`GET /api/v2/orders/{id}` and nothing that lists or searches orders, so **we
-cannot find a lost order from our side at all.** Only their panel can.
+The order can appear _after_ we give up — in the incident that named this
+section it was created eight seconds past our 20 s timeout
+(`nova_request_timeout_seconds`). That is why the search runs on every poll
+rather than once at create time.
 
-What to do:
+**After `ADOPT_WINDOW_MINUTES` (30) with nothing found**, the task fails with
+a message pointing here. By then a landed create would be findable, so its
+absence is evidence the create never happened — evidence, not proof, which is
+why the money outcome stays `UNKNOWN` rather than `RETURNED`. A wrong
+`RETURNED` refunds a customer who already has their goods.
 
-1. Find the order in NOVA's panel by player id and time. The idempotency key
-   we sent is the fulfilment task's id — quote it to their support if the
-   panel will not search on the player.
-2. If it was delivered: force-complete the task from the Fulfilment Inbox
-   with a note naming this runbook section. Do **not** retry — a retry is a
-   second purchase (their two documents disagree on what a reused
-   `Idempotency-Key` does, so it cannot be relied on to be free).
-3. If it was not delivered: retry normally.
+An outage during the probe never counts as "not found": it propagates, so a
+task is not failed merely because NOVA was unreachable.
 
-**The open gap.** A lost response on the call that spends currently fails the
-task rather than parking it. G-Engine's equivalent returns `in_progress` so
-its poller can settle it, and the gifts path parks id-less and adopts the
-order on the next call — neither is available here without a NOVA endpoint to
-look an order up by. Closing this properly means asking NOVA for either a
-recent-orders list or a lookup by `Idempotency-Key`; until then the shape
-above is operator work, and the 20 s timeout is the knob that decides how
-often it happens.
+### When you still have to look yourself
+
+A task that failed with the window message, or anything from before
+2026-09-23:
+
+1. Find the order in NOVA's panel, or with the same list the poller reads:
+   `GET /api/v2/orders?limit=50` — `page` and `limit` are its only
+   parameters, there are no filters.
+2. Delivered: force-complete the task from the Fulfilment Inbox. Do **not**
+   retry — a retry is a second purchase, since their two documents disagree
+   about what a reused `Idempotency-Key` does.
+3. Not delivered: retry normally.
+
+The historical shape, for reading old tasks: `failed` on the first attempt,
+no `external_order_id`, an **empty** `last_error`, no `nova.request` line in
+the worker log, and roughly 20 seconds between the attempt and the failure.
+The empty message was its own bug — every httpx transport exception
+stringifies to `""` — and now reads `ReadTimeout`
+(`suppliers/base.transport_error_text`).
 
 ## What the logs say
 
