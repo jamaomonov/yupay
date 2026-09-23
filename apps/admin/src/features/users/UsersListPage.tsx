@@ -90,8 +90,13 @@ export function UsersListPage() {
               {initials(u.display_name)}
             </div>
           )}
-          <div className="min-w-0">
-            <div className="truncate font-medium">
+          {/* Capped in pixels: `truncate` alone does nothing in a
+              `table-auto` column, which grows to fit its widest cell. The
+              longest names in production are 64 characters of cuneiform,
+              which is far wider than 64 characters of Latin — so the cap is
+              a width, not a length. The full name stays in `title`. */}
+          <div className="min-w-0 max-w-[260px]">
+            <div className="truncate font-medium" title={u.display_name ?? undefined}>
               {u.display_name ?? u.email ?? u.id.slice(0, 8)}
             </div>
             <div className="truncate text-xs text-[var(--text-secondary)]">

@@ -56,7 +56,10 @@ export function OrderActorRef({
         </span>
       );
     case "guest":
-      return <span className={muted}>{actor.email}</span>;
+      // The one arm with no truncate at all. Guest addresses top out at 38
+      // characters today, which is not a reason to be the only cell that can
+      // push a column — it is a reason this was never noticed.
+      return <span className={`block max-w-[220px] truncate ${muted}`}>{actor.email}</span>;
     case "merchant":
       return (
         <span className="inline-flex min-w-0 items-center gap-1.5">
@@ -69,7 +72,7 @@ export function OrderActorRef({
               // wins and the link silently goes to the order instead.
               e.stopPropagation();
             }}
-            className={`truncate underline-offset-2 hover:underline ${className ?? ""}`}
+            className={`max-w-[220px] truncate underline-offset-2 hover:underline ${className ?? ""}`}
           >
             {/* The id when there is no title — which `ON DELETE RESTRICT` on
                 `orders.merchant_id` makes unreachable. «Мерчант —» would say
