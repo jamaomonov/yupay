@@ -44,14 +44,22 @@ class _FakeClient:
         order: dict[str, Any] | None = None,
         steam_order: dict[str, Any] | None = None,
         raises: Exception | None = None,
+        offers: dict[str, Any] | None = None,
     ):
         self._order = order or {}
         self._steam_order = steam_order if steam_order is not None else (order or {})
         self._raises = raises
+        # No declaration by default, so every test that is not about field
+        # shapes keeps exercising the legacy rename — which is still the
+        # fallback in production when NOVA will not answer.
+        self._offers = offers or {}
         self.calls: list[dict[str, Any]] = []
         self.steam_calls: list[dict[str, Any]] = []
         self.fragment_calls: list[tuple[str, dict[str, Any]]] = []
         self.giftcard_calls: list[dict[str, Any]] = []
+
+    async def get_offers(self, category_id: str) -> dict[str, Any]:
+        return self._offers
 
     async def create_topup_order(self, **kwargs: Any) -> dict[str, Any]:
         self.calls.append(kwargs)
@@ -241,6 +249,68 @@ async def test_a_lost_create_response_parks_instead_of_failing(
     # The transport reason survives, and since `transport_error_text` it is
     # no longer the empty string it was on the night this happened.
     assert "ReadTimeout" in str(result.extra_metadata.get("nova_create_unresolved"))
+
+
+async def test_the_order_is_built_from_novas_own_field_spec(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Order 01a0ce52, the other way round.
+
+    Honkai Star Rail declares ``server`` as a select of lower-case values; we
+    used to send ``server_id`` with our capitalised one and were refused with
+    ``Field "server" is required.`` Now the payload is built from what they
+    declare, so the key and the value are both theirs.
+    """
+    client = _FakeClient(
+        order={"id": "ord-1", "status": "completed"},
+        offers={
+            "fields": [
+                {"key": "player_id", "type": "text"},
+                {
+                    "key": "server",
+                    "type": "select",
+                    "options": [
+                        {"label": "Europe", "value": "europe"},
+                        {"label": "Asia", "value": "asia"},
+                    ],
+                },
+            ]
+        },
+    )
+
+    await _fulfill(
+        client,
+        monkeypatch,
+        item=_item(fulfillment_data={"player_id": "801234567", "server": "Europe"}),
+        mapping=_mapping(
+            external_product_id="honkai_star_rail_global",
+            external_variant_id="express_supply_pass",
+        ),
+    )
+
+    assert client.calls[0]["fields"] == {"player_id": "801234567", "server": "europe"}
+
+
+async def test_a_silent_spec_call_falls_back_rather_than_refusing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The probe is optional; the sale is not.
+
+    With no declaration the old rename still runs, which is exactly right for
+    the categories it always suited — Mobile Legends among them.
+    """
+    client = _FakeClient(order={"id": "ord-1", "status": "completed"})
+
+    await _fulfill(
+        client,
+        monkeypatch,
+        item=_item(fulfillment_data={"player_id": "123456789", "server": "12345"}),
+        mapping=_mapping(
+            external_product_id="mobile_legends_ru", external_variant_id="86_diamonds"
+        ),
+    )
+
+    assert client.calls[0]["fields"] == {"player_id": "123456789", "server_id": "12345"}
 
 
 async def test_low_balance_is_a_stall_not_a_failure(monkeypatch: pytest.MonkeyPatch) -> None:

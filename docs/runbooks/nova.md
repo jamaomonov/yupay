@@ -760,6 +760,46 @@ Only 422/404/400/409 on the _check_ call count as "about what we sent" and
 do **not** open the breaker (a customer's mistyped id must not silence the
 fallback for everyone); a transport failure, a 5xx, 401, 403, or 429 does.
 
+## «Field "…" is required» на создании заказа
+
+NOVA объявляет свои поля **на каждую категорию** в
+`GET /api/v2/topups/offers?category_id=…`, и по двадцати категориям, которые
+мы замаплены, форма бывает четырёх видов:
+
+| Вид                                                                       | Категории                                                     |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `player_id`                                                               | Free Fire, Blood Strike, PUBG, Honor of Kings, Delta Force, … |
+| `player_id` + `server_id` (свободный ввод)                                | Mobile Legends, Magic Chess                                   |
+| `player_id` + `server` (**select**: `asia`/`america`/`europe`/`tw_hk_mo`) | Genshin, Honkai Star Rail                                     |
+| другой идентификатор                                                      | `imo_id`, `likee_id`, `bigo_id`                               |
+
+До 2026-09-23 мы переименовывали жёстко — наш `server` в их `server_id` — и
+это верно ровно для второй строки. Заказ `01a0ce52` (Honkai Star Rail) был
+отклонён с `Field "server" is required.`, а десять SKU IMO, маршрутизированных
+на NOVA, отклонялись бы так же из-за `imo_id`, просто туда ещё не было
+заказа.
+
+Теперь payload строится из их объявления (`suppliers/nova_fields.py`): наши
+поля ложатся на их **по роли**, а не по имени, а для `select` ещё и значение
+переводится — наши формы писались под G2B и хранят `Europe`, NOVA ждёт
+`europe`. Сопоставление без учёта регистра, сначала по их `value`, затем по
+`label`.
+
+Если ошибка всё-таки появилась:
+
+1. Посмотрите, что категория объявляет сейчас:
+   `GET /api/v2/topups/offers?category_id=<категория из маппинга>`.
+2. Сверьте с ключами нашей формы:
+   `SELECT jsonb_array_elements(required_fields)->>'key' FROM products WHERE slug = '…'`.
+3. Если их поле не опознаётся по роли — ключ не оканчивается на `_id` и не
+   похож на сервер — добавьте его в `_THEIR_SERVER_KEYS` или в список наших
+   синонимов в `nova_fields.py`. **Переименовывать поле в нашей форме не
+   надо**: её ключи видит покупатель через `label`, и они общие с G2B.
+
+Запрос формы — best-effort: если NOVA не ответила, работает прежнее
+переименование. Это осознанно, потому что для двух категорий оно и так
+верное, а необязательный вопрос не должен отменять продажу.
+
 ## A create whose response was lost
 
 NOVA charges on create, so a timeout there leaves the money gone and the

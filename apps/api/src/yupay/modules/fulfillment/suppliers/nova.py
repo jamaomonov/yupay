@@ -49,6 +49,7 @@ from yupay.modules.fulfillment.suppliers.nova_client import (
     NovaError,
     NovaUnavailableError,
 )
+from yupay.modules.fulfillment.suppliers.nova_fields import build_fields, field_specs
 from yupay.modules.fulfillment.suppliers.nova_grading import (
     _MAY_HAVE_SPENT,
     _NOTHING_SPENT,
@@ -262,7 +263,7 @@ class NovaFulfiller(Fulfiller):
                 "no active nova mapping for this SKU", money_outcome=_NOTHING_SPENT
             )
 
-        fields = _fields_from(item)
+        fields = await self._fields_for(category_id, item)
         if not fields:
             raise FulfillerError(
                 "no nova fields could be built from fulfillment_data",
@@ -296,6 +297,45 @@ class NovaFulfiller(Fulfiller):
             return _parked_for_adoption(exc)
 
         return _finish(obj)
+
+    async def _fields_for(self, category_id: str, item: OrderItem) -> dict[str, str]:
+        """Their ``fields`` payload, shaped the way *this category* asks.
+
+        NOVA declares its inputs per category, and across the twenty we map
+        they take four different shapes — ``player_id`` alone, plus a
+        free-form ``server_id``, plus a ``server`` **select**, or a
+        differently named identifier like ``imo_id``. The fixed rename this
+        replaces got two of those right and refused order 01a0ce52 (Honkai
+        Star Rail) with ``Field "server" is required.``
+
+        One extra ``GET /topups/offers`` per order buys that. It runs on the
+        worker, not a request, and the alternative is a failed sale plus
+        manual work — several orders of magnitude more expensive than a round
+        trip to a supplier we are about to call anyway.
+
+        Falls back to the old fixed rename when they will not tell us: an
+        outage on the spec call must not block a sale that would have gone
+        through, and for the two categories the rename already suited it is
+        exactly right.
+        """
+        legacy = _fields_from(item)
+        try:
+            body = await self._client().get_offers(category_id)
+        except Exception as exc:  # noqa: BLE001 -- a probe must never block a sale
+            # Deliberately wider than NOVA's two error types, for the reason
+            # G-Engine's balance pre-flight is: this is an optional question
+            # asked before the real call, and *any* way it can fail — a
+            # changed payload, an unreachable host — must fall through to the
+            # rename rather than refuse an order we could have placed.
+            log.info("nova.field_spec_unavailable", category_id=category_id, error=str(exc)[:120])
+            return legacy
+        specs = field_specs(body)
+        if not specs:
+            # Told nothing is not the same as "needs nothing" — the two look
+            # identical from here and mean opposite things.
+            return legacy
+        built = build_fields(specs, item.fulfillment_data or {})
+        return built or legacy
 
     async def _fulfill_giftcard(
         self, *, item: OrderItem, mapping: Any, idempotency_key: str
