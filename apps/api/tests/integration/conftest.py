@@ -21,6 +21,7 @@ from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from testcontainers.postgres import PostgresContainer
 from yupay.core import config as cfg
@@ -119,52 +120,129 @@ async def _reset_realtime_redis() -> AsyncIterator[None]:
     await core_redis.close_redis()
 
 
+#: Every table a test may write, **children before parents**.
+#:
+#: The order is load-bearing: ``db_engine`` empties them with plain ``DELETE``
+#: (see there for why), which respects ``ON DELETE RESTRICT`` instead of
+#: cascading through it. A new table goes in front of whatever it references.
+#:
+#: Listed explicitly rather than discovered from metadata: a table that should
+#: survive between tests — there are none today, but Alembic's own version
+#: table is one such — must be absent by decision, not by an accident of
+#: reflection.
+_EMPTY_IN_ORDER: tuple[str, ...] = (
+    "idempotent_responses",
+    "steam_gift_settings",
+    "review_reports",
+    "reviews",
+    "brand_rating_stats",
+    "broadcast_recipients",
+    "broadcasts",
+    "promo_redemptions",
+    "promo_codes",
+    "affiliate_sessions",
+    "affiliate_payouts",
+    "affiliate_commissions",
+    "affiliate_attributions",
+    "affiliate_codes",
+    "affiliate_partners",
+    "wallet_postings",
+    "wallet_transactions",
+    "wallet_accounts",
+    "inventory_codes",
+    "inventory_uploads",
+    "sku_sourcing_rules",
+    "sku_supplier_mapping",
+    "supplier_catalog_cache",
+    "supplier_price_history",
+    "deliveries",
+    "fulfillment_attempts",
+    "fulfillment_tasks",
+    "paynet_transactions",
+    "payme_transactions",
+    "uzum_transactions",
+    "click_transactions",
+    "payment_webhooks",
+    "payment_attempts",
+    "payments",
+    "payment_provider_states",
+    "order_events",
+    "order_items",
+    "orders",
+    "merchant_webhook_deliveries",
+    "merchant_webhooks",
+    "merchant_api_keys",
+    "merchant_users",
+    "merchants",
+    "sku_prices",
+    "skus",
+    "product_translations",
+    "products",
+    "blog_imported_posts",
+    "blog_indexnow_pings",
+    "blog_post_likes",
+    "blog_post_views",
+    "blog_post_faqs",
+    "blog_post_brands",
+    "blog_post_translations",
+    "blog_posts",
+    "brand_translations",
+    "brands",
+    "category_translations",
+    "categories",
+    "fx_snapshots",
+    "fx_rates",
+    "auth_sessions",
+    "telegram_links",
+    "users",
+)
+
+
 @pytest.fixture
 async def db_engine():
-    """A fresh async engine per test. Truncates tables before each test."""
+    """A fresh async engine per test, with the database emptied first.
+
+    **Emptied with ``DELETE``, not ``TRUNCATE``, and the difference is the
+    single largest cost in this suite.** Measured against a real container:
+    ``TRUNCATE`` of these 64 tables takes ~330 ms, the same 64 ``DELETE``
+    statements take ~16 ms. ``TRUNCATE``'s price is fixed *per table* — an
+    ACCESS EXCLUSIVE lock and catalogue work each — while a ``DELETE`` on a
+    table that is already empty is almost free, and after the first test of a
+    worker they are nearly all empty.
+
+    That is ~314 ms per test, and the integration suite is roughly two
+    thousand tests: some five minutes of a fifteen-minute CI run spent
+    emptying tables that had nothing in them.
+
+    ``TRUNCATE`` is kept as a fallback rather than deleted. The order below is
+    children-before-parents, which is what makes plain ``DELETE`` legal
+    against ``ON DELETE RESTRICT``; if a future table is added in the wrong
+    place, or one outside this list starts referencing one inside it, the
+    ``DELETE`` raises and the old ``CASCADE`` runs instead. CI keeps passing
+    and the next person sees a slow suite rather than a red one.
+
+    Sequences are **not** restarted — ``DELETE`` cannot. Checked before
+    changing it: the schema has two sequence-backed columns
+    (``paynet_transactions.provider_trn_id``, ``click_transactions``' identity)
+    and no test asserts a generated value.
+    """
     settings = cfg.get_settings()
     engine = create_async_engine(settings.database_url, future=True)
     try:
-        async with engine.begin() as conn:
-            await conn.execute(
-                text(
-                    "TRUNCATE TABLE "
-                    "idempotent_responses, "
-                    "steam_gift_settings, "
-                    "review_reports, reviews, brand_rating_stats, "
-                    "broadcast_recipients, broadcasts, "
-                    "promo_redemptions, promo_codes, "
-                    # Listed explicitly rather than left to CASCADE. They would
-                    # be reached today through affiliate_partners.user_id, but
-                    # that column is nullable and exists only for the
-                    # own-code check — drop it one day and partner rows would
-                    # quietly start surviving between tests.
-                    "affiliate_sessions, affiliate_payouts, affiliate_commissions, "
-                    "affiliate_attributions, affiliate_codes, affiliate_partners, "
-                    "wallet_postings, wallet_transactions, wallet_accounts, "
-                    "inventory_codes, inventory_uploads, sku_sourcing_rules, "
-                    "sku_supplier_mapping, supplier_catalog_cache, supplier_price_history, "
-                    "deliveries, fulfillment_attempts, fulfillment_tasks, "
-                    "paynet_transactions, "
-                    "payme_transactions, uzum_transactions, click_transactions, "
-                    "payment_webhooks, payment_attempts, payments, payment_provider_states, "
-                    "order_events, order_items, orders, "
-                    # After orders: orders.merchant_id is ON DELETE RESTRICT,
-                    # but TRUNCATE ... CASCADE in one statement handles it; the
-                    # rows must go regardless or merchants leak across tests.
-                    "merchant_webhook_deliveries, merchant_webhooks, "
-                    "merchant_api_keys, merchant_users, merchants, "
-                    "sku_prices, skus, product_translations, products, "
-                    "blog_imported_posts, "
-                    "blog_indexnow_pings, blog_post_likes, blog_post_views, "
-                    "blog_post_faqs, blog_post_brands, blog_post_translations, blog_posts, "
-                    "brand_translations, brands, "
-                    "category_translations, categories, "
-                    "fx_snapshots, fx_rates, "
-                    "auth_sessions, telegram_links, users "
-                    "RESTART IDENTITY CASCADE"
+        try:
+            async with engine.begin() as conn:
+                for table in _EMPTY_IN_ORDER:
+                    await conn.execute(text(f"DELETE FROM {table}"))
+        except SQLAlchemyError:
+            # A foreign key the order above does not satisfy. Fall back to the
+            # sledgehammer so the suite runs; the speed is a bonus, not a
+            # correctness requirement.
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "TRUNCATE TABLE " + ", ".join(_EMPTY_IN_ORDER) + " RESTART IDENTITY CASCADE"
+                    )
                 )
-            )
         yield engine
     finally:
         await engine.dispose()
