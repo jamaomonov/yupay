@@ -31,11 +31,18 @@ from yupay.modules.fx.service import FxService, FxUnavailableError
 router = APIRouter(prefix="/catalog", tags=["catalog"])
 
 
-def _fx_or_none(currency: str | None) -> FxService | None:
-    """Build an FX service only when conversion is actually required."""
+def _fx_or_none(currency: str | None, db: AsyncSession) -> FxService | None:
+    """Build an FX service only when conversion is actually required.
+
+    ``db`` is the handler's own session, lent to the service so its settings
+    lookups do not take a *second* connection from the pool while this one is
+    still held. Twenty-four brand pages died on
+    ``QueuePool limit of size 10 overflow 10 reached`` on 2026-09-22 doing
+    exactly that — see ``fx.session_source``.
+    """
     if currency is None or currency.upper() == "USD":
         return None
-    return build_default_service()
+    return build_default_service(db=db)
 
 
 @router.get(
@@ -79,7 +86,7 @@ async def get_brand(
     currency: Annotated[str | None, Depends(resolve_currency)] = None,
 ) -> BrandDetailOut:
     """Brand page payload — used when a customer lands on /pubg-mobile."""
-    fx = _fx_or_none(currency)
+    fx = _fx_or_none(currency, db)
     try:
         brand = await get_brand_by_slug(db, slug, locale=locale, currency=currency, fx=fx)
     except FxUnavailableError:
@@ -102,7 +109,7 @@ async def get_products(
     brand: str | None = None,
 ) -> ProductListOut:
     """Localised product summaries with starting price."""
-    fx = _fx_or_none(currency)
+    fx = _fx_or_none(currency, db)
     try:
         items = await list_products(
             db,
@@ -129,7 +136,7 @@ async def get_product(
     currency: Annotated[str | None, Depends(resolve_currency)] = None,
 ) -> ProductDetailOut:
     """Full product page payload."""
-    fx = _fx_or_none(currency)
+    fx = _fx_or_none(currency, db)
     try:
         product = await get_product_by_slug(db, slug, locale=locale, currency=currency, fx=fx)
     except FxUnavailableError:
@@ -150,7 +157,7 @@ async def get_sku(
     currency: Annotated[str | None, Depends(resolve_currency)] = None,
 ) -> SkuOut:
     """Single SKU lookup."""
-    fx = _fx_or_none(currency)
+    fx = _fx_or_none(currency, db)
     try:
         sku = await get_sku_by_id(db, sku_id, currency=currency, fx=fx)
     except FxUnavailableError:

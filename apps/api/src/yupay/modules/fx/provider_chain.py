@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from yupay.core.errors import ValidationError
 from yupay.modules.fx.models import FxProviderSetting
 from yupay.modules.fx.providers.base import FxProvider
+from yupay.modules.fx.session_source import fx_session
 
 Kind = Literal["fiat", "crypto"]
 
@@ -80,6 +81,7 @@ async def load_chain(
     redis: Redis,
     *,
     session_factory: async_sessionmaker[AsyncSession] | None,
+    db: AsyncSession | None = None,
 ) -> list[ChainItem] | None:
     """Redis, then Postgres. ``None`` means 'use constructor order'.
 
@@ -108,10 +110,10 @@ async def load_chain(
             )
         if items:
             return _with_missing_defaults(items)
-    if session_factory is None:
-        return None
-    async with session_factory() as db:
-        items = await list_chain(db)
+    async with fx_session(db=db, session_factory=session_factory) as session:
+        if session is None:
+            return None
+        items = await list_chain(session)
     if not items:
         return None
     await write_chain_cache(redis, items)

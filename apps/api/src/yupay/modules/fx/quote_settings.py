@@ -20,6 +20,7 @@ from yupay.core.clock import now
 from yupay.modules.fx import cache
 from yupay.modules.fx.models import FxQuoteSetting
 from yupay.modules.fx.providers.base import Quote
+from yupay.modules.fx.session_source import fx_session
 
 MANUAL_SOURCE = "manual"
 
@@ -88,6 +89,7 @@ async def load_override(
     quote: str,
     *,
     session_factory: async_sessionmaker[AsyncSession] | None,
+    db: AsyncSession | None = None,
 ) -> ManualOverride | None:
     """Redis, then Postgres. Writes Redis on a DB hit (or a short negative cache).
 
@@ -101,10 +103,10 @@ async def load_override(
         cached = await cache.read_manual(redis, quote)
     if cached is not None:
         return _from_payload(cached)
-    if session_factory is None:
-        return None
-    async with session_factory() as db:
-        row = await db.get(FxQuoteSetting, quote.upper())
+    async with fx_session(db=db, session_factory=session_factory) as session:
+        if session is None:
+            return None
+        row = await session.get(FxQuoteSetting, quote.upper())
     if row is None:
         await cache.write_manual_absent(redis, quote)
         return None

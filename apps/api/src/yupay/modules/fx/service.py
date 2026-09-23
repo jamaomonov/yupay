@@ -65,15 +65,22 @@ class FxService:
         redis: Redis,
         settings: Settings | None = None,
         session_factory: async_sessionmaker[AsyncSession] | None = None,
+        db: AsyncSession | None = None,
     ) -> None:
         self._providers = list(providers)
         self._redis = redis
         self._settings = settings or get_settings()
         self._session_factory = session_factory
+        #: A session lent by the caller, when the caller has one. Settings
+        #: lookups borrow it instead of taking a second connection from the
+        #: same pool while the caller still holds the first — see
+        #: ``fx.session_source``. ``None`` for the scheduler, which holds no
+        #: session and must open its own.
+        self._db = db
 
     async def _ordered_providers(self) -> list[FxProvider]:
         """Admin chain when stored; otherwise the constructor list."""
-        chain = await load_chain(self._redis, session_factory=self._session_factory)
+        chain = await load_chain(self._redis, session_factory=self._session_factory, db=self._db)
         if chain is None:
             return list(self._providers)
         by_slug = {provider_slug(p): p for p in self._providers}
@@ -245,7 +252,7 @@ class FxService:
             override = override_cache[quote]
         else:
             override = await load_override(
-                self._redis, quote, session_factory=self._session_factory
+                self._redis, quote, session_factory=self._session_factory, db=self._db
             )
             if override_cache is not None:
                 override_cache[quote] = override

@@ -7,6 +7,7 @@ wire. Use :func:`build_default_service` from FastAPI deps, the scheduler, and te
 from __future__ import annotations
 
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import get_session_factory
@@ -26,6 +27,7 @@ def build_default_service(
     *,
     settings: Settings | None = None,
     redis: Redis | None = None,
+    db: AsyncSession | None = None,
 ) -> FxService:
     """Build an :class:`FxService` with every known adapter.
 
@@ -56,4 +58,7 @@ def build_default_service(
         redis=redis or get_redis(),
         settings=s,
         session_factory=get_session_factory(),
+        # Lent by a request handler that already holds one; ``None`` from the
+        # scheduler. See ``fx.session_source`` for what this prevents.
+        db=db,
     )

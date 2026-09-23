@@ -64,6 +64,45 @@ A burst of catalog browsing used to trip the global rule on its own. If you see
 a latency alert alongside a spike in `/gifts/catalog*` traffic and nothing else
 looks wrong, that was the old shape of this alert and should no longer happen.
 
+## `QueuePool limit ... reached` — the connection pool, not the database
+
+Sentry shows `TimeoutError: QueuePool limit of size 10 overflow 10 reached,
+connection timed out, timeout 30.00`, usually under a catalog route. Twenty
+connections is the ceiling (`core/db.py`: `pool_size=10, max_overflow=10`),
+and a request waits the full 30 s before failing, so a short burst produces a
+cluster of slow 500s rather than a fast one.
+
+**Check the amplification before the ceiling.** A handler holds its session
+for its whole lifetime. Any code it calls that opens a _second_ session from
+the same pool halves the effective capacity, and does it exactly under load,
+because that is when Redis misses and the database path runs at all. Ten
+concurrent requests are then enough to exhaust twenty connections.
+
+That is what happened on 2026-09-22 at 22:58 UTC: 24 brand pages, all in one
+minute, all `?currency=UZS`, all from `172.20.0.21` — the **web** container,
+whose ISR revalidation windows had lined up so it asked for every brand at
+once. `fx.load_override` was opening its own session inside a request that
+already held one. Since then a caller with a session lends it
+(`fx.session_source`), so the FX settings lookup costs no connection at all.
+
+To tell the two apart:
+
+```bash
+docker compose -f docker-compose.prod.yml logs api --since 24h -t \
+  | grep -i "QueuePool limit" | awk '{print substr($1,1,16)}' | sort | uniq -c
+```
+
+One tight cluster is a burst — look for what fanned out, and check the caller
+IP in the access log above the errors (`docker inspect` maps it to a
+container; `172.20.0.21` is web, `172.20.0.23` is caddy). A steady trickle
+across hours is a genuine capacity problem, and only then is raising
+`pool_size` the answer.
+
+**Raising the pool is the last move, not the first.** Postgres has its own
+`max_connections`, and the api, worker and scheduler each keep a pool, so the
+ceiling is shared. A leak or an amplification moved behind a bigger pool comes
+back at the next traffic level.
+
 ## Rate limits, and which one is biting
 
 There are two independent mechanisms. Both answer 429, and telling them apart
