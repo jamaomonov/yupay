@@ -34,6 +34,7 @@ from typing import Any
 import httpx
 
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.suppliers.base import transport_error_text
 
 log = get_logger("yupay.fulfillment.nova")
 
@@ -159,7 +160,7 @@ class NovaClient:
         except httpx.HTTPError as exc:
             # Network-level: nothing was decided upstream, which is a different
             # fact from a refusal and is graded differently by the caller.
-            raise NovaUnavailableError(str(exc)) from exc
+            raise NovaUnavailableError(transport_error_text(exc)) from exc
 
         text = resp.text[:500]
         log.info("nova.request", method=method, path=path, status=resp.status_code)
@@ -427,7 +428,7 @@ class NovaClient:
             async with self._session(timeout=timeout) as client:
                 resp = await client.request(method, path, headers=headers, **kwargs)
         except httpx.HTTPError as exc:
-            raise NovaUnavailableError(str(exc)) from exc
+            raise NovaUnavailableError(transport_error_text(exc)) from exc
 
         text = resp.text[:500]
         log.info("nova.fragment_request", method=method, path=path, status=resp.status_code)

@@ -27,6 +27,7 @@ import httpx
 
 from yupay.core.errors import UpstreamUnavailableError
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.suppliers.base import transport_error_text
 
 log = get_logger("yupay.fulfillment.g2b")
 
@@ -174,10 +175,12 @@ class G2bClient:
                         method=method,
                         path=path,
                         attempt=attempt,
-                        error=str(exc),
+                        error=transport_error_text(exc),
                     )
                     if attempt >= self._max_retries:
-                        raise UpstreamUnavailableError("g2b network error") from exc
+                        raise UpstreamUnavailableError(
+                            f"g2b network error: {transport_error_text(exc)}"
+                        ) from exc
                     await asyncio.sleep(delay)
                     delay *= 2
                     continue

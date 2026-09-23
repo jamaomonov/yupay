@@ -1044,3 +1044,58 @@ async def test_a_refund_field_still_wins_over_the_breadcrumb() -> None:
     )
 
     assert result.money_outcome is MoneyOutcome.RETURNED
+
+
+def test_a_timeout_never_reaches_a_task_row_as_an_empty_string() -> None:
+    """Every httpx transport exception stringifies to ``""``.
+
+    On 2026-09-23 a NOVA top-up timed out after 20 s. NOVA had taken the money
+    and delivered the diamonds; our task failed with ``last_error = ''`` and
+    the ops alert said nothing at all — not the supplier, not a timeout, not
+    even that a call had gone out. Reading the database was the only way to
+    find out.
+
+    Four clients raised ``…UnavailableError(str(exc))`` on exactly this, so
+    the fix belongs in one helper and this pins the property rather than any
+    one call site.
+    """
+    import httpx
+    from yupay.modules.fulfillment.suppliers.base import transport_error_text
+
+    for exc in (
+        httpx.ReadTimeout(""),
+        httpx.ConnectTimeout(""),
+        httpx.PoolTimeout(""),
+        httpx.ReadError(""),
+    ):
+        assert str(exc) == "", "the premise of this test is that httpx says nothing"
+        assert transport_error_text(exc) == type(exc).__name__
+
+    # A message, when there is one, still wins — the class name is a fallback,
+    # not a replacement.
+    assert transport_error_text(httpx.ConnectError("dns failure")) == "dns failure"
+
+
+def test_no_supplier_client_stringifies_a_transport_error_raw() -> None:
+    """The regression guard: a fifth client must not reintroduce the hole.
+
+    Grepping the sources is deliberate. The alternative is four near-identical
+    tests that each mock one client's transport, and a new client would simply
+    not have one.
+    """
+    import pathlib
+
+    suppliers = pathlib.Path("apps/api/src/yupay/modules/fulfillment/suppliers").resolve()
+    if not suppliers.is_dir():  # pragma: no cover - depends on pytest rootdir
+        suppliers = (
+            pathlib.Path(__file__).resolve().parents[2] / "src/yupay/modules/fulfillment/suppliers"
+        )
+
+    offenders = [
+        path.name
+        for path in sorted(suppliers.glob("*_client.py"))
+        if "UnavailableError(str(exc))" in path.read_text(encoding="utf-8")
+    ]
+    assert offenders == [], (
+        f"{offenders} raise an empty message on a timeout — use base.transport_error_text(exc)"
+    )

@@ -29,6 +29,7 @@ from typing import Any, Literal
 import httpx
 
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.suppliers.base import transport_error_text
 
 log = get_logger("yupay.fulfillment.waxpeer")
 
@@ -119,8 +120,10 @@ class WaxpeerClient:
             async with self._session() as client:
                 resp = await client.request(method, url, params=query, json=json)
         except httpx.HTTPError as exc:
-            log.warning("waxpeer.network_error", method=method, path=path, error=str(exc))
-            raise WaxpeerUnavailableError(str(exc)) from exc
+            log.warning(
+                "waxpeer.network_error", method=method, path=path, error=transport_error_text(exc)
+            )
+            raise WaxpeerUnavailableError(transport_error_text(exc)) from exc
 
         log.info("waxpeer.request", method=method, path=path, status=resp.status_code)
 

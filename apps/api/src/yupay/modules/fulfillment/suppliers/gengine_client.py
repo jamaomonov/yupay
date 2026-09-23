@@ -29,6 +29,7 @@ from typing import Any, Literal
 import httpx
 
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.suppliers.base import transport_error_text
 
 log = get_logger("yupay.fulfillment.gengine")
 
@@ -168,7 +169,7 @@ class GEngineClient:
         except httpx.HTTPError as exc:
             # Network-level: nothing was decided upstream, so this is ours to
             # retry — distinct from a refusal, which is upstream's answer.
-            raise GEngineUnavailableError(str(exc)) from exc
+            raise GEngineUnavailableError(transport_error_text(exc)) from exc
 
         text = resp.text[:500]
         log.info("gengine.request", method=method, path=path, status=resp.status_code)

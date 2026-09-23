@@ -196,3 +196,25 @@ class Fulfiller(Protocol):
         db: AsyncSession,
         task: FulfillmentTask,
     ) -> None: ...
+
+
+def transport_error_text(exc: BaseException) -> str:
+    """A readable description of a transport failure, never an empty string.
+
+    Every ``httpx`` transport exception stringifies to ``""`` — ``ReadTimeout``,
+    ``ConnectTimeout``, ``PoolTimeout`` and ``ReadError`` alike carry the fact
+    in their *class*, not their message. Four supplier clients raised
+    ``…UnavailableError(str(exc))`` on one, so the whole diagnosis was thrown
+    away at the only point it existed.
+
+    That is not cosmetic. On 2026-09-23 a NOVA top-up timed out after 20 s;
+    NOVA had taken the money and delivered the diamonds, our task failed with
+    ``last_error = ''``, and the ops alert said nothing at all — no supplier
+    fault, no timeout, no clue. Reading the database was the only way to learn
+    that the call had even left the building.
+
+    Returns the exception's own message when it has one, and its class name
+    when it does not, so "ReadTimeout" reaches the task row and the alert.
+    """
+    text = str(exc).strip()
+    return text or type(exc).__name__
