@@ -154,19 +154,35 @@ receiver that accepted unsigned bodies would look like it was working.
 
 How it behaves, and why:
 
-| their side                                             | ours                                                                          |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| `X-Webhook-Signature: sha256=<hmac>` over the raw body | verified **before** the JSON is parsed (§9)                                   |
-| `order.status_changed`                                 | task reconciled through the adapter's own `check_status`, never from the body |
-| `order.created`, `manual_service.chat.*`               | `200`, ignored — we created it, and we don't sell manual services             |
-| an order we never placed                               | `200 unknown_order`                                                           |
-| a body we cannot parse                                 | `200 ignored`                                                                 |
-| a bad signature                                        | `401`                                                                         |
+| their side                                             | ours                                                              |
+| ------------------------------------------------------ | ----------------------------------------------------------------- |
+| `X-Webhook-Signature: sha256=<hmac>` over the raw body | verified **before** the JSON is parsed (§9)                       |
+| `order.status_changed`                                 | the task is marked due; the sweep does the asking                 |
+| `order.created`, `manual_service.chat.*`               | `200`, ignored — we created it, and we don't sell manual services |
+| an order we never placed                               | `200 unknown_order`                                               |
+| a task that already finished                           | `200 already_final` — a normal race with the sweep                |
+| a body we cannot parse                                 | `200 ignored`                                                     |
+| a delivery older than an hour                          | `200 ignored, stale`                                              |
+| a body over 64 KB                                      | `413`, refused before it is read                                  |
+| a bad signature                                        | `401`                                                             |
 
-Everything but the bad signature answers `200` deliberately. They retry a
-non-2xx three times (1 min, 5 min, 30 min) and **disable the webhook after 50
+Everything but the last two answers `200` deliberately. They retry a non-2xx
+three times (1 min, 5 min, 30 min) and **disable the webhook after 50
 consecutive failures**, so an honest `404` for an unknown order would, fifty
 orders later, silently switch the feature off.
+
+**The handler never calls FazerCards.** It verifies, finds the task, clears
+`next_attempt_at` and answers — the status check runs on the sweep. Doing it
+inline would hold an API pool connection for up to the 20-second request
+timeout, and the pool is 10 + 10: twenty concurrent deliveries would take the
+whole API down. That is not hypothetical here (`QueuePool limit of size 10
+overflow 10 reached`, 2026-09-23), and their own documentation asks for it
+this way: _"Respond quickly (200 within seconds); do heavy work
+asynchronously."_ The cost is at most one sweep tick.
+
+The freshness window is an hour and not tighter **because their retry carries
+the original timestamp**: anything under ~36 minutes would refuse their own
+third attempt and spend one of the fifty.
 
 Rotating the secret in their panel invalidates the old one **immediately** —
 update `secrets/api.env` first, then rotate, or deliveries fail in between.
@@ -192,6 +208,18 @@ beside the order and lands in the task metadata as `supplier_charged_usd`.
 The gift card is cheaper to reason about but changes the customer's
 experience from "we topped you up" to "here is a code, and it must be a CIS
 account". Do not switch to it without deciding that is wanted.
+
+## The reconcile sweep
+
+`fulfillment.fzr_reconcile`, every 10 seconds, in the scheduler process. It is
+what actually finishes orders: their create answers `processing` and charges
+immediately, so **without it an order sits `in_progress` for ever** — no
+error, no alert, a customer on "в обработке" and the money already gone.
+
+It shares its implementation with NOVA's (`panel_reconcile`), and the cadence
+is not as aggressive as it sounds: a task younger than two minutes is
+rechecked every 10 s, older than that every 60 s. The webhook's job is to
+collapse that 60 back to 10 for an order somebody is waiting on.
 
 ## Switching a SKU to fzr and back
 

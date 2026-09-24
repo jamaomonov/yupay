@@ -33786,7 +33786,7 @@
     },
     "/api/v1/webhooks/fzr": {
       "post": {
-        "description": "Verify, identify the task, and let the adapter decide what is true.",
+        "description": "Verify, identify the task, mark it due, answer. Nothing slow here.",
         "operationId": "receive_fzr_webhook_api_v1_webhooks_fzr_post",
         "parameters": [
           {

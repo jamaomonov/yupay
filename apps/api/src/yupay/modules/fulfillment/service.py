@@ -21,10 +21,11 @@ import sys
 from collections.abc import Coroutine, Iterable
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from sqlalchemy import Row, case, func, literal_column, or_, select, text
 from sqlalchemy import update as sa_update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -111,6 +112,20 @@ _NOBODY_CAN_SAY = MoneyOutcome.UNKNOWN
 #: the external order id), G-Engine recovers an order by the same ``uuid``. A
 #: fresh key for those would buy the goods a second time, so this is a list of
 #: exceptions and not a default.
+#:
+#: **``fzr`` is deliberately absent, on an unverified vendor claim.** It runs
+#: the same API as NOVA, and NOVA is here — so the omission looks like an
+#: oversight and is not. Their documentation says a reused key "returns the
+#: original order instead of charging or fulfilling again", which is the
+#: opposite of what NOVA's live API does; we have not been able to test it,
+#: because proving it costs two real orders and the account has no balance.
+#:
+#: Absent is the safe way to be wrong. If their docs are right, reuse is the
+#: protection and nothing happens. If they are wrong and fzr behaves like
+#: NOVA, a Retry after a low-balance stall answers ``409``, grades ``UNKNOWN``,
+#: and the task is stuck for a human to finish by hand — annoying, recoverable,
+#: and cheaper than the alternative, which is buying the goods twice. Move it
+#: in only after a duplicate create has been observed replaying.
 KEY_BURNED_ON_USE: frozenset[str] = frozenset({"nova"})
 
 _RETRY_NONCE_KEY = "idempotency_nonce"
@@ -1715,6 +1730,43 @@ async def task_progress_mark(db: AsyncSession, *, task_id: str) -> tuple[str, st
     if row is None:
         return None
     return str(row[0]), json.dumps(row[1] or {}, sort_keys=True)
+
+
+async def mark_due_now(db: AsyncSession, *, task_id: str) -> bool:
+    """Make a task due for a status check on the sweep's next tick.
+
+    The inverse of :func:`schedule_next_check`, and the whole of what a
+    supplier webhook should do. Clearing ``next_attempt_at`` is enough:
+    :func:`due_reconcile_task_ids` treats unset as due.
+
+    **Why a webhook must not reconcile inline.** ``process_webhook_update``
+    calls the adapter's ``check_status``, which is a live HTTP request with a
+    20-second timeout, and a request handler holds its pool connection for its
+    whole lifetime. The API pool is 10 + 10; twenty concurrent deliveries
+    would exhaust it and take the whole API down with them. That is not
+    hypothetical — the same shape produced a ``QueuePool limit of size 10
+    overflow 10 reached`` in production on 2026-09-23 — and FazerCards' own
+    documentation asks for it the other way round: "Respond quickly (200
+    within seconds); do heavy work asynchronously."
+
+    The cost is bounded and small: the sweep ticks every
+    :data:`~yupay_scheduler.jobs.panel_reconcile.INTERVAL_SECONDS` seconds, in
+    the scheduler process, on its own pool.
+
+    Returns:
+        Whether a row was actually moved. ``False`` means the task was not
+        ``in_progress`` any more — already finished, so there is nothing to
+        hurry — which is a normal answer and not an error.
+    """
+    result = await db.execute(
+        sa_update(FulfillmentTask)
+        .where(FulfillmentTask.id == task_id, FulfillmentTask.status == "in_progress")
+        .values(next_attempt_at=None)
+    )
+    # ``rowcount`` is on the cursor result an UPDATE returns; the generic
+    # ``Result`` type does not declare it, so the cast says what we know
+    # rather than widening the annotation of every execute() in this module.
+    return bool(cast("CursorResult[Any]", result).rowcount)
 
 
 async def schedule_next_check(

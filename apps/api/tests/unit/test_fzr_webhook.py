@@ -20,6 +20,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -40,12 +41,23 @@ def _sign(raw: bytes, secret: str = SECRET) -> str:
     return "sha256=" + hmac.new(secret.encode(), raw, hashlib.sha256).hexdigest()
 
 
-def _body(event: str = "order.status_changed", order_id: str = "ord-9001") -> bytes:
+def _body(
+    event: str = "order.status_changed",
+    order_id: str = "ord-9001",
+    *,
+    age_seconds: float = 0,
+) -> bytes:
+    """One delivery, timestamped relative to now.
+
+    A fixed timestamp would start failing the freshness guard the day after it
+    was written, which is a test that breaks for the wrong reason.
+    """
+    at = datetime.now(UTC) - timedelta(seconds=age_seconds)
     return json.dumps(
         {
             "event": event,
             "event_id": "8f3a2c9e-1b4d-4f7a-9e2c-5b6a8c1d2e3f",
-            "timestamp": "2026-09-24T12:34:56.789Z",
+            "timestamp": at.isoformat().replace("+00:00", "Z"),
             "data": {
                 "order_id": order_id,
                 "type": "giftcard",
@@ -127,27 +139,41 @@ def test_a_status_change_is_actionable() -> None:
 class _Result:
     def __init__(self, row: Any) -> None:
         self._row = row
+        self.rowcount = 1
 
     def scalar_one_or_none(self) -> Any:
         return self._row
 
 
 class _Db:
-    def __init__(self, row: Any = None) -> None:
+    def __init__(self, row: Any = None, rowcount: int = 1) -> None:
         self._row = row
+        self._rowcount = rowcount
         self.queried = False
+        self.committed = False
+        self.statements = 0
 
     async def execute(self, *_a: Any, **_kw: Any) -> Any:
         self.queried = True
-        return _Result(self._row)
+        self.statements += 1
+        # The first execute is the task lookup, the second the UPDATE that
+        # marks it due; the fake answers both from one place.
+        out = _Result(self._row)
+        out.rowcount = self._rowcount
+        return out
+
+    async def commit(self) -> None:
+        self.committed = True
 
 
 class _Request:
     """Only what the handler reads, so the test cannot drift from the route."""
 
-    def __init__(self, raw: bytes) -> None:
+    def __init__(self, raw: bytes, *, content_length: int | None = None) -> None:
         self._raw = raw
         self.json_reads = 0
+        declared = len(raw) if content_length is None else content_length
+        self.headers = {"content-length": str(declared)}
 
     async def body(self) -> bytes:
         return self._raw
@@ -244,22 +270,54 @@ async def test_signed_but_unparseable_json_is_acknowledged(_secret: None) -> Non
 
 
 @pytest.mark.asyncio
-async def test_a_known_order_is_reconciled_through_the_adapter_not_the_body(
+async def test_a_known_order_is_marked_due_and_never_reconciled_inline(
     _secret: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The body says "completed". We do not believe it: the task is handed to
-    ``process_webhook_update``, which asks the adapter's own check_status."""
+    """The body says "completed". We neither believe it nor go and check.
+
+    Checking means a 20-second upstream call while this handler holds a pool
+    connection, and the pool is 10 + 10. The handler marks the task due and
+    the sweep does the asking. Pinned by failing if anything calls the
+    reconciler from here.
+    """
     from types import SimpleNamespace
 
-    seen: dict[str, Any] = {}
-
-    async def _process(_db: Any, *, task_id: str) -> Any:
-        seen["task_id"] = task_id
-        return SimpleNamespace(id=task_id, status="delivered")
+    async def _must_not_run(_db: Any, *, task_id: str) -> Any:
+        raise AssertionError("the webhook must not reconcile inline")
 
     # Patched on the service module itself rather than through the
     # handler's re-export, which mypy rightly refuses to treat as public.
-    monkeypatch.setattr(fulfillment_svc, "process_webhook_update", _process)
+    monkeypatch.setattr(fulfillment_svc, "process_webhook_update", _must_not_run)
+    seen: dict[str, Any] = {}
+
+    async def _mark(_db: Any, *, task_id: str) -> bool:
+        seen["task_id"] = task_id
+        return True
+
+    monkeypatch.setattr(fulfillment_svc, "mark_due_now", _mark)
+    raw = _body()
+    db = _Db(SimpleNamespace(id="task-7"))
+    out = await mod.receive_fzr_webhook(
+        _Request(raw),  # type: ignore[arg-type]
+        db,  # type: ignore[arg-type]
+        signature=_sign(raw),
+    )
+
+    assert seen["task_id"] == "task-7"
+    assert out == {"status": "queued"}
+    assert db.committed is True
+
+
+async def test_a_task_that_already_finished_is_acknowledged_not_retried(
+    _secret: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A race with the sweep, not an error: the sweep got there first."""
+    from types import SimpleNamespace
+
+    async def _mark(_db: Any, *, task_id: str) -> bool:
+        return False
+
+    monkeypatch.setattr(fulfillment_svc, "mark_due_now", _mark)
     raw = _body()
     out = await mod.receive_fzr_webhook(
         _Request(raw),  # type: ignore[arg-type]
@@ -267,5 +325,86 @@ async def test_a_known_order_is_reconciled_through_the_adapter_not_the_body(
         signature=_sign(raw),
     )
 
-    assert seen["task_id"] == "task-7"
-    assert out == {"status": "processed", "task_status": "delivered"}
+    assert out == {"status": "already_final"}
+
+
+# ---------- the two guards added after the security review ----------
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_body_is_refused_before_it_is_read(_secret: None) -> None:
+    """Content-Length is checked first, so the bytes are never pulled into
+    memory. That is the whole cost being avoided."""
+    from fastapi import HTTPException
+
+    req = _Request(_body(), content_length=mod.MAX_BODY_BYTES + 1)
+    with pytest.raises(HTTPException) as exc:
+        await mod.receive_fzr_webhook(
+            req,  # type: ignore[arg-type]
+            _Db(None),  # type: ignore[arg-type]
+            signature="sha256=whatever",
+        )
+
+    assert exc.value.status_code == 413
+    assert req.json_reads == 0
+
+
+@pytest.mark.asyncio
+async def test_a_chunked_oversized_body_is_still_refused(_secret: None) -> None:
+    """A chunked request declares no length, so the cap is enforced twice."""
+    from fastapi import HTTPException
+
+    big = b"x" * (mod.MAX_BODY_BYTES + 10)
+    req = _Request(big, content_length=None)
+    req.headers = {}
+    with pytest.raises(HTTPException) as exc:
+        await mod.receive_fzr_webhook(
+            req,  # type: ignore[arg-type]
+            _Db(None),  # type: ignore[arg-type]
+            signature=_sign(big),
+        )
+
+    assert exc.value.status_code == 413
+
+
+@pytest.mark.asyncio
+async def test_a_delivery_older_than_the_window_is_ignored(_secret: None) -> None:
+    raw = _body(age_seconds=mod.MAX_AGE_SECONDS + 60)
+    out = await mod.receive_fzr_webhook(
+        _Request(raw),  # type: ignore[arg-type]
+        _Db(None),  # type: ignore[arg-type]
+        signature=_sign(raw),
+    )
+
+    assert out == {"status": "ignored", "reason": "stale"}
+
+
+@pytest.mark.asyncio
+async def test_their_slowest_legitimate_retry_still_gets_through(
+    _secret: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Their ladder is 1, 5 and 30 minutes and a retry carries the ORIGINAL
+    timestamp. A window under ~36 minutes would refuse their own third
+    attempt — and non-2xx is what spends their fifty."""
+    from types import SimpleNamespace
+
+    async def _mark(_db: Any, *, task_id: str) -> bool:
+        return True
+
+    monkeypatch.setattr(fulfillment_svc, "mark_due_now", _mark)
+    raw = _body(age_seconds=36 * 60)
+    out = await mod.receive_fzr_webhook(
+        _Request(raw),  # type: ignore[arg-type]
+        _Db(SimpleNamespace(id="task-7")),  # type: ignore[arg-type]
+        signature=_sign(raw),
+    )
+
+    assert out == {"status": "queued"}
+
+
+def test_a_timestamp_we_cannot_read_is_not_treated_as_stale() -> None:
+    """Refusing a real delivery over a field we only use for defence in depth
+    would cost more than the field is worth."""
+    assert mod._too_old({}) is False
+    assert mod._too_old({"timestamp": ""}) is False
+    assert mod._too_old({"timestamp": "not a date"}) is False
