@@ -40,7 +40,12 @@ from yupay.modules.catalog.models import (
 from yupay.modules.fulfillment import service as ff_svc
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order, OrderItem
-from yupay_scheduler.jobs import nova_reconcile
+from yupay_scheduler.jobs import nova_reconcile, panel_reconcile
+
+# The sweep itself lives in ``panel_reconcile`` (NOVA and FazerCards are one
+# protocol, ADR-0092); ``nova_reconcile`` is the binding that names the vendor.
+# So the entry point is patched through the binding and the internals through
+# the shared module — patching the binding for both would silently no-op.
 
 # Import the app so every module is loaded before the delivery path reaches for
 # them. Without it this file passes in a full run and fails on its own: the
@@ -71,7 +76,7 @@ def _job_session_factory(monkeypatch: pytest.MonkeyPatch, db_engine: AsyncEngine
     Point that at the truncated test container so the job's sessions and the
     test's assertion session (``db_session``) see the same database."""
     factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
-    monkeypatch.setattr(nova_reconcile, "get_session_factory", lambda: factory)
+    monkeypatch.setattr(panel_reconcile, "get_session_factory", lambda: factory)
 
 
 # ---------- fixtures: seed a task without going through checkout ----------
@@ -309,7 +314,7 @@ async def test_a_task_that_raises_does_not_stop_the_sweep_of_the_next_one(
             raise RuntimeError("simulated bad row")
         return await real_process_webhook_update(db, task_id=task_id)
 
-    monkeypatch.setattr(nova_reconcile, "process_webhook_update", _flaky)
+    monkeypatch.setattr(panel_reconcile, "process_webhook_update", _flaky)
 
     await nova_reconcile.run_nova_reconcile()
 
