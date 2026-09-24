@@ -86,6 +86,13 @@ PANEL_STEAM_SENTINEL = "steam-topup"
 NOVA_STEAM_SENTINEL = PANEL_STEAM_SENTINEL
 FZR_STEAM_SENTINEL = PANEL_STEAM_SENTINEL
 
+#: The vendors on the shared panel v2 API, for the handful of rules that are
+#: about the protocol rather than about one supplier — the Steam sentinel
+#: above is the first. Keeping it beside the sentinel means the two cannot
+#: drift: a third panel vendor is one entry, not a search for every place
+#: ``== "nova"`` was written.
+PANEL_SUPPLIERS: frozenset[str] = frozenset({"nova", "fzr"})
+
 #: The same sentinel trick for NOVA's Fragment (Telegram) API, which is a
 #: second API on the same host with its own namespace, its own envelope and
 #: the opposite idempotency contract — see ``nova_client``.

@@ -23,7 +23,8 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.image_url_safety import validate_optional_public_image_url
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_STARS,
-    NOVA_STEAM_SENTINEL,
+    PANEL_STEAM_SENTINEL,
+    PANEL_SUPPLIERS,
     SkuSupplierMapping,
     SupplierCatalogCache,
 )
@@ -146,8 +147,8 @@ def _is_amount_priced(payload: MappingUpsert) -> bool:
 
     - a supplier whose whole game catalogue is amount-priced
       (:data:`_AMOUNT_PRICED_SUPPLIERS` — G-Engine's ``unfixed`` services);
-    - NOVA's **Steam** mapping specifically
-      (:data:`NOVA_STEAM_SENTINEL`), which is one row rather than a supplier:
+    - a panel vendor's **Steam** mapping specifically
+      (:data:`PANEL_STEAM_SENTINEL`), which is one row rather than a supplier:
       their Steam endpoint takes a login and an amount, while their games
       endpoint still needs an ``offer_id`` and is still checked for one.
 
@@ -156,16 +157,21 @@ def _is_amount_priced(payload: MappingUpsert) -> bool:
     the first order on it would fail at our own guard instead of at the form —
     feedback moved from the moment of the mistake to the moment it costs a
     customer their order.
+
+    It is keyed on the panel **vendors**, not on ``nova`` alone, because the
+    sentinel describes a shape of mapping and FazerCards takes the same one.
+    Keying it on the one vendor that happened to arrive first is what would
+    have made our Steam SKU unmappable to the cheaper of the two.
     """
     if payload.supplier_slug in _AMOUNT_PRICED_SUPPLIERS:
         return True
+    product = payload.external_product_id.strip()
+    if payload.supplier_slug in PANEL_SUPPLIERS and product == PANEL_STEAM_SENTINEL:
+        return True
     # ``fragment-premium`` is deliberately absent: its months *are* the
     # variant, so a Premium mapping saved without one is a mistake the admin
-    # form should still catch.
-    return payload.supplier_slug == "nova" and payload.external_product_id.strip() in (
-        NOVA_STEAM_SENTINEL,
-        NOVA_FRAGMENT_STARS,
-    )
+    # form should still catch. Fragment is NOVA's alone.
+    return payload.supplier_slug == "nova" and product == NOVA_FRAGMENT_STARS
 
 
 async def upsert_mapping(db: AsyncSession, payload: MappingUpsert) -> SkuSupplierMapping:
