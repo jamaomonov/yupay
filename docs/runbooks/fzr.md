@@ -40,8 +40,16 @@ refuses while a subscription is active. `GET /api/v2/subscription/plans` is the
 live number for **our** account; treat `llms.txt` as possibly stale, and check
 the panel before assuming the cheaper one.
 
-**Our account is on a 5-day Gold trial that expires 2026-09-29.** After that,
-without a paid plan, every product route answers:
+**Our account is on a 5-day trial that expires 2026-09-29.** Note the
+mismatch: `GET /api/v2/subscription` reports `plan: "trial"`, while their
+marketing calls it a _Gold_ trial. The `steam_cis` card prices at exactly
+`96.4500` per `100 USD` — 3.55%, the Gold rate — which is consistent with a
+trial that grants Gold pricing, but it is consistency, not their word. **So
+every price we measured is a trial price**, and none of it is confirmed to
+survive onto a paid plan. Confirm against the panel before committing to a
+tier.
+
+After the trial, without a paid plan, every product route answers:
 
 ```json
 { "ok": false, "error": "…", "code": "subscription_inactive" }

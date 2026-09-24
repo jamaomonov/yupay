@@ -141,6 +141,10 @@ a date rather than in response to anything we do.
   orders.
 - Whether their plan is $9.99 or $29.99 for Gold — their API and their own
   `llms.txt` disagree, and `activation-quote` refuses while a trial is active.
+- **Every price in this ADR was measured on a trial account.** Their API
+  reports `plan: "trial"`; their marketing calls it a Gold trial, and the
+  Steam card prices at exactly the Gold rate, which is consistent but not
+  their word. Nothing here is confirmed to survive onto a paid tier.
 - Whether the top-up and gift-card catalogues are plan-adjusted. Their OpenAPI
   says only Steam wallet, Steam gifts and manual services are, and the flat
   1.0200 ratio across 39 products agrees, but it is inference, not their word.
