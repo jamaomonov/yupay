@@ -134,6 +134,7 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
     day it is written. The callbacks stay an explicit list: they live in five
     different modules and each is its own deliberate decision.
     """
+    from yupay.api.webhooks.fzr import receive_fzr_webhook
     from yupay.api.webhooks.g2b import receive_g2b_webhook
     from yupay.modules.click.routes import click_complete, click_prepare
     from yupay.modules.payme.routes import payme_merchant
@@ -147,6 +148,10 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
 
     for endpoint in (
         receive_g2b_webhook,
+        # Signed with an HMAC over the raw body, so it authenticates its
+        # own caller. A 429 here would count toward FazerCards' 50-failure
+        # auto-disable and cost us the feature, not just one event.
+        receive_fzr_webhook,
         payme_merchant,
         uzum_check,
         uzum_create,

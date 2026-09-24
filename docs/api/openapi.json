@@ -33784,6 +33784,52 @@
         ]
       }
     },
+    "/api/v1/webhooks/fzr": {
+      "post": {
+        "description": "Verify, identify the task, and let the adapter decide what is true.",
+        "operationId": "receive_fzr_webhook_api_v1_webhooks_fzr_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Webhook-Signature",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Webhook-Signature",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Receive Fzr Webhook Api V1 Webhooks Fzr Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "FazerCards order-status callback",
+        "tags": [
+          "webhooks:fzr"
+        ]
+      }
+    },
     "/api/v1/webhooks/g2b/{secret}": {
       "post": {
         "operationId": "receive_g2b_webhook_api_v1_webhooks_g2b__secret__post",

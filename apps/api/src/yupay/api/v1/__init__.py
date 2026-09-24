@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from yupay.api.webhooks.fzr import router as fzr_webhook_router
 from yupay.api.webhooks.g2b import router as g2b_webhook_router
 from yupay.modules.admin.api import admin_router as admin_admin_router
 
@@ -91,6 +92,7 @@ router.include_router(paynet_router)
 router.include_router(uzum_router)
 router.include_router(click_router)
 router.include_router(g2b_webhook_router)
+router.include_router(fzr_webhook_router)
 router.include_router(integrations_admin_router)
 router.include_router(integrations_router)
 router.include_router(inventory_admin_router)

@@ -133,10 +133,46 @@ three Premium terms (3 / 6 / 12 months). Routing Telegram here would cost us
 money. The branch is absent rather than present and unused; add it if that
 inverts.
 
-**Game keys, Steam gifts, manual services, their webhooks.** Not needed for the
-measured saving. Their webhook (`order.completed` / `order.failed` /
-`order.refunded`, configured in their hub, signed) would replace our polling
-and is the obvious next step if this supplier earns a permanent place.
+**Game keys, Steam gifts, manual services.** Not needed for the measured
+saving.
+
+## The webhook
+
+Built 2026-09-24. Polling still runs underneath it, so a missed event costs
+latency, not an order.
+
+**URL to enter in their panel (Settings → Webhook):**
+
+```
+https://api.yupay.uz/api/v1/webhooks/fzr
+```
+
+Saving it there generates the secret in the same panel section. Put that in
+`secrets/api.env` as `FZR_WEBHOOK_SECRET` and restart api. **Until it is set
+the receiver rejects every delivery** — it fails closed on purpose, because a
+receiver that accepted unsigned bodies would look like it was working.
+
+How it behaves, and why:
+
+| their side                                             | ours                                                                          |
+| ------------------------------------------------------ | ----------------------------------------------------------------------------- |
+| `X-Webhook-Signature: sha256=<hmac>` over the raw body | verified **before** the JSON is parsed (§9)                                   |
+| `order.status_changed`                                 | task reconciled through the adapter's own `check_status`, never from the body |
+| `order.created`, `manual_service.chat.*`               | `200`, ignored — we created it, and we don't sell manual services             |
+| an order we never placed                               | `200 unknown_order`                                                           |
+| a body we cannot parse                                 | `200 ignored`                                                                 |
+| a bad signature                                        | `401`                                                                         |
+
+Everything but the bad signature answers `200` deliberately. They retry a
+non-2xx three times (1 min, 5 min, 30 min) and **disable the webhook after 50
+consecutive failures**, so an honest `404` for an unknown order would, fifty
+orders later, silently switch the feature off.
+
+Rotating the secret in their panel invalidates the old one **immediately** —
+update `secrets/api.env` first, then rotate, or deliveries fail in between.
+
+Check `GET /api/v2/account/webhook/deliveries` (last 50) or their panel when
+something looks stuck; `fzr.webhook.*` in our logs is the other half.
 
 ## Steam — two ways to buy it, and they are different products
 

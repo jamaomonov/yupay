@@ -800,6 +800,13 @@ class Settings(BaseSettings):
     #   Our sweeps are far under those, which is why no client-side throttle
     #   ships with this; if one becomes necessary it goes in ``panel_client``.
     fzr_api_key: str = Field(default="")
+    #: HMAC secret for their signed order webhook, from their reseller panel
+    #: (Settings -> Webhook). Empty disables the receiver: it then rejects
+    #: every delivery rather than accepting unsigned ones, because a receiver
+    #: that accepts anything is worse than one that accepts nothing — it looks
+    #: like it is working. Rotating it in their panel invalidates the old one
+    #: immediately, so rotate here first.
+    fzr_webhook_secret: str = Field(default="")
     fzr_base_url: str = Field(default="https://api.fzr.cards")
     fzr_request_timeout_seconds: float = Field(default=20.0)
 
