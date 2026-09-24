@@ -24226,7 +24226,8 @@
             "schema": {
               "enum": [
                 "nova",
-                "gengine"
+                "gengine",
+                "fzr"
               ],
               "title": "Supplier",
               "type": "string"
@@ -24315,7 +24316,8 @@
               "enum": [
                 "g2b",
                 "nova",
-                "gengine"
+                "gengine",
+                "fzr"
               ],
               "title": "Supplier",
               "type": "string"
@@ -24394,7 +24396,8 @@
             "schema": {
               "enum": [
                 "nova",
-                "gengine"
+                "gengine",
+                "fzr"
               ],
               "title": "Supplier",
               "type": "string"
