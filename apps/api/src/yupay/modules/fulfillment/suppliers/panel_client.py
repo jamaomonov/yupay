@@ -25,6 +25,21 @@ for: the wire format is one format, so it is written once.
 Subclasses set :attr:`PanelClient.slug` and the two exception types, so every
 log event and every error sentence names the vendor that produced it. That is
 not cosmetic: the runbooks grep on ``nova.*``.
+
+**The rule for editing this file.** One vendor changing its API is *not* a
+reason to change anything here. Shared code is the protocol both vendors
+publish; the moment they disagree about something, the disagreement belongs in
+the subclass that owns it — as NOVA's Fragment API and its 409 idempotency
+contract already do.
+
+That rule is not enforceable by the class hierarchy, and saying it here would
+not stop anyone. What stops it is that **each vendor pins its own wire format
+in its own contract suite** — ``tests/contract/test_nova_client.py`` and
+``tests/contract/test_fzr_client.py`` deliberately assert the same shapes from
+both sides. An edit made to follow one vendor's API into this file fails the
+other vendor's suite. If you are here because a supplier changed something,
+expect to touch a subclass; if you find yourself deleting an assertion from a
+contract test to make room, you are about to break the other vendor.
 """
 
 from __future__ import annotations
