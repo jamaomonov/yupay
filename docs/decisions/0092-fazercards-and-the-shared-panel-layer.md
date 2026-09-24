@@ -90,10 +90,13 @@ tested behaviour rather than needing it re-proven.
   `cost_lookup._nova_raw_price`. It has no `ok` envelope, the opposite
   idempotency contract, and no FazerCards equivalent.
 - **The idempotency contract.** Both vendors _document_ that a reused key
-  replays. NOVA's live API answers `409`. FazerCards is **unverified** — the
-  account has no balance to place a duplicate with — so each adapter states its
-  own and neither inherits an assumption. Both currently park a lost create for
-  adoption rather than retrying it, which is correct under either behaviour.
+  replays, and only one of them means it. NOVA's live API answers `409`;
+  FazerCards really does replay (verified 2026-09-24 — one create sent twice
+  under a single key, same `ord-1549395`, charged once). Both were measured
+  against the live service, so each adapter states its own contract and
+  neither inherits an assumption. Both still park a lost create for adoption
+  rather than retrying it: correct under either behaviour, and one path
+  instead of two.
 - **The caches.** The two vendors use the **same category ids for the same
   games**, so the offers cache threaded through the cost refresh stays NOVA's
   (fzr fetches its own) and the stock cache key now carries the supplier.
@@ -137,8 +140,11 @@ a date rather than in response to anything we do.
 
 **Unresolved, and recorded rather than quietly assumed:**
 
-- Whether a reused `Idempotency-Key` replays here. Verifying it means two real
-  orders.
+- ~~Whether a reused `Idempotency-Key` replays here.~~ **Settled 2026-09-24**:
+  it does. One gift-card create sent twice under a single key answered `200`
+  both times with the same `ord-1549395` and charged once. The decision to
+  leave `fzr` out of `KEY_BURNED_ON_USE` now rests on a measurement, not on
+  their documentation.
 - Whether their plan is $9.99 or $29.99 for Gold — their API and their own
   `llms.txt` disagree, and `activation-quote` refuses while a trial is active.
 - **Every price in this ADR was measured on a trial account.** Their API

@@ -9,14 +9,16 @@ header, the same ``{ok, …}`` envelope and the same cursor paging.
 What is worth writing down is where they differ from NOVA, because each
 difference is somewhere an assumption carried across would be wrong:
 
-* **A reused ``Idempotency-Key`` replays.** Their documentation is explicit —
-  "retrying the same request with the same key returns the original order
-  instead of charging or fulfilling again" — where NOVA's live API answers
-  ``409``. **We have not verified this**, because doing so means placing two
-  real orders and our account has no balance, so the adapter treats a 409 the
-  same cautious way NOVA's does: undecided, not a free retry. If their
-  behaviour is ever confirmed, the safe simplification is to retry a lost
-  create under the same key instead of adopting.
+* **A reused ``Idempotency-Key`` replays** — their documentation says so and,
+  unlike NOVA's, it is true. Verified 2026-09-24: one gift-card create sent
+  twice under a single key answered ``200`` both times with the same
+  ``ord-1549395``, and the balance moved once. This is what makes a retry of
+  a create safe here where it is not safe on NOVA, and it is why ``fzr`` is
+  absent from ``fulfillment.service.KEY_BURNED_ON_USE``.
+
+  A 409 is still graded undecided rather than as a free retry: that branch
+  now describes a vendor behaving unlike itself, which is exactly when
+  caution is worth its cost.
 * **Rate limits are published and per-category**: 60 order creates a minute,
   120 status polls, 120 catalogue reads, 30 account reads, each on its own
   sliding window keyed by the API key, and only the category you exceed

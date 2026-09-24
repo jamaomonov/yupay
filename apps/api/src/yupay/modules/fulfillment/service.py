@@ -113,19 +113,12 @@ _NOBODY_CAN_SAY = MoneyOutcome.UNKNOWN
 #: fresh key for those would buy the goods a second time, so this is a list of
 #: exceptions and not a default.
 #:
-#: **``fzr`` is deliberately absent, on an unverified vendor claim.** It runs
-#: the same API as NOVA, and NOVA is here — so the omission looks like an
-#: oversight and is not. Their documentation says a reused key "returns the
-#: original order instead of charging or fulfilling again", which is the
-#: opposite of what NOVA's live API does; we have not been able to test it,
-#: because proving it costs two real orders and the account has no balance.
-#:
-#: Absent is the safe way to be wrong. If their docs are right, reuse is the
-#: protection and nothing happens. If they are wrong and fzr behaves like
-#: NOVA, a Retry after a low-balance stall answers ``409``, grades ``UNKNOWN``,
-#: and the task is stuck for a human to finish by hand — annoying, recoverable,
-#: and cheaper than the alternative, which is buying the goods twice. Move it
-#: in only after a duplicate create has been observed replaying.
+#: **``fzr`` is deliberately absent, and this was measured rather than
+#: assumed.** It runs the same API as NOVA, and NOVA is here, so the omission
+#: would otherwise read as an oversight. On 2026-09-24 one gift-card create
+#: was sent twice under a single key: the second answered ``200`` with the
+#: same ``ord-1549395`` and the balance moved once. The reuse *is* the
+#: protection, exactly as it is for Waxpeer and G-Engine.
 KEY_BURNED_ON_USE: frozenset[str] = frozenset({"nova"})
 
 _RETRY_NONCE_KEY = "idempotency_nonce"

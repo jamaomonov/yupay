@@ -108,21 +108,29 @@ A 429 is graded `RETURNED`: it is rejected at the edge, before anything is
 debited. That is a deliberate difference from a 409 or a 5xx, both of which
 stay `UNKNOWN`.
 
-## Idempotency — where their documentation and NOVA's behaviour differ
+## Idempotency — they replay, unlike NOVA
 
-Their docs are explicit: _"retrying the same request with the same key returns
-the original order instead of charging or fulfilling again."_ NOVA's docs say
-the same thing and its **live API does the opposite** — `409 This
-Idempotency-Key was already used for a purchase`.
+Both vendors' docs say a reused key "returns the original order". Only
+FazerCards means it.
 
-**We have not verified FazerCards' actual behaviour**, because doing so means
-placing two real orders and the account has no balance. Until someone does,
-the adapter treats a 409 the cautious way: undecided, not a free retry, and a
-lost create is parked for adoption rather than retried.
+Measured 2026-09-24: one `POST /giftcards/order` sent **twice** under a single
+`Idempotency-Key` answered `200` both times with the same `ord-1549395`, the
+order completed with one code, and the balance moved once. NOVA, on the same
+engine, answers `409 This Idempotency-Key was already used`.
 
-**If you verify it**, write the result here. If a repeat really does replay,
-the safe simplification is to retry a lost create under the same key instead of
-adopting, which removes a whole failure mode.
+What that buys:
+
+- **Retry works.** `fulfillment.service.KEY_BURNED_ON_USE` excludes `fzr`, so
+  a retried task reuses its key and gets its own order back. On NOVA the same
+  press needs a fresh nonce or it 409s for ever — which is the whole reason
+  that set exists.
+- A lost create could, in principle, be recovered by re-sending it rather than
+  by adoption. We do not: `panel_adopt` is built, tested and vendor-neutral,
+  and a second create from a status check would be a stranger thing to reason
+  about than a search.
+
+A 409 is still graded undecided. That branch now means "the vendor is behaving
+unlike itself", which is precisely when caution earns its keep.
 
 ## What is deliberately not wired up
 
@@ -260,9 +268,9 @@ same `check_status` either way, a tick later; the thing to watch on the next
 order is simply that it finishes, and `fzr_reconcile.tick` showing a non-zero
 `failed` is the signal if it does not.
 
-**Still unverified: the idempotency contract.** No duplicate create has been
-attempted, so `KEY_BURNED_ON_USE` still excludes fzr on their word alone. See
-that constant's comment for why absent is the safe way to be wrong.
+**The idempotency contract is settled too** — see its own section above. A
+reused key replays here, so `KEY_BURNED_ON_USE` excludes fzr on evidence
+rather than on their word.
 
 ## What the logs say
 

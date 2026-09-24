@@ -22,8 +22,9 @@ service on 2026-09-17 — the last two by placing a real order:
   description, which says the opposite of the endpoint description, is the one
   that is true — so a create is never safely retried under the same key, and
   the header is genuinely required (without it: ``400``). **This is NOVA's
-  contract, not the platform's** — FazerCards is unverified on this point and
-  states its own.
+  contract, not the platform's**: FazerCards, on the same API, really does
+  replay a reused key (measured 2026-09-24), which is why the two adapters
+  state their contracts separately instead of sharing one.
 * **Validate ids and top-up ids are different namespaces.** ``mobile_legends``
   validates a player; ``mobile_legends_global`` and ``mobile_legends_ru`` sell
   to one. Nothing in the API links them, and passing one where the other

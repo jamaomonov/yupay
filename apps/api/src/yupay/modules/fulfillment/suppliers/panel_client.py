@@ -17,10 +17,12 @@ for: the wire format is one format, so it is written once.
 * NOVA's Fragment endpoints (``/api/v1/fragment/*``) — a second API on the same
   host with no ``ok`` envelope, which FazerCards does not have at all;
 * the idempotency contract. Their *documentation* agrees — a reused key
-  "returns the original order" — but NOVA's live API answers ``409 This
-  Idempotency-Key was already used``. FazerCards' behaviour is **unverified**
-  (our account has no balance to test a duplicate create with), so each
-  adapter states its own contract and neither inherits an assumption.
+  "returns the original order" — and **only one of them means it**: NOVA's
+  live API answers ``409 This Idempotency-Key was already used``, while
+  FazerCards **replays**, verified 2026-09-24 by sending one gift-card create
+  twice under a single key: the second answered ``200`` with the *same*
+  ``ord-1549395`` and charged nothing again. So the two vendors genuinely
+  differ, and each adapter states its own contract.
 
 Subclasses set :attr:`PanelClient.slug` and the two exception types, so every
 log event and every error sentence names the vendor that produced it. That is
