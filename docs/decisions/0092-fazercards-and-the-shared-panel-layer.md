@@ -148,8 +148,10 @@ a date rather than in response to anything we do.
 - Whether the top-up and gift-card catalogues are plan-adjusted. Their OpenAPI
   says only Steam wallet, Steam gifts and manual services are, and the flat
   1.0200 ratio across 39 products agrees, but it is inference, not their word.
-- No order has been placed. `fzr.unknown_order_status` is the signal that the
-  status allow-list — inherited from NOVA's prose, not FazerCards' — is wrong.
+- ~~No order has been placed.~~ **Settled 2026-09-24**: seven orders, all
+  succeeded, the status allow-list held and `fzr.unknown_order_status`
+  never fired. The Steam rebate is exactly 3.55% in production. See the
+  runbook for what else those orders answered.
 
 ## Alternatives considered
 

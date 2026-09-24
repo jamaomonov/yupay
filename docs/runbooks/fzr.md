@@ -232,18 +232,37 @@ sourcing rule — with two extra checks before you do it:
 Switching re-prices the SKU immediately (ADR-0091), so the shelf price follows
 the new cost on the next read.
 
-## First live order — NOT YET DONE
+## First live orders — done, 2026-09-24
 
-Nothing has been bought here. Until one order has gone through, record below:
+Seven orders between 08:46 and 09:32, **all succeeded**, nothing reconciled by
+hand. What they settle:
 
-- the real keys of their order object and the statuses it walks;
-- whether a repeat with the same `Idempotency-Key` replays or 409s;
-- whether their gift-card create returns `cards: []` and fills them in on the
-  order a second later, as NOVA's does;
-- how long `processing` lasts in practice.
+| question                    | answer                                                                                              |
+| --------------------------- | --------------------------------------------------------------------------------------------------- |
+| order id shape              | `ord-1547700` — `ord-` + digits, as documented                                                      |
+| statuses walked             | `processing` -> `completed`. Both already in the allow-list; `fzr.unknown_order_status` never fired |
+| events sent                 | `order.created`, then one or two `order.status_changed` (13 events for 7 orders)                    |
+| Steam rebate, in production | **exactly 3.55%**: 15.00 -> 14.4675, 6.00 -> 5.7870, 3.00 -> 2.8935, 1.00 -> 0.9645                 |
+| delivery time               | Steam ~1.5-2 min; a PUBG top-up 16 s                                                                |
+| webhook health              | 22 deliveries, **0 failures**, 324-749 ms each                                                      |
 
-`fzr.unknown_order_status`, `fzr.order_without_status` and
-`fzr.order_without_id` in the logs are the signal that our guesses were wrong.
+Two things worth knowing that the table does not say.
+
+**A game order carries no debit.** `supplier_charged_usd` is filled for every
+Steam line and empty for the PUBG one: their create returns a `*Debit` block
+for Steam, where the plan rebate makes the charge differ from the amount, and
+not for a catalogue offer, where it does not. That is correct, not a gap.
+
+**All seven ran on the synchronous webhook**, the one that reconciled inline —
+it was replaced at 09:42 with the version that marks the task due and lets the
+sweep ask. So the _current_ path has not yet carried a real order. It is the
+same `check_status` either way, a tick later; the thing to watch on the next
+order is simply that it finishes, and `fzr_reconcile.tick` showing a non-zero
+`failed` is the signal if it does not.
+
+**Still unverified: the idempotency contract.** No duplicate create has been
+attempted, so `KEY_BURNED_ON_USE` still excludes fzr on their word alone. See
+that constant's comment for why absent is the safe way to be wrong.
 
 ## What the logs say
 
