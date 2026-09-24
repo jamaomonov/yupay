@@ -134,10 +134,7 @@ def _refusal(exc: FzrError, *, fields: dict[str, str] | None = None) -> Fulfille
     if fields:
         text = without_our_inputs(text, fields)
     if exc.code == SUBSCRIPTION_INACTIVE:
-        text = (
-            "fzr subscription is not active — renew the plan in their panel "
-            f"(they said: {text})"
-        )
+        text = f"fzr subscription is not active — renew the plan in their panel (they said: {text})"
     return FulfillerError(text, money_outcome=refusal_money(exc))
 
 
@@ -421,9 +418,7 @@ class FzrFulfiller(Fulfiller):
         key = await _adopt_key_for(db, task)
         found = None
         if key is not None:
-            found = await find_order(
-                self._client(), key=key, since=task.created_at, slug=SUPPLIER
-            )
+            found = await find_order(self._client(), key=key, since=task.created_at, slug=SUPPLIER)
 
         if found is not None:
             result = _GRADE.result(found)
@@ -579,9 +574,7 @@ async def _adopt_key_for(db: AsyncSession, task: FulfillmentTask) -> AdoptKey | 
     category_id = str(mapping.external_product_id or "").strip()
     data = item.fulfillment_data or {}
     if category_id == STEAM_SENTINEL:
-        key = AdoptKey(
-            kind="steam_topup", steam_login=str(data.get("steam_login") or "").strip()
-        )
+        key = AdoptKey(kind="steam_topup", steam_login=str(data.get("steam_login") or "").strip())
     elif mapping.kind == _VOUCHER_KIND:
         key = AdoptKey(
             kind="gift_card",

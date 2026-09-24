@@ -419,7 +419,10 @@ async def test_overview_supplier_comparison_list(
     by_sku = {item["sku_id"]: item for item in r.json()["items"]}
 
     sku1_suppliers = {s["supplier_slug"]: s for s in by_sku[_seed_brand["sku1"]]["suppliers"]}
-    assert set(sku1_suppliers) == {"g2b", "gengine", "nova"}
+    # Every MAPPING_REQUIRED_SUPPLIERS member is offered as a candidate even
+    # with no mapping on this SKU, which is what lets an operator compare a
+    # supplier before mapping to it. fzr joined that set with ADR-0092.
+    assert set(sku1_suppliers) == {"g2b", "gengine", "nova", "fzr"}
 
     # g2b: active mapping, latest of two history rows (1.5, not 1.0) wins.
     # It is also sku1's routed (incumbent) supplier, but a history row wins

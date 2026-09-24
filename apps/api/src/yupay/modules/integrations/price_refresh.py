@@ -211,11 +211,12 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
 #: we top it up and it spends down; `manual`, `mock` and the reserved stubs
 #: do not. Each is probed through the same `health()` the integrations page
 #: reads, so this list is the only thing to touch when a fifth arrives.
-_WALLET_SUPPLIERS: Final = ("g2b", "gengine", "nova", "waxpeer")
+_WALLET_SUPPLIERS: Final = ("g2b", "gengine", "nova", "waxpeer", "fzr")
 
 #: Units the dollar threshold can be compared against. `health()` normalises
 #: everything it can — waxpeer converts from thousandths, nova and gengine
-#: pass their API's own `currency` through, g2b reports USDT and sends no
+#: pass their API's own `currency` through, fzr reports USD, g2b reports
+#: USDT and sends no
 #: currency at all. Anything else is a number in an unknown unit, and
 #: comparing it to 50 would either shout forever or never fire.
 _DOLLARISH: Final = frozenset({"USD", "USDT", "USDC"})

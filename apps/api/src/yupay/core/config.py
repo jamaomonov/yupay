@@ -961,7 +961,7 @@ class Settings(BaseSettings):
         description=(
             "Dollars below which a supplier's prepaid wallet raises a Telegram "
             "warning on the hourly price refresh, before any order is rejected. "
-            "One figure for every funded supplier (g2b, gengine, nova, waxpeer) "
+            "One figure for every funded supplier (g2b, gengine, nova, waxpeer, fzr) "
             "with one dedupe key each, so a quiet wallet cannot silence a "
             "draining one. A supplier whose balance is reported in a currency "
             "this number does not describe is skipped and logged rather than "

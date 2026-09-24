@@ -80,7 +80,7 @@ def test_an_unreadable_balance_stays_quiet() -> None:
 def test_every_funded_supplier_is_watched() -> None:
     """The list is the whole feature: a supplier missing from it is a wallet
     nobody is watching, and that is invisible until it empties."""
-    assert set(_WALLET_SUPPLIERS) == {"g2b", "gengine", "nova", "waxpeer"}
+    assert set(_WALLET_SUPPLIERS) == {"g2b", "gengine", "nova", "waxpeer", "fzr"}
     for slug in _WALLET_SUPPLIERS:
         fulfiller = REGISTRY.get(slug)
         assert fulfiller is not None, slug
