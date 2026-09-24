@@ -9,7 +9,7 @@ embedded inline) that one function per supplier reads better than a shared
 one with three special cases. So this module is now just the shared report
 type's home (re-exported from ``catalog_sync_types``) and a thin dispatcher;
 the actual work is one module per supplier — see ``catalog_sync_g2b.py``,
-``catalog_sync_nova.py``, ``catalog_sync_gengine.py`` — the same split
+``catalog_sync_panel.py``, ``catalog_sync_gengine.py`` — the same split
 ``sourcing/brand_overview.py`` and ``integrations/cost_lookup.py`` used on
 this same branch.
 
@@ -21,6 +21,7 @@ caller still names it directly; new callers should prefer
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
+from functools import partial
 from typing import TYPE_CHECKING, Protocol
 
 from yupay.core.errors import NotFoundError
@@ -30,10 +31,10 @@ from yupay.modules.integrations.catalog_sync_gengine import (
     sync_gengine_game_denominations,
     sync_gengine_voucher_denominations,
 )
-from yupay.modules.integrations.catalog_sync_nova import (
-    sync_nova_catalog,
-    sync_nova_game_denominations,
-    sync_nova_voucher_denominations,
+from yupay.modules.integrations.catalog_sync_panel import (
+    sync_panel_catalog,
+    sync_panel_game_denominations,
+    sync_panel_voucher_denominations,
 )
 from yupay.modules.integrations.catalog_sync_types import CatalogSyncReport
 
@@ -45,7 +46,7 @@ class _DenomSyncer(Protocol):
     """One supplier's on-demand denomination syncer.
 
     A plain ``Callable[..., Awaitable[tuple[int, str | None]]]`` erases the
-    keyword-only ``game_id`` both :func:`~catalog_sync_nova.sync_nova_game_denominations`
+    keyword-only ``game_id`` both :func:`~catalog_sync_panel.sync_panel_game_denominations`
     and :func:`~catalog_sync_gengine.sync_gengine_game_denominations` share, so
     ``mypy --strict`` cannot check the ``game_id=game_id`` call in
     :func:`run_game_denomination_sync` below against it. This restores the
@@ -56,7 +57,7 @@ class _DenomSyncer(Protocol):
 
 
 class _VoucherDenomSyncer(Protocol):
-    """The same shape for a *voucher's* ladder — a NOVA gift-card category or
+    """The same shape for a *voucher's* ladder — a panel gift-card category or
     a G-Engine shop product — which is a different catalogue with a different
     endpoint, not the same call with another id."""
 
@@ -68,28 +69,35 @@ class _VoucherDenomSyncer(Protocol):
 #: Suppliers a full catalogue sweep is wired up for. Mirrors
 #: ``routes._KNOWN_SUPPLIERS`` minus Waxpeer, which sells Steam items by
 #: login rather than a browsable catalogue and so has nothing to sync.
-SYNCABLE_SUPPLIERS: frozenset[str] = frozenset({"g2b", "nova", "gengine"})
+SYNCABLE_SUPPLIERS: frozenset[str] = frozenset({"g2b", "nova", "gengine", "fzr"})
 
 #: Suppliers the on-demand single-game denomination sync supports. G2B is
 #: deliberately not here — its per-game denomination picker already exists as
 #: a live GET (``/g2b/games/{game_code}/catalogue``, pre-dating this branch)
 #: and was not moved into the cache; see ``catalog_sync_gengine``'s module
 #: docstring for the shop-catalogue scope note this mirrors.
-DENOM_SYNCABLE_SUPPLIERS: frozenset[str] = frozenset({"nova", "gengine"})
+DENOM_SYNCABLE_SUPPLIERS: frozenset[str] = frozenset({"nova", "gengine", "fzr"})
 
+#: ``nova`` and ``fzr`` share one implementation — they publish the same two
+#: catalogues under the same paths — so each is bound to it with its own slug
+#: rather than given a module of its own. ``partial`` and not a lambda so the
+#: keyword-only signatures the Protocols above pin stay checkable.
 _SYNCERS: dict[str, Callable[[AsyncSession], Awaitable[CatalogSyncReport]]] = {
     "g2b": sync_g2b_catalog,
-    "nova": sync_nova_catalog,
+    "nova": partial(sync_panel_catalog, slug="nova"),
+    "fzr": partial(sync_panel_catalog, slug="fzr"),
     "gengine": sync_gengine_catalog,
 }
 
 _DENOM_SYNCERS: dict[str, _DenomSyncer] = {
-    "nova": sync_nova_game_denominations,
+    "nova": partial(sync_panel_game_denominations, slug="nova"),
+    "fzr": partial(sync_panel_game_denominations, slug="fzr"),
     "gengine": sync_gengine_game_denominations,
 }
 
 _VOUCHER_DENOM_SYNCERS: dict[str, _VoucherDenomSyncer] = {
-    "nova": sync_nova_voucher_denominations,
+    "nova": partial(sync_panel_voucher_denominations, slug="nova"),
+    "fzr": partial(sync_panel_voucher_denominations, slug="fzr"),
     "gengine": sync_gengine_voucher_denominations,
 }
 

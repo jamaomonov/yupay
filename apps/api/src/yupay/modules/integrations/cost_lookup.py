@@ -22,7 +22,7 @@ from sqlalchemy import select
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
-    NOVA_STEAM_SENTINEL,
+    PANEL_STEAM_SENTINEL,
     SkuSupplierMapping,
     SupplierCatalogCache,
 )
@@ -189,15 +189,17 @@ async def _gengine_raw_price(db: AsyncSession, mapping: SkuSupplierMapping) -> _
     return _RawPrice(amount=row.price_usdt, source="supplier_catalog_cache.price_usdt")
 
 
-async def _nova_giftcard_price(db: AsyncSession, mapping: SkuSupplierMapping) -> _RawPrice:
-    """NOVA's price for a gift-card mapping, read from the catalogue cache.
+async def _panel_giftcard_price(
+    db: AsyncSession, mapping: SkuSupplierMapping, *, slug: str, label: str
+) -> _RawPrice:
+    """A panel vendor's price for a gift-card mapping, from the catalogue cache.
 
-    Gift cards are a second NOVA catalogue with its own endpoint
+    Gift cards are a second catalogue with its own endpoint
     (``GET /api/v2/giftcards/cards``), so the offers path above — which asks
     ``/topups/offers`` — cannot answer for them: it would 404 on a category
     id that is perfectly real, and report a live mapping as a broken one.
 
-    Cached rather than live, unlike NOVA's top-ups, because one call answers
+    Cached rather than live, unlike their top-ups, because one call answers
     a whole category: the hourly sync already fetches every mapped
     category's cards, and nine Roblox rungs behind one category would
     otherwise be nine identical requests an hour.
@@ -207,7 +209,7 @@ async def _nova_giftcard_price(db: AsyncSession, mapping: SkuSupplierMapping) ->
         return _RawPrice(amount=None, source="", reason="у маппинга не указан card_id")
     row = await _cached_price(
         db,
-        supplier_slug="nova",
+        supplier_slug=slug,
         kind="voucher_denom",
         external_id=card_id,
         parent_external_id=mapping.external_product_id.strip(),
@@ -216,10 +218,10 @@ async def _nova_giftcard_price(db: AsyncSession, mapping: SkuSupplierMapping) ->
         return _RawPrice(
             amount=None,
             source="",
-            reason="карта не найдена в кэше — синхронизируйте каталог NOVA",
+            reason=f"карта не найдена в кэше — синхронизируйте каталог {label}",
         )
     if row.price_usdt is None:
-        return _RawPrice(amount=None, source="", reason="NOVA не сообщила цену для этой карты")
+        return _RawPrice(amount=None, source="", reason=f"{label} не сообщила цену для этой карты")
     return _RawPrice(amount=row.price_usdt, source="supplier_catalog_cache.price_usdt")
 
 
@@ -287,69 +289,65 @@ async def _nova_premium_price(client: Any, mapping: SkuSupplierMapping) -> _RawP
     return _RawPrice(amount=Decimal(str(value)), source="nova.fragment.premium_quote", reason=None)
 
 
-async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be wrong, each with its own operator-facing reason
+async def _panel_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be wrong, each with its own operator-facing reason
     db: AsyncSession,
     mapping: SkuSupplierMapping,
     *,
+    slug: str,
+    label: str,
     offers_cache: dict[str, dict[str, Any]] | None,
 ) -> _RawPrice:
-    """NOVA's price for one mapping.
+    """A panel vendor's price for one mapping.
 
     A ``voucher`` mapping is a gift card and goes to
-    :func:`_nova_giftcard_price`, which reads the catalogue cache. Everything
+    :func:`_panel_giftcard_price`, which reads the catalogue cache. Everything
     else is a top-up: ``GET /topups/offers`` for the mapping's category
     (``external_product_id``), matched on the offer id
     (``external_variant_id``), reading ``price_usd`` off the match.
 
-    Steam (:data:`NOVA_STEAM_SENTINEL`) has no catalogue price to look up —
-    its cost is a share of the face value the customer picks at checkout,
-    not a catalogue number (ADR-0082 §4) — so it is reported as a reason
-    before any network call, and the caller must write nothing for it, not
-    even history.
+    Steam (:data:`PANEL_STEAM_SENTINEL`) has no catalogue price to look up —
+    its cost is a share of the face value the customer picks at checkout, not
+    a catalogue number (ADR-0082 §4) — so it is reported as a reason before
+    any network call, and the caller must write nothing for it, not even
+    history.
 
     ``offers_cache``, when given, is checked for the mapping's
-    ``external_product_id`` before calling NOVA at all — a caller
-    refreshing many SKUs of the same category (a whole brand) fetches the
-    category once and passes the same map to every one of them. Building
-    that cache is the caller's job (the scheduler); this function only
-    reads it.
+    ``external_product_id`` before calling out at all — a caller refreshing
+    many SKUs of the same category (a whole brand) fetches the category once
+    and passes the same map to every one of them. Building that cache is the
+    caller's job (the scheduler); this function only reads it.
     """
-    from yupay.modules.fulfillment.suppliers import REGISTRY
-    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+    from yupay.modules.integrations.catalog_sync_panel import client_or_none
 
     if mapping.kind == "voucher":
         # A second catalogue with a second endpoint. Checked before anything
         # else so a gift-card category never reaches the top-up path, which
         # would 404 on it and report a healthy mapping as broken.
-        return await _nova_giftcard_price(db, mapping)
+        return await _panel_giftcard_price(db, mapping, slug=slug, label=label)
 
     category_id = mapping.external_product_id.strip()
-    if category_id == NOVA_STEAM_SENTINEL:
+    if category_id == PANEL_STEAM_SENTINEL:
         return _RawPrice(
             amount=None,
             source="",
             reason=(
-                "у Steam-пополнения NOVA нет каталожной цены — стоимость зависит "
+                f"у Steam-пополнения {label} нет каталожной цены — стоимость зависит "
                 "от суммы, которую выбирает покупатель"
             ),
         )
-    fragment = category_id in (NOVA_FRAGMENT_STARS, NOVA_FRAGMENT_PREMIUM)
     offer_id = (mapping.external_variant_id or "").strip()
-    if not offer_id and not fragment:
+    if not offer_id:
         return _RawPrice(amount=None, source="", reason="у маппинга не указан offer_id")
 
-    fulfiller = REGISTRY.get("nova")
-    if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
-        return _RawPrice(amount=None, source="", reason="NOVA is not configured")
-
-    if fragment:
-        return await _nova_fragment_price(fulfiller, mapping)
+    client = client_or_none(slug)
+    if client is None:
+        return _RawPrice(amount=None, source="", reason=f"{label} is not configured")
 
     try:
         body = (
             offers_cache[category_id]
             if offers_cache is not None and category_id in offers_cache
-            else await fulfiller._client().get_offers(category_id)
+            else await client.get_offers(category_id)
         )
         offers = [o for o in (body.get("offers") or []) if isinstance(o, dict)]
         matches = [o for o in offers if str(o.get("offer_id") or "").strip() == offer_id]
@@ -357,7 +355,7 @@ async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be
             return _RawPrice(
                 amount=None,
                 source="",
-                reason=f"offer «{offer_id}» не найден в каталоге NOVA",
+                reason=f"offer «{offer_id}» не найден в каталоге {label}",
             )
         if len(matches) > 1:
             # Collected rather than `next(...)`, for the reason the mapping seed
@@ -370,8 +368,52 @@ async def _nova_raw_price(  # noqa: PLR0911 -- one refusal per thing that can be
                 amount=None,
                 source="",
                 reason=f"offer «{offer_id}» встречается {len(matches)} раза в каталоге"
-                f" NOVA ({names}) — цена неоднозначна, поправьте маппинг",
+                f" {label} ({names}) — цена неоднозначна, поправьте маппинг",
             )
-        return _RawPrice(amount=matches[0].get("price_usd"), source="nova.get_offers.price_usd")
+        return _RawPrice(amount=matches[0].get("price_usd"), source=f"{slug}.get_offers.price_usd")
     except Exception as exc:  # noqa: BLE001 -- best effort, mirrors G2B
-        return _RawPrice(amount=None, source="", reason=f"ошибка обращения к NOVA: {exc!s}"[:200])
+        return _RawPrice(
+            amount=None, source="", reason=f"ошибка обращения к {label}: {exc!s}"[:200]
+        )
+
+
+async def _nova_raw_price(
+    db: AsyncSession,
+    mapping: SkuSupplierMapping,
+    *,
+    offers_cache: dict[str, dict[str, Any]] | None,
+) -> _RawPrice:
+    """NOVA's price for one mapping.
+
+    Everything but Telegram is the shared panel lookup. The two Fragment
+    sentinels are NOVA's alone — a second API on the same host, priced by a
+    quote call rather than a catalogue — so they are intercepted here rather
+    than carried into a function a vendor without Fragment also uses.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
+
+    category_id = mapping.external_product_id.strip()
+    if mapping.kind != "voucher" and category_id in (NOVA_FRAGMENT_STARS, NOVA_FRAGMENT_PREMIUM):
+        fulfiller = REGISTRY.get("nova")
+        if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
+            return _RawPrice(amount=None, source="", reason="NOVA is not configured")
+        return await _nova_fragment_price(fulfiller, mapping)
+    return await _panel_raw_price(db, mapping, slug="nova", label="NOVA", offers_cache=offers_cache)
+
+
+async def _fzr_raw_price(
+    db: AsyncSession,
+    mapping: SkuSupplierMapping,
+    *,
+    offers_cache: dict[str, dict[str, Any]] | None,
+) -> _RawPrice:
+    """FazerCards' price for one mapping. The shared panel lookup, no extras.
+
+    They have no Fragment API, and their Telegram products are deliberately
+    not mapped (see ``fulfillment/suppliers/fzr.py``), so there is nothing to
+    intercept ahead of it.
+    """
+    return await _panel_raw_price(
+        db, mapping, slug="fzr", label="FazerCards", offers_cache=offers_cache
+    )

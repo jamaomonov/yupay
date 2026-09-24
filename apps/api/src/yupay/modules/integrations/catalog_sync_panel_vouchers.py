@@ -1,13 +1,17 @@
-"""The gift-card half of NOVA's catalogue sync.
+"""The gift-card half of a panel vendor's catalogue sync.
 
-``catalog_sync_nova`` opened with "NOVA has no voucher concept — its whole
+Shared by ``nova`` and ``fzr``: they publish the same two catalogues under
+the same paths, and the client carries its own slug, so every row and every
+log event is written for whichever vendor the caller passed in.
+
+``catalog_sync_panel`` opened with "NOVA has no voucher concept — its whole
 catalogue is game/top-up categories". That was true of what we had read of
 their API, not of their API: ``GET /api/v2/giftcards`` is a second catalogue
 of 576 categories, and ``GET /api/v2/giftcards/cards?category_id=…`` is the
 ladder inside one, each card carrying its own ``card_id``, ``price_usd`` and
 live ``stock``. It was found by reading their OpenAPI at
 ``/api/openapi.json`` after six guessed paths 404'd — the lesson is recorded
-in ``nova_client.list_giftcard_cards``.
+in ``panel_client.list_giftcard_cards``.
 
 Until this module existed, an operator who pressed «Синхронизировать
 каталог» got the games and nothing else, which is exactly what was reported
@@ -21,7 +25,7 @@ Same two-level shape and the same restraint as the games half:
   at, because 576 categories × one call each would turn a cheap tick into
   hundreds of upstream requests for rows nobody will look at.
 
-Split into its own module rather than grown inside ``catalog_sync_nova``:
+Split into its own module rather than grown inside ``catalog_sync_panel``:
 that file was 246 lines and §6 of AGENTS.md puts the ceiling at 400. The
 seam is the catalogue, not the supplier — games there, gift cards here.
 """
@@ -32,17 +36,17 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from yupay.core.logging import get_logger
-from yupay.modules.fulfillment.suppliers.nova_client import (
-    NovaClient,
-    NovaError,
-    NovaUnavailableError,
+from yupay.modules.fulfillment.suppliers.panel_client import (
+    PanelClient,
+    PanelError,
+    PanelUnavailableError,
 )
 from yupay.modules.integrations import service as svc
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
 
-log = get_logger("yupay.integrations.catalog_sync.nova_vouchers")
+log = get_logger("yupay.integrations.catalog_sync.panel_vouchers")
 
 #: Ceiling on the by-category card refresh, mirroring the games half's
 #: ``_MAPPED_FETCH_CAP``. A data mistake must not turn one tick into hundreds
@@ -50,7 +54,17 @@ log = get_logger("yupay.integrations.catalog_sync.nova_vouchers")
 _MAPPED_FETCH_CAP = 200
 
 
-async def sync_giftcard_categories(db: AsyncSession, client: NovaClient) -> tuple[int, str | None]:
+def _ev(client: PanelClient, name: str) -> str:
+    """One log event name, namespaced to the vendor that produced it.
+
+    A function rather than an f-string at each call site: our structured
+    logger takes the event as a positional *name*, not a format string, and
+    ruff's G004 reads an f-string there as a formatting mistake.
+    """
+    return f"integrations.{client.slug}.sync.{name}"
+
+
+async def sync_giftcard_categories(db: AsyncSession, client: PanelClient) -> tuple[int, str | None]:
     """Write one ``voucher`` row per gift-card category.
 
     Args:
@@ -58,7 +72,7 @@ async def sync_giftcard_categories(db: AsyncSession, client: NovaClient) -> tupl
         client: A configured NOVA client.
 
     Returns:
-        ``(written, error)``. Never raises — ``sync_nova_catalog`` promises
+        ``(written, error)``. Never raises — ``sync_panel_catalog`` promises
         its own caller that much, and a gift-card failure must not lose the
         games sweep that ran beside it.
     """
@@ -70,7 +84,7 @@ async def sync_giftcard_categories(db: AsyncSession, client: NovaClient) -> tupl
                 continue
             await svc.upsert_catalog_entry(
                 db,
-                supplier_slug="nova",
+                supplier_slug=client.slug,
                 kind="voucher",
                 external_id=external_id,
                 title=str(item.get("name") or external_id)[:255],
@@ -78,13 +92,13 @@ async def sync_giftcard_categories(db: AsyncSession, client: NovaClient) -> tupl
             )
             written += 1
     except Exception as exc:  # noqa: BLE001 -- best-effort sync
-        log.warning("integrations.nova.sync.giftcards_failed", error=str(exc))
+        log.warning(_ev(client, "giftcards_failed"), error=str(exc))
         return written, f"gift-card sync failed: {exc!s}"[:200]
     return written, None
 
 
 async def _sync_category_cards(
-    db: AsyncSession, client: NovaClient, category_id: str
+    db: AsyncSession, client: PanelClient, category_id: str
 ) -> tuple[int, bool, str | None]:
     """Write one category's cards as ``voucher_denom`` rows.
 
@@ -95,11 +109,11 @@ async def _sync_category_cards(
     """
     try:
         rows = await client.list_giftcard_cards(category_id)
-    except NovaError as exc:
+    except PanelError as exc:
         if exc.status == 404:
             return 0, True, None
         return 0, False, str(exc)[:200]
-    except NovaUnavailableError as exc:
+    except PanelUnavailableError as exc:
         return 0, False, str(exc)[:200]
 
     written = 0
@@ -113,7 +127,7 @@ async def _sync_category_cards(
             price = card.get("price_usd")
             await svc.upsert_catalog_entry(
                 db,
-                supplier_slug="nova",
+                supplier_slug=client.slug,
                 kind="voucher_denom",
                 external_id=card_id,
                 title=str(card.get("name") or card_id)[:255],
@@ -127,7 +141,7 @@ async def _sync_category_cards(
         # ``seen`` prunes nothing by ``prune_catalog_denoms``'s own rule, so
         # neither can read as NOVA delisting a whole category at once.
         await svc.prune_catalog_denoms(
-            db, supplier_slug="nova", parent_external_id=category_id, keep=seen
+            db, supplier_slug=client.slug, parent_external_id=category_id, keep=seen
         )
     except Exception as exc:  # noqa: BLE001 -- one malformed card must not raise past this category
         return written, False, f"malformed card payload: {exc!s}"[:200]
@@ -135,7 +149,7 @@ async def _sync_category_cards(
 
 
 async def refresh_mapped_giftcards(
-    db: AsyncSession, client: NovaClient
+    db: AsyncSession, client: PanelClient
 ) -> tuple[int, int, str | None]:
     """Re-read cards for every NOVA gift-card category we hold a mapping to.
 
@@ -146,10 +160,12 @@ async def refresh_mapped_giftcards(
     Returns:
         ``(cards_written, missing_categories, error)``.
     """
-    category_ids = await svc.mapped_external_product_ids(db, supplier_slug="nova", kind="voucher")
+    category_ids = await svc.mapped_external_product_ids(
+        db, supplier_slug=client.slug, kind="voucher"
+    )
     if len(category_ids) > _MAPPED_FETCH_CAP:
         log.warning(
-            "integrations.nova.sync.mapped_giftcard_cap_hit",
+            _ev(client, "mapped_giftcard_cap_hit"),
             wanted=len(category_ids),
             cap=_MAPPED_FETCH_CAP,
         )
@@ -163,11 +179,11 @@ async def refresh_mapped_giftcards(
         written += count
         if is_missing:
             missing += 1
-            log.warning("integrations.nova.sync.mapped_giftcard_gone", category_id=category_id)
+            log.warning(_ev(client, "mapped_giftcard_gone"), category_id=category_id)
         elif error:
             failures += 1
             log.warning(
-                "integrations.nova.sync.mapped_giftcard_failed",
+                _ev(client, "mapped_giftcard_failed"),
                 category_id=category_id,
                 error=error,
             )
@@ -177,16 +193,16 @@ async def refresh_mapped_giftcards(
 
 
 async def sync_one_category_cards(
-    db: AsyncSession, client: NovaClient, *, category_id: str
+    db: AsyncSession, client: PanelClient, *, category_id: str
 ) -> tuple[int, str | None]:
     """On-demand: pull one gift-card category's cards into the cache.
 
     For the operator who has just picked a category the cache has never seen
-    — the voucher twin of ``sync_nova_game_denominations``.
+    — the voucher twin of ``sync_panel_game_denominations``.
     """
     written, missing, error = await _sync_category_cards(db, client, category_id)
     if missing:
-        return 0, f"nova has no gift-card category {category_id!r}"
+        return 0, f"{client.slug} has no gift-card category {category_id!r}"
     return written, error
 
 

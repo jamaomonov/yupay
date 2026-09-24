@@ -99,7 +99,7 @@ export function bypassesInventory(item: Pick<SourcingBrandSkuOut, "primary">): b
  *  first, and this project's rules bar an `as` cast for anything short of
  *  a known-shape JSON/DOM narrowing). */
 export function supplierLabel(slug: string): string {
-  const known: readonly KnownSupplier[] = ["g2b", "waxpeer", "gengine", "nova"];
+  const known: readonly KnownSupplier[] = ["g2b", "waxpeer", "gengine", "nova", "fzr"];
   const match = known.find((k) => k === slug);
   return match ? SUPPLIER_LABELS[match] : slug;
 }

@@ -1,7 +1,7 @@
 """The report type every per-supplier catalogue sync returns.
 
 Split into its own module so ``catalog_sync.py`` (the dispatcher) and
-``catalog_sync_g2b.py`` / ``catalog_sync_nova.py`` / ``catalog_sync_gengine.py``
+``catalog_sync_g2b.py`` / ``catalog_sync_panel.py`` / ``catalog_sync_gengine.py``
 (one per supplier) can all import it without a cycle — the dispatcher needs
 the three supplier modules, and the supplier modules need this type, so the
 type cannot live in the dispatcher itself.
@@ -28,7 +28,7 @@ class CatalogSyncReport:
       sweep for products/games we already hold an active mapping to — G2B
       re-reads each mapped voucher by id (see ``catalog_sync_g2b``); NOVA and
       G-Engine write ``game_denom`` rows for each mapped game's denominations
-      (see ``catalog_sync_nova``/``catalog_sync_gengine``). Reused rather than
+      (see ``catalog_sync_panel``/``catalog_sync_gengine``). Reused rather than
       renamed so the wire shape (``CatalogSyncOut``) does not have to grow a
       supplier-specific field.
     - ``missing_upstream`` counts mapped items the supplier no longer lists.

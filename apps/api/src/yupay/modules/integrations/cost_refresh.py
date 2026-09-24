@@ -31,6 +31,7 @@ from sqlalchemy import select
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.integrations.cost_lookup import (
+    _fzr_raw_price,
     _g2b_raw_price,
     _gengine_raw_price,
     _nova_raw_price,
@@ -106,14 +107,15 @@ def _route_label(decision: Decision) -> str:
 #: force-routed to a supplier outside this set has no live price to call
 #: "current", however recently `Sku.cost_usdt` was written by a *previous*
 #: routed supplier.
-PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "gengine", "nova"})
+PRICE_COLLECTION_SUPPORTED_SUPPLIERS = frozenset({"g2b", "gengine", "nova", "fzr"})
 
 
 def supports_price_collection(supplier_slug: str) -> bool:
     """Whether :func:`refresh_sku_cost_for_mapping` can pull a live price for this supplier.
 
-    Only g2b and nova have a ``cost_lookup`` implementation today; every
-    other supplier's mapping is refreshed with a "not supported" reason
+    g2b, gengine and the two panel vendors (nova, fzr) have a ``cost_lookup``
+    implementation; every other supplier's mapping is refreshed with a
+    "not supported" reason
     instead of a price (see the dispatch in
     :func:`refresh_sku_cost_for_mapping`). ``sourcing.brand_overview`` reads
     this too, to decide whether a routed supplier's ``cost_source`` can
@@ -125,7 +127,7 @@ def supports_price_collection(supplier_slug: str) -> bool:
         supplier_slug: The supplier to check.
 
     Returns:
-        ``True`` for g2b and nova; ``False`` for everything else.
+        ``True`` for g2b, gengine, nova and fzr; ``False`` for everything else.
     """
     return supplier_slug in PRICE_COLLECTION_SUPPORTED_SUPPLIERS
 
@@ -203,6 +205,12 @@ async def _lookup_price(
         return await _g2b_raw_price(db, mapping)
     if mapping.supplier_slug == "gengine":
         return await _gengine_raw_price(db, mapping)
+    if mapping.supplier_slug == "fzr":
+        # The offers cache is NOVA's: it is keyed by category id alone, and
+        # the two vendors' category ids are the same strings for the same
+        # games, so sharing it would serve one vendor's prices as the other's.
+        # fzr fetches its own until a second cache exists.
+        return await _fzr_raw_price(db, mapping, offers_cache=None)
     return await _nova_raw_price(db, mapping, offers_cache=nova_offers_cache)
 
 
@@ -217,7 +225,8 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     """Pull the upstream price for ``mapping`` and persist it.
 
     Handles ``g2b`` (:func:`_g2b_raw_price`), ``gengine``
-    (:func:`_gengine_raw_price`) and ``nova`` (:func:`_nova_raw_price`); any
+    (:func:`_gengine_raw_price`), ``nova`` (:func:`_nova_raw_price`) and
+    ``fzr`` (:func:`_fzr_raw_price`); any
     other supplier is reported through the outcome, not raised. Every active mapping that produces a usable price
     gets a ``supplier_price_history`` row — that table is the per-supplier
     comparison the admin screen reads, and it is written whoever the

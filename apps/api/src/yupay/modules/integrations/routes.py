@@ -97,7 +97,7 @@ async def check_player(
     )
 
 
-_KNOWN_SUPPLIERS = {"g2b", "waxpeer", "gengine", "nova"}
+_KNOWN_SUPPLIERS = {"g2b", "waxpeer", "gengine", "nova", "fzr"}
 
 
 def _mapping_out(row: SkuSupplierMapping, sku_code: str) -> SupplierMappingOut:
@@ -274,7 +274,7 @@ async def list_catalog(
     summary="Refresh ``supplier_catalog_cache`` from one supplier's API",
 )
 async def sync_catalog(
-    supplier: Literal["g2b", "nova", "gengine"],
+    supplier: Literal["g2b", "nova", "gengine", "fzr"],
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
@@ -352,7 +352,7 @@ async def sync_catalog(
     summary="Pull one game's denominations into the catalog cache, on demand",
 )
 async def sync_game_denominations(
-    supplier: Literal["nova", "gengine"],
+    supplier: Literal["nova", "gengine", "fzr"],
     game_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
@@ -394,7 +394,7 @@ async def sync_game_denominations(
     summary="Pull one voucher product's denominations into the cache, on demand",
 )
 async def sync_voucher_denominations(
-    supplier: Literal["nova", "gengine"],
+    supplier: Literal["nova", "gengine", "fzr"],
     product_id: str,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],

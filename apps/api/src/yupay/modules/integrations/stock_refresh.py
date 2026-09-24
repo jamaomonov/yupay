@@ -43,6 +43,7 @@ cannot keep.
 from __future__ import annotations
 
 import html
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -97,11 +98,38 @@ def normalise_stock(raw: Any) -> int | None:
     return None if value < 0 else value
 
 
+def _stock_sources(
+    *, g2b: Any | None, gengine: Any | None, nova: Any | None, fzr: Any | None
+) -> dict[str, Any]:
+    """The read clients this sweep can actually ask, by supplier slug.
+
+    An injected client wins over the registry, which is how the tests drive
+    one supplier at a time. A supplier with no key is skipped and logged
+    rather than failing the run — the others still need sweeping.
+    """
+    injected = {"g2b": g2b, "gengine": gengine, "nova": nova, "fzr": fzr}
+    builders: dict[str, Callable[[], Any | None]] = {
+        "g2b": _g2b_client,
+        "gengine": _gengine_client,
+        "nova": lambda: _panel_client("nova"),
+        "fzr": lambda: _panel_client("fzr"),
+    }
+    sources: dict[str, Any] = {}
+    for slug, builder in builders.items():
+        found = injected[slug] if injected[slug] is not None else builder()
+        if found is not None:
+            sources[slug] = found
+        else:
+            log.info("stock_refresh.supplier_skipped", supplier=slug)
+    return sources
+
+
 async def refresh_voucher_stock(
     *,
     client: Any | None = None,
     gengine_client: Any | None = None,
     nova_client: Any | None = None,
+    fzr_client: Any | None = None,
 ) -> StockRefreshReport:
     """Pull stock for every active voucher mapping and persist it.
 
@@ -114,19 +142,7 @@ async def refresh_voucher_stock(
     not registered is skipped rather than failing the run — the other one still
     needs sweeping.
     """
-    sources: dict[str, Any] = {}
-    g2b = client if client is not None else _g2b_client()
-    if g2b is not None:
-        sources["g2b"] = g2b
-    gengine = gengine_client if gengine_client is not None else _gengine_client()
-    if gengine is not None:
-        sources["gengine"] = gengine
-    nova = nova_client if nova_client is not None else _nova_client()
-    if nova is not None:
-        sources["nova"] = nova
-    for slug in ("g2b", "gengine", "nova"):
-        if slug not in sources:
-            log.info("stock_refresh.supplier_skipped", supplier=slug)
+    sources = _stock_sources(g2b=client, gengine=gengine_client, nova=nova_client, fzr=fzr_client)
     if not sources:
         # Nothing to ask. Returning before the session keeps the scheduler tick
         # free of a pointless connection when no supplier key is configured.
@@ -300,8 +316,10 @@ async def _stock_for(
         return await _gengine_stock(
             client, product_id=product_id, variant_id=variant_id, cache=cache
         )
-    if supplier == "nova":
-        return await _nova_stock(client, category_id=product_id, card_id=variant_id, cache=cache)
+    if supplier in ("nova", "fzr"):
+        return await _panel_stock(
+            client, supplier=supplier, category_id=product_id, card_id=variant_id, cache=cache
+        )
     product = await client.fetch_product(product_id)
     # Withdrawn upstream is not "unknown" — it is zero. Leaving it NULL would
     # keep selling a product G2B no longer lists.
@@ -358,37 +376,44 @@ async def _gengine_stock(
     return 0 if row is None else normalise_stock(row.get("stock"))
 
 
-def _nova_client() -> Any | None:
-    """The NOVA read client, or None when the adapter is not registered."""
+def _panel_client(slug: str) -> Any | None:
+    """One panel vendor's read client, or None when it is not configured.
+
+    Both vendors expose ``client_for_reads`` for exactly this: the sweep lives
+    here but the credentials and timeout belong to the adapter.
+    """
     from yupay.modules.fulfillment.suppliers import REGISTRY
-    from yupay.modules.fulfillment.suppliers.nova import NovaFulfiller
 
-    fulfiller = REGISTRY.get("nova")
-    if not isinstance(fulfiller, NovaFulfiller) or not fulfiller.available:
+    fulfiller = REGISTRY.get(slug)
+    reader = getattr(fulfiller, "client_for_reads", None)
+    if fulfiller is None or reader is None or not fulfiller.available:
         return None
-    return fulfiller.client_for_reads()
+    return reader()
 
 
-async def _nova_stock(
+async def _panel_stock(
     client: Any,
     *,
+    supplier: str,
     category_id: str,
     card_id: str | None,
     cache: dict[str, dict[str, Any] | None],
 ) -> int | None:
-    """Stock for one NOVA gift-card denomination.
+    """Stock for one panel gift-card denomination.
 
-    NOVA reports a count per ``card_id`` inside one call for the whole
+    They report a count per ``card_id`` inside one call for the whole
     category, so this is G-Engine's shape rather than G2B's — cached per
-    category for the length of a run.
+    category for the length of a run. The cache key carries the supplier
+    because the two vendors use the *same* category ids for the same
+    catalogues, so a shared key would serve one vendor's stock as the other's.
 
-    Without this, a NOVA-only SKU carried ``supplier_stock = NULL``, which the
-    catalogue reads as "not tracked" and therefore always sellable: a card
-    NOVA had run out of stayed on the shelf and clickable, and the order died
-    at the supplier. Roblox 2500 ships with nine in stock, so that was not a
+    Without this, a panel-only SKU carried ``supplier_stock = NULL``, which the
+    catalogue reads as "not tracked" and therefore always sellable: a card the
+    supplier had run out of stayed on the shelf and clickable, and the order
+    died upstream. Roblox 2500 ships with nine in stock, so that was not a
     theoretical window.
     """
-    key = f"nova:{category_id}"
+    key = f"{supplier}:{category_id}"
     if key not in cache:
         rows = await client.list_giftcard_cards(category_id)
         cache[key] = {str(row.get("card_id")): row for row in rows if isinstance(row, dict)}

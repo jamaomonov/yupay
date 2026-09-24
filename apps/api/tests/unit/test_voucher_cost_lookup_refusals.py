@@ -18,7 +18,7 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
-from yupay.modules.integrations.cost_lookup import _gengine_raw_price, _nova_giftcard_price
+from yupay.modules.integrations.cost_lookup import _gengine_raw_price, _panel_giftcard_price
 from yupay.modules.integrations.models import SkuSupplierMapping
 
 pytestmark = pytest.mark.asyncio
@@ -112,7 +112,7 @@ async def test_a_nova_gift_card_mapping_with_no_card_is_refused() -> None:
     mapping = _mapping(kind="voucher", product="roblox_global", variant=None)
     mapping.supplier_slug = "nova"
 
-    lookup = await _nova_giftcard_price(_db(None), mapping)
+    lookup = await _panel_giftcard_price(_db(None), mapping, slug="nova", label="NOVA")
 
     assert lookup.amount is None
     assert "card_id" in (lookup.reason or "")
@@ -122,7 +122,7 @@ async def test_an_unsynced_nova_category_says_so() -> None:
     mapping = _mapping(kind="voucher", product="roblox_global", variant="50_robux")
     mapping.supplier_slug = "nova"
 
-    lookup = await _nova_giftcard_price(_db(None), mapping)
+    lookup = await _panel_giftcard_price(_db(None), mapping, slug="nova", label="NOVA")
 
     assert "синхронизируйте каталог NOVA" in (lookup.reason or "")
 
@@ -131,7 +131,7 @@ async def test_a_nova_card_row_without_a_price_is_refused_not_zeroed() -> None:
     mapping = _mapping(kind="voucher", product="roblox_global", variant="50_robux")
     mapping.supplier_slug = "nova"
 
-    lookup = await _nova_giftcard_price(_db(_Row(None)), mapping)
+    lookup = await _panel_giftcard_price(_db(_Row(None)), mapping, slug="nova", label="NOVA")
 
     assert lookup.amount is None
     assert "не сообщила цену" in (lookup.reason or "")

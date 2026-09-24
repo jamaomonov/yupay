@@ -25,7 +25,7 @@ from typing import Any
 import pytest
 from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
 from yupay.modules.integrations import catalog_sync_gengine_vouchers as shop
-from yupay.modules.integrations import catalog_sync_nova_vouchers as gift
+from yupay.modules.integrations import catalog_sync_panel_vouchers as gift
 
 pytestmark = pytest.mark.asyncio
 
@@ -94,6 +94,12 @@ def _svc(monkeypatch: pytest.MonkeyPatch) -> Any:
 
 
 class _NovaClient:
+    #: The real client carries its slug as a class attribute, and the sync
+    #: reads it to decide which supplier's rows it is writing. A fake without
+    #: one would only fail at the first log line, which is a long way from the
+    #: mistake.
+    slug = "nova"
+
     def __init__(self, cards: Any = None, categories: Any = None) -> None:
         self._cards = cards if cards is not None else []
         self._categories = categories if categories is not None else []
@@ -393,10 +399,10 @@ async def test_an_unknown_supplier_has_no_voucher_syncer() -> None:
 @pytest.mark.parametrize(
     ("module_name", "attr"),
     [
-        ("catalog_sync_nova", "_nova_client_or_none"),
+        ("catalog_sync_panel", "client_or_none"),
         ("catalog_sync_gengine", "_gengine_client_or_none"),
     ],
-    ids=["nova", "gengine"],
+    ids=["panel", "gengine"],
 )
 async def test_an_unconfigured_supplier_reports_rather_than_syncs(
     monkeypatch: pytest.MonkeyPatch, module_name: str, attr: str
@@ -406,14 +412,14 @@ async def test_an_unconfigured_supplier_reports_rather_than_syncs(
     import importlib
 
     module = importlib.import_module(f"yupay.modules.integrations.{module_name}")
-    monkeypatch.setattr(module, attr, lambda: None)
-    func = (
-        module.sync_nova_voucher_denominations
-        if module_name == "catalog_sync_nova"
-        else module.sync_gengine_voucher_denominations
-    )
-
-    written, error = await func(_NO_DB, product_id="9")
+    if module_name == "catalog_sync_panel":
+        monkeypatch.setattr(module, attr, lambda _slug: None)
+        written, error = await module.sync_panel_voucher_denominations(
+            _NO_DB, slug="nova", product_id="9"
+        )
+    else:
+        monkeypatch.setattr(module, attr, lambda: None)
+        written, error = await module.sync_gengine_voucher_denominations(_NO_DB, product_id="9")
 
     assert written == 0
     assert "not configured" in (error or "")
@@ -430,26 +436,26 @@ async def test_the_whole_nova_sync_survives_a_gift_card_half_that_raises(
     """The backstop, tested rather than assumed.
 
     Both gift-card functions promise never to raise, and
-    ``sync_nova_catalog`` catches them anyway — the route and the hourly
+    ``sync_panel_catalog`` catches them anyway — the route and the hourly
     scheduler depend on a report coming back, and a promise kept everywhere
     today is not a promise kept after the next edit. This pins the outer
     catch by breaking the inner promise on purpose.
     """
-    from yupay.modules.integrations import catalog_sync_nova as nova
+    from yupay.modules.integrations import catalog_sync_panel as panel
 
     async def _raise(*_args: Any, **_kw: Any) -> Any:
         raise RuntimeError("the inner promise broke")
 
     fake_nova = _NovaClient(categories=[])
-    monkeypatch.setattr(nova, "_nova_client_or_none", lambda: fake_nova)
+    monkeypatch.setattr(panel, "client_or_none", lambda _slug: fake_nova)
 
-    async def _no_games(_db: Any) -> tuple[int, int, str | None]:
+    async def _no_games(_db: Any, _client: Any) -> tuple[int, int, str | None]:
         return 0, 0, None
 
-    monkeypatch.setattr(nova, "_refresh_mapped_game_denoms", _no_games)
-    monkeypatch.setattr(f"yupay.modules.integrations.catalog_sync_nova_vouchers.{broken}", _raise)
+    monkeypatch.setattr(panel, "_refresh_mapped_game_denoms", _no_games)
+    monkeypatch.setattr(f"yupay.modules.integrations.catalog_sync_panel_vouchers.{broken}", _raise)
 
-    report = await nova.sync_nova_catalog(_NO_DB)
+    report = await panel.sync_panel_catalog(_NO_DB, slug="nova")
 
     assert "gift-card" in (report.error or "")
 

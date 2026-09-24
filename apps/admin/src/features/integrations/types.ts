@@ -106,7 +106,7 @@ export interface CatalogSyncResult {
 }
 
 /** Response of `POST /admin/integrations/{supplier}/games/{game_id}/sync-denominations`
- *  (`DenomSyncOut` on the backend). Only `nova` and `gengine` accept this
+ *  (`DenomSyncOut` on the backend). Only `nova`, `fzr` and `gengine` accept this
  *  route — G2B's denominations were never moved into `supplier_catalog_cache`
  *  and keep their own live picker (`DenomPicker` in `gameWidgets.tsx`). */
 export interface SyncDenominationsResult {
@@ -217,7 +217,7 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine", "nova"] as const;
+export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine", "nova", "fzr"] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
@@ -225,6 +225,7 @@ export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   waxpeer: "Waxpeer",
   gengine: "G-Engine",
   nova: "NOVA",
+  fzr: "FazerCards",
 };
 
 /**
@@ -240,7 +241,7 @@ export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
  * cell ("резерв") and to keep it out of anything that would imply "auto"
  * — it stays fully offerable as an explicit `force_supplier` target.
  */
-export const RESERVE_SUPPLIERS: ReadonlySet<string> = new Set(["nova"]);
+export const RESERVE_SUPPLIERS: ReadonlySet<string> = new Set(["nova", "fzr"]);
 
 /**
  * What a supplier actually supports, so the page offers only what will work.
@@ -281,6 +282,9 @@ export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> 
   // Same story as G-Engine: NOVA's catalogue syncs now, but only G2B has an
   // importer.
   nova: { catalogueSync: true, gameImport: false },
+  // FazerCards publishes the same panel API NOVA does, so it syncs the same
+  // two catalogues through the same endpoint. No importer either.
+  fzr: { catalogueSync: true, gameImport: false },
 };
 
 /**
@@ -363,6 +367,13 @@ export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
     note: "резерв: пополнения игр",
   },
   {
+    slug: "fzr",
+    label: "FazerCards",
+    external: true,
+    mappings: true,
+    note: "резерв: игры + подарочные карты",
+  },
+  {
     slug: "mock",
     label: "Mock (dev)",
     external: false,
@@ -371,15 +382,24 @@ export const FULFILMENT_ROUTES: FulfilmentRoute[] = [
   },
 ];
 
-/** NOVA's Steam wallet mapping: no category upstream, so no denomination. */
-export const NOVA_STEAM_SENTINEL = "steam-topup";
+/** A panel vendor's Steam wallet mapping: no category upstream, so no
+ *  denomination. Both NOVA and FazerCards take the same sentinel — it names a
+ *  shape of mapping, not a vendor's id. */
+export const PANEL_STEAM_SENTINEL = "steam-topup";
+
+/** @deprecated Use {@link PANEL_STEAM_SENTINEL}; kept so existing imports
+ *  keep resolving. */
+export const NOVA_STEAM_SENTINEL = PANEL_STEAM_SENTINEL;
+
+/** Vendors on the shared panel v2 API, where the Steam sentinel applies. */
+export const PANEL_SUPPLIERS: ReadonlySet<string> = new Set(["nova", "fzr"]);
 
 /** Whether this mapping buys an **amount** rather than a catalogue entry, so
  *  the denomination is optional and step 5's quantity says how much to buy.
  *
  *  Two shapes qualify, and the second is one row rather than a supplier:
- *  G-Engine's `unfixed` services (Telegram Stars is one), and NOVA's Steam
- *  mapping specifically. A NOVA *game* mapping still needs its offer id.
+ *  G-Engine's `unfixed` services (Telegram Stars is one), and a panel vendor's
+ *  Steam mapping specifically. A panel *game* mapping still needs its offer id.
  *
  *  **This mirrors `_is_amount_priced` in `integrations/service.py`, and the
  *  mirror is the point.** The backend is what actually accepts a null variant;
@@ -389,7 +409,7 @@ export const NOVA_STEAM_SENTINEL = "steam-topup";
  *  the admin while its API call worked fine. Change one, change both. */
 export function isAmountPriced(slug: string, externalProductId = ""): boolean {
   if (slug === "gengine") return true;
-  return slug === "nova" && externalProductId.trim() === NOVA_STEAM_SENTINEL;
+  return PANEL_SUPPLIERS.has(slug) && externalProductId.trim() === PANEL_STEAM_SENTINEL;
 }
 
 function isKnownSupplier(slug: string): slug is KnownSupplier {
@@ -431,7 +451,7 @@ export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> 
  * exclusion, so a future mappable supplier that isn't denomination-syncable
  * doesn't silently get a picker with a pull button that 422s.
  */
-export const DENOM_CACHE_SUPPLIERS: ReadonlySet<string> = new Set(["nova", "gengine"]);
+export const DENOM_CACHE_SUPPLIERS: ReadonlySet<string> = new Set(["nova", "gengine", "fzr"]);
 
 export interface GameImportDenom {
   catalogue_name: string;
