@@ -42,7 +42,7 @@ from yupay.core.db import Base
 #: ``force_supplier`` rule that would fail every order) and ``fulfillment``
 #: (refusing to reassign a task the same way) can read it without an import
 #: cycle. Mirrors ``FULFILMENT_ROUTES[].mappings`` in the admin.
-MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova"})
+MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova", "fzr"})
 
 #: Suppliers a SKU is never routed to **automatically**, however its mapping got
 #: there. A reserve exists to be switched to on purpose: an operator sets
@@ -60,7 +60,7 @@ MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova"
 #:
 #: Same leaf-module reasoning as the set above: ``sourcing`` reads it without
 #: an import cycle.
-RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova"})
+RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova", "fzr"})
 
 #: A ``nova`` mapping whose ``external_product_id`` is this buys a **Steam
 #: wallet top-up**, not a game. Their Steam endpoint takes a login and an
@@ -78,7 +78,13 @@ RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova"})
 #: line belongs to, and ``integrations.service.upsert_mapping``, to know that
 #: this one mapping is allowed to carry no variant. One definition, or they
 #: drift and the admin starts refusing a mapping the adapter would have used.
-NOVA_STEAM_SENTINEL = "steam-topup"
+PANEL_STEAM_SENTINEL = "steam-topup"
+
+#: Both panel vendors take the same sentinel, because it names a shape of
+#: mapping rather than a vendor's id: no category, no denomination, a login
+#: and an amount. The two aliases exist so each adapter reads as one story.
+NOVA_STEAM_SENTINEL = PANEL_STEAM_SENTINEL
+FZR_STEAM_SENTINEL = PANEL_STEAM_SENTINEL
 
 #: The same sentinel trick for NOVA's Fragment (Telegram) API, which is a
 #: second API on the same host with its own namespace, its own envelope and

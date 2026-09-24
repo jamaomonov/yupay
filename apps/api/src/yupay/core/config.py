@@ -783,6 +783,26 @@ class Settings(BaseSettings):
     # everything, this leaves top-ups working while the check is off.
     nova_player_check_enabled: bool = Field(default=True)
 
+    # FazerCards (api.fzr.cards) — the same panel API NOVA publishes, and on
+    # 2026-09-24 the cheaper side of it: 38 of the 39 SKUs we buy from NOVA
+    # quote at exactly nova_price / 1.02. Same empty-key-disables rule as the
+    # four above. Keys look like ``fc_…``.
+    #
+    # Two things about this vendor are not like the others and belong here
+    # rather than in a runbook nobody opens first:
+    #
+    # * **it is a subscription.** Catalogue access and the Steam wallet rebate
+    #   both depend on the plan (bronze/silver/gold), and an expired plan
+    #   answers 403 ``subscription_inactive`` on every product route. The
+    #   adapter grades that as a configuration failure with our money intact.
+    # * **it rate-limits per operation category** — 60 order creates a minute,
+    #   120 status polls, 30 account reads — with ``Retry-After`` on the 429.
+    #   Our sweeps are far under those, which is why no client-side throttle
+    #   ships with this; if one becomes necessary it goes in ``panel_client``.
+    fzr_api_key: str = Field(default="")
+    fzr_base_url: str = Field(default="https://api.fzr.cards")
+    fzr_request_timeout_seconds: float = Field(default=20.0)
+
     # --- Steam Gifts ---
     # Region-priced Steam gift packages, fulfilled through the G-Engine gifts
     # endpoints (see ``fulfillment.suppliers.gengine``). ``steam_gifts_enabled``

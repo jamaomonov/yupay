@@ -60,7 +60,11 @@ from yupay.modules.fulfillment.suppliers.panel_adopt import (
     find_order,
     key_is_usable,
 )
-from yupay.modules.fulfillment.suppliers.panel_fields import build_fields, field_specs
+from yupay.modules.fulfillment.suppliers.panel_fields import (
+    build_fields,
+    field_specs,
+    legacy_fields,
+)
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
@@ -74,19 +78,6 @@ if TYPE_CHECKING:
     from yupay.modules.orders.models import Order, OrderItem
 
 log = get_logger("yupay.fulfillment.nova")
-
-#: Our form-field keys -> their `fields` keys. Our checkout already collects
-#: these; this is only the rename. Unrecognised keys are dropped, as in the
-#: G-Engine adapter: an unmapped field is more likely a form we have not taught
-#: this adapter about than something NOVA wants.
-_FIELD_MAP: dict[str, str] = {
-    "player_id": "player_id",
-    "account": "player_id",
-    "server": "server_id",
-    "server_id": "server_id",
-    "zone": "server_id",
-    "zone_id": "server_id",
-}
 
 #: Re-exported so this module reads as one story; the fact itself lives in
 #: ``integrations.models`` because the admin's mapping validator needs the same
@@ -105,14 +96,12 @@ FRAGMENT_PREMIUM = NOVA_FRAGMENT_PREMIUM
 #: They document no code for it, so we sniff the message. A false positive only
 #: demotes a hard failure to a retryable one, which is the safer mistake.
 def _fields_from(item: OrderItem) -> dict[str, str]:
-    """Their ``fields`` payload, built from our form data."""
-    data = item.fulfillment_data or {}
-    out: dict[str, str] = {}
-    for key, value in data.items():
-        target = _FIELD_MAP.get(str(key).lower())
-        if target and str(value).strip():
-            out.setdefault(target, str(value).strip())
-    return out
+    """Their ``fields`` payload under the fixed rename, for the fallback path.
+
+    The rename itself lives in ``panel_fields`` — FazerCards needs the same
+    fallback for the same reason.
+    """
+    return legacy_fields(item.fulfillment_data or {})
 
 
 def _parked_for_adoption(exc: Exception) -> FulfillResult:

@@ -160,4 +160,35 @@ def build_fields(specs: list[dict[str, Any]], data: dict[str, Any]) -> dict[str,
     return out
 
 
-__all__ = ["build_fields", "field_specs"]
+#: Our form-field keys -> their ``fields`` keys, for the fallback below. Our
+#: checkout already collects these; this is only the rename. Unrecognised keys
+#: are dropped, as in the G-Engine adapter: an unmapped field is more likely a
+#: form we have not taught this adapter about than something they want.
+_LEGACY_FIELD_MAP: dict[str, str] = {
+    "player_id": "player_id",
+    "account": "player_id",
+    "server": "server_id",
+    "server_id": "server_id",
+    "zone": "server_id",
+    "zone_id": "server_id",
+}
+
+
+def legacy_fields(data: dict[str, Any]) -> dict[str, str]:
+    """Their ``fields`` payload under the fixed rename this module replaced.
+
+    Kept as the fallback for when they will not tell us what a category wants:
+    an outage on the spec call must not block a sale that would have gone
+    through, and for the two category shapes the rename already suited it is
+    exactly right. :func:`build_fields` is the path that reads their own
+    declaration and should answer first.
+    """
+    out: dict[str, str] = {}
+    for key, value in (data or {}).items():
+        target = _LEGACY_FIELD_MAP.get(str(key).lower())
+        if target and str(value).strip():
+            out.setdefault(target, str(value).strip())
+    return out
+
+
+__all__ = ["build_fields", "field_specs", "legacy_fields"]

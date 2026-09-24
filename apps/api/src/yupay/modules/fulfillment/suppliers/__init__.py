@@ -21,6 +21,7 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillStatus,
     MoneyOutcome,
 )
+from yupay.modules.fulfillment.suppliers.fzr import FzrFulfiller
 from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
 from yupay.modules.fulfillment.suppliers.manual import ManualFulfiller
@@ -49,6 +50,12 @@ REGISTRY: dict[str, Fulfiller] = {
     # only by an explicit `force_supplier` rule. Same hot-reload rule —
     # `available` reads the key per call.
     "nova": NovaFulfiller(),
+    # Second reserve, on the same panel API NOVA publishes and cheaper on it:
+    # measured 2026-09-24, 38 of the 39 SKUs we buy from NOVA quote at exactly
+    # nova_price / 1.02. Routed to only by an explicit `force_supplier` rule
+    # (RESERVE_SUPPLIERS). Same hot-reload rule -- `available` reads the key
+    # per call. Note its catalogue access expires with the subscription.
+    "fzr": FzrFulfiller(),
     "steam": StubFulfiller(
         supplier="steam",
         todo_message="Steam supplier not integrated yet; see ADR-0013.",
@@ -99,6 +106,7 @@ __all__ = [
     "Fulfiller",
     "FulfillerError",
     "FulfillerNotIntegratedError",
+    "FzrFulfiller",
     "G2bFulfiller",
     "ManualFulfiller",
     "MockFulfiller",
