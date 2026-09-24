@@ -724,6 +724,8 @@ async def supplier_health(
 
     result: dict[str, Any] = await probe()
     balance = result.get("balance")
+    expires = result.get("plan_expires_at")
+    active = result.get("subscription_active")
     return SupplierHealthOut(
         supplier=supplier_slug,
         available=bool(result.get("available")),
@@ -732,4 +734,10 @@ async def supplier_health(
         currency=result.get("currency"),
         username=result.get("username"),
         last_checked_at=now(),
+        # Only a subscription supplier reports these, and only when its own
+        # plan call answered. Read with ``.get`` like everything above, so a
+        # probe that omits them stays exactly as it was.
+        plan=result.get("plan"),
+        plan_expires_at=str(expires) if expires is not None else None,
+        subscription_active=bool(active) if active is not None else None,
     )

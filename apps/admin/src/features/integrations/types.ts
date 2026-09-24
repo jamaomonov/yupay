@@ -15,6 +15,12 @@ export interface SupplierHealth {
   currency: string | null;
   username: string | null;
   last_checked_at: string | null;
+  /** Subscription suppliers only (FazerCards today); null everywhere else.
+   *  A lapsed plan answers 403 on every product route, so a green badge and
+   *  a funded wallet are not enough to say orders will go through. */
+  plan: string | null;
+  plan_expires_at: string | null;
+  subscription_active: boolean | null;
 }
 
 export type MappingKind = "voucher" | "game";

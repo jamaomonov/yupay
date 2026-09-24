@@ -15754,7 +15754,7 @@
         "type": "object"
       },
       "SupplierHealthOut": {
-        "description": "Connectivity probe result for a supplier.\n\n``available`` is the only required signal \u2014 everything else is best-effort\nand may be ``None`` when the supplier didn't answer or is not configured.",
+        "description": "Connectivity probe result for a supplier.\n\n``available`` is the only required signal \u2014 everything else is best-effort\nand may be ``None`` when the supplier didn't answer or is not configured.\n\nThe last three describe a supplier whose access **expires**. Only\nFazerCards has one today, and the fields are optional so every other\ncard renders exactly as before. They are here rather than left to a\nrunbook because a lapsed plan answers 403 on every product route: the\nwallet can be full, the key valid, the health badge green, and every\norder still fail. That is not a state an operator should have to know\nto go looking for.",
         "properties": {
           "available": {
             "title": "Available",
@@ -15794,6 +15794,28 @@
             ],
             "title": "Last Checked At"
           },
+          "plan": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan"
+          },
+          "plan_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Expires At"
+          },
           "reason": {
             "anyOf": [
               {
@@ -15804,6 +15826,17 @@
               }
             ],
             "title": "Reason"
+          },
+          "subscription_active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Subscription Active"
           },
           "supplier": {
             "title": "Supplier",

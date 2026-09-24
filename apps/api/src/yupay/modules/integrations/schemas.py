@@ -128,6 +128,14 @@ class SupplierHealthOut(BaseModel):
 
     ``available`` is the only required signal — everything else is best-effort
     and may be ``None`` when the supplier didn't answer or is not configured.
+
+    The last three describe a supplier whose access **expires**. Only
+    FazerCards has one today, and the fields are optional so every other
+    card renders exactly as before. They are here rather than left to a
+    runbook because a lapsed plan answers 403 on every product route: the
+    wallet can be full, the key valid, the health badge green, and every
+    order still fail. That is not a state an operator should have to know
+    to go looking for.
     """
 
     supplier: str
@@ -137,6 +145,9 @@ class SupplierHealthOut(BaseModel):
     currency: str | None = None
     username: str | None = None
     last_checked_at: datetime | None = None
+    plan: str | None = None
+    plan_expires_at: str | None = None
+    subscription_active: bool | None = None
 
 
 class CatalogEntryOut(BaseModel):

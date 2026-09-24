@@ -63,7 +63,16 @@ function SupplierCard({ slug }: { slug: string }) {
       <dl className="grid grid-cols-2 gap-2 text-sm">
         <Field label="Баланс" value={health?.balance ?? "—"} mono />
         <Field label="Аккаунт" value={health?.username ?? "—"} />
+        {/* Only a subscription supplier reports a plan, so the row appears
+            only for one and the other cards keep their two fields. */}
+        {health?.plan && <Field label="Тариф" value={planText(health)} />}
       </dl>
+
+      {health?.subscription_active === false && (
+        <p className="text-xs text-[var(--danger)]">
+          Подписка не активна — заказы к этому поставщику будут падать. Продлите тариф в его панели.
+        </p>
+      )}
 
       {query.isError && (
         <p className="text-xs text-[var(--danger)]">
@@ -100,6 +109,21 @@ function SupplierCard({ slug }: { slug: string }) {
       </div>
     </article>
   );
+}
+
+/** "gold, до 29.09.2026" — the plan and the date it stops working.
+ *
+ *  The expiry is the half that matters: a lapsed plan answers 403 on every
+ *  product route while the wallet is still full and the badge still green,
+ *  so a card showing only the tier name would look fine on the morning
+ *  everything starts failing.
+ */
+function planText(health: SupplierHealth): string {
+  if (!health.plan) return "—";
+  if (!health.plan_expires_at) return health.plan;
+  const at = new Date(health.plan_expires_at);
+  if (Number.isNaN(at.getTime())) return health.plan;
+  return `${health.plan}, до ${at.toLocaleDateString("ru-RU")}`;
 }
 
 function HealthBadge({
