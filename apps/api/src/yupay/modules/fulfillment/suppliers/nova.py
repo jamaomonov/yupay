@@ -38,18 +38,11 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillStatus,
     MoneyOutcome,
 )
-from yupay.modules.fulfillment.suppliers.nova_adopt import (
-    ADOPT_WINDOW_MINUTES,
-    AdoptKey,
-    find_order,
-    key_is_usable,
-)
 from yupay.modules.fulfillment.suppliers.nova_client import (
     NovaClient,
     NovaError,
     NovaUnavailableError,
 )
-from yupay.modules.fulfillment.suppliers.nova_fields import build_fields, field_specs
 from yupay.modules.fulfillment.suppliers.nova_grading import (
     _MAY_HAVE_SPENT,
     _NOTHING_SPENT,
@@ -61,6 +54,13 @@ from yupay.modules.fulfillment.suppliers.nova_grading import (
     _shortfall_side,
     _without_our_inputs,
 )
+from yupay.modules.fulfillment.suppliers.panel_adopt import (
+    ADOPT_WINDOW_MINUTES,
+    AdoptKey,
+    find_order,
+    key_is_usable,
+)
+from yupay.modules.fulfillment.suppliers.panel_fields import build_fields, field_specs
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
@@ -122,7 +122,7 @@ def _parked_for_adoption(exc: Exception) -> FulfillResult:
     gone and the order's existence unknown. Declaring a failure invites a
     human to retry it and buy a second time; declaring success would be a
     lie. Parking says the true thing — we do not know yet — and
-    ``check_status`` goes looking (``nova_adopt``).
+    ``check_status`` goes looking (``panel_adopt``).
 
     Deliberately id-less and deliberately ungraded: ``money_outcome`` stays
     ``None`` because an ``in_progress`` result is not a failure and the saga
@@ -293,7 +293,7 @@ class NovaFulfiller(Fulfiller):
             # one moment we must not declare anything. Park id-less and let
             # the poller find the order: on 2026-09-23 NOVA created it eight
             # seconds *after* our timeout, which a one-shot lookup here would
-            # have missed. See ``nova_adopt``.
+            # have missed. See ``panel_adopt``.
             return _parked_for_adoption(exc)
 
         return _finish(obj)

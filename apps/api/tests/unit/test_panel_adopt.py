@@ -17,12 +17,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from yupay.modules.fulfillment.suppliers.nova_adopt import (
+from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
+from yupay.modules.fulfillment.suppliers.panel_adopt import (
     AdoptKey,
     find_order,
     key_is_usable,
 )
-from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
 
 pytestmark = pytest.mark.asyncio
 

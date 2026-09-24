@@ -26,13 +26,13 @@ from yupay.modules.fulfillment.suppliers.nova import (
     NovaFulfiller,
     _mapping_for,
 )
-from yupay.modules.fulfillment.suppliers.nova_adopt import ADOPT_WINDOW_MINUTES
 from yupay.modules.fulfillment.suppliers.nova_client import NovaError, NovaUnavailableError
 from yupay.modules.fulfillment.suppliers.nova_grading import (
     LOW_BALANCE_ERROR,
     _order_id_of,
     _status_of,
 )
+from yupay.modules.fulfillment.suppliers.panel_adopt import ADOPT_WINDOW_MINUTES
 
 pytestmark = pytest.mark.asyncio
 
@@ -237,7 +237,7 @@ async def test_a_lost_create_response_parks_instead_of_failing(
     delivered it, while our books said failed.
 
     Parking keeps the task in flight so ``check_status`` can go looking
-    (``nova_adopt``). ``money_outcome`` is ``None`` because an ``in_progress``
+    (``panel_adopt``). ``money_outcome`` is ``None`` because an ``in_progress``
     result is not a failure and the saga refuses a verdict on one — the money
     question is answered when the order is found or the window closes.
     """

@@ -1,6 +1,11 @@
-"""Finding a NOVA order whose create response we never saw.
+"""Finding a panel order whose create response we never saw.
 
-NOVA charges on create. When that call times out the money is already gone,
+Shared by every vendor on the panel v2 protocol (``nova``, ``fzr``): they
+publish the same order list and the same order fields, so one matcher
+serves both. The ``STARS`` / ``PREMIUM`` kinds are NOVA Fragment orders and
+simply never occur for a vendor that has no Fragment API.
+
+They charge on create. When that call times out the money is already gone,
 the order may or may not exist yet, and until 2026-09-23 we had no way to ask
 — so the task failed, the customer's line failed, and an operator had to find
 the order in NOVA's panel and settle it by hand.
@@ -36,12 +41,12 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from yupay.core.logging import get_logger
-from yupay.modules.fulfillment.suppliers.nova_client import NovaError
+from yupay.modules.fulfillment.suppliers.panel_client import PanelError
 
 if TYPE_CHECKING:
-    from yupay.modules.fulfillment.suppliers.nova_client import NovaClient
+    from yupay.modules.fulfillment.suppliers.panel_client import PanelClient
 
-log = get_logger("yupay.fulfillment.nova_adopt")
+log = get_logger("yupay.fulfillment.panel_adopt")
 
 #: How far back a probe reads. Fifty is two pages of a busy morning and one
 #: request; the orders we look for are minutes old, never hours.
@@ -56,12 +61,12 @@ ADOPT_WINDOW_MINUTES = 30
 
 @dataclass(frozen=True, slots=True)
 class AdoptKey:
-    """What identifies one of our orders in NOVA's list.
+    """What identifies one of our orders in their list.
 
     ``kind`` picks the predicate; the rest are the values that kind matches
     on. A key with nothing to match on is never built — see
     :func:`key_is_usable` — because a predicate that compares two ``None``\\ s
-    matches every order NOVA has.
+    matches every order they have.
     """
 
     kind: str
@@ -93,7 +98,7 @@ def key_is_usable(key: AdoptKey) -> bool:
 
 
 def _matches(order: dict[str, Any], key: AdoptKey) -> bool:
-    """Whether one of NOVA's orders is the one this key describes."""
+    """Whether one of their orders is the one this key describes."""
     if str(order.get("kind") or "") != key.kind:
         return False
     if key.kind in ("STARS", "PREMIUM"):
@@ -127,7 +132,7 @@ def _created_at(order: dict[str, Any]) -> datetime | None:
 
 
 async def find_order(
-    client: NovaClient, *, key: AdoptKey, since: datetime
+    client: PanelClient, *, key: AdoptKey, since: datetime, slug: str = "nova"
 ) -> dict[str, Any] | None:
     """The order this key describes, created at or after ``since``.
 
@@ -135,19 +140,25 @@ async def find_order(
     an earlier identical purchase — see the module docstring for the morning
     that made the point.
 
-    A clean refusal (:class:`NovaError`) reads as not-found: the supplier
-    answered and its answer was "no". :class:`NovaUnavailableError` is left to
+    A clean refusal (:class:`PanelError`) reads as not-found: the supplier
+    answered and its answer was "no". The unavailable error is left to
     propagate, because an outage and a genuine absence mean opposite things to
     a caller deciding whether an order was ever placed.
 
+    Args:
+        client: The vendor's client.
+        key: What identifies the order we paid for.
+        since: Lower bound on the order's creation time.
+        slug: The vendor, for the log line.
+
     Raises:
-        NovaUnavailableError: NOVA could not be reached at all.
+        PanelUnavailableError: The vendor could not be reached at all.
     """
     if not key_is_usable(key):
         return None
     try:
         orders = await client.list_orders(limit=_PAGE_SIZE)
-    except NovaError:
+    except PanelError:
         return None
     for order in orders:
         if not _matches(order, key):
@@ -159,8 +170,13 @@ async def find_order(
             # first, so anything past here is older still, but the loop stays
             # honest about what it rejected.
             continue
+        # The event name carries the vendor, so an operator grepping
+        # ``nova.*`` still finds NOVA's adoptions and only those. Built
+        # first because our structured logger takes the event as a
+        # positional name, not a format string.
+        event = f"{slug}.adopted_order"
         log.info(
-            "nova.adopted_order",
+            event,
             order_id=str(order.get("id") or ""),
             kind=key.kind,
             status=str(order.get("status") or ""),

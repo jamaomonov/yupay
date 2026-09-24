@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from yupay.modules.fulfillment.suppliers.nova_fields import build_fields, field_specs
+from yupay.modules.fulfillment.suppliers.panel_fields import build_fields, field_specs
 
 # --- the four real shapes, verbatim from their API ---------------------------
 

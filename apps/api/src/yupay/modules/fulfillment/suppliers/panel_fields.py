@@ -1,4 +1,9 @@
-"""Building NOVA's ``fields`` payload from NOVA's own declaration.
+"""Building the ``fields`` payload from the supplier's own declaration.
+
+Shared by every vendor on the panel v2 protocol: FazerCards declares its
+per-category ``fields`` on the same ``GET /api/v2/topups/offers``, in the
+same shape, so the same builder serves both. The history below is NOVA's
+because NOVA is where it was learned.
 
 Until 2026-09-23 this was a fixed rename — our ``server`` became their
 ``server_id``, our ``player_id`` stayed ``player_id`` — and that is right for
@@ -39,7 +44,7 @@ from typing import Any
 
 from yupay.core.logging import get_logger
 
-log = get_logger("yupay.fulfillment.nova_fields")
+log = get_logger("yupay.fulfillment.panel_fields")
 
 #: Our form keys that carry the account being credited, most specific first.
 _OUR_IDENTIFIER_KEYS = ("player_id", "account", "imo_id", "likee_id", "bigo_id")
@@ -112,7 +117,7 @@ def _translate_option(value: str, options: list[dict[str, Any]]) -> str:
         text = label if isinstance(label, str) else ""
         if text.strip().casefold() == wanted:
             return str(option.get("value"))
-    log.info("nova.option_not_in_enum", field_value=value)
+    log.info("panel.option_not_in_enum", field_value=value)
     return value
 
 
