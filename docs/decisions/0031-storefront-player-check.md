@@ -402,6 +402,17 @@ each mapped game with an id that cannot exist (`999999999999`):
 | `freefire_cis`                 | `invalid`        | real validator (since 2026-08-20 — was a rubber stamp, see below) |
 | `genshin`                      | **`valid`**      | **rubber stamp — no check**                                       |
 | `honkai_star_rail`             | **`valid`**      | **rubber stamp — no check**                                       |
+| `bigo`                         | see below        | real validator (probed 2026-09-25)                                |
+| `likee`                        | `invalid`        | real validator (probed 2026-09-25)                                |
+
+**`999999999999` is not always bogus.** Bigo answered `valid` to it — and to
+`888888888888` and `123456789012` — each time with a _different_ nickname,
+while nine random 10- and 12-digit ids all came back `invalid`. Those are
+vanity ids that belong to real accounts. A rubber stamp answers every id
+alike, so the test that separates the two is several random ids plus a look
+at whether the names differ, not the one "impossible" id. Likee is the same
+shape at nine digits: random nine-digit ids resolve to distinct real
+accounts, ten-digit and one-digit ids are `invalid`.
 
 A rubber-stamping game must never carry `check`. The point of this feature is
 to catch a typo before money moves; a green "account confirmed" pill printed

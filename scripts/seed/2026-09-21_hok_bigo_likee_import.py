@@ -111,22 +111,32 @@ _DROPPED = {
 # `player_id` / `bigo_id` / `likee_id` on its own side and the adapter maps it.
 
 
-def _help(app: str, where: str) -> dict[str, str]:
+_UNDER_NAME = {"ru": "под вашим именем", "en": "under your name", "uz": "ismingiz ostida"}
+
+
+def _help(app: str, where: dict[str, str]) -> dict[str, str]:
+    """Where-to-find-your-ID help, in three languages.
+
+    ``where`` is per locale. It used to be one Russian string dropped into all
+    three texts, so the English and Uzbek help for all three brands read
+    "the ID is shown под вашим именем" — fixed on prod by
+    ``2026-09-25_bigo_player_check.sql``.
+    """
     return {
         "ru": (
-            f"Откройте {app} и перейдите в профиль — ID показан {where}.\n"
+            f"Откройте {app} и перейдите в профиль — ID показан {where['ru']}.\n"
             "Скопируйте номер, не набирайте вручную: ID состоит только из цифр, "
             "а одна ошибка отправит покупку другому человеку.\n"
             "Пароль не нужен — пополнение идёт по публичному ID."
         ),
         "en": (
-            f"Open {app} and go to your profile — the ID is shown {where}.\n"
+            f"Open {app} and go to your profile — the ID is shown {where['en']}.\n"
             "Copy the number instead of retyping it: the ID is digits only, and one "
             "wrong digit sends the purchase to somebody else.\n"
             "No password needed — the top-up goes by public ID."
         ),
         "uz": (
-            f"{app} ni oching va profilingizga oʻting — ID {where} koʻrsatilgan.\n"
+            f"{app} ni oching va profilingizga oʻting — ID {where['uz']} koʻrsatilgan.\n"
             "Raqamni qoʻlda termay, nusxa oling: ID faqat raqamlardan iborat va bitta "
             "xato xaridni boshqa odamga yuboradi.\n"
             "Parol kerak emas — toʻldirish ommaviy ID orqali."
@@ -134,11 +144,14 @@ def _help(app: str, where: str) -> dict[str, str]:
     }
 
 
-def _fields(label: str, help_text: dict[str, str]) -> list[dict[str, Any]]:
+def _fields(
+    label: str, help_text: dict[str, str], check: dict[str, Any] | None = None
+) -> list[dict[str, Any]]:
     return [
         {
             "key": "player_id",
             "type": "text",
+            "check": check,
             "label": {"ru": label, "en": label, "uz": label},
             "required": True,
             "pattern": "^[0-9]{5,20}$",
@@ -208,7 +221,17 @@ BRANDS: list[dict[str, Any]] = [
         "g2b_game": "hok",
         "nova_category": "honor_of_kings",
         "gengine_service": "23",
-        "fields": _fields("Player ID", _help("Honor of Kings", "в профиле рядом с именем")),
+        "fields": _fields(
+            "Player ID",
+            _help(
+                "Honor of Kings",
+                {
+                    "ru": "в профиле рядом с именем",
+                    "en": "next to your name",
+                    "uz": "ismingiz yonida",
+                },
+            ),
+        ),
         "rungs": HOK,
     },
     {
@@ -220,7 +243,12 @@ BRANDS: list[dict[str, Any]] = [
         "g2b_game": "bigo",
         "nova_category": "bigo_live",
         "gengine_service": "49",
-        "fields": _fields("Bigo ID", _help("Bigo Live", "под вашим именем")),
+        "fields": _fields(
+            "Bigo ID",
+            _help("Bigo Live", _UNDER_NAME),
+            # G2B's `bigo` validator is real — probed 2026-09-25, see ADR-0031.
+            check={"provider": "g2b", "server_field": None},
+        ),
         "rungs": BIGO,
     },
     {
@@ -232,7 +260,7 @@ BRANDS: list[dict[str, Any]] = [
         "g2b_game": "likee",
         "nova_category": "likee",
         "gengine_service": "54",
-        "fields": _fields("Likee ID", _help("Likee", "под вашим именем")),
+        "fields": _fields("Likee ID", _help("Likee", _UNDER_NAME)),
         "rungs": LIKEE,
     },
 ]
