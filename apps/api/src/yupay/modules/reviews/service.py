@@ -191,6 +191,24 @@ async def create_review(
     return review
 
 
+#: Longest avatar URL worth echoing. A real Google avatar ran past 1 KB
+#: (migration 0083); anything much longer is not an image link.
+_PHOTO_URL_MAX = 2048
+
+
+def public_photo(url: str | None) -> str | None:
+    """A reviewer's avatar URL, if it is safe to put in a public <img>.
+
+    ``https`` only: the brand page is served over TLS, so ``http`` would be
+    mixed content, and any other scheme (``javascript:``, ``data:``) has no
+    business in an image source. Whatever fails is dropped, not repaired —
+    the page draws the initial instead.
+    """
+    if not url or len(url) > _PHOTO_URL_MAX:
+        return None
+    return url if url.startswith("https://") else None
+
+
 def _encode_cursor(created_at: datetime, review_id: str) -> str:
     raw = f"{created_at.isoformat()}|{review_id}".encode()
     return base64.urlsafe_b64encode(raw).decode()
@@ -211,7 +229,7 @@ async def list_published(
     """Return a keyset page of published reviews (newest first) + the next cursor."""
     limit = max(1, min(limit, _MAX_LIST_LIMIT))
     stmt = (
-        select(Review, User.display_name)
+        select(Review, User.display_name, User.photo_url)
         .outerjoin(User, User.id == Review.user_id)
         .where(Review.brand_id == brand_id, Review.status == "published")
         .order_by(Review.created_at.desc(), Review.id.desc())
@@ -235,6 +253,7 @@ async def list_published(
             # Telegram display names are attacker-controlled; strip markup on the
             # way out too (older rows were stored before write-time stripping).
             author_name=_strip_html(r.display_name),
+            author_photo_url=public_photo(r.photo_url),
             created_at=r.Review.created_at,
         )
         for r in page

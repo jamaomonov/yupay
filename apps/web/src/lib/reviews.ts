@@ -7,6 +7,8 @@ export interface Review {
   rating: number;
   body: string | null;
   author_name: string | null;
+  /** https-only avatar, absent from an API older than 2026-09-25. */
+  author_photo_url?: string | null;
   created_at: string;
 }
 

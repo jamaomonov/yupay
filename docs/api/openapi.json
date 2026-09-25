@@ -13841,7 +13841,7 @@
         "type": "object"
       },
       "ReviewOut": {
-        "description": "A published review as shown on the public brand page.\n\n``author_name`` is the reviewer's ``display_name`` or ``None`` \u2014 never the\nemail. The frontend localizes a generic label when it is ``None``.",
+        "description": "A published review as shown on the public brand page.\n\n``author_name`` is the reviewer's ``display_name`` or ``None`` \u2014 never the\nemail. The frontend localizes a generic label when it is ``None``.\n\n``author_photo_url`` is the avatar the reviewer already shows publicly on\nTelegram, Google or Steam (``users.photo_url``), for the brand page to put\nbeside the name \u2014 or ``None``, and the page draws the initial instead.\nOnly an ``https`` URL is ever returned (see ``service.public_photo``).",
         "properties": {
           "author_name": {
             "anyOf": [
@@ -13853,6 +13853,17 @@
               }
             ],
             "title": "Author Name"
+          },
+          "author_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Photo Url"
           },
           "body": {
             "anyOf": [

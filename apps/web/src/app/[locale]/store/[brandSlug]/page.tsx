@@ -15,6 +15,7 @@ import { AboutText } from "@/components/store/AboutText";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { RatingChip } from "@/components/store/RatingChip";
 import { RatingSummary } from "@/components/store/RatingSummary";
+import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
@@ -511,8 +512,11 @@ export default async function BrandPage({
                 {reviews.items.map((r) => (
                   <li key={r.id} className="border-border/70 border-b pb-6 last:border-b-0">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-[14px] font-semibold">
-                        {r.author_name ?? t2("anonymous")}
+                      <span className="flex min-w-0 items-center gap-2.5">
+                        <ReviewAvatar photoUrl={r.author_photo_url} name={r.author_name} />
+                        <span className="truncate text-[14px] font-semibold">
+                          {r.author_name ?? t2("anonymous")}
+                        </span>
                       </span>
                       <Stars
                         value={r.rating}

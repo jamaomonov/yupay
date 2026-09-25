@@ -32,12 +32,18 @@ class ReviewOut(BaseModel):
 
     ``author_name`` is the reviewer's ``display_name`` or ``None`` — never the
     email. The frontend localizes a generic label when it is ``None``.
+
+    ``author_photo_url`` is the avatar the reviewer already shows publicly on
+    Telegram, Google or Steam (``users.photo_url``), for the brand page to put
+    beside the name — or ``None``, and the page draws the initial instead.
+    Only an ``https`` URL is ever returned (see ``service.public_photo``).
     """
 
     id: str
     rating: int
     body: str | None
     author_name: str | None
+    author_photo_url: str | None = None
     created_at: datetime
 
 

@@ -122,6 +122,7 @@ async def create_review_route(
         rating=review.rating,
         body=review.body,
         author_name=actor.user.display_name if actor.user else None,
+        author_photo_url=svc.public_photo(actor.user.photo_url) if actor.user else None,
         created_at=review.created_at,
     )
 
@@ -224,6 +225,7 @@ async def amend_review_route(
         rating=review.rating,
         body=review.body,
         author_name=actor.user.display_name if actor.user else None,
+        author_photo_url=svc.public_photo(actor.user.photo_url) if actor.user else None,
         created_at=review.created_at,
     )
 

@@ -467,3 +467,32 @@ async def test_pending_ask_route_is_null_when_nothing_is_due(
     )
     assert r.status_code == 200, r.text
     assert r.json() is None
+
+
+async def test_public_list_carries_the_authors_photo(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The brand page shows each reviewer's avatar beside the name.
+
+    Only an https URL goes out: the page renders it as an <img>, and a
+    plain-http or odd-scheme value would be mixed content or worse — it is
+    dropped to ``None`` and the page falls back to the initial.
+    """
+    brand, sku = await _seed_brand(db_session, "avatars")
+    shown = await _make_user(db_session, display_name="Pic")
+    shown.photo_url = "https://t.me/i/userpic/320/abc.jpg"
+    hidden = await _make_user(db_session, display_name="Plain")
+    hidden.photo_url = "http://example.com/a.jpg"
+    for user in (shown, hidden):
+        order = await _make_order(db_session, user_id=user.id, sku_id=sku.id)
+        await db_session.commit()
+        r = await integration_client.post(
+            "/api/v1/reviews",
+            headers={"Authorization": f"Bearer {_token(user.id)}", "Idempotency-Key": new_id()},
+            json={"order_id": order.id, "brand_slug": brand.slug, "rating": 5},
+        )
+        assert r.status_code == 201, r.text
+
+    items = (await integration_client.get(f"/api/v1/reviews/brands/{brand.slug}")).json()["items"]
+    photos = {item["author_name"]: item["author_photo_url"] for item in items}
+    assert photos == {"Pic": "https://t.me/i/userpic/320/abc.jpg", "Plain": None}

@@ -149,7 +149,12 @@ us, in JSON. Implemented in the `users` module.
 - Blog likes/views: retained with the post, keyed only by `reader_hash`. The
   cookie itself lives 400 days; clearing it is how a guest resets identity.
 - Reviews: a review is authored by a `user_id` and shown publicly only as the
-  user's `display_name` (or an anonymous label when null) — **never the email**.
+  user's `display_name` (or an anonymous label when null) and, since
+  2026-09-25, their avatar — **never the email**. The avatar is `users.photo_url`,
+  the picture the reviewer already shows publicly on Telegram, Google or Steam;
+  the API returns it only when it is an `https` URL (`reviews.service.public_photo`),
+  and the brand page loads it with `referrerpolicy=no-referrer` so the image host
+  learns nothing about which page it was shown on. No avatar means the initial.
   The review `body` is user-controlled free text and is never logged. Reviews are
   retained with the account; deleting the user cascades their reviews (FK
   `ondelete=CASCADE`), and a report's `reporter_user_id` is nulled on account
