@@ -1,21 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { reviewDraftHasChip, reviewFollowUp, toggleChipInReviewDraft } from "@yupay/utils";
+import { reviewFollowUp } from "@yupay/utils";
 import { Star } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { ApiError } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import { amendReview, submitReview } from "@/lib/reviews";
-
-const POSITIVE = ["reviews.tagFast", "reviews.tagAsExpected", "reviews.tagAgain"] as const;
-const NEGATIVE = [
-  "reviews.tagSlow",
-  "reviews.tagWrongAccount",
-  "reviews.tagExpensive",
-  "reviews.tagSupport",
-] as const;
-
-type TagKey = (typeof POSITIVE)[number] | (typeof NEGATIVE)[number];
 
 /** A review of this order that already exists — from `GET /reviews/mine`. */
 export interface ExistingReview {
@@ -27,8 +17,11 @@ export interface ExistingReview {
 }
 
 /**
- * One-tap star rating for a delivered order, then optional chips + comment.
- * Chips write into the textarea; PATCH runs only from Submit.
+ * One-tap star rating for a delivered order, then an optional comment.
+ * PATCH runs only from Submit.
+ *
+ * No canned-phrase chips since 2026-09-25 — they turned most reviews into the
+ * same three words (see the web ReviewForm for the longer note).
  *
  * **The comment step must survive the rating.** Posting a star makes this
  * order "already reviewed", and every surface that renders this component also
@@ -76,7 +69,6 @@ export function RateAsk({
     ? t("reviews.askTitleNamed", { brand: brandName })
     : t("reviews.askTitle");
   const rating = review?.rating ?? 0;
-  const tags: readonly TagKey[] = rating >= 4 ? POSITIVE : NEGATIVE;
   // One rule, shared with the web surface — see `reviewFollowUp`.
   const wantsWords = !confirmed && reviewFollowUp(review) === "words";
 
@@ -134,28 +126,6 @@ export function RateAsk({
         <StarRow value={rating} />
         <p className="text-primary mt-2 text-sm font-semibold">{t("reviews.thanksRating")}</p>
         <p className="mt-1 text-[11px] text-white/50">{t("reviews.followUp")}</p>
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {tags.map((key) => {
-            const label = t(key);
-            const on = reviewDraftHasChip(draft, label);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setDraft(toggleChipInReviewDraft(draft, label));
-                }}
-                className={
-                  on
-                    ? "bg-primary text-primary-foreground rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                    : "rounded-full border border-white/15 px-2.5 py-1 text-[11px] text-white/60"
-                }
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
         <textarea
           value={draft}
           onChange={(e) => {

@@ -9,7 +9,7 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (k: string) => k,
 }));
 
-test("does not PATCH on a chip tap; Submit sends the shared draft", async () => {
+test("offers no canned phrases; Submit sends what the buyer typed", async () => {
   const onAmend = vi.fn<(body: string) => Promise<void>>();
   onAmend.mockResolvedValue(undefined);
 
@@ -23,19 +23,17 @@ test("does not PATCH on a chip tap; Submit sends the shared draft", async () => 
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: "tagFast" }));
-  expect(onAmend).not.toHaveBeenCalled();
-  expect(screen.getByRole("textbox")).toHaveValue("tagFast");
+  // Removed 2026-09-25: one-tap phrases made every review read the same.
+  expect(screen.queryByRole("button", { name: /^tag/ })).not.toBeInTheDocument();
 
-  fireEvent.change(screen.getByRole("textbox"), {
-    target: { value: "tagFast. всё пришло" },
-  });
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: "всё пришло за минуту" } });
+  expect(onAmend).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "submit" }));
 
   await waitFor(() => {
     expect(onAmend).toHaveBeenCalledTimes(1);
   });
-  expect(onAmend).toHaveBeenCalledWith("tagFast. всё пришло");
+  expect(onAmend).toHaveBeenCalledWith("всё пришло за минуту");
 });
 
 test("skip leaves the body empty and still shows the thank-you", async () => {

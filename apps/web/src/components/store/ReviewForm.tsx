@@ -1,14 +1,8 @@
 "use client";
 
-import { reviewDraftHasChip, toggleChipInReviewDraft } from "@yupay/utils";
 import { Star } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useState } from "react";
-
-const POSITIVE_TAGS = ["tagFast", "tagAsExpected", "tagAgain"] as const;
-const NEGATIVE_TAGS = ["tagSlow", "tagWrongAccount", "tagExpensive", "tagSupport"] as const;
-
-type TagKey = (typeof POSITIVE_TAGS)[number] | (typeof NEGATIVE_TAGS)[number];
 
 export interface ReviewFormProps {
   /** Called with the chosen rating (1–5) the moment a star is tapped. */
@@ -31,12 +25,16 @@ export interface ReviewFormProps {
 }
 
 /**
- * One-tap star rating, then optional chips + comment. Owns input state; the
+ * One-tap star rating, then an optional comment. Owns input state; the
  * parent owns idle|sending|done|already|error and the actual HTTP calls.
  *
- * Chips write into the same textarea as free text (one draft, one PATCH).
- * Nothing is sent until the buyer taps Submit — blur/chip must not race a
+ * Nothing is sent until the buyer taps Submit — blur must not race a
  * catch-up dialog closing.
+ *
+ * There used to be a row of canned phrases ("Быстро", "Как обещали",
+ * "Куплю ещё") that one tap wrote into the comment. Removed 2026-09-25: most
+ * buyers tapped them instead of writing, so the brand page filled with
+ * identical reviews that told the next buyer nothing.
  */
 export function ReviewForm({
   onSubmit,
@@ -59,7 +57,6 @@ export function ReviewForm({
 
   const title = brandName ? t("askTitleNamed", { brand: brandName }) : t("askTitle");
   const frame = variant === "card" ? "border-border bg-card rounded-2xl border p-5" : "";
-  const tags: readonly TagKey[] = (rated ?? 0) >= 4 ? POSITIVE_TAGS : NEGATIVE_TAGS;
   const filled = hover || tapped;
 
   async function submitComment(): Promise<void> {
@@ -102,28 +99,6 @@ export function ReviewForm({
         <StarRow value={rated} />
         <p className="text-primary mt-2 text-sm font-semibold">{t("thanksRating")}</p>
         <p className="text-tx-mute mt-1 text-xs">{t("followUp")}</p>
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {tags.map((key) => {
-            const label = t(key);
-            const on = reviewDraftHasChip(draft, label);
-            return (
-              <button
-                key={key}
-                type="button"
-                onClick={() => {
-                  setDraft(toggleChipInReviewDraft(draft, label));
-                }}
-                className={
-                  on
-                    ? "bg-primary text-primary-foreground rounded-full px-2.5 py-1 text-xs font-semibold"
-                    : "border-border text-tx-mute rounded-full border px-2.5 py-1 text-xs"
-                }
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
         <label className="mt-3 block">
           <span className="sr-only">{t("commentLabel")}</span>
           <textarea
