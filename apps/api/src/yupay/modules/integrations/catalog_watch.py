@@ -14,8 +14,11 @@ mapping against the live catalogue:
 
 **Two-strike rule.** A miss never acts immediately: the first one stamps
 ``extra["catalog_missing_since"]`` on the mapping; a later tick that still
-misses — at least ``_CONFIRM_AFTER`` after the stamp — deactivates the SKU
-and sends one Telegram alert. A fetch error or an EMPTY catalogue skips the
+misses — at least ``_CONFIRM_AFTER`` after the stamp — confirms it and sends
+one Telegram alert. What the confirmation does to the SKU depends on where
+the SKU is bought — another supplier's delisting leaves it alone, losing the
+route moves it to the next live mapping, and only a SKU with nothing left
+goes off the shelf: see :mod:`catalog_watch_settle`. A fetch error or an EMPTY catalogue skips the
 game entirely, stamping nothing: a supplier outage that mass-deactivated the
 shelf would be worse than the problem this solves.
 
@@ -48,7 +51,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.catalog.models import Sku
+from yupay.modules.integrations.catalog_watch_settle import settle_delisting
 from yupay.modules.integrations.models import (
+    CATALOG_DELISTED,
     NOVA_STEAM_SENTINEL,
     SkuSupplierMapping,
     SupplierCatalogCache,
@@ -62,7 +67,7 @@ log = get_logger("yupay.integrations.catalog_watch")
 _CONFIRM_AFTER = timedelta(minutes=45)
 
 _STAMP = "catalog_missing_since"
-_ACTED = "catalog_watch_deactivated"
+_ACTED = CATALOG_DELISTED
 
 
 class CatalogClient(Protocol):
@@ -98,6 +103,7 @@ def _stamp_age(mapping: SkuSupplierMapping) -> timedelta | None:
 
 
 async def _handle_missing(
+    db: AsyncSession,
     mapping: SkuSupplierMapping,
     sku: Sku,
     *,
@@ -121,22 +127,8 @@ async def _handle_missing(
         return 1, 0
     if age < _CONFIRM_AFTER:
         return 0, 0
-    sku.active = False
-    mapping.extra = {**mapping.extra, _ACTED: True}
-    log.warning(
-        "integrations.catalog_watch.sku_deactivated",
-        supplier=mapping.supplier_slug,
-        sku_code=sku.sku_code,
-    )
-    await send_alert(
-        (
-            f"🗑 Поставщик {mapping.supplier_slug} убрал из каталога «{position}».\n"
-            f"SKU {sku.sku_code} деактивирован и снят с витрины.\n"
-            "Маппинг сохранён — если позиция вернётся, придёт отдельное уведомление."
-        ),
-        kind="catalog_watch",
-    )
-    return 0, 1
+    off = await settle_delisting(db, mapping, sku, position=position, send_alert=send_alert)
+    return 0, int(off)
 
 
 async def _handle_present(
@@ -154,12 +146,15 @@ async def _handle_present(
             supplier=mapping.supplier_slug,
             sku_code=sku.sku_code,
         )
+        tail = (
+            f"SKU {sku.sku_code} остаётся выключенным — проверьте цену и включите "
+            "вручную в админке."
+            if not sku.active
+            else f"{mapping.supplier_slug} снова может выбираться для SKU {sku.sku_code}; "
+            "маршрут сам не возвращается — переключите вручную, если нужно."
+        )
         await send_alert(
-            (
-                f"↩️ Позиция «{position}» снова в каталоге {mapping.supplier_slug}.\n"
-                f"SKU {sku.sku_code} остаётся выключенным — проверьте цену и включите "
-                "вручную в админке."
-            ),
+            f"↩️ Позиция «{position}» снова в каталоге {mapping.supplier_slug}.\n{tail}",
             kind="catalog_watch",
         )
         return 1
@@ -225,7 +220,9 @@ async def watch_mapped_variants(
             checked += 1
             position = mapping.external_variant_id or mapping.external_product_id
             if mapping.external_variant_id and mapping.external_variant_id not in names:
-                s, d = await _handle_missing(mapping, sku, position=position, send_alert=send_alert)
+                s, d = await _handle_missing(
+                    db, mapping, sku, position=position, send_alert=send_alert
+                )
                 stamped += s
                 deactivated += d
             else:
@@ -247,7 +244,7 @@ async def watch_mapped_variants(
             continue
         if item is None:
             s, d = await _handle_missing(
-                mapping, sku, position=mapping.external_product_id, send_alert=send_alert
+                db, mapping, sku, position=mapping.external_product_id, send_alert=send_alert
             )
             stamped += s
             deactivated += d
@@ -416,7 +413,9 @@ async def watch_cached_variants(
             checked += 1
             position = mapping.external_variant_id or mapping.external_product_id
             if mapping.external_variant_id and mapping.external_variant_id not in listed:
-                s, d = await _handle_missing(mapping, sku, position=position, send_alert=send_alert)
+                s, d = await _handle_missing(
+                    db, mapping, sku, position=position, send_alert=send_alert
+                )
                 stamped += s
                 deactivated += d
             else:

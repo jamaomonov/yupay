@@ -104,7 +104,12 @@ def _pick_auto_mapping_slug(mappings: Iterable[SkuSupplierMapping]) -> str | Non
     overview screen reports a route an order would never actually take —
     exactly the failure mode splitting this out exists to rule out.
 
-    Two rules here, and neither used to exist.
+    Three rules here, and none of them used to exist.
+
+    A mapping the catalogue watch has confirmed delisted is skipped
+    (:data:`~yupay.modules.integrations.models.CATALOG_DELISTED`): it stays
+    ``is_active`` so the watch can notice the position coming back, which is
+    exactly why ``is_active`` alone cannot be the test.
 
     A reserve supplier is never picked automatically, whatever its mapping's
     age (`RESERVE_SUPPLIERS`, ADR-0081). Ordering alone would have made
@@ -137,11 +142,16 @@ def _pick_auto_mapping_slug(mappings: Iterable[SkuSupplierMapping]) -> str | Non
         The winning supplier's slug, or ``None`` if no active, non-reserve
         mapping exists.
     """
-    from yupay.modules.integrations.models import RESERVE_SUPPLIERS
+    from yupay.modules.integrations.models import CATALOG_DELISTED, RESERVE_SUPPLIERS
 
     best: SkuSupplierMapping | None = None
     for mapping in mappings:
         if not mapping.is_active or mapping.supplier_slug in RESERVE_SUPPLIERS:
+            continue
+        if (mapping.extra or {}).get(CATALOG_DELISTED):
+            # The supplier confirmed it no longer lists this position. The row
+            # stays active as the catalogue watch's memory, so "active" alone
+            # would keep routing orders to something nobody can sell us.
             continue
         # `supplier_slug` tie-break: Python codepoint order, where the old
         # SQL this replaced used the database collation. Reachable only on

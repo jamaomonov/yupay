@@ -62,6 +62,13 @@ MAPPING_REQUIRED_SUPPLIERS: frozenset[str] = frozenset({"g2b", "gengine", "nova"
 #: an import cycle.
 RESERVE_SUPPLIERS: frozenset[str] = frozenset({"nova", "fzr"})
 
+#: ``extra`` key the catalogue watch sets on a mapping once the supplier's
+#: delisting of it is confirmed. The mapping stays ``is_active`` — it is the
+#: watch's memory of what it did, and the way it notices the position coming
+#: back — so anything choosing a route must check this key too, or it would
+#: keep buying from a supplier that no longer sells the thing.
+CATALOG_DELISTED: str = "catalog_watch_deactivated"
+
 #: A ``nova`` mapping whose ``external_product_id`` is this buys a **Steam
 #: wallet top-up**, not a game. Their Steam endpoint takes a login and an
 #: amount and has no category at all, so there is no real id to put in that

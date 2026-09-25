@@ -1025,3 +1025,60 @@ async def test_manual_refresh_all_endpoint(
     assert body["checked"] == 1
     assert body["moved"] == 1
     assert body["alerts_sent"] == 1
+
+
+@respx.mock
+async def test_refresh_all_does_not_write_back_a_stale_mapping(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The pass snapshots every mapping, then walks them for minutes. Until
+    2026-09-25 it re-attached each snapshot with ``session.merge`` — which
+    copies *every* column of the stale copy back over the row.
+
+    The hourly catalogue watch runs 90s after this pass starts and writes
+    ``extra["catalog_watch_deactivated"]`` on a delisted mapping. The merge
+    then put the snapshot's ``extra`` back, the watch forgot it had acted,
+    and it switched the same SKUs off and re-alerted every hour (Blood
+    Strike, six SKUs, 12:49 and 13:49 UTC). Anything an operator changed on
+    a mapping mid-pass would have been reverted the same way.
+    """
+    sku_id = await _seed_sku(db_session, slug_suffix="stale-merge")
+    mapping = await _seed_mapping(db_session, sku_id=sku_id, game_code="pubgm", denom="60")
+    respx.get(f"{G2B_BASE}/games/pubgm/catalogue").mock(
+        return_value=httpx.Response(
+            200, json={"catalogues": [{"id": 1, "name": "60", "amount": 0.89}]}
+        )
+    )
+    respx.post(f"https://api.telegram.org/bot{ALERT_BOT_TOKEN}/sendMessage").mock(
+        return_value=httpx.Response(200, json={"ok": True})
+    )
+
+    from yupay.core.db import get_session_factory
+    from yupay.modules.integrations import price_refresh
+
+    async def _watch_writes_mid_pass(_mappings: object) -> dict[str, object]:
+        # Runs after the snapshot and before the loop: exactly where the
+        # watch's commit lands in production.
+        async with get_session_factory()() as other:
+            row = await other.get(SkuSupplierMapping, (mapping.sku_id, mapping.supplier_slug))
+            assert row is not None
+            row.extra = {**row.extra, "catalog_watch_deactivated": True}
+            await other.commit()
+        return {}
+
+    monkeypatch.setattr(price_refresh, "_fetch_nova_offers_cache", _watch_writes_mid_pass)
+
+    report = await price_refresh.refresh_all_mappings()
+    assert report.checked == 1
+
+    db_session.expire_all()
+    row = (
+        await db_session.execute(
+            select(SkuSupplierMapping).where(
+                SkuSupplierMapping.sku_id == sku_id, SkuSupplierMapping.supplier_slug == "g2b"
+            )
+        )
+    ).scalar_one()
+    assert row.extra.get("catalog_watch_deactivated") is True

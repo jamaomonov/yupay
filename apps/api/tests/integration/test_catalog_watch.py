@@ -336,6 +336,12 @@ async def test_cached_watch_stamps_a_variant_missing_from_the_cache(
 
 async def test_cached_watch_deactivates_on_the_second_strike(db_session: AsyncSession) -> None:
     sku, mapping = await _seed_cached(db_session, variant="1800_uc", cached=("60_uc",))
+    # NOVA is a reserve: auto routing never picks it, so a SKU whose only
+    # mapping is NOVA reaches it through a `force_supplier` rule — that is the
+    # shape every NOVA-only SKU has in production. Without the rule its orders
+    # go to the manual queue, NOVA is not its route, and since 2026-09-25 a
+    # delisting there no longer takes the SKU off the shelf.
+    await _force(db_session, sku, "nova")
     mapping.extra = {
         "catalog_missing_since": (now() - _CONFIRM_AFTER - timedelta(minutes=1)).isoformat()
     }
@@ -597,3 +603,171 @@ async def test_stale_rows_are_refetched_rather_than_trusted(
     await db_session.refresh(mapping)
     assert mapping.extra == {}
     assert report.stamped == 0
+
+
+# --- a delisting at one supplier is not a delisting of the SKU -------------
+#
+# 2026-09-25: G-Engine dropped six Blood Strike packs. Five of those SKUs were
+# routed to FazerCards and all six were still carried by G2B, FazerCards and
+# NOVA — yet the watch switched every one of them off the shelf. What matters
+# is whether the SKU can still be bought, not whether one supplier stopped
+# listing it.
+
+
+async def _add_mapping(
+    db: AsyncSession, sku: Sku, supplier: str, *, age: timedelta = timedelta(0)
+) -> SkuSupplierMapping:
+    row = SkuSupplierMapping(
+        sku_id=sku.id,
+        supplier_slug=supplier,
+        kind="game",
+        external_product_id=f"{supplier}-game",
+        external_variant_id="1800 UC",
+        extra={},
+        is_active=True,
+        created_at=now() + age,
+    )
+    db.add(row)
+    await db.flush()
+    return row
+
+
+async def _force(db: AsyncSession, sku: Sku, supplier: str) -> None:
+    from yupay.modules.sourcing.models import SkuSourcingRule
+
+    db.add(SkuSourcingRule(sku_id=sku.id, mode="force_supplier", supplier_slug=supplier))
+    await db.flush()
+
+
+def _confirmed(mapping: SkuSupplierMapping) -> None:
+    stale = (now() - _CONFIRM_AFTER - timedelta(minutes=1)).isoformat()
+    mapping.extra = {"catalog_missing_since": stale}
+
+
+@pytest.fixture
+def _no_reprice(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """The route switch re-prices through the cost layer; here we only need
+    to know it was asked to, not reach a supplier."""
+    from yupay.modules.integrations import catalog_watch_settle as catalog_watch
+
+    calls: list[str] = []
+
+    async def _spy(_db: AsyncSession, sku_id: str) -> str | None:
+        calls.append(sku_id)
+        return None
+
+    monkeypatch.setattr(catalog_watch, "_reprice", _spy)
+    return calls
+
+
+async def test_a_supplier_we_do_not_buy_from_leaves_the_sku_on(
+    db_session: AsyncSession, _no_reprice: list[str]
+) -> None:
+    sku, g2b = await _seed(db_session)
+    await _add_mapping(db_session, sku, "fzr")
+    await _force(db_session, sku, "fzr")
+    _confirmed(g2b)
+    await db_session.flush()
+    alerts = _AlertSpy()
+    client = _FakeClient(games={"pubgm": [{"name": "60"}]})
+
+    report = await watch_mapped_variants(db_session, client=client, send_alert=alerts)
+
+    await db_session.refresh(sku)
+    await db_session.refresh(g2b)
+    assert sku.active is True
+    assert g2b.extra.get("catalog_watch_deactivated") is True
+    assert report.deactivated == 0
+    assert len(alerts.sent) == 1
+    assert "fzr" in alerts.sent[0][0]
+    assert _no_reprice == []  # the route did not move, nothing to re-price
+
+    await watch_mapped_variants(db_session, client=client, send_alert=alerts)
+    assert len(alerts.sent) == 1  # said once
+
+
+async def test_losing_the_route_moves_to_the_next_live_mapping(
+    db_session: AsyncSession, _no_reprice: list[str]
+) -> None:
+    from yupay.modules.sourcing.service import resolve_for_sku
+
+    sku, g2b = await _seed(db_session)  # oldest mapping — the auto route
+    await _add_mapping(db_session, sku, "gengine", age=timedelta(minutes=5))
+    _confirmed(g2b)
+    await db_session.flush()
+    alerts = _AlertSpy()
+
+    report = await watch_mapped_variants(
+        db_session, client=_FakeClient(games={"pubgm": [{"name": "60"}]}), send_alert=alerts
+    )
+
+    await db_session.refresh(sku)
+    assert sku.active is True
+    assert report.deactivated == 0
+    assert (await resolve_for_sku(db_session, sku.id)).primary == "supplier:gengine"
+    assert _no_reprice == [sku.id]
+    assert "gengine" in alerts.sent[0][0]
+
+
+async def test_a_forced_route_that_is_delisted_hands_over_to_auto(
+    db_session: AsyncSession, _no_reprice: list[str]
+) -> None:
+    from yupay.modules.sourcing.models import SkuSourcingRule
+    from yupay.modules.sourcing.service import resolve_for_sku
+
+    sku, g2b = await _seed(db_session)
+    await _add_mapping(db_session, sku, "gengine", age=timedelta(minutes=5))
+    await _force(db_session, sku, "g2b")
+    _confirmed(g2b)
+    await db_session.flush()
+    alerts = _AlertSpy()
+
+    await watch_mapped_variants(
+        db_session, client=_FakeClient(games={"pubgm": [{"name": "60"}]}), send_alert=alerts
+    )
+
+    await db_session.refresh(sku)
+    assert sku.active is True
+    rule = (
+        await db_session.execute(select(SkuSourcingRule).where(SkuSourcingRule.sku_id == sku.id))
+    ).scalar_one_or_none()
+    assert rule is None
+    assert (await resolve_for_sku(db_session, sku.id)).primary == "supplier:gengine"
+    assert _no_reprice == [sku.id]
+
+
+async def test_only_reserves_left_switches_off_and_names_them(
+    db_session: AsyncSession, _no_reprice: list[str]
+) -> None:
+    """A reserve is never reached automatically (ADR-0081), so a SKU whose
+    only other sources are reserves still goes off — but the alert says
+    where it could be bought, so the operator can force it there."""
+    sku, g2b = await _seed(db_session)
+    await _add_mapping(db_session, sku, "fzr")
+    await _add_mapping(db_session, sku, "nova")
+    _confirmed(g2b)
+    await db_session.flush()
+    alerts = _AlertSpy()
+
+    report = await watch_mapped_variants(
+        db_session, client=_FakeClient(games={"pubgm": [{"name": "60"}]}), send_alert=alerts
+    )
+
+    await db_session.refresh(sku)
+    assert sku.active is False
+    assert report.deactivated == 1
+    text = alerts.sent[0][0]
+    assert "fzr" in text
+    assert "nova" in text
+    assert _no_reprice == []
+
+
+async def test_auto_routing_skips_a_delisted_mapping(db_session: AsyncSession) -> None:
+    from yupay.modules.sourcing.service import resolve_for_sku
+
+    sku, g2b = await _seed(db_session)
+    await _add_mapping(db_session, sku, "gengine", age=timedelta(minutes=5))
+    g2b.extra = {"catalog_watch_deactivated": True}
+    await db_session.flush()
+
+    assert (await resolve_for_sku(db_session, sku.id)).primary == "supplier:gengine"

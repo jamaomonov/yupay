@@ -26,7 +26,7 @@ from __future__ import annotations
 import html
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, Final, Protocol, runtime_checkable
+from typing import Any, Final, Protocol, runtime_checkable
 
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
@@ -36,11 +36,9 @@ from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
     NOVA_STEAM_SENTINEL,
+    SkuSupplierMapping,
 )
 from yupay.modules.notifications import api as notifications
-
-if TYPE_CHECKING:
-    from yupay.modules.integrations.models import SkuSupplierMapping
 
 log = get_logger("yupay.integrations.price_refresh")
 
@@ -164,10 +162,20 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
         checked += 1
         try:
             async with factory() as session, session.begin():
-                # ``mapping`` is detached after the snapshot session
-                # closed; merge brings it back into this session so
-                # the FK lookups inside refresh work.
-                attached = await session.merge(mapping)
+                # Re-read the row; never `merge` the snapshot. The snapshot is
+                # minutes old by the time the loop reaches most mappings, and
+                # `merge` copies every column of it back over the live row —
+                # which is how the catalogue watch's `extra` marker kept
+                # vanishing and six Blood Strike SKUs were switched off and
+                # re-alerted every hour (2026-09-25). The snapshot only says
+                # *which* mappings to visit; the row says what they are now.
+                attached = await session.get(
+                    SkuSupplierMapping, (mapping.sku_id, mapping.supplier_slug)
+                )
+                if attached is None or not attached.is_active:
+                    # Deleted or switched off since the snapshot: an operator
+                    # decision taken mid-pass, which this pass must not undo.
+                    continue
                 outcome = await svc.refresh_sku_cost_for_mapping(
                     session,
                     mapping=attached,

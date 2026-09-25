@@ -9,13 +9,38 @@ failed order.
 
 ## What it does
 
-| Event                                       | Action                                                                                                         |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
-| Mapped position missing (1st time)          | Stamps `extra.catalog_missing_since` on the mapping. Nothing visible changes.                                  |
-| Still missing on a later tick (≥ 45 min)    | Deactivates the SKU (`skus.active=false`), marks the mapping, sends one Telegram alert (`kind=catalog_watch`). |
-| Supplier fetch error / empty game catalogue | Skips that game entirely — no stamps. An outage must not mass-deactivate the shelf.                            |
-| Position reappears before deactivation      | Clears the stamp quietly.                                                                                      |
-| Position reappears after deactivation       | Telegram alert; the SKU **stays off** — a human re-checks the price and re-enables it in the admin SKU card.   |
+| Event                                       | Action                                                                                                                                 |
+| ------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Mapped position missing (1st time)          | Stamps `extra.catalog_missing_since` on the mapping. Nothing visible changes.                                                          |
+| Still missing on a later tick (≥ 45 min)    | Marks the mapping delisted and sends one Telegram alert (`kind=catalog_watch`). What happens to the SKU: see below.                    |
+| Supplier fetch error / empty game catalogue | Skips that game entirely — no stamps. An outage must not mass-deactivate the shelf.                                                    |
+| Position reappears before deactivation      | Clears the stamp quietly.                                                                                                              |
+| Position reappears after it was confirmed   | Telegram alert. A SKU that went off **stays off** until a human re-checks the price; a route that moved does not move back on its own. |
+
+### What a confirmed delisting does to the SKU
+
+One supplier dropping a position is not the SKU becoming unsellable. Until
+2026-09-25 it was treated as if it were: G-Engine dropped six Blood Strike
+packs, five of those SKUs were routed to FazerCards, all six were still
+carried by G2B, FazerCards and NOVA — and every one came off the shelf. So the
+confirmation now asks where the SKU is bought (`catalog_watch_settle.py`):
+
+| The supplier that delisted it is…                  | What happens                                                                                                                                                  |
+| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| not the SKU's route                                | Nothing on the shelf. The mapping is marked so routing never picks it again. Alert: «покупается через X — на витрине ничего не меняется».                     |
+| the route, and another non-reserve mapping is live | The SKU moves there. A `force_supplier` rule naming the delisted supplier is dropped so auto routing takes over, and the SKU is re-priced at once (ADR-0091). |
+| the route, and only reserves (or nothing) remain   | The SKU goes off, as before. Reserves are never reached automatically (ADR-0081): the alert names them so a person can force the SKU there.                   |
+
+The mark is `extra.catalog_watch_deactivated` (`integrations.models.CATALOG_DELISTED`).
+The mapping itself stays `is_active` — it is the watch's memory, and how it
+notices the position coming back — so auto routing reads the mark too.
+
+**The mark must survive the hourly price refresh.** Until the same day, the
+refresh snapshotted every mapping and `session.merge`d each snapshot back,
+which wrote a minutes-old `extra` over the row. The watch runs 90 s into that
+pass, so its mark was wiped behind it and the same SKUs were switched off and
+re-alerted every hour. The refresh now re-reads each row instead. If a
+"deactivated" alert ever repeats hourly for the same SKU, look there first.
 
 ## Which suppliers, and how each is asked
 
