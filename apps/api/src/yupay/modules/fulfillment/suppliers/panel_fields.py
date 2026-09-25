@@ -96,13 +96,34 @@ def _our_value(data: dict[str, Any], role: str, their_key: str) -> str:
     return ""
 
 
+#: HoYoverse's own region codes -> the plain word the panel vendors key on.
+#:
+#: Our Genshin form stores the codes because G2B, the primary route, keys on
+#: them. fzr and NOVA both declare ``america``/``asia``/``europe``/``tw_hk_mo``
+#: for ``genshin_impact_global`` (read 2026-09-25), and neither the value nor
+#: the label of any option matches a code — so order ``01a0d68a`` went out
+#: with ``os_usa`` and was refused. Honkai Star Rail's form already stores the
+#: words, which is why it never hit this.
+#:
+#: A lookup, not a rewrite: the alias is only used when it is one of *their*
+#: option values, so a vendor that later accepts the codes directly still gets
+#: them, and one that drops a region still refuses it by name.
+_REGION_ALIASES: dict[str, str] = {
+    "os_usa": "america",
+    "os_euro": "europe",
+    "os_asia": "asia",
+    "os_cht": "tw_hk_mo",
+}
+
+
 def _translate_option(value: str, options: list[dict[str, Any]]) -> str:
     """Our stored choice as one of their option values.
 
     Our forms were written against G2B, which capitalises (``Europe``,
     ``TW_HK_MO``); NOVA's enum is lower-case. Falling back to the label
     catches the other direction — a form storing the human word where they
-    key on a code.
+    key on a code. Last, a HoYoverse region code is tried as its word — see
+    :data:`_REGION_ALIASES`.
 
     An unmatched value is returned unchanged rather than dropped: NOVA
     refusing ``Europe`` with a message naming the field is far easier to read
@@ -117,6 +138,11 @@ def _translate_option(value: str, options: list[dict[str, Any]]) -> str:
         text = label if isinstance(label, str) else ""
         if text.strip().casefold() == wanted:
             return str(option.get("value"))
+    alias = _REGION_ALIASES.get(wanted)
+    if alias is not None:
+        for option in options:
+            if str(option.get("value") or "").strip().casefold() == alias:
+                return str(option.get("value"))
     log.info("panel.option_not_in_enum", field_value=value)
     return value
 

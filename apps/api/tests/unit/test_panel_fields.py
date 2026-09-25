@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
 from yupay.modules.fulfillment.suppliers.panel_fields import build_fields, field_specs
 
 # --- the four real shapes, verbatim from their API ---------------------------
@@ -139,3 +140,53 @@ def test_the_server_role_covers_their_other_names_for_it() -> None:
     specs: list[dict[str, Any]] = [{"key": "zone", "type": "text"}]
 
     assert build_fields(specs, {"server": "12345"}) == {"zone": "12345"}
+
+
+# --- Genshin: our form stores HoYoverse's region codes ------------------------
+
+#: Verbatim from both fzr and NOVA, ``genshin_impact_global``, read 2026-09-25.
+GENSHIN: list[dict[str, Any]] = [
+    {"key": "player_id", "label": "Player ID", "type": "text"},
+    {
+        "key": "server",
+        "label": "Server",
+        "type": "select",
+        "options": [
+            {"label": "America", "value": "america"},
+            {"label": "Asia", "value": "asia"},
+            {"label": "Europe", "value": "europe"},
+            {"label": "TW HK MO", "value": "tw_hk_mo"},
+        ],
+    },
+]
+
+
+@pytest.mark.parametrize(
+    ("ours", "theirs"),
+    [("os_usa", "america"), ("os_euro", "europe"), ("os_asia", "asia"), ("os_cht", "tw_hk_mo")],
+)
+def test_genshin_region_codes_become_their_words(ours: str, theirs: str) -> None:
+    """Order ``01a0d68a`` (2026-09-25) was refused by fzr with ``Field "server":
+    value must be one of the allowed options`` — we sent ``os_usa``.
+
+    Our Genshin form keeps HoYoverse's own codes because G2B, the primary
+    route, keys on them; neither the value nor the label of their options
+    matches a code, so it has to be translated.
+    """
+    built = build_fields(GENSHIN, {"player_id": "701234567", "server": ours})
+
+    assert built == {"player_id": "701234567", "server": theirs}
+
+
+def test_a_region_code_is_still_matched_case_insensitively() -> None:
+    built = build_fields(GENSHIN, {"player_id": "1", "server": "OS_EURO"})
+
+    assert built["server"] == "europe"
+
+
+def test_a_region_code_their_enum_lacks_travels_unchanged() -> None:
+    """The alias only helps when its target is one of *their* options; if a
+    vendor ever drops ``america``, the refusal should name ``os_usa``."""
+    only_asia = [{**GENSHIN[1], "options": [{"label": "Asia", "value": "asia"}]}]
+
+    assert build_fields(only_asia, {"server": "os_usa"}) == {"server": "os_usa"}

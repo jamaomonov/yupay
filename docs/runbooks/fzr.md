@@ -272,6 +272,27 @@ order is simply that it finishes, and `fzr_reconcile.tick` showing a non-zero
 reused key replays here, so `KEY_BURNED_ON_USE` excludes fzr on evidence
 rather than on their word.
 
+## Genshin's server field — fixed 2026-09-25
+
+Order `01a0d68a` (Blessing of the Welkin Moon) was refused with
+`Field "server": value must be one of the allowed options` and fulfilled by
+hand. Our Genshin form stores HoYoverse's region codes — `os_usa`, `os_euro`,
+`os_asia`, `os_cht` — because G2B, the primary route, keys on them. fzr and
+NOVA both declare `america` / `asia` / `europe` / `tw_hk_mo` for
+`genshin_impact_global`, and no option's value or label matches a code, so
+`os_usa` went out verbatim. Every Genshin order routed to either vendor would
+have failed the same way; this was the first.
+
+`panel_fields._REGION_ALIASES` now tries the code's word when nothing else
+matches, and only if that word is one of **their** options. Checked against
+both vendors' live declarations: all 32 form-option × product × vendor pairs
+(Genshin and Honkai Star Rail — the only select fields we route to either)
+land on an allowed value. Honkai never hit this: its form already stores the
+words.
+
+If `panel.option_not_in_enum` appears in the logs, a form value has no match
+again — the log line carries the value, and the refusal will name the field.
+
 ## What the logs say
 
 Same event names as NOVA's, prefixed `fzr` instead. The ones worth knowing:
