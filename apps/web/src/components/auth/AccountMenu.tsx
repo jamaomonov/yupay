@@ -167,10 +167,10 @@ export function AccountMenu({ locale }: Props) {
             className="text-tx-mute hover:bg-card-2 hover:text-foreground flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition"
           >
             <WalletMark size={16} />
-            <span className="flex-1">{t("wallet")}</span>
-            {balance !== null && (
-              <span className="text-foreground text-sm font-bold tabular-nums">{balanceLabel}</span>
-            )}
+            {/* No balance here: the button that opens this menu already shows
+                it, and the same number twice, one above the other, read as
+                clutter (and wrapped «сум» onto its own line). */}
+            {t("wallet")}
           </Link>
           {/* The one place "Пополнить" means the wallet. The header's own
               lime CTA sells games, which is why it no longer says this. */}
