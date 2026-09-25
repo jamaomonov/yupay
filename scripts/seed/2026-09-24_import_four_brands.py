@@ -58,6 +58,18 @@ verified against the running games — writing confident steps that are wrong is
 how a customer sends money to a stranger. Refine them (and add ``help_images``)
 once someone has each game open.
 
+## Two owner decisions, 2026-09-24
+
+**Margin 12% on the games, 10% on Minecraft** — under the neighbours
+(blood-strike 17.1%, whiteout-survival 15.5%, Roblox 13.9%). These are four
+brands with no history, and a thin price is the cheapest way to learn whether
+there is demand at all.
+
+**Created switched off.** Two customer-facing things are not ready: the brands
+have no logo or hero image, and the help text has not been checked against the
+running games. Only the brand row is inactive, so going live is one toggle
+each rather than twenty-six.
+
 Idempotent: an existing slug is skipped, never re-priced. Mappings converge.
 """
 
@@ -80,10 +92,21 @@ APPLY = os.environ.get("APPLY") == "1"
 TOP_UPS = "019f6a61-5db6-76a1-901f-54e1a9ad3c48"
 GIFT_CARDS = "019fe85e-92b3-7551-989e-6556a2f99ae8"
 
-#: Games sit where blood-strike and whiteout-survival sit (15.5-17%);
-#: Minecraft sits where Roblox does (13.9%), because a code resells thinner.
-MARGIN_GAME = Decimal("16")
-MARGIN_VOUCHER = Decimal("14")
+#: Owner's call 2026-09-24: go in under the neighbours — these are four
+#: brands with no sales history, and a thin price is the cheapest way to find
+#: out whether there is demand at all. For reference, blood-strike runs 17.1%,
+#: whiteout-survival 15.5% and Roblox 13.9%.
+MARGIN_GAME = Decimal("12")
+MARGIN_VOUCHER = Decimal("10")
+
+#: Created switched **off**. Everything below exists, is priced and is mapped,
+#: but the storefront filters on ``brand.active`` so nothing shows until
+#: somebody flips it. Two things are not ready at seed time and both are
+#: customer-facing: the brands have no logo or hero image, and the "where to
+#: find your ID" help text has not been checked against the running games.
+#: Only the BRAND is switched off -- its products and SKUs stay active, so
+#: going live is one toggle per brand rather than twenty-six.
+BRAND_ACTIVE = False
 
 
 def _id_field(
@@ -630,7 +653,8 @@ async def main() -> None:  # noqa: PLR0912, PLR0915 -- one linear pass, read top
             if slug in brands:
                 print(f"  бренд  {slug:16s} уже есть, пропуск")
                 continue
-            print(f"  бренд  {slug:16s} создать  (sort={sort_order})")
+            state = "включён" if BRAND_ACTIVE else "ВЫКЛЮЧЕН"
+            print(f"  бренд  {slug:16s} создать  (sort={sort_order}, {state})")
             if not APPLY:
                 continue
             row = await cat.create_brand(
@@ -639,6 +663,7 @@ async def main() -> None:  # noqa: PLR0912, PLR0915 -- one linear pass, read top
                     slug=slug,
                     category_id=category_id,
                     sort_order=sort_order,
+                    active=BRAND_ACTIVE,
                     translations=[
                         cs.TranslationIn(
                             locale=loc, name=name, short_description=short, highlights=chips
@@ -743,7 +768,8 @@ async def main() -> None:  # noqa: PLR0912, PLR0915 -- one linear pass, read top
             await session.commit()
             print(f"\nЗАПИСАНО: SKU создано {made}, маппингов {mapped}")
             print("Маршрут везде авто — резервы (fzr, nova) не выбираются сами.")
-            print("Логотипы и hero-картинки нужно загрузить в админке.")
+            print("Бренды ВЫКЛЮЧЕНЫ. Перед включением: логотипы, hero и проверка")
+            print("подсказок «где найти ID» на живых играх.")
         else:
             print(f"\nСУХОЙ ПРОГОН. APPLY=1 чтобы записать. Всего SKU в плане: {len(SKUS)}")
 
