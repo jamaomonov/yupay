@@ -17,9 +17,11 @@
 -- a reasonable person would look:
 --
 --   * Roblox codes go to roblox.com/redeem in a BROWSER — the mobile app does
---     not accept them — and they land as Roblox Credit, not Robux. Buying the
---     Robux is a second step. Credit cannot be moved off the account it was
---     redeemed on, so the account has to be right the first time.
+--     not accept them. The Robux land on the balance at once (checked on a
+--     real redemption 2026-09-26 — an earlier revision said Roblox Credit and
+--     a second exchange step, which was wrong). The balance cannot be moved
+--     off the account it was redeemed on, so the account has to be right the
+--     first time.
 --   * Discord Nitro from this supplier is a POSA voucher. The code is entered
 --     at posa.mintroute.com together with an email, NOT anywhere in Discord;
 --     an activation link then arrives by mail. A customer who pastes it into
@@ -57,14 +59,13 @@ UPDATE brand_translations SET
 
 YuPay продаёт глобальные подарочные карты Roblox. После оплаты вы получаете код на почту и активируете его сами на сайте Roblox — пароль от аккаунта не нужен и мы его не спрашиваем. Оплатить можно в сумах картами Uzcard и Humo через Click, Payme или Uzum; курс виден до оплаты.
 
-Важно понимать, как устроена активация: код зачисляется не робуксами, а балансом Roblox Credit, и уже за этот баланс вы покупаете Robux или Premium — это второй шаг, он делается там же на сайте.$c$,
+Robux зачисляются на баланс сразу после активации кода.$c$,
     instructions = $c$Как активировать код Roblox:
 
 1. Откройте roblox.com/redeem в браузере — на телефоне тоже подойдёт браузер. В самом приложении Roblox код ввести нельзя (исключение — устройства Samsung Galaxy).
 2. Войдите в тот аккаунт, на который нужны Robux. Проверьте имя в правом верхнем углу: перенести баланс на другой аккаунт потом невозможно.
 3. Введите код из письма в поле «Code» и нажмите «Redeem».
-4. На аккаунт зачислится Roblox Credit — это баланс, а не сами Robux.
-5. Нажмите «Get Robux» (или откройте раздел Robux) и обменяйте баланс на Robux либо на подписку Premium.
+4. Robux сразу зачислятся на баланс — Roblox покажет, сколько добавлено.
 
 Код приходит на почту, указанную при заказе, сразу после подтверждения оплаты. Если письма нет — проверьте «Спам» и папку «Промоакции».$c$
 WHERE brand_id = (SELECT id FROM brands WHERE slug = 'roblox') AND locale = 'ru';
@@ -76,14 +77,13 @@ UPDATE brand_translations SET
 
 YuPay sells global Roblox gift cards. After payment the code arrives by email and you redeem it yourself on Roblox's site — no account password is needed and we never ask for one. You can pay in Uzbek sum with Uzcard and Humo cards via Click, Payme or Uzum; the rate is shown before you pay.
 
-One thing worth knowing up front: the code does not deposit Robux. It adds Roblox Credit, a balance on the account, and you then spend that balance on Robux or Premium — a second step, done in the same place.$c$,
+The Robux land on your balance as soon as the code is redeemed.$c$,
     instructions = $c$How to redeem your Roblox code:
 
 1. Open roblox.com/redeem in a browser — a phone browser is fine. The code cannot be entered in the Roblox app itself (Samsung Galaxy devices are the exception).
 2. Sign in to the account the Robux are for. Check the name in the top-right corner: the balance cannot be moved to another account afterwards.
 3. Enter the code from the email into the Code box and click Redeem.
-4. The account receives Roblox Credit — a balance, not the Robux themselves.
-5. Click Get Robux (or open the Robux section) and exchange the balance for Robux or a Premium membership.
+4. The Robux land on your balance at once — Roblox shows how many were added.
 
 The code is emailed to the address on the order as soon as payment is confirmed. If it has not arrived, check Spam and Promotions.$c$
 WHERE brand_id = (SELECT id FROM brands WHERE slug = 'roblox') AND locale = 'en';
@@ -95,14 +95,13 @@ UPDATE brand_translations SET
 
 YuPay global Roblox sovgʻa kartalarini sotadi. Toʻlovdan soʻng kod pochtangizga keladi va uni Roblox saytida oʻzingiz faollashtirasiz — akkaunt paroli kerak emas va biz uni soʻramaymiz. Toʻlovni soʻmda Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali amalga oshirishingiz mumkin; kurs toʻlovdan oldin koʻrinadi.
 
-Muhimi: kod Robux emas, Roblox Credit balansini qoʻshadi, va Robux yoki Premium'ni siz oʻsha balansga sotib olasiz — bu ikkinchi qadam, oʻsha yerda bajariladi.$c$,
+Robux kod faollashtirilishi bilan darhol balansga tushadi.$c$,
     instructions = $c$Roblox kodini qanday faollashtirish:
 
 1. Brauzerda roblox.com/redeem ni oching — telefondagi brauzer ham boʻladi. Roblox ilovasining oʻzida kodni kiritib boʻlmaydi (Samsung Galaxy qurilmalari bundan mustasno).
 2. Robux kerak boʻlgan akkauntga kiring. Oʻng yuqori burchakdagi nomni tekshiring: keyinchalik balansni boshqa akkauntga koʻchirib boʻlmaydi.
 3. Xatdagi kodni «Code» maydoniga kiriting va «Redeem» ni bosing.
-4. Hisobga Roblox Credit tushadi — bu balans, Robux'ning oʻzi emas.
-5. «Get Robux» ni bosing (yoki Robux boʻlimini oching) va balansni Robux yoki Premium obunasiga almashtiring.
+4. Robux darhol balansga tushadi — Roblox qancha qoʻshilganini koʻrsatadi.
 
 Kod toʻlov tasdiqlangach buyurtmada koʻrsatilgan pochtaga keladi. Xat kelmasa — «Spam» va «Promotions» papkalarini tekshiring.$c$
 WHERE brand_id = (SELECT id FROM brands WHERE slug = 'roblox') AND locale = 'uz';
@@ -134,13 +133,13 @@ SELECT nf.id, t.locale, t.question, t.answer
 FROM new_faqs nf
 JOIN (
     VALUES
-        -- 1. Кредит, а не робуксы — то, из-за чего пишут в поддержку.
-        (1, 'ru', $q$Почему после активации нет Robux, а есть какой-то баланс?$q$,
-            $a$Так и должно быть. Подарочная карта Roblox зачисляет не сами Robux, а баланс Roblox Credit. Чтобы получить Robux, на сайте нажмите «Get Robux» и обменяйте баланс — или потратьте его на подписку Premium. Это второй шаг, он бесплатный и занимает несколько секунд.$a$),
-        (1, 'en', $q$Why do I have a balance instead of Robux after redeeming?$q$,
-            $a$That is how it works. A Roblox gift card adds Roblox Credit rather than Robux. To get the Robux, click Get Robux on the site and exchange the balance — or spend it on a Premium membership instead. That second step is free and takes seconds.$a$),
-        (1, 'uz', $q$Faollashtirgach nega Robux emas, balans paydo boʻldi?$q$,
-            $a$Shunday boʻlishi kerak. Roblox sovgʻa kartasi Robux emas, Roblox Credit balansini qoʻshadi. Robux olish uchun saytda «Get Robux» ni bosing va balansni almashtiring — yoki uni Premium obunasiga sarflang. Bu ikkinchi qadam bepul va bir necha soniya oladi.$a$),
+        -- 1. Когда придут робуксы.
+        (1, 'ru', $q$Когда Robux появятся на аккаунте?$q$,
+            $a$Сразу после активации кода: Roblox покажет, сколько Robux добавлено на баланс. Если значок баланса не обновился, перезагрузите страницу.$a$),
+        (1, 'en', $q$When do the Robux show up on my account?$q$,
+            $a$Right after you redeem the code: Roblox shows how many Robux were added to your balance. If the balance icon has not updated, reload the page.$a$),
+        (1, 'uz', $q$Robux akkauntda qachon paydo boʻladi?$q$,
+            $a$Kodni faollashtirgandan soʻng darhol: Roblox balansga qancha Robux qoʻshilganini koʻrsatadi. Agar balans belgisi yangilanmagan boʻlsa, sahifani qayta yuklang.$a$),
 
         -- 2. Где вводить.
         (2, 'ru', $q$Где вводить код?$q$,
