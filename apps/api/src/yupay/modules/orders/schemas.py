@@ -147,7 +147,7 @@ class OrderItemDisplay(BaseModel):
 #: field list entirely; this key can't be kept off the *list* the same way
 #: because it lives inside a free-form JSONB column, so it's redacted at
 #: serialization time instead.
-_CUSTOMER_HIDDEN_FULFILLMENT_KEYS = frozenset({"supplier_price_usd"})
+_CUSTOMER_HIDDEN_FULFILLMENT_KEYS = frozenset({"supplier_price_usd", "expected_units"})
 
 
 class OrderItemOut(BaseModel):

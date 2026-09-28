@@ -21,9 +21,12 @@ from typing import Literal, Protocol
 from pydantic import BaseModel, ConfigDict
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from yupay.core.clock import now
 from yupay.core.errors import ValidationError
 from yupay.core.logging import get_logger
+from yupay.modules.skins.models import SkinTradeLink
 
 log = get_logger("yupay.skins.tradelink")
 
@@ -148,6 +151,16 @@ async def check_tradelink(
     return verdict
 
 
+async def save_trade_link(db: AsyncSession, *, user_id: str, url: str, steam_id: int) -> None:
+    """Upsert the user's saved link (checkout reuses this). Flushes, never commits."""
+    row = await db.get(SkinTradeLink, user_id)
+    if row is None:
+        db.add(SkinTradeLink(user_id=user_id, url=url, steam_id=steam_id))
+    else:
+        row.url, row.steam_id, row.updated_at = url, steam_id, now()
+    await db.flush()
+
+
 __all__ = [
     "STEAM64_BASE",
     "HoldChecker",
@@ -157,4 +170,5 @@ __all__ = [
     "TradelinkChecker",
     "check_tradelink",
     "parse_tradelink",
+    "save_trade_link",
 ]

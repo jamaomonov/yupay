@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
-from yupay.core.clock import now
 from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.idempotency import (
@@ -40,6 +39,7 @@ from yupay.modules.skins.tradelink import (
     TradeLinkReason,
     check_tradelink,
     parse_tradelink,
+    save_trade_link,
 )
 from yupay.modules.users.models import User
 
@@ -141,14 +141,4 @@ async def put_saved(
     return out
 
 
-async def save_trade_link(db: AsyncSession, *, user_id: str, url: str, steam_id: int) -> None:
-    """Upsert the user's saved link (checkout reuses this). Flushes, never commits."""
-    row = await db.get(SkinTradeLink, user_id)
-    if row is None:
-        db.add(SkinTradeLink(user_id=user_id, url=url, steam_id=steam_id))
-    else:
-        row.url, row.steam_id, row.updated_at = url, steam_id, now()
-    await db.flush()
-
-
-__all__ = ["router", "save_trade_link"]
+__all__ = ["router"]

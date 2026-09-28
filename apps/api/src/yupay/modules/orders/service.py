@@ -39,6 +39,7 @@ from yupay.modules.orders.validation import validate_fulfillment_data
 from yupay.modules.payments.models import Payment, PaymentAttempt
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 from yupay.modules.pricing.variable import display_rate, price_in_quote, validate_amount
+from yupay.modules.skins import checkout as skins_checkout
 from yupay.modules.users.models import User
 
 # Smallest unit an acquirer will actually charge, per quote currency. UZS is
@@ -135,6 +136,10 @@ def build_item_display(item: OrderItem, *, locale: str = "ru") -> OrderItemDispl
         gift_label = gifts_checkout.steam_gift_label(item.fulfillment_data)
         if gift_label is not None:
             denomination = gift_label
+    elif sku.sku_code == skins_checkout.CS2_SKIN_SKU_CODE:
+        skin_label = skins_checkout.skin_label(item.fulfillment_data)
+        if skin_label is not None:
+            denomination = skin_label
     return OrderItemDisplay(
         brand_slug=brand.slug if brand is not None else "",
         brand_name=_tr_name(brand.translations, locale) if brand is not None else "",
@@ -911,6 +916,18 @@ async def create_order(
             # exception to "no synchronous external HTTP in request handlers".
             unit_price_usd, cleaned = await gifts_checkout.price_gift_line(
                 db, line_amount_usd=line.amount_usd, data=cleaned
+            )
+        elif skins_checkout.is_skin_sku(sku):
+            # Same shape as the gift re-price: priced from the live listing the
+            # customer picked (Redis-cached 90 s, budgeted — the read the item page
+            # just made), billed at the server's number. Signed-in customers only:
+            # a merchant actor has no user id either, and skins are not B2B yet.
+            unit_price_usd, cleaned = await skins_checkout.price_skin_line(
+                db,
+                user_id=actor.user_id,
+                qty=line.qty,
+                line_amount_usd=line.amount_usd,
+                data=cleaned,
             )
 
         # No supplier-balance preflight: a paid order is never refused for the
