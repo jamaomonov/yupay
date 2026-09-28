@@ -1492,6 +1492,127 @@
         "title": "AdminReviewOut",
         "type": "object"
       },
+      "AdminSkinItemOut": {
+        "description": "An item as the pricing screen needs it: what it costs, sells for, and its overrides.",
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "count_auto": {
+            "title": "Count Auto",
+            "type": "integer"
+          },
+          "fixed_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Price Usd"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "margin_override_pp": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Override Pp"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sell_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sell Price Usd"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "weapon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weapon"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "category",
+          "weapon",
+          "image_url",
+          "count_auto",
+          "cost_usd",
+          "sell_price_usd",
+          "margin_override_pp",
+          "fixed_price_usd"
+        ],
+        "title": "AdminSkinItemOut",
+        "type": "object"
+      },
+      "AdminSkinItemsOut": {
+        "description": "Search results (no total \u2014 the screen shows the first page only).",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSkinItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "AdminSkinItemsOut",
+        "type": "object"
+      },
       "AdminSkinTradeOut": {
         "description": "One skin trade as an operator sees it.",
         "properties": {
@@ -29921,6 +30042,93 @@
         "summary": "Delete one of the calling admin's saved segments",
         "tags": [
           "admin"
+        ]
+      }
+    },
+    "/api/v1/admin/skins/items": {
+      "get": {
+        "description": "Items by part of the name (most liquid first), or every item with an override.",
+        "operationId": "admin_find_items_api_v1_admin_skins_items_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "overridden",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Overridden",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSkinItemsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Find items to override, or list the overridden ones",
+        "tags": [
+          "admin:skins"
         ]
       }
     },

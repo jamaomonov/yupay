@@ -133,3 +133,24 @@ class SkinListingsOut(BaseModel):
     items: list[SkinListingOut]
     #: ``True`` when the answer is a stale cache or the snapshot, not a live read.
     degraded: bool
+
+
+class AdminSkinItemOut(BaseModel):
+    """An item as the pricing screen needs it: what it costs, sells for, and its overrides."""
+
+    slug: str
+    name: str
+    category: str
+    weapon: str | None
+    image_url: str | None
+    count_auto: int
+    cost_usd: str | None
+    sell_price_usd: Decimal | None
+    margin_override_pp: Decimal | None
+    fixed_price_usd: Decimal | None
+
+
+class AdminSkinItemsOut(BaseModel):
+    """Search results (no total — the screen shows the first page only)."""
+
+    items: list[AdminSkinItemOut]

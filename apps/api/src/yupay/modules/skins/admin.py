@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -23,11 +23,14 @@ from yupay.core.idempotency import (
 from yupay.core.redis import get_redis
 from yupay.modules.admin.deps import require_admin
 from yupay.modules.skins.admin_trades import AdminSkinTradesOut, TradesView, list_trades
+from yupay.modules.skins.images import steam_image
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.prices import bump_catalog_version
 from yupay.modules.skins.pricing import Channel, PricingRules, quote
 from yupay.modules.skins.repricing import lock_pricing, reprice_rows
 from yupay.modules.skins.schemas import (
+    AdminSkinItemOut,
+    AdminSkinItemsOut,
     SkinItemPricingIn,
     SkinQuoteOut,
     SkinsPricingOut,
@@ -188,6 +191,52 @@ async def admin_list_trades(
     """The trades screen: Waxpeer status, our state, seller, and what needs settling."""
     return await list_trades(
         db, view=view, q=q, limit=max(1, min(limit, 500)), offset=max(0, offset)
+    )
+
+
+@admin_router.get(
+    "/items",
+    response_model=AdminSkinItemsOut,
+    summary="Find items to override, or list the overridden ones",
+)
+async def admin_find_items(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    overridden: bool = False,
+    limit: int = 20,
+) -> AdminSkinItemsOut:
+    """Items by part of the name (most liquid first), or every item with an override."""
+    stmt = select(SkinItem)
+    if q and q.strip():
+        stmt = stmt.where(SkinItem.search_text.ilike(f"%{q.strip().lower()}%"))
+    if overridden:
+        stmt = stmt.where(
+            or_(SkinItem.margin_override_pp.is_not(None), SkinItem.fixed_price_usd.is_not(None))
+        )
+    rows = await db.execute(
+        stmt.order_by(SkinItem.count_auto.desc(), SkinItem.slug).limit(max(1, min(limit, 100)))
+    )
+    host = get_settings().cs2_skins_image_host
+    return AdminSkinItemsOut(
+        items=[
+            AdminSkinItemOut(
+                slug=row.slug,
+                name=f"{row.market_hash_name} {row.phase}".strip(),
+                category=row.category,
+                weapon=row.weapon,
+                image_url=steam_image(row.image_url, host=host),
+                count_auto=row.count_auto,
+                cost_usd=(
+                    str(Decimal(row.min_auto_units) / 1000)
+                    if row.min_auto_units is not None
+                    else None
+                ),
+                sell_price_usd=row.sell_price_usd,
+                margin_override_pp=row.margin_override_pp,
+                fixed_price_usd=row.fixed_price_usd,
+            )
+            for row in rows.scalars()
+        ]
     )
 
 
