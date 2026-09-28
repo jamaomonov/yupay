@@ -8,7 +8,7 @@
 
 import type { SkinDetail, SkinFacets, SkinListings, SkinQuery, SkinsPage } from "@yupay/utils";
 
-import { apiGet, ApiError } from "./api";
+import { apiGet, ApiError, apiPost } from "./api";
 import { formatMoney } from "./currency";
 
 const SKINS = "/api/v1/skins";
@@ -67,4 +67,21 @@ export function skinPriceText(priceUzs: string | null, priceUsd: string | null):
   if (priceUsd === null) return null;
   if (priceUzs !== null) return formatMoney(Math.round(Number(priceUzs)), "UZS");
   return formatMoney(Number(priceUsd), "USD");
+}
+
+/** The customer's saved trade link (saved by the API with their last skin order). */
+export async function getTradeLink(): Promise<string | null> {
+  const out = await apiGet<{ url: string | null }>(`${SKINS}/tradelink`);
+  return out.url;
+}
+
+export type TradeLinkReason = "invalid" | "private" | "trade_ban" | "hold" | "unavailable";
+export interface TradeLinkVerdict {
+  ok: boolean;
+  reason: TradeLinkReason | null;
+}
+
+/** Advisory pre-purchase check; `unavailable` never blocks. */
+export function checkTradeLink(url: string): Promise<TradeLinkVerdict> {
+  return apiPost<TradeLinkVerdict>(`${SKINS}/tradelink/check`, { url }, { anonymous: true });
 }

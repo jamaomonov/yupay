@@ -1,9 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  checkTradeLink,
   fetchSkinDetail,
   fetchSkinFacets,
   fetchSkinListings,
+  getTradeLink,
   skinPriceText,
   skinsApiParams,
 } from "./skins";
@@ -63,5 +65,23 @@ describe("fetchers", () => {
     await fetchSkinListings("x");
     const [, init] = vi.mocked(fetch).mock.calls[0] ?? [];
     expect(init?.cache).toBe("no-store");
+  });
+});
+
+describe("trade link", () => {
+  it("reads the saved link", async () => {
+    answer(200, { url: "https://steamcommunity.com/tradeoffer/new/?partner=1&token=abcdef" });
+    await expect(getTradeLink()).resolves.toMatch(/partner=1/);
+    const url = vi.mocked(fetch).mock.calls[0]?.[0] as string; // api() passes a string URL
+    expect(url).toMatch(/\/api\/v1\/skins\/tradelink$/);
+  });
+
+  it("checks a link anonymously, in the body", async () => {
+    answer(200, { ok: false, reason: "private" });
+    await expect(checkTradeLink("https://x")).resolves.toEqual({ ok: false, reason: "private" });
+    const [url, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+    expect(url).toMatch(/\/skins\/tradelink\/check$/);
+    expect(init?.method).toBe("POST");
+    expect(new Headers(init?.headers).has("Authorization")).toBe(false);
   });
 });
