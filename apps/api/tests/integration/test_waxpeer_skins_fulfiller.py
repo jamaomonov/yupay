@@ -15,6 +15,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
+from yupay.core.redis import get_redis
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.suppliers.base import MoneyOutcome
 from yupay.modules.fulfillment.suppliers.waxpeer_client import (
@@ -28,7 +29,6 @@ from yupay.modules.fulfillment.suppliers.waxpeer_trades import (
     WaxpeerTrade,
 )
 from yupay.modules.orders.models import OrderItem
-from yupay.core.redis import get_redis
 from yupay.modules.skins.listings import waxpeer_name_of
 from yupay.modules.skins.models import SkinItem, SkinTrade
 
