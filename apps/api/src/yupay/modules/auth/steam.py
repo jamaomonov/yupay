@@ -202,6 +202,60 @@ async def resolve_persona(
             await client.aclose()
 
 
+_TRADE_HOLD = "https://api.steampowered.com/IEconService/GetTradeHoldDurations/v1/"
+
+
+async def trade_hold_days(
+    steam_id: int,
+    token: str,
+    *,
+    api_key: str,
+    consumer: SteamApiConsumer = "skins_tradelink",
+    http: httpx.AsyncClient | None = None,
+) -> int | None:
+    """Days Steam would hold a trade offer sent to this trade link.
+
+    Non-zero means the account has had no mobile authenticator for 7 days: the offer
+    would sit in escrow where either side can cancel it. The ``token`` is the trade
+    link's access token — sent to Steam only, never logged.
+
+    Args:
+        steam_id: the recipient's steamid64.
+        token: the trade link's ``token``.
+        api_key: our Steam Web API key.
+        consumer: which feature spends the quota (metrics label).
+        http: injected client for tests.
+
+    Returns:
+        Whole days (rounded up); ``None`` when the body carries no number.
+
+    Raises:
+        httpx.HTTPError: transport failure, timeout or a non-2xx answer.
+    """
+    client = http or httpx.AsyncClient(timeout=4.0)
+    try:
+        with steam_web_api_call(endpoint="get_trade_hold_durations", consumer=consumer):
+            resp = await client.get(
+                _TRADE_HOLD,
+                params={
+                    "key": api_key,
+                    "steamid_target": str(steam_id),
+                    "trade_offer_access_token": token,
+                },
+            )
+            resp.raise_for_status()
+        body = resp.json()
+        response = body.get("response") if isinstance(body, dict) else None
+        escrow = response.get("their_escrow") if isinstance(response, dict) else None
+        seconds = escrow.get("escrow_end_duration_seconds") if isinstance(escrow, dict) else None
+        if not isinstance(seconds, int) or isinstance(seconds, bool):
+            return None
+        return -(-seconds // 86400)
+    finally:
+        if http is None:
+            await client.aclose()
+
+
 async def fetch_persona(
     steam_id: int,
     *,

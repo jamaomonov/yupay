@@ -54,12 +54,12 @@ log = get_logger("yupay.metrics")
 #: charged against the daily ceiling; the OpenID ``check_authentication``
 #: round trip in ``auth.steam.verify_callback`` is **not** here on purpose —
 #: it carries no API key and costs no quota.
-SteamApiEndpoint = Literal["resolve_vanity_url", "get_player_summaries"]
+SteamApiEndpoint = Literal["resolve_vanity_url", "get_player_summaries", "get_trade_hold_durations"]
 
 #: Which feature spent the quota. There is one key and two consumers, so the
 #: useful denominator for "are we near the ceiling" is the sum across this
 #: label; the split is what says *which* of the two is burning it.
-SteamApiConsumer = Literal["gifts_profile", "auth_signin"]
+SteamApiConsumer = Literal["gifts_profile", "auth_signin", "skins_tradelink"]
 
 #: Whether the call landed. ``ok`` is a 2xx response; ``error`` is a non-2xx,
 #: a transport failure, a timeout, or a cancellation (the gift check runs

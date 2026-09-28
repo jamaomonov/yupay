@@ -7,6 +7,7 @@ from yupay.modules.skins.prices import sync_prices
 from yupay.modules.skins.pricing import DEFAULT_RULES, PricingRules, Quote, quote
 from yupay.modules.skins.routes import router
 from yupay.modules.skins.settings import load_rules
+from yupay.modules.skins.tradelink_routes import router as tradelink_router
 
 __all__ = [
     "DEFAULT_RULES",
@@ -21,4 +22,5 @@ __all__ = [
     "quote",
     "router",
     "sync_prices",
+    "tradelink_router",
 ]

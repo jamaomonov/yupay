@@ -240,11 +240,12 @@ yupay/
   `Idempotency-Key` header and persist results keyed by it. The rule protects writes from
   replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`
   only to keep an identifier out of the URL — and therefore out of the edge access log,
-  which records the full query string — not because they mutate anything. Three such
+  which records the full query string — not because they mutate anything. Four such
   endpoints exist today: `POST /catalog/brands/{slug}/check-player`,
-  `POST /gifts/steam-profile` and `POST /merchant/v1/validate/player` (the same
+  `POST /gifts/steam-profile`, `POST /merchant/v1/validate/player` (the same
   player check, exposed to a reseller — the identifier it carries is their end
-  customer's). If you add a fourth, say in its docstring why it is keyless.
+  customer's) and `POST /skins/tradelink/check` (a trade link's token is a credential).
+  If you add a fifth, say in its docstring why it is keyless.
   The one **mutation** exempt from the header is `POST /merchant/v1/orders`, which is
   idempotent on the caller's own `merchant_order_id` instead (spec §9.3): that id is
   minted per _intent_ by the reseller's system rather than per attempt by ours, is what
@@ -280,7 +281,7 @@ yupay/
   with a pending status; the client subscribes via WebSocket or polls. The rule protects
   the **money path**: a supplier call inside a request handler can leave the supplier paid
   with no record of it, and one slow upstream holds a pool connection somebody's checkout
-  needed. Four **advisory pre-purchase lookups** deviate from it, and they are the whole
+  needed. Five **advisory pre-purchase lookups** deviate from it, and they are the whole
   list: `GET /admin/integrations/g2b/games/{game_code}/check-player` (ADR-0019, the
   precedent), `POST /catalog/brands/{slug}/check-player` and
   `POST /merchant/v1/validate/player` (both ADR-0031, which carries the justification and
@@ -290,7 +291,12 @@ yupay/
   predates this list and clears some of ADR-0031's conditions (advisory, off the order
   path, short timeout, Redis-cached, own bucket) but not the breaker. That gap is real and
   is recorded here rather than left to be rediscovered; closing it means either an ADR
-  saying why a breaker is unnecessary there, or a breaker. Since ADR-0081, the two
+  saying why a breaker is unnecessary there, or a breaker. The fifth is
+  `POST /skins/tradelink/check` (ADR-0093): Waxpeer `check-tradelink` then Steam
+  `GetTradeHoldDurations` for a CS2 buyer's trade link — advisory (an outage answers
+  `unavailable` and never blocks checkout), off the order path, 4 s timeouts, a 10-minute
+  Redis cache keyed by a hash of the link, a 60-second breaker (`skins:tradelink:breaker`)
+  and its own `ip_guard` bucket (`skins-tradelink`). Since ADR-0081, the two
   ADR-0031 endpoints may make a **second** supplier call in the same request, not a second
   endpoint: when the primary answers `error`, a NOVA fallback (`player_check_nova.py`) runs
   before the response goes out, with its own tighter timeout

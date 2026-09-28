@@ -120,3 +120,13 @@ freshness the checkout re-check already provides.
 - [ADR-0064](./0064-postgres-fulfilment-queue.md) — work reaches the worker as rows
 - Waxpeer API docs: https://docs.waxpeer.com/ (llms.txt, statuses, socketio)
 - ByMykel/CSGO-API: https://github.com/ByMykel/CSGO-API
+
+## Amendment 2026-09-29 — the trade-link check (plan 3a)
+
+`POST /skins/tradelink/check` calls Waxpeer `check-tradelink` and Steam
+`IEconService/GetTradeHoldDurations` from its handler. It clears ADR-0031's conditions:
+advisory (an outage answers `unavailable` and checkout goes on), off the order, payment and
+fulfilment path, 4 s timeouts, a 10-minute Redis cache keyed by a hash of the link, a
+60-second breaker, and its own `ip_guard` bucket. It is `POST` so the link — whose token lets
+anyone send that account offers — stays out of the edge access log, and it writes nothing, so
+it takes no `Idempotency-Key`. Listed in AGENTS.md §9 and §10.

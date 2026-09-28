@@ -354,6 +354,23 @@ class WaxpeerClient:
         items = payload.get("items") if isinstance(payload, dict) else None
         return items if isinstance(items, dict) else {}
 
+    async def check_tradelink(self, url: str) -> str | None:
+        """``POST /v1/check-tradelink``: ``None`` when the link works, else the reason.
+
+        Waxpeer answers ``success: true`` with Steam's reason in ``info`` (private
+        inventory, trade ban) or ``success: false`` with ``msg`` for a link it will not
+        use at all; both come back as the reason text. Transport failures raise
+        :class:`WaxpeerUnavailableError` — the caller treats that as "unavailable".
+        """
+        try:
+            body, _ = await self._request("POST", "/check-tradelink", json={"tradelink": url})
+        except WaxpeerError as exc:
+            if exc.status == 200:
+                return str(exc) or "refused"
+            raise
+        info = body.get("info")
+        return str(info) if info else None
+
     async def get_balance_units(self) -> int:
         """Return our Waxpeer wallet balance, in the same units as ``amount``.
 
