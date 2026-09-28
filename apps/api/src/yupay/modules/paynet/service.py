@@ -304,6 +304,11 @@ async def cancel_transaction(
     payment = await db.get(Payment, txn.payment_id) if txn.payment_id else None
     if payment is None:  # pragma: no cover - written together, SET NULL only on delete
         raise transaction_not_found()
+    # Refunded to the YuPay balance already (a CS2 skin, plan 3a): the money never
+    # left us, so a card refund on top would pay the customer twice.
+    if pay_svc.refunded_to_wallet(payment):
+        log.warning("paynet.cancel_refused_wallet_refund", order_id=order.id)
+        raise cancel_refused_delivered()
 
     txn.state = STATE_CANCELLED
     txn.cancelled_at = now()

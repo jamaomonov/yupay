@@ -28,3 +28,7 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
 A skin task that fails with the money back (`RETURNED`) refunds the order to the customer's
 YuPay balance automatically. A customer who wants the money on their card instead asks support;
 the balance can then be paid out or the card refunded by an admin as for any order.
+
+A payment refunded to the balance (`last_refund.refunded_to = "wallet"`) cannot also be
+cancelled by the acquirer: Payme answers `-31007`, Uzum `10017`, Paynet `306`. If a customer
+asks for the card instead, take the money off the balance first, then refund the card.

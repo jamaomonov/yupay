@@ -452,7 +452,13 @@ async def reverse(db: AsyncSession, *, trans_id: str) -> dict[str, Any]:
         # rest at ``fulfilling`` with one item already delivered; a full
         # reverse here would refund money for a code the customer keeps. Such
         # a case must be settled manually, never auto-full-refunded.
-        if order.status in _DELIVERED_STATUSES or await _any_goods_delivered(db, txn.order_id):
+        # Refunded to the YuPay balance already (a CS2 skin, plan 3a): the money
+        # never left us, so a card refund on top would pay the customer twice.
+        if (
+            order.status in _DELIVERED_STATUSES
+            or pay_svc.refunded_to_wallet(payment)
+            or await _any_goods_delivered(db, txn.order_id)
+        ):
             raise transaction_cannot_be_cancelled()
         await pay_svc.reverse_provider_payment(
             db, payment=payment, external_event_id=trans_id, actor="uzum"

@@ -1333,3 +1333,29 @@ async def test_check_passes_a_home_guest_order(
     body = r.json()
     assert body["status"] == "OK"
     assert body["data"] == {"amount": {"value": "130000"}}
+
+
+async def test_reverse_after_a_refund_to_the_balance_is_10017(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A skin order already refunded to the YuPay balance (plan 3a) is not also
+    refunded to the card."""
+    trans_id = f"uz-http-wallet-{uuid.uuid4()}"
+    await _seed_confirmed_transaction(db_session, trans_id=trans_id, order_status="refunded")
+    txn = (
+        await db_session.execute(
+            select(UzumTransaction).where(UzumTransaction.trans_id == trans_id)
+        )
+    ).scalar_one()
+    payment = await db_session.get(Payment, txn.payment_id)
+    assert payment is not None
+    payment.status = "refunded"
+    payment.extra_metadata = {"last_refund": {"refunded_to": "wallet"}}
+    await db_session.commit()
+
+    r = await integration_client.post(
+        REVERSE_URL,
+        headers=_auth(),
+        json={"serviceId": SERVICE_ID, "timestamp": 1, "transId": trans_id},
+    )
+    assert r.json()["errorCode"] == 10017

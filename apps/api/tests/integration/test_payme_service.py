@@ -837,3 +837,41 @@ async def test_build_checkout_url_with_return_and_lang(
     expected_payload = "m=MID123;ac.order_id=ORDER-1;a=13000000;c=https://yupay.uz/return;l=uz"
     expected_b64 = base64.b64encode(expected_payload.encode()).decode()
     assert url == f"https://checkout.paycom.uz/{expected_b64}"
+
+
+async def test_cancel_state_2_after_a_refund_to_the_balance_is_31007(
+    db_session: AsyncSession,
+) -> None:
+    """A skin order refunded to the YuPay balance (plan 3a) must not also be refunded
+    to the card: the payment is ``refunded`` but the money is on the balance."""
+    user_id = await _make_user(db_session)
+    order_id = await _make_order(db_session, user_id=user_id, status="refunded")
+    payment_id = str(uuid.uuid4())
+    db_session.add(
+        Payment(
+            id=payment_id,
+            order_id=order_id,
+            provider="payme",
+            status="refunded",
+            amount=Decimal("130000.00"),
+            currency="UZS",
+            extra_metadata={"last_refund": {"refunded_to": "wallet"}},
+        )
+    )
+    await db_session.flush()
+    db_session.add(
+        PaymeTransaction(
+            id=str(uuid.uuid4()),
+            payme_id="pt-cancel-wallet",
+            order_id=order_id,
+            payment_id=payment_id,
+            amount_tiyin=EXPECTED_TIYIN,
+            state=2,
+            create_time=1_700_000_000_000,
+            perform_time=1_700_000_100_000,
+        )
+    )
+    await db_session.flush()
+    with pytest.raises(PaymeError) as exc:
+        await payme_svc.cancel_transaction(db_session, payme_id="pt-cancel-wallet", reason=5)
+    assert exc.value.code == -31007

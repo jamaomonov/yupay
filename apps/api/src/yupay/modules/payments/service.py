@@ -1240,6 +1240,16 @@ async def refund_admin(
     return payment
 
 
+def refunded_to_wallet(payment: Payment) -> bool:
+    """Whether this payment's money went back to the customer's YuPay balance.
+
+    Such a payment is ``refunded`` but its money never left us: an acquirer asking to
+    cancel it afterwards (Payme, Uzum, Paynet) must be refused, or the customer would
+    get it twice — once on the balance, once on the card.
+    """
+    return ((payment.extra_metadata or {}).get("last_refund") or {}).get("refunded_to") == "wallet"
+
+
 async def refund_order_to_wallet(db: AsyncSession, *, order_id: str, reason: str) -> bool:
     """Refund an order's whole captured payment to the customer's YuPay balance.
 

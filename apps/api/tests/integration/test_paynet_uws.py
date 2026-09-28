@@ -583,3 +583,27 @@ async def test_the_request_id_is_echoed_verbatim(
         headers=_auth(),
     )
     assert response.json()["id"] == "abc-123"
+
+
+async def test_cancel_is_refused_after_a_refund_to_the_balance(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """A skin order already refunded to the YuPay balance (plan 3a) is not also
+    refunded to the card."""
+    order_id = await _seed_order(db_session)
+    await _perform(integration_client, order_id, transaction_id=90_011)
+    payment = (
+        await db_session.execute(select(Payment).where(Payment.order_id == order_id))
+    ).scalar_one()
+    payment.status = "refunded"
+    payment.extra_metadata = {"last_refund": {"refunded_to": "wallet"}}
+    order = (await db_session.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    order.status = "refunded"
+    await db_session.commit()
+
+    response = await integration_client.post(
+        UWS_URL,
+        json=_rpc("CancelTransaction", {"serviceId": SERVICE_ID, "transactionId": 90_011}),
+        headers=_auth(),
+    )
+    assert response.json()["error"]["code"] == 306
