@@ -242,17 +242,24 @@ async def audit_recent_trades(
         # One alert per verdict, not one per night the trade stays in the window.
         if verdict == row.audit_verdict:
             continue
-        row.audit_verdict = verdict
         if found_here is None:
+            row.audit_verdict = None
             continue
-        diverged += 1
         log.warning("skins.audit.divergence", project_id=row.project_id, order_id=order_id)
-        await alert(
-            "<b>Скин: расхождение с Waxpeer</b>\n"
-            f"{row.market_hash_name} · заказ {order_id}\n"
-            f"{found_here[1]}; у нас статус {row.status if row.status is not None else '—'}, "
-            f"у Waxpeer {trade.status if trade is not None else '—'}"
-        )
+        try:
+            await alert(
+                "<b>Скин: расхождение с Waxpeer</b>\n"
+                f"{row.market_hash_name} · заказ {order_id}\n"
+                f"{found_here[1]}; у нас статус "
+                f"{row.status if row.status is not None else '—'}, "
+                f"у Waxpeer {trade.status if trade is not None else '—'}"
+            )
+        except Exception:
+            # Verdict left unchanged: tomorrow's run tries this one again.
+            log.exception("skins.audit.alert_failed", project_id=row.project_id)
+            continue
+        row.audit_verdict = verdict
+        diverged += 1
     await db.commit()
     log.info("skins.audit.done", trades=len(rows), diverged=diverged)
     return diverged

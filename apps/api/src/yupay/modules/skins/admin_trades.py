@@ -14,7 +14,7 @@ state and to the task for whether the buy is still unconfirmed. Three views:
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -68,9 +68,25 @@ class AdminSkinTradesOut(BaseModel):
     total: int
 
 
+#: A buy whose lookup failed is retried every 5 s; only one still pending after this
+#: long is stuck enough for a human.
+PENDING_ATTENTION_AFTER = timedelta(minutes=5)
+
+# The SQL filter and the per-row flag below say the same thing twice (one filters a page,
+# the other labels a row); ``test_skins_admin_trades`` pins that they agree.
+
+
 def _has_penalties() -> ColumnElement[bool]:
+    """Penalties are an object or list with something in it — Waxpeer's shape."""
     text = cast(SkinTrade.penalties, String)
-    return and_(SkinTrade.penalties.is_not(None), text.not_in(("null", "[]", "{}")))
+    return and_(
+        func.jsonb_typeof(SkinTrade.penalties).in_(("object", "array")),
+        text.not_in(("[]", "{}")),
+    )
+
+
+def _penalised(penalties: object) -> bool:
+    return isinstance(penalties, dict | list) and len(penalties) > 0
 
 
 def _unconfirmed_task() -> ColumnElement[bool]:
@@ -78,7 +94,13 @@ def _unconfirmed_task() -> ColumnElement[bool]:
     return and_(
         FulfillmentTask.status == "in_progress",
         SkinTrade.status.is_(None),
-        or_(meta["buy_pending"].astext == "true", meta.has_key("buy_unconfirmed_at")),
+        or_(
+            func.coalesce(meta["buy_unconfirmed_at"].astext, "") != "",
+            and_(
+                meta["buy_pending"].astext == "true",
+                FulfillmentTask.created_at < now() - PENDING_ATTENTION_AFTER,
+            ),
+        ),
     )
 
 
@@ -110,11 +132,16 @@ def _sub_state(task: FulfillmentTask | None, row: SkinTrade) -> Any:
     return "buy_pending" if meta.get("buy_pending") else None
 
 
-def _is_attention(row: SkinTrade, sub_state: str | None) -> bool:
+def _is_attention(row: SkinTrade, task: FulfillmentTask | None, sub_state: str | None) -> bool:
     if row.resolved_at is not None:
         return False
-    rolled_back = row.status == 6 and bool(row.penalties)
-    return rolled_back or row.reason in _SUPPORT_REASONS or sub_state is not None
+    rolled_back = row.status == 6 and _penalised(row.penalties)
+    stuck = sub_state == "buy_unconfirmed" or (
+        sub_state == "buy_pending"
+        and task is not None
+        and task.created_at < now() - PENDING_ATTENTION_AFTER
+    )
+    return rolled_back or row.reason in _SUPPORT_REASONS or stuck
 
 
 def _out(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> AdminSkinTradeOut:
@@ -143,7 +170,7 @@ def _out(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> Admin
         task_status=task.status if task is not None else None,
         task_sub_state=sub_state,
         resolved_at=row.resolved_at,
-        attention=_is_attention(row, sub_state),
+        attention=_is_attention(row, task, sub_state),
     )
 
 
@@ -171,8 +198,9 @@ async def list_trades(
         needle = q.strip()
         where.append(
             or_(
-                cast(OrderItem.order_id, String).startswith(needle.lower()),
-                SkinTrade.market_hash_name.ilike(f"%{needle}%"),
+                # autoescape: an admin's "_" or "%" is a character, not a wildcard.
+                cast(OrderItem.order_id, String).startswith(needle.lower(), autoescape=True),
+                SkinTrade.market_hash_name.icontains(needle, autoescape=True),
             )
         )
     base = (

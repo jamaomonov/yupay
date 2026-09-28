@@ -10,6 +10,8 @@ from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
+from yupay.core.clock import now
+from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import OrderItem
 from yupay.modules.skins.models import SkinTrade
 
@@ -151,3 +153,64 @@ async def test_resolving_an_unknown_trade_is_404(
         headers={**headers, "Idempotency-Key": "resolve-key-0000002"},
     )
     assert r.status_code == 404
+
+
+async def _pending(db: AsyncSession, tag: str, *, minutes_ago: int) -> str:
+    """An in-flight skin buy whose lookup failed (``buy_pending``), no Waxpeer status yet."""
+    order = await _make_paid_order(db, tag=tag)
+    item = (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalar_one()
+    task = FulfillmentTask(
+        id=new_id(),
+        order_id=order.id,
+        order_item_id=item.id,
+        supplier="waxpeer",
+        status="in_progress",
+        external_order_id=f"p-{tag}",
+        extra_metadata={"waxpeer_kind": "skin", "buy_pending": True},
+        created_at=now() - timedelta(minutes=minutes_ago),
+    )
+    row = SkinTrade(
+        id=new_id(),
+        order_item_id=item.id,
+        task_id=task.id,
+        project_id=f"p-{tag}",
+        listing_id=1,
+        market_hash_name="AK-47 | Redline (Field-Tested)",
+        paid_units=27867,
+    )
+    db.add_all([task, row])
+    await db.commit()
+    return row.id
+
+
+async def test_a_buy_pending_for_seconds_is_not_attention_but_a_stuck_one_is(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_008)
+    await _pending(db_session, "pend-fresh", minutes_ago=0)
+    stuck = await _pending(db_session, "pend-stuck", minutes_ago=10)
+    body = await _get(integration_client, headers, view="attention")
+    assert [i["id"] for i in body["items"]] == [stuck]
+    flags = {i["id"]: i["attention"] for i in (await _get(integration_client, headers))["items"]}
+    assert flags[stuck] is True
+    assert list(flags.values()).count(True) == 1
+
+
+async def test_a_penalty_that_is_not_an_object_is_no_rollback(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_009)
+    _, zero = await _trade(db_session, "pen-zero", 0, status=6, penalties=0)
+    body = await _get(integration_client, headers, view="attention")
+    assert body["total"] == 0
+    flags = {i["id"]: i["attention"] for i in (await _get(integration_client, headers))["items"]}
+    assert flags[zero] is False
+
+
+async def test_search_wildcards_are_literal(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_010)
+    await _trade(db_session, "wild", 0, status=4)
+    assert (await _get(integration_client, headers, q="_"))["total"] == 0
+    assert (await _get(integration_client, headers, q="%"))["total"] == 0

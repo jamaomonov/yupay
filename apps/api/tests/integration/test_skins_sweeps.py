@@ -348,3 +348,23 @@ async def test_a_changed_divergence_is_alerted_again(db_session: AsyncSession) -
     again = _Alerts()
     assert await audit_recent_trades(db_session, _Client([]), alert=again) == 1
     assert "не знает" in again[0]
+
+
+async def test_one_failed_alert_does_not_silence_the_rest(db_session: AsyncSession) -> None:
+    first = await _settled(db_session, "au-fail-1", status=5)
+    second = await _settled(db_session, "au-fail-2", status=5)
+    sent: list[str] = []
+
+    async def flaky(text: str) -> None:
+        if not sent:  # the first alert of the night fails
+            sent.append("boom")
+            raise RuntimeError("telegram down")
+        sent.append(text)
+
+    client = _Client([_trade(first.project_id, 6), _trade(second.project_id, 6)])
+    assert await audit_recent_trades(db_session, client, alert=flaky) == 1
+    assert len([t for t in sent if t != "boom"]) == 1
+    await db_session.refresh(first)
+    await db_session.refresh(second)
+    # The one that was never sent is tried again tomorrow.
+    assert sorted([first.audit_verdict, second.audit_verdict], key=str) == [None, "rolled_back"]
