@@ -138,3 +138,12 @@ export function oneAtATime(run: () => Promise<void>): () => Promise<void> {
     }
   };
 }
+
+/**
+ * The Steam account a trade link points at (its `partner` number), for the order review.
+ * The token is what lets anyone send an offer to that account — it is never shown.
+ */
+export function tradeLinkAccount(url: string): string | null {
+  if (!tradeLinkShapeOk(url)) return null;
+  return /[?&]partner=(\d+)/.exec(url)?.[1] ?? null;
+}

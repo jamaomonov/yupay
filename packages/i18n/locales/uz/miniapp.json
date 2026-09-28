@@ -567,5 +567,9 @@
   "cs2.trade.contactSupport": "Qo'llab-quvvatlashga yozish",
   "success.stage.fulfillingSubSkin": "Skinni sotib olyapmiz — almashuv Steam'ga keladi.",
   "success.stage.refundedSubSkin": "Pul YuPay balansiga qaytdi.",
-  "success.stage.failedSubSkin": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing."
+  "success.stage.failedSubSkin": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing.",
+  "cs2.buy.tradeTo": "Almashuv keladi",
+  "cs2.buy.steamAccount": "Steam akkaunt {id}",
+  "cs2.buy.wear": "Sifat",
+  "cs2.buy.itemTitle": "Skin"
 }

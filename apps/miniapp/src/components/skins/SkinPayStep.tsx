@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { steamImageSize } from "@yupay/utils";
+import { ArrowLeft } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 
 import type { NextOffer, OrderKey } from "@/lib/skin-buy";
-import type { SkinListing } from "@yupay/utils";
+import type { SkinDetail, SkinListing } from "@yupay/utils";
 
 import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
-import { SkinTradeLinkInput } from "@/components/skins/SkinTradeLinkInput";
+import { SkinFixedCta } from "@/components/skins/SkinFixedCta";
+import { SafeImage } from "@/components/ui/safe-image";
 import { WalletPayOption } from "@/components/WalletPayOption";
 import { useToast } from "@/hooks/use-toast";
 import { newIdempotencyKey } from "@/lib/api";
@@ -26,29 +28,34 @@ import {
   useCheckout,
 } from "@/lib/orders";
 import { PAYMENT_METHODS } from "@/lib/payment-methods";
-import { oneAtATime, orderKeyFor, skinBuyFailure } from "@/lib/skin-buy";
+import { oneAtATime, orderKeyFor, skinBuyFailure, tradeLinkAccount } from "@/lib/skin-buy";
 import { skinPriceText } from "@/lib/skins";
 import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
 
 /**
- * Buy the offer the customer picked (the cheapest until they tap another):
- * trade link, payment method, one fixed button that says what it charges. A
- * moved price or a sold offer is shown, never charged silently; the next
- * offer is handed back to the page to select. Mirrors the web's
- * `SkinBuyPanel`; the mini app is always signed in, so there is no guest path.
+ * The skin page's second step, as for every other brand (`TopUp`'s review stage): what
+ * is being bought — the skin, its wear, the picked offer's float and seed, the Steam
+ * account the trade goes to, the price — then how to pay, and one button that says what
+ * it charges. A moved price or a sold offer is shown, never charged silently; the next
+ * offer is handed back to the page to select. The mini app is always signed in.
  */
-export function SkinBuyPanel({
+export function SkinPayStep({
   skuId,
-  slug,
+  item,
   offer,
+  tradelink,
+  onBack,
   onListingGone,
   onPriceChanged,
 }: {
   skuId: string;
-  slug: string;
+  item: SkinDetail;
   offer: SkinListing;
+  /** Checked on the first step. */
+  tradelink: string;
+  onBack: () => void;
   /** Drops the sold offer and answers with the one now selected (`null`: none left). */
   onListingGone: (next: NextOffer | null) => SkinListing | null;
   /** The server's price for this offer: the button shows it and the next press sends it. */
@@ -58,13 +65,9 @@ export function SkinBuyPanel({
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const checkout = useCheckout();
-  const [link, setLink] = useState({ url: "", usable: false });
-  const onLink = useCallback((s: { url: string; usable: boolean }) => {
-    setLink(s);
-  }, []);
+  const slug = item.slug;
   const [notice, setNotice] = useState<string | null>(null);
   const orderKey = useRef<OrderKey | null>(null);
-  const linkRef = useRef<HTMLInputElement>(null);
   const latestBuy = useRef<() => Promise<void>>(() => Promise.resolve());
   const tap = useMemo(() => oneAtATime(() => latestBuy.current()), []);
 
@@ -102,11 +105,7 @@ export function SkinBuyPanel({
     provider !== undefined &&
     methodVisibility(provider, statusBySlug) === "active" &&
     (methodId !== WALLET_METHOD_ID || (!wallet.disabled && wallet.enough));
-  const hint = !link.usable
-    ? t("cs2.buy.payHintLink")
-    : !methodReady
-      ? t("cs2.buy.payHintMethod")
-      : null;
+  const hint = !methodReady ? t("cs2.buy.payHintMethod") : null;
   const price = skinPriceText(offer.price_uzs, offer.price_usd) ?? "";
 
   async function buy(): Promise<void> {
@@ -114,13 +113,13 @@ export function SkinBuyPanel({
     setNotice(null);
     await ensureBotCanWrite();
     setClosingConfirmation(true);
-    orderKey.current = orderKeyFor(orderKey.current, offer.listing_id, link.url, () =>
+    orderKey.current = orderKeyFor(orderKey.current, offer.listing_id, tradelink, () =>
       newIdempotencyKey("order"),
     );
     const attempt = (key: string) =>
       checkout.mutateAsync({
         skuId,
-        fulfillmentData: { slug, listing_id: offer.listing_id, tradelink: link.url },
+        fulfillmentData: { slug, listing_id: offer.listing_id, tradelink: tradelink },
         amountUsd: offer.price_usd,
         qty: 1,
         currency: "UZS",
@@ -136,7 +135,7 @@ export function SkinBuyPanel({
         // The replayed order expired before this retry: same offer, a fresh order, once.
         orderKey.current = {
           listingId: offer.listing_id,
-          tradelink: link.url,
+          tradelink: tradelink,
           key: newIdempotencyKey("order"),
         };
         result = await attempt(orderKey.current.key);
@@ -184,13 +183,89 @@ export function SkinBuyPanel({
   // The button calls the latest `buy`, and never twice at once (see `oneAtATime`).
   latestBuy.current = buy;
 
+  const account = tradeLinkAccount(tradelink);
+  const details: { label: string; value: string }[] = [
+    ...(item.exterior
+      ? [{ label: t("cs2.buy.wear"), value: t(`cs2.exterior.${item.exterior}`) }]
+      : []),
+    ...(offer.float_value !== null
+      ? [{ label: t("cs2.float"), value: offer.float_value.toFixed(4) }]
+      : []),
+    ...(offer.paint_seed !== null
+      ? [{ label: t("cs2.seed"), value: String(offer.paint_seed) }]
+      : []),
+    ...(account
+      ? [{ label: t("cs2.buy.tradeTo"), value: t("cs2.buy.steamAccount", { id: account }) }]
+      : []),
+  ];
+
   return (
-    <div className="space-y-4">
-      <SkinTradeLinkInput onChange={onLink} inputRef={linkRef} />
-      <div className="space-y-2">
-        <p className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
-          {t("topup.paymentMethod")}
+    <div className="yp-fade-in space-y-6 px-4 pb-28 pt-4">
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label={t("common.back")}
+          className="bg-card border-border flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full border"
+        >
+          <ArrowLeft size={16} className="text-white/70" />
+        </button>
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-bold leading-tight text-white">{t("topup.reviewTitle")}</p>
+          <p className="line-clamp-1 text-xs text-white/40">{item.name}</p>
+        </div>
+      </div>
+
+      <section>
+        <p className="mb-2 px-1 text-xs font-semibold uppercase tracking-wide text-white/50">
+          {t("topup.orderDetailsTitle")}
         </p>
+        <div
+          className="rounded-2xl p-3"
+          style={{ background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))" }}
+        >
+          <div className="flex items-center gap-3">
+            {item.image_url && (
+              <SafeImage
+                src={steamImageSize(item.image_url, "256fx256f")}
+                alt=""
+                className="h-12 w-16 flex-shrink-0 object-contain"
+              />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="line-clamp-2 text-sm font-bold text-white">
+                {item.stattrak && <span className="text-orange-400">StatTrak™ </span>}
+                {item.weapon} | {item.skin ?? item.name}
+                {item.phase && <span className="text-white/50"> · {item.phase}</span>}
+              </p>
+            </div>
+            <p className="flex-shrink-0 text-sm font-bold tabular-nums text-white">{price}</p>
+          </div>
+          {details.length > 0 && (
+            <div
+              className="mt-3 space-y-2 border-t pt-3"
+              style={{ borderColor: "hsl(var(--border))" }}
+            >
+              {details.map((d) => (
+                <div key={d.label} className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-white/40">{d.label}</span>
+                  <span className="min-w-0 truncate text-right text-[13px] font-semibold text-white">
+                    {d.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="space-y-2">
+        <div className="px-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-white/50">
+            {t("topup.paymentMethod")}
+          </p>
+          <p className="text-[11px] text-white/35">{t("topup.paymentSafe")}</p>
+        </div>
         <WalletPayOption
           active={methodId === WALLET_METHOD_ID}
           enough={wallet.enough}
@@ -210,47 +285,24 @@ export function SkinBuyPanel({
           providerStatusBySlug={statusBySlug}
           onSelect={setMethodId}
         />
-      </div>
-      {createPortal(
-        <>
-          {/* Portalled to <body>: the page wrapper animates with a transform, and a
-          transformed ancestor would make "fixed" mean fixed to the page, not the
-          screen. A solid button on a fade of the background, never see-through. */}
-          <div
-            className="fixed bottom-[calc(var(--app-nav-total)_+_8px)] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4 pb-2 pt-6"
-            style={{
-              background: "linear-gradient(to top, hsl(var(--background)) 60%, transparent)",
-            }}
-          >
-            <button
-              type="button"
-              // A missing link is a step, not a dead button: the tap takes the buyer there.
-              aria-disabled={hint !== null || undefined}
-              disabled={checkout.isPending || (hint !== null && link.usable)}
-              onClick={() => {
-                haptic("press");
-                if (!link.usable) {
-                  linkRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  linkRef.current?.focus({ preventScroll: true });
-                  return;
-                }
-                void tap();
-              }}
-              className="bg-primary flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide text-black transition-all disabled:cursor-not-allowed disabled:bg-[hsl(var(--surface-2))] disabled:text-white/55 aria-disabled:bg-[hsl(var(--surface-2))] aria-disabled:text-white/55"
-            >
-              {checkout.isPending
-                ? t("topup.processingBtn")
-                : (hint ?? t("cs2.buy.pay", { price }))}
-            </button>
-          </div>
-        </>,
-        document.body,
-      )}
+      </section>
+
       {notice && (
         <p role="status" className="text-[13px] font-semibold text-amber-400">
           {notice}
         </p>
       )}
+
+      <SkinFixedCta
+        disabled={hint !== null || checkout.isPending}
+        onPress={() => {
+          haptic("press");
+          void tap();
+        }}
+        label={
+          checkout.isPending ? t("topup.processingBtn") : (hint ?? t("cs2.buy.pay", { price }))
+        }
+      />
     </div>
   );
 }

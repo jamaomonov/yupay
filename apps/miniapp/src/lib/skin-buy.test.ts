@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "./api";
 import {
   afterListingGone,
+  tradeLinkAccount,
   oneAtATime,
   cheapestOffer,
   orderKeyFor,
@@ -175,5 +176,16 @@ describe("oneAtATime", () => {
     await buy().catch(() => undefined);
     await buy().catch(() => undefined);
     expect(calls).toBe(2);
+  });
+});
+
+describe("tradeLinkAccount", () => {
+  it("names the Steam account a trade goes to, never the token", () => {
+    expect(
+      tradeLinkAccount(
+        "https://steamcommunity.com/tradeoffer/new/?partner=1039652352&token=LBCWEQ8s",
+      ),
+    ).toBe("1039652352");
+    expect(tradeLinkAccount("not a link")).toBeNull();
   });
 });

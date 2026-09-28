@@ -1,19 +1,21 @@
 import { hasWear, isVanilla, offerHeadline, repriceOffer, steamImageSize } from "@yupay/utils";
 import { ExternalLink, Zap } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
 
 import type { SkinDetail, SkinListing } from "@yupay/utils";
 
-import { SkinBuyPanel } from "@/components/skins/SkinBuyPanel";
+import { SkinFixedCta } from "@/components/skins/SkinFixedCta";
 import { SkinListingsList } from "@/components/skins/SkinListingsList";
+import { SkinPayStep } from "@/components/skins/SkinPayStep";
+import { SkinTradeLinkInput } from "@/components/skins/SkinTradeLinkInput";
 import { SkinWearRow } from "@/components/skins/SkinWearRow";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
 import { afterListingGone, cheapestOffer } from "@/lib/skin-buy";
 import { fetchSkinDetail, fetchSkinListings, skinPriceText } from "@/lib/skins";
-import { openExternalLink } from "@/lib/telegram";
+import { haptic, openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 type State =
@@ -37,6 +39,14 @@ export default function CS2Skin() {
   const [offers, setOffers] = useState<SkinListing[] | null>(null);
   // The offer the buy panel charges: the one tapped, else the cheapest.
   const [pickedId, setPickedId] = useState<number | null>(null);
+  // Two steps, as for every other brand: pick (wear, offer, trade link), then review
+  // and pay. The link survives going back and forth.
+  const [stage, setStage] = useState<"select" | "review">("select");
+  const [link, setLink] = useState({ url: "", usable: false });
+  const onLink = useCallback((s: { url: string; usable: boolean }) => {
+    setLink(s);
+  }, []);
+  const linkRef = useRef<HTMLInputElement>(null);
   const item = state.phase === "ready" ? state.item : null;
   useDocumentTitle(item ? item.name : t("cs2.docTitle"));
 
@@ -107,6 +117,36 @@ export default function CS2Skin() {
     offers?.find((o) => o.listing_id === pickedId) ?? (offers ? cheapestOffer(offers) : null);
   const buySku = item.buy_sku_id ?? null;
   const buyable = buySku !== null && selected !== null;
+
+  if (buyable && stage === "review") {
+    return (
+      <SkinPayStep
+        skuId={buySku}
+        item={item}
+        offer={selected}
+        tradelink={link.url}
+        onBack={() => {
+          setStage("select");
+        }}
+        onListingGone={(next) => {
+          const after = afterListingGone(offers ?? [], selected.listing_id, next);
+          setOffers(after.offers);
+          setPickedId(after.selected?.listing_id ?? null);
+          return after.selected;
+        }}
+        onPriceChanged={(usd) => {
+          // Pinned: at its new price it may no longer be the cheapest default.
+          setPickedId(selected.listing_id);
+          setOffers(
+            (all) =>
+              all?.map((o) => (o.listing_id === selected.listing_id ? repriceOffer(o, usd) : o)) ??
+              null,
+          );
+        }}
+      />
+    );
+  }
+
   return (
     <div className={`yp-fade-in space-y-5 px-4 pt-4 ${buyable ? "pb-28" : "pb-4"}`}>
       <div
@@ -196,27 +236,25 @@ export default function CS2Skin() {
         </section>
       )}
       {buyable && (
-        <SkinBuyPanel
-          skuId={buySku}
-          slug={item.slug}
-          offer={selected}
-          onListingGone={(next) => {
-            const after = afterListingGone(offers ?? [], selected.listing_id, next);
-            setOffers(after.offers);
-            setPickedId(after.selected?.listing_id ?? null);
-            return after.selected;
-          }}
-          onPriceChanged={(usd) => {
-            // Pinned: at its new price it may no longer be the cheapest default.
-            setPickedId(selected.listing_id);
-            setOffers(
-              (all) =>
-                all?.map((o) =>
-                  o.listing_id === selected.listing_id ? repriceOffer(o, usd) : o,
-                ) ?? null,
-            );
-          }}
-        />
+        <>
+          <SkinTradeLinkInput onChange={onLink} inputRef={linkRef} initial={link.url} />
+          <SkinFixedCta
+            muted={!link.usable}
+            onPress={() => {
+              haptic("press");
+              if (!link.usable) {
+                // The link is the step left: take the buyer to it.
+                linkRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                linkRef.current?.focus({ preventScroll: true });
+                return;
+              }
+              setStage("review");
+              window.scrollTo({ top: 0 });
+              document.querySelector("main")?.scrollTo({ top: 0 });
+            }}
+            label={link.usable ? t("topup.continueCta") : t("cs2.buy.payHintLink")}
+          />
+        </>
       )}
     </div>
   );

@@ -23,14 +23,17 @@ type Shown = TradeLinkLine | "checking" | null;
 export function SkinTradeLinkInput({
   onChange,
   inputRef,
+  initial = "",
 }: {
   onChange: (state: { url: string; usable: boolean }) => void;
+  /** What the buyer already entered (coming back from the review step). */
+  initial?: string;
   /** Lets the pay button bring the field into view when the link is what is missing. */
   inputRef?: React.Ref<HTMLInputElement>;
 }) {
   const { t } = useT();
   const id = useId();
-  const [url, setUrl] = useState("");
+  const [url, setUrl] = useState(initial);
   const [shown, setShown] = useState<Shown>(null);
 
   useEffect(() => {

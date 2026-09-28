@@ -567,5 +567,9 @@
   "cs2.trade.contactSupport": "Contact support",
   "success.stage.fulfillingSubSkin": "Buying the skin — the trade offer will arrive in Steam.",
   "success.stage.refundedSubSkin": "The money is back on your YuPay balance.",
-  "success.stage.failedSubSkin": "We are checking the purchase — please contact support."
+  "success.stage.failedSubSkin": "We are checking the purchase — please contact support.",
+  "cs2.buy.tradeTo": "The trade goes to",
+  "cs2.buy.steamAccount": "Steam account {id}",
+  "cs2.buy.wear": "Wear",
+  "cs2.buy.itemTitle": "Skin"
 }

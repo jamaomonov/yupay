@@ -52,6 +52,12 @@ Item page, buy panel (shown only when the item API names `buy_sku_id`):
 | Offer sold                  | «Этот лот уже купили. Следующий — $X», the next offer selected; or «закончились».      |
 | Link of another account     | «Эта ссылка от другого аккаунта Steam — укажите свою».                                 |
 
+In the mini app the purchase is two steps, as for every other brand: the item page picks
+the wear, the offer and the trade link («Далее»), then «Оформление заказа» shows the order
+details (skin, wear, the offer's float and seed, the Steam account the trade goes to — never
+the link's token — and the price) with the payment methods and «Оплатить». The web keeps the
+one-panel form.
+
 After paying, the customer lands on the order page. Its status hero never says "credited"
 or "back to your card" for a skin: in flight it says the trade is coming, a refund says the
 YuPay balance, a failure says support. The trade card below it follows the states above.
