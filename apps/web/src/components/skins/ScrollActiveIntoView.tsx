@@ -10,9 +10,12 @@ import type { ReactNode } from "react";
  */
 export function ScrollActiveIntoView({
   className,
+  activeKey,
   children,
 }: {
   className: string;
+  /** Re-centre only when the chosen item changes, not on every render. */
+  activeKey: string;
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -21,9 +24,10 @@ export function ScrollActiveIntoView({
     const active = row?.querySelector<HTMLElement>('[aria-current="page"]');
     if (!row || !active || row.scrollWidth <= row.clientWidth) return;
     row.scrollLeft = active.offsetLeft - (row.clientWidth - active.offsetWidth) / 2;
-  });
+  }, [activeKey]);
   return (
-    <div ref={ref} className={className}>
+    // `relative`: offsetLeft is measured from the nearest positioned ancestor.
+    <div ref={ref} className={`relative ${className}`}>
       {children}
     </div>
   );

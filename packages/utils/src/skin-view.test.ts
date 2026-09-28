@@ -88,8 +88,18 @@ describe("wearChoices", () => {
     expect(wearChoices(family, family[3]!).stattrak).toEqual({ on: true, slug: "ft" });
   });
 
-  it("hides a toggle with no twin", () => {
-    expect(wearChoices(family, family[1]!).stattrak).toEqual({ on: false, slug: null });
+  it("falls back to the nearest wear that has the variant", () => {
+    // StatTrak exists only in FT; from plain MW the toggle leads there, not nowhere.
+    expect(wearChoices(family, family[1]!).stattrak).toEqual({ on: false, slug: "st-ft" });
+  });
+
+  it("switches a vanilla knife (no wear) to its StatTrak twin", () => {
+    const knife = [m("karambit", null), m("st-karambit", null, { stattrak: true })];
+    expect(wearChoices(knife, knife[0]!).stattrak).toEqual({ on: false, slug: "st-karambit" });
+    expect(wearChoices(knife, knife[0]!).wears).toEqual([]);
+  });
+
+  it("hides a toggle with no twin in any wear", () => {
     expect(wearChoices(family, family[0]!).souvenir).toEqual({ on: false, slug: null });
   });
 

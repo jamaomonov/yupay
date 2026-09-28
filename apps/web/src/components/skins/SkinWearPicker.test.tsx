@@ -62,4 +62,11 @@ describe("SkinWearPicker", () => {
     );
     expect(screen.queryByRole("link", { name: /Souvenir/ })).not.toBeInTheDocument();
   });
+
+  it("marks the variant you are on as the current page, not a pressed link", () => {
+    wrap(<SkinWearPicker family={family} current={family[3]!} locale="ru" />);
+    const on = screen.getByRole("link", { name: /StatTrak/ });
+    expect(on).toHaveAttribute("aria-current", "page");
+    expect(on).not.toHaveAttribute("aria-pressed");
+  });
 });

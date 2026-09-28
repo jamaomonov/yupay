@@ -82,7 +82,7 @@ export function SkinWearRow({
               key={label}
               href={`/cs2-market/${toggle.slug ?? current.slug}`}
               replace
-              aria-pressed={toggle.on}
+              aria-current={toggle.on ? "page" : undefined}
               className={`rounded-xl border px-3 py-1.5 text-[12px] font-semibold ${
                 toggle.on ? tone : "text-white/60"
               }`}

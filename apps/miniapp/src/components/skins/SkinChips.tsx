@@ -51,7 +51,7 @@ export function SkinChips({
 
   return (
     <div className="space-y-2">
-      <div ref={tileRow} className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+      <div ref={tileRow} className="no-scrollbar relative -mx-4 flex gap-2 overflow-x-auto px-4">
         {tiles.map((c) => {
           const active = c === "all" ? !query.category : query.category === c;
           return (
@@ -81,7 +81,10 @@ export function SkinChips({
         })}
       </div>
       {(weapons.length > 1 || query.weapon !== undefined) && (
-        <div ref={weaponRow} className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
+        <div
+          ref={weaponRow}
+          className="no-scrollbar relative -mx-4 flex gap-2 overflow-x-auto px-4"
+        >
           {weapons.map((w) => {
             const active = query.weapon === w;
             return (

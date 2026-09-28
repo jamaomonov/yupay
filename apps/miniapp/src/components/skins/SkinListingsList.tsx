@@ -64,7 +64,15 @@ export function SkinListingsList({ items }: { items: SkinListing[] | null }) {
                         loading="lazy"
                         className="h-4 w-[22px] object-contain"
                       />
-                    ) : null,
+                    ) : (
+                      <span
+                        key={`${String(i)}-${s.name}`}
+                        role="img"
+                        aria-label={s.name}
+                        className="h-4 w-4 rounded-sm"
+                        style={{ background: "hsl(var(--border))" }}
+                      />
+                    ),
                   )}
                 </span>
               )}

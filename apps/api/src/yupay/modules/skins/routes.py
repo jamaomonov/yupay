@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
-from yupay.core.errors import NotFoundError
+from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.redis import get_redis
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
@@ -189,6 +189,8 @@ async def get_facets(
 ) -> SkinFacetsOut:
     """Facet counts; with ``category`` the weapon, wear and rarity facets are scoped to it."""
     categories = enabled_categories(get_settings())
+    if category is not None and category not in categories:
+        raise ValidationError(f"unknown skins category: {category}")
 
     async def build() -> dict[str, Any]:
         f = await facets(db, categories=categories, category=category)

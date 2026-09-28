@@ -187,6 +187,28 @@ async def list_items(
     return page, encode_cursor(last_value, last.id)
 
 
+#: Grade → tier, rarest highest, so the filter reads like the game's colour ladder.
+#: Weapons, stickers/cases and agents have parallel ladders; each tier lines up.
+RARITY_TIER = {
+    "Contraband": 6,
+    "Covert": 5,
+    "Extraordinary": 5,
+    "Master": 5,
+    "Classified": 4,
+    "Exotic": 4,
+    "Superior": 4,
+    "Restricted": 3,
+    "Remarkable": 3,
+    "Exceptional": 3,
+    "Mil-Spec Grade": 2,
+    "High Grade": 2,
+    "Distinguished": 2,
+    "Industrial Grade": 1,
+    "Highlight Base Grade": 1,
+    "Consumer Grade": 0,
+    "Base Grade": 0,
+}
+
 #: The weapons people look for first; the rest of a category follows by count.
 WEAPON_PRIORITY = ("AK-47", "M4A4", "M4A1-S", "AWP", "Desert Eagle", "USP-S", "Glock-18")
 
@@ -223,7 +245,10 @@ async def facets(db: AsyncSession, *, categories: list[str], category: str | Non
         categories=await count_by(SkinItem.category, live),
         weapons=weapons,
         exteriors=await count_by(SkinItem.exterior, scoped),
-        rarities=[(str(r), int(c), color) for r, c, color in rarity_rows.all()],
+        rarities=sorted(
+            ((str(r), int(c), color) for r, c, color in rarity_rows.all()),
+            key=lambda rc: (-RARITY_TIER.get(rc[0], -1), rc[0]),
+        ),
     )
 
 

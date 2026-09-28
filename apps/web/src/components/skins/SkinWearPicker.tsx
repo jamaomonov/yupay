@@ -68,7 +68,7 @@ export function SkinWearPicker({
             <Link
               key={label}
               href={href(toggle.slug ?? current.slug)}
-              aria-pressed={toggle.on}
+              aria-current={toggle.on ? "page" : undefined}
               className={`rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition ${
                 toggle.on ? tone : "border-border text-tx-mute hover:border-border-2"
               }`}

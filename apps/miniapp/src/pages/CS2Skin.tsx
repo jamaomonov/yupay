@@ -181,7 +181,7 @@ export default function CS2Skin() {
             {t("cs2.offers")}{" "}
             <span className="font-mono text-[13px] text-white/50">{item.count}</span>
           </h2>
-          <SkinListingsList items={offers} />
+          <SkinListingsList key={item.slug} items={offers} />
         </section>
       )}
     </div>

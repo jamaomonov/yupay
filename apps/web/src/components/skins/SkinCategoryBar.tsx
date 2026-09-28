@@ -56,7 +56,10 @@ export function SkinCategoryBar({
 
   return (
     <nav className="space-y-2">
-      <ScrollActiveIntoView className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:grid lg:grid-cols-12 lg:overflow-visible">
+      <ScrollActiveIntoView
+        activeKey={query.category ?? ""}
+        className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:grid lg:grid-cols-12 lg:overflow-visible"
+      >
         {tiles.map((c) => {
           const active = c === "all" ? !query.category : query.category === c;
           return (
@@ -77,7 +80,10 @@ export function SkinCategoryBar({
         })}
       </ScrollActiveIntoView>
       {(weapons.length > 1 || query.weapon !== undefined) && (
-        <ScrollActiveIntoView className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:flex-wrap">
+        <ScrollActiveIntoView
+          activeKey={query.weapon ?? ""}
+          className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:flex-wrap"
+        >
           {weapons.map((w) => (
             <Link
               key={w}

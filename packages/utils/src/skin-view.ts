@@ -56,6 +56,20 @@ export function wearChoices(
       available: twin !== undefined && twin.price_usd !== null && twin.count > 0,
     };
   });
+  // The twin in the same wear, else the nearest wear that has that variant —
+  // a StatTrak that exists only in FT should still be one tap away from MW.
+  const nearest = (stattrak: boolean, souvenir: boolean) => {
+    const same = find(current.exterior, stattrak, souvenir);
+    if (same) return same;
+    const at = current.exterior === null ? 0 : WEAR_ORDER.indexOf(current.exterior);
+    return family
+      .filter((m) => m.stattrak === stattrak && m.souvenir === souvenir)
+      .sort(
+        (a, b) =>
+          Math.abs((a.exterior ? WEAR_ORDER.indexOf(a.exterior) : 0) - at) -
+          Math.abs((b.exterior ? WEAR_ORDER.indexOf(b.exterior) : 0) - at),
+      )[0];
+  };
   const toggle = (on: boolean, twin: SkinFamilyMember | undefined): VariantToggle => ({
     on,
     slug: twin?.slug ?? null,
@@ -65,18 +79,18 @@ export function wearChoices(
     stattrak: toggle(
       current.stattrak,
       current.stattrak
-        ? find(current.exterior, false, false)
+        ? nearest(false, false)
         : current.souvenir
           ? undefined
-          : find(current.exterior, true, false),
+          : nearest(true, false),
     ),
     souvenir: toggle(
       current.souvenir,
       current.souvenir
-        ? find(current.exterior, false, false)
+        ? nearest(false, false)
         : current.stattrak
           ? undefined
-          : find(current.exterior, false, true),
+          : nearest(false, true),
     ),
   };
 }

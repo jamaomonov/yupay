@@ -85,3 +85,25 @@ async def test_without_a_category_facets_stay_global(
 ) -> None:
     body = (await integration_client.get("/api/v1/skins/facets")).json()
     assert "Glock-18" in [w["value"] for w in body["weapons"]]
+
+
+async def test_rarities_run_from_rarest_to_commonest(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    for i, grade in enumerate(["Mil-Spec Grade", "Consumer Grade", "Covert", "Restricted"]):
+        db_session.add(
+            _row(f"P250 | S{i} (Field-Tested)", "pistols", "P250", "FT", count=90 - i, rarity=grade)
+        )
+    await db_session.commit()
+    body = (await integration_client.get("/api/v1/skins/facets?category=pistols")).json()
+    assert [r["value"] for r in body["rarities"]] == [
+        "Covert",
+        "Restricted",
+        "Mil-Spec Grade",
+        "Consumer Grade",
+    ]
+
+
+async def test_an_unknown_category_is_refused(integration_client: AsyncClient) -> None:
+    r = await integration_client.get("/api/v1/skins/facets?category=bogus")
+    assert r.status_code == 422
