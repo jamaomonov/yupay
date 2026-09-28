@@ -32,6 +32,7 @@ import Home from "@/pages/Home";
 // against 231 KB measured before this change. Nothing enforces it in CI, which
 // is why it drifted — so the number belongs in a commit message and a review,
 // not only in a document.
+const CS2Skin = lazy(() => import("@/pages/CS2Skin"));
 const CS2SkinMarket = lazy(() => import("@/pages/CS2SkinMarket"));
 const GiftsCatalog = lazy(() => import("@/pages/GiftsCatalog"));
 const GiftGame = lazy(() => import("@/pages/GiftGame"));
@@ -132,6 +133,11 @@ function Router() {
         <Route path="/cs2-market">
           <Suspense fallback={<GiftsRouteSkeleton />}>
             <CS2SkinMarket />
+          </Suspense>
+        </Route>
+        <Route path="/cs2-market/:slug">
+          <Suspense fallback={<GiftsRouteSkeleton />}>
+            <CS2Skin />
           </Suspense>
         </Route>
         <Route path="/topup/:gameId">
