@@ -876,5 +876,68 @@
       "update": "Yangilanish",
       "event": "Tadbir"
     }
+  },
+  "skins": {
+    "meta": {
+      "title": "CS2 skinlari soʻmda — Oʻzbekistonda sotib olish",
+      "description": "CS2 skinlari tezkor yetkazib berish bilan: qurollar, pichoqlar, qoʻlqoplar, agentlar va keyslar. Soʻmda toʻlov.",
+      "itemTitle": "{name} — soʻmda sotib olish",
+      "itemDescription": "{name}: {price} dan. Steam almashuvi orqali tezkor yetkazib berish, soʻmda toʻlov."
+    },
+    "title": "CS2 skinlari bozori",
+    "searchPlaceholder": "Skin nomi…",
+    "filters": "Filtrlar",
+    "price": "Narx, soʻm",
+    "from": "Dan",
+    "to": "Gacha",
+    "apply": "Qoʻllash",
+    "reset": "Tozalash",
+    "wear": "Sifat",
+    "rarity": "Nodirlik",
+    "stattrak": "Faqat StatTrak™",
+    "sortLabel": "Saralash",
+    "sort": {
+      "price": "Avval arzonlari",
+      "-price": "Avval qimmatlari",
+      "discount": "Steam’dan foydaliroq",
+      "popular": "Ommabop"
+    },
+    "all": "Hammasi",
+    "category": {
+      "rifles": "Miltiqlar",
+      "pistols": "Toʻpponchalar",
+      "smgs": "Avtomatlar",
+      "heavy": "Ogʻir",
+      "knives": "Pichoqlar",
+      "gloves": "Qoʻlqoplar",
+      "agents": "Agentlar",
+      "cases": "Keyslar",
+      "keys": "Kalitlar",
+      "music-kits": "Musiqa",
+      "charms": "Brelok"
+    },
+    "exterior": {
+      "FN": "Zavoddan yangi",
+      "MW": "Biroz eskirgan",
+      "FT": "Dala sinovidan",
+      "WW": "Eskirgan",
+      "BS": "Jangda chiniqqan"
+    },
+    "soldOut": "Mavjud emas",
+    "loadMore": "Yana koʻrsatish",
+    "empty": "Hech narsa topilmadi. Boshqa nom bilan qidiring yoki filtrlarni tozalang.",
+    "fromPrice": "{price} dan",
+    "steamPrice": "Steam’dagi narx",
+    "offers": "Takliflar",
+    "inspect": "Oʻyinda koʻrish",
+    "seed": "Seed",
+    "float": "Float",
+    "buySoon": "Tez orada sotuvda",
+    "ready": "Tezkor",
+    "stickers": "Stikerlar",
+    "nav": "CS2 skinlari",
+    "market": "Bozor",
+    "otherWears": "Boshqa sifatlar",
+    "noOffers": "Hozircha takliflar yoʻq"
   }
 }

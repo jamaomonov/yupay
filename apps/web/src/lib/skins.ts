@@ -19,6 +19,8 @@ export const SKIN_CATEGORIES = [
 ] as const;
 export type SkinCategory = (typeof SKIN_CATEGORIES)[number];
 const SORTS: readonly SkinSort[] = ["price", "-price", "discount", "popular"];
+/** What the market opens on: the items people actually buy, not a page of $0.20 floor stickers. */
+export const DEFAULT_SORT: SkinSort = "popular";
 const EXTERIORS: readonly Exterior[] = ["FN", "MW", "FT", "WW", "BS"];
 
 export interface SkinItem {
@@ -111,7 +113,7 @@ function amount(v: string | undefined): number | undefined {
 }
 
 export function parseSkinQuery(params: Params): SkinQuery {
-  const q: SkinQuery = { sort: "price" };
+  const q: SkinQuery = { sort: DEFAULT_SORT };
   const category = first(params.category);
   if (category && (SKIN_CATEGORIES as readonly string[]).includes(category)) {
     q.category = category as SkinCategory; // narrowed by the includes() check above
@@ -163,15 +165,18 @@ const KEY: Record<keyof SkinQuery, string> = {
   cursor: "cursor",
 };
 
-export function skinQueryString(q: SkinQuery, patch: Partial<SkinQuery> = {}): string {
+/** A change to a query: a key set to `undefined` removes that filter. */
+export type SkinQueryPatch = { [K in keyof SkinQuery]?: SkinQuery[K] | undefined };
+
+export function skinQueryString(q: SkinQuery, patch: SkinQueryPatch = {}): string {
   const changesFilter = Object.keys(patch).some((k) => k !== "cursor");
-  const merged: SkinQuery = { ...q, ...patch };
+  const merged: SkinQueryPatch = { ...q, ...patch };
   if (changesFilter && !("cursor" in patch)) delete merged.cursor;
   const out = new URLSearchParams();
   for (const key of ORDER) {
     const v = merged[key];
     if (v === undefined || v === "" || v === false) continue;
-    if (key === "sort" && v === "price") continue;
+    if (key === "sort" && v === DEFAULT_SORT) continue;
     out.set(KEY[key], v === true ? "1" : String(v));
   }
   const s = out.toString();

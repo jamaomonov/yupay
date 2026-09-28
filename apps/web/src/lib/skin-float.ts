@@ -17,3 +17,14 @@ export function wearBand(value: number): WearBand {
 export function floatPosition(value: number): number {
   return Math.min(100, Math.max(0, value * 100));
 }
+
+const ECONOMY = /^(https:\/\/[^/]+\/economy\/image\/[^/?#]+)(\/\d+fx\d+f)?$/;
+
+/**
+ * A Steam economy image at a given size (`256fx256f`): the full PNG is ~100 KB,
+ * the 256 px one ~35 KB, and a grid of 48 cards pays that difference 48 times.
+ */
+export function steamImageSize(url: string, size: `${number}fx${number}f`): string {
+  const match = ECONOMY.exec(url);
+  return match?.[1] ? `${match[1]}/${size}` : url;
+}

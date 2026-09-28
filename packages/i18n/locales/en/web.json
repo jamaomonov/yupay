@@ -876,5 +876,68 @@
       "update": "Update",
       "event": "Event"
     }
+  },
+  "skins": {
+    "meta": {
+      "title": "CS2 skins in soʻm — buy in Uzbekistan",
+      "description": "CS2 skins with instant delivery: weapons, knives, gloves, agents and cases. Pay in soʻm.",
+      "itemTitle": "{name} — buy in soʻm",
+      "itemDescription": "{name}: from {price}. Instant delivery by Steam trade, pay in soʻm."
+    },
+    "title": "CS2 skin market",
+    "searchPlaceholder": "Skin name…",
+    "filters": "Filters",
+    "price": "Price, soʻm",
+    "from": "From",
+    "to": "To",
+    "apply": "Apply",
+    "reset": "Reset",
+    "wear": "Wear",
+    "rarity": "Rarity",
+    "stattrak": "StatTrak™ only",
+    "sortLabel": "Sort",
+    "sort": {
+      "price": "Cheapest first",
+      "-price": "Most expensive first",
+      "discount": "Best vs Steam",
+      "popular": "Popular"
+    },
+    "all": "All",
+    "category": {
+      "rifles": "Rifles",
+      "pistols": "Pistols",
+      "smgs": "SMGs",
+      "heavy": "Heavy",
+      "knives": "Knives",
+      "gloves": "Gloves",
+      "agents": "Agents",
+      "cases": "Cases",
+      "keys": "Keys",
+      "music-kits": "Music kits",
+      "charms": "Charms"
+    },
+    "exterior": {
+      "FN": "Factory New",
+      "MW": "Minimal Wear",
+      "FT": "Field-Tested",
+      "WW": "Well-Worn",
+      "BS": "Battle-Scarred"
+    },
+    "soldOut": "Out of stock",
+    "loadMore": "Show more",
+    "empty": "Nothing found. Try another name or reset the filters.",
+    "fromPrice": "from {price}",
+    "steamPrice": "Steam price",
+    "offers": "Offers",
+    "inspect": "Inspect in game",
+    "seed": "Seed",
+    "float": "Float",
+    "buySoon": "Buying soon",
+    "ready": "Instant",
+    "stickers": "Stickers",
+    "nav": "CS2 skins",
+    "market": "Market",
+    "otherWears": "Other wears",
+    "noOffers": "No offers right now"
   }
 }
