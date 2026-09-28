@@ -50,7 +50,7 @@ function deadline(t: AdminSkinTradeOut): string | null {
 
 function SkinName({ t }: { t: AdminSkinTradeOut }) {
   return (
-    <span className="flex min-w-0 items-center gap-2">
+    <span className="flex min-w-0 max-w-[16rem] items-center gap-2">
       {t.image_url ? (
         <img src={t.image_url} alt="" className="h-8 w-11 shrink-0 object-contain" />
       ) : (
@@ -88,7 +88,7 @@ const COLUMNS: Column<AdminSkinTradeOut>[] = [
     key: "state",
     header: T.trades.cols.state,
     render: (t) => (
-      <span className="flex flex-col gap-1">
+      <span className="flex flex-col items-start gap-1">
         <StatusChip domain="skinTradeState" value={t.state} />
         {deadline(t) && <span className="text-xs text-[var(--text-secondary)]">{deadline(t)}</span>}
       </span>
@@ -98,6 +98,7 @@ const COLUMNS: Column<AdminSkinTradeOut>[] = [
   {
     key: "reason",
     header: T.trades.cols.reason,
+    className: "min-w-[12rem]",
     render: (t) =>
       t.resolved_at ? (
         <span className="text-xs text-[var(--text-secondary)]">

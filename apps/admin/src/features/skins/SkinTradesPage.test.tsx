@@ -149,3 +149,13 @@ it("says so when there are none", async () => {
   renderPage();
   expect(await screen.findByText("Обменов нет")).toBeInTheDocument();
 });
+
+it("writes a loss with a minus before the dollar", async () => {
+  mockedApiGet.mockResolvedValue({
+    ...PAGE,
+    items: [{ ...ROW, sold_usd: "20.00", bought_units: 27000 }],
+  });
+  renderPage();
+  await screen.findByRole("table");
+  expect(within(table()).getByText(/−\$7\.00/)).toBeInTheDocument();
+});

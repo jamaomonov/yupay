@@ -105,7 +105,8 @@ export function resolveTrade(id: string, note: string): Promise<AdminSkinTradeOu
 
 /** A USD decimal string as "$12.30". */
 export function usd(amount: string | number): string {
-  return `$${Number(amount).toFixed(2)}`;
+  const n = Number(amount);
+  return `${n < 0 ? "−" : ""}$${Math.abs(n).toFixed(2)}`;
 }
 
 /** What we paid Waxpeer, in USD (the actual charge when known, else the quote). */

@@ -130,7 +130,9 @@ export function TradeDrawer({ trade, onClose }: { trade: AdminSkinTradeOut; onCl
             <Row label={D.margin}>{marginText(trade)}</Row>
             <Row label={D.seller}>{trade.seller_name ?? "—"}</Row>
             <Row label={D.created}>{when(trade.created_at)}</Row>
-            {trade.send_until && <Row label={D.sendUntil}>{when(trade.send_until)}</Row>}
+            {trade.state === "offer_sent" && trade.send_until && (
+              <Row label={D.sendUntil}>{when(trade.send_until)}</Row>
+            )}
             {trade.accepted_at && <Row label={D.acceptedAt}>{when(trade.accepted_at)}</Row>}
             {trade.release_date && <Row label={D.releaseDate}>{when(trade.release_date)}</Row>}
             <Row label={D.lastChecked}>{when(trade.last_checked_at)}</Row>

@@ -137,7 +137,7 @@ export function PricingRulesCard({
           }}
         />
       </div>
-      <fieldset className="space-y-2">
+      <fieldset className="max-w-xl space-y-2">
         <legend className="text-sm font-medium">{P.liquidity}</legend>
         <div className="flex gap-2 text-xs text-[var(--text-secondary)]" aria-hidden>
           <span className="flex-1">{P.liquidityCount}</span>
