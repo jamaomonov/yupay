@@ -1,23 +1,41 @@
+import { Check as CheckIcon } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
+
+import { SkinPriceFilter } from "./SkinPriceFilter";
 
 import type { SkinQueryPatch, Exterior, SkinFacets, SkinQuery } from "@/lib/skins";
 
 import { pathFor } from "@/lib/seo";
-import { DEFAULT_SORT, skinQueryString } from "@/lib/skins";
+import { skinQueryString } from "@/lib/skins";
 
 const PATH = "/skins";
 const EXTERIORS: Exterior[] = ["FN", "MW", "FT", "WW", "BS"];
 
 function option(active: boolean): string {
-  return `flex items-center justify-between rounded-md px-2 py-1.5 text-[13px] transition ${
-    active ? "bg-primary/10 text-foreground font-semibold" : "text-tx-mute hover:bg-muted"
+  return `flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] transition ${
+    active ? "text-foreground font-semibold" : "text-tx-mute hover:bg-muted hover:text-foreground"
   }`;
 }
 
+/** A ticked or empty box: which values are on reads at a glance (as on Waxpeer). */
+function Check({ on }: { on: boolean }) {
+  return (
+    <span
+      data-check={on ? "on" : "off"}
+      aria-hidden
+      className={`flex size-[18px] shrink-0 items-center justify-center rounded-[5px] border-2 ${
+        on ? "border-primary bg-primary text-primary-foreground" : "border-border-2"
+      }`}
+    >
+      {on && <CheckIcon className="size-3" strokeWidth={3.5} />}
+    </span>
+  );
+}
+
 /**
- * The filter panel. Price is a GET form (works without JS, lands in the URL);
- * wear, rarity and StatTrak are links that toggle one value each. The page
+ * The filter panel. Price applies itself as it is typed (`SkinPriceFilter`); wear,
+ * rarity and StatTrak are links that toggle one value each, drawn as checkboxes. The page
  * places it twice: a sticky column on desktop, a bottom drawer on a phone.
  * Counts are scoped to the chosen category (the facets are).
  */
@@ -37,43 +55,7 @@ export function SkinFilters({
 
   return (
     <div>
-      <form method="get" action={base}>
-        <p className="text-tx-mute mb-2 text-[12px] font-semibold uppercase">{t("price")}</p>
-        {query.category && <input type="hidden" name="category" value={query.category} />}
-        {query.weapon && <input type="hidden" name="weapon" value={query.weapon} />}
-        {query.exterior && <input type="hidden" name="exterior" value={query.exterior} />}
-        {query.rarity && <input type="hidden" name="rarity" value={query.rarity} />}
-        {query.stattrak && <input type="hidden" name="stattrak" value="1" />}
-        {query.q && <input type="hidden" name="q" value={query.q} />}
-        {query.sort !== DEFAULT_SORT && <input type="hidden" name="sort" value={query.sort} />}
-        <div className="flex items-center gap-2">
-          <input
-            type="number"
-            name="min"
-            min={0}
-            inputMode="numeric"
-            placeholder={t("from")}
-            defaultValue={query.minUzs}
-            className="border-border bg-background w-full rounded-lg border px-2 py-1.5 text-[13px]"
-          />
-          <span className="text-tx-dim">—</span>
-          <input
-            type="number"
-            name="max"
-            min={0}
-            inputMode="numeric"
-            placeholder={t("to")}
-            defaultValue={query.maxUzs}
-            className="border-border bg-background w-full rounded-lg border px-2 py-1.5 text-[13px]"
-          />
-        </div>
-        <button
-          type="submit"
-          className="bg-primary text-primary-foreground mt-2 w-full rounded-lg py-1.5 text-[13px] font-semibold"
-        >
-          {t("apply")}
-        </button>
-      </form>
+      <SkinPriceFilter query={query} locale={locale} />
 
       <p className="text-tx-mute mb-1 mt-5 text-[12px] font-semibold uppercase">{t("wear")}</p>
       <ul>
@@ -82,8 +64,10 @@ export function SkinFilters({
             <Link
               href={href({ exterior: query.exterior === e ? undefined : e })}
               className={option(query.exterior === e)}
+              aria-current={query.exterior === e ? "true" : undefined}
             >
-              <span>{t(`exterior.${e}`)}</span>
+              <Check on={query.exterior === e} />
+              <span className="flex-1">{t(`exterior.${e}`)}</span>
               <span className="text-tx-dim font-mono text-[11px]">{wearCounts.get(e) ?? 0}</span>
             </Link>
           </li>
@@ -101,8 +85,10 @@ export function SkinFilters({
                 <Link
                   href={href({ rarity: query.rarity === r.value ? undefined : r.value })}
                   className={option(query.rarity === r.value)}
+                  aria-current={query.rarity === r.value ? "true" : undefined}
                 >
-                  <span className="flex items-center gap-2">
+                  <Check on={query.rarity === r.value} />
+                  <span className="flex flex-1 items-center gap-2">
                     <span
                       className="size-2 shrink-0 rounded-full"
                       style={{ background: r.color ?? "currentColor" }}
@@ -121,7 +107,9 @@ export function SkinFilters({
       <Link
         href={href({ stattrak: query.stattrak ? undefined : true })}
         className={`${option(query.stattrak === true)} mt-4`}
+        aria-current={query.stattrak ? "true" : undefined}
       >
+        <Check on={query.stattrak === true} />
         {t("stattrak")}
       </Link>
 
