@@ -16,10 +16,10 @@ function option(active: boolean): string {
 }
 
 /**
- * The left column. Price is a GET form (works without JS, lands in the URL);
+ * The filter panel. Price is a GET form (works without JS, lands in the URL);
  * wear, rarity and StatTrak are links that toggle one value each. The page
- * places it twice: a sticky column on desktop, a collapsed `<details>` on a
- * phone (no JS either way).
+ * places it twice: a sticky column on desktop, a bottom drawer on a phone.
+ * Counts are scoped to the chosen category (the facets are).
  */
 export function SkinFilters({
   query,
@@ -102,7 +102,14 @@ export function SkinFilters({
                   href={href({ rarity: query.rarity === r.value ? undefined : r.value })}
                   className={option(query.rarity === r.value)}
                 >
-                  <span>{r.value}</span>
+                  <span className="flex items-center gap-2">
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{ background: r.color ?? "currentColor" }}
+                      aria-hidden
+                    />
+                    {r.value}
+                  </span>
                   <span className="text-tx-dim font-mono text-[11px]">{r.count}</span>
                 </Link>
               </li>

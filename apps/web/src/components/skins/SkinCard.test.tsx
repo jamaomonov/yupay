@@ -40,13 +40,14 @@ function renderCard(over: Partial<SkinItem> = {}) {
 }
 
 describe("SkinCard", () => {
-  it("shows skin, weapon, wear, price in som, lot count and discount", () => {
+  it("shows skin, weapon, wear, price in som and discount", () => {
     renderCard();
     expect(screen.getByText("Redline")).toBeInTheDocument();
     expect(screen.getByText(/AK-47/)).toBeInTheDocument();
     expect(screen.getByText("FT")).toBeInTheDocument();
     expect(screen.getByText(/385\s?700/)).toBeInTheDocument();
-    expect(screen.getByText("×49")).toBeInTheDocument();
+    // The lot count read as noise on a card («×84077»); the item page has it.
+    expect(screen.queryByText("×49")).not.toBeInTheDocument();
     expect(screen.getByText("−31%")).toBeInTheDocument();
     expect(screen.getByRole("link")).toHaveAttribute("href", "/skins/ak-47-redline-field-tested");
   });
@@ -60,6 +61,25 @@ describe("SkinCard", () => {
   it("says sold out without a price", () => {
     renderCard({ price_uzs: null, price_usd: null, count: 0 });
     expect(screen.getByText("Нет в наличии")).toBeInTheDocument();
+  });
+});
+
+describe("SkinCard badges and names", () => {
+  it("shows a discount only from 5 %", () => {
+    renderCard({ discount_percent: 4 });
+    expect(screen.queryByText("−4%")).not.toBeInTheDocument();
+  });
+
+  it("calls a vanilla knife vanilla instead of repeating its name", () => {
+    renderCard({
+      name: "★ Karambit",
+      category: "knives",
+      weapon: "Karambit",
+      skin: null,
+      exterior: null,
+    });
+    expect(screen.getByText("Ванильный")).toBeInTheDocument();
+    expect(screen.queryByText("★ Karambit")).not.toBeInTheDocument();
   });
 });
 

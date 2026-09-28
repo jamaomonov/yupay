@@ -350,6 +350,8 @@
   "cs2.soldOut": "Mavjud emas",
   "cs2.loadMore": "Yana koʻrsatish",
   "cs2.empty": "Hech narsa topilmadi. Boshqa nom bilan qidiring yoki filtrlarni tozalang.",
+  "cs2.vanilla": "Vanilla",
+  "cs2.resetFilters": "Filtrlarni tozalash",
   "cs2.steamPrice": "Steam’dagi narx",
   "cs2.offers": "Takliflar",
   "cs2.seed": "Seed",

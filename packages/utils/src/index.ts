@@ -22,5 +22,11 @@ export type {
 } from "./skins";
 export { floatPosition, steamImageSize, wearBand } from "./skin-float";
 export type { WearBand } from "./skin-float";
-export { CATEGORY_ICONS, offerHeadline, wearChoices } from "./skin-view";
+export {
+  activeFilterCount,
+  CATEGORY_ICONS,
+  isVanilla,
+  offerHeadline,
+  wearChoices,
+} from "./skin-view";
 export type { VariantToggle, WearChoice } from "./skin-view";

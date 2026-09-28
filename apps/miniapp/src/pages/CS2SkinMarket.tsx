@@ -1,5 +1,5 @@
 import { parseSkinQuery, skinQueryString } from "@yupay/utils";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 
@@ -160,7 +160,21 @@ export default function CS2SkinMarket() {
         ) : phase === "error" ? (
           <Retry label={t("cs2.error")} onRetry={() => load(false)} />
         ) : items.length === 0 ? (
-          <p className="py-14 text-center text-sm text-white/50">{t("cs2.empty")}</p>
+          <div className="flex flex-col items-center gap-3 py-12 text-center">
+            <SearchX className="h-9 w-9 text-white/30" aria-hidden="true" />
+            <p className="max-w-[260px] text-sm text-white/50">{t("cs2.empty")}</p>
+            <button
+              type="button"
+              onClick={() => {
+                setRaw("");
+                navigate(PATH, { replace: true });
+              }}
+              className="rounded-xl px-4 py-2 text-sm font-semibold text-white/80"
+              style={FIELD}
+            >
+              {t("cs2.resetFilters")}
+            </button>
+          </div>
         ) : (
           <>
             <div className="grid grid-cols-2 gap-3">

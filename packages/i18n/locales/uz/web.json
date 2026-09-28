@@ -940,6 +940,9 @@
     "nav": "CS2 skinlari",
     "market": "Bozor",
     "otherWears": "Boshqa sifatlar",
-    "noOffers": "Hozircha takliflar yoʻq"
+    "noOffers": "Hozircha takliflar yoʻq",
+    "vanilla": "Vanilla",
+    "resetFilters": "Filtrlarni tozalash",
+    "done": "Tayyor"
   }
 }

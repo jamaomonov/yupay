@@ -1,6 +1,6 @@
 /** Pure view helpers shared by the web and mini app skins pages. */
 
-import type { Exterior, SkinCategory, SkinFamilyMember, SkinListing } from "./skins";
+import type { Exterior, SkinCategory, SkinFamilyMember, SkinListing, SkinQuery } from "./skins";
 
 const WEAR_ORDER: readonly Exterior[] = ["FN", "MW", "FT", "WW", "BS"];
 
@@ -100,3 +100,26 @@ export const CATEGORY_ICONS: Record<SkinCategory, { file: string; wide: boolean 
   "music-kits": null,
   charms: { file: "charms.png", wide: false },
 };
+
+/** A knife or glove with no paint — its name is just the weapon, so a title needs a word for it. */
+export function isVanilla(item: {
+  category: string;
+  weapon: string | null;
+  skin: string | null;
+}): boolean {
+  return (
+    item.skin === null &&
+    item.weapon !== null &&
+    (item.category === "knives" || item.category === "gloves")
+  );
+}
+
+/** Filters set in the filter panel — the badge on its button. A price range is one. */
+export function activeFilterCount(q: SkinQuery): number {
+  return [
+    q.exterior !== undefined,
+    q.rarity !== undefined,
+    q.stattrak === true,
+    q.minUzs !== undefined || q.maxUzs !== undefined,
+  ].filter(Boolean).length;
+}

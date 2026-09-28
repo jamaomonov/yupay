@@ -6,7 +6,7 @@ import type { Exterior, SkinFacets, SkinQuery, SkinQueryPatch } from "@yupay/uti
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
-import { activeFilterCount } from "@/lib/skins-view";
+import { activeFilterCount } from "@yupay/utils";
 
 const FIELD = { background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))" };
 
@@ -100,6 +100,8 @@ export function SkinFilterSheet({
         side="bottom"
         className="max-h-[85vh] rounded-t-3xl"
         aria-describedby={undefined}
+        // Focusing the close button on open drew a lime ring on it for no reason.
+        onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <SheetHeader>
           <SheetTitle>{t("cs2.filters")}</SheetTitle>
@@ -122,27 +124,6 @@ export function SkinFilterSheet({
               ))}
             </div>
           </fieldset>
-          {facets && facets.rarities.length > 0 && (
-            <fieldset>
-              <legend className="mb-2 text-xs font-semibold text-white/60">
-                {t("cs2.rarity")}
-              </legend>
-              <div className="flex flex-wrap gap-2">
-                {facets.rarities.map(({ value }) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={draft.rarity === value}
-                    className={pill(draft.rarity === value)}
-                    style={draft.rarity === value ? undefined : FIELD}
-                    onClick={() => set({ rarity: draft.rarity === value ? undefined : value })}
-                  >
-                    {value}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-          )}
           <fieldset>
             <legend className="mb-2 text-xs font-semibold text-white/60">{t("cs2.price")}</legend>
             <div className="flex gap-2">
@@ -160,15 +141,51 @@ export function SkinFilterSheet({
               ))}
             </div>
           </fieldset>
-          <label className="flex items-center gap-2 text-sm text-white">
-            <input
-              type="checkbox"
-              checked={draft.stattrak}
-              onChange={(e) => set({ stattrak: e.target.checked })}
-              className="accent-primary h-4 w-4"
-            />
+          <button
+            type="button"
+            role="switch"
+            aria-checked={draft.stattrak}
+            onClick={() => set({ stattrak: !draft.stattrak })}
+            className="flex w-full items-center justify-between text-sm text-white"
+          >
             {t("cs2.stattrak")}
-          </label>
+            <span
+              className={`relative h-6 w-10 rounded-full transition ${draft.stattrak ? "bg-primary" : ""}`}
+              style={draft.stattrak ? undefined : { background: "hsl(var(--border))" }}
+            >
+              <span
+                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${draft.stattrak ? "left-[18px]" : "left-0.5"}`}
+              />
+            </span>
+          </button>
+          {facets && facets.rarities.length > 0 && (
+            <fieldset>
+              <legend className="mb-2 text-xs font-semibold text-white/60">
+                {t("cs2.rarity")}
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {facets.rarities.map(({ value, color }) => (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={draft.rarity === value}
+                    className={pill(draft.rarity === value)}
+                    style={draft.rarity === value ? undefined : FIELD}
+                    onClick={() => set({ rarity: draft.rarity === value ? undefined : value })}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      <span
+                        className="h-2 w-2 shrink-0 rounded-full"
+                        style={{ background: color ?? "currentColor" }}
+                        aria-hidden="true"
+                      />
+                      {value}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <div className="flex gap-2 pt-1">
             <button
               type="button"

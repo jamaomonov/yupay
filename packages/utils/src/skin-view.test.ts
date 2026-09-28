@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { CATEGORY_ICONS, offerHeadline, wearChoices } from "./skin-view";
+import {
+  activeFilterCount,
+  CATEGORY_ICONS,
+  isVanilla,
+  offerHeadline,
+  wearChoices,
+} from "./skin-view";
 import { DEFAULT_SORT, SKIN_CATEGORIES } from "./skins";
 
 import type { SkinFamilyMember, SkinListing } from "./skins";
@@ -97,5 +103,29 @@ describe("CATEGORY_ICONS", () => {
     for (const c of SKIN_CATEGORIES) expect(c in CATEGORY_ICONS).toBe(true);
     expect(CATEGORY_ICONS["music-kits"]).toBeNull();
     expect(CATEGORY_ICONS.rifles?.file).toBe("rifles.png");
+  });
+});
+
+describe("isVanilla", () => {
+  it("is a knife or glove with no paint", () => {
+    expect(isVanilla({ category: "knives", weapon: "Karambit", skin: null })).toBe(true);
+    expect(isVanilla({ category: "knives", weapon: "Karambit", skin: "Fade" })).toBe(false);
+    expect(isVanilla({ category: "cases", weapon: null, skin: null })).toBe(false);
+  });
+});
+
+describe("activeFilterCount", () => {
+  it("counts what the filter sheet sets, not category, search or sort", () => {
+    expect(activeFilterCount({ sort: "popular" })).toBe(0);
+    expect(
+      activeFilterCount({
+        sort: "price",
+        category: "rifles",
+        exterior: "FT",
+        stattrak: true,
+        minUzs: 1,
+      }),
+    ).toBe(3);
+    expect(activeFilterCount({ sort: "popular", minUzs: 1, maxUzs: 9, rarity: "Covert" })).toBe(2);
   });
 });

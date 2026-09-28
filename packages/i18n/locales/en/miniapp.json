@@ -350,6 +350,8 @@
   "cs2.soldOut": "Out of stock",
   "cs2.loadMore": "Show more",
   "cs2.empty": "Nothing found. Try another name or reset the filters.",
+  "cs2.vanilla": "Vanilla",
+  "cs2.resetFilters": "Reset filters",
   "cs2.steamPrice": "Steam price",
   "cs2.offers": "Offers",
   "cs2.seed": "Seed",

@@ -1,3 +1,5 @@
+import { activeFilterCount } from "@yupay/utils";
+import { SearchX } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { hasLocale } from "next-intl";
@@ -7,6 +9,7 @@ import type { Metadata } from "next";
 
 import { SkinCard } from "@/components/skins/SkinCard";
 import { SkinCategoryBar } from "@/components/skins/SkinCategoryBar";
+import { SkinFilterDrawer } from "@/components/skins/SkinFilterDrawer";
 import { SkinFilters } from "@/components/skins/SkinFilters";
 import { SkinSearch } from "@/components/skins/SkinSearch";
 import { SkinSort } from "@/components/skins/SkinSort";
@@ -67,17 +70,25 @@ export default async function SkinsPage({ params, searchParams }: Props) {
         <h1 className="font-display mb-4 text-2xl font-bold">{t("title")}</h1>
         <div className="mb-3 flex flex-col gap-3 sm:flex-row">
           <SkinSearch initial={query.q ?? ""} locale={locale} query={query} />
-          <SkinSort query={query} locale={locale} />
+          <div className="flex gap-2">
+            <SkinFilterDrawer count={activeFilterCount(query)}>
+              <SkinFilters query={query} facets={facets} locale={locale} />
+            </SkinFilterDrawer>
+            <SkinSort query={query} locale={locale} />
+          </div>
         </div>
         <SkinCategoryBar query={query} facets={facets} locale={locale} />
-        <details className="border-border bg-card mt-3 rounded-xl border p-4 lg:hidden">
-          <summary className="cursor-pointer text-[15px] font-bold">{t("filters")}</summary>
-          <div className="mt-4">
-            <SkinFilters query={query} facets={facets} locale={locale} />
-          </div>
-        </details>
         {page.items.length === 0 ? (
-          <p className="text-tx-mute py-16 text-center">{t("empty")}</p>
+          <div className="flex flex-col items-center gap-4 py-16 text-center">
+            <SearchX className="text-tx-dim h-10 w-10" aria-hidden />
+            <p className="text-tx-mute max-w-sm">{t("empty")}</p>
+            <Link
+              href={pathFor(locale, PATH)}
+              className="border-border hover:border-border-2 rounded-xl border px-5 py-2.5 text-[14px] font-semibold"
+            >
+              {t("resetFilters")}
+            </Link>
+          </div>
         ) : (
           <ul className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
             {page.items.map((item) => (

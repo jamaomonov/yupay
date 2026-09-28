@@ -940,6 +940,9 @@
     "nav": "CS2 skins",
     "market": "Market",
     "otherWears": "Other wears",
-    "noOffers": "No offers right now"
+    "noOffers": "No offers right now",
+    "vanilla": "Vanilla",
+    "resetFilters": "Reset filters",
+    "done": "Done"
   }
 }

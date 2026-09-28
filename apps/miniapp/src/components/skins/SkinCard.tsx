@@ -1,4 +1,4 @@
-import { steamImageSize } from "@yupay/utils";
+import { isVanilla, steamImageSize } from "@yupay/utils";
 import { Link } from "wouter";
 
 import type { SkinItem } from "@yupay/utils";
@@ -14,8 +14,9 @@ import { skinPriceText } from "@/lib/skins";
 export function SkinCard({ item }: { item: SkinItem }) {
   const { t } = useT();
   const price = skinPriceText(item.price_uzs, item.price_usd);
+  // Under 5 % a badge on every other card only dilutes the ones that matter.
   const discount =
-    item.discount_percent !== null && item.discount_percent > 0 ? item.discount_percent : null;
+    item.discount_percent !== null && item.discount_percent >= 5 ? item.discount_percent : null;
 
   return (
     <Link
@@ -49,10 +50,10 @@ export function SkinCard({ item }: { item: SkinItem }) {
           {item.exterior && <span className="ml-auto font-mono">{item.exterior}</span>}
         </div>
         <p className="line-clamp-2 text-[12px] font-semibold leading-snug text-white">
-          {item.skin ?? item.name}
+          {isVanilla(item) ? t("cs2.vanilla") : (item.skin ?? item.name)}
           {item.phase && <span className="font-normal text-white/50"> · {item.phase}</span>}
         </p>
-        <p className="mt-auto pt-1 font-mono text-[13px] font-bold text-white">
+        <p className="mt-auto pt-1 text-[13px] font-bold tabular-nums text-white">
           {price ?? <span className="font-sans text-[11px] text-white/50">{t("cs2.soldOut")}</span>}
         </p>
       </div>
