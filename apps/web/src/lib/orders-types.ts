@@ -19,6 +19,27 @@ export interface OrderItemOut {
   fulfillment_state: string;
   fulfillment_data: Record<string, unknown>;
   display: OrderItemDisplay | null;
+  /** A CS2 skin line's Steam trade as the buyer sees it (`skins.trade_view`). */
+  skin_trade?: SkinTradeOut | null;
+}
+
+export type SkinTradeState = "buying" | "offer_sent" | "accepted" | "released" | "failed";
+export type SkinTradeReason = "not_accepted" | "sold_out" | "support" | "other";
+
+export interface SkinSellerOut {
+  name: string | null;
+  avatar_url: string | null;
+  level: number | null;
+  joined_at: string | null;
+}
+
+export interface SkinTradeOut {
+  state: SkinTradeState;
+  offer_url: string | null;
+  send_until: string | null;
+  release_date: string | null;
+  seller: SkinSellerOut | null;
+  reason_code: SkinTradeReason | null;
 }
 
 export interface OrderOut {

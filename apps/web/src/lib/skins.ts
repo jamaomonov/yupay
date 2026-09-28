@@ -88,3 +88,32 @@ export function displayPrice(
   if (priceUzs !== null) return formatUzs(locale, Math.round(Number(priceUzs)));
   return `$${priceUsd}`;
 }
+
+/** The signed-in customer's saved trade link, or `null`. */
+export async function getTradeLink(): Promise<string | null> {
+  const out = await apiFetch<{ url: string | null }>("/skins/tradelink");
+  return out.url;
+}
+
+export async function saveTradeLink(url: string): Promise<void> {
+  await apiFetch("/skins/tradelink", {
+    method: "PUT",
+    body: { url },
+    headers: { "Idempotency-Key": crypto.randomUUID() },
+  });
+}
+
+export type TradeLinkReason = "invalid" | "private" | "trade_ban" | "hold" | "unavailable";
+export interface TradeLinkVerdict {
+  ok: boolean;
+  reason: TradeLinkReason | null;
+}
+
+/** Advisory pre-purchase check; `unavailable` never blocks. */
+export async function checkTradeLink(url: string): Promise<TradeLinkVerdict> {
+  return apiFetch<TradeLinkVerdict>("/skins/tradelink/check", {
+    method: "POST",
+    body: { url },
+    anonymous: true,
+  });
+}

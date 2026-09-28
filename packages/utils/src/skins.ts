@@ -74,6 +74,8 @@ export interface SkinFamilyMember {
 export interface SkinDetail extends SkinItem {
   cheapest: { listing_id: number; price_usd: string; price_uzs: string | null }[];
   family: SkinFamilyMember[];
+  /** The SKU to order this item under; `null` until skins are sellable. */
+  buy_sku_id?: string | null;
 }
 export interface SkinListing {
   listing_id: number;
