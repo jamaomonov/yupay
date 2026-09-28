@@ -26,6 +26,7 @@ import { useT, useLocale, type MessageKey } from "@/lib/i18n";
 import { useMyOrders, orderToHistoryRow, type HistoryRow } from "@/lib/orders";
 import { getMyReviews } from "@/lib/reviews";
 import { hrefForGameSlug } from "@/lib/routes";
+import { isSkinItem } from "@/lib/skin-trade";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { useOverlay } from "@/store/useOverlay";
 import {
@@ -343,7 +344,11 @@ function OrdersTab() {
                     {tx.imageUrl ? (
                       <SafeImage
                         src={tx.imageUrl}
-                        className="h-full w-full object-cover"
+                        className={`h-full w-full ${
+                          tx.raw.items[0] && isSkinItem(tx.raw.items[0])
+                            ? "object-contain p-0.5"
+                            : "object-cover"
+                        }`}
                         fallback={<Receipt size={18} className="text-muted-foreground" />}
                       />
                     ) : (

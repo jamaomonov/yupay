@@ -7,6 +7,7 @@ import { useLocale, useTranslations } from "next-intl";
 import type { OrderItemOut } from "@/lib/orders-types";
 
 import { isOptimizable } from "@/lib/image";
+import { isSkinItem } from "@/lib/orders-types";
 
 /** Decimal-safe line total in USD major units ("11.30" × qty), computed in
  *  integer cents so 0.1 × 3 never drifts to 0.30000000000000004. */
@@ -39,6 +40,14 @@ function checkoutFields(fd: Record<string, unknown>): [string, string][] {
     .map(([k, v]) => [k, String(v)] as [string, string]);
 }
 
+/** A skin line's checkout data is ours (slug, listing, trade link, supplier
+ *  spelling); the item is already named in the headline and its trade has
+ *  its own card. The float is the one fact about *this* copy worth showing. */
+function skinFields(fd: Record<string, unknown>): [string, string][] {
+  const float = fd.float_value;
+  return typeof float === "number" ? [["float_value", float.toFixed(4)]] : [];
+}
+
 /** snake_case / kebab-case field name → readable "Player Id". */
 function humanize(key: string): string {
   return key
@@ -60,7 +69,10 @@ function ItemThumb({ item }: { item: OrderItemOut }) {
         // Same rule as the rest of the catalogue art: this thumbnail can point
         // at a third-party host, and this call site never had the guard.
         unoptimized={!isOptimizable(d.image_url)}
-        className="border-border size-11 shrink-0 rounded-lg border object-cover"
+        // A skin's art is a wide weapon on a transparent ground: fit, never crop.
+        className={`border-border size-11 shrink-0 rounded-lg border ${
+          isSkinItem(item) ? "bg-muted object-contain p-0.5" : "object-cover"
+        }`}
       />
     );
   }
@@ -83,7 +95,9 @@ export function OrderItems({ items }: { items: OrderItemOut[] }) {
       </h3>
       <ul className="space-y-2">
         {items.map((item) => {
-          const fields = checkoutFields(item.fulfillment_data);
+          const fields = isSkinItem(item)
+            ? skinFields(item.fulfillment_data)
+            : checkoutFields(item.fulfillment_data);
           return (
             <li key={item.id} className="border-border bg-card-2 rounded-xl border p-3">
               <div className="flex items-center gap-3">

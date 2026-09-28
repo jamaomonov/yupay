@@ -740,7 +740,8 @@
       "message": "Xabar",
       "note": "Izoh",
       "fulfillment_data": "Sizning maʼlumotlaringiz",
-      "deliveredNote": "Buyurtma yetkazib berildi."
+      "deliveredNote": "Buyurtma yetkazib berildi.",
+      "float_value": "Float"
     },
     "copyFailed": "Nusxa olinmadi — belgilab, qo‘lda nusxa oling.",
     "accessLinkFailed": "Havola yuborilmadi. Yana urinib ko‘ring.",

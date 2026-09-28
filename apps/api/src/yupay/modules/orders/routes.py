@@ -46,6 +46,7 @@ from yupay.modules.orders.schemas import (
 )
 from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
 from yupay.modules.skins.models import SkinTrade
+from yupay.modules.skins.order_display import skin_images, skin_line_name
 from yupay.modules.skins.trade_view import skin_trade_out
 from yupay.modules.users.models import User
 from yupay.modules.users.service import is_email_banned
@@ -66,8 +67,40 @@ def _to_order_out(order: Order, locale: str = "ru") -> OrderOut:
     return out
 
 
+async def _attach_skin_displays(db: AsyncSession, pairs: Sequence[tuple[OrderOut, Order]]) -> None:
+    """Show a skin line as the skin bought — its name and picture, not the SKU's.
+
+    The name replaces ``denomination`` (every client titles a line "brand ·
+    denomination"); ``product_name`` becomes the brand's so no subtitle repeats
+    "CS2 skin". One query for the whole response.
+    """
+    lines = [
+        (item_out, name, str(item_out.fulfillment_data.get("slug") or ""))
+        for out, _ in pairs
+        for item_out in out.items
+        if item_out.display is not None
+        and (name := skin_line_name(item_out.fulfillment_data)) is not None
+    ]
+    if not lines:
+        return
+    images = await skin_images(db, (slug for _, _, slug in lines if slug))
+    for item_out, name, slug in lines:
+        display = item_out.display
+        assert display is not None  # filtered above
+        item_out.display = display.model_copy(
+            update={
+                "denomination": name,
+                "product_name": display.brand_name,
+                "region": None,
+                "image_url": images.get(slug) or display.image_url,
+                "variable_amount": False,
+            }
+        )
+
+
 async def _attach_skin_trades(db: AsyncSession, pairs: Sequence[tuple[OrderOut, Order]]) -> None:
     """Fill ``skin_trade`` on skin lines — one query for the whole response."""
+    await _attach_skin_displays(db, pairs)
     items = {item.id: item for _, order in pairs for item in order.items}
     if not items:
         return

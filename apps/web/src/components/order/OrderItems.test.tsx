@@ -17,6 +17,7 @@ const messages = {
       receipt: {
         steam_login: "Steam login",
         login: "Login",
+        float_value: "Float",
       },
     },
   },
@@ -97,4 +98,36 @@ it("prefers a fixed denomination over the USD amount", () => {
   );
   expect(screen.getByText("Steam · 820 UC")).toBeInTheDocument();
   expect(screen.queryByText(/\$11\.30/)).not.toBeInTheDocument();
+});
+
+it("shows a skin as the skin bought, with its float and none of the checkout internals", () => {
+  wrap(
+    <OrderItems
+      items={[
+        item({
+          unit_price_usd: "30.00",
+          display: display({
+            brand_name: "CS2 скины",
+            product_name: "CS2 скины",
+            sku_code: "cs2-skin",
+            denomination: "AK-47 | Redline (Field-Tested)",
+            variable_amount: false,
+          }),
+          fulfillment_data: {
+            slug: "ak-47-redline-field-tested",
+            listing_id: 53644184708,
+            tradelink: "https://steamcommunity.com/tradeoffer/new/?partner=1&token=abcdefgh",
+            name: "AK-47 | Redline (Field-Tested)",
+            waxpeer_name: "AK-47 | Redline (Field-Tested)",
+            float_value: 0.2134,
+          },
+        }),
+      ]}
+    />,
+  );
+  expect(screen.getByText("CS2 скины · AK-47 | Redline (Field-Tested)")).toBeInTheDocument();
+  expect(screen.getByText("Float")).toBeInTheDocument();
+  expect(screen.queryByText(/tradeoffer/)).not.toBeInTheDocument();
+  expect(screen.queryByText("Listing Id")).not.toBeInTheDocument();
+  expect(screen.queryByText("Waxpeer Name")).not.toBeInTheDocument();
 });

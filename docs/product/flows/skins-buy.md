@@ -55,3 +55,8 @@ Item page, buy panel (shown only when the item API names `buy_sku_id`):
 After paying, the customer lands on the order page. Its status hero never says "credited"
 or "back to your card" for a skin: in flight it says the trade is coming, a refund says the
 YuPay balance, a failure says support. The trade card below it follows the states above.
+
+In the order list and on the order page a skin line is named and pictured as the skin
+bought — the name snapshotted at checkout, the picture from the catalogue
+(`skins/order_display.py`) — not as the generic `cs2-skin` SKU. Its checkout data (slug,
+listing, trade link) is never listed; only the float is.

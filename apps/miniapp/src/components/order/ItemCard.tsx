@@ -51,7 +51,10 @@ export function ItemCard({
         {display?.image_url ? (
           <SafeImage
             src={display.image_url}
-            className="size-11 flex-shrink-0 rounded-xl object-cover"
+            // A skin's art is a wide weapon on a transparent ground: fit, never crop.
+            className={`size-11 flex-shrink-0 rounded-xl ${
+              isSkinItem(item) ? "bg-[hsl(var(--surface-2))] object-contain p-0.5" : "object-cover"
+            }`}
             fallback={
               <div
                 className="flex size-11 flex-shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white/40"

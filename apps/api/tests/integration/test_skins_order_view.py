@@ -12,7 +12,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.modules.orders.models import Order, OrderItem
-from yupay.modules.skins.models import SkinTrade
+from yupay.modules.skins.models import SkinItem, SkinTrade
 
 from tests.integration.test_checkout_steam_gift import _login_user
 from tests.integration.test_fulfillment_async import _make_paid_order
@@ -98,3 +98,50 @@ async def test_the_order_list_reads_trades_in_one_query(
         event.remove(Engine, "before_cursor_execute", record)
     assert [i["items"][0]["skin_trade"]["state"] for i in body["items"]] == ["buying"] * 3
     assert sum("FROM skin_trades" in s for s in seen) == 1
+
+
+async def test_a_skin_line_is_shown_as_the_skin_bought(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The order names and pictures the skin, not the generic «CS2 skin» SKU."""
+    token = await _login_user(integration_client, tg_id=940_003)
+    auth = {"Authorization": f"Bearer {token}"}
+    me = (await integration_client.get("/api/v1/auth/me", headers=auth)).json()
+    order_id = await _owned_order(db_session, me["id"], "ov-disp", status=0)
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order_id))
+    ).scalar_one()
+    item.fulfillment_data = {
+        "slug": "ak-47-redline-field-tested-ov",
+        "name": "AK-47 | Redline (Field-Tested)",
+        "waxpeer_name": "AK-47 | Redline (Field-Tested)",
+        "market_hash_name": "AK-47 | Redline (Field-Tested)",
+        "phase": "",
+    }
+    db_session.add(
+        SkinItem(
+            id=new_id(),
+            market_hash_name="AK-47 | Redline (Field-Tested) ov",
+            phase="",
+            slug="ak-47-redline-field-tested-ov",
+            category="rifles",
+            search_text="ak-47 redline",
+            image_url="https://community.akamai.steamstatic.com/economy/image/abc",
+        )
+    )
+    await db_session.commit()
+
+    for path in (f"/api/v1/orders/{order_id}", "/api/v1/orders"):
+        body = (await integration_client.get(path, headers=auth)).json()
+        order = (
+            body
+            if "items" in body and "status" in body
+            else next(o for o in body["items"] if o["id"] == order_id)
+        )
+        display = order["items"][0]["display"]
+        assert display["denomination"] == "AK-47 | Redline (Field-Tested)", path
+        assert display["image_url"] == (
+            "https://community.fastly.steamstatic.com/economy/image/abc"
+        ), path
+        assert display["product_name"] == display["brand_name"], path
+        assert display["region"] is None, path

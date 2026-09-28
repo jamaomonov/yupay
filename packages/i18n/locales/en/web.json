@@ -740,7 +740,8 @@
       "message": "Message",
       "note": "Note",
       "fulfillment_data": "Your details",
-      "deliveredNote": "Order delivered."
+      "deliveredNote": "Order delivered.",
+      "float_value": "Float"
     },
     "copyFailed": "Couldn’t copy — select and copy manually.",
     "accessLinkFailed": "Couldn’t send the link. Please try again.",

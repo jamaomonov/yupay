@@ -42,6 +42,8 @@ order page `components/order/SkinTradeCard.tsx`. Mini app: `components/skins/Ski
 with `lib/skin-buy.ts`, order page `components/order/SkinTradeCard.tsx` with `lib/skin-trade.ts`.
 A skin line is recognised by its SKU code (`cs2-skin`) as well as by its trade row, so the
 order page never reads as a top-up in the seconds before the worker writes that row.
+The order API names and pictures a skin line as the skin bought (`order_display.py`,
+applied in `orders/routes.py`).
 
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,
