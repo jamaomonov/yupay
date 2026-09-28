@@ -4,7 +4,6 @@ import { useLocation, useParams } from "wouter";
 
 import type { GiftAppDetail, GiftPackage, GiftRegion } from "@/lib/gifts";
 import type { MessageKey } from "@/lib/i18n";
-import type { MethodVisibility, ProviderAvailability } from "@/lib/orders";
 
 import { ConfirmPaymentDialog, type ConfirmRow } from "@/components/ConfirmPaymentDialog";
 import { DlcSheet } from "@/components/gifts/DlcSheet";
@@ -17,6 +16,14 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, newIdempotencyKey } from "@/lib/api";
+import {
+  isOrderNotAwaitingPaymentConflict,
+  nextSelectedMethodId,
+  PROVIDER_BY_METHOD_FULL,
+  WALLET_METHOD_ID,
+  walletPayState,
+  walletSubmitReady,
+} from "@/lib/checkout-shared";
 import {
   extractExpectedAmount,
   fetchGiftDetail,
@@ -33,7 +40,7 @@ import {
   useCheckout,
   type CheckoutResult,
 } from "@/lib/orders";
-import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
+import { PAYMENT_METHODS } from "@/lib/payment-methods";
 import { countryName, flagEmoji } from "@/lib/regions";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -41,6 +48,14 @@ import { useGiftProfileCheck } from "@/lib/use-gift-profile-check";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
 import { checkoutErrorMessage } from "@/pages/TopUp";
+
+export {
+  isOrderNotAwaitingPaymentConflict,
+  nextSelectedMethodId,
+  walletPayState,
+  walletSubmitReady,
+} from "@/lib/checkout-shared";
+export type { WalletPayState } from "@/lib/checkout-shared";
 
 /** How many offered countries show as their own pill before the rest
  *  collapse behind a single "другой регион" toggle — mirrors the web
@@ -50,21 +65,12 @@ const VISIBLE_COUNTRY_COUNT = 4;
 /** Sentinel for "pay from wallet balance" — handled by its own card, not
  *  part of the shared acquirer grid. The backend provider slug is
  *  ``wallet``. Same sentinel `TopUp.tsx` uses. */
-const WALLET_METHOD_ID = "wallet";
 
 /** How long the invite field waits, idle, before showing an error on its
  *  own — mirrors `GiftPurchasePanel.tsx`'s identical constant on the web
  *  storefront. Blurring the field shows the error immediately regardless
  *  (see `showInviteInvalid`). */
 const INVITE_ERROR_DEBOUNCE_MS = 600;
-
-// The shared acquirer list carries only the external providers; the wallet
-// option is checkout-only, so the provider map is extended locally for
-// resolution/availability — mirrors `TopUp.tsx`'s `PROVIDER_BY_METHOD_FULL`.
-const PROVIDER_BY_METHOD_FULL: Record<string, string> = {
-  ...PROVIDER_BY_METHOD,
-  [WALLET_METHOD_ID]: "wallet",
-};
 
 /** Resolves one representative country for a given zone from a `regions`
  *  list — the reverse of `zoneForCountry` (`@/lib/gifts`), used only for
@@ -229,76 +235,6 @@ export function giftPriceAvailability(
   return price.price_uzs == null ? "fxDown" : "priced";
 }
 
-/** What the wallet ("pay from balance") tile should say and whether it's
- *  selectable — mirrors `TopUp.tsx`'s inline `walletEnough`/`walletShortfall`/
- *  `disabled` math exactly (see `WalletPayOption.tsx`), pulled out as a pure
- *  function so it's unit-testable under this app's node-env convention
- *  instead of only reachable by rendering. */
-export interface WalletPayState {
-  /** Whether the balance is known to cover `total`. Optimistically `true`
-   *  while the balance is still loading (`balance === null`) — a submit
-   *  re-checks server-side regardless, same belt-and-suspenders posture as
-   *  `TopUp`. */
-  enough: boolean;
-  /** Non-selectable: an admin has the wallet in maintenance, the total
-   *  isn't known yet (FX-unavailable `price_uzs`), or the balance is short
-   *  and no longer loading. */
-  disabled: boolean;
-  /** UZS still needed to afford `total`. `0` unless genuinely short. */
-  shortfall: number;
-  /** `true` when there is nothing to weigh the balance against — the
-   *  selected line's `price_uzs` was `null` (FX unavailable). Distinct from
-   *  an insufficient balance: never compare against a guessed total. */
-  unknownTotal: boolean;
-}
-
-export function walletPayState({
-  balance,
-  total,
-  loading,
-  visibility,
-}: {
-  balance: number | null;
-  total: number | null;
-  loading: boolean;
-  visibility: MethodVisibility;
-}): WalletPayState {
-  if (total === null) {
-    return { enough: false, disabled: true, shortfall: 0, unknownTotal: true };
-  }
-  const enough = balance === null ? true : balance >= total;
-  const shortfall = balance === null || enough ? 0 : total - balance;
-  const disabled = visibility === "maintenance" || (!loading && !enough);
-  return { enough, disabled, shortfall, unknownTotal: false };
-}
-
-/**
- * Whether Buy may actually be submitted for the currently selected method —
- * the honest twin of `walletPayState.enough`'s optimistic display value.
- * Every non-wallet method is always ready (the acquirer path is untouched
- * by any of this). For the wallet, "ready" requires a balance that has
- * actually resolved (`balance !== null` — a still-loading balance is not a
- * known-sufficient one) AND a known total (`total !== null` — FX
- * unavailable must never be guessed past) AND that balance covering that
- * total. Pulled out as a pure function so this live-payment gate is
- * unit-tested directly rather than only reachable by rendering. Mirrors the
- * web panel, which only enables Buy once its wallet tile reaches the
- * genuine `"ready"` state (`canPayFromBalance(walletState)`), never a
- * loading or unknown one.
- */
-export function walletSubmitReady({
-  methodId,
-  balance,
-  total,
-}: {
-  methodId: string;
-  balance: number | null;
-  total: number | null;
-}): boolean {
-  if (methodId !== WALLET_METHOD_ID) return true;
-  return balance !== null && total !== null && balance >= total;
-}
-
 /**
  * What the fixed Buy CTA says when it can't be pressed yet — mirrors
  * `canBuy`'s own checks, in the same order, so the reason always matches the
@@ -358,41 +294,6 @@ export function giftPayHint({
   if (skuId === null) return "gifts.game.payHintLoading";
   if (!methodReady || !submitReady) return "gifts.game.payHintMethod";
   return null;
-}
-
-/**
- * Decide the next selected method id when live provider status changes —
- * the reselect effect's own logic, pulled out pure so the wallet-stickiness
- * rule is unit-tested directly instead of only reachable by mounting the
- * page. `statusBySlug === null` (not yet loaded) leaves `current` alone,
- * same fail-open posture as `methodVisibility`. A wallet selection is NEVER
- * reassigned here, regardless of its own live status — its tile and
- * `walletSubmitReady`/`canBuy` are what decide whether it's usable, not
- * this reselection; reassigning it would silently swap the buyer onto a
- * card with no notice (mirrors `GiftPurchasePanel.tsx`'s identical guard on
- * web: `if (current === WALLET_METHOD_ID) return current;`). Otherwise:
- * keep `current` if it still resolves to an `"active"` provider, else fall
- * back to the first acquirer that does, else deselect entirely (`""`).
- */
-export function nextSelectedMethodId({
-  current,
-  statusBySlug,
-  providerByMethod,
-  methods,
-}: {
-  current: string;
-  statusBySlug: Map<string, ProviderAvailability> | null;
-  providerByMethod: Record<string, string>;
-  methods: { id: string }[];
-}): string {
-  if (statusBySlug === null || current === WALLET_METHOD_ID) return current;
-  const isAvailable = (id: string): boolean => {
-    const provider = providerByMethod[id];
-    return provider !== undefined && methodVisibility(provider, statusBySlug) === "active";
-  };
-  if (current === "" || isAvailable(current)) return current;
-  const fallback = methods.find((m) => isAvailable(m.id));
-  return fallback ? fallback.id : "";
 }
 
 // ---------- sticky order idempotency key ----------
@@ -477,31 +378,6 @@ export function nextOrderKeyState(
 ): OrderKeyState {
   if (prev?.fingerprint === fingerprint) return prev;
   return { fingerprint, key: mintKey() };
-}
-
-/**
- * True when `err` is the 409 `create_intent` raises for an order that has
- * walked past `pending_payment` (most commonly `ORDER_EXPIRY_SECONDS`
- * elapsing and the scheduler flipping it to `expired` before a retry
- * landed) — `ConflictError("order is not awaiting payment", extra=
- * {"status": order.status})` in `payments/service.py`. Matched structurally
- * on the 409 status plus the `extra.status` field that guard's `extra=`
- * keyword puts on the body (nested under `body.extra` — `app_error_handler`
- * merges `exc.extra` onto the response body), never by matching `detail`
- * text, which is shared prose with other 409s from the same endpoint (e.g.
- * the `extra.current_provider` conflict for a mismatched payment provider).
- * Mirrors `isOrderNotAwaitingPaymentConflict` in
- * `apps/web/src/lib/gift-checkout.ts`, adapted to this app's `ApiError`
- * shape, whose `body` is the raw parsed problem+json rather than a
- * pre-split `extra` field.
- */
-export function isOrderNotAwaitingPaymentConflict(err: unknown): boolean {
-  if (!(err instanceof ApiError) || err.status !== 409) return false;
-  const body = err.body;
-  if (!body || typeof body !== "object") return false;
-  const extra = (body as Record<string, unknown>).extra;
-  if (!extra || typeof extra !== "object") return false;
-  return typeof (extra as Record<string, unknown>).status === "string";
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
