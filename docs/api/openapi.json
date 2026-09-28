@@ -1492,6 +1492,252 @@
         "title": "AdminReviewOut",
         "type": "object"
       },
+      "AdminSkinTradeOut": {
+        "description": "One skin trade as an operator sees it.",
+        "properties": {
+          "accepted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Accepted At"
+          },
+          "attention": {
+            "title": "Attention",
+            "type": "boolean"
+          },
+          "bought_units": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bought Units"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "last_checked_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Checked At"
+          },
+          "market_hash_name": {
+            "title": "Market Hash Name",
+            "type": "string"
+          },
+          "order_id": {
+            "title": "Order Id",
+            "type": "string"
+          },
+          "order_item_id": {
+            "title": "Order Item Id",
+            "type": "string"
+          },
+          "paid_units": {
+            "title": "Paid Units",
+            "type": "integer"
+          },
+          "penalties": {
+            "title": "Penalties"
+          },
+          "phase": {
+            "title": "Phase",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_accepted",
+                  "sold_out",
+                  "support",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "seller_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seller Name"
+          },
+          "send_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Until"
+          },
+          "state": {
+            "enum": [
+              "buying",
+              "offer_sent",
+              "accepted",
+              "released",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "task_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Status"
+          },
+          "task_sub_state": {
+            "anyOf": [
+              {
+                "enum": [
+                  "buy_pending",
+                  "buy_unconfirmed"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Sub State"
+          },
+          "trade_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trade Id"
+          },
+          "waxpeer_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waxpeer Status"
+          }
+        },
+        "required": [
+          "id",
+          "order_id",
+          "order_item_id",
+          "created_at",
+          "market_hash_name",
+          "phase",
+          "paid_units",
+          "bought_units",
+          "waxpeer_status",
+          "state",
+          "reason_code",
+          "reason",
+          "penalties",
+          "seller_name",
+          "trade_id",
+          "send_until",
+          "release_date",
+          "accepted_at",
+          "last_checked_at",
+          "task_status",
+          "task_sub_state",
+          "attention"
+        ],
+        "title": "AdminSkinTradeOut",
+        "type": "object"
+      },
+      "AdminSkinTradesOut": {
+        "description": "A page of trades plus how many match.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSkinTradeOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AdminSkinTradesOut",
+        "type": "object"
+      },
       "AdminSkuOut": {
         "description": "Admin-side SKU view including overrides.",
         "properties": {
@@ -30063,6 +30309,108 @@
           }
         },
         "summary": "What would this cost sell for, and why",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
+    "/api/v1/admin/skins/trades": {
+      "get": {
+        "description": "The trades screen: Waxpeer status, our state, seller, and what needs settling.",
+        "operationId": "admin_list_trades_api_v1_admin_skins_trades_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "view",
+            "required": false,
+            "schema": {
+              "default": "all",
+              "enum": [
+                "all",
+                "active",
+                "attention"
+              ],
+              "title": "View",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSkinTradesOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Skin trades, newest first \u2014 all, in flight, or needing a human",
         "tags": [
           "admin:skins"
         ]

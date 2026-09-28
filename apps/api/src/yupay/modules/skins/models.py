@@ -190,6 +190,8 @@ class SkinTrade(Base):
         UniqueConstraint("order_item_id", name="uq_skin_trades_order_item"),
         UniqueConstraint("project_id", name="uq_skin_trades_project"),
         Index("ix_skin_trades_protection", "status", "is_released"),
+        # The admin trades screen, newest first (migration 0090).
+        Index("ix_skin_trades_created_at", "created_at"),
     )
 
 

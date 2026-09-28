@@ -22,6 +22,7 @@ from yupay.core.idempotency import (
 )
 from yupay.core.redis import get_redis
 from yupay.modules.admin.deps import require_admin
+from yupay.modules.skins.admin_trades import AdminSkinTradesOut, TradesView, list_trades
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.prices import bump_catalog_version
 from yupay.modules.skins.pricing import Channel, PricingRules, quote
@@ -170,6 +171,24 @@ async def admin_set_item_pricing(
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out
+
+
+@admin_router.get(
+    "/trades",
+    response_model=AdminSkinTradesOut,
+    summary="Skin trades, newest first — all, in flight, or needing a human",
+)
+async def admin_list_trades(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    view: Annotated[TradesView, Query()] = "all",
+    q: Annotated[str | None, Query(max_length=100)] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> AdminSkinTradesOut:
+    """The trades screen: Waxpeer status, our state, seller, and what needs settling."""
+    return await list_trades(
+        db, view=view, q=q, limit=max(1, min(limit, 500)), offset=max(0, offset)
+    )
 
 
 __all__ = ["admin_router"]
