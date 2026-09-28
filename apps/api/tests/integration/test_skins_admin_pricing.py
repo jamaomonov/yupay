@@ -198,3 +198,35 @@ async def test_listings_call_uses_the_short_timeout(
     monkeypatch.setattr(routes, "WaxpeerClient", _Spy)
     await integration_client.get(f"/api/v1/skins/{ak.slug}/listings")
     assert seen["timeout"] == 4.0
+
+
+async def test_preview_prices_a_real_skin_by_slug(
+    integration_client: AsyncClient, headers: dict[str, str], ak: SkinItem
+) -> None:
+    r = await integration_client.get(
+        "/api/v1/admin/skins/pricing/preview", params={"slug": ak.slug}, headers=headers
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["cost_usd"] == "27.867"
+    tweaked = await integration_client.get(
+        "/api/v1/admin/skins/pricing/preview",
+        params={"slug": ak.slug, "fixed_price_usd": "40"},
+        headers=headers,
+    )
+    assert tweaked.json()["price_usd"] == "40.00"
+    assert tweaked.json()["applied"] == "fixed"
+
+
+async def test_preview_needs_a_cost_or_a_skin(
+    integration_client: AsyncClient, headers: dict[str, str]
+) -> None:
+    r = await integration_client.get("/api/v1/admin/skins/pricing/preview", headers=headers)
+    assert r.status_code == 422
+
+
+async def test_pricing_says_how_many_skins_a_save_reprices(
+    integration_client: AsyncClient, headers: dict[str, str], ak: SkinItem
+) -> None:
+    body = (await integration_client.get("/api/v1/admin/skins/pricing", headers=headers)).json()
+    assert body["items_active"] == 1
+    assert "prices_updated_at" in body

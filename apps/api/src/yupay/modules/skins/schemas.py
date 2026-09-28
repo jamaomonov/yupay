@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 
 from pydantic import BaseModel, Field
@@ -90,6 +91,10 @@ class SkinsPricingOut(BaseModel):
     enabled: bool
     sync_enabled: bool
     categories: list[str]
+    #: How many sellable skins a save reprices.
+    items_active: int = 0
+    #: When the five-minute price sync last wrote a price (``None`` before the first).
+    prices_updated_at: datetime | None = None
 
 
 class SkinQuoteOut(BaseModel):
@@ -154,3 +159,9 @@ class AdminSkinItemsOut(BaseModel):
     """Search results (no total — the screen shows the first page only)."""
 
     items: list[AdminSkinItemOut]
+
+
+class ResolveTradeIn(BaseModel):
+    """What the operator did to settle a trade — optional, kept on the trade."""
+
+    note: str | None = Field(default=None, max_length=500)

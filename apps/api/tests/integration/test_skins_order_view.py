@@ -16,6 +16,7 @@ from yupay.modules.skins.models import SkinItem, SkinTrade
 
 from tests.integration.test_checkout_steam_gift import _login_user
 from tests.integration.test_fulfillment_async import _make_paid_order
+from tests.integration.test_skins_admin_pricing import _admin_headers
 
 pytestmark = pytest.mark.asyncio
 
@@ -145,3 +146,30 @@ async def test_a_skin_line_is_shown_as_the_skin_bought(
         ), path
         assert display["product_name"] == display["brand_name"], path
         assert display["region"] is None, path
+
+
+async def test_the_admin_order_page_shows_the_skin_and_its_trade(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=940_010)
+    me = (await integration_client.get("/api/v1/auth/me", headers=headers)).json()
+    order_id = await _owned_order(db_session, me["id"], "ov-admin", status=4, trade_id="9393511289")
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order_id))
+    ).scalar_one()
+    item.fulfillment_data = {
+        "slug": "x",
+        "name": "AK-47 | Redline (Field-Tested)",
+        "waxpeer_name": "x",
+    }
+    await db_session.commit()
+    body = (
+        await integration_client.get(f"/api/v1/admin/orders/{order_id}", headers=headers)
+    ).json()
+    line = body["items"][0]
+    assert line["display"]["denomination"] == "AK-47 | Redline (Field-Tested)"
+    assert line["skin_trade"]["state"] == "offer_sent"
+    listed = (await integration_client.get("/api/v1/admin/orders", headers=headers)).json()
+    assert listed["items"][0]["items"][0]["display"]["denomination"] == (
+        "AK-47 | Redline (Field-Tested)"
+    )

@@ -9,8 +9,8 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from yupay.core.ids import new_id
 from yupay.core.clock import now
+from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import OrderItem
 from yupay.modules.skins.models import SkinTrade
@@ -214,3 +214,39 @@ async def test_search_wildcards_are_literal(
     await _trade(db_session, "wild", 0, status=4)
     assert (await _get(integration_client, headers, q="_"))["total"] == 0
     assert (await _get(integration_client, headers, q="%"))["total"] == 0
+
+
+async def test_a_trade_row_carries_what_ops_looks_up(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_011)
+    await _trade(
+        db_session,
+        "ops",
+        0,
+        status=6,
+        waxpeer_id=77,
+        trade_id="9393511289",
+        penalties={"total_penalty": 1500},
+    )
+    await _trade(db_session, "ops-live", 1, status=4)
+    body = await _get(integration_client, headers)
+    row = next(i for i in body["items"] if i["project_id"] == "p-ops")
+    assert row["waxpeer_id"] == 77
+    assert row["offer_url"] == "https://steamcommunity.com/tradeoffer/9393511289/"
+    assert row["sold_usd"] is not None
+    assert body["counts"] == {"active": 1, "attention": 1}
+
+
+async def test_resolving_keeps_the_operators_note(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_012)
+    _, trade_id = await _trade(db_session, "note", 0, reason="ambiguous_trade")
+    r = await integration_client.post(
+        f"/api/v1/admin/skins/trades/{trade_id}/resolve",
+        json={"note": "вернули на баланс вручную"},
+        headers={**headers, "Idempotency-Key": "resolve-key-0000003"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["resolved_note"] == "вернули на баланс вручную"

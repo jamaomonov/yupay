@@ -1652,6 +1652,17 @@
             "title": "Id",
             "type": "string"
           },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
           "last_checked_at": {
             "anyOf": [
               {
@@ -1667,6 +1678,17 @@
           "market_hash_name": {
             "title": "Market Hash Name",
             "type": "string"
+          },
+          "offer_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Url"
           },
           "order_id": {
             "title": "Order Id",
@@ -1685,6 +1707,10 @@
           },
           "phase": {
             "title": "Phase",
+            "type": "string"
+          },
+          "project_id": {
+            "title": "Project Id",
             "type": "string"
           },
           "reason": {
@@ -1739,6 +1765,17 @@
             ],
             "title": "Resolved At"
           },
+          "resolved_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved Note"
+          },
           "seller_name": {
             "anyOf": [
               {
@@ -1761,6 +1798,11 @@
               }
             ],
             "title": "Send Until"
+          },
+          "sold_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Sold Usd",
+            "type": "string"
           },
           "state": {
             "enum": [
@@ -1810,6 +1852,17 @@
             ],
             "title": "Trade Id"
           },
+          "waxpeer_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Waxpeer Id"
+          },
           "waxpeer_status": {
             "anyOf": [
               {
@@ -1824,11 +1877,15 @@
         },
         "required": [
           "id",
+          "project_id",
+          "waxpeer_id",
           "order_id",
           "order_item_id",
           "created_at",
           "market_hash_name",
           "phase",
+          "image_url",
+          "sold_usd",
           "paid_units",
           "bought_units",
           "waxpeer_status",
@@ -1838,6 +1895,7 @@
           "penalties",
           "seller_name",
           "trade_id",
+          "offer_url",
           "send_until",
           "release_date",
           "accepted_at",
@@ -1845,14 +1903,18 @@
           "task_status",
           "task_sub_state",
           "resolved_at",
+          "resolved_note",
           "attention"
         ],
         "title": "AdminSkinTradeOut",
         "type": "object"
       },
       "AdminSkinTradesOut": {
-        "description": "A page of trades plus how many match.",
+        "description": "A page of trades, how many match, and the tab counts (search ignored).",
         "properties": {
+          "counts": {
+            "$ref": "#/components/schemas/TradeCounts"
+          },
           "items": {
             "items": {
               "$ref": "#/components/schemas/AdminSkinTradeOut"
@@ -1867,7 +1929,8 @@
         },
         "required": [
           "items",
-          "total"
+          "total",
+          "counts"
         ],
         "title": "AdminSkinTradesOut",
         "type": "object"
@@ -14435,6 +14498,25 @@
         "title": "ResetPasswordIn",
         "type": "object"
       },
+      "ResolveTradeIn": {
+        "description": "What the operator did to settle a trade \u2014 optional, kept on the trade.",
+        "properties": {
+          "note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Note"
+          }
+        },
+        "title": "ResolveTradeIn",
+        "type": "object"
+      },
       "RevenuePoint": {
         "properties": {
           "date": {
@@ -16049,6 +16131,23 @@
           "enabled": {
             "title": "Enabled",
             "type": "boolean"
+          },
+          "items_active": {
+            "default": 0,
+            "title": "Items Active",
+            "type": "integer"
+          },
+          "prices_updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prices Updated At"
           },
           "rules": {
             "$ref": "#/components/schemas/PricingRules-Output"
@@ -18076,6 +18175,25 @@
           "hash"
         ],
         "title": "TelegramWidgetIn",
+        "type": "object"
+      },
+      "TradeCounts": {
+        "description": "How many trades are in flight and how many need a human \u2014 the tab badges.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "integer"
+          },
+          "attention": {
+            "title": "Attention",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active",
+          "attention"
+        ],
+        "title": "TradeCounts",
         "type": "object"
       },
       "TradeLinkCheckOut": {
@@ -30353,12 +30471,13 @@
     },
     "/api/v1/admin/skins/pricing/preview": {
       "get": {
+        "description": "A price and its reasoning \u2014 for typed numbers, or for a real skin by ``slug``.\n\nWith ``slug`` the skin's own cost, category, weapon, listing count, overrides and\nSteam price are used; any parameter also given replaces the skin's (the override\neditor previews a new markup this way before saving it).",
         "operationId": "admin_preview_price_api_v1_admin_skins_pricing_preview_get",
         "parameters": [
           {
             "in": "query",
             "name": "cost_usd",
-            "required": true,
+            "required": false,
             "schema": {
               "anyOf": [
                 {
@@ -30368,6 +30487,9 @@
                 {
                   "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
                   "type": "string"
+                },
+                {
+                  "type": "null"
                 }
               ],
               "title": "Cost Usd"
@@ -30375,12 +30497,34 @@
           },
           {
             "in": "query",
+            "name": "slug",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slug"
+            }
+          },
+          {
+            "in": "query",
             "name": "category",
             "required": false,
             "schema": {
-              "default": "rifles",
-              "title": "Category",
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
             }
           },
           {
@@ -30684,6 +30828,23 @@
             }
           }
         ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResolveTradeIn"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "content": {

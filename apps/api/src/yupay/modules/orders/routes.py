@@ -174,6 +174,8 @@ async def _to_admin_orders_out(
         dto.deposit_charged_usd = state.deposit_charged
         dto.deposit_returned_usd = state.deposit_returned
         out.append(dto)
+    # A skin line reads as the skin bought, with its trade — as on the customer's page.
+    await _attach_skin_trades(db, list(zip(out, orders, strict=True)))
     return out
 
 

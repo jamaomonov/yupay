@@ -22,9 +22,11 @@ def upgrade() -> None:
         "skin_trades", sa.Column("resolved_at", sa.DateTime(timezone=True), nullable=True)
     )
     op.add_column("skin_trades", sa.Column("resolved_by", sa.String(64), nullable=True))
+    op.add_column("skin_trades", sa.Column("resolved_note", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
+    op.drop_column("skin_trades", "resolved_note")
     op.drop_column("skin_trades", "resolved_by")
     op.drop_column("skin_trades", "resolved_at")
     op.drop_column("skin_trades", "audit_verdict")

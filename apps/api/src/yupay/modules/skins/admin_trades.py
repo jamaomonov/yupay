@@ -15,6 +15,7 @@ state and to the task for whether the buy is still unconfirmed. Three views:
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel
@@ -26,6 +27,7 @@ from yupay.core.clock import now
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import OrderItem
 from yupay.modules.skins.models import SkinTrade
+from yupay.modules.skins.order_display import skin_images
 from yupay.modules.skins.trade_view import SkinTradeReason, SkinTradeState, skin_trade_out
 
 TradesView = Literal["all", "active", "attention"]
@@ -37,11 +39,17 @@ class AdminSkinTradeOut(BaseModel):
     """One skin trade as an operator sees it."""
 
     id: str
+    #: Our key on Waxpeer — what their dashboard is searched by.
+    project_id: str
+    waxpeer_id: int | None
     order_id: str
     order_item_id: str
     created_at: datetime
     market_hash_name: str
     phase: str
+    image_url: str | None
+    #: What the customer was charged for the line, in USD (the margin's other half).
+    sold_usd: Decimal
     paid_units: int
     bought_units: int | None
     waxpeer_status: int | None
@@ -51,6 +59,7 @@ class AdminSkinTradeOut(BaseModel):
     penalties: Any
     seller_name: str | None
     trade_id: str | None
+    offer_url: str | None
     send_until: datetime | None
     release_date: datetime | None
     accepted_at: datetime | None
@@ -58,14 +67,23 @@ class AdminSkinTradeOut(BaseModel):
     task_status: str | None
     task_sub_state: Literal["buy_pending", "buy_unconfirmed"] | None
     resolved_at: datetime | None
+    resolved_note: str | None
     attention: bool
 
 
+class TradeCounts(BaseModel):
+    """How many trades are in flight and how many need a human — the tab badges."""
+
+    active: int
+    attention: int
+
+
 class AdminSkinTradesOut(BaseModel):
-    """A page of trades plus how many match."""
+    """A page of trades, how many match, and the tab counts (search ignored)."""
 
     items: list[AdminSkinTradeOut]
     total: int
+    counts: TradeCounts
 
 
 #: A buy whose lookup failed is retried every 5 s; only one still pending after this
@@ -144,16 +162,25 @@ def _is_attention(row: SkinTrade, task: FulfillmentTask | None, sub_state: str |
     return rolled_back or row.reason in _SUPPORT_REASONS or stuck
 
 
-def _out(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> AdminSkinTradeOut:
+def _out(
+    row: SkinTrade,
+    item: OrderItem,
+    task: FulfillmentTask | None,
+    images: dict[str, str | None] | None = None,
+) -> AdminSkinTradeOut:
     view = skin_trade_out(row, fulfillment_state=item.fulfillment_state)
     sub_state = _sub_state(task, row)
     return AdminSkinTradeOut(
         id=row.id,
+        project_id=row.project_id,
+        waxpeer_id=row.waxpeer_id,
         order_id=item.order_id,
         order_item_id=item.id,
         created_at=row.created_at,
         market_hash_name=row.market_hash_name,
         phase=row.phase or "",
+        image_url=(images or {}).get(str((item.fulfillment_data or {}).get("slug") or "")),
+        sold_usd=item.unit_price_usd,
         paid_units=row.paid_units,
         bought_units=row.bought_units,
         waxpeer_status=row.status,
@@ -163,6 +190,7 @@ def _out(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> Admin
         penalties=row.penalties,
         seller_name=(row.seller or {}).get("name"),
         trade_id=row.trade_id,
+        offer_url=view.offer_url,
         send_until=row.send_until,
         release_date=row.release_date,
         accepted_at=row.accepted_at,
@@ -170,6 +198,7 @@ def _out(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> Admin
         task_status=task.status if task is not None else None,
         task_sub_state=sub_state,
         resolved_at=row.resolved_at,
+        resolved_note=row.resolved_note,
         attention=_is_attention(row, task, sub_state),
     )
 
@@ -210,21 +239,45 @@ async def list_trades(
         .where(*where)
     )
     total = (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one()
-    rows = await db.execute(
-        base.order_by(SkinTrade.created_at.desc(), SkinTrade.id.desc()).limit(limit).offset(offset)
+    page = (
+        await db.execute(
+            base.order_by(SkinTrade.created_at.desc(), SkinTrade.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    ).all()
+    images = await skin_images(
+        db, (str((item.fulfillment_data or {}).get("slug") or "") for _, item, _ in page)
     )
     return AdminSkinTradesOut(
-        items=[_out(row, item, task) for row, item, task in rows.all()], total=int(total)
+        items=[_out(row, item, task, images) for row, item, task in page],
+        total=int(total),
+        counts=await _counts(db),
     )
 
 
-async def resolve_trade(db: AsyncSession, *, trade_id: str, by: str) -> AdminSkinTradeOut | None:
+async def _counts(db: AsyncSession) -> TradeCounts:
+    joined = (
+        select(func.count())
+        .select_from(SkinTrade)
+        .join(OrderItem, OrderItem.id == SkinTrade.order_item_id)
+        .outerjoin(FulfillmentTask, FulfillmentTask.id == SkinTrade.task_id)
+    )
+    active = (await db.execute(joined.where(_active()))).scalar_one()
+    attention = (await db.execute(joined.where(_attention()))).scalar_one()
+    return TradeCounts(active=int(active), attention=int(attention))
+
+
+async def resolve_trade(
+    db: AsyncSession, *, trade_id: str, by: str, note: str | None = None
+) -> AdminSkinTradeOut | None:
     """Mark a trade settled by a human; it leaves the ``attention`` view. Idempotent.
 
     Args:
         db: Active session; committed here.
         trade_id: ``skin_trades.id``.
         by: The operator's user id.
+        note: What was done (a refund, a support answer, a Waxpeer ticket).
 
     Returns:
         The trade as the screen shows it, or ``None`` when there is no such trade.
@@ -244,13 +297,16 @@ async def resolve_trade(db: AsyncSession, *, trade_id: str, by: str) -> AdminSki
     if row.resolved_at is None:
         row.resolved_at = now()
         row.resolved_by = by
+        row.resolved_note = (note or "").strip() or None
         await db.commit()
-    return _out(row, item, task)
+    images = await skin_images(db, [str((item.fulfillment_data or {}).get("slug") or "")])
+    return _out(row, item, task, images)
 
 
 __all__ = [
     "AdminSkinTradeOut",
     "AdminSkinTradesOut",
+    "TradeCounts",
     "TradesView",
     "list_trades",
     "resolve_trade",
