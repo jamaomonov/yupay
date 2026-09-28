@@ -330,3 +330,13 @@
     transform: translateY(0);
   }
 }
+
+/* Horizontal chip rows swipe; a desktop scrollbar under them (Telegram Desktop, a
+   browser) covers the chips. Used by Home, TopUp, History, gifts and skins. */
+@utility no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
