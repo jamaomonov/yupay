@@ -886,6 +886,14 @@ async def create_order(
     missing = [sid for sid in sku_ids if sid not in skus or not sku_is_buyable(skus[sid])]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
+    # A CS2 skin rides alone: a skin that falls through refunds its whole order to
+    # the balance (skins.checkout, plan 3a), so a second line — delivered or not —
+    # would be refunded with it.
+    if len(body.items) > 1 and any(skins_checkout.is_skin_sku(skus[sid]) for sid in sku_ids):
+        raise ValidationError(
+            "a skin is bought on an order of its own",
+            extra={"reason": "skin_order_single_line"},
+        )
 
     # 2) Build order items with frozen price + validated fulfillment_data.
     # Resolved once, up front, so the variable-amount×USD guard in

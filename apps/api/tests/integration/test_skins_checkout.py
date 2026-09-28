@@ -203,3 +203,26 @@ async def test_a_moved_price_is_refused_with_the_new_one(
     r = await _order(integration_client, token, _body(sku.id, amount=Decimal("1.00")), "skin-drift")
     assert r.status_code == 422, r.text
     assert Decimal(r.json()["extra"]["expected_amount_usd"]) == _price(27867)
+
+
+async def test_a_skin_is_bought_on_an_order_of_its_own(
+    integration_client: AsyncClient, sku: Sku, listings: list[Listing]
+) -> None:
+    # One skin failing refunds its whole order to the balance, so nothing else may ride
+    # along — a declined cheap skin would otherwise refund a delivered second line.
+    token = await _login_user(integration_client, tg_id=930_005)
+    line = _body(sku.id, amount=_price(27867))["items"][0]
+    body = {
+        "currency": "UZS",
+        "items": [
+            line,
+            {
+                **line,
+                "fulfillment_data": {**line["fulfillment_data"], "listing_id": 53860909079},
+                "amount_usd": str(_price(29000)),
+            },
+        ],
+    }
+    r = await _order(integration_client, token, body, "skin-two-lines")
+    assert r.status_code == 422, r.text
+    assert r.json()["extra"]["reason"] == "skin_order_single_line"
