@@ -40,7 +40,7 @@ export async function Header({ locale }: { locale: string }) {
         />
 
         {/* Desktop controls */}
-        <div className="hidden items-center gap-2.5 md:flex">
+        <div className="hidden items-center gap-2.5 lg:flex">
           {/* The one filled control in the header belongs to the action that
               earns money. It says "Купить", not "Пополнить": with a wallet in
               the product the latter promises a balance top-up and delivered

@@ -32,7 +32,7 @@ export function PrimaryNav({ locale, label, store, blog, how, support, skins }: 
   };
 
   return (
-    <nav aria-label={label} className="hidden items-center gap-8 md:flex">
+    <nav aria-label={label} className="hidden items-center gap-8 lg:flex">
       <Link
         href={storeHref}
         aria-current={navSectionActive(pathname, storeHref) ? "page" : undefined}

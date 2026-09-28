@@ -80,7 +80,7 @@ export function MobileNav({ skins = false }: { skins?: boolean }) {
     }`;
 
   return (
-    <div className="flex min-w-0 items-center gap-2 md:hidden">
+    <div className="flex min-w-0 items-center gap-2 lg:hidden">
       {/* Signed-in phones show the balance chip instead: Купить + amount +
           burger will not fit a 390px bar, and the chip is the same control
           desktop already uses for that corner. */}
