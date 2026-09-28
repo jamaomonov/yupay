@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 
 import type { NextOffer, OrderKey } from "@/lib/skin-buy";
@@ -63,6 +64,7 @@ export function SkinBuyPanel({
   }, []);
   const [notice, setNotice] = useState<string | null>(null);
   const orderKey = useRef<OrderKey | null>(null);
+  const linkRef = useRef<HTMLInputElement>(null);
   const latestBuy = useRef<() => Promise<void>>(() => Promise.resolve());
   const tap = useMemo(() => oneAtATime(() => latestBuy.current()), []);
 
@@ -184,7 +186,7 @@ export function SkinBuyPanel({
 
   return (
     <div className="space-y-4">
-      <SkinTradeLinkInput onChange={onLink} />
+      <SkinTradeLinkInput onChange={onLink} inputRef={linkRef} />
       <div className="space-y-2">
         <p className="text-[11px] font-semibold uppercase tracking-wide text-white/50">
           {t("topup.paymentMethod")}
@@ -209,24 +211,46 @@ export function SkinBuyPanel({
           onSelect={setMethodId}
         />
       </div>
+      {createPortal(
+        <>
+          {/* Portalled to <body>: the page wrapper animates with a transform, and a
+          transformed ancestor would make "fixed" mean fixed to the page, not the
+          screen. A solid button on a fade of the background, never see-through. */}
+          <div
+            className="fixed bottom-[calc(var(--app-nav-total)_+_8px)] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4 pb-2 pt-6"
+            style={{
+              background: "linear-gradient(to top, hsl(var(--background)) 60%, transparent)",
+            }}
+          >
+            <button
+              type="button"
+              // A missing link is a step, not a dead button: the tap takes the buyer there.
+              aria-disabled={hint !== null || undefined}
+              disabled={checkout.isPending || (hint !== null && link.usable)}
+              onClick={() => {
+                haptic("press");
+                if (!link.usable) {
+                  linkRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+                  linkRef.current?.focus({ preventScroll: true });
+                  return;
+                }
+                void tap();
+              }}
+              className="bg-primary flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide text-black transition-all disabled:cursor-not-allowed disabled:bg-[hsl(var(--surface-2))] disabled:text-white/55 aria-disabled:bg-[hsl(var(--surface-2))] aria-disabled:text-white/55"
+            >
+              {checkout.isPending
+                ? t("topup.processingBtn")
+                : (hint ?? t("cs2.buy.pay", { price }))}
+            </button>
+          </div>
+        </>,
+        document.body,
+      )}
       {notice && (
         <p role="status" className="text-[13px] font-semibold text-amber-400">
           {notice}
         </p>
       )}
-      <div className="fixed bottom-[calc(var(--app-nav-total)_+_16px)] left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2 px-4">
-        <button
-          type="button"
-          disabled={hint !== null || checkout.isPending}
-          onClick={() => {
-            haptic("press");
-            void tap();
-          }}
-          className="bg-primary flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide text-black transition-all disabled:cursor-not-allowed disabled:opacity-45"
-        >
-          {checkout.isPending ? t("topup.processingBtn") : (hint ?? t("cs2.buy.pay", { price }))}
-        </button>
-      </div>
     </div>
   );
 }

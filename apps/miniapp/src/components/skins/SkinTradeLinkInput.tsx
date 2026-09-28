@@ -22,8 +22,11 @@ type Shown = TradeLinkLine | "checking" | null;
  */
 export function SkinTradeLinkInput({
   onChange,
+  inputRef,
 }: {
   onChange: (state: { url: string; usable: boolean }) => void;
+  /** Lets the pay button bring the field into view when the link is what is missing. */
+  inputRef?: React.Ref<HTMLInputElement>;
 }) {
   const { t } = useT();
   const id = useId();
@@ -92,6 +95,7 @@ export function SkinTradeLinkInput({
       </div>
       <input
         id={id}
+        ref={inputRef}
         type="url"
         inputMode="url"
         autoComplete="off"

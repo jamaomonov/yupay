@@ -24,7 +24,10 @@ type State =
 const steamMarketUrl = (name: string) =>
   `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}`;
 
-/** One skin: art, price, the other wears, the live offers, and buying one of them. */
+/**
+ * One skin, top to bottom in the order a buyer decides: art and price, the other wears,
+ * the live offers (pick one), then the trade link and payment for the picked offer.
+ */
 export default function CS2Skin() {
   const { t } = useT();
   const { slug } = useParams<{ slug: string }>();
@@ -168,30 +171,6 @@ export default function CS2Skin() {
         </button>
       </div>
 
-      {buyable && (
-        <SkinBuyPanel
-          skuId={buySku}
-          slug={item.slug}
-          offer={selected}
-          onListingGone={(next) => {
-            const after = afterListingGone(offers ?? [], selected.listing_id, next);
-            setOffers(after.offers);
-            setPickedId(after.selected?.listing_id ?? null);
-            return after.selected;
-          }}
-          onPriceChanged={(usd) => {
-            // Pinned: at its new price it may no longer be the cheapest default.
-            setPickedId(selected.listing_id);
-            setOffers(
-              (all) =>
-                all?.map((o) =>
-                  o.listing_id === selected.listing_id ? repriceOffer(o, usd) : o,
-                ) ?? null,
-            );
-          }}
-        />
-      )}
-
       {worn && item.family.length > 1 && (
         <section>
           <h2 className="mb-2 text-[15px] font-bold text-white">{t("cs2.otherWears")}</h2>
@@ -215,6 +194,29 @@ export default function CS2Skin() {
             {...(buyable ? { selectedId: selected.listing_id, onSelect: setPickedId } : {})}
           />
         </section>
+      )}
+      {buyable && (
+        <SkinBuyPanel
+          skuId={buySku}
+          slug={item.slug}
+          offer={selected}
+          onListingGone={(next) => {
+            const after = afterListingGone(offers ?? [], selected.listing_id, next);
+            setOffers(after.offers);
+            setPickedId(after.selected?.listing_id ?? null);
+            return after.selected;
+          }}
+          onPriceChanged={(usd) => {
+            // Pinned: at its new price it may no longer be the cheapest default.
+            setPickedId(selected.listing_id);
+            setOffers(
+              (all) =>
+                all?.map((o) =>
+                  o.listing_id === selected.listing_id ? repriceOffer(o, usd) : o,
+                ) ?? null,
+            );
+          }}
+        />
       )}
     </div>
   );
