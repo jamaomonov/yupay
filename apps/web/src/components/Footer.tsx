@@ -5,6 +5,7 @@ import { useId } from "react";
 
 import { Wordmark } from "./Wordmark";
 
+import { brandPath } from "@/lib/brand-href";
 import { getBrands, type BrandSummary } from "@/lib/catalog";
 import { skinsEnabled } from "@/lib/features";
 import { pathFor } from "@/lib/seo";
@@ -155,7 +156,7 @@ export async function Footer({ locale }: { locale: string }) {
                   columns. */}
               <div className="columns-2 gap-x-8 sm:columns-3 lg:columns-5 [&_a]:break-inside-avoid">
                 {brands.map((b) => (
-                  <FooterLink key={b.slug} href={pathFor(locale, `/store/${b.slug}`)}>
+                  <FooterLink key={b.slug} href={pathFor(locale, brandPath(b.slug))}>
                     {b.name}
                   </FooterLink>
                 ))}

@@ -11,6 +11,7 @@ import { TrustBand } from "@/components/sections/TrustBand";
 import { BrandTile } from "@/components/store/BrandTile";
 import { StoreFilter } from "@/components/store/StoreFilter";
 import { routing } from "@/i18n/routing";
+import { brandPath } from "@/lib/brand-href";
 import { getBrands, getCategories, type BrandSummary, type CategoryOut } from "@/lib/catalog";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 
@@ -90,7 +91,7 @@ export default async function StorePage({ params }: { params: Promise<{ locale: 
       itemListElement: allBrands.map((b, i) => ({
         "@type": "ListItem",
         position: i + 1,
-        url: localeUrl(locale, `/store/${b.slug}`),
+        url: localeUrl(locale, brandPath(b.slug)),
         name: b.name,
       })),
     },

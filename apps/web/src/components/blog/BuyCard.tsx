@@ -2,11 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { isOptimizable } from "@/lib/image";
+import type { BrandDetail } from "@/lib/catalog";
+
+import { brandPath } from "@/lib/brand-href";
 import { buttonStyles } from "@/lib/button";
+import { isOptimizable } from "@/lib/image";
 import { formatUzs, pathFor } from "@/lib/seo";
 
-import type { BrandDetail } from "@/lib/catalog";
+
 
 export function buyFromPrice(brand: BrandDetail, locale: string): string | null {
   const prices = (brand.products ?? [])
@@ -21,7 +24,7 @@ export async function BuyCard({ brand, locale }: { brand: BrandDetail; locale: s
   const t = await getTranslations("web.blog");
   const from = buyFromPrice(brand, locale);
   const img = brand.hero_image_url ?? brand.logo_url;
-  const href = pathFor(locale, `/store/${brand.slug}`);
+  const href = pathFor(locale, brandPath(brand.slug));
 
   return (
     <Link

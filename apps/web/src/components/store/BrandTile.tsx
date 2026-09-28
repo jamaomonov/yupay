@@ -5,6 +5,7 @@ import { getTranslations } from "next-intl/server";
 
 import type { BrandSummary } from "@/lib/catalog";
 
+import { brandPath } from "@/lib/brand-href";
 import { isOptimizable } from "@/lib/image";
 import { pathFor } from "@/lib/seo";
 
@@ -44,7 +45,7 @@ export async function BrandTile({
 
   return (
     <Link
-      href={pathFor(locale, `/store/${brand.slug}`)}
+      href={pathFor(locale, brandPath(brand.slug))}
       className={`border-border hover:border-primary/30 focus-visible:ring-primary group relative isolate overflow-hidden rounded-xl border transition hover:-translate-y-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset ${className}`}
     >
       {img ? (

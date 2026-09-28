@@ -3,6 +3,7 @@ import { LOCALES } from "@yupay/i18n";
 import type { MetadataRoute } from "next";
 
 import { getPublishedBlogEntries } from "@/lib/blog";
+import { CS2_SKINS_BRAND } from "@/lib/brand-href";
 import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
 import { skinsEnabled } from "@/lib/features";
 import { LEGAL_DOCS } from "@/lib/legal";
@@ -58,7 +59,8 @@ async function brandImages(slug: string): Promise<string[]> {
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const entries: MetadataRoute.Sitemap = [];
-  const slugs = await getBrandSlugs();
+  // The CS2 skins brand is the /skins market (listed above), not a store page.
+  const slugs = (await getBrandSlugs()).filter((slug) => slug !== CS2_SKINS_BRAND);
   const imagesBySlug = new Map(
     await Promise.all(slugs.map(async (slug) => [slug, await brandImages(slug)] as const)),
   );

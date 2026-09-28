@@ -1,7 +1,7 @@
 import { AlertTriangle, ChevronRight, Clock, ShieldCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Suspense } from "react";
@@ -10,8 +10,8 @@ import type { Metadata } from "next";
 
 import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
 import { JsonLd } from "@/components/JsonLd";
-import { HighlightChips } from "@/components/store/HighlightChips";
 import { AboutText } from "@/components/store/AboutText";
+import { HighlightChips } from "@/components/store/HighlightChips";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { RatingChip } from "@/components/store/RatingChip";
 import { RatingSummary } from "@/components/store/RatingSummary";
@@ -19,6 +19,7 @@ import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
+import { brandPath, CS2_SKINS_BRAND } from "@/lib/brand-href";
 import {
   getBrandDetail,
   getBrands,
@@ -103,6 +104,7 @@ export default async function BrandPage({
   params: Promise<{ locale: string; brandSlug: string }>;
 }) {
   const { locale, brandSlug } = await params;
+  if (brandSlug === CS2_SKINS_BRAND) permanentRedirect(pathFor(locale, brandPath(brandSlug)));
   setRequestLocale(locale);
   const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) notFound();
