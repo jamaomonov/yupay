@@ -976,9 +976,7 @@
       "noneLeft": "No offers left",
       "buyError": "Could not place the order. Try again",
       "buyThis": "Buy",
-      "selected": "Selected",
-      "orderCreated": "Order created",
-      "openOrder": "Open the order"
+      "selected": "Selected"
     },
     "trade": {
       "title": "Steam trade",

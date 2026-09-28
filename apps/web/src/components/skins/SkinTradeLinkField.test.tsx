@@ -77,3 +77,22 @@ it("does not call the check for text that is not a trade link", async () => {
   expect(checkTradeLink).not.toHaveBeenCalled();
   expect(onChange).toHaveBeenLastCalledWith({ url: "hello", usable: false });
 });
+
+it("never replaces a link pasted before the saved one arrives", async () => {
+  let answer: (v: string) => void = () => undefined;
+  vi.mocked(getTradeLink).mockReturnValue(
+    new Promise<string>((resolve) => {
+      answer = resolve;
+    }),
+  );
+  vi.mocked(checkTradeLink).mockResolvedValue({ ok: true, reason: null });
+  field();
+  const pasted = "https://steamcommunity.com/tradeoffer/new/?partner=42&token=pastedAB";
+  fireEvent.change(screen.getByRole("textbox"), { target: { value: pasted } });
+  answer(LINK);
+  await waitFor(() => {
+    expect(getTradeLink).toHaveBeenCalled();
+  });
+  await new Promise((r) => setTimeout(r, 0));
+  expect(screen.getByRole("textbox")).toHaveValue(pasted);
+});

@@ -95,14 +95,6 @@ export async function getTradeLink(): Promise<string | null> {
   return out.url;
 }
 
-export async function saveTradeLink(url: string): Promise<void> {
-  await apiFetch("/skins/tradelink", {
-    method: "PUT",
-    body: { url },
-    headers: { "Idempotency-Key": crypto.randomUUID() },
-  });
-}
-
 export type TradeLinkReason = "invalid" | "private" | "trade_ban" | "hold" | "unavailable";
 export interface TradeLinkVerdict {
   ok: boolean;

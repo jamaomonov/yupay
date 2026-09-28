@@ -976,9 +976,7 @@
       "noneLeft": "Takliflar tugadi",
       "buyError": "Buyurtmani rasmiylashtirib bo'lmadi. Qayta urinib ko'ring",
       "buyThis": "Sotib olish",
-      "selected": "Tanlangan",
-      "orderCreated": "Buyurtma yaratildi",
-      "openOrder": "Buyurtmani ochish"
+      "selected": "Tanlangan"
     },
     "trade": {
       "title": "Steam'dagi almashuv",

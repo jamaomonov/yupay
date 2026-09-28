@@ -38,7 +38,8 @@ export function SkinTradeLinkField({
     let live = true;
     getTradeLink()
       .then((saved) => {
-        if (live && saved) setUrl(saved);
+        // Never over what the customer pasted before the saved link arrived.
+        if (live && saved) setUrl((typed) => typed || saved);
       })
       .catch(() => undefined);
     return () => {
