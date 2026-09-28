@@ -20,7 +20,7 @@ it("keeps a chosen weapon visible and clearable even when the page holds only it
   render(
     <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
       <SkinCategoryBar
-        query={{ sort: "popular", category: "rifles", weapon: "AK-47" }}
+        query={{ sort: "-price", category: "rifles", weapon: "AK-47" }}
         facets={facets}
         locale="ru"
         items={[]}

@@ -21,8 +21,8 @@ export const SKIN_CATEGORIES = [
 ] as const;
 export type SkinCategory = (typeof SKIN_CATEGORIES)[number];
 const SORTS: readonly SkinSort[] = ["price", "-price", "discount", "popular"];
-/** What the market opens on: the items people actually buy, not a page of $0.20 floor stickers. */
-export const DEFAULT_SORT: SkinSort = "popular";
+/** What the market opens on: knives and gloves first, as skinsavdo.uz does — `popular` opened on a wall of cases, `price` on $0.20 stickers. */
+export const DEFAULT_SORT: SkinSort = "-price";
 export const EXTERIORS: readonly Exterior[] = ["FN", "MW", "FT", "WW", "BS"];
 
 export interface SkinItem {
@@ -53,6 +53,8 @@ export interface SkinsPage {
 export interface Facet {
   value: string;
   count: number;
+  /** Rarity facets only: the grade's colour. */
+  color?: string | null;
 }
 export interface SkinFacets {
   categories: Facet[];

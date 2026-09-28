@@ -8,7 +8,7 @@ import type { SkinQuery, SkinSort as Sort } from "@/lib/skins";
 import { pathFor } from "@/lib/seo";
 import { skinQueryString } from "@/lib/skins";
 
-const SORTS: Sort[] = ["price", "-price", "discount", "popular"];
+const SORTS: Sort[] = ["-price", "price", "popular", "discount"];
 
 /** The one control that needs JS to feel right: a select that navigates on change. */
 export function SkinSort({ query, locale }: { query: SkinQuery; locale: string }) {

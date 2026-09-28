@@ -19,7 +19,7 @@ describe("parseSkinQuery", () => {
       category: "rifles",
       weapon: "AK-47",
       exterior: "FT",
-      sort: "popular",
+      sort: "-price",
       maxUzs: 150000,
       stattrak: true,
       q: "redline",
@@ -27,7 +27,7 @@ describe("parseSkinQuery", () => {
   });
 
   it("drops an unknown category and exterior", () => {
-    expect(parseSkinQuery({ category: "../admin", exterior: "XX" })).toEqual({ sort: "popular" });
+    expect(parseSkinQuery({ category: "../admin", exterior: "XX" })).toEqual({ sort: "-price" });
   });
 
   it("takes the first value of a repeated param", () => {
@@ -41,17 +41,17 @@ describe("parseSkinQuery", () => {
 
 describe("skinQueryString", () => {
   it("drops defaults, keeps a stable order", () => {
-    expect(skinQueryString({ sort: "popular", weapon: "AWP", category: "rifles" })).toBe(
+    expect(skinQueryString({ sort: "-price", weapon: "AWP", category: "rifles" })).toBe(
       "?category=rifles&weapon=AWP",
     );
-    expect(skinQueryString({ sort: "popular" })).toBe("");
+    expect(skinQueryString({ sort: "-price" })).toBe("");
     expect(skinQueryString({ sort: "price" })).toBe("?sort=price");
   });
 
   it("resets the cursor when a filter changes", () => {
-    expect(skinQueryString({ sort: "popular", cursor: "abc" }, { exterior: "MW" })).toBe(
+    expect(skinQueryString({ sort: "-price", cursor: "abc" }, { exterior: "MW" })).toBe(
       "?exterior=MW",
     );
-    expect(skinQueryString({ sort: "popular" }, { cursor: "abc" })).toBe("?cursor=abc");
+    expect(skinQueryString({ sort: "-price" }, { cursor: "abc" })).toBe("?cursor=abc");
   });
 });

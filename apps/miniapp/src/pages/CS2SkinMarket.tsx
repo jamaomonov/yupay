@@ -17,7 +17,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 
 const PATH = "/cs2-market";
 const SEARCH_DEBOUNCE_MS = 400; // mirrors GiftsCatalog: one request per pause, not per key
-const SORTS: readonly SkinSort[] = ["popular", "price", "-price", "discount"];
+const SORTS: readonly SkinSort[] = ["-price", "price", "popular", "discount"];
 const FIELD = { background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))" };
 
 type Phase = "loading" | "idle" | "loadingMore" | "error" | "errorMore";
