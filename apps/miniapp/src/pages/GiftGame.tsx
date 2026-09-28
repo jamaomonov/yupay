@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, newIdempotencyKey } from "@/lib/api";
 import {
+  checkoutErrorMessage,
   isOrderNotAwaitingPaymentConflict,
   nextSelectedMethodId,
   PROVIDER_BY_METHOD_FULL,
@@ -47,7 +48,6 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { useGiftProfileCheck } from "@/lib/use-gift-profile-check";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
-import { checkoutErrorMessage } from "@/pages/TopUp";
 
 export {
   isOrderNotAwaitingPaymentConflict,

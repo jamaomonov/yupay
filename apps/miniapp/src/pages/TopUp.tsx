@@ -33,9 +33,12 @@ import {
   useProductWithSkus,
   type Package as ApiPackage,
 } from "@/lib/catalog";
+import { checkoutErrorMessage } from "@/lib/checkout-shared";
 import { formatMoney, useDisplayCurrency } from "@/lib/currency";
 import { useT } from "@/lib/i18n";
 import { getActiveLocale, translate } from "@/lib/i18n/core";
+
+export { checkoutErrorMessage } from "@/lib/checkout-shared";
 import {
   methodVisibility,
   providerStatusMap,
@@ -96,25 +99,6 @@ interface Package {
   ratePerDollar: { amount: number; currency: string } | null;
   /** False only when the supplier has run out of codes. */
   inStock: boolean;
-}
-
-/**
- * Message for a failed checkout POST. The pre-charge geo veto (ADR-0063)
- * refuses a foreign guest/fresh account with a 422 whose RFC 7807 `type`
- * ends in `/payment-unavailable-abroad` — that gets its own specific line
- * instead of the generic checkout-failed detail. Everything else falls
- * back to the API's own `detail`, or a plain retry line when there is none
- * (a network failure, a non-JSON body).
- *
- * Uses `translate` (the locale mirror), not a `t` passed in from `useT()`
- * — same choice as `providerLabel` in `OrderSuccess.tsx` — so this stays a
- * plain function callable straight from a unit test.
- */
-export function checkoutErrorMessage(exc: unknown): string {
-  if (exc instanceof ApiError && exc.type?.endsWith("/payment-unavailable-abroad")) {
-    return translate("topup.errAbroad");
-  }
-  return exc instanceof ApiError ? exc.detail : translate("topup.tryAgain");
 }
 
 function adaptPackage(api: ApiPackage): Package {
