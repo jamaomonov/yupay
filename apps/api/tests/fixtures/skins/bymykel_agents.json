@@ -1,0 +1,10 @@
+[
+  {
+    "id": "agent-4711",
+    "name": "Bloody Darryl The Strapped | The Professionals",
+    "market_hash_name": "Bloody Darryl The Strapped | The Professionals",
+    "team": { "id": "terrorists", "name": "Terrorist" },
+    "rarity": { "id": "rarity_legendary_character", "name": "Superior", "color": "#d32ce6" },
+    "image": "https://community.akamai.steamstatic.com/economy/image/darryl"
+  }
+]

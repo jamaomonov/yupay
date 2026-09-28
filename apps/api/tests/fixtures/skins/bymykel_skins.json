@@ -1,0 +1,51 @@
+[
+  {
+    "id": "skin-91a429af4a60_2",
+    "name": "AK-47 | Redline (Field-Tested)",
+    "weapon": { "id": "weapon_ak47", "weapon_id": 7, "name": "AK-47" },
+    "category": { "id": "csgo_inventory_weapon_category_rifles", "name": "Rifles" },
+    "pattern": { "id": "cu_ak47_cobra", "name": "Redline" },
+    "min_float": 0.1,
+    "max_float": 0.7,
+    "wear": { "id": "SFUI_InvTooltip_Wear_Amount_2", "name": "Field-Tested" },
+    "stattrak": false,
+    "souvenir": false,
+    "paint_index": "282",
+    "rarity": { "id": "rarity_legendary_weapon", "name": "Classified", "color": "#d32ce6" },
+    "market_hash_name": "AK-47 | Redline (Field-Tested)",
+    "image": "https://community.akamai.steamstatic.com/economy/image/ak47redline"
+  },
+  {
+    "id": "skin-91a429af4a60_2_st",
+    "name": "StatTrak™ AK-47 | Redline (Field-Tested)",
+    "weapon": { "id": "weapon_ak47", "weapon_id": 7, "name": "AK-47" },
+    "category": { "id": "csgo_inventory_weapon_category_rifles", "name": "Rifles" },
+    "pattern": { "id": "cu_ak47_cobra", "name": "Redline" },
+    "min_float": 0.1,
+    "max_float": 0.7,
+    "wear": { "id": "SFUI_InvTooltip_Wear_Amount_2", "name": "Field-Tested" },
+    "stattrak": true,
+    "souvenir": false,
+    "paint_index": "282",
+    "rarity": { "id": "rarity_legendary_weapon", "name": "Classified", "color": "#d32ce6" },
+    "market_hash_name": "StatTrak™ AK-47 | Redline (Field-Tested)",
+    "image": "https://community.akamai.steamstatic.com/economy/image/ak47redline"
+  },
+  {
+    "id": "skin-doppler_0_p2",
+    "name": "★ Karambit | Doppler (Factory New)",
+    "weapon": { "id": "weapon_knife_karambit", "weapon_id": 507, "name": "★ Karambit" },
+    "category": { "id": "csgo_inventory_weapon_category_knives", "name": "Knives" },
+    "pattern": { "id": "am_doppler_phase2", "name": "Doppler" },
+    "min_float": 0.0,
+    "max_float": 0.08,
+    "wear": { "id": "SFUI_InvTooltip_Wear_Amount_0", "name": "Factory New" },
+    "stattrak": false,
+    "souvenir": false,
+    "paint_index": "418",
+    "phase": "Phase 2",
+    "rarity": { "id": "rarity_ancient_weapon", "name": "Covert", "color": "#eb4b4b" },
+    "market_hash_name": "★ Karambit | Doppler (Factory New)",
+    "image": "https://community.akamai.steamstatic.com/economy/image/karambitp2"
+  }
+]
