@@ -7,8 +7,9 @@ Waxpeer's numbers become five states a customer understands:
   ``release_date``);
 * ``accepted`` — received; Steam's trade protection runs to ``release_date`` (4 with it);
 * ``released`` — protection over (5);
-* ``failed`` — ``not_accepted`` (declined or expired), ``sold_out`` (nothing left to buy),
-  or ``other``; the money is on its way back to the balance.
+* ``failed`` — ``not_accepted`` (declined or expired) or ``sold_out`` (nothing left to buy):
+  the money is back on the balance; ``support``: a purchase we could not confirm, settled by
+  a human — no refund is promised; ``other``.
 
 The seller is shown on purpose (spec §2.3): the customer should recognise the offer.
 """
@@ -23,7 +24,7 @@ from pydantic import BaseModel
 from yupay.modules.skins.models import SkinTrade
 
 SkinTradeState = Literal["buying", "offer_sent", "accepted", "released", "failed"]
-SkinTradeReason = Literal["not_accepted", "sold_out", "other"]
+SkinTradeReason = Literal["not_accepted", "sold_out", "support", "other"]
 
 
 class SkinSellerOut(BaseModel):
@@ -47,7 +48,7 @@ class SkinTradeOut(BaseModel):
 
 
 def _state(row: SkinTrade, fulfillment_state: str) -> SkinTradeState:
-    if row.status == 6 or (row.status is None and fulfillment_state == "failed"):
+    if row.status == 6 or fulfillment_state == "failed":
         return "failed"
     if row.status == 5 or row.is_released:
         return "released"
@@ -57,6 +58,10 @@ def _state(row: SkinTrade, fulfillment_state: str) -> SkinTradeState:
 
 
 def _reason(row: SkinTrade) -> SkinTradeReason:
+    # Only these three give the money back on their own; ``support`` is a purchase we
+    # could not confirm — a human settles it, so the page must not promise a refund.
+    if row.reason in ("buy_unconfirmed", "ambiguous_trade"):
+        return "support"
     if row.status is None:
         return "sold_out"
     if row.reason and "accept" in row.reason.lower():

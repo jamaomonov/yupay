@@ -212,3 +212,20 @@ async def test_the_fast_sweep_delivers_an_accepted_skin_end_to_end(
             await s.execute(select(Delivery).where(Delivery.order_item_id == task.order_item_id))
         ).scalar_one()
         assert delivery.artifact["kind"] == "skin"
+
+
+async def test_the_watch_reads_our_trade_not_a_refused_attempt(db_session: AsyncSession) -> None:
+    row = await _protected(db_session, "pw-pick")
+    row.waxpeer_id = 1
+    await db_session.commit()
+    alerts: list[str] = []
+
+    async def alert(text: str) -> None:
+        alerts.append(text)
+
+    refused = _trade(row.project_id, 6, id=999, penalties={"total_penalty": 1})
+    ours = _trade(row.project_id, 5)
+    await watch_protected_trades(db_session, _Client([refused, ours]), alert=alert)
+    await db_session.refresh(row)
+    assert (row.status, row.is_released) == (5, True)
+    assert alerts == []

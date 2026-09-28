@@ -15,12 +15,17 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
 
 - **Low balance** (`supplier_low_balance`): the order stays «в обработке». Top up Waxpeer, then
   retry the task from the admin fulfilment inbox.
+- **`buy_pending`** is not an alert: a lookup failed before anything was sent, and the 5 s
+  sweep retries the lookup and then buys.
 - **`buy_unconfirmed`** (task failed `UNKNOWN` after 10 min): a buy call's answer was lost and
   Waxpeer shows no trade under our `project_id`. Look the project id up in the Waxpeer
   dashboard; if nothing was bought, refund the order (admin → refund to balance or card).
 - **«Скин: откат обмена после доставки»**: a trade was rolled back during Steam's protection.
   The task carries `skin_rollback` (reason, penalties). The customer already had the item
   delivered; decide with support whether anything is owed.
+- **`ambiguous_trade`** (task failed `UNKNOWN`): Waxpeer lists several live trades under our
+  `project_id` and we hold no Waxpeer id to tell ours. Check the Waxpeer dashboard; the order
+  page tells the customer to contact support, not that money is coming back.
 - **`skin_refund_failed`**: the automatic refund to the balance raised. Refund manually.
 
 ## Refunds
@@ -32,3 +37,11 @@ the balance can then be paid out or the card refunded by an admin as for any ord
 A payment refunded to the balance (`last_refund.refunded_to = "wallet"`) cannot also be
 cancelled by the acquirer: Payme answers `-31007`, Uzum `10017`, Paynet `306`. If a customer
 asks for the card instead, take the money off the balance first, then refund the card.
+
+## Still to verify on prod
+
+- A **refused buy followed by a substitute under the same `project_id`** has not been exercised
+  against Waxpeer (the spike bought, it never refused first). The code picks our trade by the
+  id Waxpeer returned on the buy, so a refused attempt listed under the key is ignored; if
+  Waxpeer rejects a reused key, substitution simply never succeeds and the order refunds.
+  Try it once with a 5-unit item before relying on substitution.

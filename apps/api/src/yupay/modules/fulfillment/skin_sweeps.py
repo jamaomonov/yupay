@@ -24,7 +24,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.models import FulfillmentTask
-from yupay.modules.fulfillment.suppliers.waxpeer_skins import SKIN_KIND, mirror
+from yupay.modules.fulfillment.suppliers.waxpeer_skins import (
+    SKIN_KIND,
+    AmbiguousTradeError,
+    mirror,
+    pick_trade,
+)
 from yupay.modules.fulfillment.suppliers.waxpeer_trades import WaxpeerTrade
 from yupay.modules.skins.models import SkinTrade
 
@@ -93,12 +98,19 @@ async def watch_protected_trades(
             )
         ).scalars()
     )
-    by_project = {r.project_id: r for r in rows}
     for start in range(0, len(rows), _BATCH):
-        batch = [r.project_id for r in rows[start : start + _BATCH]]
-        for trade in await client.check_project_ids(batch):
-            row = by_project.get(trade.project_id)
-            if row is None:
+        chunk = rows[start : start + _BATCH]
+        found = await client.check_project_ids([r.project_id for r in chunk])
+        for row in chunk:
+            # Ours by Waxpeer's id: a refused attempt under the same key is not a rollback.
+            try:
+                trade = pick_trade(
+                    [t for t in found if t.project_id == row.project_id], row.waxpeer_id
+                )
+            except AmbiguousTradeError:
+                log.warning("skins.trade.ambiguous", project_id=row.project_id)
+                continue
+            if trade is None:
                 continue
             mirror(row, trade)
             if trade.status == 6:

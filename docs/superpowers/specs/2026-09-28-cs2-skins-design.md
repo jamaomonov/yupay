@@ -239,7 +239,8 @@ pause); the owner accepted both in Steam.
   buyer can accept. If `release_date` is set and `is_released=false` → TRADE HOLD», then 5 at
   release. The first purchase looked otherwise only because the owner accepted within seconds.
   `send_until` at status 4 is +30 min (at 0 it is +5, at 2 +10); `check-many-steam?id=<trade_id>`
-  answered 500.
+  answered 500. A `project_id` Waxpeer has never seen answers `{"success": true, "trades": []}`
+  (probed 2026-09-28), so a first purchase's lookup is safe.
 - **A declined offer** (third purchase, 5 units, the owner pressed «Отклонить» in Steam):
   4 → **6 within about a minute**, `done: true`, `reason: "Buyer failed to accept"` on
   `check-many-project-id` (`my-history` shows `reason: null`), `penalties: null`, and the

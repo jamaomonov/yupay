@@ -108,7 +108,7 @@ def _from_snapshot(item: SkinItem) -> list[Listing]:
     ]
 
 
-def _waxpeer_name(item: SkinItem) -> str:
+def waxpeer_name_of(item: SkinItem) -> str:
     """The name as Waxpeer spells it — the phase back inside, before the wear."""
     if not item.phase:
         return item.market_hash_name
@@ -142,7 +142,7 @@ async def listings_for(
         breaker_open = bool(await redis.exists("skins:wax:breaker"))
 
     if not breaker_open and await _budget_ok(redis, budget_per_minute):
-        name = _waxpeer_name(item)
+        name = waxpeer_name_of(item)
         try:
             found = await client.search_listings([name])
         except (WaxpeerRateLimitedError, WaxpeerUnavailableError) as exc:
@@ -176,4 +176,11 @@ async def listings_for(
     return _from_snapshot(item), True
 
 
-__all__ = ["BREAKER_TTL", "FRESH_TTL", "STALE_TTL", "Listing", "listings_for"]
+__all__ = [
+    "BREAKER_TTL",
+    "FRESH_TTL",
+    "STALE_TTL",
+    "Listing",
+    "listings_for",
+    "waxpeer_name_of",
+]

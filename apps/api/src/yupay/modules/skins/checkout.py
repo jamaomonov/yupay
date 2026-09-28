@@ -29,7 +29,7 @@ from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError, ValidationError
 from yupay.core.redis import get_redis
 from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
-from yupay.modules.skins.listings import Listing, listings_for
+from yupay.modules.skins.listings import Listing, listings_for, waxpeer_name_of
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.pricing import quote
 from yupay.modules.skins.settings import enabled_categories, load_rules
@@ -165,6 +165,9 @@ async def price_skin_line(
             "market_hash_name": item.market_hash_name,
             "phase": item.phase,
             "name": f"{item.market_hash_name} {item.phase}".strip(),
+            # Waxpeer's own spelling (a Doppler's phase sits before the wear): what a
+            # substitute is searched under if this listing is gone by purchase time.
+            "waxpeer_name": waxpeer_name_of(item),
             "expected_units": chosen.price_units,
             "float_value": chosen.float_value,
         }

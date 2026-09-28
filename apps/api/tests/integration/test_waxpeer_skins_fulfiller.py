@@ -28,7 +28,9 @@ from yupay.modules.fulfillment.suppliers.waxpeer_trades import (
     WaxpeerTrade,
 )
 from yupay.modules.orders.models import OrderItem
-from yupay.modules.skins.models import SkinTrade
+from yupay.core.redis import get_redis
+from yupay.modules.skins.listings import waxpeer_name_of
+from yupay.modules.skins.models import SkinItem, SkinTrade
 
 from tests.integration.test_fulfillment_async import _make_paid_order
 
@@ -77,6 +79,7 @@ class _Client:
         self.buy_error = buy_error
         self.lookup_error = lookup_error
         self.bought: list[tuple[int, int]] = []
+        self.searched: list[str] = []
 
     async def check_project_ids(self, ids: Sequence[str]) -> list[WaxpeerTrade]:
         if self.lookup_error:
@@ -94,22 +97,44 @@ class _Client:
         return WaxpeerBuy(id=30717201, price_units=price_units)
 
     async def search_listings(self, names: Sequence[str]) -> dict[str, list[dict[str, Any]]]:
+        self.searched.extend(names)
         return {names[0]: self.live}
 
 
-async def _item(db: AsyncSession, tag: str, *, expected_units: int = 27867) -> OrderItem:
+async def _item(
+    db: AsyncSession,
+    tag: str,
+    *,
+    expected_units: int = 27867,
+    name: str = NAME,
+    phase: str = "",
+    tradelink: str = LINK,
+) -> OrderItem:
     order = await _make_paid_order(db, tag=tag)
     item = (await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))).scalar_one()
+    slug = f"skin-{tag}-{new_id()[-6:]}"
+    skin = SkinItem(
+        id=new_id(),
+        market_hash_name=name,
+        phase=phase,
+        slug=slug,
+        category="knives" if phase else "rifles",
+        search_text=name.lower(),
+        active=True,
+    )
+    db.add(skin)
     item.fulfillment_data = {
-        "slug": "ak-47-redline-field-tested",
+        "slug": slug,
         "listing_id": CHOSEN,
-        "tradelink": LINK,
-        "market_hash_name": NAME,
-        "phase": "",
-        "name": NAME,
+        "tradelink": tradelink,
+        "market_hash_name": name,
+        "phase": phase,
+        "name": f"{name} {phase}".strip(),
+        "waxpeer_name": waxpeer_name_of(skin),
         "expected_units": expected_units,
     }
     await db.commit()
+    await get_redis().delete("skins:wax:breaker")
     return item
 
 
@@ -301,3 +326,76 @@ def _failed_status() -> Any:
     return FulfillStatus(
         outcome="in_progress", artifact_kind=None, artifact=None, error=None, money_outcome=None
     )
+
+
+async def test_a_failed_first_lookup_defers_the_buy_to_the_sweep(
+    db_session: AsyncSession,
+) -> None:
+    item = await _item(db_session, "sk-defer")
+    down = _Client(lookup_error=WaxpeerUnavailableError("timeout"))
+    result = await fulfill_skin(down, db=db_session, item=item, idempotency_key=KEY)
+    assert result.outcome == "in_progress"
+    assert result.extra_metadata.get("buy_pending") is True
+    assert "buy_unconfirmed_at" not in result.extra_metadata
+    assert down.bought == []
+
+    task = await _task(db_session, item, buy_pending=True)
+    healthy = _Client()
+    status = await skin_status(healthy, db=db_session, task=task)
+    assert status.outcome == "in_progress"
+    assert healthy.bought == [(CHOSEN, 27867)]
+    assert status.extra_metadata["buy_pending"] is False
+
+
+async def test_a_4xx_on_the_buy_means_nothing_was_bought(db_session: AsyncSession) -> None:
+    item = await _item(db_session, "sk-4xx")
+    client = _Client(buy_error=WaxpeerError("bad request", status=400))
+    result = await fulfill_skin(client, db=db_session, item=item, idempotency_key=KEY)
+    assert (result.outcome, result.money_outcome) == ("failed", MoneyOutcome.RETURNED)
+
+
+async def test_the_trade_is_picked_by_waxpeers_id(db_session: AsyncSession) -> None:
+    item = await _item(db_session, "sk-pick")
+    await fulfill_skin(_Client(), db=db_session, item=item, idempotency_key=KEY)
+    task = await _task(db_session, item)
+    release = NOW + timedelta(days=7)
+    refused = _trade(6, id=11111, reason="Item not available")
+    ours = _trade(4, release_date=release)  # id 30717201 = what we bought
+    status = await skin_status(_Client(trades=[refused, ours]), db=db_session, task=task)
+    assert status.outcome == "succeeded"
+
+
+async def test_a_doppler_is_substituted_under_waxpeers_spelling(db_session: AsyncSession) -> None:
+    item = await _item(
+        db_session, "sk-doppler", name="★ Karambit | Doppler (Factory New)", phase="Phase 2"
+    )
+    client = _Client(refuse={CHOSEN}, live=[{"item_id": 555, "price": 27000, "auto": True}])
+    result = await fulfill_skin(client, db=db_session, item=item, idempotency_key=KEY)
+    assert result.outcome == "in_progress"
+    assert client.bought == [(555, 27000)]
+    assert client.searched == ["★ Karambit | Doppler Phase 2 (Factory New)"]
+
+
+async def test_a_rollback_after_acceptance_is_money_spent(db_session: AsyncSession) -> None:
+    item = await _item(db_session, "sk-rolled")
+    await fulfill_skin(_Client(), db=db_session, item=item, idempotency_key=KEY)
+    task = await _task(db_session, item)
+    release = NOW + timedelta(days=7)
+    await skin_status(_Client(trades=[_trade(4, release_date=release)]), db=db_session, task=task)
+    penalties = {"total_penalty": 1500}
+    failed = await skin_status(
+        _Client(trades=[_trade(6, release_date=release, penalties=penalties)]),
+        db=db_session,
+        task=task,
+    )
+    assert (failed.outcome, failed.money_outcome) == ("failed", MoneyOutcome.SPENT)
+    assert failed.error == "rolled_back"
+
+
+async def test_a_bad_trade_link_fails_with_the_money_back_and_is_marked_skin(
+    db_session: AsyncSession,
+) -> None:
+    item = await _item(db_session, "sk-badlink", tradelink="nope")
+    result = await fulfill_skin(_Client(), db=db_session, item=item, idempotency_key=KEY)
+    assert (result.outcome, result.money_outcome) == ("failed", MoneyOutcome.RETURNED)
+    assert result.extra_metadata["waxpeer_kind"] == "skin"

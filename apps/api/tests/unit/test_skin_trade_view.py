@@ -71,3 +71,13 @@ def test_a_declined_offer_says_not_accepted() -> None:
 def test_a_line_that_never_bought_and_failed_was_sold_out() -> None:
     out = skin_trade_out(_row(status=None), fulfillment_state="failed")
     assert (out.state, out.reason_code) == ("failed", "sold_out")
+
+
+def test_an_unconfirmed_buy_sends_the_customer_to_support_not_to_a_refund() -> None:
+    out = skin_trade_out(_row(status=None, reason="buy_unconfirmed"), fulfillment_state="failed")
+    assert (out.state, out.reason_code) == ("failed", "support")
+
+
+def test_a_sold_out_line_is_named_by_its_reason() -> None:
+    out = skin_trade_out(_row(status=None, reason="sold_out"), fulfillment_state="failed")
+    assert out.reason_code == "sold_out"

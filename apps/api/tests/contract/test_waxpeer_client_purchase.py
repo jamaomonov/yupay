@@ -151,3 +151,12 @@ async def test_trades_are_read_by_project_id() -> None:
         "level": 12,
         "joined_at": "2024-10-29T19:28:18+00:00",
     }
+
+
+@respx.mock
+async def test_a_key_waxpeer_has_never_seen_is_an_empty_list_not_an_error() -> None:
+    # Recorded on prod 2026-09-28: every first purchase looks its fresh key up first.
+    respx.get(f"{BASE}/check-many-project-id").mock(
+        return_value=httpx.Response(200, json={"success": True, "trades": []})
+    )
+    assert await _client().check_project_ids(["never-seen"]) == []
