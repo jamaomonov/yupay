@@ -74,3 +74,29 @@ async def test_prices_returns_items() -> None:
     assert len(items) == 4
     assert items[0]["type"] == "Rifles"
     assert respx.calls.last.request.url.params["minified"] == "0"
+
+
+@respx.mock
+async def test_search_listings_asks_for_delivery_details_and_never_hold() -> None:
+    respx.get(f"{HOST}/v2/search-items-by-name").mock(
+        return_value=httpx.Response(200, content=(FIXTURES / "search_v2.json").read_bytes())
+    )
+    items = await _client().search_listings(["AK-47 | Redline (Field-Tested)"])
+    assert len(items["AK-47 | Redline (Field-Tested)"]) == 3
+    params = respx.calls.last.request.url.params
+    assert params["delivery_details"] == "1"
+    assert params["minified"] == "0"
+    assert params.get_list("name") == ["AK-47 | Redline (Field-Tested)"]
+    assert "include_hold" not in params
+
+
+@respx.mock
+async def test_search_listings_429_is_rate_limited() -> None:
+    respx.get(f"{HOST}/v2/search-items-by-name").mock(
+        return_value=httpx.Response(
+            429, json={"success": False, "msg": "Too many", "msBeforeNext": 2500}
+        )
+    )
+    with pytest.raises(WaxpeerRateLimitedError) as exc:
+        await _client().search_listings(["x"])
+    assert exc.value.retry_after_ms == 2500

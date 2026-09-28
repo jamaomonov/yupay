@@ -89,3 +89,26 @@ class SkinItemPricingIn(BaseModel):
 
     margin_override_pp: Decimal | None = Field(default=None, ge=-100, le=500, decimal_places=2)
     fixed_price_usd: Decimal | None = Field(default=None, ge=0, le=100000, decimal_places=2)
+
+
+class SkinStickerOut(BaseModel):
+    name: str
+    image: str | None
+    slot: int | None
+    wear: float | None
+
+
+class SkinListingOut(BaseModel):
+    listing_id: int
+    price_usd: str
+    price_uzs: str | None
+    float_value: float | None
+    paint_seed: int | None
+    stickers: list[SkinStickerOut]
+    inspect_url: str | None
+
+
+class SkinListingsOut(BaseModel):
+    items: list[SkinListingOut]
+    #: ``True`` when the answer is a stale cache or the snapshot, not a live read.
+    degraded: bool

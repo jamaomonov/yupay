@@ -13,7 +13,7 @@ import json
 from decimal import Decimal
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from redis.exceptions import RedisError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,8 +21,11 @@ from yupay.api.v1.deps import db_session
 from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError
 from yupay.core.redis import get_redis
+from yupay.modules.auth.ip_guard import guard_ip
+from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.service import FxService, FxUnavailableError
+from yupay.modules.skins.listings import listings_for
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.pricing import PricingRules, quote, to_uzs
 from yupay.modules.skins.schemas import (
@@ -30,8 +33,11 @@ from yupay.modules.skins.schemas import (
     SkinDetailOut,
     SkinFacetsOut,
     SkinItemOut,
+    SkinListingOut,
+    SkinListingsOut,
     SkinListingSummaryOut,
     SkinsPageOut,
+    SkinStickerOut,
     SkinSuggestOut,
 )
 from yupay.modules.skins.service import (
@@ -239,6 +245,59 @@ async def get_detail(slug: str, db: Annotated[AsyncSession, Depends(db_session)]
             )
         )
     return SkinDetailOut(**base.model_dump(), cheapest=cheapest)
+
+
+@router.get(
+    "/{slug}/listings",
+    response_model=SkinListingsOut,
+    summary="Live auto listings for one item (cached, rate-budgeted, degradable)",
+)
+async def get_listings(
+    slug: str, request: Request, db: Annotated[AsyncSession, Depends(db_session)]
+) -> SkinListingsOut:
+    # Spends supplier quota on a cache miss — the bucket bounds distinct items per address.
+    await guard_ip(request, bucket="skins-listings")
+    settings = get_settings()
+    item = await get_item(db, slug, categories=enabled_categories(settings))
+    rules = await load_rules(db)
+    rate = await _uzs_rate(_fx())
+    client = WaxpeerClient(
+        api_key=settings.waxpeer_api_key,
+        base_url=settings.waxpeer_base_url,
+        timeout_seconds=settings.waxpeer_request_timeout_seconds,
+    )
+    rows, degraded = await listings_for(
+        item,
+        client=client,
+        redis=get_redis(),
+        budget_per_minute=settings.cs2_skins_listings_bucket_per_minute
+        if settings.waxpeer_api_key
+        else 0,
+    )
+    items = []
+    for row in rows:
+        usd = quote(
+            row.price_units,
+            rules=rules,
+            category=item.category,
+            weapon=item.weapon,
+            count_auto=item.count_auto,
+            item_pp=item.margin_override_pp,
+            fixed_price_usd=item.fixed_price_usd,
+            steam_price_units=item.steam_price_units,
+        ).price_usd
+        items.append(
+            SkinListingOut(
+                listing_id=row.listing_id,
+                price_usd=str(usd),
+                price_uzs=_to_uzs(usd, rate, rules),
+                float_value=row.float_value,
+                paint_seed=row.paint_seed,
+                stickers=[SkinStickerOut.model_validate(s) for s in row.stickers],
+                inspect_url=row.inspect_url,
+            )
+        )
+    return SkinListingsOut(items=items, degraded=degraded)
 
 
 __all__ = ["router"]

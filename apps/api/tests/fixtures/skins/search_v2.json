@@ -1,0 +1,66 @@
+{
+  "success": true,
+  "items": {
+    "AK-47 | Redline (Field-Tested)": [
+      {
+        "item_id": 53857957789,
+        "brand": "rifle",
+        "image": "https://steamcommunity-a.akamaihd.net/economy/image/class/730/7993036958",
+        "price": 27867,
+        "name": "AK-47 | Redline (Field-Tested)",
+        "float": 0.3691926896572113,
+        "sticker_names": ["Sticker | The Huns | Budapest 2025"],
+        "steam_price_number": 43794,
+        "phase": "",
+        "auto": true,
+        "delivery": "p2p",
+        "paintseed": 421,
+        "paintindex": 282,
+        "inspect": "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198000000001A53857957789D1",
+        "stickers": [
+          {
+            "wear": null,
+            "slot": 1,
+            "image": "https://community.akamai.steamstatic.com/economy/image/sticker1",
+            "name": "Sticker | The Huns | Budapest 2025",
+            "price": 30
+          }
+        ]
+      },
+      {
+        "item_id": 53863078495,
+        "brand": "rifle",
+        "image": "https://steamcommunity-a.akamaihd.net/economy/image/class/730/7993036958",
+        "price": 27878,
+        "name": "AK-47 | Redline (Field-Tested)",
+        "float": 0.354,
+        "sticker_names": [],
+        "steam_price_number": 43794,
+        "phase": "",
+        "auto": true,
+        "delivery": "bot",
+        "paintseed": 7,
+        "paintindex": 282,
+        "inspect": "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198000000002A53863078495D2",
+        "stickers": []
+      },
+      {
+        "item_id": 53800000001,
+        "brand": "rifle",
+        "image": "https://steamcommunity-a.akamaihd.net/economy/image/class/730/7993036958",
+        "price": 27000,
+        "name": "AK-47 | Redline (Field-Tested)",
+        "float": 0.2,
+        "sticker_names": [],
+        "steam_price_number": 43794,
+        "phase": "",
+        "auto": false,
+        "delivery": "p2p",
+        "paintseed": 9,
+        "paintindex": 282,
+        "inspect": "steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561198000000003A53800000001D3",
+        "stickers": []
+      }
+    ]
+  }
+}

@@ -325,6 +325,15 @@ yupay/
   a day, and an hourly sync would make purchase prices four times staler than the 900 s
   detail cache does now. The trade turns the other way the moment the ~4400 per-game SEO
   pages are wanted, because nothing else can price them.
+- **The CS2 skins listings read is a third carve-out** (ADR-0093): `GET /skins/{slug}/listings`
+  calls Waxpeer's search-by-name from its handler on a cache miss. Same shape as the gifts
+  reads — a catalogue read, off the order/payment/fulfilment path, Redis-cached (90 s fresh,
+  1 h stale) — and stricter than them on two points the gifts reads lack: a process-wide
+  budget under Waxpeer's 20/min search limit (`cs2_skins_listings_bucket_per_minute`) and a
+  2-minute breaker, and it **degrades instead of failing** — an exhausted budget, an open
+  breaker or a 429 answers from the five-minute snapshot's cheapest listings with
+  `degraded: true`. It also carries its own `ip_guard` bucket (`skins-listings`). Every other
+  `/skins/*` read is Postgres and Redis only (`skins/service.py`).
 - **Admin catalogue-sync calls are a carve-out, not a fifth line in the list above**:
   `POST /{supplier}/games/{game_id}/sync-denominations` already argues the deviation-free
   shape in its own docstring — `POST`, operator-triggered from the mapping wizard, off the

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -288,6 +288,46 @@ class WaxpeerClient:
         body = resp.json()
         items = body.get("items") if isinstance(body, dict) else None
         return items if isinstance(items, list) else []
+
+    async def search_listings(
+        self, names: Sequence[str], *, game: str = "csgo"
+    ) -> dict[str, list[dict[str, Any]]]:
+        """``GET /v2/search-items-by-name`` with ``delivery_details=1`` (≤ 50 names).
+
+        Returns Waxpeer's ``items`` map (name -> listings). Hold listings are
+        never requested. 20/min for non-partner accounts: a 429 is raised as
+        :class:`WaxpeerRateLimitedError` with Waxpeer's ``msBeforeNext``.
+        """
+        url = f"{self._host}/v2/search-items-by-name"
+        params: list[tuple[str, Any]] = [
+            ("api", self._api_key),
+            ("game", game),
+            ("minified", 0),
+            ("delivery_details", 1),
+            *[("name", name) for name in names[:50]],
+        ]
+        try:
+            async with self._session() as client:
+                resp = await client.get(url, params=params)
+        except httpx.HTTPError as exc:
+            raise WaxpeerUnavailableError(transport_error_text(exc)) from exc
+        if resp.status_code == 429:
+            body = (
+                resp.json()
+                if resp.headers.get("content-type", "").startswith("application/json")
+                else {}
+            )
+            wait = body.get("msBeforeNext") if isinstance(body, dict) else None
+            raise WaxpeerRateLimitedError(
+                "search rate limited",
+                retry_after_ms=int(wait) if isinstance(wait, int) else None,
+                body=resp.text,
+            )
+        if resp.status_code >= 400:
+            raise WaxpeerError(resp.text[:200], status=resp.status_code, body=resp.text)
+        payload = resp.json()
+        items = payload.get("items") if isinstance(payload, dict) else None
+        return items if isinstance(items, dict) else {}
 
     async def get_balance_units(self) -> int:
         """Return our Waxpeer wallet balance, in the same units as ``amount``.
