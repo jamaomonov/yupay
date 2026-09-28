@@ -184,6 +184,13 @@ export const qk = {
   paymentProviderDetail: (provider: string, window: string) =>
     ["admin", "payments", "providers", provider, window] as const,
 
+  // CS2 skins
+  skinTrades: (view: string, q: string, offset: number) =>
+    ["admin", "skins", "trades", view, q, offset] as const,
+  skinPricing: () => ["admin", "skins", "pricing"] as const,
+  skinItems: (q: string, overridden: boolean) =>
+    ["admin", "skins", "items", q, overridden] as const,
+
   // merchants (B2B resellers)
   merchants: () => ["admin", "merchants"] as const,
   merchantTxns: (merchantId: string) => ["admin", "merchants", merchantId, "transactions"] as const,

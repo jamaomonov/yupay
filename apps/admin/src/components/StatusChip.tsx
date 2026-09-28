@@ -114,6 +114,15 @@ const REVIEW_STATUS: Record<string, StatusMeta> = {
   removed: { label: "Удалён", tone: DANGER },
 };
 
+/** A CS2 skin trade's state (`skins.trade_view`), as the trades screen shows it. */
+const SKIN_TRADE_STATE: Record<string, StatusMeta> = {
+  buying: { label: "Покупаем", tone: WARNING },
+  offer_sent: { label: "Обмен отправлен", tone: ACCENT },
+  accepted: { label: "Принят, защита Steam", tone: SUCCESS },
+  released: { label: "Завершён", tone: SUCCESS },
+  failed: { label: "Не состоялся", tone: DANGER },
+};
+
 export type StatusDomain =
   | "orderStatus"
   | "paymentStatus"
@@ -122,7 +131,8 @@ export type StatusDomain =
   | "taskStatus"
   | "walletTxKind"
   | "reviewStatus"
-  | "merchantStatus";
+  | "merchantStatus"
+  | "skinTradeState";
 
 const REGISTRY: Record<StatusDomain, Record<string, StatusMeta>> = {
   orderStatus: fromLabelTone(ORDER_LABEL, ORDER_TONE),
@@ -133,6 +143,7 @@ const REGISTRY: Record<StatusDomain, Record<string, StatusMeta>> = {
   walletTxKind: WALLET_TX_KIND,
   reviewStatus: REVIEW_STATUS,
   merchantStatus: MERCHANT_STATUS,
+  skinTradeState: SKIN_TRADE_STATE,
 };
 
 /** Humanize an unmapped raw value instead of rendering it blank or in raw

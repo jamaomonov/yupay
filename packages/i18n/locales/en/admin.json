@@ -404,5 +404,38 @@
       "brandNone": "No brand — draft only",
       "brandDraftHint": "A draft can be saved without a brand. Publishing requires one."
     }
+  },
+  "skins": {
+    "nav": "Skins",
+    "navPricing": "Skin pricing",
+    "trades": {
+      "title": "Skin trades",
+      "description": "Every skin purchase: Waxpeer's status, our state, the seller. «Needs attention» is what a human must settle.",
+      "tabs": {
+        "all": "All",
+        "active": "In progress",
+        "attention": "Needs attention"
+      },
+      "search": "Order ID or name",
+      "empty": "No trades",
+      "loadError": "Could not load trades",
+      "attention": "Needs a human",
+      "penalty": "Penalty: {amount}",
+      "cols": {
+        "created": "Created",
+        "item": "Skin",
+        "paid": "Paid",
+        "state": "State",
+        "seller": "Seller",
+        "until": "Deadline",
+        "reason": "Reason"
+      },
+      "acceptBy": "accept by {time}",
+      "protectedUntil": "protected until {date}",
+      "subState": {
+        "buy_pending": "buy not sent",
+        "buy_unconfirmed": "buy not confirmed"
+      }
+    }
   }
 }

@@ -404,5 +404,38 @@
       "brandNone": "Brendsiz — faqat qoralama",
       "brandDraftHint": "Qoralamani brendsiz saqlash mumkin. Chop etish uchun brend majburiy."
     }
+  },
+  "skins": {
+    "nav": "Skinlar",
+    "navPricing": "Skin narxlari",
+    "trades": {
+      "title": "Skin almashuvlari",
+      "description": "Har bir skin xaridi: Waxpeer holati, bizdagi holat, sotuvchi. «E'tibor talab» — inson hal qilishi kerak bo'lganlar.",
+      "tabs": {
+        "all": "Hammasi",
+        "active": "Jarayonda",
+        "attention": "E'tibor talab"
+      },
+      "search": "Buyurtma ID yoki nomi",
+      "empty": "Almashuvlar yo'q",
+      "loadError": "Almashuvlarni yuklab bo'lmadi",
+      "attention": "Inson kerak",
+      "penalty": "Jarima: {amount}",
+      "cols": {
+        "created": "Yaratilgan",
+        "item": "Skin",
+        "paid": "To'langan",
+        "state": "Holat",
+        "seller": "Sotuvchi",
+        "until": "Muddat",
+        "reason": "Sabab"
+      },
+      "acceptBy": "{time} gacha qabul",
+      "protectedUntil": "{date} gacha himoya",
+      "subState": {
+        "buy_pending": "xarid yuborilmagan",
+        "buy_unconfirmed": "xarid tasdiqlanmagan"
+      }
+    }
   }
 }
