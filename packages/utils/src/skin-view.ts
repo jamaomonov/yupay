@@ -169,3 +169,17 @@ export function repriceOffer<T extends { price_usd: string; price_uzs: string | 
         );
   return { ...offer, price_usd: expectedUsd, price_uzs: uzs };
 }
+
+/** One colour per wear, green (Factory New) to red (Battle-Scarred) — the market's own cue. */
+const WEAR_COLORS: Record<string, string> = {
+  FN: "#4ade80",
+  MW: "#a3e635",
+  FT: "#facc15",
+  WW: "#fb923c",
+  BS: "#f87171",
+};
+
+/** The colour an offer row paints its wear code in; `null` for items without wear. */
+export function wearColor(exterior: string | null): string | null {
+  return exterior ? (WEAR_COLORS[exterior] ?? null) : null;
+}

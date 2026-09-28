@@ -30,5 +30,6 @@ export {
   offerHeadline,
   repriceOffer,
   wearChoices,
+  wearColor,
 } from "./skin-view";
 export type { VariantToggle, WearChoice } from "./skin-view";

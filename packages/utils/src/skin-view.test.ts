@@ -7,6 +7,7 @@ import {
   isVanilla,
   offerHeadline,
   repriceOffer,
+  wearColor,
   wearChoices,
 } from "./skin-view";
 import { DEFAULT_SORT, SKIN_CATEGORIES } from "./skins";
@@ -164,5 +165,15 @@ describe("repriceOffer", () => {
 
   it("keeps soʻm unknown when it was unknown", () => {
     expect(repriceOffer({ ...offer, price_uzs: null }, "31.50").price_uzs).toBeNull();
+  });
+});
+
+describe("wearColor", () => {
+  it("gives each wear its own colour, best to worst, and nothing for none", () => {
+    const colors = ["FN", "MW", "FT", "WW", "BS"].map(wearColor);
+    expect(new Set(colors).size).toBe(5);
+    expect(colors.every((c) => c?.startsWith("#"))).toBe(true);
+    expect(wearColor(null)).toBeNull();
+    expect(wearColor("XX")).toBeNull();
   });
 });

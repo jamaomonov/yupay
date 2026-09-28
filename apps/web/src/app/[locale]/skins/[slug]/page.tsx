@@ -160,7 +160,12 @@ export default async function SkinPage({ params }: Props) {
               {t("offers")}{" "}
               <span className="text-tx-dim text-[14px] tabular-nums">{item.count}</span>
             </h2>
-            <SkinListings locale={locale} buyable={Boolean(item.buy_sku_id)} />
+            <SkinListings
+              locale={locale}
+              buyable={Boolean(item.buy_sku_id)}
+              image={item.image_url}
+              exterior={item.exterior}
+            />
           </section>
         )}
       </SkinOffersProvider>

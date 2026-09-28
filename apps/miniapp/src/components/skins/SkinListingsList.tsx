@@ -1,3 +1,4 @@
+import { steamImageSize, wearColor } from "@yupay/utils";
 import { useState } from "react";
 
 import type { SkinListing } from "@yupay/utils";
@@ -19,8 +20,14 @@ export function SkinListingsList({
   items,
   selectedId = null,
   onSelect,
+  image = null,
+  exterior = null,
 }: {
   items: SkinListing[] | null;
+  /** The item's picture, shown on every row as a market row does. */
+  image?: string | null;
+  /** The item's wear code (FN…BS), coloured on every row. */
+  exterior?: string | null;
   /** The offer the buy panel will charge; rows are tappable only with `onSelect`. */
   selectedId?: number | null;
   onSelect?: (listingId: number) => void;
@@ -50,69 +57,89 @@ export function SkinListingsList({
           return (
             <li
               key={l.listing_id}
-              className="space-y-2 rounded-xl border p-3"
+              className="rounded-xl border p-2.5"
               style={{
                 borderColor: selected ? "hsl(var(--primary))" : "hsl(var(--border))",
                 background: "hsl(var(--surface-2))",
               }}
             >
-              <div className="flex items-center gap-3">
-                <span className="text-[14px] font-bold tabular-nums text-white">
-                  {skinPriceText(l.price_uzs, l.price_usd)}
+              <div className="flex items-center gap-2.5">
+                {image && (
+                  <img
+                    src={steamImageSize(image, "128fx96f")}
+                    alt=""
+                    width={48}
+                    height={36}
+                    loading="lazy"
+                    className="h-9 w-12 shrink-0 object-contain"
+                  />
+                )}
+                <div className="w-16 shrink-0 leading-tight">
+                  {exterior && (
+                    <span
+                      className="block text-[12px] font-bold"
+                      style={{ color: wearColor(exterior) ?? undefined }}
+                    >
+                      {exterior}
+                    </span>
+                  )}
+                  {l.float_value !== null && (
+                    <span className="block text-[11px] tabular-nums text-white/55">
+                      {l.float_value.toFixed(4)}
+                    </span>
+                  )}
+                  {l.paint_seed !== null && (
+                    <span className="block text-[10px] text-white/40">
+                      {t("cs2.seed")} <span className="tabular-nums">{l.paint_seed}</span>
+                    </span>
+                  )}
+                </div>
+                <span className="flex min-w-0 flex-1 items-center gap-1 overflow-hidden">
+                  {l.stickers.map((s, i) =>
+                    s.image ? (
+                      <img
+                        key={`${String(i)}-${s.name}`}
+                        src={s.image}
+                        alt={s.name}
+                        width={24}
+                        height={18}
+                        loading="lazy"
+                        className="h-[18px] w-6 shrink-0 object-contain"
+                      />
+                    ) : (
+                      <span
+                        key={`${String(i)}-${s.name}`}
+                        role="img"
+                        aria-label={s.name}
+                        className="h-4 w-4 shrink-0 rounded-sm"
+                        style={{ background: "hsl(var(--border))" }}
+                      />
+                    ),
+                  )}
                 </span>
-                {l.paint_seed !== null && (
-                  <span className="text-[11px] text-white/50">
-                    {t("cs2.seed")}{" "}
-                    <span className="tabular-nums text-white/80">{l.paint_seed}</span>
+                <div className="flex shrink-0 flex-col items-end gap-1.5">
+                  <span className="whitespace-nowrap text-[14px] font-bold tabular-nums text-white">
+                    {skinPriceText(l.price_uzs, l.price_usd)}
                   </span>
-                )}
-                {l.stickers.length > 0 && (
-                  <span className="ml-auto flex items-center gap-1">
-                    {l.stickers.map((s, i) =>
-                      s.image ? (
-                        <img
-                          key={`${String(i)}-${s.name}`}
-                          src={s.image}
-                          alt={s.name}
-                          width={22}
-                          height={16}
-                          loading="lazy"
-                          className="h-4 w-[22px] object-contain"
-                        />
-                      ) : (
-                        <span
-                          key={`${String(i)}-${s.name}`}
-                          role="img"
-                          aria-label={s.name}
-                          className="h-4 w-4 rounded-sm"
-                          style={{ background: "hsl(var(--border))" }}
-                        />
-                      ),
-                    )}
-                  </span>
-                )}
-                {onSelect && (
-                  <button
-                    type="button"
-                    aria-pressed={selected}
-                    onClick={() => {
-                      onSelect(l.listing_id);
-                    }}
-                    className={`min-h-[32px] shrink-0 rounded-lg px-3 text-[12px] font-bold ${
-                      l.stickers.length > 0 ? "" : "ml-auto"
-                    } ${selected ? "bg-primary text-black" : "text-white/80"}`}
-                    style={selected ? undefined : { border: "1px solid hsl(var(--border))" }}
-                  >
-                    {selected ? t("cs2.buy.selected") : t("cs2.buy.buyThis")}
-                  </button>
-                )}
+                  {onSelect && (
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => {
+                        onSelect(l.listing_id);
+                      }}
+                      className={`min-h-[30px] rounded-lg px-3 text-[12px] font-bold ${
+                        selected ? "bg-primary text-black" : "text-white/80"
+                      }`}
+                      style={selected ? undefined : { border: "1px solid hsl(var(--border))" }}
+                    >
+                      {selected ? t("cs2.buy.selected") : t("cs2.buy.buyThis")}
+                    </button>
+                  )}
+                </div>
               </div>
               {l.float_value !== null && (
-                <div>
-                  <div className="mb-1 flex justify-between text-[11px] text-white/50">
-                    <span>{t("cs2.float")}</span>
-                    <span className="tabular-nums">{l.float_value.toFixed(4)}</span>
-                  </div>
+                <div className="mt-2">
                   <SkinFloatBar value={l.float_value} />
                 </div>
               )}

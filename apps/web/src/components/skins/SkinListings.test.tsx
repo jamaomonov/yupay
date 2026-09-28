@@ -22,7 +22,11 @@ function renderListings() {
   return render(
     <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
       <SkinOffersProvider slug="ak-ft">
-        <SkinListings locale="ru" />
+        <SkinListings
+          locale="ru"
+          exterior="FT"
+          image="https://community.fastly.steamstatic.com/economy/image/ak"
+        />
       </SkinOffersProvider>
     </NextIntlClientProvider>,
   );
@@ -55,8 +59,11 @@ describe("SkinListings", () => {
         },
       ],
     });
-    renderListings();
+    const { container } = renderListings();
     expect(await screen.findByText("0.3692")).toBeInTheDocument();
+    // Each row says which wear it is and shows the skin, as a market row does.
+    expect(screen.getByText("FT")).toBeInTheDocument();
+    expect(container.querySelector('img[src*="economy/image/ak"]')).not.toBeNull();
     expect(screen.getByText("421")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Осмотр/ })).toHaveAttribute(
       "href",

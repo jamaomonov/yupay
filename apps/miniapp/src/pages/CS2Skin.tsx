@@ -231,6 +231,8 @@ export default function CS2Skin() {
           <SkinListingsList
             key={item.slug}
             items={offers}
+            image={item.image_url}
+            exterior={item.exterior}
             {...(buyable ? { selectedId: selected.listing_id, onSelect: setPickedId } : {})}
           />
         </section>
