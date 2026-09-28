@@ -247,6 +247,11 @@ class Settings(BaseSettings):
             # already makes a repeat of the same link free, so this only
             # bounds distinct links from one address.
             "gifts-steam-profile": 120,
+            # `GET /skins/{slug}/listings` spends Waxpeer's 20/min search
+            # quota on a cache miss; the Redis cache (90 s) makes a repeat of
+            # the same item free, so this only bounds distinct items from one
+            # address.
+            "skins-listings": 60,
             # The machine API (/merchant/v1). Sixty times the default
             # credential bucket because the caller is a server, not a person:
             # a reseller's backend legitimately fires a burst of order
@@ -827,6 +832,30 @@ class Settings(BaseSettings):
     # code default is what ships on the next deploy.
     steam_gifts_region_default: str = Field(default="UZ")
     steam_gifts_regions: str = Field(default="CIS,RU,KZ,UA")
+
+    # --- CS2 skins (ADR-0093) ---
+    # ``cs2_skins_enabled`` gates every public ``/skins/*`` route (404 while
+    # off); ``cs2_skins_sync_enabled`` gates the two scheduler jobs, so prod
+    # can fill the catalogue for days before the routes open. Pricing rules
+    # (brackets, category adjustments, min margin, floor) are not env: they
+    # live in ``skin_pricing_rules`` row 1 with ``pricing.DEFAULT_RULES`` as
+    # the seed, edited from the admin.
+    cs2_skins_enabled: bool = Field(default=False)
+    cs2_skins_sync_enabled: bool = Field(default=False)
+    # Category slugs the storefront offers (spec §4.4). Everything else is
+    # imported and priced but hidden from every public read.
+    cs2_skins_categories: str = Field(
+        default="rifles,pistols,smgs,heavy,knives,gloves,agents,cases,keys,music-kits,charms"
+    )
+    # Waxpeer's search-by-name limit is 20/min for non-partner accounts; the
+    # listings proxy keeps a process-wide budget under it and degrades to
+    # snapshot data when the budget is spent.
+    cs2_skins_listings_bucket_per_minute: int = Field(default=18)
+    bymykel_base_url: str = Field(
+        default="https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en"
+    )
+    skins_snapshot_interval_minutes: int = Field(default=5)
+    skins_import_interval_hours: int = Field(default=24)
 
     # --- acquirer: Octo (octo.uz) ---
     # Hosted-page card acquirer for the UZ market (Uzcard/Humo/Visa). Empty
