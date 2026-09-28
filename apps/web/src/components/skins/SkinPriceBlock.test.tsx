@@ -77,3 +77,23 @@ describe("SkinPriceBlock", () => {
     );
   });
 });
+
+describe("SkinPriceBlock when skins are sellable", () => {
+  beforeEach(() => mocked.mockReset());
+
+  it("leaves buying to the panel — no disabled «Покупка скоро»", () => {
+    mocked.mockResolvedValue({ degraded: false, items: [] });
+    wrap(
+      <SkinOffersProvider slug="ak-ft">
+        <SkinPriceBlock
+          storedUzs="357300"
+          storedUsd="28.13"
+          steamUrl="https://steamcommunity.com/market/listings/730/x"
+          locale="ru"
+          buyable
+        />
+      </SkinOffersProvider>,
+    );
+    expect(screen.queryByRole("button", { name: "Покупка скоро" })).not.toBeInTheDocument();
+  });
+});

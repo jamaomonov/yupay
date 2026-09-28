@@ -947,6 +947,49 @@
     "instantDelivery": "Tezkor yetkazib berish",
     "inStock": "Mavjud",
     "pieces": "{count, number} dona",
-    "close": "Yopish"
+    "close": "Yopish",
+    "buy": {
+      "title": "Xarid",
+      "offer": "Lot",
+      "tradeLink": "Steam treyd havolasi",
+      "tradeLinkPlaceholder": "https://steamcommunity.com/tradeoffer/new/?partner=…",
+      "whereToFind": "Qayerdan topiladi?",
+      "checking": "Havola tekshirilmoqda…",
+      "verdict": {
+        "ok": "Havola ishlaydi",
+        "invalid": "Bu Steam treyd havolasi emas",
+        "private": "Inventar yopiq — uni Steam maxfiylik sozlamalarida oching",
+        "trade_ban": "Bu akkauntda almashuvga taqiq bor",
+        "hold": "Steam almashuvni ushlab turadi: akkauntda 7 kundan beri Steam Guard Mobile yo'q",
+        "other_account": "Bu havola boshqa Steam akkauntiga tegishli — o'zingiznikini kiriting"
+      },
+      "pay": "{price} to'lash",
+      "signIn": "Sotib olish uchun kiring",
+      "payHintLink": "Treyd havolani kiriting",
+      "payHintMethod": "To'lov usulini tanlang",
+      "priceChanged": "Narx o'zgardi: endi {price}",
+      "listingGone": "Bu lot sotib olindi. Keyingisi — {price}",
+      "noneLeft": "Takliflar tugadi",
+      "buyError": "Buyurtmani rasmiylashtirib bo'lmadi. Qayta urinib ko'ring",
+      "buyThis": "Sotib olish",
+      "selected": "Tanlangan",
+      "orderCreated": "Buyurtma yaratildi",
+      "openOrder": "Buyurtmani ochish"
+    },
+    "trade": {
+      "title": "Steam'dagi almashuv",
+      "buying": "Skinni sotib olyapmiz — almashuv taklifi bir daqiqada Steam'ga keladi",
+      "offer_sent": "Almashuv yuborildi — uni Steam'da qabul qiling",
+      "acceptBy": "{time} gacha qabul qiling",
+      "openOffer": "Almashuvni Steam'da ochish",
+      "seller": "Sotuvchi",
+      "accepted": "Olindi",
+      "protectedUntil": "Steam almashuvni {date} gacha himoya qiladi",
+      "released": "Olindi",
+      "refunded": "Almashuv amalga oshmadi — pul balansga qaytdi",
+      "toWallet": "Balansni ochish",
+      "support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
+      "contactSupport": "Qo'llab-quvvatlashga yozish"
+    }
   }
 }

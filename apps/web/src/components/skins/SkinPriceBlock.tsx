@@ -18,11 +18,14 @@ export function SkinPriceBlock({
   storedUsd,
   steamUrl,
   locale,
+  buyable = false,
 }: {
   storedUzs: string | null;
   storedUsd: string | null;
   steamUrl: string;
   locale: string;
+  /** Buying is live (the panel below does it): no placeholder button. */
+  buyable?: boolean;
 }) {
   const t = useTranslations("web.skins");
   const offers = useSkinOffers();
@@ -41,14 +44,18 @@ export function SkinPriceBlock({
           </p>
         )}
       </div>
-      {/* Purchase is plan 3; the button says so, and does not look clickable. */}
-      <button
-        type="button"
-        disabled
-        className="bg-muted text-tx-mute w-full cursor-not-allowed rounded-xl py-3.5 text-[15px] font-bold"
-      >
-        {t("buySoon")}
-      </button>
+      {!buyable && (
+        <>
+          {/* Purchase is plan 3; the button says so, and does not look clickable. */}
+          <button
+            type="button"
+            disabled
+            className="bg-muted text-tx-mute w-full cursor-not-allowed rounded-xl py-3.5 text-[15px] font-bold"
+          >
+            {t("buySoon")}
+          </button>
+        </>
+      )}
       <a
         href={steamUrl}
         target="_blank"

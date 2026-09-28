@@ -947,6 +947,49 @@
     "instantDelivery": "Мгновенная доставка",
     "inStock": "В наличии",
     "pieces": "{count, number} шт.",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "buy": {
+      "title": "Покупка",
+      "offer": "Лот",
+      "tradeLink": "Трейд-ссылка Steam",
+      "tradeLinkPlaceholder": "https://steamcommunity.com/tradeoffer/new/?partner=…",
+      "whereToFind": "Где найти?",
+      "checking": "Проверяем ссылку…",
+      "verdict": {
+        "ok": "Ссылка работает",
+        "invalid": "Это не трейд-ссылка Steam",
+        "private": "Инвентарь скрыт — откройте его в настройках приватности Steam",
+        "trade_ban": "На этом аккаунте запрет на обмены",
+        "hold": "Steam задержит обмен: на аккаунте нет Steam Guard Mobile 7 дней",
+        "other_account": "Эта ссылка от другого аккаунта Steam — укажите свою"
+      },
+      "pay": "Оплатить {price}",
+      "signIn": "Войдите, чтобы купить",
+      "payHintLink": "Вставьте трейд-ссылку",
+      "payHintMethod": "Выберите способ оплаты",
+      "priceChanged": "Цена изменилась: теперь {price}",
+      "listingGone": "Этот лот уже купили. Следующий — {price}",
+      "noneLeft": "Предложения закончились",
+      "buyError": "Не получилось оформить заказ. Попробуйте ещё раз",
+      "buyThis": "Купить",
+      "selected": "Выбран",
+      "orderCreated": "Заказ создан",
+      "openOrder": "Открыть заказ"
+    },
+    "trade": {
+      "title": "Обмен в Steam",
+      "buying": "Покупаем скин — обмен придёт в Steam через минуту",
+      "offer_sent": "Обмен отправлен — примите его в Steam",
+      "acceptBy": "Примите до {time}",
+      "openOffer": "Открыть обмен в Steam",
+      "seller": "Продавец",
+      "accepted": "Получено",
+      "protectedUntil": "Steam защищает обмен до {date}",
+      "released": "Получено",
+      "refunded": "Обмен не состоялся — деньги вернулись на баланс",
+      "toWallet": "Открыть баланс",
+      "support": "Мы проверяем покупку — напишите в поддержку",
+      "contactSupport": "Написать в поддержку"
+    }
   }
 }

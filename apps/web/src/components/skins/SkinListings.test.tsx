@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,5 +93,44 @@ describe("SkinListings", () => {
     mocked.mockRejectedValue(new Error("down"));
     renderListings();
     expect(await screen.findByText("Сейчас нет предложений")).toBeInTheDocument();
+  });
+});
+
+describe("SkinListings with buying on", () => {
+  it("lets a row's «Купить» pick that offer", async () => {
+    mocked.mockResolvedValue({
+      degraded: false,
+      items: [
+        {
+          listing_id: 1,
+          price_usd: "30.00",
+          price_uzs: "381000",
+          float_value: 0.2,
+          paint_seed: 1,
+          stickers: [],
+          inspect_url: null,
+        },
+        {
+          listing_id: 2,
+          price_usd: "31.00",
+          price_uzs: "393700",
+          float_value: 0.3,
+          paint_seed: 2,
+          stickers: [],
+          inspect_url: null,
+        },
+      ],
+    });
+    render(
+      <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
+        <SkinOffersProvider slug="ak-ft">
+          <SkinListings locale="ru" buyable />
+        </SkinOffersProvider>
+      </NextIntlClientProvider>,
+    );
+    const buttons = await screen.findAllByRole("button", { name: "Купить" });
+    expect(screen.getByRole("button", { name: "Выбран" })).toBeInTheDocument();
+    fireEvent.click(buttons[0]!);
+    expect(screen.getAllByRole("button", { name: "Выбран" })).toHaveLength(1);
   });
 });

@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { SkinFloatBar } from "./SkinFloatBar";
-import { useSkinOffers } from "./SkinOffers";
+import { useSelectedOffer, useSkinOffers } from "./SkinOffers";
 
 import { displayPrice } from "@/lib/skins";
 
@@ -17,9 +17,10 @@ const FIRST = 10;
  * service meta). Delivery is instant for every offer we sell, so it is said once
  * by the headline price, not on each row.
  */
-export function SkinListings({ locale }: { locale: string }) {
+export function SkinListings({ locale, buyable = false }: { locale: string; buyable?: boolean }) {
   const t = useTranslations("web.skins");
   const offers = useSkinOffers();
+  const { selected, select } = useSelectedOffer();
   const [all, setAll] = useState(false);
 
   if (offers === null) {
@@ -87,6 +88,24 @@ export function SkinListings({ locale }: { locale: string }) {
                   ),
                 )}
               </span>
+            )}
+            {buyable && (
+              <button
+                type="button"
+                onClick={() => {
+                  select(l.listing_id);
+                  document
+                    .getElementById("buy")
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+                className={`rounded-btn border px-3 py-1.5 text-[12px] font-semibold ${
+                  selected?.listing_id === l.listing_id
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border text-tx-mute hover:border-border-2"
+                }`}
+              >
+                {selected?.listing_id === l.listing_id ? t("buy.selected") : t("buy.buyThis")}
+              </button>
             )}
             {l.inspect_url?.startsWith("steam://") && (
               <a

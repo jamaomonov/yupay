@@ -947,6 +947,49 @@
     "instantDelivery": "Instant delivery",
     "inStock": "In stock",
     "pieces": "{count, number} pcs",
-    "close": "Close"
+    "close": "Close",
+    "buy": {
+      "title": "Purchase",
+      "offer": "Offer",
+      "tradeLink": "Steam trade link",
+      "tradeLinkPlaceholder": "https://steamcommunity.com/tradeoffer/new/?partner=…",
+      "whereToFind": "Where to find it?",
+      "checking": "Checking the link…",
+      "verdict": {
+        "ok": "The link works",
+        "invalid": "This is not a Steam trade link",
+        "private": "Your inventory is private — make it public in Steam's privacy settings",
+        "trade_ban": "This account is banned from trading",
+        "hold": "Steam will hold the trade: no Steam Guard Mobile on this account for 7 days",
+        "other_account": "This link belongs to another Steam account — use your own"
+      },
+      "pay": "Pay {price}",
+      "signIn": "Sign in to buy",
+      "payHintLink": "Paste your trade link",
+      "payHintMethod": "Choose a payment method",
+      "priceChanged": "The price changed: now {price}",
+      "listingGone": "This offer was just sold. The next one is {price}",
+      "noneLeft": "No offers left",
+      "buyError": "Could not place the order. Try again",
+      "buyThis": "Buy",
+      "selected": "Selected",
+      "orderCreated": "Order created",
+      "openOrder": "Open the order"
+    },
+    "trade": {
+      "title": "Steam trade",
+      "buying": "Buying the skin — the trade offer will arrive in Steam within a minute",
+      "offer_sent": "The trade offer is sent — accept it in Steam",
+      "acceptBy": "Accept by {time}",
+      "openOffer": "Open the trade in Steam",
+      "seller": "Seller",
+      "accepted": "Received",
+      "protectedUntil": "Steam protects the trade until {date}",
+      "released": "Received",
+      "refunded": "The trade did not happen — the money is back on your balance",
+      "toWallet": "Open balance",
+      "support": "We are checking the purchase — please contact support",
+      "contactSupport": "Contact support"
+    }
   }
 }

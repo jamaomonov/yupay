@@ -9,6 +9,7 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { SkinCategory } from "@/lib/skins";
 import type { Metadata } from "next";
 
+import { SkinBuyPanel } from "@/components/skins/SkinBuyPanel";
 import { SkinListings } from "@/components/skins/SkinListings";
 import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
 import { SkinOffersProvider } from "@/components/skins/SkinOffers";
@@ -128,7 +129,11 @@ export default async function SkinPage({ params }: Props) {
               storedUsd={item.price_usd}
               steamUrl={steamMarketUrl(item.name)}
               locale={locale}
+              buyable={Boolean(item.buy_sku_id)}
             />
+            {item.buy_sku_id && (
+              <SkinBuyPanel skuId={item.buy_sku_id} slug={item.slug} locale={locale} />
+            )}
             {worn && item.family.length > 1 && (
               <SkinWearPicker family={item.family} current={item} locale={locale} />
             )}
@@ -155,7 +160,7 @@ export default async function SkinPage({ params }: Props) {
               {t("offers")}{" "}
               <span className="text-tx-dim text-[14px] tabular-nums">{item.count}</span>
             </h2>
-            <SkinListings locale={locale} />
+            <SkinListings locale={locale} buyable={Boolean(item.buy_sku_id)} />
           </section>
         )}
       </SkinOffersProvider>
