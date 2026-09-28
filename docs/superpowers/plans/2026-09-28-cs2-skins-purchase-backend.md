@@ -40,6 +40,9 @@ ADR: `docs/decisions/0093-cs2-skins-via-waxpeer.md`.
 - Trade link token is a secret-ish credential: never logged, never in an alert; order responses
   show the link only to its owner.
 - Money in `Decimal`; Waxpeer units are integers (1000 = $1).
+- **Nothing that changes minute to minute may be cached by Cloudflare, a browser or the web's
+  fetch cache** (owner, 2026-09-28): order and trade progress, live offers, the trade-link check,
+  balances. The API answers `Cache-Control: no-store` unless a route opts into its own policy.
 - AGENTS §10: the trade-link check is an advisory external call in a request handler — it
   needs a line in AGENTS §10 and in ADR-0093, and its own rate-limit bucket, timeout and cache.
 
@@ -52,8 +55,25 @@ ADR: `docs/decisions/0093-cs2-skins-via-waxpeer.md`.
 4. A trade link whose Steam account is not the signed-in user's linked Steam account is refused
    at checkout (when a link exists).
 5. Status 4 → accepted must be detected within ~10 s of Waxpeer reporting `release_date`.
+6. A cached response (Cloudflare, browser, Next fetch cache) must never show an old order or
+   trade state.
 
 ---
+
+### Task 0: No caching of live data
+
+**Files:** Create `apps/api/src/yupay/core/cache_headers.py` (middleware); modify
+`apps/api/src/yupay/bootstrap.py` (install it); `docs/architecture/cache-keys.md` (HTTP caching
+section); `infra/caddy/Caddyfile.prod` comment only if Caddy sets nothing.
+
+- Middleware: every API response without a `Cache-Control` header gets
+  `Cache-Control: no-store` (and `Vary: Authorization` stays as FastAPI sets it). A route that
+  wants caching sets its own header explicitly — none does today.
+- Web: the order pages and every client fetch of orders/listings use `cache: "no-store"`;
+  server fetches of orders are `dynamic = "force-dynamic"`. Check `apps/web/src/lib/client.ts`
+  and the order route segments; the skins catalogue keeps its 60 s ISR (prices every 5 min).
+- Tests: `GET /api/v1/orders/{id}`, `/skins/{slug}/listings`, `/health` carry `no-store`; a
+  route that sets its own header keeps it.
 
 ### Task 1: Schema and seed
 
