@@ -943,6 +943,9 @@
     "noOffers": "Hozircha takliflar yoʻq",
     "vanilla": "Vanilla",
     "resetFilters": "Filtrlarni tozalash",
-    "done": "Tayyor"
+    "done": "Tayyor",
+    "instantDelivery": "Tezkor yetkazib berish",
+    "inStock": "Mavjud",
+    "pieces": "{count, number} dona"
   }
 }

@@ -943,6 +943,9 @@
     "noOffers": "Сейчас нет предложений",
     "vanilla": "Ванильный",
     "resetFilters": "Сбросить фильтры",
-    "done": "Готово"
+    "done": "Готово",
+    "instantDelivery": "Мгновенная доставка",
+    "inStock": "В наличии",
+    "pieces": "{count, number} шт."
   }
 }

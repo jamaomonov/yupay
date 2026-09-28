@@ -943,6 +943,9 @@
     "noOffers": "No offers right now",
     "vanilla": "Vanilla",
     "resetFilters": "Reset filters",
-    "done": "Done"
+    "done": "Done",
+    "instantDelivery": "Instant delivery",
+    "inStock": "In stock",
+    "pieces": "{count, number} pcs"
   }
 }

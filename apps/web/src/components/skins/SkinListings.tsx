@@ -1,116 +1,109 @@
 "use client";
 
-import { Eye, Zap } from "lucide-react";
+import { Eye } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import { SkinFloatBar } from "./SkinFloatBar";
+import { useSkinOffers } from "./SkinOffers";
 
-import type { SkinListing } from "@/lib/skins";
-
-import { displayPrice, fetchSkinListings } from "@/lib/skins";
-
-type State = { phase: "loading" } | { phase: "ready"; items: SkinListing[] };
+import { displayPrice } from "@/lib/skins";
 
 const FIRST = 10;
 
 /**
- * Live offers for one item. Loaded in the browser: the listings read is the
- * one catalogue call that can reach the supplier, and a page render must not
- * wait on it. When the API answers from its fallback the rows simply carry no
- * float/seed/inspect — nothing is said about it (owner rule: no service meta).
+ * The live offers, price first. When the API answers from its fallback the rows
+ * simply carry no float/seed/inspect — nothing is said about it (owner rule: no
+ * service meta). Delivery is instant for every offer we sell, so it is said once
+ * by the headline price, not on each row.
  */
-export function SkinListings({ slug, locale }: { slug: string; locale: string }) {
+export function SkinListings({ locale }: { locale: string }) {
   const t = useTranslations("web.skins");
-  const [state, setState] = useState<State>({ phase: "loading" });
+  const offers = useSkinOffers();
   const [all, setAll] = useState(false);
 
-  useEffect(() => {
-    let live = true;
-    fetchSkinListings(slug)
-      .then((r) => {
-        if (live) setState({ phase: "ready", items: r.items });
-      })
-      .catch(() => {
-        if (live) setState({ phase: "ready", items: [] });
-      });
-    return () => {
-      live = false;
-    };
-  }, [slug]);
-
-  if (state.phase === "loading") {
+  if (offers === null) {
     return (
-      <ul className="space-y-2">
-        {[0, 1, 2].map((i) => (
-          <li key={i} className="bg-muted h-16 animate-pulse rounded-xl" />
+      <ul className="space-y-2" aria-hidden>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <li key={i} className="bg-muted h-[52px] animate-pulse rounded-xl" />
         ))}
       </ul>
     );
   }
-  if (state.items.length === 0) {
+  if (offers.length === 0) {
     return <p className="text-tx-mute py-8 text-center">{t("noOffers")}</p>;
   }
 
-  const shown = all ? state.items : state.items.slice(0, FIRST);
+  const shown = all ? offers : offers.slice(0, FIRST);
   return (
     <>
       <ul className="space-y-2">
         {shown.map((l) => (
           <li
             key={l.listing_id}
-            className="border-border bg-card flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border p-3"
+            className="border-border bg-card flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border px-4 py-3"
           >
-            <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/15 px-2 py-0.5 text-[11px] font-semibold text-emerald-400">
-              <Zap className="h-3 w-3" />
-              {t("ready")}
+            <span className="w-32 shrink-0 text-[15px] font-bold tabular-nums">
+              {displayPrice(locale, l.price_uzs, l.price_usd)}
             </span>
             {l.float_value !== null && (
               <div className="w-40">
                 <div className="text-tx-dim mb-1 flex justify-between text-[11px]">
                   <span>{t("float")}</span>
-                  <span className="font-mono">{l.float_value.toFixed(4)}</span>
+                  <span className="tabular-nums">{l.float_value.toFixed(4)}</span>
                 </div>
                 <SkinFloatBar value={l.float_value} />
               </div>
             )}
             {l.paint_seed !== null && (
-              <div className="text-[12px]">
+              <span className="text-[12px]">
                 <span className="text-tx-dim">{t("seed")} </span>
-                <span className="font-mono">{l.paint_seed}</span>
-              </div>
+                <span className="tabular-nums">{l.paint_seed}</span>
+              </span>
             )}
             {l.stickers.length > 0 && (
-              <div
-                className="text-tx-dim min-w-0 flex-1 truncate text-[12px]"
-                title={t("stickers")}
-              >
-                {l.stickers.map((s) => s.name).join(", ")}
-              </div>
-            )}
-            <div className="ml-auto flex items-center gap-3">
-              {l.inspect_url?.startsWith("steam://") && (
-                <a
-                  href={l.inspect_url}
-                  className="text-tx-mute hover:text-foreground inline-flex items-center gap-1 text-[12px]"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  {t("inspect")}
-                </a>
-              )}
-              <span className="font-mono text-[14px] font-bold">
-                {displayPrice(locale, l.price_uzs, l.price_usd)}
+              <span className="flex items-center gap-1" title={t("stickers")}>
+                {l.stickers.map((s, i) =>
+                  s.image ? (
+                    // Steam CDN thumbnails at 20 px: next/image adds nothing here.
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      key={`${String(i)}-${s.name}`}
+                      src={s.image}
+                      alt={s.name}
+                      title={s.name}
+                      width={24}
+                      height={18}
+                      loading="lazy"
+                      className="h-[18px] w-6 object-contain"
+                    />
+                  ) : (
+                    <span
+                      key={`${String(i)}-${s.name}`}
+                      title={s.name}
+                      className="bg-muted size-[18px] rounded-sm"
+                    />
+                  ),
+                )}
               </span>
-            </div>
+            )}
+            {l.inspect_url?.startsWith("steam://") && (
+              <a
+                href={l.inspect_url}
+                className="text-tx-mute hover:text-foreground ml-auto inline-flex items-center gap-1 text-[12px]"
+              >
+                <Eye className="h-3.5 w-3.5" aria-hidden />
+                {t("inspect")}
+              </a>
+            )}
           </li>
         ))}
       </ul>
-      {!all && state.items.length > FIRST && (
+      {!all && offers.length > FIRST && (
         <button
           type="button"
-          onClick={() => {
-            setAll(true);
-          }}
+          onClick={() => setAll(true)}
           className="border-border mx-auto mt-4 block rounded-xl border px-6 py-2.5 text-[14px] font-semibold"
         >
           {t("loadMore")}

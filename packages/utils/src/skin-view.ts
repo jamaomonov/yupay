@@ -123,3 +123,14 @@ export function activeFilterCount(q: SkinQuery): number {
     q.minUzs !== undefined || q.maxUzs !== undefined,
   ].filter(Boolean).length;
 }
+
+const WEAR_CATEGORIES = new Set(["rifles", "pistols", "smgs", "heavy", "knives", "gloves"]);
+
+/**
+ * Whether one copy differs from another (float, pattern, stickers). A case, key,
+ * agent, music kit or charm is identical to every other copy, so its page shows
+ * one price and a quantity instead of a list of identical offers.
+ */
+export function hasWear(category: string): boolean {
+  return WEAR_CATEGORIES.has(category);
+}

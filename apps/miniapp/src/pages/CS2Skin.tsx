@@ -1,16 +1,16 @@
-import { steamImageSize } from "@yupay/utils";
-import { ExternalLink } from "lucide-react";
+import { hasWear, isVanilla, offerHeadline, steamImageSize } from "@yupay/utils";
+import { ExternalLink, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "wouter";
 
-import type { SkinDetail } from "@yupay/utils";
+import type { SkinDetail, SkinListing } from "@yupay/utils";
 
 import { SkinListingsList } from "@/components/skins/SkinListingsList";
 import { SkinWearRow } from "@/components/skins/SkinWearRow";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
-import { fetchSkinDetail, skinPriceText } from "@/lib/skins";
+import { fetchSkinDetail, fetchSkinListings, skinPriceText } from "@/lib/skins";
 import { openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -28,6 +28,8 @@ export default function CS2Skin() {
   const { slug } = useParams<{ slug: string }>();
   const [state, setState] = useState<State>({ phase: "loading" });
   const [attempt, setAttempt] = useState(0);
+  // Loaded here, not in the list: the cheapest offer is also the headline price.
+  const [offers, setOffers] = useState<SkinListing[] | null>(null);
   const item = state.phase === "ready" ? state.item : null;
   useDocumentTitle(item ? item.name : t("cs2.docTitle"));
 
@@ -45,6 +47,21 @@ export default function CS2Skin() {
       live = false;
     };
   }, [slug, attempt]);
+
+  useEffect(() => {
+    let live = true;
+    setOffers(null);
+    fetchSkinListings(slug)
+      .then((r) => {
+        if (live) setOffers(r.items);
+      })
+      .catch(() => {
+        if (live) setOffers([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [slug]);
 
   if (state.phase === "loading") {
     return (
@@ -73,7 +90,9 @@ export default function CS2Skin() {
     return <p className="py-20 text-center text-sm text-white/50">{t("cs2.notFound")}</p>;
   }
 
-  const price = skinPriceText(item.price_uzs, item.price_usd);
+  const head = offerHeadline(item.price_uzs, item.price_usd, offers);
+  const price = skinPriceText(head.uzs, head.usd);
+  const worn = hasWear(item.category);
   return (
     <div className="yp-fade-in space-y-5 px-4 pb-4 pt-4">
       <div
@@ -100,7 +119,7 @@ export default function CS2Skin() {
           {item.weapon}
         </p>
         <h1 className="text-xl font-bold leading-tight tracking-tight text-white">
-          {item.skin ?? item.name}
+          {isVanilla(item) ? t("cs2.vanilla") : (item.skin ?? item.name)}
           {item.phase && <span className="text-white/50"> · {item.phase}</span>}
         </h1>
         <p className="mt-1 text-[13px] text-white/50">
@@ -115,43 +134,56 @@ export default function CS2Skin() {
       </div>
 
       <div className="space-y-3">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <span className="font-mono text-2xl font-bold text-white">
-            {price ?? t("cs2.soldOut")}
-          </span>
-          <button
-            type="button"
-            onClick={() => openExternalLink(steamMarketUrl(item.name))}
-            className="inline-flex items-center gap-1 text-[12px] text-white/50"
-          >
-            {t("cs2.steamPrice")}
-            <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-          </button>
+        <div>
+          <p className="text-2xl font-bold tabular-nums text-white">
+            {price === null ? t("cs2.soldOut") : head.from ? t("cs2.fromPrice", { price }) : price}
+          </p>
+          {price !== null && (
+            <p className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400">
+              <Zap className="h-3.5 w-3.5" aria-hidden="true" />
+              {t("cs2.instantDelivery")}
+            </p>
+          )}
         </div>
-        {/* Purchase is plan 3; the button says so instead of pretending. */}
+        {/* Purchase is plan 3; the button says so, and does not look clickable. */}
         <button
           type="button"
           disabled
-          className="bg-primary w-full rounded-xl py-3.5 text-[15px] font-bold text-black opacity-60"
+          className="w-full cursor-not-allowed rounded-xl py-3.5 text-[15px] font-bold text-white/40"
+          style={{ background: "hsl(var(--surface-2))" }}
         >
           {t("cs2.buySoon")}
         </button>
+        <button
+          type="button"
+          onClick={() => openExternalLink(steamMarketUrl(item.name))}
+          className="inline-flex items-center gap-1 text-[12px] text-white/50"
+        >
+          {t("cs2.steamPrice")}
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
+        </button>
       </div>
 
-      {item.family.length > 1 && (
+      {worn && item.family.length > 1 && (
         <section>
           <h2 className="mb-2 text-[15px] font-bold text-white">{t("cs2.otherWears")}</h2>
-          <SkinWearRow family={item.family} current={item.slug} />
+          <SkinWearRow family={item.family} current={item} />
         </section>
       )}
 
-      <section>
-        <h2 className="mb-2 text-[15px] font-bold text-white">
-          {t("cs2.offers")}{" "}
-          <span className="font-mono text-[13px] text-white/50">{item.count}</span>
-        </h2>
-        <SkinListingsList slug={item.slug} />
-      </section>
+      {!worn && item.count > 0 && (
+        <p className="text-sm text-white/60">{t("cs2.inStock", { count: item.count })}</p>
+      )}
+
+      {worn && (
+        <section>
+          <h2 className="mb-2 text-[15px] font-bold text-white">
+            {t("cs2.offers")}{" "}
+            <span className="font-mono text-[13px] text-white/50">{item.count}</span>
+          </h2>
+          <SkinListingsList items={offers} />
+        </section>
+      )}
     </div>
   );
 }

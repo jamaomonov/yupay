@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeFilterCount,
   CATEGORY_ICONS,
+  hasWear,
   isVanilla,
   offerHeadline,
   wearChoices,
@@ -127,5 +128,14 @@ describe("activeFilterCount", () => {
       }),
     ).toBe(3);
     expect(activeFilterCount({ sort: "popular", minUzs: 1, maxUzs: 9, rarity: "Covert" })).toBe(2);
+  });
+});
+
+describe("hasWear", () => {
+  it("is true for guns, knives and gloves, false for cases, keys, agents, kits, charms", () => {
+    for (const c of ["rifles", "pistols", "smgs", "heavy", "knives", "gloves"])
+      expect(hasWear(c)).toBe(true);
+    for (const c of ["cases", "keys", "agents", "music-kits", "charms"])
+      expect(hasWear(c)).toBe(false);
   });
 });

@@ -5,6 +5,7 @@ import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SkinListings } from "./SkinListings";
+import { SkinOffersProvider } from "./SkinOffers";
 import messages from "../../../../../packages/i18n/locales/ru/web.json";
 
 import type * as SkinsModule from "@/lib/skins";
@@ -20,7 +21,9 @@ const mocked = vi.mocked(fetchSkinListings);
 function renderListings() {
   return render(
     <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
-      <SkinListings slug="ak-ft" locale="ru" />
+      <SkinOffersProvider slug="ak-ft">
+        <SkinListings locale="ru" />
+      </SkinOffersProvider>
     </NextIntlClientProvider>,
   );
 }
@@ -40,7 +43,14 @@ describe("SkinListings", () => {
           price_uzs: "385700",
           float_value: 0.3692,
           paint_seed: 421,
-          stickers: [{ name: "Sticker | X", image: null, slot: 1, wear: null }],
+          stickers: [
+            {
+              name: "Sticker | X",
+              image: "https://community.fastly.steamstatic.com/economy/image/s",
+              slot: 1,
+              wear: null,
+            },
+          ],
           inspect_url: "steam://rungame/730/1/+csgo_econ_action_preview%20S1A1D1",
         },
       ],
@@ -52,7 +62,10 @@ describe("SkinListings", () => {
       "href",
       expect.stringMatching(/^steam:\/\//),
     );
-    expect(screen.getByText("Sticker | X")).toBeInTheDocument();
+    // Stickers are thumbnails named for screen readers, not a comma-joined string.
+    expect(screen.getByRole("img", { name: "Sticker | X" })).toBeInTheDocument();
+    // Every offer we sell is instant: said once by the price, not on each row.
+    expect(screen.queryByText("Мгновенно")).not.toBeInTheDocument();
   });
 
   it("shows prices without float or inspect when degraded, and no service note", async () => {

@@ -25,6 +25,7 @@ export type { WearBand } from "./skin-float";
 export {
   activeFilterCount,
   CATEGORY_ICONS,
+  hasWear,
   isVanilla,
   offerHeadline,
   wearChoices,
