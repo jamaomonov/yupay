@@ -2,8 +2,9 @@
 
 CS2 skins (ADR-0093): our own item catalogue from ByMykel/CSGO-API, Waxpeer's
 `auto` listings folded onto it every five minutes, and the read API the
-storefront browses. Purchase, fulfilment and tracking are separate plans
-(spec §9) and do not exist yet.
+storefront browses. Buying one offer is `checkout.py` (pricing the order line) plus the
+`waxpeer_skins` fulfiller and `fulfillment/skin_sweeps.py` (tracking the Steam trade) — see
+`docs/product/flows/skins-buy.md` and `docs/runbooks/skins-purchase.md`.
 
 ## Responsibilities
 
@@ -33,6 +34,13 @@ the web env (`apps/web/src/lib/features.ts`). Flow: `docs/product/flows/skins-br
 Mini app (plan `docs/superpowers/plans/2026-09-28-cs2-skins-miniapp.md`): `/cs2-market` and
 `/cs2-market/:slug` (`apps/miniapp/src/pages/CS2SkinMarket.tsx`, `CS2Skin.tsx`), gated only
 by this API's flag.
+
+Buying (plan `docs/superpowers/plans/2026-09-29-cs2-skins-purchase-ui.md`): the item
+page shows the buy panel only when `GET /skins/{slug}` names `buy_sku_id` (the `cs2-skin`
+SKU is seeded and active). Web: `components/skins/SkinBuyPanel.tsx` + `lib/skin-checkout.ts`,
+order page `components/order/SkinTradeCard.tsx`. Mini app: `components/skins/SkinBuyPanel.tsx`
+
+- `lib/skin-buy.ts`, order page `components/order/SkinTradeCard.tsx` + `lib/skin-trade.ts`.
 
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,

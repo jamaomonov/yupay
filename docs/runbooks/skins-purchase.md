@@ -9,7 +9,9 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
 1. `scripts/seed/2026-09-29_cs2_skin_sku.py --apply` on prod (dry-run first).
 2. Fund the Waxpeer balance: every purchase is paid from it at the listing's price.
 3. The Waxpeer key only works from the prod VPS IP — nothing here can be exercised locally.
-4. Plan 3b ships the storefront buttons; until then no customer can create a skin order.
+4. The buy panel (web and mini app) appears on an item page once the seed is applied — the
+   item API then names `buy_sku_id` — and `CS2_SKINS_ENABLED` is on. Without the seed the
+   pages stay browse-only and no customer can create a skin order.
 
 ## Alerts
 

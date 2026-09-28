@@ -9,8 +9,6 @@ import { buttonStyles } from "@/lib/button";
 import { isOptimizable } from "@/lib/image";
 import { formatUzs, pathFor } from "@/lib/seo";
 
-
-
 export function buyFromPrice(brand: BrandDetail, locale: string): string | null {
   const prices = (brand.products ?? [])
     .map((p) =>
