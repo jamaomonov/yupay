@@ -1,5 +1,6 @@
 import { apiGet, apiGetOrNull } from "@/lib/api";
 import { apiFetch } from "@/lib/client";
+import { formatUzs } from "@/lib/seo";
 
 export type SkinSort = "price" | "-price" | "discount" | "popular";
 export type Exterior = "FN" | "MW" | "FT" | "WW" | "BS";
@@ -230,4 +231,19 @@ export async function getSkinDetail(locale: string, slug: string): Promise<SkinD
 
 export async function fetchSkinListings(slug: string): Promise<SkinListings> {
   return apiFetch<SkinListings>(`/skins/${encodeURIComponent(slug)}/listings`, { anonymous: true });
+}
+
+/**
+ * The price to print: soʻm when the API could convert, dollars when FX was down,
+ * `null` only when there is no price at all (sold out). Keyed on the dollar
+ * figure so an FX outage never reads as "out of stock".
+ */
+export function displayPrice(
+  locale: string,
+  priceUzs: string | null,
+  priceUsd: string | null,
+): string | null {
+  if (priceUsd === null) return null;
+  if (priceUzs !== null) return formatUzs(locale, Math.round(Number(priceUzs)));
+  return `$${priceUsd}`;
 }

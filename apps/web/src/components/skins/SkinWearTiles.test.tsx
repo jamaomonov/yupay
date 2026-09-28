@@ -75,6 +75,7 @@ describe("SkinPriceBlock", () => {
     wrap(
       <SkinPriceBlock
         priceUzs="383700"
+        priceUsd="30.21"
         steamUrl="https://steamcommunity.com/market/listings/730/x"
         locale="ru"
       />,
@@ -91,6 +92,7 @@ describe("SkinPriceBlock", () => {
     wrap(
       <SkinPriceBlock
         priceUzs={null}
+        priceUsd={null}
         steamUrl="https://steamcommunity.com/market/listings/730/x"
         locale="ru"
       />,

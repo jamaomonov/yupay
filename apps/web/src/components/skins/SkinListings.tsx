@@ -8,8 +8,7 @@ import { SkinFloatBar } from "./SkinFloatBar";
 
 import type { SkinListing } from "@/lib/skins";
 
-import { formatUzs } from "@/lib/seo";
-import { fetchSkinListings } from "@/lib/skins";
+import { displayPrice, fetchSkinListings } from "@/lib/skins";
 
 type State = { phase: "loading" } | { phase: "ready"; items: SkinListing[] };
 
@@ -100,9 +99,7 @@ export function SkinListings({ slug, locale }: { slug: string; locale: string })
                 </a>
               )}
               <span className="font-mono text-[14px] font-bold">
-                {l.price_uzs !== null
-                  ? formatUzs(locale, Math.round(Number(l.price_uzs)))
-                  : `$${l.price_usd}`}
+                {displayPrice(locale, l.price_uzs, l.price_usd)}
               </span>
             </div>
           </li>

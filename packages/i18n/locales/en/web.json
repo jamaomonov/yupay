@@ -883,7 +883,8 @@
       "title": "CS2 skins in soʻm — buy in Uzbekistan",
       "description": "CS2 skins with instant delivery: weapons, knives, gloves, agents and cases. Pay in soʻm.",
       "itemTitle": "{name} — buy in soʻm",
-      "itemDescription": "{name}: from {price}. Instant delivery by Steam trade, pay in soʻm."
+      "itemDescription": "{name}: from {price}. Instant delivery by Steam trade, pay in soʻm.",
+      "itemDescriptionNoPrice": "{name} — CS2 skin, buy in soʻm with instant delivery."
     },
     "title": "CS2 skin market",
     "searchPlaceholder": "Skin name…",

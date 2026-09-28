@@ -5,8 +5,9 @@ import { useTranslations } from "next-intl";
 import type { SkinItem } from "@/lib/skins";
 
 import { isOptimizable } from "@/lib/image";
-import { formatUzs, pathFor } from "@/lib/seo";
+import { pathFor } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
+import { displayPrice } from "@/lib/skins";
 
 /**
  * One catalogue tile: art, skin and weapon, wear, lot count, discount vs
@@ -17,8 +18,7 @@ import { steamImageSize } from "@/lib/skin-float";
  */
 export function SkinCard({ item, locale }: { item: SkinItem; locale: string }) {
   const t = useTranslations("web.skins");
-  const price =
-    item.price_uzs !== null ? formatUzs(locale, Math.round(Number(item.price_uzs))) : null;
+  const price = displayPrice(locale, item.price_uzs, item.price_usd);
   const discount =
     item.discount_percent !== null && item.discount_percent > 0 ? item.discount_percent : null;
 

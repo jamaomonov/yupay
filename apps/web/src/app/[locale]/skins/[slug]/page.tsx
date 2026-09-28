@@ -13,9 +13,9 @@ import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
 import { SkinWearTiles } from "@/components/skins/SkinWearTiles";
 import { routing } from "@/i18n/routing";
 import { isOptimizable } from "@/lib/image";
-import { alternates, formatUzs, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
+import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
-import { DEFAULT_SORT, getSkinDetail, skinQueryString } from "@/lib/skins";
+import { DEFAULT_SORT, displayPrice, getSkinDetail, skinQueryString } from "@/lib/skins";
 
 interface Props {
   params: Promise<{ locale: string; slug: string }>;
@@ -31,10 +31,13 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (item === null) return {};
   const t = await getTranslations({ locale, namespace: "web.skins" });
   const name = item.phase ? `${item.name} ${item.phase}` : item.name;
-  const price =
-    item.price_uzs !== null ? formatUzs(locale, Math.round(Number(item.price_uzs))) : "";
+  const price = displayPrice(locale, item.price_uzs, item.price_usd);
   const title = t("meta.itemTitle", { name });
-  const description = t("meta.itemDescription", { name, price });
+  // No price, no "от —": the description drops the price rather than print a hole.
+  const description =
+    price !== null
+      ? t("meta.itemDescription", { name, price })
+      : t("meta.itemDescriptionNoPrice", { name });
   const path = `/skins/${slug}`;
   return {
     title,
@@ -117,6 +120,7 @@ export default async function SkinPage({ params }: Props) {
           </div>
           <SkinPriceBlock
             priceUzs={item.price_uzs}
+            priceUsd={item.price_usd}
             steamUrl={steamMarketUrl(item.name)}
             locale={locale}
           />

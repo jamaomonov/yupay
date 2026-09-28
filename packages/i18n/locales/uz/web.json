@@ -883,7 +883,8 @@
       "title": "CS2 skinlari soʻmda — Oʻzbekistonda sotib olish",
       "description": "CS2 skinlari tezkor yetkazib berish bilan: qurollar, pichoqlar, qoʻlqoplar, agentlar va keyslar. Soʻmda toʻlov.",
       "itemTitle": "{name} — soʻmda sotib olish",
-      "itemDescription": "{name}: {price} dan. Steam almashuvi orqali tezkor yetkazib berish, soʻmda toʻlov."
+      "itemDescription": "{name}: {price} dan. Steam almashuvi orqali tezkor yetkazib berish, soʻmda toʻlov.",
+      "itemDescriptionNoPrice": "{name} — CS2 skini, soʻmda tezkor yetkazib berish bilan sotib oling."
     },
     "title": "CS2 skinlari bozori",
     "searchPlaceholder": "Skin nomi…",

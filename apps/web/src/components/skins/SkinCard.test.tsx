@@ -62,3 +62,11 @@ describe("SkinCard", () => {
     expect(screen.getByText("Нет в наличии")).toBeInTheDocument();
   });
 });
+
+describe("SkinCard without an FX rate", () => {
+  it("shows the dollar price instead of calling an in-stock item sold out", () => {
+    renderCard({ price_uzs: null, price_usd: "30.37" });
+    expect(screen.getByText("$30.37")).toBeInTheDocument();
+    expect(screen.queryByText("Нет в наличии")).not.toBeInTheDocument();
+  });
+});

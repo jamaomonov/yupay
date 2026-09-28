@@ -1,15 +1,17 @@
 import { ExternalLink } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { formatUzs } from "@/lib/seo";
+import { displayPrice } from "@/lib/skins";
 
 /** Price in soʻm (or «Нет в наличии»), the Steam price link, and the buy button. */
 export function SkinPriceBlock({
   priceUzs,
+  priceUsd,
   steamUrl,
   locale,
 }: {
   priceUzs: string | null;
+  priceUsd: string | null;
   steamUrl: string;
   locale: string;
 }) {
@@ -18,7 +20,7 @@ export function SkinPriceBlock({
     <div className="space-y-4">
       <div className="flex flex-wrap items-baseline gap-3">
         <span className="font-display text-3xl font-bold">
-          {priceUzs !== null ? formatUzs(locale, Math.round(Number(priceUzs))) : t("soldOut")}
+          {displayPrice(locale, priceUzs, priceUsd) ?? t("soldOut")}
         </span>
         <a
           href={steamUrl}

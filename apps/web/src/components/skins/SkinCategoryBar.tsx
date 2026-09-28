@@ -37,8 +37,11 @@ export function SkinCategoryBar({
   const t = useTranslations("web.skins");
   const present = new Set(facets.categories.map((f) => f.value));
   const categories = SKIN_CATEGORIES.filter((c) => present.has(c));
+  // The chosen weapon always stays on the row, even when the page holds none of
+  // it (a price filter emptied it) — otherwise there is no chip to unset it with.
+  const onPage = items.map((i) => i.weapon).filter((w): w is string => w !== null);
   const weapons = query.category
-    ? [...new Set(items.map((i) => i.weapon).filter((w): w is string => w !== null))].sort()
+    ? [...new Set(query.weapon ? [...onPage, query.weapon] : onPage)].sort()
     : [];
   const href = (patch: SkinQueryPatch) => pathFor(locale, PATH) + skinQueryString(query, patch);
 
@@ -62,13 +65,14 @@ export function SkinCategoryBar({
           </Link>
         ))}
       </div>
-      {weapons.length > 1 && (
+      {(weapons.length > 1 || query.weapon !== undefined) && (
         <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
           {weapons.map((w) => (
             <Link
               key={w}
               href={href({ weapon: query.weapon === w ? undefined : w })}
               className={chip(query.weapon === w)}
+              aria-current={query.weapon === w ? "page" : undefined}
             >
               {w}
             </Link>

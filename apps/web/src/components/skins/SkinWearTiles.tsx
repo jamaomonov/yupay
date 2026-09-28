@@ -3,7 +3,8 @@ import { useTranslations } from "next-intl";
 
 import type { SkinFamilyMember } from "@/lib/skins";
 
-import { formatUzs, pathFor } from "@/lib/seo";
+import { pathFor } from "@/lib/seo";
+import { displayPrice } from "@/lib/skins";
 
 /**
  * One tile per wear (and StatTrak/Souvenir twin) of the same skin: the wear,
@@ -51,9 +52,10 @@ export function SkinWearTiles({
                 </div>
               )}
               <div className="mt-1 font-mono text-[13px] font-semibold">
-                {m.price_uzs !== null
-                  ? t("fromPrice", { price: formatUzs(locale, Math.round(Number(m.price_uzs))) })
-                  : t("soldOut")}
+                {(() => {
+                  const price = displayPrice(locale, m.price_uzs, m.price_usd);
+                  return price !== null ? t("fromPrice", { price }) : t("soldOut");
+                })()}
               </div>
             </Link>
           </li>
