@@ -436,6 +436,71 @@
         "buy_pending": "buy not sent",
         "buy_unconfirmed": "buy not confirmed"
       }
+    },
+    "pricing": {
+      "title": "Skin pricing",
+      "description": "Markups for the storefront and B2B, a price preview, and per-skin overrides. Saved rules reprice the catalogue at once.",
+      "loadError": "Could not load the rules",
+      "rules": {
+        "title": "Rules",
+        "expenses": "Expenses, %",
+        "minMargin": "Min margin, $",
+        "floor": "Price floor, $",
+        "roundTo": "Round to, UZS",
+        "capAtSteam": "Never above Steam",
+        "retail": "Storefront: markup by price",
+        "b2b": "B2B: markup by price",
+        "fromUsd": "From, $",
+        "percent": "%",
+        "liquidity": "Liquidity: adjustment by listing count",
+        "minCount": "Listings from",
+        "pp": "pp",
+        "categories": "Category adjustment, pp",
+        "weapons": "Weapon adjustment, pp",
+        "weapon": "Weapon",
+        "addRow": "Add",
+        "removeRow": "Remove",
+        "save": "Save rules",
+        "saved": "Rules saved, catalogue repriced"
+      },
+      "preview": {
+        "title": "Price preview",
+        "cost": "Cost, $",
+        "category": "Category",
+        "channel": "Channel",
+        "retail": "Storefront",
+        "b2b": "B2B",
+        "count": "Listings",
+        "itemPp": "Skin markup, pp",
+        "fixed": "Fixed price, $",
+        "steam": "Steam price, $",
+        "run": "Calculate",
+        "price": "Price",
+        "breakdown": {
+          "cost_usd": "Cost",
+          "expenses_usd": "Expenses",
+          "bracket_margin_usd": "Markup by price",
+          "category_pp": "Category, pp",
+          "weapon_pp": "Weapon, pp",
+          "liquidity_pp": "Liquidity, pp",
+          "item_pp": "Skin, pp",
+          "effective_percent": "Total, %",
+          "applied": "Applied"
+        }
+      },
+      "items": {
+        "title": "Per-skin markup",
+        "search": "Skin name",
+        "overridden": "With an override",
+        "empty": "Nothing found",
+        "cost": "cost {cost}",
+        "sell": "sells for {price}",
+        "margin": "Skin markup, pp",
+        "fixed": "Fixed price, $",
+        "save": "Save",
+        "clear": "Clear override",
+        "saved": "Saved"
+      }
     }
   }
 }

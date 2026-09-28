@@ -436,6 +436,71 @@
         "buy_pending": "xarid yuborilmagan",
         "buy_unconfirmed": "xarid tasdiqlanmagan"
       }
+    },
+    "pricing": {
+      "title": "Skin narxlari",
+      "description": "Vitrina va B2B ustamalari, narxni oldindan ko'rish va alohida skin ustamasi. Saqlangan qoidalar katalogni darhol qayta hisoblaydi.",
+      "loadError": "Qoidalarni yuklab bo'lmadi",
+      "rules": {
+        "title": "Qoidalar",
+        "expenses": "Xarajatlar, %",
+        "minMargin": "Min. marja, $",
+        "floor": "Min. narx, $",
+        "roundTo": "Yaxlitlash, so'm",
+        "capAtSteam": "Steam'dan qimmat emas",
+        "retail": "Vitrina: narx bo'yicha ustama",
+        "b2b": "B2B: narx bo'yicha ustama",
+        "fromUsd": "Dan, $",
+        "percent": "%",
+        "liquidity": "Likvidlik: lotlar soni bo'yicha tuzatish",
+        "minCount": "Lotlar dan",
+        "pp": "f.p.",
+        "categories": "Kategoriya bo'yicha tuzatish, f.p.",
+        "weapons": "Qurol bo'yicha tuzatish, f.p.",
+        "weapon": "Qurol",
+        "addRow": "Qo'shish",
+        "removeRow": "Olib tashlash",
+        "save": "Qoidalarni saqlash",
+        "saved": "Qoidalar saqlandi, katalog qayta hisoblandi"
+      },
+      "preview": {
+        "title": "Narxni oldindan ko'rish",
+        "cost": "Tannarx, $",
+        "category": "Kategoriya",
+        "channel": "Kanal",
+        "retail": "Vitrina",
+        "b2b": "B2B",
+        "count": "Lotlar",
+        "itemPp": "Skin ustamasi, f.p.",
+        "fixed": "Qat'iy narx, $",
+        "steam": "Steam narxi, $",
+        "run": "Hisoblash",
+        "price": "Narx",
+        "breakdown": {
+          "cost_usd": "Tannarx",
+          "expenses_usd": "Xarajatlar",
+          "bracket_margin_usd": "Narx bo'yicha ustama",
+          "category_pp": "Kategoriya, f.p.",
+          "weapon_pp": "Qurol, f.p.",
+          "liquidity_pp": "Likvidlik, f.p.",
+          "item_pp": "Skin, f.p.",
+          "effective_percent": "Jami, %",
+          "applied": "Qo'llandi"
+        }
+      },
+      "items": {
+        "title": "Alohida skin ustamasi",
+        "search": "Skin nomi",
+        "overridden": "O'z ustamasi bilan",
+        "empty": "Hech narsa topilmadi",
+        "cost": "tannarx {cost}",
+        "sell": "{price} ga sotamiz",
+        "margin": "Skin ustamasi, f.p.",
+        "fixed": "Qat'iy narx, $",
+        "save": "Saqlash",
+        "clear": "Ustamani bekor qilish",
+        "saved": "Saqlandi"
+      }
     }
   }
 }

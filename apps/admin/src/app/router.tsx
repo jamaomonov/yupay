@@ -46,6 +46,7 @@ import { ProvidersPage } from "@/features/payments/providers/ProvidersPage";
 import { TriagePage } from "@/features/payments-triage/TriagePage";
 import { PromoPage } from "@/features/promo/PromoPage";
 import { ReviewsPage } from "@/features/reviews/ReviewsPage";
+import { SkinPricingPage } from "@/features/skins/SkinPricingPage";
 import { SkinTradesPage } from "@/features/skins/SkinTradesPage";
 import { BrandSourcingPage } from "@/features/sourcing/BrandSourcingPage";
 import { SourcingPage } from "@/features/sourcing/SourcingPage";
@@ -99,6 +100,7 @@ export const router = createBrowserRouter([
           { path: "/wallet", element: <WalletPage /> },
           { path: "/merchants", element: <MerchantsPage /> },
           { path: "/skins/trades", element: <SkinTradesPage /> },
+          { path: "/skins/pricing", element: <SkinPricingPage /> },
           { path: "/merchants/:id", element: <MerchantDetail /> },
           { path: "/audit", element: <AuditPage /> },
           { path: "/fx", element: <FxPage /> },
