@@ -13,12 +13,15 @@ interface Props {
   blog: string;
   how: string;
   support: string;
+  /** The CS2 skins section's label, or undefined while the section is off. */
+  skins?: string | undefined;
 }
 
-export function PrimaryNav({ locale, label, store, blog, how, support }: Props) {
+export function PrimaryNav({ locale, label, store, blog, how, support, skins }: Props) {
   const pathname = usePathname();
   const storeHref = pathFor(locale, "/store");
   const blogHref = pathFor(locale, "/blog");
+  const skinsHref = pathFor(locale, "/skins");
   const howHref = `${pathFor(locale)}#how`;
 
   const cls = (href: string, hash = false) => {
@@ -37,6 +40,15 @@ export function PrimaryNav({ locale, label, store, blog, how, support }: Props) 
       >
         {store}
       </Link>
+      {skins !== undefined && (
+        <Link
+          href={skinsHref}
+          aria-current={navSectionActive(pathname, skinsHref) ? "page" : undefined}
+          className={cls(skinsHref)}
+        >
+          {skins}
+        </Link>
+      )}
       <Link
         href={blogHref}
         aria-current={navSectionActive(pathname, blogHref) ? "page" : undefined}

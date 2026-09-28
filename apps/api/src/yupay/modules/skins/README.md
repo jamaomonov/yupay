@@ -23,6 +23,18 @@ storefront browses. Purchase, fulfilment and tracking are separate plans
 Every public route 404s while `cs2_skins_enabled` is off; both jobs are
 no-ops while `cs2_skins_sync_enabled` is off.
 
+## Storefront
+
+Web pages (plan `docs/superpowers/plans/2026-09-28-cs2-skins-storefront.md`):
+`apps/web/src/app/[locale]/skins/page.tsx` (catalogue — filters live in the URL,
+server-rendered) and `skins/[slug]/page.tsx` (item — wear tiles, live listings loaded
+from the browser). Nav/footer/sitemap entries appear only with `SKINS_ENABLED=true` in
+the web env (`apps/web/src/lib/features.ts`). Flow: `docs/product/flows/skins-browse.md`.
+
+Images: rows keep ByMykel's Steam URL; the API rewrites the host to
+`cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,
+2026-09-28) and the web asks for `/256fx256f` on cards, `/512fx384f` on the item page.
+
 ## Public interface
 
 ```python

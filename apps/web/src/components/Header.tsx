@@ -8,6 +8,7 @@ import { PrimaryNav } from "./PrimaryNav";
 import { Wordmark } from "./Wordmark";
 
 import { buttonStyles } from "@/lib/button";
+import { skinsEnabled } from "@/lib/features";
 import { pathFor } from "@/lib/seo";
 
 /**
@@ -35,6 +36,7 @@ export async function Header({ locale }: { locale: string }) {
           blog={t("blog")}
           how={t("how")}
           support={t("support")}
+          skins={skinsEnabled() ? t("skins") : undefined}
         />
 
         {/* Desktop controls */}
@@ -54,7 +56,7 @@ export async function Header({ locale }: { locale: string }) {
         </div>
 
         {/* Mobile controls */}
-        <MobileNav />
+        <MobileNav skins={skinsEnabled()} />
       </div>
     </header>
   );

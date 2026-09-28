@@ -75,6 +75,9 @@ raise `CS2_SKINS_LISTINGS_BUCKET_PER_MINUTE`.
 2. Wait for one import (`skins.import.done`) and one price tick (`skins.prices.synced`).
 3. Check prices in the admin preview (`GET /admin/skins/pricing/preview`).
 4. `CS2_SKINS_ENABLED=true`, restart the api.
+5. `SKINS_ENABLED=true` in `secrets/web.env`, restart web — this adds «Скины CS2» to the
+   header, mobile menu, footer and sitemap. The pages themselves work (and 404 with the
+   API) regardless of it.
 
 ## Adding a search alias
 

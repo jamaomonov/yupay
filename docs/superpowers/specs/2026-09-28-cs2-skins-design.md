@@ -224,7 +224,10 @@ Four plans, each shippable behind `cs2_skins_enabled`:
 
 1. **Catalogue backend** (`docs/superpowers/plans/2026-09-28-cs2-skins-catalog.md`): tables,
    parsers, the two sync jobs, the read API, settings. Testable without a purchase.
-2. **Storefront pages** (web + miniapp): catalogue, category, item, search — read-only.
+2. **Storefront pages**: catalogue, category, item, search — read-only. Split during
+   planning into 2a web (`2026-09-28-cs2-skins-storefront.md`) and 2b miniapp. Filters and
+   sorts read a stored sell price (the owner's call, 2026-09-28: the customer filters by the
+   price they see, as on skinsavdo.uz).
 3. **Purchase**: checkout hook, pre-checks, the fulfiller branch, `skin_trades`, Socket.IO
    listener, order-page states, refunds and alerts. Starts after the spike.
 4. **Admin and ops**: trades screen (holds, penalties, rollbacks), settings, runbook, the

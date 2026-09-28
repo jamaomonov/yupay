@@ -4,6 +4,7 @@ import type { MetadataRoute } from "next";
 
 import { getPublishedBlogEntries } from "@/lib/blog";
 import { getBrandDetail, getBrandSlugs, getProductDetail } from "@/lib/catalog";
+import { skinsEnabled } from "@/lib/features";
 import { LEGAL_DOCS } from "@/lib/legal";
 import { localeUrl } from "@/lib/seo";
 
@@ -85,6 +86,11 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }[] = [
     { path: "", priority: 1.0, changeFrequency: "daily" },
     { path: "/store", priority: 0.9, changeFrequency: "daily" },
+    // The hub only: filtered views are noindex, and ~15k item pages are
+    // deferred like Steam Gifts' per-game pages (spec §9).
+    ...(skinsEnabled()
+      ? [{ path: "/skins", priority: 0.8, changeFrequency: "daily" as const }]
+      : []),
     ...slugs.map((slug) => ({
       path: `/store/${slug}`,
       priority: 0.8,

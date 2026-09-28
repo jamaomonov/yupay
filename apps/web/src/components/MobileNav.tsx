@@ -28,7 +28,8 @@ const LOCALES: { code: AppLocale; label: string }[] = [
  * Telegram action, and a language row. Keeps a sticky conversion entry point
  * on phones, which is where the UZ/RU/Telegram-native traffic actually lands.
  */
-export function MobileNav() {
+/** `skins` — whether the CS2 skins section is on (a server flag the header reads). */
+export function MobileNav({ skins = false }: { skins?: boolean }) {
   const t = useTranslations("web.nav");
   const { user, isLoading } = useAuth();
   const tShow = useTranslations("web.showcase");
@@ -70,6 +71,7 @@ export function MobileNav() {
 
   const storeHref = pathFor(current, "/store");
   const blogHref = pathFor(current, "/blog");
+  const skinsHref = pathFor(current, "/skins");
   const sheetLinkClass =
     "border-border/60 border-b py-3.5 text-[15px] font-semibold text-foreground transition active:text-primary";
   const linkClass = (href: string) =>
@@ -121,6 +123,16 @@ export function MobileNav() {
               >
                 {t("store")}
               </Link>
+              {skins && (
+                <Link
+                  href={skinsHref}
+                  onClick={close}
+                  aria-current={navSectionActive(pathname, skinsHref) ? "page" : undefined}
+                  className={linkClass(skinsHref)}
+                >
+                  {t("skins")}
+                </Link>
+              )}
               <Link
                 href={blogHref}
                 onClick={close}

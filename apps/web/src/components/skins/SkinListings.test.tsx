@@ -11,7 +11,6 @@ import type * as SkinsModule from "@/lib/skins";
 
 import { fetchSkinListings } from "@/lib/skins";
 
-
 vi.mock("@/lib/skins", async (importOriginal) => ({
   ...(await importOriginal<typeof SkinsModule>()),
   fetchSkinListings: vi.fn(),

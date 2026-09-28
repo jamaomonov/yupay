@@ -6,6 +6,7 @@ import { useId } from "react";
 import { Wordmark } from "./Wordmark";
 
 import { getBrands, type BrandSummary } from "@/lib/catalog";
+import { skinsEnabled } from "@/lib/features";
 import { pathFor } from "@/lib/seo";
 
 /** Public social channels. Instagram handle yupay.app, Telegram channel
@@ -75,6 +76,9 @@ export async function Footer({ locale }: { locale: string }) {
 
           <FooterCol title={t("productTitle")}>
             <FooterLink href={pathFor(locale, "/store")}>{nav("store")}</FooterLink>
+            {skinsEnabled() && (
+              <FooterLink href={pathFor(locale, "/skins")}>{nav("skins")}</FooterLink>
+            )}
             <FooterLink href={pathFor(locale, "/blog")}>{nav("blog")}</FooterLink>
             <FooterLink href={pathFor(locale, "/store")}>{t("prices")}</FooterLink>
             <FooterLink href={`${pathFor(locale)}#how`}>{nav("how")}</FooterLink>
