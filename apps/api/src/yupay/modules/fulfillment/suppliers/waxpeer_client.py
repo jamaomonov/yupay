@@ -22,6 +22,7 @@ balance in a financial availability check.
 from __future__ import annotations
 
 import contextlib
+import csv
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -55,6 +56,24 @@ class WaxpeerUnavailableError(Exception):
     """Waxpeer could not be reached at all (network error, timeout, DNS)."""
 
 
+class WaxpeerRateLimitedError(WaxpeerError):
+    """HTTP 429. ``retry_after_ms`` is Waxpeer's own hint when it gave one."""
+
+    def __init__(self, message: str, *, retry_after_ms: int | None, body: str = "") -> None:
+        super().__init__(message, status=429, body=body)
+        self.retry_after_ms = retry_after_ms
+
+
+@dataclass(frozen=True)
+class SnapshotRow:
+    """One listing from the CSV snapshot. ``auto`` is Waxpeer's instant-delivery flag."""
+
+    item_id: int
+    name: str
+    price_units: int
+    auto: bool
+
+
 @dataclass(frozen=True)
 class WaxpeerTopup:
     """One top-up as Waxpeer reports it."""
@@ -86,6 +105,9 @@ class WaxpeerClient:
     ) -> None:
         self._api_key = api_key
         self._base_url = base_url.rstrip("/")
+        # ``base_url`` is the v1 root the top-up calls were built on; the
+        # catalogue reads below address ``/v1/...`` and ``/v2/...`` explicitly.
+        self._host = self._base_url.removesuffix("/v1")
         self._timeout = timeout_seconds
         self._client = client  # injected in tests; None ⇒ transient per request
 
@@ -205,6 +227,68 @@ class WaxpeerClient:
         body, _ = await self._request("GET", "/steam-topup", params={"custom_id": custom_id})
         return self._parse_topup(body)
 
+    async def iter_snapshot_rows(self, *, game: str = "csgo") -> AsyncIterator[SnapshotRow]:
+        """Stream ``GET /v1/prices/snapshot?format=csv`` one listing at a time.
+
+        The body is ~240 MB of text for CS2; it is consumed through
+        ``aiter_lines`` and never held whole. Columns are read by name from
+        the header so a reordering upstream fails loudly rather than
+        silently swapping ``price`` and ``item_id``.
+        """
+        url = f"{self._host}/v1/prices/snapshot"
+        params = {"api": self._api_key, "format": "csv", "game": game}
+        try:
+            async with (
+                self._session() as client,
+                client.stream(
+                    "GET", url, params=params, timeout=httpx.Timeout(self._timeout, read=300.0)
+                ) as resp,
+            ):
+                if resp.status_code == 429:
+                    retry = resp.headers.get("Retry-After")
+                    raise WaxpeerRateLimitedError(
+                        "snapshot render busy",
+                        retry_after_ms=int(float(retry) * 1000) if retry else None,
+                    )
+                if resp.status_code >= 400:
+                    await resp.aread()
+                    raise WaxpeerError(resp.text[:200], status=resp.status_code, body=resp.text)
+                header: list[str] | None = None
+                async for line in resp.aiter_lines():
+                    if not line:
+                        continue
+                    cells = next(csv.reader([line]))
+                    if header is None:
+                        header = cells
+                        continue
+                    row = dict(zip(header, cells, strict=False))
+                    try:
+                        yield SnapshotRow(
+                            item_id=int(row["item_id"]),
+                            name=row["name"],
+                            price_units=int(row["price"] or 0),
+                            auto=row.get("auto") == "true",
+                        )
+                    except (KeyError, ValueError):
+                        log.warning("waxpeer.snapshot.bad_row", line=line[:120])
+        except httpx.HTTPError as exc:
+            raise WaxpeerUnavailableError(transport_error_text(exc)) from exc
+
+    async def prices(self, *, game: str = "csgo") -> list[dict[str, Any]]:
+        """``GET /v1/prices?minified=0`` — one row per Waxpeer name with image, type, rarity."""
+        url = f"{self._host}/v1/prices"
+        params: dict[str, str | int] = {"api": self._api_key, "game": game, "minified": 0}
+        try:
+            async with self._session() as client:
+                resp = await client.get(url, params=params, timeout=120.0)
+        except httpx.HTTPError as exc:
+            raise WaxpeerUnavailableError(transport_error_text(exc)) from exc
+        if resp.status_code >= 400:
+            raise WaxpeerError(resp.text[:200], status=resp.status_code, body=resp.text)
+        body = resp.json()
+        items = body.get("items") if isinstance(body, dict) else None
+        return items if isinstance(items, list) else []
+
     async def get_balance_units(self) -> int:
         """Return our Waxpeer wallet balance, in the same units as ``amount``.
 
@@ -252,8 +336,10 @@ def _normalise_status(raw: Any) -> WaxpeerStatus:
 
 
 __all__ = [
+    "SnapshotRow",
     "WaxpeerClient",
     "WaxpeerError",
+    "WaxpeerRateLimitedError",
     "WaxpeerStatus",
     "WaxpeerTopup",
     "WaxpeerUnavailableError",

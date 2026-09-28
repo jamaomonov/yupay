@@ -1,0 +1,45 @@
+{
+  "success": true,
+  "items": [
+    {
+      "name": "AK-47 | Redline (Field-Tested)",
+      "count": 3,
+      "min": 27000,
+      "steam_price": 43794,
+      "img": "https://images.waxpeer.com/i/730-ak-47-redline-field-tested.webp",
+      "type": "Rifles",
+      "rarity_color": "#d32ce6",
+      "rarity": "Classified"
+    },
+    {
+      "name": "★ Karambit | Doppler Phase 2 (Factory New)",
+      "count": 1,
+      "min": 1450000,
+      "steam_price": 1600000,
+      "img": "https://images.waxpeer.com/i/730-karambit.webp",
+      "type": "Knives",
+      "rarity_color": "#eb4b4b",
+      "rarity": "Covert"
+    },
+    {
+      "name": "Sticker | Say \"GG\" (Holo)",
+      "count": 1,
+      "min": 120,
+      "steam_price": 200,
+      "img": "https://images.waxpeer.com/i/730-sticker.webp",
+      "type": "Stickers",
+      "rarity_color": "#4b69ff",
+      "rarity": "High Grade"
+    },
+    {
+      "name": "AWP | Manual Only (Field-Tested)",
+      "count": 1,
+      "min": 5000,
+      "steam_price": 9000,
+      "img": "https://images.waxpeer.com/i/730-awp.webp",
+      "type": "Rifles",
+      "rarity_color": "#4b69ff",
+      "rarity": "Mil-Spec"
+    }
+  ]
+}

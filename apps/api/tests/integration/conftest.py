@@ -133,6 +133,9 @@ async def _reset_realtime_redis() -> AsyncIterator[None]:
 _EMPTY_IN_ORDER: tuple[str, ...] = (
     "idempotent_responses",
     "steam_gift_settings",
+    "skin_pricing_rules",
+    "skin_items",
+    "skin_search_aliases",
     "review_reports",
     "reviews",
     "brand_rating_stats",
