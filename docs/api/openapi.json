@@ -14655,6 +14655,17 @@
       },
       "SkinDetailOut": {
         "properties": {
+          "buy_sku_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Buy Sku Id"
+          },
           "category": {
             "title": "Category",
             "type": "string"
@@ -15554,6 +15565,7 @@
                 "enum": [
                   "not_accepted",
                   "sold_out",
+                  "support",
                   "other"
                 ],
                 "type": "string"

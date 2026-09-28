@@ -15,6 +15,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Query, Request
 from redis.exceptions import RedisError
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -261,7 +262,21 @@ async def get_detail(slug: str, db: Annotated[AsyncSession, Depends(db_session)]
         )
         for m in await family(db, item, categories=enabled_categories(get_settings()))
     ]
-    return SkinDetailOut(**base.model_dump(), cheapest=cheapest, family=members)
+    return SkinDetailOut(
+        **base.model_dump(), cheapest=cheapest, family=members, buy_sku_id=await _buy_sku_id(db)
+    )
+
+
+async def _buy_sku_id(db: AsyncSession) -> str | None:
+    """The active ``cs2-skin`` SKU (one indexed lookup by ``sku_code``)."""
+    from yupay.modules.catalog.models import Sku
+    from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
+
+    found = await db.execute(
+        select(Sku.id).where(Sku.sku_code == CS2_SKIN_SKU_CODE, Sku.active.is_(True))
+    )
+    sku_id = found.scalar_one_or_none()
+    return str(sku_id) if sku_id is not None else None
 
 
 @router.get(

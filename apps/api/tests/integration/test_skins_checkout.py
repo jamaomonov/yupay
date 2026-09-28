@@ -226,3 +226,10 @@ async def test_a_skin_is_bought_on_an_order_of_its_own(
     r = await _order(integration_client, token, body, "skin-two-lines")
     assert r.status_code == 422, r.text
     assert r.json()["extra"]["reason"] == "skin_order_single_line"
+
+
+async def test_the_item_page_names_the_sku_to_order(
+    integration_client: AsyncClient, sku: Sku
+) -> None:
+    body = (await integration_client.get(f"/api/v1/skins/{SLUG}")).json()
+    assert body["buy_sku_id"] == sku.id

@@ -78,6 +78,9 @@ class SkinFamilyMemberOut(BaseModel):
 class SkinDetailOut(SkinItemOut):
     cheapest: list[SkinListingSummaryOut]
     family: list[SkinFamilyMemberOut]
+    #: The SKU a storefront orders this item under (``cs2-skin``); ``None`` until it is
+    #: seeded — the buy button stays hidden then.
+    buy_sku_id: str | None = None
 
 
 class SkinsPricingOut(BaseModel):
