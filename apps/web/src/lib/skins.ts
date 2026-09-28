@@ -52,9 +52,11 @@ export async function getSkinsPage(locale: string, q: SkinQuery): Promise<SkinsP
   }
 }
 
-export async function getSkinFacets(locale: string): Promise<SkinFacets | null> {
+/** Facets; with a category, weapons/wears/rarities are counted inside it. */
+export async function getSkinFacets(locale: string, category?: string): Promise<SkinFacets | null> {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
   try {
-    return await apiGetOrNull<SkinFacets>("/skins/facets", { locale, ...OPTS });
+    return await apiGetOrNull<SkinFacets>(`/skins/facets${qs}`, { locale, ...OPTS });
   } catch {
     return null;
   }

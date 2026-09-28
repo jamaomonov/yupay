@@ -1,12 +1,23 @@
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
-import type { SkinQueryPatch, SkinFacets, SkinItem, SkinQuery } from "@/lib/skins";
+import { ScrollActiveIntoView } from "./ScrollActiveIntoView";
+import { SkinCategoryIcon } from "./SkinCategoryIcon";
+
+import type { SkinCategory, SkinFacets, SkinQuery, SkinQueryPatch } from "@/lib/skins";
 
 import { pathFor } from "@/lib/seo";
 import { SKIN_CATEGORIES, skinQueryString } from "@/lib/skins";
 
 const PATH = "/skins";
+
+function tile(active: boolean): string {
+  return `flex h-[64px] min-w-[72px] shrink-0 flex-col items-center justify-center gap-1 rounded-xl border px-2 text-[12px] font-semibold transition lg:min-w-0 ${
+    active
+      ? "border-primary bg-primary/10 text-primary"
+      : "border-border bg-card text-tx-mute hover:border-border-2 hover:text-foreground"
+  }`;
+}
 
 function chip(active: boolean): string {
   return `whitespace-nowrap rounded-lg border px-3 py-1.5 text-[13px] font-semibold transition ${
@@ -17,56 +28,56 @@ function chip(active: boolean): string {
 }
 
 /**
- * Categories as plain links (crawlable, no JS). With a category chosen, a
- * second row offers its weapons. The facets endpoint counts weapons across the
- * whole catalogue, so the row is narrowed to weapons present on the current
- * page — good enough while pages hold 48 items; a per-category facet is the
- * upgrade if it ever reads as incomplete.
+ * Categories as icon tiles (plain links — crawlable, no JS), and with a category
+ * chosen, its weapons. The weapon list comes from the facets scoped to the
+ * category, so it is the whole category, classics first; the chosen weapon is
+ * always kept so it can be unset.
  */
 export function SkinCategoryBar({
   query,
   facets,
   locale,
-  items,
 }: {
   query: SkinQuery;
   facets: SkinFacets;
   locale: string;
-  items: SkinItem[];
 }) {
   const t = useTranslations("web.skins");
   const present = new Set(facets.categories.map((f) => f.value));
   const categories = SKIN_CATEGORIES.filter((c) => present.has(c));
-  // The chosen weapon always stays on the row, even when the page holds none of
-  // it (a price filter emptied it) — otherwise there is no chip to unset it with.
-  const onPage = items.map((i) => i.weapon).filter((w): w is string => w !== null);
+  const listed = facets.weapons.map((f) => f.value);
   const weapons = query.category
-    ? [...new Set(query.weapon ? [...onPage, query.weapon] : onPage)].sort()
+    ? query.weapon && !listed.includes(query.weapon)
+      ? [query.weapon, ...listed]
+      : listed
     : [];
   const href = (patch: SkinQueryPatch) => pathFor(locale, PATH) + skinQueryString(query, patch);
+  const tiles: (SkinCategory | "all")[] = ["all", ...categories];
 
   return (
     <nav className="space-y-2">
-      <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-        <Link
-          href={href({ category: undefined, weapon: undefined })}
-          className={chip(!query.category)}
-        >
-          {t("all")}
-        </Link>
-        {categories.map((c) => (
-          <Link
-            key={c}
-            href={href({ category: c, weapon: undefined })}
-            className={chip(query.category === c)}
-            aria-current={query.category === c ? "page" : undefined}
-          >
-            {t(`category.${c}`)}
-          </Link>
-        ))}
-      </div>
+      <ScrollActiveIntoView className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:grid lg:grid-cols-12 lg:overflow-visible">
+        {tiles.map((c) => {
+          const active = c === "all" ? !query.category : query.category === c;
+          return (
+            <Link
+              key={c}
+              href={href(
+                c === "all"
+                  ? { category: undefined, weapon: undefined }
+                  : { category: c, weapon: undefined },
+              )}
+              className={tile(active)}
+              aria-current={active ? "page" : undefined}
+            >
+              <SkinCategoryIcon category={c} />
+              <span className="truncate">{c === "all" ? t("all") : t(`category.${c}`)}</span>
+            </Link>
+          );
+        })}
+      </ScrollActiveIntoView>
       {(weapons.length > 1 || query.weapon !== undefined) && (
-        <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <ScrollActiveIntoView className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:flex-wrap">
           {weapons.map((w) => (
             <Link
               key={w}
@@ -77,7 +88,7 @@ export function SkinCategoryBar({
               {w}
             </Link>
           ))}
-        </div>
+        </ScrollActiveIntoView>
       )}
     </nav>
   );

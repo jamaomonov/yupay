@@ -44,4 +44,11 @@ describe("fetchers", () => {
     answer(503);
     await expect(fetchSkinDetail("x")).rejects.toThrow("503");
   });
+
+  it("facets are scoped to the chosen category", async () => {
+    answer(200, { categories: [], weapons: [], exteriors: [], rarities: [] });
+    await fetchSkinFacets("rifles");
+    const url = vi.mocked(fetch).mock.calls[0]?.[0] as string; // api() passes a string URL
+    expect(url).toContain("/api/v1/skins/facets?category=rifles");
+  });
 });

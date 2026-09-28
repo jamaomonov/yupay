@@ -43,9 +43,10 @@ export function fetchSkinsPage(q: SkinQuery): Promise<SkinsPage> {
   return apiGet<SkinsPage>(`${SKINS}/catalog?${skinsApiParams(q)}`, true);
 }
 
-/** `null` while the feature is off. */
-export function fetchSkinFacets(): Promise<SkinFacets | null> {
-  return nullOn404(() => apiGet<SkinFacets>(`${SKINS}/facets`, true));
+/** `null` while the feature is off. With a category, weapons/wears/rarities are counted inside it. */
+export function fetchSkinFacets(category?: string): Promise<SkinFacets | null> {
+  const qs = category ? `?category=${encodeURIComponent(category)}` : "";
+  return nullOn404(() => apiGet<SkinFacets>(`${SKINS}/facets${qs}`, true));
 }
 
 /** `null` only when the skin does not exist; an outage throws (the page offers a retry). */

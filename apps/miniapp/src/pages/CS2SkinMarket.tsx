@@ -57,13 +57,21 @@ export default function CS2SkinMarket() {
     navigate(PATH + skinQueryString(latest.current, patch), { replace: true });
   };
 
+  // Facets follow the category (the weapon row and the sheet's counts are
+  // scoped to it). The first 404 means the section is off: `null` for good.
   useEffect(() => {
-    fetchSkinFacets()
-      .then(setFacets)
+    let live = true;
+    fetchSkinFacets(query.category)
+      .then((f) => {
+        if (live) setFacets((prev) => (prev === null ? null : f));
+      })
       .catch(() => {
-        setFacets(undefined); // chips fall back to every category
+        if (live) setFacets(undefined); // tiles fall back to every category
       });
-  }, []);
+    return () => {
+      live = false;
+    };
+  }, [query.category]);
 
   function load(append: boolean): void {
     const mine = ++seq.current;
@@ -139,7 +147,7 @@ export default function CS2SkinMarket() {
             ))}
           </select>
         </div>
-        <SkinChips query={query} facets={facets} items={items} onChange={change} />
+        <SkinChips query={query} facets={facets} onChange={change} />
       </div>
 
       <div className="px-4">

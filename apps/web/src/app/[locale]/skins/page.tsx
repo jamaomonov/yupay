@@ -49,7 +49,10 @@ export default async function SkinsPage({ params, searchParams }: Props) {
   setRequestLocale(locale);
   const t = await getTranslations("web.skins");
   const query = parseSkinQuery(await searchParams);
-  const [page, facets] = await Promise.all([getSkinsPage(locale, query), getSkinFacets(locale)]);
+  const [page, facets] = await Promise.all([
+    getSkinsPage(locale, query),
+    getSkinFacets(locale, query.category),
+  ]);
   if (facets === null) notFound(); // the section is off (API 404) or unreachable
 
   return (
@@ -66,7 +69,7 @@ export default async function SkinsPage({ params, searchParams }: Props) {
           <SkinSearch initial={query.q ?? ""} locale={locale} query={query} />
           <SkinSort query={query} locale={locale} />
         </div>
-        <SkinCategoryBar query={query} facets={facets} locale={locale} items={page.items} />
+        <SkinCategoryBar query={query} facets={facets} locale={locale} />
         <details className="border-border bg-card mt-3 rounded-xl border p-4 lg:hidden">
           <summary className="cursor-pointer text-[15px] font-bold">{t("filters")}</summary>
           <div className="mt-4">
