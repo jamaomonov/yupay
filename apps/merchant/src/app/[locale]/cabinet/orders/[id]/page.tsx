@@ -37,6 +37,14 @@ function artifactLines(artifact: Record<string, unknown>): { key: string; value:
   });
 }
 
+/** `order.created` → «Создан», `order.paid` → the status label, and so on. */
+function timelineLabel(event: string, t: (key: string) => string): string {
+  const status = event.startsWith("order.") ? event.slice("order.".length) : event;
+  if (status === "created") return t("colCreated");
+  const label = orderStatusLabel(status, t);
+  return label === status ? event : label;
+}
+
 export default function OrderDetailPage() {
   const t = useTranslations("merchant.orders");
   const { locale, id } = useParams<{ locale: string; id: string }>();
@@ -158,14 +166,18 @@ export default function OrderDetailPage() {
           {order.timeline.length > 0 && (
             <section className="border-border bg-card mt-6 rounded-xl border p-6">
               <h2 className="font-semibold">{t("timeline")}</h2>
-              <ol className="mt-4 space-y-2.5">
+              {/* Events are `order.<status>`; the status half is the same
+                  vocabulary the badge uses, so it reads as words — the raw
+                  code only for one we have never met. */}
+              <ol className="border-border mt-4 space-y-3 border-l pl-4">
                 {order.timeline.map((entry) => (
-                  <li
-                    key={`${entry.event}-${entry.at}`}
-                    className="flex flex-wrap items-baseline gap-x-3 text-sm"
-                  >
-                    <span className="font-mono text-xs">{entry.event}</span>
-                    <span className="text-tx-dim">{formatMoment(entry.at, locale)}</span>
+                  <li key={`${entry.event}-${entry.at}`} className="relative text-sm">
+                    <span
+                      aria-hidden
+                      className="bg-border-2 absolute -left-[21px] top-1.5 h-2 w-2 rounded-full"
+                    />
+                    <p className="font-medium">{timelineLabel(entry.event, t)}</p>
+                    <p className="text-tx-dim text-xs">{formatMoment(entry.at, locale)}</p>
                   </li>
                 ))}
               </ol>

@@ -6,6 +6,7 @@ import { useEffect, useRef } from "react";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
+import { Mark } from "@/components/Mark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { formatUsd, toCents } from "@/lib/money";
 
@@ -61,7 +62,12 @@ export function TopBar() {
     // button, three locale links, a theme toggle and an avatar; at 390px the
     // search collapsed to zero width and the toggle sat 14px past the edge.
     // Letting the search take its own row is cheaper than hiding any of it.
-    <div className="border-border flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b px-4 py-3 sm:flex-nowrap sm:px-6">
+    <div className="border-border bg-bg/90 sticky top-0 z-30 flex flex-wrap items-center justify-between gap-x-3 gap-y-2.5 border-b px-4 py-3 backdrop-blur-xl sm:flex-nowrap sm:px-6">
+      {/* The sidebar carries the mark on desktop; on a phone this row is the
+          only chrome at the top, so it carries it instead. */}
+      <span className="md:hidden">
+        <Mark />
+      </span>
       {searchPlaceholder !== null ? (
         <label className="border-border bg-card-2 rounded-btn text-tx-dim order-last flex w-full min-w-0 items-center gap-2 border px-3 py-2 sm:order-none sm:w-auto sm:max-w-sm sm:flex-1">
           <Search size={15} className="shrink-0" />
@@ -100,12 +106,13 @@ export function TopBar() {
             {t("topUp")}
           </a>
         </div>
-        {/* Shown on a phone too. Hiding it there would leave the one
-            surface a reseller uses daily with no way to change language — the
-            complaint this whole control answers. The search box carries
-            `min-w-0 flex-1`, so it gives up the width. */}
-        <LocaleSwitcher />
-        <ThemeToggle />
+        {/* Below `md` language and theme move into the tab bar's «Ещё» sheet:
+            still one tap away, and the row keeps room for the balance, which is
+            the number a phone user actually opens this bar for. */}
+        <LocaleSwitcher className="hidden md:flex" />
+        <span className="hidden md:block">
+          <ThemeToggle />
+        </span>
         <div
           aria-hidden
           className="bg-primary text-primary-foreground hidden h-9 w-9 items-center justify-center rounded-lg text-sm font-extrabold sm:flex"

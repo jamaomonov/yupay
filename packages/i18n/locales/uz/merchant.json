@@ -238,7 +238,12 @@
     "accountRef": "Hisob raqami",
     "whatToSend": "Xabarda hisob raqamingiz va summani koʻrsating — menejer sizni shu boʻyicha topadi.",
     "copy": "Nusxa olish",
-    "copied": "Nusxa olindi"
+    "copied": "Nusxa olindi",
+    "tabBalance": "Balans",
+    "navMore": "Yana",
+    "language": "Til",
+    "theme": "Mavzu",
+    "close": "Yopish"
   },
   "catalog": {
     "title": "Katalog",
@@ -260,7 +265,8 @@
     "orderFailed": "Buyurtma yaratib boʻlmadi",
     "priceBefore": "Hozirgi balans",
     "selected": "tanlandi",
-    "whatsNext": "Kod shu yerda va «Buyurtmalar»da paydo boʻladi — odatda 1–2 daqiqada."
+    "whatsNext": "Kod shu yerda va «Buyurtmalar»da paydo boʻladi — odatda 1–2 daqiqada.",
+    "perDollar": "$1 uchun"
   },
   "docs": {
     "title": "Hujjatlar",

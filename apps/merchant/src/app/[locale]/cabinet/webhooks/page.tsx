@@ -95,7 +95,9 @@ export default function WebhookLog() {
                   }}
                   className="flex w-full flex-wrap items-center gap-x-4 gap-y-1.5 text-left text-sm"
                 >
-                  <span className="min-w-0 flex-1 truncate font-mono text-xs">
+                  {/* Its own line on a phone: sharing one with four other cells
+                      left the event type three letters wide ("ord…"). */}
+                  <span className="min-w-0 basis-full truncate font-mono text-xs sm:flex-1 sm:basis-auto">
                     {row.event_type}
                   </span>
                   <span
@@ -107,7 +109,7 @@ export default function WebhookLog() {
                   </span>
                   <span className="font-mono text-xs">{row.response_code ?? "—"}</span>
                   <span className="text-tx-dim font-mono text-xs">×{row.attempts_count}</span>
-                  <span className="text-tx-dim whitespace-nowrap text-xs">
+                  <span className="text-tx-dim ml-auto whitespace-nowrap text-xs sm:ml-0">
                     {formatMoment(row.created_at, locale)}
                   </span>
                 </button>

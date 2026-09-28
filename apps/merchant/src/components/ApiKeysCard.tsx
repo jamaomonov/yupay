@@ -130,7 +130,7 @@ export function ApiKeysCard() {
             });
         }}
       >
-        <div>
+        <div className="w-full sm:w-auto">
           <label htmlFor="key-label" className="text-tx-mute mb-1.5 block text-sm">
             {t("label")}
           </label>
@@ -141,10 +141,10 @@ export function ApiKeysCard() {
             onChange={(event) => {
               setLabel(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 text-sm"
+            className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm sm:w-56"
           />
         </div>
-        <div>
+        <div className="w-full sm:w-auto">
           <label htmlFor="key-ips" className="text-tx-mute mb-1.5 block text-sm">
             {t("ipAllowlist")}
           </label>
@@ -155,7 +155,7 @@ export function ApiKeysCard() {
             onChange={(event) => {
               setAllowlist(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-56 border px-3.5 py-2.5 font-mono text-xs"
+            className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 font-mono text-xs sm:w-56"
           />
         </div>
         <button

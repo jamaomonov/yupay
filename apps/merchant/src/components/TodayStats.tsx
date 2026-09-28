@@ -20,7 +20,11 @@ export function TodayStats({ today, balance }: { today: Summary | null; balance?
   const tCabinet = useTranslations("merchant.cabinet");
 
   return (
-    <dl className={`grid gap-3.5 ${balance === undefined ? "grid-cols-3" : "sm:grid-cols-4"}`}>
+    <dl
+      className={`grid gap-2.5 sm:gap-3.5 ${
+        balance === undefined ? "grid-cols-3" : "grid-cols-2 lg:grid-cols-4"
+      }`}
+    >
       {balance !== undefined && <Stat value={balance} label={tCabinet("balance")} accent />}
       <Stat value={today === null ? "—" : String(today.orders)} label={t("statToday")} />
       <Stat value={successRate(today)} label={t("statSuccess")} hint={t("statSuccessHint")} />

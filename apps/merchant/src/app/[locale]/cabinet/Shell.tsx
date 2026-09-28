@@ -4,10 +4,14 @@ import {
   ArrowLeftRight,
   BookOpen,
   LayoutDashboard,
+  LayoutGrid,
   LogOut,
+  MoreHorizontal,
   Package,
   Settings,
+  Wallet,
   Webhook,
+  X,
   type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
@@ -16,8 +20,10 @@ import { useTranslations } from "next-intl";
 import { Suspense, useEffect, useState } from "react";
 
 import { CabinetProvider, sectionsOf, useCabinet } from "@/components/CabinetContext";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Mark } from "@/components/Mark";
 import { SkipLink } from "@/components/SkipLink";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { TopBar } from "@/components/TopBar";
 import { hasSession, signOut } from "@/lib/api";
 import { pathFor, withoutLocale } from "@/lib/locale-href";
@@ -58,6 +64,12 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
   // highlighted nothing for every Russian-speaking reseller.
   const here = withoutLocale(pathname);
   const onCatalog = here.startsWith("/cabinet/catalog");
+  const [moreOpen, setMoreOpen] = useState(false);
+
+  // A tap on a link inside the sheet navigates; the sheet must not survive it.
+  useEffect(() => {
+    setMoreOpen(false);
+  }, [pathname]);
 
   const leave = () => {
     void signOut().then(() => {
@@ -153,45 +165,79 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         <TopBar />
-        {/* Below `md` the sidebar is gone, so the destinations a reseller uses
-            day to day ride above the content as a scrolling row. Webhooks and
-            docs stay off this strip — they are reachable from the sidebar on
-            desktop and from the docs link in the landing header — because the
-            manual-order path (catalog → order → orders) is the one a phone
-            visitor is on. A drawer would be tidier and would also mean a
-            phone user staring at a screen with no visible way off it until
-            they find the button. */}
-        <nav
-          aria-label={t("navLabel")}
-          className="border-border flex gap-2 overflow-x-auto border-b px-4 py-2.5 md:hidden"
-        >
-          <MobileLink
-            href={pathFor(locale, "/cabinet")}
-            label={t("navDashboard")}
-            icon={LayoutDashboard}
-            active={here === "/cabinet"}
+        {/* Below `md` the sidebar is gone. The strip that replaced it scrolled
+            sideways at the top of the page, so on a 390px phone Settings and
+            sign-out sat past the edge and nothing said they were there. A tab
+            bar at the thumb's edge holds the four daily places in plain sight;
+            everything else — settings, the developer screens, language, theme,
+            sign-out — lives one tap away under «Ещё». */}
+        <MobileTabs
+          items={[
+            {
+              href: pathFor(locale, "/cabinet"),
+              label: t("navDashboard"),
+              icon: LayoutDashboard,
+              active: here === "/cabinet",
+            },
+            {
+              href: catalogHref(null),
+              label: t("navCatalog"),
+              icon: LayoutGrid,
+              active: onCatalog,
+            },
+            {
+              href: pathFor(locale, "/cabinet/orders"),
+              label: t("navOrders"),
+              icon: Package,
+              active: here.startsWith("/cabinet/orders"),
+            },
+            {
+              href: pathFor(locale, "/cabinet/transactions"),
+              label: t("tabBalance"),
+              icon: Wallet,
+              active: here.startsWith("/cabinet/transactions"),
+            },
+          ]}
+          moreLabel={t("navMore")}
+          moreActive={here.startsWith("/cabinet/settings") || here.startsWith("/cabinet/webhooks")}
+          onMore={() => {
+            setMoreOpen(true);
+          }}
+        />
+        {moreOpen && (
+          <MoreSheet
+            onClose={() => {
+              setMoreOpen(false);
+            }}
+            title={profile?.title ?? ""}
+            email={profile?.email ?? ""}
+            links={[
+              {
+                href: pathFor(locale, "/cabinet/settings"),
+                label: t("navSettings"),
+                icon: Settings,
+              },
+              {
+                href: pathFor(locale, "/cabinet/webhooks"),
+                label: t("navWebhooks"),
+                icon: Webhook,
+              },
+              { href: pathFor(locale, "/docs"), label: t("navDocs"), icon: BookOpen },
+            ]}
+            languageLabel={t("language")}
+            themeLabel={t("theme")}
+            closeLabel={t("close")}
+            signOutLabel={t("signOut")}
+            onSignOut={leave}
           />
-          <MobileLink href={catalogHref(null)} label={t("navCatalog")} active={onCatalog} />
-          {ACCOUNT.map(({ key, path, icon }) => (
-            <MobileLink
-              key={key}
-              href={pathFor(locale, path)}
-              label={t(key)}
-              icon={icon}
-              active={here.startsWith(path)}
-            />
-          ))}
-          <button
-            type="button"
-            onClick={leave}
-            aria-label={t("signOut")}
-            className="border-border text-tx-dim rounded-btn shrink-0 border px-3 py-1.5"
-          >
-            <LogOut size={14} />
-          </button>
-        </nav>
+        )}
 
-        <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 py-5 sm:px-6">
+        {/* Bottom padding clears the fixed tab bar and the home indicator. */}
+        <main
+          id="main"
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-4 py-5 pb-[calc(5.5rem+env(safe-area-inset-bottom))] sm:px-6 md:pb-5"
+        >
           {children}
         </main>
       </div>
@@ -241,30 +287,143 @@ function SideLink({
   );
 }
 
-function MobileLink({
-  href,
-  label,
-  icon: Icon,
-  active,
-}: {
+interface Tab {
   href: string;
   label: string;
-  icon?: LucideIcon;
+  icon: LucideIcon;
   active: boolean;
+}
+
+function MobileTabs({
+  items,
+  moreLabel,
+  moreActive,
+  onMore,
+}: {
+  items: Tab[];
+  moreLabel: string;
+  moreActive: boolean;
+  onMore: () => void;
 }) {
+  const tab = (active: boolean) =>
+    `flex min-w-0 flex-1 flex-col items-center gap-1 pb-1.5 pt-2 text-[10.5px] ${
+      active ? "text-foreground font-semibold" : "text-tx-dim"
+    }`;
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`rounded-btn flex shrink-0 items-center gap-1.5 whitespace-nowrap border px-3 py-1.5 text-xs ${
-        active ? "border-border-2 bg-card-2 font-semibold" : "border-border text-tx-mute"
-      }`}
+    <nav
+      aria-label={moreLabel}
+      className="border-border bg-card/95 fixed inset-x-0 bottom-0 z-40 flex border-t pb-[env(safe-area-inset-bottom)] backdrop-blur-xl md:hidden"
     >
-      {Icon !== undefined && (
-        <Icon aria-hidden size={13} className={active ? "text-primary-ink" : "text-tx-dim"} />
-      )}
-      {label}
-    </Link>
+      {items.map(({ href, label, icon: Icon, active }) => (
+        <Link
+          key={href}
+          href={href}
+          aria-current={active ? "page" : undefined}
+          className={tab(active)}
+        >
+          <Icon aria-hidden size={20} className={active ? "text-primary-ink" : ""} />
+          <span className="max-w-full truncate px-1">{label}</span>
+        </Link>
+      ))}
+      <button type="button" onClick={onMore} aria-haspopup="dialog" className={tab(moreActive)}>
+        <MoreHorizontal aria-hidden size={20} className={moreActive ? "text-primary-ink" : ""} />
+        <span className="max-w-full truncate px-1">{moreLabel}</span>
+      </button>
+    </nav>
+  );
+}
+
+function MoreSheet({
+  onClose,
+  title,
+  email,
+  links,
+  languageLabel,
+  themeLabel,
+  closeLabel,
+  signOutLabel,
+  onSignOut,
+}: {
+  onClose: () => void;
+  title: string;
+  email: string;
+  links: { href: string; label: string; icon: LucideIcon }[];
+  languageLabel: string;
+  themeLabel: string;
+  closeLabel: string;
+  signOutLabel: string;
+  onSignOut: () => void;
+}) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+      className="fixed inset-0 z-50 md:hidden"
+    >
+      <button
+        type="button"
+        aria-label={closeLabel}
+        onClick={onClose}
+        className="absolute inset-0 bg-black/50"
+      />
+      <div className="border-border bg-card absolute inset-x-0 bottom-0 rounded-t-2xl border-t px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-4">
+        <div className="flex items-start justify-between gap-3 px-1">
+          <div className="min-w-0">
+            <p className="truncate font-semibold">{title}</p>
+            <p className="text-tx-dim truncate text-xs">{email}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={closeLabel}
+            className="border-border text-tx-mute flex h-9 w-9 shrink-0 items-center justify-center rounded-full border"
+          >
+            <X size={16} />
+          </button>
+        </div>
+        <nav className="mt-4 space-y-1">
+          {links.map(({ href, label, icon: Icon }) => (
+            <Link
+              key={href}
+              href={href}
+              className="rounded-btn hover:bg-card-2 flex items-center gap-3 px-3 py-3 text-[15px]"
+            >
+              <Icon aria-hidden size={18} className="text-tx-dim" />
+              {label}
+            </Link>
+          ))}
+        </nav>
+        <div className="border-border mt-3 space-y-3 border-t px-3 pt-4 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-tx-mute">{languageLabel}</span>
+            <LocaleSwitcher />
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-tx-mute">{themeLabel}</span>
+            <ThemeToggle />
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="border-border text-danger rounded-btn mt-4 flex w-full items-center justify-center gap-2 border py-3 text-sm font-semibold"
+        >
+          <LogOut aria-hidden size={16} />
+          {signOutLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 

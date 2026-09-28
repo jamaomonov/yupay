@@ -143,7 +143,57 @@ export default function OrdersList() {
       )}
 
       {rows !== null && rows.length > 0 && (
-        <div className="border-border bg-card mt-6 overflow-x-auto rounded-xl border">
+        // A phone gets one card per order instead of the six-column table,
+        // which scrolled sideways inside its box and cut the status off.
+        <ul className="border-border bg-card divide-border mt-6 divide-y rounded-xl border md:hidden">
+          {rows.map((row) => {
+            const refunded = toCents(row.refunded_usd);
+            return (
+              <li key={row.order_id}>
+                <Link
+                  href={pathFor(
+                    locale,
+                    `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                  )}
+                  className="block px-4 py-3.5"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-sm font-semibold leading-snug">
+                      {orderTitle(row, t("colOrder"))}
+                    </p>
+                    <span className="shrink-0 font-mono text-sm">
+                      ${formatUsd(toCents(row.price_usd))}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+                    <span
+                      className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(
+                        row.status,
+                      )}`}
+                    >
+                      {orderStatusLabel(row.status, t)}
+                    </span>
+                    {refunded > 0n && (
+                      <span className="text-tx-mute font-mono">
+                        {t("colRefunded")} ${formatUsd(refunded)}
+                      </span>
+                    )}
+                    <span className="text-tx-dim">{formatMoment(row.created_at, locale)}</span>
+                  </div>
+                  {!row.merchant_order_id.startsWith("manual-") && (
+                    <p className="text-tx-dim mt-1 truncate font-mono text-[11px]">
+                      {row.merchant_order_id}
+                    </p>
+                  )}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {rows !== null && rows.length > 0 && (
+        <div className="border-border bg-card mt-6 hidden overflow-x-auto rounded-xl border md:block">
           <table className="w-full min-w-[52rem] text-sm">
             <thead className="text-tx-dim border-border border-b text-left text-xs">
               <tr>

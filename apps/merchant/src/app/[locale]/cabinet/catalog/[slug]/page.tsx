@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
@@ -139,12 +139,18 @@ export default function BrandPage() {
         </div>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
+      {/* While a denomination is picked on a phone, the order form floats over
+          the bottom of the list; the padding keeps the last row reachable. */}
+      <div
+        className={`mt-6 grid gap-6 lg:grid-cols-[1fr_20rem] lg:pb-0 ${selected ? "pb-80" : ""}`}
+      >
         <div className="space-y-6">
           {brand.products.map((item) => (
             <section key={item.product_id}>
               <h2 className="text-tx-mute text-sm font-medium">{item.name}</h2>
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              {/* Two columns from the smallest phone up: one column made PUBG's
+                  28 denominations a 4700px scroll, and the form under it. */}
+              <div className="mt-3 grid grid-cols-2 gap-2 2xl:grid-cols-3">
                 {item.skus.map((sku) => {
                   const price = sku.kind === "fixed" ? sku.price_usd : sku.unit_price_usd;
                   const active = selected?.sku_id === sku.sku_id;
@@ -158,22 +164,33 @@ export default function BrandPage() {
                         setError(null);
                         setCount(sku.kind === "unit" ? String(sku.min_qty ?? 1) : "1");
                       }}
-                      className={`rounded-lg border p-3 text-left ${
-                        active ? "border-primary bg-card-2" : "border-border bg-card"
+                      aria-pressed={active}
+                      className={`relative flex min-h-[4.5rem] flex-col justify-between rounded-lg border p-3 text-left transition ${
+                        active
+                          ? "border-primary bg-card-2"
+                          : "border-border bg-card hover:border-border-2"
                       }`}
                     >
-                      <p className="text-sm font-medium">
+                      <p className="line-clamp-2 pr-5 text-sm font-medium leading-snug">
                         {sku.name}
-                        {active && (
-                          <span className="text-primary-ink ml-2 text-[11px] font-semibold">
-                            ✓ {t("selected")}
+                      </p>
+                      {active && (
+                        <span
+                          aria-label={t("selected")}
+                          className="bg-primary text-primary-foreground absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full"
+                        >
+                          <Check size={12} strokeWidth={3} />
+                        </span>
+                      )}
+                      <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 font-mono text-sm">
+                        <span>{price ? `$${price}` : "—"}</span>
+                        {sku.kind === "amount" && price && (
+                          <span className="text-tx-dim font-sans text-[11px]">
+                            {t("perDollar")}
                           </span>
                         )}
-                      </p>
-                      <p className="mt-1 font-mono text-sm">
-                        {price ? `$${price}` : "—"}
                         {sku.retail_price_usd && (
-                          <span className="text-tx-dim ml-2 line-through">
+                          <span className="text-tx-dim text-xs line-through">
                             ${sku.retail_price_usd}
                           </span>
                         )}
@@ -186,12 +203,43 @@ export default function BrandPage() {
           ))}
         </div>
 
-        <aside className="border-border bg-card h-fit rounded-xl border p-5">
-          <p className="font-semibold">{t("orderSummary")}</p>
+        {/* On a phone the form is a sheet pinned above the tab bar, shown only
+            once something is picked: under the list it sat 4000px below the
+            denomination the reseller had just tapped, with nothing saying it
+            was there. From `lg` it is the sticky column it always was. */}
+        <aside
+          className={`border-border bg-card z-30 h-fit border p-5 lg:sticky lg:inset-auto lg:top-20 lg:block lg:rounded-xl ${
+            selected
+              ? "fixed inset-x-0 bottom-[calc(3.5rem+env(safe-area-inset-bottom))] max-h-[70dvh] overflow-y-auto rounded-t-2xl shadow-[0_-12px_40px_rgba(0,0,0,0.45)] md:bottom-0 lg:max-h-none lg:overflow-visible lg:shadow-none"
+              : "hidden"
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold">{t("orderSummary")}</p>
+              {selected !== null && (
+                <p className="text-tx-mute mt-0.5 truncate text-sm lg:hidden">{selected.name}</p>
+              )}
+            </div>
+            {selected !== null && (
+              <button
+                type="button"
+                aria-label={tCabinet("close")}
+                onClick={() => {
+                  setSelected(null);
+                  setPlaced(null);
+                  setError(null);
+                }}
+                className="border-border text-tx-mute flex h-8 w-8 shrink-0 items-center justify-center rounded-full border lg:hidden"
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
           {selected === null ? (
             <p className="text-tx-dim mt-3 text-sm">—</p>
           ) : (
-            <div className="mt-4">
+            <div className="mt-3 lg:mt-4">
               {countLabel(selected) !== "none" && (
                 <label className="mb-3 block">
                   <span className="text-tx-mute mb-1.5 block text-sm">

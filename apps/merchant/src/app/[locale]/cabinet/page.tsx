@@ -13,6 +13,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
 import { TodayStats } from "@/components/TodayStats";
 import { api } from "@/lib/api";
+import { formatMoment } from "@/lib/datetime";
 import { orderStatusLabel, orderStatusTone, orderTitle } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
@@ -24,7 +25,7 @@ export default function Dashboard() {
   const t = useTranslations("merchant.cabinet");
   const tOrders = useTranslations("merchant.orders");
   const { locale } = useParams<{ locale: string }>();
-  const { profile } = useCabinet();
+  const { catalog, profile } = useCabinet();
   const [recent, setRecent] = useState<OrderRow[] | null>(null);
   const [today, setToday] = useState<Summary | null>(null);
 
@@ -91,21 +92,45 @@ export default function Dashboard() {
         <TodayStats today={today} balance={balance === null ? "—" : `$${formatUsd(balance)}`} />
       </div>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-3">
-        <Link
-          href={pathFor(locale, "/cabinet/catalog")}
-          className="border-border bg-card-2 group rounded-xl border p-5 font-semibold"
-        >
-          <span className="flex items-center gap-2.5">
-            <LayoutGrid aria-hidden size={18} className="text-primary-ink shrink-0" />
+      <section className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+        {/* The catalog card was a lone link that stretched to the height of
+            the orders list beside it — a tall empty box. The brands themselves
+            are the useful shortcut: one tap from here to a manual order. */}
+        <div className="border-border bg-card rounded-xl border p-5">
+          <Link
+            href={pathFor(locale, "/cabinet/catalog")}
+            className="group flex items-center gap-2 text-sm font-semibold"
+          >
+            <LayoutGrid aria-hidden size={16} className="text-primary-ink shrink-0" />
             {t("navCatalog")}
             <ArrowRight
               aria-hidden
               size={15}
               className="text-tx-dim ml-auto shrink-0 transition group-hover:translate-x-0.5"
             />
-          </span>
-        </Link>
+          </Link>
+          <ul className="mt-4 grid grid-cols-4 gap-3 sm:grid-cols-6 lg:grid-cols-3">
+            {(catalog?.brands ?? []).slice(0, 12).map((brand) => (
+              <li key={brand.brand_id}>
+                <Link
+                  href={pathFor(locale, `/cabinet/catalog/${brand.slug}`)}
+                  className="group flex flex-col items-center gap-1.5 text-center"
+                >
+                  <span className="bg-card-2 border-border group-hover:border-border-2 block h-12 w-12 overflow-hidden rounded-xl border transition">
+                    {brand.logo_url !== null && (
+                      /* eslint-disable-next-line @next/next/no-img-element -- an
+                         operator-entered absolute URL, as in the catalog grid. */
+                      <img src={brand.logo_url} alt="" className="h-full w-full object-cover" />
+                    )}
+                  </span>
+                  <span className="text-tx-mute line-clamp-2 w-full text-[11px] leading-tight">
+                    {brand.name}
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </div>
         <div className="border-border bg-card rounded-xl border p-5 lg:col-span-2">
           <Link
             href={pathFor(locale, "/cabinet/orders")}
@@ -117,31 +142,41 @@ export default function Dashboard() {
           {recent !== null && recent.length === 0 && (
             <EmptyState icon={Package} title={t("noOrders")} />
           )}
-          <ul className="mt-3 space-y-2.5">
+          <ul className="mt-3 space-y-1.5">
             {(recent ?? []).map((row) => (
-              <li key={row.order_id} className="flex items-baseline justify-between gap-3 text-sm">
-                <div className="min-w-0">
-                  <Link
-                    href={pathFor(
-                      locale,
-                      `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
-                    )}
-                    className="block truncate underline-offset-4 hover:underline"
-                  >
-                    {orderTitle(row, tOrders("colOrder"))}
-                  </Link>
-                  {!row.merchant_order_id.startsWith("manual-") && (
-                    <p className="text-tx-dim truncate text-xs">{row.merchant_order_id}</p>
+              <li key={row.order_id} className="text-sm">
+                {/* Name and amount on one line, status and time on the next:
+                    the badge used to float mid-row at a different x on every
+                    line, and nothing said when the order was placed. */}
+                <Link
+                  href={pathFor(
+                    locale,
+                    `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
                   )}
-                </div>
-                <span
-                  className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(row.status)}`}
+                  className="hover:bg-card-2 -mx-2 block rounded-lg px-2 py-1.5"
                 >
-                  {orderStatusLabel(row.status, tOrders)}
-                </span>
-                <span className="shrink-0 font-mono text-xs">
-                  ${formatUsd(toCents(row.price_usd))}
-                </span>
+                  <div className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate font-medium">
+                      {orderTitle(row, tOrders("colOrder"))}
+                    </span>
+                    <span className="shrink-0 font-mono text-xs">
+                      ${formatUsd(toCents(row.price_usd))}
+                    </span>
+                  </div>
+                  <div className="mt-1 flex items-center gap-2 text-xs">
+                    <span
+                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(row.status)}`}
+                    >
+                      {orderStatusLabel(row.status, tOrders)}
+                    </span>
+                    <span className="text-tx-dim truncate">
+                      {formatMoment(row.created_at, locale)}
+                      {row.merchant_order_id.startsWith("manual-")
+                        ? ""
+                        : ` · ${row.merchant_order_id}`}
+                    </span>
+                  </div>
+                </Link>
               </li>
             ))}
           </ul>

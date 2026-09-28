@@ -109,7 +109,7 @@ export function WebhookCard({ locale }: { locale: string }) {
             );
           }}
         >
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 basis-full sm:flex-1 sm:basis-auto">
             <label htmlFor="hook-url" className="text-tx-mute mb-1.5 block text-sm">
               {t("urlLabel")}
             </label>
@@ -128,7 +128,7 @@ export function WebhookCard({ locale }: { locale: string }) {
           <button
             type="submit"
             disabled={busy}
-            className="bg-primary text-primary-foreground rounded-btn px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+            className="bg-primary text-primary-foreground rounded-btn w-full px-4 py-2.5 text-sm font-semibold disabled:opacity-60 sm:w-auto"
           >
             {t("save")}
           </button>

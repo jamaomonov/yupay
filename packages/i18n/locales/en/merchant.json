@@ -238,7 +238,12 @@
     "accountRef": "Account number",
     "whatToSend": "Include your account number and the amount — that is what the manager needs to find you.",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "tabBalance": "Balance",
+    "navMore": "More",
+    "language": "Language",
+    "theme": "Theme",
+    "close": "Close"
   },
   "catalog": {
     "title": "Catalog",
@@ -260,7 +265,8 @@
     "orderFailed": "Could not create the order",
     "priceBefore": "Balance now",
     "selected": "selected",
-    "whatsNext": "The code appears here and under \"Orders\" — usually within 1–2 minutes."
+    "whatsNext": "The code appears here and under \"Orders\" — usually within 1–2 minutes.",
+    "perDollar": "per $1"
   },
   "docs": {
     "title": "Documentation",

@@ -120,7 +120,59 @@ export default function TransactionsList() {
       )}
 
       {rows !== null && rows.length > 0 && (
-        <div className="border-border bg-card mt-6 overflow-x-auto rounded-xl border">
+        // One card per movement on a phone; the table cut the order column
+        // mid-word and pushed the amount — the point of the row — off screen.
+        <ul className="border-border bg-card divide-border mt-6 divide-y rounded-xl border md:hidden">
+          {rows.map((row, index) => {
+            const cents = toCents(row.amount_usd);
+            const credit = cents >= 0n;
+            const absolute = credit ? cents : -cents;
+            const after = runningBalance(profile?.balance_usd ?? null, rows, index);
+            return (
+              <li key={row.transaction_id} className="px-4 py-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <span
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        credit ? "text-primary-ink bg-primary/10" : "text-tx-mute bg-tx-mute/10"
+                      }`}
+                    >
+                      {transactionKindLabel(row.kind, t)}
+                    </span>
+                    <p className="mt-1.5 truncate text-sm">
+                      {row.merchant_order_id === null ? (
+                        <span className="text-tx-mute">{row.description ?? "—"}</span>
+                      ) : (
+                        <Link
+                          href={pathFor(
+                            locale,
+                            `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                          )}
+                          className="underline-offset-4 hover:underline"
+                        >
+                          {row.merchant_order_id}
+                        </Link>
+                      )}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className={`font-mono text-sm font-semibold ${credit ? "text-blue" : ""}`}>
+                      {credit ? "+" : "−"}${formatUsd(absolute)}
+                    </p>
+                    <p className="text-tx-dim mt-1 font-mono text-[11px]">
+                      {after === null ? "" : `$${formatUsd(after)}`}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-tx-dim mt-1 text-xs">{formatMoment(row.created_at, locale)}</p>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+
+      {rows !== null && rows.length > 0 && (
+        <div className="border-border bg-card mt-6 hidden overflow-x-auto rounded-xl border md:block">
           <table className="w-full min-w-[46rem] text-sm">
             <thead className="text-tx-dim border-border border-b text-left text-xs">
               <tr>
