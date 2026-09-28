@@ -218,6 +218,32 @@ mobile authenticator, with a Socket.IO catch-all listener and a status poll logg
 time from buy to offer, the event name, `stage` values, `send_until` for a regular trade, hold
 behaviour. Answers half of §7 without a support thread.
 
+### 8.1 Spike result (2026-09-28, one real purchase)
+
+Bought `Galil AR | Grey Smoke (Field-Tested)` (5 units = $0.005, `delivery: bot`, `auto`) with
+`GET /v1/buy-one-p2p` to the owner's account; the owner accepted in Steam.
+
+- **The key is IP-whitelisted.** From any address but the prod VPS every call is
+  `403 "You need to whitelist your IP"`; `/v1/user`, `check-tradelink`, search and buy all worked
+  from `yupay-prod-api-1`. Whatever tracks trades (sweep, Socket.IO listener) runs on prod.
+- **`buy-one-p2p` answers at once** with `{success, id, price}`; `project_id` round-trips through
+  `check-many-project-id`, and Waxpeer adds its own `custom_id`.
+- **Timeline:** 0 `processing` at +0 s (`send_until` = +5 min) → 2 at +27 s with the Steam
+  `trade_id` (bot waiting for its own confirmation; `send_until` moved to +10 min) → **4 at
+  +55 s**, with `release_date` = +7 days (Steam trade protection) already set.
+- **Acceptance is not visible in the API.** After the owner accepted, Waxpeer's site showed
+  «Accepted» with a 7-day protection timer, while `check-many-project-id` and `my-history`
+  still said `status: 4`, `done: false`, `is_released: false`, `last_updated` unchanged since the
+  offer was sent. `release_date` is set before acceptance, so it does not tell either.
+  `check-many-steam?id=<trade_id>` answered 500. Status 5 is expected only after release.
+- **Consequence for §6:** "5 → delivered" would hold every order for a week. Instead: status 4
+  that is **still 4 after `send_until`** (a buyer who never accepts is cancelled to 6 by then) is
+  _accepted_ → the order is delivered, the `skin_trades` row keeps «protected until
+  `release_date`», and the daily history sweep plus the release (5) or a rollback (6 +
+  `penalties`) close it. Before `send_until`, status 4 is «обмен отправлен — примите в Steam».
+- Still open (§7): the Socket.IO event for acceptance — the listener was not run (the prod
+  image has no Socket.IO client); ask Waxpeer whether any API field flips on acceptance.
+
 ## 9. Delivery order
 
 Four plans, each shippable behind `cs2_skins_enabled`:
