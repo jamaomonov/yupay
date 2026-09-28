@@ -221,7 +221,8 @@ behaviour. Answers half of §7 without a support thread.
 ### 8.1 Spike result (2026-09-28, one real purchase)
 
 Bought `Galil AR | Grey Smoke (Field-Tested)` (5 units = $0.005, `delivery: bot`, `auto`) with
-`GET /v1/buy-one-p2p` to the owner's account; the owner accepted in Steam.
+`GET /v1/buy-one-p2p` to the owner's account (and a second one, 6 units, accepted after a
+pause); the owner accepted both in Steam.
 
 - **The key is IP-whitelisted.** From any address but the prod VPS every call is
   `403 "You need to whitelist your IP"`; `/v1/user`, `check-tradelink`, search and buy all worked
@@ -231,16 +232,19 @@ Bought `Galil AR | Grey Smoke (Field-Tested)` (5 units = $0.005, `delivery: bot`
 - **Timeline:** 0 `processing` at +0 s (`send_until` = +5 min) → 2 at +27 s with the Steam
   `trade_id` (bot waiting for its own confirmation; `send_until` moved to +10 min) → **4 at
   +55 s**, with `release_date` = +7 days (Steam trade protection) already set.
-- **Acceptance is not visible in the API.** After the owner accepted, Waxpeer's site showed
-  «Accepted» with a 7-day protection timer, while `check-many-project-id` and `my-history`
-  still said `status: 4`, `done: false`, `is_released: false`, `last_updated` unchanged since the
-  offer was sent. `release_date` is set before acceptance, so it does not tell either.
-  `check-many-steam?id=<trade_id>` answered 500. Status 5 is expected only after release.
-- **Consequence for §6:** "5 → delivered" would hold every order for a week. Instead: status 4
-  that is **still 4 after `send_until`** (a buyer who never accepts is cancelled to 6 by then) is
-  _accepted_ → the order is delivered, the `skin_trades` row keeps «protected until
-  `release_date`», and the daily history sweep plus the release (5) or a rollback (6 +
-  `penalties`) close it. Before `send_until`, status 4 is «обмен отправлен — примите в Steam».
+- **Acceptance is `release_date` appearing.** A second purchase, accepted 2.5 min after the
+  offer arrived, settled it: at status 4 `release_date` stayed `null` while the offer waited,
+  and at the owner's accept it became `2026-10-05T16:00Z` (+7 days, Steam trade protection)
+  with a new `last_updated`; status stayed 4. That is the docs' own rule — «4: trade sent,
+  buyer can accept. If `release_date` is set and `is_released=false` → TRADE HOLD», then 5 at
+  release. The first purchase looked otherwise only because the owner accepted within seconds.
+  `send_until` at status 4 is +30 min (at 0 it is +5, at 2 +10); `check-many-steam?id=<trade_id>`
+  answered 500.
+- **Consequence for §6:** status 4 **with `release_date` set** → accepted → the order is
+  delivered; the `skin_trades` row keeps «protected until `release_date`», and release (5) or a
+  rollback (6 + `penalties`) closes it later, caught by the reconcile sweep and the daily history
+  sweep. Status 4 with `release_date = null` → «обмен отправлен — примите в Steam до
+  `send_until`». Waiting for 5 would hold every order for a week.
 - Still open (§7): the Socket.IO event for acceptance — the listener was not run (the prod
   image has no Socket.IO client); ask Waxpeer whether any API field flips on acceptance.
 
