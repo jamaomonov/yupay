@@ -43,4 +43,15 @@ describe("stageFor — a CS2 skin order", () => {
   it("never promises a card refund for a failed skin", () => {
     expect(stageFor(skinOrder("failed")).subtitle).toBe(translate("success.stage.failedSubSkin"));
   });
+
+  it("knows a skin by its SKU before the worker has written the trade", () => {
+    const order = skinOrder("paid");
+    const item = order.items[0]!;
+    const early = {
+      ...order,
+      status: "fulfilling",
+      items: [{ ...item, skin_trade: null, display: { ...item.display, sku_code: "cs2-skin" } }],
+    } as unknown as OrderOut; // only the fields stageFor reads
+    expect(stageFor(early).subtitle).toBe(translate("success.stage.fulfillingSubSkin"));
+  });
 });

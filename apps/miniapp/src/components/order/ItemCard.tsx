@@ -11,6 +11,7 @@ import type { DeliveryOut, OrderOut } from "@/lib/orders";
 
 import { SafeImage } from "@/components/ui/safe-image";
 import { useT } from "@/lib/i18n";
+import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/skin-trade";
 
 /**
  * Extracted out of `OrderSuccess.tsx` (2026-09-03 review) purely to keep
@@ -84,6 +85,11 @@ export function ItemCard({
         {/* A skin's delivery is its Steam trade, not a receipt: checked first. */}
         {item.skin_trade ? (
           <SkinTradeCard trade={item.skin_trade} />
+        ) : isSkinItem(item) ? (
+          // Paid, the worker has not written the trade yet: it is being bought.
+          awaitingDelivery ? (
+            <SkinTradeCard trade={SKIN_TRADE_PENDING} />
+          ) : null
         ) : delivery ? (
           // Checked before `isTopUp`: a Steam gift's product is seeded with
           // `kind="top_up"` (its checkout form matches that shape) and its

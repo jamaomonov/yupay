@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { ApiError } from "./api";
 import {
+  afterListingGone,
   cheapestOffer,
   orderKeyFor,
   skinBuyFailure,
@@ -54,17 +55,17 @@ describe("skinBuyFailure", () => {
 
 describe("orderKeyFor", () => {
   const mint = () => "fresh";
+  const k1 = { listingId: 1, tradelink: "A", key: "k1" };
 
-  it("keeps the key for a retry of the same offer", () => {
-    expect(orderKeyFor({ listingId: 1, key: "k1" }, 1, mint)).toEqual({ listingId: 1, key: "k1" });
+  it("keeps the key for a retry of the same offer to the same link", () => {
+    expect(orderKeyFor(k1, 1, "A", mint)).toEqual(k1);
   });
 
-  it("mints a new key for another offer or the first try", () => {
-    expect(orderKeyFor({ listingId: 1, key: "k1" }, 2, mint)).toEqual({
-      listingId: 2,
-      key: "fresh",
-    });
-    expect(orderKeyFor(null, 1, mint)).toEqual({ listingId: 1, key: "fresh" });
+  it("mints a new key for another offer, another trade link, or the first try", () => {
+    expect(orderKeyFor(k1, 2, "A", mint)).toEqual({ listingId: 2, tradelink: "A", key: "fresh" });
+    // A replayed order would still deliver to the old link.
+    expect(orderKeyFor(k1, 1, "B", mint)).toEqual({ listingId: 1, tradelink: "B", key: "fresh" });
+    expect(orderKeyFor(null, 1, "A", mint)).toEqual({ listingId: 1, tradelink: "A", key: "fresh" });
   });
 });
 
@@ -117,5 +118,28 @@ describe("cheapestOffer", () => {
     ];
     expect(cheapestOffer(offers)?.listing_id).toBe(2);
     expect(cheapestOffer([])).toBeNull();
+  });
+});
+
+describe("afterListingGone", () => {
+  const offers = [
+    { listing_id: 1, price_usd: "30.00" },
+    { listing_id: 2, price_usd: "31.00" },
+    { listing_id: 3, price_usd: "33.00" },
+  ];
+
+  it("drops the sold offer and selects the next one the server named", () => {
+    const r = afterListingGone(offers, 1, { listing_id: 3, price_usd: "33.00" });
+    expect(r.offers.map((o) => o.listing_id)).toEqual([2, 3]);
+    expect(r.selected?.listing_id).toBe(3);
+  });
+
+  it("falls back to the cheapest remaining when the named one is not on the page", () => {
+    const r = afterListingGone(offers, 1, { listing_id: 99, price_usd: "35.00" });
+    expect(r.selected?.listing_id).toBe(2);
+  });
+
+  it("selects nothing when none are left", () => {
+    expect(afterListingGone([offers[0]!], 1, null).selected).toBeNull();
   });
 });

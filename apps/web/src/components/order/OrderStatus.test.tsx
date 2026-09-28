@@ -424,3 +424,17 @@ it("shows a skin line's trade card, not the generic receipt, once received", asy
   });
   expect(screen.queryByText("Your delivery")).not.toBeInTheDocument();
 });
+
+it("shows a skin as being bought before the worker has written its trade", async () => {
+  const order = makeOrder("top_up");
+  order.status = "fulfilling";
+  order.items[0] = {
+    ...order.items[0]!,
+    display: { ...order.items[0]!.display!, sku_code: "cs2-skin" },
+  };
+  mockApiFetch.mockResolvedValue(order);
+
+  wrap(<OrderStatus orderId="01a00487-0000-0000-0000-000000000000" />);
+
+  expect(await screen.findByText("Buying")).toBeInTheDocument();
+});

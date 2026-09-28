@@ -54,16 +54,25 @@ export function skinBuyFailure(err: unknown): SkinBuyFailure | null {
 
 export interface OrderKey {
   listingId: number;
+  tradelink: string;
   key: string;
 }
 
-/** One order key per offer: a retry of the same offer replays, another offer is a new order. */
+/**
+ * One order key per offer and trade link: a retry of the same purchase replays,
+ * another offer — or another link — is a new order. The server replays a keyed
+ * order whatever the body says, so a key that outlived a link change would
+ * deliver the skin to the old link.
+ */
 export function orderKeyFor(
   current: OrderKey | null,
   listingId: number,
+  tradelink: string,
   mint: () => string,
 ): OrderKey {
-  return current?.listingId === listingId ? current : { listingId, key: mint() };
+  return current?.listingId === listingId && current.tradelink === tradelink
+    ? current
+    : { listingId, tradelink, key: mint() };
 }
 
 const LINK_SHAPE =
@@ -95,4 +104,19 @@ export function cheapestOffer<T extends { price_usd: string }>(offers: readonly 
     if (best === null || Number(o.price_usd) < Number(best.price_usd)) best = o;
   }
   return best;
+}
+
+/**
+ * The page after a sold offer: the offer gone, and the server's next offer
+ * selected — or, when that one is not on the page, the cheapest left — so the
+ * notice and the button name the same offer.
+ */
+export function afterListingGone<T extends { listing_id: number; price_usd: string }>(
+  offers: readonly T[],
+  soldId: number,
+  next: NextOffer | null,
+): { offers: T[]; selected: T | null } {
+  const rest = offers.filter((o) => o.listing_id !== soldId);
+  const named = rest.find((o) => o.listing_id === next?.listing_id);
+  return { offers: rest, selected: named ?? cheapestOffer(rest) };
 }

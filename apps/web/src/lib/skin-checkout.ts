@@ -36,6 +36,29 @@ export interface NextOffer {
   price_usd: string;
 }
 
+export interface OrderKey {
+  listingId: number;
+  tradelink: string;
+  key: string;
+}
+
+/**
+ * One order key per offer and trade link: a retry of the same purchase replays,
+ * another offer — or another link — is a new order. The server replays a keyed
+ * order whatever the body says, so a key that outlived a link change would
+ * deliver the skin to the old link.
+ */
+export function orderKeyFor(
+  current: OrderKey | null,
+  listingId: number,
+  tradelink: string,
+  mint: () => string,
+): OrderKey {
+  return current?.listingId === listingId && current.tradelink === tradelink
+    ? current
+    : { listingId, tradelink, key: mint() };
+}
+
 export class SignInRequiredError extends Error {
   constructor() {
     super("sign in to buy a skin");

@@ -43,11 +43,15 @@ export function SkinBuyPanel({
   slug,
   offer,
   onListingGone,
+  onPriceChanged,
 }: {
   skuId: string;
   slug: string;
   offer: SkinListing;
-  onListingGone: (next: NextOffer | null) => void;
+  /** Drops the sold offer and answers with the one now selected (`null`: none left). */
+  onListingGone: (next: NextOffer | null) => SkinListing | null;
+  /** The server's price for this offer: the button shows it and the next press sends it. */
+  onPriceChanged: (expectedUsd: string) => void;
 }) {
   const { t } = useT();
   const { toast } = useToast();
@@ -106,7 +110,7 @@ export function SkinBuyPanel({
     setNotice(null);
     await ensureBotCanWrite();
     setClosingConfirmation(true);
-    orderKey.current = orderKeyFor(orderKey.current, offer.listing_id, () =>
+    orderKey.current = orderKeyFor(orderKey.current, offer.listing_id, link.url, () =>
       newIdempotencyKey("order"),
     );
     const attempt = (key: string) =>
@@ -126,7 +130,11 @@ export function SkinBuyPanel({
       } catch (err) {
         if (!isOrderNotAwaitingPaymentConflict(err)) throw err;
         // The replayed order expired before this retry: same offer, a fresh order, once.
-        orderKey.current = { listingId: offer.listing_id, key: newIdempotencyKey("order") };
+        orderKey.current = {
+          listingId: offer.listing_id,
+          tradelink: link.url,
+          key: newIdempotencyKey("order"),
+        };
         result = await attempt(orderKey.current.key);
       }
       orderKey.current = null;
@@ -142,14 +150,13 @@ export function SkinBuyPanel({
       haptic("error");
       const failure = skinBuyFailure(err);
       if (failure?.kind === "priceChanged") {
+        onPriceChanged(failure.expectedUsd);
         setNotice(t("cs2.buy.priceChanged", { price: `$${failure.expectedUsd}` }));
       } else if (failure?.kind === "listingGone") {
+        const now = onListingGone(failure.next);
         setNotice(
-          failure.next
-            ? t("cs2.buy.listingGone", { price: `$${failure.next.price_usd}` })
-            : t("cs2.buy.noneLeft"),
+          now ? t("cs2.buy.listingGone", { price: `$${now.price_usd}` }) : t("cs2.buy.noneLeft"),
         );
-        onListingGone(failure.next);
       } else if (failure?.kind === "tradelink") {
         setNotice(
           t(

@@ -19,14 +19,14 @@ import { OrderSummary } from "./OrderSummary";
 import { SkinTradeCard } from "./SkinTradeCard";
 import { StatusBlock } from "./StatusBlock";
 
-import { ReviewAsk } from "@/components/store/ReviewAsk";
-
 import type { OrderOut } from "@/lib/orders-types";
 
+import { ReviewAsk } from "@/components/store/ReviewAsk";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
+import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/orders-types";
 import { orderPollInterval } from "@/lib/poll";
 import { getMyReviews } from "@/lib/reviews";
 import { formatUzs, pathFor } from "@/lib/seo";
@@ -256,7 +256,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // Top-up only when every item is a top-up (mirrors the Mini App's
   // `orderKind`); a mixed cart falls back to the neutral "delivered" wording.
   // A CS2 skin is seeded as a top-up but arrives as a Steam trade: its own copy.
-  const isSkin = order.data.items.some((i) => i.skin_trade);
+  const isSkin = order.data.items.some(isSkinItem);
   const isTopUp =
     !isSkin &&
     order.data.items.length > 0 &&
@@ -307,6 +307,10 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
         {order.data.items.map((item) =>
           item.skin_trade ? (
             <SkinTradeCard key={item.id} trade={item.skin_trade} locale={locale} />
+          ) : isSkinItem(item) &&
+            ["paid", "fulfilling", "fulfilled"].includes(order.data.status) ? (
+            // Paid, the worker has not written the trade yet: it is being bought.
+            <SkinTradeCard key={item.id} trade={SKIN_TRADE_PENDING} locale={locale} />
           ) : null,
         )}
 

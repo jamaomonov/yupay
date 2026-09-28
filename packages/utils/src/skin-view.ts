@@ -148,3 +148,24 @@ const WEAR_CATEGORIES = new Set(["rifles", "pistols", "smgs", "heavy", "knives",
 export function hasWear(category: string): boolean {
   return WEAR_CATEGORIES.has(category);
 }
+
+/**
+ * An offer at the dollar price the server quoted when it refused the old one
+ * (the order's `expected_amount_usd`), soʻm scaled to match in whole hundreds —
+ * so the next press charges what the button says instead of failing again.
+ * The server re-prices the order itself; this only keeps the page honest.
+ */
+export function repriceOffer<T extends { price_usd: string; price_uzs: string | null }>(
+  offer: T,
+  expectedUsd: string,
+): T {
+  const uzs =
+    offer.price_uzs === null
+      ? null
+      : String(
+          Math.round(
+            (Number(offer.price_uzs) * Number(expectedUsd)) / Number(offer.price_usd) / 100,
+          ) * 100,
+        );
+  return { ...offer, price_usd: expectedUsd, price_uzs: uzs };
+}

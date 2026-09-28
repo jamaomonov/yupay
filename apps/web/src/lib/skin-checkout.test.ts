@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearTokens, setTokens } from "./client";
 import {
   buySkin,
+  orderKeyFor,
   SignInRequiredError,
   SkinListingGoneError,
   SkinPriceChangedError,
@@ -103,5 +104,21 @@ describe("buySkin", () => {
     const err = await buySkin(params).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(SkinTradeLinkError);
     expect((err as SkinTradeLinkError).reason).toBe("tradelink_other_account");
+  });
+});
+
+describe("orderKeyFor", () => {
+  const mint = () => "fresh";
+  const k1 = { listingId: 1, tradelink: "A", key: "k1" };
+
+  it("keeps the key for a retry of the same offer to the same link", () => {
+    expect(orderKeyFor(k1, 1, "A", mint)).toEqual(k1);
+  });
+
+  it("mints a new key for another offer or another trade link", () => {
+    expect(orderKeyFor(k1, 2, "A", mint).key).toBe("fresh");
+    // A replayed order would still deliver to the old link.
+    expect(orderKeyFor(k1, 1, "B", mint)).toEqual({ listingId: 1, tradelink: "B", key: "fresh" });
+    expect(orderKeyFor(null, 1, "A", mint).key).toBe("fresh");
   });
 });

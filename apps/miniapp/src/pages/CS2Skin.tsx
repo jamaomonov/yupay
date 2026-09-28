@@ -1,4 +1,4 @@
-import { hasWear, isVanilla, offerHeadline, steamImageSize } from "@yupay/utils";
+import { hasWear, isVanilla, offerHeadline, repriceOffer, steamImageSize } from "@yupay/utils";
 import { ExternalLink, Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useParams } from "wouter";
@@ -11,7 +11,7 @@ import { SkinWearRow } from "@/components/skins/SkinWearRow";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
-import { cheapestOffer } from "@/lib/skin-buy";
+import { afterListingGone, cheapestOffer } from "@/lib/skin-buy";
 import { fetchSkinDetail, fetchSkinListings, skinPriceText } from "@/lib/skins";
 import { openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -174,8 +174,20 @@ export default function CS2Skin() {
           slug={item.slug}
           offer={selected}
           onListingGone={(next) => {
-            setOffers((all) => all?.filter((o) => o.listing_id !== selected.listing_id) ?? null);
-            setPickedId(next?.listing_id ?? null);
+            const after = afterListingGone(offers ?? [], selected.listing_id, next);
+            setOffers(after.offers);
+            setPickedId(after.selected?.listing_id ?? null);
+            return after.selected;
+          }}
+          onPriceChanged={(usd) => {
+            // Pinned: at its new price it may no longer be the cheapest default.
+            setPickedId(selected.listing_id);
+            setOffers(
+              (all) =>
+                all?.map((o) =>
+                  o.listing_id === selected.listing_id ? repriceOffer(o, usd) : o,
+                ) ?? null,
+            );
           }}
         />
       )}

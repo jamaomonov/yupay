@@ -5,6 +5,7 @@ import type { OrderOut, ProductKind } from "@/lib/orders";
 
 import { useT } from "@/lib/i18n";
 import { translate } from "@/lib/i18n/core";
+import { isSkinItem } from "@/lib/skin-trade";
 
 // Soft SLA thresholds. The order is allowed to take whatever it takes
 // (fulfillment can poll suppliers, manual intervention etc.), but we lower
@@ -43,7 +44,7 @@ export interface StageCopy {
 function orderKind(order: OrderOut): "top_up" | "voucher" | "mixed" | "skin" {
   // A CS2 skin is seeded as a top-up (its form matches that shape) but is
   // delivered as a Steam trade and refunded to the balance — its own copy.
-  if (order.items.some((i) => i.skin_trade)) return "skin";
+  if (order.items.some(isSkinItem)) return "skin";
   const kinds = new Set(
     order.items.map((i) => i.display?.product_kind).filter((k): k is ProductKind => Boolean(k)),
   );

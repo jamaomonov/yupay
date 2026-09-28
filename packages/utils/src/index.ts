@@ -28,6 +28,7 @@ export {
   hasWear,
   isVanilla,
   offerHeadline,
+  repriceOffer,
   wearChoices,
 } from "./skin-view";
 export type { VariantToggle, WearChoice } from "./skin-view";

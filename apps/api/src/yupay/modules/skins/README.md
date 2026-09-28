@@ -39,8 +39,9 @@ Buying (plan `docs/superpowers/plans/2026-09-29-cs2-skins-purchase-ui.md`): the 
 page shows the buy panel only when `GET /skins/{slug}` names `buy_sku_id` (the `cs2-skin`
 SKU is seeded and active). Web: `components/skins/SkinBuyPanel.tsx` + `lib/skin-checkout.ts`,
 order page `components/order/SkinTradeCard.tsx`. Mini app: `components/skins/SkinBuyPanel.tsx`
-
-- `lib/skin-buy.ts`, order page `components/order/SkinTradeCard.tsx` + `lib/skin-trade.ts`.
+with `lib/skin-buy.ts`, order page `components/order/SkinTradeCard.tsx` with `lib/skin-trade.ts`.
+A skin line is recognised by its SKU code (`cs2-skin`) as well as by its trade row, so the
+order page never reads as a top-up in the seconds before the worker writes that row.
 
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,

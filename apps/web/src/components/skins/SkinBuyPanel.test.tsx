@@ -11,6 +11,7 @@ import messages from "../../../../../packages/i18n/locales/ru/web.json";
 import type * as CheckoutModule from "@/lib/skin-checkout";
 import type * as SkinsModule from "@/lib/skins";
 
+import { ApiError } from "@/lib/client";
 import { buySkin, SkinListingGoneError, SkinPriceChangedError } from "@/lib/skin-checkout";
 import { fetchSkinListings } from "@/lib/skins";
 import { useLoginModal } from "@/store/useLoginModal";
@@ -140,5 +141,51 @@ describe("SkinBuyPanel", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Оплатить 381\s?000/ }));
     expect(await screen.findByText(/Этот лот уже купили/)).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: /Оплатить 393\s?700/ })).toBeInTheDocument();
+  });
+
+  it("charges the server's new price on the next press instead of failing again", async () => {
+    useAuthMock.mockReturnValue({ user: { id: "u1" }, isLoading: false });
+    vi.mocked(buySkin)
+      .mockRejectedValueOnce(new SkinPriceChangedError("31.50"))
+      .mockResolvedValueOnce({ orderId: "o1", intentUrl: null, trackHref: "/orders/o1" });
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: /Оплатить 381\s?000/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /Оплатить 400\s?100/ }));
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/orders/o1");
+    });
+    expect(vi.mocked(buySkin).mock.calls[1]![0]).toMatchObject({
+      listingId: 1,
+      amountUsd: "31.50",
+    });
+  });
+
+  it("drops a sold offer even when the next one is not on the page", async () => {
+    useAuthMock.mockReturnValue({ user: { id: "u1" }, isLoading: false });
+    vi.mocked(buySkin).mockRejectedValueOnce(
+      new SkinListingGoneError({ listing_id: 99, price_usd: "35.00" }),
+    );
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: /Оплатить 381\s?000/ }));
+    expect(await screen.findByRole("button", { name: /Оплатить 393\s?700/ })).toBeInTheDocument();
+    expect(screen.getByText(/Следующий — \$31\.00/)).toBeInTheDocument();
+  });
+
+  it("starts a fresh order once when the replayed one is no longer payable", async () => {
+    useAuthMock.mockReturnValue({ user: { id: "u1" }, isLoading: false });
+    vi.mocked(buySkin)
+      .mockRejectedValueOnce(
+        new ApiError(409, "/payments/intents", undefined, "not awaiting payment", {
+          status: "expired",
+        }),
+      )
+      .mockResolvedValueOnce({ orderId: "o2", intentUrl: null, trackHref: "/orders/o2" });
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: /Оплатить/ }));
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/orders/o2");
+    });
+    const [first, second] = vi.mocked(buySkin).mock.calls.map((c) => c[0].orderKey);
+    expect(second).not.toBe(first);
   });
 });

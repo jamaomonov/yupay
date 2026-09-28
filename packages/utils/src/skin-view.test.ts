@@ -6,6 +6,7 @@ import {
   hasWear,
   isVanilla,
   offerHeadline,
+  repriceOffer,
   wearChoices,
 } from "./skin-view";
 import { DEFAULT_SORT, SKIN_CATEGORIES } from "./skins";
@@ -147,5 +148,21 @@ describe("hasWear", () => {
       expect(hasWear(c)).toBe(true);
     for (const c of ["cases", "keys", "agents", "music-kits", "charms"])
       expect(hasWear(c)).toBe(false);
+  });
+});
+
+describe("repriceOffer", () => {
+  const offer = { listing_id: 1, price_usd: "30.00", price_uzs: "381000" };
+
+  it("takes the server's dollar price and scales soʻm to it, in whole hundreds", () => {
+    expect(repriceOffer(offer, "31.50")).toEqual({
+      listing_id: 1,
+      price_usd: "31.50",
+      price_uzs: "400100",
+    });
+  });
+
+  it("keeps soʻm unknown when it was unknown", () => {
+    expect(repriceOffer({ ...offer, price_uzs: null }, "31.50").price_uzs).toBeNull();
   });
 });
