@@ -114,3 +114,13 @@ sequenceDiagram
 2. **Cashback-rule engine** в `promotions/`, который слушает `order.delivered` и зовёт `wallet.post(kind='order.cashback', legs=[...])`.
 3. **Trigger** `wallet_postings BEFORE COMMIT` для пер-транзакционного `SUM(D)=SUM(C)` (ADR-0019).
 4. **Партиционирование** по месяцу при ~50M проводок.
+
+## Refund to the balance (`payment.refund_to_wallet`)
+
+`payments.service.refund_order_to_wallet` turns a failed order's whole captured payment
+into balance — the automatic refund for a CS2 skin purchase Waxpeer gave back (plan 3a).
+A wallet-paid order is reversed as `refund_admin` reverses it
+(`D user_wallet / C house_payments_received`); any other becomes a top-up funded by
+provider clearing (`D user_wallet / C provider_clearing:<provider>`) — no acquirer call.
+It shares the `refund:<payment.id>` key with every refund path, so an order is refunded
+once, whichever trigger fires first.

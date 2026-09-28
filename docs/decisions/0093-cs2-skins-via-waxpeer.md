@@ -130,3 +130,12 @@ fulfilment path, 4 s timeouts, a 10-minute Redis cache keyed by a hash of the li
 60-second breaker, and its own `ip_guard` bucket. It is `POST` so the link — whose token lets
 anyone send that account offers — stays out of the edge access log, and it writes nothing, so
 it takes no `Idempotency-Key`. Listed in AGENTS.md §9 and §10.
+
+## Amendment 2026-09-29 — money when a purchase falls through
+
+A skin task that fails with `MoneyOutcome.RETURNED` (no substitute listing, or an offer the
+customer declined or let expire — Waxpeer refunds those in full, spike §8.1) refunds the order
+to the customer's YuPay balance automatically (owner, 2026-09-28): `fulfillment.service`
+calls `payments.service.refund_order_to_wallet` from the same post-savepoint seam every
+terminal failure passes. `UNKNOWN` and `SPENT` keep the alert-and-a-human path. A card
+refund stays a support action. Skins therefore require a signed-in customer.

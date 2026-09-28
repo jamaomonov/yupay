@@ -924,6 +924,47 @@ def _apply_failure(*, task: FulfillmentTask, item: OrderItem, result: FulfillRes
 _MERCHANT_REFUND_REASON = "fulfillment_failed"
 
 
+async def _refund_skin_to_wallet(db: AsyncSession, *, task_id: str) -> None:
+    """A retail CS2 skin task that failed with the money back refunds itself.
+
+    Owner's rule (plan 3a, 2026-09-28): the customer's money lands on their YuPay
+    balance at once. Only a Waxpeer skin task, only on ``RETURNED`` — ``UNKNOWN`` and
+    ``SPENT`` keep today's alert-and-a-human path — and only a retail order with a
+    user. Like the merchant settle below it, nothing escapes: a refund that fails is
+    logged and alerted, never allowed to stall the queue; a replay is a no-op
+    (``refund_order_to_wallet`` returns ``False``).
+    """
+    task = await db.get(FulfillmentTask, task_id)
+    if task is None or task.supplier != "waxpeer" or task.status != "failed":
+        return
+    meta = task.extra_metadata or {}
+    if (
+        meta.get("waxpeer_kind") != "skin"
+        or meta.get(MONEY_OUTCOME_KEY) != MoneyOutcome.RETURNED.value
+    ):
+        return
+    try:
+        async with db.begin_nested():
+            from yupay.modules.payments.service import refund_order_to_wallet
+
+            refunded = await refund_order_to_wallet(
+                db, order_id=task.order_id, reason=str(task.last_error or "skin_failed")
+            )
+        if refunded:
+            log.info("fulfillment.skin_refunded_to_wallet", order_id=task.order_id)
+    except Exception as exc:  # as the merchant settle: never stall the queue; logged and alerted
+        log.exception(
+            "fulfillment.skin_refund_failed", order_id=task.order_id, error=type(exc).__name__
+        )
+        _dispatch_alert(
+            _alert_fulfillment_error(
+                task,
+                kind="skin_refund_failed",
+                error=f"refund to balance failed: {type(exc).__name__}",
+            )
+        )
+
+
 async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     """Give a merchant back what a failed order took, or call a human.
 
@@ -1042,6 +1083,9 @@ async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:
     # survives it. It is filled in only once the read has succeeded, which is
     # why the handler reads it with ``.get``.
     seen: dict[str, str] = {}
+    # Retail CS2 skins ride the same seam: it is the one place every terminal
+    # failure passes after the savepoint. Self-gated and self-contained.
+    await _refund_skin_to_wallet(db, task_id=task_id)
     try:
         row = await _merchant_of_task(db, task_id)
         if row is None:

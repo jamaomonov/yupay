@@ -746,6 +746,7 @@ async def _book_refund_ledger(
     reason: str | None,
     is_full: bool,
     actor: str,
+    to_wallet: bool = False,
 ) -> None:
     """Book the refund on the ledger. A wallet-funded payment is reversed
     straight back to the customer's balance (the exact inverse of the original
@@ -819,6 +820,49 @@ async def _book_refund_ledger(
                 kind="wallet_topup_refund_blocked",
             )
             raise
+    elif to_wallet:
+        # The order payment becomes a balance top-up: nothing goes back through
+        # the acquirer, the money that came in on provider clearing now sits on
+        # the customer's balance (the credit_topup shape). Same idempotency key
+        # as every other refund, so this and refund_admin can never both post.
+        if order.user_id is None:  # pragma: no cover -- refund_order_to_wallet checks
+            raise ConflictError("a guest order has no balance to refund to")
+        user_wallet = await wallet_api.ensure_account(
+            db,
+            owner_type="user",
+            owner_id=order.user_id,
+            kind="user_wallet",
+            currency=payment.currency,
+        )
+        provider_clearing = await wallet_api.ensure_account(
+            db,
+            owner_type="provider",
+            owner_id=payment.provider,
+            kind="provider_clearing",
+            currency=payment.currency,
+        )
+        await wallet_api.post(
+            db,
+            kind="payment.refund_to_wallet",
+            legs=[
+                wallet_api.Leg(
+                    account_id=user_wallet.id,
+                    direction="D",
+                    amount=refund_amount,
+                    currency=payment.currency,
+                ),
+                wallet_api.Leg(
+                    account_id=provider_clearing.id,
+                    direction="C",
+                    amount=refund_amount,
+                    currency=payment.currency,
+                ),
+            ],
+            idempotency_key=f"refund:{payment.id}",
+            reference=wallet_api.Reference(type="payment", id=payment.id),
+            actor=actor,
+            metadata={"reason": reason or "", "full": is_full, "credited_account": user_wallet.id},
+        )
     else:
         house_refunds = await wallet_api.ensure_account(
             db,
@@ -865,6 +909,7 @@ async def _apply_refund_reversal(
     amount: Decimal,
     actor: str,
     external_ref: str | None,
+    to_wallet: bool = False,
 ) -> None:
     """Shared refund core — the single place a refund touches the FSM and ledger.
 
@@ -951,6 +996,7 @@ async def _apply_refund_reversal(
         reason=external_ref,
         is_full=is_full,
         actor=actor,
+        to_wallet=to_wallet,
     )
 
     # Realtime parity: nudge a connected viewer when a full refund walks the
@@ -1192,6 +1238,63 @@ async def refund_admin(
         full=is_full,
     )
     return payment
+
+
+async def refund_order_to_wallet(db: AsyncSession, *, order_id: str, reason: str) -> bool:
+    """Refund an order's whole captured payment to the customer's YuPay balance.
+
+    The automatic refund for a CS2 skin purchase that fell through (plan 3a): the
+    customer paid, Waxpeer gave the money back (``MoneyOutcome.RETURNED``), and the
+    owner's rule is that it lands on their balance at once — a card refund stays a
+    support action. No acquirer call: a wallet-paid order is reversed as
+    :func:`refund_admin` reverses it, any other is booked as a balance top-up funded
+    by provider clearing. Shares ``refund:<payment.id>`` with every refund path, so
+    the order can be refunded once however many triggers fire.
+
+    Returns:
+        ``True`` when it refunded now, ``False`` when this order was already
+        refunded to the balance (a replayed trigger).
+
+    Raises:
+        ConflictError: no captured payment, a guest order, or a payment already
+            refunded some other way.
+    """
+    payment = (
+        await db.execute(
+            select(Payment)
+            .where(Payment.order_id == order_id, Payment.status.in_(("succeeded", "refunded")))
+            .order_by(Payment.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if payment is None:
+        raise ConflictError("order has no captured payment to refund")
+    if payment.status != "succeeded":
+        if ((payment.extra_metadata or {}).get("last_refund") or {}).get("refunded_to") == "wallet":
+            return False
+        raise ConflictError("payment was already refunded", extra={"status": payment.status})
+    order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one()
+    if order.user_id is None:
+        raise ConflictError("a guest order has no balance to refund to")
+    meta: dict[str, Any] = {
+        "refund_amount": str(payment.amount),
+        "reason": reason,
+        "refunded_to": "wallet",
+    }
+    payment.extra_metadata = {**(payment.extra_metadata or {}), "last_refund": meta}
+    _record_attempt(db, payment_id=payment.id, kind="refund", status="ok", payload=meta)
+    await _apply_refund_reversal(
+        db,
+        payment=payment,
+        amount=payment.amount,
+        actor="system:refund_to_wallet",
+        external_ref=reason,
+        to_wallet=True,
+    )
+    await db.flush()
+    log.info("payments.refund_to_wallet.ok", payment_id=payment.id, order_id=order_id)
+    return True
 
 
 async def settle_provider_payment(
