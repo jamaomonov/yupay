@@ -571,5 +571,7 @@
   "cs2.buy.tradeTo": "The trade goes to",
   "cs2.buy.steamAccount": "Steam account {id}",
   "cs2.buy.wear": "Wear",
-  "cs2.buy.itemTitle": "Skin"
+  "cs2.buy.itemTitle": "Skin",
+  "cs2.belowSteam": "−{percent}% vs Steam",
+  "cs2.inspect": "Inspect in game"
 }

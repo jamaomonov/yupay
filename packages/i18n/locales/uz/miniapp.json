@@ -571,5 +571,7 @@
   "cs2.buy.tradeTo": "Almashuv keladi",
   "cs2.buy.steamAccount": "Steam akkaunt {id}",
   "cs2.buy.wear": "Sifat",
-  "cs2.buy.itemTitle": "Skin"
+  "cs2.buy.itemTitle": "Skin",
+  "cs2.belowSteam": "Steam'dan −{percent}%",
+  "cs2.inspect": "O'yinda ko'rish"
 }

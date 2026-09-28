@@ -571,5 +571,7 @@
   "cs2.buy.tradeTo": "Обмен придёт на",
   "cs2.buy.steamAccount": "Steam-аккаунт {id}",
   "cs2.buy.wear": "Качество",
-  "cs2.buy.itemTitle": "Скин"
+  "cs2.buy.itemTitle": "Скин",
+  "cs2.belowSteam": "−{percent}% к Steam",
+  "cs2.inspect": "Осмотр в игре"
 }

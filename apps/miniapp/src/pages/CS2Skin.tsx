@@ -1,4 +1,4 @@
-import { hasWear, isVanilla, offerHeadline, repriceOffer, steamImageSize } from "@yupay/utils";
+import { hasWear, isVanilla, offerHeadline, repriceOffer, steamDiscount } from "@yupay/utils";
 import { ExternalLink, Zap } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "wouter";
@@ -6,11 +6,11 @@ import { useParams } from "wouter";
 import type { SkinDetail, SkinListing } from "@yupay/utils";
 
 import { SkinFixedCta } from "@/components/skins/SkinFixedCta";
+import { SkinHeroCard } from "@/components/skins/SkinHeroCard";
 import { SkinListingsList } from "@/components/skins/SkinListingsList";
 import { SkinPayStep } from "@/components/skins/SkinPayStep";
 import { SkinTradeLinkInput } from "@/components/skins/SkinTradeLinkInput";
 import { SkinWearRow } from "@/components/skins/SkinWearRow";
-import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
 import { afterListingGone, cheapestOffer } from "@/lib/skin-buy";
@@ -110,11 +110,15 @@ export default function CS2Skin() {
     return <p className="py-20 text-center text-sm text-white/50">{t("cs2.notFound")}</p>;
   }
 
-  const head = offerHeadline(item.price_uzs, item.price_usd, offers);
-  const price = skinPriceText(head.uzs, head.usd);
   const worn = hasWear(item.category);
   const selected =
     offers?.find((o) => o.listing_id === pickedId) ?? (offers ? cheapestOffer(offers) : null);
+  // The picked offer is what «Далее» buys; before offers load, the stored «от» price.
+  const head = selected
+    ? { uzs: selected.price_uzs, usd: selected.price_usd, from: false }
+    : offerHeadline(item.price_uzs, item.price_usd, offers);
+  const price = skinPriceText(head.uzs, head.usd);
+  const off = head.usd !== null ? steamDiscount(head.usd, item.steam_price_usd) : null;
   const buySku = item.buy_sku_id ?? null;
   const buyable = buySku !== null && selected !== null;
 
@@ -149,22 +153,7 @@ export default function CS2Skin() {
 
   return (
     <div className={`yp-fade-in space-y-5 px-4 pt-4 ${buyable ? "pb-28" : "pb-4"}`}>
-      <div
-        className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-b-[3px]"
-        style={{
-          borderColor: "hsl(var(--border))",
-          background: "hsl(var(--surface-2))",
-          ...(item.rarity_color ? { borderBottomColor: item.rarity_color } : {}),
-        }}
-      >
-        {item.image_url && (
-          <SafeImage
-            src={steamImageSize(item.image_url, "512fx384f")}
-            alt={item.name}
-            className="h-full w-full object-contain p-5"
-          />
-        )}
-      </div>
+      <SkinHeroCard item={item} offer={selected} />
 
       <div>
         <p className="text-[13px] font-semibold text-white/60">
@@ -189,8 +178,19 @@ export default function CS2Skin() {
 
       <div className="space-y-3">
         <div>
-          <p className="text-2xl font-bold tabular-nums text-white">
-            {price === null ? t("cs2.soldOut") : head.from ? t("cs2.fromPrice", { price }) : price}
+          <p className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
+            <span className="text-2xl font-bold tabular-nums text-white">
+              {price === null
+                ? t("cs2.soldOut")
+                : head.from
+                  ? t("cs2.fromPrice", { price })
+                  : price}
+            </span>
+            {off !== null && (
+              <span className="rounded-md bg-emerald-500/15 px-1.5 py-0.5 text-[12px] font-bold text-emerald-400">
+                {t("cs2.belowSteam", { percent: off })}
+              </span>
+            )}
           </p>
           {price !== null && (
             <p className="mt-1 inline-flex items-center gap-1.5 text-[12px] font-semibold text-emerald-400">

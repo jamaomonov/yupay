@@ -1,4 +1,5 @@
 import { steamImageSize, wearColor } from "@yupay/utils";
+import { Eye } from "lucide-react";
 import { useState } from "react";
 
 import type { SkinListing } from "@yupay/utils";
@@ -7,6 +8,7 @@ import { SkinFloatBar } from "@/components/skins/SkinFloatBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
 import { skinPriceText } from "@/lib/skins";
+import { openExternalLink } from "@/lib/telegram";
 
 const FIRST = 10;
 
@@ -121,21 +123,36 @@ export function SkinListingsList({
                   <span className="whitespace-nowrap text-[14px] font-bold tabular-nums text-white">
                     {skinPriceText(l.price_uzs, l.price_usd)}
                   </span>
-                  {onSelect && (
-                    <button
-                      type="button"
-                      aria-pressed={selected}
-                      onClick={() => {
-                        onSelect(l.listing_id);
-                      }}
-                      className={`min-h-[30px] rounded-lg px-3 text-[12px] font-bold ${
-                        selected ? "bg-primary text-black" : "text-white/80"
-                      }`}
-                      style={selected ? undefined : { border: "1px solid hsl(var(--border))" }}
-                    >
-                      {selected ? t("cs2.buy.selected") : t("cs2.buy.buyThis")}
-                    </button>
-                  )}
+                  <div className="flex items-center gap-1.5">
+                    {l.inspect_url?.startsWith("steam://") && (
+                      <button
+                        type="button"
+                        aria-label={t("cs2.inspect")}
+                        onClick={() => {
+                          if (l.inspect_url) openExternalLink(l.inspect_url);
+                        }}
+                        className="flex h-[30px] w-[30px] items-center justify-center rounded-lg text-white/70"
+                        style={{ border: "1px solid hsl(var(--border))" }}
+                      >
+                        <Eye className="h-3.5 w-3.5" aria-hidden="true" />
+                      </button>
+                    )}
+                    {onSelect && (
+                      <button
+                        type="button"
+                        aria-pressed={selected}
+                        onClick={() => {
+                          onSelect(l.listing_id);
+                        }}
+                        className={`min-h-[30px] rounded-lg px-3 text-[12px] font-bold ${
+                          selected ? "bg-primary text-black" : "text-white/80"
+                        }`}
+                        style={selected ? undefined : { border: "1px solid hsl(var(--border))" }}
+                      >
+                        {selected ? t("cs2.buy.selected") : t("cs2.buy.buyThis")}
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
               {l.float_value !== null && (
