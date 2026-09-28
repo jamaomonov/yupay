@@ -22,7 +22,13 @@ from yupay.core.idempotency import (
 )
 from yupay.core.redis import get_redis
 from yupay.modules.admin.deps import require_admin
-from yupay.modules.skins.admin_trades import AdminSkinTradesOut, TradesView, list_trades
+from yupay.modules.skins.admin_trades import (
+    AdminSkinTradeOut,
+    AdminSkinTradesOut,
+    TradesView,
+    list_trades,
+    resolve_trade,
+)
 from yupay.modules.skins.images import steam_image
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.prices import bump_catalog_version
@@ -238,6 +244,32 @@ async def admin_find_items(
             for row in rows.scalars()
         ]
     )
+
+
+@admin_router.post(
+    "/trades/{trade_id}/resolve",
+    response_model=AdminSkinTradeOut,
+    summary="Mark a trade settled by a human — it leaves «needs attention»",
+)
+async def admin_resolve_trade(
+    trade_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> AdminSkinTradeOut:
+    """Record that an operator settled this trade (refund, support answer, Waxpeer ticket)."""
+    key = normalize_idempotency_key(idempotency_key)
+    scope = f"skins.resolve_trade:{trade_id}"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None and cached.body is not None:
+            return AdminSkinTradeOut.model_validate(cached.body)
+    out = await resolve_trade(db, trade_id=trade_id, by=str(admin.id))
+    if out is None:
+        raise NotFoundError("skin trade not found")
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 __all__ = ["admin_router"]

@@ -10,7 +10,7 @@
 
 import adminRu from "@yupay/i18n/locales/ru/admin.json";
 
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 export const T = adminRu.skins;
 
@@ -45,6 +45,8 @@ export interface AdminSkinTradeOut {
   last_checked_at: string | null;
   task_status: string | null;
   task_sub_state: "buy_pending" | "buy_unconfirmed" | null;
+  /** An operator marked it settled; it has left «needs attention». */
+  resolved_at: string | null;
   attention: boolean;
 }
 
@@ -80,4 +82,13 @@ export function penaltyTotal(penalties: unknown): string | null {
   if (!penalties || typeof penalties !== "object") return null;
   const total = (penalties as Record<string, unknown>).total_penalty; // Waxpeer JSON, narrowed
   return typeof total === "number" || typeof total === "string" ? String(total) : null;
+}
+
+/** Mark a trade settled by a human (idempotent server-side too). */
+export function resolveTrade(id: string): Promise<AdminSkinTradeOut> {
+  return apiPost<AdminSkinTradeOut>(
+    `/api/v1/admin/skins/trades/${encodeURIComponent(id)}/resolve`,
+    {},
+    { "Idempotency-Key": `skin-resolve-${id}-${crypto.randomUUID()}` },
+  );
 }

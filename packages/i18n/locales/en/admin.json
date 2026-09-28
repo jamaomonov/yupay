@@ -435,7 +435,10 @@
       "subState": {
         "buy_pending": "buy not sent",
         "buy_unconfirmed": "buy not confirmed"
-      }
+      },
+      "resolve": "Resolved",
+      "resolvedOn": "resolved {date}",
+      "resolveError": "Could not mark it"
     },
     "pricing": {
       "title": "Skin pricing",

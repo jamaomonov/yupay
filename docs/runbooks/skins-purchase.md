@@ -20,7 +20,9 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
   and any penalty. «В процессе» is what is not settled yet; «Требуют внимания» is what a human
   settles: a rollback after delivery (status 6 with penalties), a purchase we could not
   confirm (`buy_unconfirmed` / `ambiguous_trade`), or an in-flight buy with no Waxpeer status.
-  A row opens the order. There is no «recheck» button: an in-flight trade is re-read every
+  Once settled (refund made, support answered, Waxpeer ticket filed) press **«Разобрано»**:
+  the trade leaves the tab and keeps «разобрано <дата>» in «Все». A row opens the order.
+  There is no «recheck» button: an in-flight trade is re-read every
   5–10 s and an accepted one hourly.
 - **Скины → Цены скинов** (`/skins/pricing`): the pricing document (saved whole, the
   catalogue reprices at once), a price preview that names the rule that won, and per-skin
@@ -43,7 +45,9 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
   page tells the customer to contact support, not that money is coming back.
 - **`skin_refund_failed`**: the automatic refund to the balance raised. Refund manually.
 - **«Скин: расхождение с Waxpeer»** (`skin_history_divergence`, daily at 04:30 Tashkent, the
-  last 14 days of trades we consider settled; read-only):
+  last 14 days of trades we consider settled; it changes no trade state). Each divergence is
+  alerted **once** — the verdict is kept on the trade (`audit_verdict`) and a new alert goes
+  out only when it changes:
   - _откат после выпуска_ — a released trade Waxpeer now shows as failed: a late rollback.
     Handle as the rollback alert above.
   - _скин ушёл, а деньги вернули_ — we refunded the customer, but Waxpeer shows the offer sent

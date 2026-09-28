@@ -328,3 +328,23 @@ async def test_an_unreachable_waxpeer_never_alerts(db_session: AsyncSession) -> 
     alerts = _Alerts()
     assert await audit_recent_trades(db_session, _Down(), alert=alerts) == 0
     assert alerts == []
+
+
+async def test_a_divergence_is_alerted_once_not_every_night(db_session: AsyncSession) -> None:
+    row = await _settled(db_session, "au-once", status=5)
+    client = _Client([_trade(row.project_id, 6, penalties={"total_penalty": 1500})])
+    first, second = _Alerts(), _Alerts()
+    assert await audit_recent_trades(db_session, client, alert=first) == 1
+    assert await audit_recent_trades(db_session, client, alert=second) == 0
+    assert len(first) == 1
+    assert second == []
+    await db_session.refresh(row)
+    assert row.audit_verdict == "rolled_back"
+
+
+async def test_a_changed_divergence_is_alerted_again(db_session: AsyncSession) -> None:
+    row = await _settled(db_session, "au-change", status=5)
+    await audit_recent_trades(db_session, _Client([_trade(row.project_id, 6)]), alert=_Alerts())
+    again = _Alerts()
+    assert await audit_recent_trades(db_session, _Client([]), alert=again) == 1
+    assert "не знает" in again[0]

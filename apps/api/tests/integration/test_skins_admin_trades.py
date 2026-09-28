@@ -123,3 +123,31 @@ async def test_admins_only(integration_client: AsyncClient) -> None:
         "/api/v1/admin/skins/trades", headers={"Authorization": f"Bearer {token}"}
     )
     assert r.status_code == 403
+
+
+async def test_a_resolved_trade_leaves_the_attention_view(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_006)
+    _, trade_id = await _trade(db_session, "resolve", 0, reason="ambiguous_trade")
+    r = await integration_client.post(
+        f"/api/v1/admin/skins/trades/{trade_id}/resolve",
+        headers={**headers, "Idempotency-Key": "resolve-key-0000001"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["resolved_at"] is not None
+    assert r.json()["attention"] is False
+    assert (await _get(integration_client, headers, view="attention"))["total"] == 0
+    everything = await _get(integration_client, headers)
+    assert everything["items"][0]["resolved_at"] is not None
+
+
+async def test_resolving_an_unknown_trade_is_404(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=950_007)
+    r = await integration_client.post(
+        f"/api/v1/admin/skins/trades/{new_id()}/resolve",
+        headers={**headers, "Idempotency-Key": "resolve-key-0000002"},
+    )
+    assert r.status_code == 404

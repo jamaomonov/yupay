@@ -1727,6 +1727,18 @@
             ],
             "title": "Release Date"
           },
+          "resolved_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resolved At"
+          },
           "seller_name": {
             "anyOf": [
               {
@@ -1832,6 +1844,7 @@
           "last_checked_at",
           "task_status",
           "task_sub_state",
+          "resolved_at",
           "attention"
         ],
         "title": "AdminSkinTradeOut",
@@ -30619,6 +30632,81 @@
           }
         },
         "summary": "Skin trades, newest first \u2014 all, in flight, or needing a human",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
+    "/api/v1/admin/skins/trades/{trade_id}/resolve": {
+      "post": {
+        "description": "Record that an operator settled this trade (refund, support answer, Waxpeer ticket).",
+        "operationId": "admin_resolve_trade_api_v1_admin_skins_trades__trade_id__resolve_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trade_id",
+            "required": true,
+            "schema": {
+              "title": "Trade Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSkinTradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Mark a trade settled by a human \u2014 it leaves \u00abneeds attention\u00bb",
         "tags": [
           "admin:skins"
         ]

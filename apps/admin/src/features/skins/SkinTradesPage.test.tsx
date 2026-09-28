@@ -9,14 +9,16 @@ import { SkinTradesPage } from "./SkinTradesPage";
 
 import type { AdminSkinTradesOut } from "./api";
 
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPost } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
+  apiPost: vi.fn(),
   ApiError: class ApiError extends Error {},
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
+const mockedApiPost = vi.mocked(apiPost);
 
 const PAGE: AdminSkinTradesOut = {
   total: 1,
@@ -43,6 +45,7 @@ const PAGE: AdminSkinTradesOut = {
       last_checked_at: null,
       task_status: "succeeded",
       task_sub_state: null,
+      resolved_at: null,
       attention: true,
     },
   ],
@@ -64,6 +67,7 @@ function renderPage(entry = "/skins/trades") {
 
 beforeEach(() => {
   mockedApiGet.mockReset();
+  mockedApiPost.mockReset();
 });
 
 it("lists trades with the dollars paid, the seller and a flag for attention", async () => {
@@ -96,4 +100,18 @@ it("says so when there are none", async () => {
   mockedApiGet.mockResolvedValue({ total: 0, items: [] });
   renderPage();
   expect(await screen.findByText("Обменов нет")).toBeInTheDocument();
+});
+
+it("marks a trade needing a human as resolved, without opening the order", async () => {
+  mockedApiGet.mockResolvedValue(PAGE);
+  mockedApiPost.mockResolvedValue({ ...PAGE.items[0], resolved_at: "2026-09-29T12:00:00Z" });
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "Разобрано" }));
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+  const [path, , headers] = mockedApiPost.mock.calls[0]!;
+  expect(path).toBe("/api/v1/admin/skins/trades/t1/resolve");
+  expect(headers).toEqual(expect.objectContaining({ "Idempotency-Key": expect.any(String) }));
+  expect(screen.queryByText("order-stub")).not.toBeInTheDocument();
 });

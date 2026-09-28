@@ -435,7 +435,10 @@
       "subState": {
         "buy_pending": "покупка не отправлена",
         "buy_unconfirmed": "покупка не подтверждена"
-      }
+      },
+      "resolve": "Разобрано",
+      "resolvedOn": "разобрано {date}",
+      "resolveError": "Не удалось отметить"
     },
     "pricing": {
       "title": "Цены скинов",

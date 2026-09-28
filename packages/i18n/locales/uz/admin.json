@@ -435,7 +435,10 @@
       "subState": {
         "buy_pending": "xarid yuborilmagan",
         "buy_unconfirmed": "xarid tasdiqlanmagan"
-      }
+      },
+      "resolve": "Hal qilindi",
+      "resolvedOn": "{date} hal qilindi",
+      "resolveError": "Belgilab bo'lmadi"
     },
     "pricing": {
       "title": "Skin narxlari",

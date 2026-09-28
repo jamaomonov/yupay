@@ -4,7 +4,8 @@
  * Row click opens the order. Tabs, search and page live in the URL.
  */
 
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Button } from "@yupay/ui";
 import { AlertTriangle, ListChecks, Loader } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
@@ -12,6 +13,7 @@ import {
   fetchTrades,
   fill,
   penaltyTotal,
+  resolveTrade,
   T,
   TRADES_PAGE_SIZE,
   unitsToUsd,
@@ -51,7 +53,7 @@ function why(t: AdminSkinTradeOut): string {
   return parts.length > 0 ? parts.join(" · ") : "—";
 }
 
-const COLUMNS: Column<AdminSkinTradeOut>[] = [
+const BASE_COLUMNS: Column<AdminSkinTradeOut>[] = [
   { key: "created", header: T.trades.cols.created, render: (t) => when(t.created_at) },
   {
     key: "item",
@@ -110,6 +112,40 @@ export function SkinTradesPage() {
     );
   };
 
+  const qc = useQueryClient();
+  const resolve = useMutation({
+    mutationFn: resolveTrade,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["admin", "skins", "trades"] });
+    },
+  });
+  const columns: Column<AdminSkinTradeOut>[] = [
+    ...BASE_COLUMNS,
+    {
+      key: "resolve",
+      header: "",
+      render: (t) =>
+        t.resolved_at ? (
+          <span className="text-xs text-[var(--text-secondary)]">
+            {fill(T.trades.resolvedOn, { date: when(t.resolved_at) })}
+          </span>
+        ) : t.attention ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={resolve.isPending}
+            onClick={(e) => {
+              // The row opens the order; this button must not.
+              e.stopPropagation();
+              resolve.mutate(t.id);
+            }}
+          >
+            {T.trades.resolve}
+          </Button>
+        ) : null,
+    },
+  ];
+
   const trades = useQuery({
     queryKey: qk.skinTrades(view, query, offset),
     queryFn: () => fetchTrades(view, query, offset),
@@ -145,9 +181,14 @@ export function SkinTradesPage() {
       />
       <div role="tabpanel" id={PANEL_ID} className="space-y-3">
         {trades.isError && <p className="text-sm text-[var(--danger)]">{T.trades.loadError}</p>}
+        {resolve.isError && (
+          <p role="alert" className="text-sm text-[var(--danger)]">
+            {T.trades.resolveError}
+          </p>
+        )}
         <DataTable
           rows={trades.data?.items ?? []}
-          columns={COLUMNS}
+          columns={columns}
           rowKey={(t) => t.id}
           loading={trades.isLoading}
           empty={T.trades.empty}

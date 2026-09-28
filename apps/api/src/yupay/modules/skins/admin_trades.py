@@ -8,7 +8,8 @@ state and to the task for whether the buy is still unconfirmed. Three views:
 * ``active`` — not settled yet: buying, offer out, or accepted and under Steam protection;
 * ``attention`` — a rollback after delivery (status 6 with penalties), a purchase we could
   not confirm (``buy_unconfirmed`` / ``ambiguous_trade``), or a buy still unconfirmed on an
-  in-flight task with no Waxpeer status yet.
+  in-flight task with no Waxpeer status yet — until an operator marks it resolved
+  (:func:`resolve_trade`), which is what keeps the view a to-do list and not a history.
 """
 
 from __future__ import annotations
@@ -21,6 +22,7 @@ from sqlalchemy import String, and_, cast, false, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
+from yupay.core.clock import now
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import OrderItem
 from yupay.modules.skins.models import SkinTrade
@@ -55,6 +57,7 @@ class AdminSkinTradeOut(BaseModel):
     last_checked_at: datetime | None
     task_status: str | None
     task_sub_state: Literal["buy_pending", "buy_unconfirmed"] | None
+    resolved_at: datetime | None
     attention: bool
 
 
@@ -80,10 +83,13 @@ def _unconfirmed_task() -> ColumnElement[bool]:
 
 
 def _attention() -> ColumnElement[bool]:
-    return or_(
-        and_(SkinTrade.status == 6, _has_penalties()),
-        SkinTrade.reason.in_(_SUPPORT_REASONS),
-        func.coalesce(_unconfirmed_task(), false()),
+    return and_(
+        SkinTrade.resolved_at.is_(None),
+        or_(
+            and_(SkinTrade.status == 6, _has_penalties()),
+            SkinTrade.reason.in_(_SUPPORT_REASONS),
+            func.coalesce(_unconfirmed_task(), false()),
+        ),
     )
 
 
@@ -105,6 +111,8 @@ def _sub_state(task: FulfillmentTask | None, row: SkinTrade) -> Any:
 
 
 def _is_attention(row: SkinTrade, sub_state: str | None) -> bool:
+    if row.resolved_at is not None:
+        return False
     rolled_back = row.status == 6 and bool(row.penalties)
     return rolled_back or row.reason in _SUPPORT_REASONS or sub_state is not None
 
@@ -134,6 +142,7 @@ def _out(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> Admin
         last_checked_at=row.last_checked_at,
         task_status=task.status if task is not None else None,
         task_sub_state=sub_state,
+        resolved_at=row.resolved_at,
         attention=_is_attention(row, sub_state),
     )
 
@@ -181,4 +190,40 @@ async def list_trades(
     )
 
 
-__all__ = ["AdminSkinTradeOut", "AdminSkinTradesOut", "TradesView", "list_trades"]
+async def resolve_trade(db: AsyncSession, *, trade_id: str, by: str) -> AdminSkinTradeOut | None:
+    """Mark a trade settled by a human; it leaves the ``attention`` view. Idempotent.
+
+    Args:
+        db: Active session; committed here.
+        trade_id: ``skin_trades.id``.
+        by: The operator's user id.
+
+    Returns:
+        The trade as the screen shows it, or ``None`` when there is no such trade.
+    """
+    found = (
+        await db.execute(
+            select(SkinTrade, OrderItem, FulfillmentTask)
+            .join(OrderItem, OrderItem.id == SkinTrade.order_item_id)
+            .outerjoin(FulfillmentTask, FulfillmentTask.id == SkinTrade.task_id)
+            .where(SkinTrade.id == trade_id)
+            .with_for_update(of=SkinTrade)
+        )
+    ).first()
+    if found is None:
+        return None
+    row, item, task = found
+    if row.resolved_at is None:
+        row.resolved_at = now()
+        row.resolved_by = by
+        await db.commit()
+    return _out(row, item, task)
+
+
+__all__ = [
+    "AdminSkinTradeOut",
+    "AdminSkinTradesOut",
+    "TradesView",
+    "list_trades",
+    "resolve_trade",
+]

@@ -179,6 +179,12 @@ class SkinTrade(Base):
     )
     accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # The daily history audit's last verdict (``rolled_back`` / ``delivered_refunded`` /
+    # ``unknown`` / ``ambiguous``): an alert goes out only when it changes (migration 0090).
+    audit_verdict: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    # An operator marked this trade settled: it leaves the admin «attention» view.
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )
