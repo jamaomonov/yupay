@@ -31,6 +31,7 @@ from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.pricing import PricingRules, quote, to_uzs
 from yupay.modules.skins.schemas import (
     FacetOut,
+    RarityFacetOut,
     SkinDetailOut,
     SkinFacetsOut,
     SkinFamilyMemberOut,
@@ -182,19 +183,25 @@ async def get_catalog(
 
 
 @router.get("/facets", response_model=SkinFacetsOut, summary="Counts per category, weapon, wear")
-async def get_facets(db: Annotated[AsyncSession, Depends(db_session)]) -> SkinFacetsOut:
+async def get_facets(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    category: Annotated[str | None, Query(max_length=32)] = None,
+) -> SkinFacetsOut:
+    """Facet counts; with ``category`` the weapon, wear and rarity facets are scoped to it."""
     categories = enabled_categories(get_settings())
 
     async def build() -> dict[str, Any]:
-        f = await facets(db, categories=categories)
+        f = await facets(db, categories=categories, category=category)
         return SkinFacetsOut(
             categories=[FacetOut(value=v, count=c) for v, c in f.categories],
             weapons=[FacetOut(value=v, count=c) for v, c in f.weapons],
             exteriors=[FacetOut(value=v, count=c) for v, c in f.exteriors],
-            rarities=[FacetOut(value=v, count=c) for v, c in f.rarities],
+            rarities=[RarityFacetOut(value=v, count=c, color=k) for v, c, k in f.rarities],
         ).model_dump(mode="json")
 
-    return SkinFacetsOut.model_validate(await _cached({"kind": "facets"}, build))
+    return SkinFacetsOut.model_validate(
+        await _cached({"kind": "facets", "category": category}, build)
+    )
 
 
 @router.get("/suggest", response_model=SkinSuggestOut, summary="Search-as-you-type")

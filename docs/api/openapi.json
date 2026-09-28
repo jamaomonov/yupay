@@ -13614,6 +13614,35 @@
         "title": "ProvidersOut",
         "type": "object"
       },
+      "RarityFacetOut": {
+        "properties": {
+          "color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Color"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "RarityFacetOut",
+        "type": "object"
+      },
       "RateOut": {
         "description": "A single rate as returned by ``GET /api/v1/fx/rates``.",
         "properties": {
@@ -14811,7 +14840,7 @@
           },
           "rarities": {
             "items": {
-              "$ref": "#/components/schemas/FacetOut"
+              "$ref": "#/components/schemas/RarityFacetOut"
             },
             "title": "Rarities",
             "type": "array"
@@ -35376,7 +35405,27 @@
     },
     "/api/v1/skins/facets": {
       "get": {
+        "description": "Facet counts; with ``category`` the weapon, wear and rarity facets are scoped to it.",
         "operationId": "get_facets_api_v1_skins_facets_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 32,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -35387,6 +35436,16 @@
               }
             },
             "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
           }
         },
         "summary": "Counts per category, weapon, wear",

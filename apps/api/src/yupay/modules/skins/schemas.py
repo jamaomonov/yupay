@@ -42,11 +42,15 @@ class FacetOut(BaseModel):
     count: int
 
 
+class RarityFacetOut(FacetOut):
+    color: str | None = None
+
+
 class SkinFacetsOut(BaseModel):
     categories: list[FacetOut]
     weapons: list[FacetOut]
     exteriors: list[FacetOut]
-    rarities: list[FacetOut]
+    rarities: list[RarityFacetOut]
 
 
 class SkinSuggestOut(BaseModel):

@@ -51,7 +51,8 @@ class Facets:
     categories: list[tuple[str, int]]
     weapons: list[tuple[str, int]]
     exteriors: list[tuple[str, int]]
-    rarities: list[tuple[str, int]]
+    #: (name, count, colour) — the colour is the game's for that grade.
+    rarities: list[tuple[str, int, str | None]]
 
 
 CursorValue = int | Decimal | None
@@ -186,25 +187,43 @@ async def list_items(
     return page, encode_cursor(last_value, last.id)
 
 
-async def facets(db: AsyncSession, *, categories: list[str]) -> Facets:
-    """Counts of active rows per category, weapon and exterior."""
+#: The weapons people look for first; the rest of a category follows by count.
+WEAPON_PRIORITY = ("AK-47", "M4A4", "M4A1-S", "AWP", "Desert Eagle", "USP-S", "Glock-18")
 
-    async def count_by(column: Any) -> list[tuple[str, int]]:
+
+async def facets(db: AsyncSession, *, categories: list[str], category: str | None = None) -> Facets:
+    """Counts of active rows per category, weapon, exterior and rarity.
+
+    Categories are always counted across the catalogue (they are the tile row).
+    With ``category`` the other facets are counted inside it, so the weapon row
+    lists the whole category and the wear/rarity counts match the grid.
+    """
+    live = [SkinItem.active.is_(True), SkinItem.category.in_(categories)]
+    scoped = [*live, SkinItem.category == category] if category else live
+
+    async def count_by(column: Any, where: list[Any]) -> list[tuple[str, int]]:
         rows = await db.execute(
             select(column, func.count())
-            .where(
-                SkinItem.active.is_(True), SkinItem.category.in_(categories), column.is_not(None)
-            )
+            .where(*where, column.is_not(None))
             .group_by(column)
             .order_by(func.count().desc(), column)
         )
         return [(str(value), int(count)) for value, count in rows.all()]
 
+    weapons = await count_by(SkinItem.weapon, scoped)
+    rank = {w: i for i, w in enumerate(WEAPON_PRIORITY)}
+    weapons.sort(key=lambda wc: (rank.get(wc[0], len(rank)), -wc[1], wc[0]))
+    rarity_rows = await db.execute(
+        select(SkinItem.rarity, func.count(), func.max(SkinItem.rarity_color))
+        .where(*scoped, SkinItem.rarity.is_not(None))
+        .group_by(SkinItem.rarity)
+        .order_by(func.count().desc(), SkinItem.rarity)
+    )
     return Facets(
-        categories=await count_by(SkinItem.category),
-        weapons=await count_by(SkinItem.weapon),
-        exteriors=await count_by(SkinItem.exterior),
-        rarities=await count_by(SkinItem.rarity),
+        categories=await count_by(SkinItem.category, live),
+        weapons=weapons,
+        exteriors=await count_by(SkinItem.exterior, scoped),
+        rarities=[(str(r), int(c), color) for r, c, color in rarity_rows.all()],
     )
 
 
