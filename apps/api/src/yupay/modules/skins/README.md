@@ -22,3 +22,47 @@ storefront browses. Purchase, fulfilment and tracking are separate plans
 
 Every public route 404s while `cs2_skins_enabled` is off; both jobs are
 no-ops while `cs2_skins_sync_enabled` is off.
+
+## Public interface
+
+```python
+from yupay.modules.skins.api import (
+    DEFAULT_RULES,     # the seed pricing document
+    PricingRules,      # validated pricing document (brackets, liquidity, pp maps, floor…)
+    Quote,             # a sell price with every component that made it
+    SkinItem,          # ORM: one item at one wear (+ Doppler phase)
+    SkinPricingRules,  # ORM: row 1, the pricing document as JSONB
+    SkinSearchAlias,   # ORM: alias -> text for search
+    admin_router,      # /api/v1/admin/skins/*
+    import_catalog,    # the daily ByMykel import (scheduler)
+    load_rules,        # Redis -> row 1 -> DEFAULT_RULES
+    quote,             # cost units -> Quote
+    router,            # /api/v1/skins/*
+    sync_prices,       # the five-minute snapshot fold (scheduler)
+)
+```
+
+## Jobs
+
+| Job                    | Interval                              | Gate                                         |
+| ---------------------- | ------------------------------------- | -------------------------------------------- |
+| `skins_catalog_import` | `SKINS_IMPORT_INTERVAL_HOURS` (24)    | `CS2_SKINS_SYNC_ENABLED`                     |
+| `skins_price_sync`     | `SKINS_SNAPSHOT_INTERVAL_MINUTES` (5) | `CS2_SKINS_SYNC_ENABLED` + `WAXPEER_API_KEY` |
+
+## Redis keys
+
+`skins:catalog:ver`, `skins:catalog:{ver}:{sha1}`, `skins:facets:{ver}:{sha1}`,
+`skins:suggest:{ver}:{sha1}`, `skins:listings:{slug}`, `skins:listings:{slug}:stale`,
+`skins:pricing`, `skins:wax:budget:{minute}`, `skins:wax:breaker` — TTLs and invalidation
+in `docs/architecture/cache-keys.md`.
+
+## Test fixtures
+
+`apps/api/tests/fixtures/skins/`: `bymykel_skins.json` and `bymykel_agents.json` (trimmed
+ByMykel entries), `snapshot.csv` (the documented CSV snapshot columns), `prices.json`
+(`/v1/prices?minified=0`) and `search_v2.json` (`/v2/search-items-by-name` with
+`delivery_details=1`, including the undocumented `auto`/`delivery`/`inspect` fields) — all
+shapes recorded from the live API on 2026-09-28.
+
+See also: `docs/runbooks/skins-catalog.md`,
+`docs/architecture/sequence-diagrams/skins-catalog-sync.mmd`.

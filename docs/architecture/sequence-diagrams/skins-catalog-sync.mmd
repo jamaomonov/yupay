@@ -1,0 +1,18 @@
+sequenceDiagram
+    participant S as scheduler (skins_price_sync)
+    participant W as Waxpeer
+    participant P as Postgres (skin_items)
+    participant R as Redis
+    participant B as ByMykel (daily, skins_catalog_import)
+
+    B-->>P: upsert metadata rows (name, phase, taxonomy, Steam CDN image)
+    S->>W: GET /v1/prices/snapshot?format=csv (streamed)
+    W-->>S: 1.19M rows, one per listing, auto flag
+    S->>S: fold into ~24k (name, phase) aggregates
+    S->>W: GET /v1/prices?minified=0
+    W-->>S: steam_price, type per name
+    S->>P: UPDATE rows whose price_hash changed
+    S->>P: INSERT stubs for names with no row (image NULL)
+    S->>P: UPDATE active=false for names gone from the snapshot
+    S->>R: INCR skins:catalog:ver
+    Note over R: every cached /skins page key embeds the version

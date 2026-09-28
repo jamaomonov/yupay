@@ -2205,6 +2205,65 @@
         "title": "BanUserIn",
         "type": "object"
       },
+      "Bracket-Input": {
+        "description": "``percent`` applies to the slice of cost from ``from_usd`` up to the next bracket.",
+        "properties": {
+          "from_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "From Usd"
+          },
+          "percent": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": -100.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,5}|(?=[\\d.]{1,8}0*$)\\d{0,5}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Percent"
+          }
+        },
+        "required": [
+          "from_usd",
+          "percent"
+        ],
+        "title": "Bracket",
+        "type": "object"
+      },
+      "Bracket-Output": {
+        "description": "``percent`` applies to the slice of cost from ``from_usd`` up to the next bracket.",
+        "properties": {
+          "from_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+            "title": "From Usd",
+            "type": "string"
+          },
+          "percent": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,5}|(?=[\\d.]{1,8}0*$)\\d{0,5}\\.\\d{0,2}0*$)",
+            "title": "Percent",
+            "type": "string"
+          }
+        },
+        "required": [
+          "from_usd",
+          "percent"
+        ],
+        "title": "Bracket",
+        "type": "object"
+      },
       "BrandB2bOut": {
         "description": "The B2B slice of a brand after a patch.",
         "properties": {
@@ -6513,6 +6572,24 @@
         "title": "EvidencePackOut",
         "type": "object"
       },
+      "FacetOut": {
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "value",
+          "count"
+        ],
+        "title": "FacetOut",
+        "type": "object"
+      },
       "FaqCreate": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/catalog/brands/{brand_id}/faqs``. Brand comes from the path.",
@@ -8167,6 +8244,57 @@
           "commission_percent"
         ],
         "title": "IssueCodeIn",
+        "type": "object"
+      },
+      "LiquidityBand-Input": {
+        "description": "``pp`` applies when the item has at least ``min_count`` auto listings.",
+        "properties": {
+          "min_count": {
+            "minimum": 0.0,
+            "title": "Min Count",
+            "type": "integer"
+          },
+          "pp": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": -100.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,4}|(?=[\\d.]{1,7}0*$)\\d{0,4}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Pp"
+          }
+        },
+        "required": [
+          "min_count",
+          "pp"
+        ],
+        "title": "LiquidityBand",
+        "type": "object"
+      },
+      "LiquidityBand-Output": {
+        "description": "``pp`` applies when the item has at least ``min_count`` auto listings.",
+        "properties": {
+          "min_count": {
+            "minimum": 0.0,
+            "title": "Min Count",
+            "type": "integer"
+          },
+          "pp": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,4}|(?=[\\d.]{1,7}0*$)\\d{0,4}\\.\\d{0,2}0*$)",
+            "title": "Pp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "min_count",
+          "pp"
+        ],
+        "title": "LiquidityBand",
         "type": "object"
       },
       "LocaleCountOut": {
@@ -12261,6 +12389,205 @@
         "title": "PriceRefreshOut",
         "type": "object"
       },
+      "PricingRules-Input": {
+        "description": "The whole pricing document, as stored in ``skin_pricing_rules.rules``.",
+        "properties": {
+          "b2b": {
+            "items": {
+              "$ref": "#/components/schemas/Bracket-Input"
+            },
+            "minItems": 1,
+            "title": "B2B",
+            "type": "array"
+          },
+          "cap_at_steam": {
+            "default": false,
+            "title": "Cap At Steam",
+            "type": "boolean"
+          },
+          "category_pp": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Category Pp",
+            "type": "object"
+          },
+          "expenses_percent": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              }
+            ],
+            "default": "3",
+            "title": "Expenses Percent"
+          },
+          "liquidity": {
+            "items": {
+              "$ref": "#/components/schemas/LiquidityBand-Input"
+            },
+            "title": "Liquidity",
+            "type": "array"
+          },
+          "min_margin_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.10",
+            "title": "Min Margin Usd"
+          },
+          "price_floor_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              }
+            ],
+            "default": "0.20",
+            "title": "Price Floor Usd"
+          },
+          "retail": {
+            "items": {
+              "$ref": "#/components/schemas/Bracket-Input"
+            },
+            "minItems": 1,
+            "title": "Retail",
+            "type": "array"
+          },
+          "uzs_round_to": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Uzs Round To",
+            "type": "integer"
+          },
+          "weapon_pp": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Weapon Pp",
+            "type": "object"
+          }
+        },
+        "required": [
+          "retail",
+          "b2b"
+        ],
+        "title": "PricingRules",
+        "type": "object"
+      },
+      "PricingRules-Output": {
+        "description": "The whole pricing document, as stored in ``skin_pricing_rules.rules``.",
+        "properties": {
+          "b2b": {
+            "items": {
+              "$ref": "#/components/schemas/Bracket-Output"
+            },
+            "minItems": 1,
+            "title": "B2B",
+            "type": "array"
+          },
+          "cap_at_steam": {
+            "default": false,
+            "title": "Cap At Steam",
+            "type": "boolean"
+          },
+          "category_pp": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Category Pp",
+            "type": "object"
+          },
+          "expenses_percent": {
+            "default": "3",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+            "title": "Expenses Percent",
+            "type": "string"
+          },
+          "liquidity": {
+            "items": {
+              "$ref": "#/components/schemas/LiquidityBand-Output"
+            },
+            "title": "Liquidity",
+            "type": "array"
+          },
+          "min_margin_usd": {
+            "default": "0.10",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+            "title": "Min Margin Usd",
+            "type": "string"
+          },
+          "price_floor_usd": {
+            "default": "0.20",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+            "title": "Price Floor Usd",
+            "type": "string"
+          },
+          "retail": {
+            "items": {
+              "$ref": "#/components/schemas/Bracket-Output"
+            },
+            "minItems": 1,
+            "title": "Retail",
+            "type": "array"
+          },
+          "uzs_round_to": {
+            "default": 100,
+            "maximum": 10000.0,
+            "minimum": 1.0,
+            "title": "Uzs Round To",
+            "type": "integer"
+          },
+          "weapon_pp": {
+            "additionalProperties": {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            },
+            "title": "Weapon Pp",
+            "type": "object"
+          }
+        },
+        "required": [
+          "retail",
+          "b2b"
+        ],
+        "title": "PricingRules",
+        "type": "object"
+      },
       "ProductCreate": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/catalog/products``.",
@@ -14254,6 +14581,813 @@
           }
         },
         "title": "SimulateWebhookIn",
+        "type": "object"
+      },
+      "SkinDetailOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "cheapest": {
+            "items": {
+              "$ref": "#/components/schemas/SkinListingSummaryOut"
+            },
+            "title": "Cheapest",
+            "type": "array"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "discount_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Percent"
+          },
+          "exterior": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exterior"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "max_float": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Float"
+          },
+          "min_float": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Float"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "rarity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rarity"
+          },
+          "rarity_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rarity Color"
+          },
+          "skin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skin"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "souvenir": {
+            "title": "Souvenir",
+            "type": "boolean"
+          },
+          "stattrak": {
+            "title": "Stattrak",
+            "type": "boolean"
+          },
+          "steam_price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam Price Usd"
+          },
+          "weapon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weapon"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "phase",
+          "category",
+          "weapon",
+          "skin",
+          "exterior",
+          "stattrak",
+          "souvenir",
+          "rarity",
+          "rarity_color",
+          "image_url",
+          "price_usd",
+          "price_uzs",
+          "steam_price_usd",
+          "discount_percent",
+          "count",
+          "min_float",
+          "max_float",
+          "cheapest"
+        ],
+        "title": "SkinDetailOut",
+        "type": "object"
+      },
+      "SkinFacetsOut": {
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/FacetOut"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "exteriors": {
+            "items": {
+              "$ref": "#/components/schemas/FacetOut"
+            },
+            "title": "Exteriors",
+            "type": "array"
+          },
+          "weapons": {
+            "items": {
+              "$ref": "#/components/schemas/FacetOut"
+            },
+            "title": "Weapons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "categories",
+          "weapons",
+          "exteriors"
+        ],
+        "title": "SkinFacetsOut",
+        "type": "object"
+      },
+      "SkinItemOut": {
+        "properties": {
+          "category": {
+            "title": "Category",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "discount_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Discount Percent"
+          },
+          "exterior": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exterior"
+          },
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image Url"
+          },
+          "max_float": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Float"
+          },
+          "min_float": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Float"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Phase"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "rarity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rarity"
+          },
+          "rarity_color": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rarity Color"
+          },
+          "skin": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skin"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "souvenir": {
+            "title": "Souvenir",
+            "type": "boolean"
+          },
+          "stattrak": {
+            "title": "Stattrak",
+            "type": "boolean"
+          },
+          "steam_price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Steam Price Usd"
+          },
+          "weapon": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weapon"
+          }
+        },
+        "required": [
+          "slug",
+          "name",
+          "phase",
+          "category",
+          "weapon",
+          "skin",
+          "exterior",
+          "stattrak",
+          "souvenir",
+          "rarity",
+          "rarity_color",
+          "image_url",
+          "price_usd",
+          "price_uzs",
+          "steam_price_usd",
+          "discount_percent",
+          "count",
+          "min_float",
+          "max_float"
+        ],
+        "title": "SkinItemOut",
+        "type": "object"
+      },
+      "SkinItemPricingIn-Input": {
+        "description": "Per-item overrides; ``null`` clears one.",
+        "properties": {
+          "fixed_price_usd": {
+            "anyOf": [
+              {
+                "maximum": 100000.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Price Usd"
+          },
+          "margin_override_pp": {
+            "anyOf": [
+              {
+                "maximum": 500.0,
+                "minimum": -100.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Override Pp"
+          }
+        },
+        "title": "SkinItemPricingIn",
+        "type": "object"
+      },
+      "SkinItemPricingIn-Output": {
+        "description": "Per-item overrides; ``null`` clears one.",
+        "properties": {
+          "fixed_price_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fixed Price Usd"
+          },
+          "margin_override_pp": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Margin Override Pp"
+          }
+        },
+        "title": "SkinItemPricingIn",
+        "type": "object"
+      },
+      "SkinListingOut": {
+        "properties": {
+          "float_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Float Value"
+          },
+          "inspect_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Inspect Url"
+          },
+          "listing_id": {
+            "title": "Listing Id",
+            "type": "integer"
+          },
+          "paint_seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paint Seed"
+          },
+          "price_usd": {
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "stickers": {
+            "items": {
+              "$ref": "#/components/schemas/SkinStickerOut"
+            },
+            "title": "Stickers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "listing_id",
+          "price_usd",
+          "price_uzs",
+          "float_value",
+          "paint_seed",
+          "stickers",
+          "inspect_url"
+        ],
+        "title": "SkinListingOut",
+        "type": "object"
+      },
+      "SkinListingSummaryOut": {
+        "properties": {
+          "listing_id": {
+            "title": "Listing Id",
+            "type": "integer"
+          },
+          "price_usd": {
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          }
+        },
+        "required": [
+          "listing_id",
+          "price_usd",
+          "price_uzs"
+        ],
+        "title": "SkinListingSummaryOut",
+        "type": "object"
+      },
+      "SkinListingsOut": {
+        "properties": {
+          "degraded": {
+            "title": "Degraded",
+            "type": "boolean"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SkinListingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items",
+          "degraded"
+        ],
+        "title": "SkinListingsOut",
+        "type": "object"
+      },
+      "SkinQuoteOut": {
+        "properties": {
+          "applied": {
+            "title": "Applied",
+            "type": "string"
+          },
+          "bracket_margin_usd": {
+            "title": "Bracket Margin Usd",
+            "type": "string"
+          },
+          "category_pp": {
+            "title": "Category Pp",
+            "type": "string"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "effective_percent": {
+            "title": "Effective Percent",
+            "type": "string"
+          },
+          "expenses_usd": {
+            "title": "Expenses Usd",
+            "type": "string"
+          },
+          "item_pp": {
+            "title": "Item Pp",
+            "type": "string"
+          },
+          "liquidity_pp": {
+            "title": "Liquidity Pp",
+            "type": "string"
+          },
+          "price_usd": {
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "weapon_pp": {
+            "title": "Weapon Pp",
+            "type": "string"
+          }
+        },
+        "required": [
+          "price_usd",
+          "cost_usd",
+          "expenses_usd",
+          "bracket_margin_usd",
+          "category_pp",
+          "weapon_pp",
+          "liquidity_pp",
+          "item_pp",
+          "effective_percent",
+          "applied"
+        ],
+        "title": "SkinQuoteOut",
+        "type": "object"
+      },
+      "SkinStickerOut": {
+        "properties": {
+          "image": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Image"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "slot": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Slot"
+          },
+          "wear": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Wear"
+          }
+        },
+        "required": [
+          "name",
+          "image",
+          "slot",
+          "wear"
+        ],
+        "title": "SkinStickerOut",
+        "type": "object"
+      },
+      "SkinSuggestOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SkinItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "SkinSuggestOut",
+        "type": "object"
+      },
+      "SkinsPageOut": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SkinItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "SkinsPageOut",
+        "type": "object"
+      },
+      "SkinsPricingOut": {
+        "description": "The rules document plus the flags that are env, not rules.",
+        "properties": {
+          "categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Categories",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "rules": {
+            "$ref": "#/components/schemas/PricingRules-Output"
+          },
+          "sync_enabled": {
+            "title": "Sync Enabled",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rules",
+          "enabled",
+          "sync_enabled",
+          "categories"
+        ],
+        "title": "SkinsPricingOut",
         "type": "object"
       },
       "SkuB2bOut": {
@@ -28197,6 +29331,380 @@
         ]
       }
     },
+    "/api/v1/admin/skins/items/{slug}": {
+      "patch": {
+        "operationId": "admin_set_item_pricing_api_v1_admin_skins_items__slug__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkinItemPricingIn-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinItemPricingIn-Output"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Pin a margin or a price for one item",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
+    "/api/v1/admin/skins/pricing": {
+      "get": {
+        "operationId": "admin_get_pricing_api_v1_admin_skins_pricing_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinsPricingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The pricing rules",
+        "tags": [
+          "admin:skins"
+        ]
+      },
+      "put": {
+        "operationId": "admin_put_pricing_api_v1_admin_skins_pricing_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PricingRules-Input"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinsPricingOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Replace the pricing rules",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
+    "/api/v1/admin/skins/pricing/preview": {
+      "get": {
+        "operationId": "admin_preview_price_api_v1_admin_skins_pricing_preview_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cost_usd",
+            "required": true,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                }
+              ],
+              "title": "Cost Usd"
+            }
+          },
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": "rifles",
+              "title": "Category",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "channel",
+            "required": false,
+            "schema": {
+              "default": "retail",
+              "enum": [
+                "retail",
+                "b2b"
+              ],
+              "title": "Channel",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "weapon",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weapon"
+            }
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Count"
+            }
+          },
+          {
+            "in": "query",
+            "name": "item_pp",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Pp"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fixed_price_usd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fixed Price Usd"
+            }
+          },
+          {
+            "in": "query",
+            "name": "steam_price_usd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steam Price Usd"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinQuoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "What would this cost sell for, and why",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
     "/api/v1/admin/sourcing/brands/{brand_slug}": {
       "get": {
         "operationId": "brand_overview_api_v1_admin_sourcing_brands__brand_slug__get",
@@ -33531,6 +35039,371 @@
         "summary": "Report a review for abuse",
         "tags": [
           "reviews"
+        ]
+      }
+    },
+    "/api/v1/skins/catalog": {
+      "get": {
+        "operationId": "get_catalog_api_v1_skins_catalog_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Category"
+            }
+          },
+          {
+            "in": "query",
+            "name": "weapon",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weapon"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exterior",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exterior"
+            }
+          },
+          {
+            "in": "query",
+            "name": "stattrak",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Stattrak"
+            }
+          },
+          {
+            "in": "query",
+            "name": "souvenir",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Souvenir"
+            }
+          },
+          {
+            "in": "query",
+            "name": "min_usd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Min Usd"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_usd",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Usd"
+            }
+          },
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "price",
+              "enum": [
+                "price",
+                "-price",
+                "discount",
+                "popular"
+              ],
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 48,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinsPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Browse the skins catalogue",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/facets": {
+      "get": {
+        "operationId": "get_facets_api_v1_skins_facets_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinFacetsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Counts per category, weapon, wear",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/suggest": {
+      "get": {
+        "operationId": "get_suggest_api_v1_skins_suggest_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": true,
+            "schema": {
+              "maxLength": 80,
+              "minLength": 1,
+              "title": "Q",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinSuggestOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search-as-you-type",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/{slug}": {
+      "get": {
+        "operationId": "get_detail_api_v1_skins__slug__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One item with its cheapest listings",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/{slug}/listings": {
+      "get": {
+        "operationId": "get_listings_api_v1_skins__slug__listings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinListingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Live auto listings for one item (cached, rate-budgeted, degradable)",
+        "tags": [
+          "skins"
         ]
       }
     },
