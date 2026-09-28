@@ -49,7 +49,6 @@ from yupay.modules.fulfillment.suppliers.waxpeer_trades import (
     WaxpeerTrade,
 )
 from yupay.modules.orders.models import OrderItem
-from yupay.modules.skins.listings import listings_for
 from yupay.modules.skins.models import SkinItem, SkinTrade
 from yupay.modules.skins.tradelink import TradeLink, parse_tradelink
 
@@ -182,6 +181,9 @@ async def _candidates(
     client: SkinTradeClient, db: AsyncSession, *, slug: str, max_units: int, tried: set[int]
 ) -> list[tuple[int, int]]:
     """Same-name auto listings no dearer than paid, via the item page's cached read."""
+    # Lazy: skins.listings imports the Waxpeer client, whose package imports this module.
+    from yupay.modules.skins.listings import listings_for
+
     item = (await db.execute(select(SkinItem).where(SkinItem.slug == slug))).scalar_one_or_none()
     if item is None:
         return []
