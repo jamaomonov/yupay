@@ -261,6 +261,9 @@ services:
       NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
       NEXT_PUBLIC_TELEGRAM_BOT_USERNAME: ${TELEGRAM_BOT_USERNAME:-}
       NEXT_PUBLIC_TELEGRAM_BOT_ID: ${TELEGRAM_BOT_ID:-}
+      # The /skins nav, footer and sitemap entries follow the API's own skins flag,
+      # so one switch in .env turns the section on for both (apps/web/src/lib/features.ts).
+      SKINS_ENABLED: ${CS2_SKINS_ENABLED:-false}
       # Poll the bind-mounted FS so Next's watcher sees edits on macOS/Docker.
       WATCHPACK_POLLING: "true"
     ports:
