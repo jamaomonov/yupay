@@ -1,4 +1,4 @@
-import { Eye, Zap } from "lucide-react";
+import { Zap } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import type { SkinListing } from "@yupay/utils";
@@ -7,7 +7,6 @@ import { SkinFloatBar } from "@/components/skins/SkinFloatBar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
 import { fetchSkinListings, skinPriceText } from "@/lib/skins";
-import { openExternalLink } from "@/lib/telegram";
 
 const FIRST = 10;
 
@@ -83,24 +82,12 @@ export function SkinListingsList({ slug }: { slug: string }) {
                 <SkinFloatBar value={l.float_value} />
               </div>
             )}
-            {(l.stickers.length > 0 || l.inspect_url?.startsWith("steam://")) && (
-              <div className="flex items-center gap-3">
-                {l.stickers.length > 0 && (
-                  <p className="min-w-0 flex-1 truncate text-[11px] text-white/50">
-                    {t("cs2.stickers")}: {l.stickers.map((s) => s.name).join(", ")}
-                  </p>
-                )}
-                {l.inspect_url?.startsWith("steam://") && (
-                  <button
-                    type="button"
-                    onClick={() => openExternalLink(l.inspect_url ?? "")}
-                    className="ml-auto inline-flex shrink-0 items-center gap-1 text-[11px] text-white/60"
-                  >
-                    <Eye className="h-3.5 w-3.5" aria-hidden="true" />
-                    {t("cs2.inspect")}
-                  </button>
-                )}
-              </div>
+            {/* No «Осмотр в игре» here: Telegram's openLink takes http(s) only, so a
+                steam:// inspect link is a dead tap inside the mini app. */}
+            {l.stickers.length > 0 && (
+              <p className="truncate text-[11px] text-white/50">
+                {t("cs2.stickers")}: {l.stickers.map((st) => st.name).join(", ")}
+              </p>
             )}
           </li>
         ))}

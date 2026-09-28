@@ -48,8 +48,13 @@ export default function CS2SkinMarket() {
   const [raw, setRaw] = useState(query.q ?? "");
   const seq = useRef(0);
 
+  // The latest query, for the debounced search: its timer fires up to 400 ms
+  // after the render that set it, and building on that render's query would
+  // undo a sort or category tapped in between.
+  const latest = useRef(query);
+  latest.current = query;
   const change = (patch: SkinQueryPatch) => {
-    navigate(PATH + skinQueryString(query, patch), { replace: true });
+    navigate(PATH + skinQueryString(latest.current, patch), { replace: true });
   };
 
   useEffect(() => {

@@ -75,16 +75,16 @@ export function SkinFilterSheet({
     }`;
 
   return (
-    <Sheet
-      open={open}
-      onOpenChange={(next) => {
-        if (next) setDraft(draftOf(query));
-        setOpen(next);
-      }}
-    >
+    <Sheet open={open} onOpenChange={setOpen}>
       <button
         type="button"
-        onClick={() => setOpen(true)}
+        // The draft restarts from the URL on every open: Radix never reports an
+        // open we set ourselves, and a draft left over from a closed-without-
+        // applying sheet (or from before «Сбросить») would be re-applied.
+        onClick={() => {
+          setDraft(draftOf(query));
+          setOpen(true);
+        }}
         className="flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-semibold text-white"
         style={FIELD}
       >
