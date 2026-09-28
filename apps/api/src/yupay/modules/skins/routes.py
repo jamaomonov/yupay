@@ -25,6 +25,7 @@ from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.service import FxService, FxUnavailableError
+from yupay.modules.skins.images import steam_image
 from yupay.modules.skins.listings import listings_for
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.pricing import PricingRules, quote, to_uzs
@@ -105,7 +106,7 @@ def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> Skin
         souvenir=item.souvenir,
         rarity=item.rarity,
         rarity_color=item.rarity_color,
-        image_url=item.image_url,
+        image_url=steam_image(item.image_url, host=get_settings().cs2_skins_image_host),
         price_usd=None if price is None else str(price),
         price_uzs=_to_uzs(price, rate, rules),
         steam_price_usd=_units_to_usd(item.steam_price_units),
@@ -300,7 +301,17 @@ async def get_listings(
                 price_uzs=_to_uzs(usd, rate, rules),
                 float_value=row.float_value,
                 paint_seed=row.paint_seed,
-                stickers=[SkinStickerOut.model_validate(s) for s in row.stickers],
+                stickers=[
+                    SkinStickerOut.model_validate(
+                        {
+                            **s,
+                            "image": steam_image(
+                                s.get("image"), host=settings.cs2_skins_image_host
+                            ),
+                        }
+                    )
+                    for s in row.stickers
+                ],
                 inspect_url=row.inspect_url,
             )
         )

@@ -854,6 +854,10 @@ class Settings(BaseSettings):
     # Short on purpose (AGENTS.md §10 carve-out): a slow Waxpeer must not pin
     # a request — and its pool connection — for the 20 s top-up timeout.
     cs2_skins_listings_timeout_seconds: float = Field(default=4.0)
+    # Steam CDN host for every skin/sticker image we hand out. The Akamai host
+    # ByMykel links did not open from Uzbekistan (2026-09-28); fastly serves
+    # the same /economy/image/<hash> path. See ``skins.images``.
+    cs2_skins_image_host: str = Field(default="community.fastly.steamstatic.com")
     bymykel_base_url: str = Field(
         default="https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en"
     )

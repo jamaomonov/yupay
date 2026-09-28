@@ -54,6 +54,9 @@ x-app-env: &app-env
   # Steam gifts ship dark: the section, checkout and admin margin knob all
   # sit behind this flag (see docs/runbooks/steam-gifts.md).
   STEAM_GIFTS_ENABLED: ${STEAM_GIFTS_ENABLED:-false}
+  # CS2 skins (ADR-0093): public /skins routes, and the two scheduler sync jobs.
+  CS2_SKINS_ENABLED: ${CS2_SKINS_ENABLED:-false}
+  CS2_SKINS_SYNC_ENABLED: ${CS2_SKINS_SYNC_ENABLED:-false}
   STEAM_GIFTS_MARGIN_PERCENT: ${STEAM_GIFTS_MARGIN_PERCENT:-10}
   STEAM_GIFTS_REGION_DEFAULT: ${STEAM_GIFTS_REGION_DEFAULT:-UZ}
   STEAM_GIFTS_REGIONS: ${STEAM_GIFTS_REGIONS:-CIS,RU,KZ,UA}
