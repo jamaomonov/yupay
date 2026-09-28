@@ -131,6 +131,21 @@ async def test_detail_carries_the_wear_family(
     assert fam == [("MW", False), ("FT", False), ("FT", True)]
 
 
+async def test_a_case_has_no_family_of_other_cases(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    await _fx()
+    for name in ("Kilowatt Case", "Revolution Case", "Recoil Case"):
+        row = _item(name, "x", "x", "FT", 500)
+        row.category, row.weapon, row.skin, row.exterior = "cases", None, None, None
+        db_session.add(row)
+    await db_session.commit()
+    await reprice_rows(db_session, DEFAULT_RULES)
+    await db_session.commit()
+    body = (await integration_client.get("/api/v1/skins/kilowatt-case")).json()
+    assert [m["slug"] for m in body["family"]] == ["kilowatt-case"]
+
+
 async def test_rules_put_reprices_every_row(db_session: AsyncSession) -> None:
     db_session.add(_item("A | One (Field-Tested)", "A", "One", "FT", 9500))
     await db_session.commit()

@@ -54,6 +54,14 @@ from yupay.modules.skins.api import (
 )
 ```
 
+## Stored prices
+
+`sell_price_usd` and `discount_percent` are derived by `repricing.reprice_rows` after
+every price tick, rules `PUT` and item `PATCH`. Each of those three writers takes
+`repricing.lock_pricing` (a transaction-scoped advisory lock) first and reads the
+rules with `load_rules(db, fresh=True)`, so a tick never prices from rules an admin is
+replacing — Redis gets the new document only after the admin's commit.
+
 ## Jobs
 
 | Job                    | Interval                              | Gate                                         |

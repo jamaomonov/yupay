@@ -247,7 +247,13 @@ _WEAR_ORDER = case(
 
 
 async def family(db: AsyncSession, item: SkinItem, *, categories: list[str]) -> list[SkinItem]:
-    """Every wear (and StatTrak/Souvenir twin) of the same skin, sold out included."""
+    """Every wear (and StatTrak/Souvenir twin) of the same skin, sold out included.
+
+    Only a weapon skin has wears. A case, sticker or agent has no weapon and no
+    skin, so matching on those would call the whole category its family.
+    """
+    if item.weapon is None:
+        return [item]
     stmt = (
         select(SkinItem)
         .where(

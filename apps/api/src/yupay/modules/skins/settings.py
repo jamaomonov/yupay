@@ -39,14 +39,22 @@ def _parse(raw: object) -> PricingRules | None:
         return None
 
 
-async def load_rules(db: AsyncSession) -> PricingRules:
-    """The live rules. A Redis error or a bad cached document falls through to Postgres."""
+async def load_rules(db: AsyncSession, *, fresh: bool = False) -> PricingRules:
+    """The live rules. A Redis error or a bad cached document falls through to Postgres.
+
+    Args:
+        db: The session to read row 1 with.
+        fresh: Skip the Redis copy. A repricing writer holding
+            ``repricing.lock_pricing`` passes it: Redis is published only after
+            an admin's commit, so right after one it can still hold the old rules.
+    """
     redis = get_redis()
-    with contextlib.suppress(RedisError):
-        cached = await redis.get(_RULES_KEY)
-        parsed = _parse(cached) if cached is not None else None
-        if parsed is not None:
-            return parsed
+    if not fresh:
+        with contextlib.suppress(RedisError):
+            cached = await redis.get(_RULES_KEY)
+            parsed = _parse(cached) if cached is not None else None
+            if parsed is not None:
+                return parsed
     row = await db.get(SkinPricingRules, 1)
     rules = _parse(row.rules) if row is not None else None
     if row is not None and rules is None:
