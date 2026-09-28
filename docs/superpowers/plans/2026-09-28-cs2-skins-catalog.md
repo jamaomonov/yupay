@@ -35,23 +35,23 @@
 
 ## File Structure
 
-| File                                                                                                                                                                                                                                | Responsibility                                                                                                                                             |
-| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/api/src/yupay/modules/skins/__init__.py`, `api.py`                                                                                                                                                                            | module marker; public re-exports (routers, settings loaders, sync entry points)                                                                            |
-| `apps/api/src/yupay/modules/skins/models.py`                                                                                                                                                                                        | `SkinItem` (+ per-item pricing overrides), `SkinPricingRules`, `SkinSearchAlias`                                                                           |
-| `apps/api/migrations/versions/0087_cs2_skins.py`                                                                                                                                                                                    | the three tables, indexes, `pg_trgm` guard                                                                                                                 |
-| `apps/api/src/yupay/modules/skins/naming.py`                                                                                                                                                                                        | pure parsing of market hash names: phase, flags, weapon/skin/exterior, slug, search text                                                                   |
-| `apps/api/src/yupay/modules/skins/taxonomy.py`                                                                                                                                                                                      | category slugs and the ByMykel / Waxpeer → category maps                                                                                                   |
-| `apps/api/src/yupay/modules/skins/bymykel.py`                                                                                                                                                                                       | fetch the eleven JSON files, turn entries into `CatalogRow`s, upsert metadata                                                                              |
-| `apps/api/src/yupay/modules/skins/prices.py`                                                                                                                                                                                        | stream-aggregate the snapshot, apply prices (changed rows only), stubs, catalogue version bump                                                             |
-| `apps/api/src/yupay/modules/fulfillment/suppliers/waxpeer_client.py`                                                                                                                                                                | `+ iter_snapshot_rows`, `+ prices`, `+ search_listings`, `WaxpeerRateLimitedError`                                                                         |
-| `apps/scheduler/src/yupay_scheduler/jobs/skins_catalog_import.py`, `skins_price_sync.py`                                                                                                                                            | the daily and five-minute ticks                                                                                                                            |
-| `apps/api/src/yupay/modules/skins/settings.py`, `pricing.py`                                                                                                                                                                        | pricing rules (brackets per channel, category pp, min margin, floor, UZS rounding, Steam cap): Redis → row 1 → `DEFAULT_RULES`; `quote()` with a breakdown |
-| `apps/api/src/yupay/modules/skins/service.py`                                                                                                                                                                                       | catalogue query with keyset cursor, facets, suggest with alias expansion, detail                                                                           |
-| `apps/api/src/yupay/modules/skins/schemas.py`, `routes.py`, `admin.py`                                                                                                                                                              | DTOs, `/skins/*`, `/admin/skins/pricing` (+ `/preview`), `/admin/skins/items/{slug}`                                                                       |
-| `apps/api/src/yupay/modules/skins/listings.py`                                                                                                                                                                                      | the search-v2 proxy: cache, stale twin, token bucket, breaker, snapshot fallback                                                                           |
-| `apps/api/tests/fixtures/skins/`                                                                                                                                                                                                    | `bymykel_skins.json`, `bymykel_agents.json`, `bymykel_crates.json`, `snapshot.csv`, `prices.json`, `search_v2.json`                                        |
-| `apps/api/src/yupay/modules/skins/README.md`, `docs/architecture/module-map.md`, `docs/architecture/cache-keys.md`, `docs/architecture/sequence-diagrams/skins-catalog-sync.mmd`, `docs/runbooks/skins-catalog.md`, `AGENTS.md` §10 | documentation                                                                                                                                              |
+| File                                                                                                                                                                                                                                | Responsibility                                                                                                                                                                                                                   |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/api/src/yupay/modules/skins/__init__.py`, `api.py`                                                                                                                                                                            | module marker; public re-exports (routers, settings loaders, sync entry points)                                                                                                                                                  |
+| `apps/api/src/yupay/modules/skins/models.py`                                                                                                                                                                                        | `SkinItem` (+ per-item pricing overrides), `SkinPricingRules`, `SkinSearchAlias`                                                                                                                                                 |
+| `apps/api/migrations/versions/0087_cs2_skins.py`                                                                                                                                                                                    | the three tables, indexes, `pg_trgm` guard                                                                                                                                                                                       |
+| `apps/api/src/yupay/modules/skins/naming.py`                                                                                                                                                                                        | pure parsing of market hash names: phase, flags, weapon/skin/exterior, slug, search text                                                                                                                                         |
+| `apps/api/src/yupay/modules/skins/taxonomy.py`                                                                                                                                                                                      | category slugs and the ByMykel / Waxpeer → category maps                                                                                                                                                                         |
+| `apps/api/src/yupay/modules/skins/bymykel.py`                                                                                                                                                                                       | fetch the eleven JSON files, turn entries into `CatalogRow`s, upsert metadata                                                                                                                                                    |
+| `apps/api/src/yupay/modules/skins/prices.py`                                                                                                                                                                                        | stream-aggregate the snapshot, apply prices (changed rows only), stubs, catalogue version bump                                                                                                                                   |
+| `apps/api/src/yupay/modules/fulfillment/suppliers/waxpeer_client.py`                                                                                                                                                                | `+ iter_snapshot_rows`, `+ prices`, `+ search_listings`, `WaxpeerRateLimitedError`                                                                                                                                               |
+| `apps/scheduler/src/yupay_scheduler/jobs/skins_catalog_import.py`, `skins_price_sync.py`                                                                                                                                            | the daily and five-minute ticks                                                                                                                                                                                                  |
+| `apps/api/src/yupay/modules/skins/settings.py`, `pricing.py`                                                                                                                                                                        | pricing rules (expenses %, progressive brackets per channel, liquidity bands by listing count, category/weapon pp, min margin, floor, UZS rounding, Steam cap): Redis → row 1 → `DEFAULT_RULES`; `quote()` with a full breakdown |
+| `apps/api/src/yupay/modules/skins/service.py`                                                                                                                                                                                       | catalogue query with keyset cursor, facets, suggest with alias expansion, detail                                                                                                                                                 |
+| `apps/api/src/yupay/modules/skins/schemas.py`, `routes.py`, `admin.py`                                                                                                                                                              | DTOs, `/skins/*`, `/admin/skins/pricing` (+ `/preview`), `/admin/skins/items/{slug}`                                                                                                                                             |
+| `apps/api/src/yupay/modules/skins/listings.py`                                                                                                                                                                                      | the search-v2 proxy: cache, stale twin, token bucket, breaker, snapshot fallback                                                                                                                                                 |
+| `apps/api/tests/fixtures/skins/`                                                                                                                                                                                                    | `bymykel_skins.json`, `bymykel_agents.json`, `bymykel_crates.json`, `snapshot.csv`, `prices.json`, `search_v2.json`                                                                                                              |
+| `apps/api/src/yupay/modules/skins/README.md`, `docs/architecture/module-map.md`, `docs/architecture/cache-keys.md`, `docs/architecture/sequence-diagrams/skins-catalog-sync.mmd`, `docs/runbooks/skins-catalog.md`, `AGENTS.md` §10 | documentation                                                                                                                                                                                                                    |
 
 ---
 
@@ -447,8 +447,9 @@ storefront browses. Purchase, fulfilment and tracking are separate plans
 
 - Own `skin_items` (one row per market hash name + Doppler phase, plus two
   per-item pricing overrides), `skin_pricing_rules` (row 1: the pricing
-  document — brackets per channel, category adjustments, min margin, floor,
-  UZS rounding, Steam cap) and `skin_search_aliases`.
+  document — expenses, brackets per channel, liquidity bands, category and
+  weapon adjustments, min margin, floor, UZS rounding, Steam cap) and
+  `skin_search_aliases`.
 - Parse market hash names deterministically (`naming.py`) so a Waxpeer
   name with an inline phase lands on the ByMykel row.
 - Import the catalogue daily (`bymykel.py`) and prices every five minutes
@@ -2259,7 +2260,7 @@ git commit -m "feat(skins): fold the Waxpeer snapshot onto the catalogue every f
 
 - Consumes: `SkinItem`, `SkinPricingRules`, `SkinSearchAlias`, `CATALOG_VERSION_KEY`, `taxonomy.CATEGORY_SLUGS`, `naming.EXTERIOR_CODES`.
 - Produces:
-  - `pricing.Bracket`, `pricing.PricingRules` (pydantic, frozen, validated on every read and write), `pricing.DEFAULT_RULES`, `pricing.Quote`, `pricing.quote(cost_units, *, rules, category, channel="retail", item_pp=None, fixed_price_usd=None, steam_price_units=None, extra_pp=Decimal(0)) -> Quote`, `pricing.to_uzs(price_usd, rate, *, round_to) -> Decimal`.
+  - `pricing.Bracket`, `pricing.LiquidityBand`, `pricing.PricingRules` (pydantic, frozen, validated on every read and write), `pricing.DEFAULT_RULES`, `pricing.Quote`, `pricing.quote(cost_units, *, rules, category, channel="retail", weapon=None, count_auto=None, item_pp=None, fixed_price_usd=None, steam_price_units=None, extra_pp=Decimal(0)) -> Quote`, `pricing.to_uzs(price_usd, rate, *, round_to) -> Decimal`.
   - `settings.load_rules(db) -> PricingRules`, `save_rules(db, *, rules, admin_id)`, `publish_rules(rules)`, `enabled_categories(settings) -> list[str]`. Redis key `skins:pricing` (the JSON document, 3600 s).
   - `service.CatalogQuery`, `service.list_items(db, query, *, categories) -> tuple[list[SkinItem], str | None]`, `service.facets(db, *, categories) -> Facets`, `service.suggest(db, q, *, categories, limit=10) -> list[SkinItem]`, `service.get_item(db, slug, *, categories) -> SkinItem`, `service.encode_cursor(...)`, `service.decode_cursor(...)`, `service.expand_aliases(db, q) -> str`, `service.catalog_version(redis) -> int`.
   - Routes: `GET /skins/catalog`, `GET /skins/facets`, `GET /skins/suggest`, `GET /skins/{slug}`; `GET|PUT /admin/skins/pricing`, `GET /admin/skins/pricing/preview`, `PATCH /admin/skins/items/{slug}`.
@@ -2269,10 +2270,13 @@ git commit -m "feat(skins): fold the Waxpeer snapshot onto the catalogue every f
 
 ```python
 # apps/api/tests/unit/test_skins_pricing.py
-"""``quote`` under the default rules and under hand-made ones. Every number
-here is arithmetic on the spec's table (chat 2026-09-28): first $1 at 40 %,
-$1-10 at 20 %, $10-100 at 12 %, $100-1000 at 8 %, above at 5 %; knives and
-gloves -2 pp; min margin $0.10; floor $0.20; UZS rounded up to 100."""
+"""``quote`` under the default rules and under hand-made ones.
+
+Every number is arithmetic on the defaults (owner, chat 2026-09-28):
+expenses 3 % on cost; progressive margin brackets $0-1 10 %, $1-10 5 %,
+$10-100 7 %, $100-1000 2 %, above 1 %; liquidity by auto-listing count
+(>=50: -1 pp, 20-49: -0.5, 4-19: 0, <=3: +3); stickers +5 pp; min margin
+$0.10; floor $0.20; UZS rounded up to 100."""
 
 from __future__ import annotations
 
@@ -2283,6 +2287,7 @@ from pydantic import ValidationError
 from yupay.modules.skins.pricing import (
     DEFAULT_RULES,
     Bracket,
+    LiquidityBand,
     PricingRules,
     bracket_margin,
     quote,
@@ -2291,20 +2296,35 @@ from yupay.modules.skins.pricing import (
 
 
 def test_brackets_are_progressive() -> None:
-    # 27.867: 1×40% + 9×20% + 17.867×12% = 0.40 + 1.80 + 2.14404 = 4.34404
-    assert bracket_margin(Decimal("27.867"), DEFAULT_RULES.retail) == Decimal("4.34404")
-    q = quote(27867, rules=DEFAULT_RULES, category="rifles")
-    assert (q.price_usd, q.applied) == (Decimal("32.22"), "formula")
-    assert q.effective_percent == Decimal("15.6")
+    # 27.867: 1×10% + 9×5% + 17.867×7% = 0.10 + 0.45 + 1.25069 = 1.80069
+    assert bracket_margin(Decimal("27.867"), DEFAULT_RULES.retail) == Decimal("1.80069")
 
 
-def test_category_pp_and_item_pp_add_to_the_bracket_margin() -> None:
-    # 1450: 0.40 + 1.80 + 10.80 + 72.00 + 22.50 = 107.50; knives -2 pp = -29.00
-    knife = quote(1450000, rules=DEFAULT_RULES, category="knives")
-    assert knife.price_usd == Decimal("1528.50")
-    assert (knife.category_pp, knife.item_pp) == (Decimal("-2"), Decimal("0"))
-    boosted = quote(1450000, rules=DEFAULT_RULES, category="knives", item_pp=Decimal("10"))
-    assert boosted.price_usd == Decimal("1673.50")
+def test_expenses_and_liquidity_ride_on_top_of_the_brackets() -> None:
+    # + expenses 3 % - liquidity 0.5 pp (49 listings) = 2.5 pp × 27.867 = 0.696675
+    q = quote(27867, rules=DEFAULT_RULES, category="rifles", count_auto=49)
+    assert (q.price_usd, q.applied) == (Decimal("30.37"), "formula")
+    assert q.expenses_usd == Decimal("0.83601")
+    assert (q.liquidity_pp, q.effective_percent) == (Decimal("-0.5"), Decimal("9.0"))
+
+
+def test_liquidity_bands_move_the_same_cost_both_ways() -> None:
+    hot = quote(3000, rules=DEFAULT_RULES, category="rifles", count_auto=60)
+    rare = quote(3000, rules=DEFAULT_RULES, category="rifles", count_auto=2)
+    # bracket 0.10 + 2×5% = 0.20; hot: +3 -1 = 2 pp -> 0.06; rare: +3 +3 = 6 pp -> 0.18
+    assert (hot.price_usd, rare.price_usd) == (Decimal("3.26"), Decimal("3.38"))
+    assert quote(3000, rules=DEFAULT_RULES, category="rifles").liquidity_pp == Decimal(0)
+
+
+def test_category_weapon_and_item_pp() -> None:
+    # 1450: 0.10 + 0.45 + 6.30 + 18.00 + 4.50 = 29.35; expenses 3 % = 43.50; 5 listings -> 0 pp
+    knife = quote(1450000, rules=DEFAULT_RULES, category="knives", count_auto=5)
+    assert (knife.price_usd, knife.effective_percent) == (Decimal("1522.85"), Decimal("5.0"))
+    boosted = quote(1450000, rules=DEFAULT_RULES, category="knives", count_auto=5, item_pp=Decimal("10"))
+    assert boosted.price_usd == Decimal("1667.85")
+    ak_rules = DEFAULT_RULES.model_copy(update={"weapon_pp": {"AK-47": Decimal("-2")}})
+    ak = quote(27867, rules=ak_rules, category="rifles", weapon="AK-47", count_auto=49)
+    assert (ak.weapon_pp, ak.price_usd) == (Decimal("-2"), Decimal("29.81"))
 
 
 def test_half_cent_listing_hits_the_floor() -> None:
@@ -2313,26 +2333,28 @@ def test_half_cent_listing_hits_the_floor() -> None:
 
 
 def test_min_margin_beats_a_thin_percent() -> None:
-    thin = DEFAULT_RULES.model_copy(update={"retail": [Bracket(from_usd=Decimal(0), percent=Decimal(2))]})
+    thin = DEFAULT_RULES.model_copy(
+        update={"retail": [Bracket(from_usd=Decimal(0), percent=Decimal(2))], "expenses_percent": Decimal(0)}
+    )
     q = quote(1000, rules=thin, category="rifles")
     assert (q.price_usd, q.applied) == (Decimal("1.10"), "min_margin")
 
 
 def test_fixed_price_only_while_it_covers_cost_plus_min_margin() -> None:
-    pinned = quote(27867, rules=DEFAULT_RULES, category="rifles", fixed_price_usd=Decimal("30.00"))
+    pinned = quote(27867, rules=DEFAULT_RULES, category="rifles", count_auto=49, fixed_price_usd=Decimal("30.00"))
     assert (pinned.price_usd, pinned.applied) == (Decimal("30.00"), "fixed")
-    too_low = quote(27867, rules=DEFAULT_RULES, category="rifles", fixed_price_usd=Decimal("27.90"))
-    assert (too_low.price_usd, too_low.applied) == (Decimal("32.22"), "formula")
+    too_low = quote(27867, rules=DEFAULT_RULES, category="rifles", count_auto=49, fixed_price_usd=Decimal("27.90"))
+    assert (too_low.price_usd, too_low.applied) == (Decimal("30.37"), "formula")
 
 
 def test_steam_cap_when_enabled_never_undercuts_cost() -> None:
     capped = DEFAULT_RULES.model_copy(update={"cap_at_steam": True})
-    q = quote(27867, rules=capped, category="rifles", steam_price_units=30000)
+    q = quote(27867, rules=capped, category="rifles", count_auto=49, steam_price_units=30000)
     assert (q.price_usd, q.applied) == (Decimal("30.00"), "steam_cap")
-    q = quote(27867, rules=capped, category="rifles", steam_price_units=27900)
+    q = quote(27867, rules=capped, category="rifles", count_auto=49, steam_price_units=27900)
     assert q.price_usd == Decimal("27.97")  # cost + min margin, not Steam's 27.90
-    off = quote(27867, rules=DEFAULT_RULES, category="rifles", steam_price_units=30000)
-    assert off.price_usd == Decimal("32.22")
+    off = quote(27867, rules=DEFAULT_RULES, category="rifles", count_auto=49, steam_price_units=30000)
+    assert off.price_usd == Decimal("30.37")
 
 
 def test_b2b_channel_uses_its_own_brackets() -> None:
@@ -2344,17 +2366,17 @@ def test_b2b_channel_uses_its_own_brackets() -> None:
 def test_price_never_drops_when_cost_rises() -> None:
     last = Decimal(0)
     for units in range(1, 2_000_000, 997):
-        price = quote(units, rules=DEFAULT_RULES, category="rifles").price_usd
+        price = quote(units, rules=DEFAULT_RULES, category="rifles", count_auto=10).price_usd
         assert price >= last, units
         last = price
 
 
 def test_to_uzs_rounds_up_to_hundreds() -> None:
-    assert to_uzs(Decimal("32.22"), Decimal("12700"), round_to=100) == Decimal("409200")
-    assert to_uzs(Decimal("32.22"), Decimal("12700"), round_to=1) == Decimal("409194")
+    assert to_uzs(Decimal("30.37"), Decimal("12700"), round_to=100) == Decimal("385700")
+    assert to_uzs(Decimal("30.37"), Decimal("12700"), round_to=1) == Decimal("385699")
 
 
-def test_rules_must_start_at_zero_and_ascend() -> None:
+def test_rules_validation() -> None:
     with pytest.raises(ValidationError):
         PricingRules(retail=[Bracket(from_usd=Decimal(1), percent=Decimal(10))], b2b=DEFAULT_RULES.b2b)
     with pytest.raises(ValidationError):
@@ -2362,6 +2384,8 @@ def test_rules_must_start_at_zero_and_ascend() -> None:
             retail=[Bracket(from_usd=Decimal(0), percent=Decimal(10)), Bracket(from_usd=Decimal(0), percent=Decimal(5))],
             b2b=DEFAULT_RULES.b2b,
         )
+    with pytest.raises(ValidationError):  # liquidity bands must end at min_count 0
+        PricingRules(retail=DEFAULT_RULES.retail, b2b=DEFAULT_RULES.b2b, liquidity=[LiquidityBand(min_count=5, pp=Decimal(1))])
 ```
 
 - [ ] **Step 2: Run, watch them fail**
@@ -2375,15 +2399,27 @@ Expected: FAIL — `ModuleNotFoundError`.
 # apps/api/src/yupay/modules/skins/pricing.py
 """Sell price from a listing's cost under the admin-editable rules.
 
-The rules are one document (:class:`PricingRules`): progressive price
-brackets per channel — the first dollar at one rate, the next nine at
-another, like tax bands, so the sell price is continuous and never falls
-when the cost rises — plus per-category adjustments in percentage points,
-a minimum margin in dollars for the cents-priced tail, a price floor for
-the acquirers' minimum charge, UZS rounding, and an optional cap at the
-Steam Market price. :func:`quote` applies them in a fixed order and says
-which rule decided the number, so the admin preview can explain a price
-and the checkout re-price computes exactly what the storefront showed.
+The owner thinks of a price as *cost + expenses + our margin*, and wants
+the margin to depend on how liquid the item is, not only on how expensive.
+So the rules document (:class:`PricingRules`) has:
+
+- ``expenses_percent`` — acquirer fees and taxes, one number on cost;
+- progressive margin brackets per channel — the first dollar at one rate,
+  the next nine at another, like tax bands, so the sell price is continuous
+  and never falls when the cost rises;
+- ``liquidity`` bands by the item's auto-listing count — a supply-side
+  proxy for how often the item is bought and price-compared; the input can
+  later be our own views/orders without changing the shape;
+- per-category and per-weapon adjustments in percentage points;
+- per-item overrides (``item_pp``, or a pinned price that never undercuts
+  cost + min margin);
+- a minimum margin in dollars for the cents-priced tail, a price floor for
+  the acquirers' minimum charge, UZS rounding, and an optional cap at the
+  Steam Market price.
+
+:func:`quote` applies them in a fixed order and returns every component,
+so the admin preview can explain a price and the checkout re-price computes
+exactly what the storefront showed.
 """
 
 from __future__ import annotations
@@ -2410,22 +2446,37 @@ class Bracket(BaseModel):
     percent: Decimal = Field(ge=-100, le=500, max_digits=7, decimal_places=2)
 
 
+class LiquidityBand(BaseModel):
+    """``pp`` applies when the item has at least ``min_count`` auto listings."""
+
+    model_config = ConfigDict(frozen=True)
+
+    min_count: int = Field(ge=0)
+    pp: Decimal = Field(ge=-100, le=100, max_digits=6, decimal_places=2)
+
+
 class PricingRules(BaseModel):
     """The whole pricing document, as stored in ``skin_pricing_rules.rules``."""
 
     model_config = ConfigDict(frozen=True)
 
+    #: Acquirer fees and taxes, as a percent of cost, added to every price.
+    expenses_percent: Decimal = Field(default=Decimal("3"), ge=0, le=100, decimal_places=2)
     retail: list[Bracket] = Field(min_length=1)
     b2b: list[Bracket] = Field(min_length=1)
+    #: Sorted by ``min_count`` descending; the last band must start at 0.
+    liquidity: list[LiquidityBand] = Field(default_factory=list)
     #: category slug -> percentage points added on top of the bracket margin.
     category_pp: dict[str, Decimal] = Field(default_factory=dict)
+    #: weapon name (``AK-47``) -> percentage points.
+    weapon_pp: dict[str, Decimal] = Field(default_factory=dict)
     min_margin_usd: Decimal = Field(default=Decimal("0.10"), ge=0, decimal_places=2)
     price_floor_usd: Decimal = Field(default=Decimal("0.20"), ge=0, decimal_places=2)
     uzs_round_to: int = Field(default=100, ge=1, le=10000)
     cap_at_steam: bool = False
 
     @model_validator(mode="after")
-    def _brackets_start_at_zero_and_ascend(self) -> PricingRules:
+    def _shape(self) -> PricingRules:
         for name in ("retail", "b2b"):
             brackets: list[Bracket] = getattr(self, name)
             if brackets[0].from_usd != 0:
@@ -2433,36 +2484,50 @@ class PricingRules(BaseModel):
             for prev, cur in zip(brackets, brackets[1:], strict=False):
                 if cur.from_usd <= prev.from_usd:
                     raise ValueError(f"{name}: brackets must ascend strictly")
+        if self.liquidity:
+            counts = [band.min_count for band in self.liquidity]
+            if counts != sorted(counts, reverse=True) or counts[-1] != 0:
+                raise ValueError("liquidity: bands must descend by min_count and end at 0")
         return self
 
 
 DEFAULT_RULES = PricingRules(
+    expenses_percent=Decimal("3"),
     retail=[
-        Bracket(from_usd=Decimal("0"), percent=Decimal("40")),
-        Bracket(from_usd=Decimal("1"), percent=Decimal("20")),
-        Bracket(from_usd=Decimal("10"), percent=Decimal("12")),
-        Bracket(from_usd=Decimal("100"), percent=Decimal("8")),
-        Bracket(from_usd=Decimal("1000"), percent=Decimal("5")),
+        Bracket(from_usd=Decimal("0"), percent=Decimal("10")),
+        Bracket(from_usd=Decimal("1"), percent=Decimal("5")),
+        Bracket(from_usd=Decimal("10"), percent=Decimal("7")),
+        Bracket(from_usd=Decimal("100"), percent=Decimal("2")),
+        Bracket(from_usd=Decimal("1000"), percent=Decimal("1")),
     ],
     b2b=[
-        Bracket(from_usd=Decimal("0"), percent=Decimal("25")),
-        Bracket(from_usd=Decimal("1"), percent=Decimal("12")),
-        Bracket(from_usd=Decimal("10"), percent=Decimal("7")),
-        Bracket(from_usd=Decimal("100"), percent=Decimal("5")),
-        Bracket(from_usd=Decimal("1000"), percent=Decimal("3")),
+        Bracket(from_usd=Decimal("0"), percent=Decimal("6")),
+        Bracket(from_usd=Decimal("1"), percent=Decimal("3")),
+        Bracket(from_usd=Decimal("10"), percent=Decimal("4")),
+        Bracket(from_usd=Decimal("100"), percent=Decimal("1.2")),
+        Bracket(from_usd=Decimal("1000"), percent=Decimal("0.6")),
     ],
-    category_pp={"knives": Decimal("-2"), "gloves": Decimal("-2"), "stickers": Decimal("5")},
+    liquidity=[
+        LiquidityBand(min_count=50, pp=Decimal("-1")),
+        LiquidityBand(min_count=20, pp=Decimal("-0.5")),
+        LiquidityBand(min_count=4, pp=Decimal("0")),
+        LiquidityBand(min_count=0, pp=Decimal("3")),
+    ],
+    category_pp={"stickers": Decimal("5")},
 )
 
 
 @dataclass(frozen=True)
 class Quote:
-    """A sell price and how it was reached."""
+    """A sell price and every component that made it."""
 
     price_usd: Decimal
     cost_usd: Decimal
+    expenses_usd: Decimal
     bracket_margin_usd: Decimal
     category_pp: Decimal
+    weapon_pp: Decimal
+    liquidity_pp: Decimal
     item_pp: Decimal
     effective_percent: Decimal
     applied: Applied
@@ -2481,12 +2546,24 @@ def bracket_margin(cost: Decimal, brackets: list[Bracket]) -> Decimal:
     return margin
 
 
+def liquidity_pp(count_auto: int | None, bands: list[LiquidityBand]) -> Decimal:
+    """The first band whose ``min_count`` the count reaches; 0 when the count is unknown."""
+    if count_auto is None:
+        return Decimal(0)
+    for band in bands:
+        if count_auto >= band.min_count:
+            return band.pp
+    return Decimal(0)
+
+
 def quote(
     cost_units: int,
     *,
     rules: PricingRules,
     category: str,
     channel: Channel = "retail",
+    weapon: str | None = None,
+    count_auto: int | None = None,
     item_pp: Decimal | None = None,
     fixed_price_usd: Decimal | None = None,
     steam_price_units: int | None = None,
@@ -2494,17 +2571,20 @@ def quote(
 ) -> Quote:
     """Price one listing. ``extra_pp`` is the per-merchant adjustment (ADR-0089) for B2B.
 
-    Order: formula (brackets + pp) → a pinned price if it covers cost + min
-    margin → min margin → Steam cap (only downwards, never below cost + min
-    margin) → ceil to the cent → floor. ``applied`` names the last rule that
-    changed the number.
+    Order: expenses + brackets + every pp adjustment → a pinned price if it
+    covers cost + min margin → min margin → Steam cap (only downwards, never
+    below cost + min margin) → ceil to the cent → floor. ``applied`` names
+    the last rule that changed the number.
     """
     cost = Decimal(cost_units) / _UNITS_PER_USD
     brackets = rules.retail if channel == "retail" else rules.b2b
     margin = bracket_margin(cost, brackets)
+    expenses = cost * rules.expenses_percent / Decimal(100)
     cat_pp = rules.category_pp.get(category, Decimal(0))
+    wpn_pp = rules.weapon_pp.get(weapon, Decimal(0)) if weapon else Decimal(0)
+    liq_pp = liquidity_pp(count_auto, rules.liquidity)
     pp = Decimal(item_pp or 0)
-    price = cost + margin + cost * (cat_pp + pp + extra_pp) / Decimal(100)
+    price = cost + expenses + margin + cost * (cat_pp + wpn_pp + liq_pp + pp + extra_pp) / Decimal(100)
     applied: Applied = "formula"
     minimum = cost + rules.min_margin_usd
     if fixed_price_usd is not None and fixed_price_usd >= minimum:
@@ -2522,8 +2602,11 @@ def quote(
     return Quote(
         price_usd=price,
         cost_usd=cost,
+        expenses_usd=expenses,
         bracket_margin_usd=margin,
         category_pp=cat_pp,
+        weapon_pp=wpn_pp,
+        liquidity_pp=liq_pp,
         item_pp=pp,
         effective_percent=effective,
         applied=applied,
@@ -2542,9 +2625,11 @@ __all__ = [
     "Applied",
     "Bracket",
     "Channel",
+    "LiquidityBand",
     "PricingRules",
     "Quote",
     "bracket_margin",
+    "liquidity_pp",
     "quote",
     "to_uzs",
 ]
@@ -2644,7 +2729,7 @@ __all__ = ["enabled_categories", "load_rules", "publish_rules", "save_rules"]
 
 - [ ] **Step 4: Run the pricing tests, watch them pass**
 
-Run: `cd apps/api && uv run pytest tests/unit/test_skins_pricing.py -v` — Expected: 10 PASS.
+Run: `cd apps/api && uv run pytest tests/unit/test_skins_pricing.py -v` — Expected: 12 PASS.
 
 - [ ] **Step 5: Failing cursor tests**
 
@@ -2993,8 +3078,11 @@ class SkinsPricingOut(BaseModel):
 class SkinQuoteOut(BaseModel):
     price_usd: str
     cost_usd: str
+    expenses_usd: str
     bracket_margin_usd: str
     category_pp: str
+    weapon_pp: str
+    liquidity_pp: str
     item_pp: str
     effective_percent: str
     applied: str
@@ -3097,6 +3185,8 @@ def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> Skin
             item.min_auto_units,
             rules=rules,
             category=item.category,
+            weapon=item.weapon,
+            count_auto=item.count_auto,
             item_pp=item.margin_override_pp,
             fixed_price_usd=item.fixed_price_usd,
             steam_price_units=item.steam_price_units,
@@ -3237,6 +3327,8 @@ async def get_detail(
             int(entry["price_units"]),
             rules=rules,
             category=item.category,
+            weapon=item.weapon,
+            count_auto=item.count_auto,
             item_pp=item.margin_override_pp,
             fixed_price_usd=item.fixed_price_usd,
             steam_price_units=item.steam_price_units,
@@ -3355,6 +3447,8 @@ async def admin_preview_price(
     cost_usd: Annotated[Decimal, Query(ge=0)],
     category: str = "rifles",
     channel: Channel = "retail",
+    weapon: str | None = None,
+    count: Annotated[int | None, Query(ge=0)] = None,
     item_pp: Decimal | None = None,
     fixed_price_usd: Decimal | None = None,
     steam_price_usd: Decimal | None = None,
@@ -3365,6 +3459,8 @@ async def admin_preview_price(
         rules=rules,
         category=category,
         channel=channel,
+        weapon=weapon,
+        count_auto=count,
         item_pp=item_pp,
         fixed_price_usd=fixed_price_usd,
         steam_price_units=None if steam_price_usd is None else int(steam_price_usd * 1000),
@@ -3372,8 +3468,11 @@ async def admin_preview_price(
     return SkinQuoteOut(
         price_usd=str(q.price_usd),
         cost_usd=str(q.cost_usd),
+        expenses_usd=str(q.expenses_usd),
         bracket_margin_usd=str(q.bracket_margin_usd),
         category_pp=str(q.category_pp),
+        weapon_pp=str(q.weapon_pp),
+        liquidity_pp=str(q.liquidity_pp),
         item_pp=str(q.item_pp),
         effective_percent=str(q.effective_percent),
         applied=q.applied,
@@ -3553,9 +3652,10 @@ async def test_catalog_prices_and_hides_sold_out_and_hidden_categories(
     assert "AWP | Manual Only (Field-Tested)" not in names  # inactive
     assert "Sticker | Aerial (Foil) | Katowice 2019" not in names  # category not enabled
     ak = next(i for i in body["items"] if i["slug"] == "ak-47-redline-field-tested")
-    assert ak["price_usd"] == "32.22"  # default brackets: 0.40 + 1.80 + 17.867×12% = 4.344 margin
-    assert ak["price_uzs"] == _uzs("32.22")
-    assert ak["discount_percent"] == 26
+    # brackets 1.80069 + (3 % expenses - 0.5 pp for 49 listings) × 27.867 = 2.4974 -> 30.37
+    assert ak["price_usd"] == "30.37"
+    assert ak["price_uzs"] == _uzs("30.37")
+    assert ak["discount_percent"] == 31
     assert ak["count"] == 49
     assert names[0] == "Glock-18 | Water Elemental (Field-Tested)"  # cheapest first
 
@@ -3601,8 +3701,8 @@ async def test_detail_has_phase_and_cheapest(integration_client: AsyncClient, se
     assert r.status_code == 200
     body = r.json()
     assert body["phase"] == "Phase 2"
-    # 1450: 107.50 bracket margin, knives -2 pp = -29.00 -> 1528.50
-    assert body["cheapest"] == [{"listing_id": 1, "price_usd": "1528.50", "price_uzs": _uzs("1528.50")}]
+    # 1450: 29.35 bracket margin + (3 % + 3 pp for a single listing) × 1450 = 87.00 -> 1566.35
+    assert body["cheapest"] == [{"listing_id": 1, "price_usd": "1566.35", "price_uzs": _uzs("1566.35")}]
     assert (await integration_client.get("/api/v1/skins/nope")).status_code == 404
 ```
 
@@ -3662,34 +3762,36 @@ async def test_get_returns_defaults(integration_client: AsyncClient, headers: di
     r = await integration_client.get("/api/v1/admin/skins/pricing", headers=headers)
     assert r.status_code == 200
     body = r.json()
-    assert body["rules"]["retail"][0] == {"from_usd": "0", "percent": "40"}
-    assert body["rules"]["min_margin_usd"] == "0.10"
+    assert body["rules"]["retail"][0] == {"from_usd": "0", "percent": "10"}
+    assert body["rules"]["expenses_percent"] == "3"
+    assert body["rules"]["liquidity"][0] == {"min_count": 50, "pp": "-1"}
 
 
 async def test_preview_explains_the_number(integration_client: AsyncClient, headers: dict[str, str]) -> None:
     r = await integration_client.get(
         "/api/v1/admin/skins/pricing/preview",
-        params={"cost_usd": "27.867", "category": "knives"},
+        params={"cost_usd": "27.867", "category": "stickers", "count": "2"},
         headers=headers,
     )
     assert r.status_code == 200
     body = r.json()
-    # 4.34404 bracket margin, knives -2 pp on 27.867 = -0.55734 -> 31.65370 -> 31.66
-    assert (body["price_usd"], body["applied"], body["category_pp"]) == ("31.66", "formula", "-2")
+    # 1.80069 margin + (3 % + 5 pp stickers + 3 pp for 2 listings) × 27.867 = 3.06537 -> 32.73306 -> 32.74
+    assert (body["price_usd"], body["applied"]) == ("32.74", "formula")
+    assert (body["category_pp"], body["liquidity_pp"], body["expenses_usd"]) == ("5", "3", "0.83601")
 
 
 async def test_put_replaces_and_reprices_the_storefront(
     integration_client: AsyncClient, headers: dict[str, str], ak: SkinItem
 ) -> None:
     before = (await integration_client.get(f"/api/v1/skins/{ak.slug}")).json()["price_usd"]
-    assert before == "32.22"
+    assert before == "30.37"
     r = await integration_client.get("/api/v1/admin/skins/pricing", headers=headers)
     rules = r.json()["rules"]
     rules["retail"] = [{"from_usd": "0", "percent": "50"}]
     r = await integration_client.put("/api/v1/admin/skins/pricing", json=rules, headers=headers)
     assert r.status_code == 200
     after = (await integration_client.get(f"/api/v1/skins/{ak.slug}")).json()["price_usd"]
-    assert after == "41.81"  # 27.867 × 1.5 = 41.8005 -> ceil
+    assert after == "42.50"  # 13.9335 margin + 2.5 pp × 27.867 = 0.6967 -> 42.4972 -> ceil
 
 
 async def test_put_refuses_brackets_that_do_not_start_at_zero(
@@ -3710,7 +3812,7 @@ async def test_item_override_pins_a_price_while_it_covers_cost(
     assert r.status_code == 200
     assert (await integration_client.get(f"/api/v1/skins/{ak.slug}")).json()["price_usd"] == "35.00"
     await integration_client.patch(url, json={"fixed_price_usd": "20.00"}, headers=headers)
-    assert (await integration_client.get(f"/api/v1/skins/{ak.slug}")).json()["price_usd"] == "32.22"
+    assert (await integration_client.get(f"/api/v1/skins/{ak.slug}")).json()["price_usd"] == "30.37"
     r = await integration_client.patch("/api/v1/admin/skins/items/nope", json={}, headers=headers)
     assert r.status_code == 404
 ```
@@ -4213,6 +4315,8 @@ async def get_listings(
             row.price_units,
             rules=rules,
             category=item.category,
+            weapon=item.weapon,
+            count_auto=item.count_auto,
             item_pp=item.margin_override_pp,
             fixed_price_usd=item.fixed_price_usd,
             steam_price_units=item.steam_price_units,
@@ -4293,7 +4397,7 @@ async def test_live_listings_are_priced(integration_client: AsyncClient, item: S
     body = r.json()
     assert body["degraded"] is False
     assert [i["listing_id"] for i in body["items"]] == [53857957789, 53863078495]
-    assert body["items"][0]["price_usd"] == "32.22"
+    assert body["items"][0]["price_usd"] == "30.37"
     assert body["items"][0]["inspect_url"].startswith("steam://")
 
 
@@ -4353,7 +4457,7 @@ git commit -m "feat(api/skins): cached, rate-budgeted, degradable listings read"
 - [ ] **Step 1: module-map row**
 
 ```markdown
-| `skins` | CS2 skins catalogue (ADR-0093): our own `skin_items` rows from ByMykel/CSGO-API (daily, `skins.bymykel`), Waxpeer's `auto` listings folded on every five minutes from the CSV snapshot (`skins.prices`, streamed, changed rows only), the pricing document — progressive brackets per channel, category pp, per-item overrides, min margin, floor, UZS rounding, Steam cap (`skins:pricing` in Redis, `skin_pricing_rules` row 1, `pricing.quote()` with a breakdown and `/admin/skins/pricing/preview`), and the public reads — `/skins/catalog` (keyset), `/skins/facets`, `/skins/suggest` (pg_trgm + `skin_search_aliases`), `/skins/{slug}` — all Postgres/Redis. `/skins/{slug}/listings` is the one Waxpeer-calling read (search v2, 90 s cache, budget under the 20/min limit, breaker, snapshot fallback with `degraded: true`). Both sync jobs live in `apps/scheduler` and are no-ops while `cs2_skins_sync_enabled` is off; every route 404s while `cs2_skins_enabled` is off. Purchase and fulfilment are a later plan (spec §9). |
+| `skins` | CS2 skins catalogue (ADR-0093): our own `skin_items` rows from ByMykel/CSGO-API (daily, `skins.bymykel`), Waxpeer's `auto` listings folded on every five minutes from the CSV snapshot (`skins.prices`, streamed, changed rows only), the pricing document — expenses %, progressive brackets per channel, liquidity bands by auto-listing count, category/weapon pp, per-item overrides, min margin, floor, UZS rounding, Steam cap (`skins:pricing` in Redis, `skin_pricing_rules` row 1, `pricing.quote()` with a breakdown and `/admin/skins/pricing/preview`), and the public reads — `/skins/catalog` (keyset), `/skins/facets`, `/skins/suggest` (pg_trgm + `skin_search_aliases`), `/skins/{slug}` — all Postgres/Redis. `/skins/{slug}/listings` is the one Waxpeer-calling read (search v2, 90 s cache, budget under the 20/min limit, breaker, snapshot fallback with `degraded: true`). Both sync jobs live in `apps/scheduler` and are no-ops while `cs2_skins_sync_enabled` is off; every route 404s while `cs2_skins_enabled` is off. Purchase and fulfilment are a later plan (spec §9). |
 ```
 
 - [ ] **Step 2: cache-keys rows** (match the table's column order; TTLs from the code)
@@ -4423,6 +4527,6 @@ git commit -m "docs(skins): module map, cache keys, sequence diagram, runbook; r
 
 ## Self-review notes
 
-- **Spec coverage (§4):** 4.1 → Task 3; 4.2 → Task 1; 4.3 → Tasks 3–4; 4.4 → Task 2 + `enabled_categories` in Task 5; 4.5 → Tasks 5–6; pricing (brackets, category pp, item overrides, min margin, floor, UZS rounding, Steam cap, B2B brackets ready for plan 4) → Task 5. §5–§8 are deliberately out of scope (plans 2–4).
+- **Spec coverage (§4):** 4.1 → Task 3; 4.2 → Task 1; 4.3 → Tasks 3–4; 4.4 → Task 2 + `enabled_categories` in Task 5; 4.5 → Tasks 5–6; pricing (expenses %, brackets, liquidity bands, category/weapon pp, item overrides, min margin, floor, UZS rounding, Steam cap, B2B brackets ready for plan 4) → Task 5. §5–§8 are deliberately out of scope (plans 2–4).
 - **Type consistency:** `phase` is `str` (`''` for none) in `naming`, `CatalogRow`, `SkinItem`, `aggregate` keys and `_waxpeer_name`; `cheapest_auto` entries are `{"listing_id", "price_units"}` in Task 4 and read by that name in Tasks 5–6; `WaxpeerRateLimitedError.retry_after_ms` is set from `Retry-After` (snapshot) and `msBeforeNext` (search).
 - **Review Focus → tests:** 1 → `test_canonical_name_strips_an_inline_phase`, `test_inline_phase_is_the_aggregate_key`, `test_prices_land_on_bymykel_rows_including_the_phase`; 2 → `test_a_manual_only_name_has_no_auto_price`, `test_unknown_name_becomes_a_stub_without_waxpeer_image`; 3 → `test_a_half_cent_listing_sells_at_the_floor`; 4 → `test_search_with_a_russian_alias`; 5 → `test_rate_limited_upstream_is_degraded_200`.
