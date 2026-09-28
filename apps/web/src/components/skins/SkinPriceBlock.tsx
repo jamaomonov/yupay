@@ -1,27 +1,31 @@
 "use client";
 
-import { offerHeadline } from "@yupay/utils";
+import { offerHeadline, steamDiscount } from "@yupay/utils";
 import { ExternalLink, Zap } from "lucide-react";
 import { useTranslations } from "next-intl";
 
-import { useSkinOffers } from "./SkinOffers";
+import { useSelectedOffer, useSkinOffers } from "./SkinOffers";
 
 import { displayPrice } from "@/lib/skins";
 
 /**
- * The headline price — the cheapest live offer once offers load, the stored
+ * The headline price — the picked offer (the cheapest until another is picked) once
+ * offers load, with how much cheaper than Steam it is; the stored
  * price as «от …» before that — the delivery promise, the buy button and, on a
  * line of its own, the Steam market link for comparison.
  */
 export function SkinPriceBlock({
   storedUzs,
   storedUsd,
+  steamUsd = null,
   steamUrl,
   locale,
   buyable = false,
 }: {
   storedUzs: string | null;
   storedUsd: string | null;
+  /** Steam's market price, for "cheaper than Steam". */
+  steamUsd?: string | null;
   steamUrl: string;
   locale: string;
   /** Buying is live (the panel below does it): no placeholder button. */
@@ -29,13 +33,25 @@ export function SkinPriceBlock({
 }) {
   const t = useTranslations("web.skins");
   const offers = useSkinOffers();
-  const head = offerHeadline(storedUzs, storedUsd, offers);
+  const { selected } = useSelectedOffer();
+  // The picked offer is what the button charges; before offers load, the stored «от» price.
+  const head = selected
+    ? { uzs: selected.price_uzs, usd: selected.price_usd, from: false }
+    : offerHeadline(storedUzs, storedUsd, offers);
   const price = displayPrice(locale, head.uzs, head.usd);
+  const off = head.usd !== null ? steamDiscount(head.usd, steamUsd) : null;
   return (
     <div className="space-y-4">
       <div>
-        <p className="font-display text-3xl font-bold tabular-nums">
-          {price === null ? t("soldOut") : head.from ? t("fromPrice", { price }) : price}
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+          <span className="font-display text-3xl font-bold tabular-nums">
+            {price === null ? t("soldOut") : head.from ? t("fromPrice", { price }) : price}
+          </span>
+          {off !== null && (
+            <span className="rounded-md bg-emerald-500/15 px-2 py-0.5 text-[13px] font-bold text-emerald-400">
+              {t("belowSteam", { percent: off })}
+            </span>
+          )}
         </p>
         {price !== null && (
           <p className="mt-1 inline-flex items-center gap-1.5 text-[13px] font-semibold text-emerald-400">

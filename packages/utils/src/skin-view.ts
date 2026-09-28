@@ -27,6 +27,9 @@ export interface WearChoice {
   slug: string | null;
   /** It exists, has a price and has offers. */
   available: boolean;
+  /** The twin's price, for the picker; `null` when it has none. */
+  price_usd: string | null;
+  price_uzs: string | null;
 }
 
 export interface VariantToggle {
@@ -54,6 +57,8 @@ export function wearChoices(
       exterior,
       slug: twin?.slug ?? null,
       available: twin !== undefined && twin.price_usd !== null && twin.count > 0,
+      price_usd: twin?.price_usd ?? null,
+      price_uzs: twin?.price_uzs ?? null,
     };
   });
   // The twin in the same wear, else the nearest wear that has that variant —
@@ -182,4 +187,17 @@ const WEAR_COLORS: Record<string, string> = {
 /** The colour an offer row paints its wear code in; `null` for items without wear. */
 export function wearColor(exterior: string | null): string | null {
   return exterior ? (WEAR_COLORS[exterior] ?? null) : null;
+}
+
+/**
+ * How much cheaper than Steam's market an offer is, in whole percent — `null` when it is
+ * not at least 1 % cheaper or Steam's price is unknown (never a "−0 %" or a mark-up).
+ */
+export function steamDiscount(priceUsd: string, steamUsd: string | null): number | null {
+  if (steamUsd === null) return null;
+  const steam = Number(steamUsd);
+  const price = Number(priceUsd);
+  if (!(steam > 0)) return null;
+  const off = Math.floor(((steam - price) / steam) * 100);
+  return off >= 1 ? off : null;
 }

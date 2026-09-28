@@ -7,6 +7,7 @@ import {
   isVanilla,
   offerHeadline,
   repriceOffer,
+  steamDiscount,
   wearColor,
   wearChoices,
 } from "./skin-view";
@@ -83,6 +84,13 @@ describe("wearChoices", () => {
       ["FT", "ft", true],
       ["BS", "bs", false],
     ]);
+  });
+
+  it("carries each wear's price for the picker", () => {
+    const c = wearChoices(family, family[0]!);
+    const ft = c.wears.find((w) => w.exterior === "FT");
+    expect(ft?.price_usd).toBe(family[0]!.price_usd);
+    expect(c.wears.find((w) => w.exterior === "BS")?.price_uzs).toBeNull();
   });
 
   it("offers the StatTrak twin of the same wear, and back", () => {
@@ -175,5 +183,17 @@ describe("wearColor", () => {
     expect(colors.every((c) => c?.startsWith("#"))).toBe(true);
     expect(wearColor(null)).toBeNull();
     expect(wearColor("XX")).toBeNull();
+  });
+});
+
+describe("steamDiscount", () => {
+  it("says how much cheaper than Steam, in whole percent", () => {
+    expect(steamDiscount("30.00", "35.00")).toBe(14);
+  });
+
+  it("says nothing when it is not cheaper or Steam's price is unknown", () => {
+    expect(steamDiscount("40.00", "35.00")).toBeNull();
+    expect(steamDiscount("30.00", null)).toBeNull();
+    expect(steamDiscount("34.90", "35.00")).toBeNull();
   });
 });

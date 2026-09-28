@@ -992,6 +992,7 @@
       "toWallet": "Balansni ochish",
       "support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
       "contactSupport": "Qo'llab-quvvatlashga yozish"
-    }
+    },
+    "belowSteam": "Steam'dan −{percent}%"
   }
 }

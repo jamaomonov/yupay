@@ -5,11 +5,12 @@ import { useTranslations } from "next-intl";
 import type { SkinFamilyMember } from "@/lib/skins";
 
 import { pathFor } from "@/lib/seo";
+import { displayPrice } from "@/lib/skins";
 
 type Current = Pick<SkinFamilyMember, "slug" | "exterior" | "stattrak" | "souvenir">;
 
 /**
- * Wear as one segmented row in plain words, and StatTrak™/Souvenir as toggles —
+ * Wear as tiles in plain words with each wear's price, and StatTrak™/Souvenir as toggles —
  * the old grid of «ST · FT» tiles made people decode two things at once. A wear
  * with no copies on sale is shown greyed, not hidden, so the range is visible.
  */
@@ -33,17 +34,27 @@ export function SkinWearPicker({
   return (
     <div className="space-y-3">
       {c.wears.length > 1 && (
-        <div className="border-border bg-card grid grid-cols-2 gap-1 rounded-xl border p-1 sm:flex">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
           {c.wears.map((w) => {
             const active = w.slug === current.slug;
-            const cls = `flex-1 rounded-lg px-3 py-2 text-center text-[13px] font-semibold transition ${
+            const cls = `block rounded-xl border px-3 py-2 text-left transition ${
               active
-                ? "bg-primary/15 text-foreground"
+                ? "border-primary bg-primary/10"
                 : w.available
-                  ? "text-tx-mute hover:bg-muted hover:text-foreground"
-                  : "text-tx-dim/60"
+                  ? "border-border bg-card hover:border-border-2"
+                  : "border-border bg-card opacity-50"
             }`;
-            const label = t(`exterior.${w.exterior}`);
+            const price = w.available ? displayPrice(locale, w.price_uzs, w.price_usd) : null;
+            const label = (
+              <>
+                <span className="text-tx-mute block text-[12px] font-semibold leading-tight">
+                  {t(`exterior.${w.exterior}`)}
+                </span>
+                <span className="block whitespace-nowrap text-[13px] font-bold tabular-nums">
+                  {price ?? "—"}
+                </span>
+              </>
+            );
             return w.slug === null ? (
               <span key={w.exterior} className={`${cls} cursor-not-allowed`}>
                 {label}

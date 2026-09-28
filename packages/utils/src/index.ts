@@ -29,6 +29,7 @@ export {
   isVanilla,
   offerHeadline,
   repriceOffer,
+  steamDiscount,
   wearChoices,
   wearColor,
 } from "./skin-view";

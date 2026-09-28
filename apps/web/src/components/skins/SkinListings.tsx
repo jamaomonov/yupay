@@ -59,7 +59,9 @@ export function SkinListings({
           return (
             <li
               key={l.listing_id}
-              className={`bg-card flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl border px-3 py-2.5 sm:flex-nowrap sm:px-4 ${
+              // Phones: a 3-column grid — picture, wear and float, price; then stickers under
+              // them and the actions under the price. Wider: one line, left to right.
+              className={`bg-card grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-2 rounded-xl border px-3 py-2.5 sm:flex sm:gap-x-4 sm:px-4 ${
                 buyable && picked ? "border-primary" : "border-border"
               }`}
             >
@@ -103,7 +105,10 @@ export function SkinListings({
                   <SkinFloatBar value={l.float_value} />
                 </div>
               )}
-              <span className="flex min-w-0 flex-1 items-center gap-1.5" title={t("stickers")}>
+              <span
+                className="col-span-2 row-start-2 flex min-h-6 min-w-0 flex-wrap items-center gap-1.5 sm:flex-1"
+                title={t("stickers")}
+              >
                 {l.stickers.map((s, i) =>
                   s.image ? (
                     // eslint-disable-next-line @next/next/no-img-element
@@ -126,37 +131,39 @@ export function SkinListings({
                   ),
                 )}
               </span>
-              <span className="ml-auto whitespace-nowrap text-[15px] font-bold tabular-nums">
+              <span className="col-start-3 row-start-1 ml-auto whitespace-nowrap text-right text-[15px] font-bold tabular-nums">
                 {displayPrice(locale, l.price_uzs, l.price_usd)}
               </span>
-              {l.inspect_url?.startsWith("steam://") && (
-                <a
-                  href={l.inspect_url}
-                  aria-label={t("inspect")}
-                  title={t("inspect")}
-                  className="text-tx-mute hover:text-foreground border-border inline-flex size-9 shrink-0 items-center justify-center rounded-lg border"
-                >
-                  <Eye className="h-4 w-4" aria-hidden />
-                </a>
-              )}
-              {buyable && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    select(l.listing_id);
-                    document
-                      .getElementById("buy")
-                      ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                  }}
-                  className={`rounded-btn shrink-0 px-4 py-2 text-[13px] font-bold ${
-                    picked
-                      ? "bg-primary text-primary-foreground"
-                      : "border-border text-foreground hover:border-border-2 border"
-                  }`}
-                >
-                  {picked ? t("buy.selected") : t("buy.buyThis")}
-                </button>
-              )}
+              <div className="col-start-3 row-start-2 flex items-center justify-end gap-2">
+                {l.inspect_url?.startsWith("steam://") && (
+                  <a
+                    href={l.inspect_url}
+                    aria-label={t("inspect")}
+                    title={t("inspect")}
+                    className="text-tx-mute hover:text-foreground border-border inline-flex size-9 shrink-0 items-center justify-center rounded-lg border"
+                  >
+                    <Eye className="h-4 w-4" aria-hidden />
+                  </a>
+                )}
+                {buyable && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      select(l.listing_id);
+                      document
+                        .getElementById("buy")
+                        ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }}
+                    className={`rounded-btn shrink-0 px-4 py-2 text-[13px] font-bold ${
+                      picked
+                        ? "bg-primary text-primary-foreground"
+                        : "border-border text-foreground hover:border-border-2 border"
+                    }`}
+                  >
+                    {picked ? t("buy.selected") : t("buy.buyThis")}
+                  </button>
+                )}
+              </div>
             </li>
           );
         })}

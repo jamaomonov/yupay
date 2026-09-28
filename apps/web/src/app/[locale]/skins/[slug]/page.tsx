@@ -1,6 +1,5 @@
 import { hasWear, isVanilla } from "@yupay/utils";
 import { ChevronRight } from "lucide-react";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { hasLocale } from "next-intl";
@@ -10,12 +9,12 @@ import type { SkinCategory } from "@/lib/skins";
 import type { Metadata } from "next";
 
 import { SkinBuyPanel } from "@/components/skins/SkinBuyPanel";
+import { SkinHero } from "@/components/skins/SkinHero";
 import { SkinListings } from "@/components/skins/SkinListings";
-import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
 import { SkinOffersProvider } from "@/components/skins/SkinOffers";
+import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
 import { SkinWearPicker } from "@/components/skins/SkinWearPicker";
 import { routing } from "@/i18n/routing";
-import { isOptimizable } from "@/lib/image";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
 import { DEFAULT_SORT, displayPrice, getSkinDetail, skinQueryString } from "@/lib/skins";
@@ -81,6 +80,32 @@ export default async function SkinPage({ params }: Props) {
       ? `${Number(item.min_float).toFixed(2)}–${Number(item.max_float).toFixed(2)}`
       : null;
   const worn = hasWear(item.category);
+  // The other wears and the facts: under the picture on wide screens, under the price on
+  // phones (rendered once per breakpoint).
+  const details = (
+    <>
+      {worn && item.family.length > 1 && (
+        <div className="space-y-2">
+          <h2 className="text-[15px] font-bold">{t("otherWears")}</h2>
+          <SkinWearPicker family={item.family} current={item} locale={locale} />
+        </div>
+      )}
+      <dl className="border-border grid grid-cols-2 gap-x-6 gap-y-2 border-t pt-4 text-[13px] sm:grid-cols-3">
+        {item.exterior && <Fact label={t("wear")} value={t(`exterior.${item.exterior}`)} />}
+        {item.rarity && (
+          <Fact
+            label={t("rarity")}
+            value={item.rarity}
+            {...(item.rarity_color ? { color: item.rarity_color } : {})}
+          />
+        )}
+        {worn && floatRange && <Fact label={t("float")} value={floatRange} />}
+        {!worn && item.count > 0 && (
+          <Fact label={t("inStock")} value={t("pieces", { count: item.count })} />
+        )}
+      </dl>
+    </>
+  );
 
   return (
     <main className="mx-auto min-h-screen max-w-[1320px] px-4 pb-28 pt-[104px] sm:px-6">
@@ -95,22 +120,18 @@ export default async function SkinPage({ params }: Props) {
       </nav>
 
       <SkinOffersProvider slug={item.slug}>
-        <section className="border-border bg-card grid gap-6 rounded-2xl border p-5 md:grid-cols-2 md:p-8">
-          <div
-            className="bg-muted relative aspect-[4/3] overflow-hidden rounded-xl border-b-[3px] border-transparent md:max-h-[380px]"
-            style={item.rarity_color ? { borderBottomColor: item.rarity_color } : undefined}
-          >
-            {item.image_url && (
-              <Image
-                src={steamImageSize(item.image_url, "512fx384f")}
-                alt={item.name}
-                fill
-                priority
-                unoptimized={!isOptimizable(item.image_url)}
-                sizes="(min-width: 768px) 50vw, 100vw"
-                className="object-contain p-6"
-              />
-            )}
+        <section className="border-border bg-card grid gap-6 rounded-2xl border p-4 sm:p-5 md:grid-cols-2 md:gap-8 md:p-8">
+          {/* Left: the picked offer on the picture; on wide screens the wears and facts
+              fill the space under it. Right: name, price, buying. On phones the order is
+              picture → name and price → wears and facts → buying. */}
+          <div className="space-y-5">
+            <SkinHero
+              image={item.image_url}
+              name={item.name}
+              exterior={item.exterior}
+              rarityColor={item.rarity_color}
+            />
+            <div className="hidden space-y-5 md:block">{details}</div>
           </div>
           <div className="flex flex-col gap-5">
             <div>
@@ -127,30 +148,15 @@ export default async function SkinPage({ params }: Props) {
             <SkinPriceBlock
               storedUzs={item.price_uzs}
               storedUsd={item.price_usd}
+              steamUsd={item.steam_price_usd}
               steamUrl={steamMarketUrl(item.name)}
               locale={locale}
               buyable={Boolean(item.buy_sku_id)}
             />
+            <div className="space-y-5 md:hidden">{details}</div>
             {item.buy_sku_id && (
               <SkinBuyPanel skuId={item.buy_sku_id} slug={item.slug} locale={locale} />
             )}
-            {worn && item.family.length > 1 && (
-              <SkinWearPicker family={item.family} current={item} locale={locale} />
-            )}
-            <dl className="border-border grid grid-cols-2 gap-x-6 gap-y-2 border-t pt-4 text-[13px] sm:grid-cols-3">
-              {item.exterior && <Fact label={t("wear")} value={t(`exterior.${item.exterior}`)} />}
-              {item.rarity && (
-                <Fact
-                  label={t("rarity")}
-                  value={item.rarity}
-                  {...(item.rarity_color ? { color: item.rarity_color } : {})}
-                />
-              )}
-              {worn && floatRange && <Fact label={t("float")} value={floatRange} />}
-              {!worn && item.count > 0 && (
-                <Fact label={t("inStock")} value={t("pieces", { count: item.count })} />
-              )}
-            </dl>
           </div>
         </section>
 

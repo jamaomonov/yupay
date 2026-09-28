@@ -96,4 +96,24 @@ describe("SkinPriceBlock when skins are sellable", () => {
     );
     expect(screen.queryByRole("button", { name: "Покупка скоро" })).not.toBeInTheDocument();
   });
+
+  it("prices the picked offer and says how much cheaper than Steam", async () => {
+    mocked.mockResolvedValue({
+      degraded: false,
+      items: [offer(1, "28.40", "360700"), offer(2, "28.30", "359400")],
+    });
+    wrap(
+      <SkinOffersProvider slug="ak-ft">
+        <SkinPriceBlock
+          storedUzs="357300"
+          storedUsd="28.13"
+          steamUsd="35.00"
+          steamUrl="https://steamcommunity.com/market/listings/730/x"
+          locale="ru"
+        />
+      </SkinOffersProvider>,
+    );
+    expect(await screen.findByText(/359\s?400/)).toBeInTheDocument();
+    expect(screen.getByText("−19% к Steam")).toBeInTheDocument();
+  });
 });

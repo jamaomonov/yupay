@@ -992,6 +992,7 @@
       "toWallet": "Open balance",
       "support": "We are checking the purchase — please contact support",
       "contactSupport": "Contact support"
-    }
+    },
+    "belowSteam": "−{percent}% vs Steam"
   }
 }
