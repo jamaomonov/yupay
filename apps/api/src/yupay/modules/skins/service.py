@@ -257,7 +257,8 @@ async def family(db: AsyncSession, item: SkinItem, *, categories: list[str]) -> 
             SkinItem.skin.is_not_distinct_from(item.skin),
             SkinItem.phase == item.phase,
         )
-        .order_by(_WEAR_ORDER, SkinItem.stattrak, SkinItem.souvenir, SkinItem.id)
+        # One row per variant on the item page: plain, then Souvenir, then StatTrak.
+        .order_by(SkinItem.stattrak, SkinItem.souvenir, _WEAR_ORDER, SkinItem.id)
     )
     return list((await db.execute(stmt)).scalars())
 
