@@ -25,7 +25,7 @@ import {
   useCheckout,
 } from "@/lib/orders";
 import { PAYMENT_METHODS } from "@/lib/payment-methods";
-import { orderKeyFor, skinBuyFailure } from "@/lib/skin-buy";
+import { oneAtATime, orderKeyFor, skinBuyFailure } from "@/lib/skin-buy";
 import { skinPriceText } from "@/lib/skins";
 import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { groupBalancesByCurrency, useWallet } from "@/lib/wallet";
@@ -63,6 +63,8 @@ export function SkinBuyPanel({
   }, []);
   const [notice, setNotice] = useState<string | null>(null);
   const orderKey = useRef<OrderKey | null>(null);
+  const latestBuy = useRef<() => Promise<void>>(() => Promise.resolve());
+  const tap = useMemo(() => oneAtATime(() => latestBuy.current()), []);
 
   const [methodId, setMethodId] = useState<string>(PAYMENT_METHODS[0]?.id ?? "click");
   const providersQuery = useAvailableProviders();
@@ -177,6 +179,9 @@ export function SkinBuyPanel({
     }
   }
 
+  // The button calls the latest `buy`, and never twice at once (see `oneAtATime`).
+  latestBuy.current = buy;
+
   return (
     <div className="space-y-4">
       <SkinTradeLinkInput onChange={onLink} />
@@ -215,7 +220,7 @@ export function SkinBuyPanel({
           disabled={hint !== null || checkout.isPending}
           onClick={() => {
             haptic("press");
-            void buy();
+            void tap();
           }}
           className="bg-primary flex w-full items-center justify-center gap-2 rounded-2xl py-4 text-base font-bold tracking-wide text-black transition-all disabled:cursor-not-allowed disabled:opacity-45"
         >

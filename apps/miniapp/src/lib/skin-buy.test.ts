@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ApiError } from "./api";
 import {
   afterListingGone,
+  oneAtATime,
   cheapestOffer,
   orderKeyFor,
   skinBuyFailure,
@@ -141,5 +142,38 @@ describe("afterListingGone", () => {
 
   it("selects nothing when none are left", () => {
     expect(afterListingGone([offers[0]!], 1, null).selected).toBeNull();
+  });
+});
+
+describe("oneAtATime", () => {
+  it("ignores a second tap while the first purchase is still running", async () => {
+    let calls = 0;
+    let finish: () => void = () => undefined;
+    const buy = oneAtATime(async () => {
+      calls += 1;
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const first = buy();
+    void buy();
+    finish();
+    await first;
+    expect(calls).toBe(1);
+    const again = buy();
+    finish();
+    await again;
+    expect(calls).toBe(2);
+  });
+
+  it("frees itself when the purchase fails", async () => {
+    let calls = 0;
+    const buy = oneAtATime(async () => {
+      calls += 1;
+      throw new Error("no");
+    });
+    await buy().catch(() => undefined);
+    await buy().catch(() => undefined);
+    expect(calls).toBe(2);
   });
 });

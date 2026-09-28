@@ -120,3 +120,21 @@ export function afterListingGone<T extends { listing_id: number; price_usd: stri
   const named = rest.find((o) => o.listing_id === next?.listing_id);
   return { offers: rest, selected: named ?? cheapestOffer(rest) };
 }
+
+/**
+ * A purchase that cannot run twice at once. The button's own `isPending` flips only once
+ * the checkout mutation starts, and the bot-permission prompt runs before it — a second
+ * tap in that gap would start a second payment intent.
+ */
+export function oneAtATime(run: () => Promise<void>): () => Promise<void> {
+  let running = false;
+  return async () => {
+    if (running) return;
+    running = true;
+    try {
+      await run();
+    } finally {
+      running = false;
+    }
+  };
+}
