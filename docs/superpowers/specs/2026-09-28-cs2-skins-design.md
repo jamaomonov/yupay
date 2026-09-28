@@ -240,6 +240,12 @@ pause); the owner accepted both in Steam.
   release. The first purchase looked otherwise only because the owner accepted within seconds.
   `send_until` at status 4 is +30 min (at 0 it is +5, at 2 +10); `check-many-steam?id=<trade_id>`
   answered 500.
+- **A declined offer** (third purchase, 5 units, the owner pressed «Отклонить» in Steam):
+  4 → **6 within about a minute**, `done: true`, `reason: "Buyer failed to accept"` on
+  `check-many-project-id` (`my-history` shows `reason: null`), `penalties: null`, and the
+  wallet back to the exact pre-purchase balance (5329 → 5329). So a buyer who declines is
+  refunded in full by Waxpeer with no penalty — our side refunds the customer on 6 as §6 says;
+  the reason text does not distinguish "declined" from "never accepted".
 - **Consequence for §6:** status 4 **with `release_date` set** → accepted → the order is
   delivered; the `skin_trades` row keeps «protected until `release_date`», and release (5) or a
   rollback (6 + `penalties`) closes it later, caught by the reconcile sweep and the daily history
