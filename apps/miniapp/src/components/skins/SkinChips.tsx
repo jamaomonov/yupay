@@ -1,10 +1,12 @@
 import { SKIN_CATEGORIES } from "@yupay/utils";
 import { useEffect, useRef } from "react";
 
-import type { SkinCategory, SkinFacets, SkinQuery, SkinQueryPatch } from "@yupay/utils";
+import type { SkinCategory, SkinQuery, SkinQueryPatch } from "@yupay/utils";
+import type { ScopedFacets } from "@/lib/skins-view";
 
 import { SkinCategoryIcon } from "@/components/skins/SkinCategoryIcon";
 import { useT } from "@/lib/i18n";
+import { visibleWeapons } from "@/lib/skins-view";
 import { haptic } from "@/lib/telegram";
 
 const SURFACE = { background: "hsl(var(--surface-2))", borderColor: "hsl(var(--border))" };
@@ -29,24 +31,23 @@ function useCentredActive(dep: string | undefined) {
  */
 export function SkinChips({
   query,
-  facets,
+  scoped,
   onChange,
 }: {
   query: SkinQuery;
-  facets: SkinFacets | undefined;
+  scoped: ScopedFacets | undefined;
   onChange: (patch: SkinQueryPatch) => void;
 }) {
+  const facets = scoped?.facets;
   const { t } = useT();
   const present = facets ? new Set(facets.categories.map((f) => f.value)) : null;
   const tiles: (SkinCategory | "all")[] = [
     "all",
     ...SKIN_CATEGORIES.filter((c) => present === null || present.has(c)),
   ];
-  const listed = query.category && facets ? facets.weapons.map((f) => f.value) : [];
-  const weapons =
-    query.weapon && !listed.includes(query.weapon) ? [query.weapon, ...listed] : listed;
+  const weapons = visibleWeapons(query, scoped);
   const tileRow = useCentredActive(query.category);
-  const weaponRow = useCentredActive(query.weapon);
+  const weaponRow = useCentredActive(`${query.weapon ?? ""}:${String(weapons.length)}`);
 
   return (
     <div className="space-y-2">

@@ -3,7 +3,7 @@ import { Search, SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 
-import type { SkinFacets, SkinItem, SkinQueryPatch, SkinSort } from "@yupay/utils";
+import type { SkinItem, SkinQueryPatch, SkinSort } from "@yupay/utils";
 
 import { SkinCard } from "@/components/skins/SkinCard";
 import { SkinChips } from "@/components/skins/SkinChips";
@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
 import { fetchSkinFacets, fetchSkinsPage } from "@/lib/skins";
 import { accumulateSkins } from "@/lib/skins-view";
+import type { ScopedFacets } from "@/lib/skins-view";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const PATH = "/cs2-market";
@@ -41,7 +42,8 @@ export default function CS2SkinMarket() {
   }, [search]);
   const key = skinQueryString(query);
 
-  const [facets, setFacets] = useState<SkinFacets | null | undefined>(undefined);
+  // `null`: the section is off. Facets carry the category they were counted for.
+  const [scoped, setScoped] = useState<ScopedFacets | null | undefined>(undefined);
   const [items, setItems] = useState<SkinItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [phase, setPhase] = useState<Phase>("loading");
@@ -61,12 +63,14 @@ export default function CS2SkinMarket() {
   // scoped to it). The first 404 means the section is off: `null` for good.
   useEffect(() => {
     let live = true;
-    fetchSkinFacets(query.category)
+    const category = query.category;
+    fetchSkinFacets(category)
       .then((f) => {
-        if (live) setFacets((prev) => (prev === null ? null : f));
+        if (!live) return;
+        setScoped((prev) => (prev === null || f === null ? null : { category, facets: f }));
       })
       .catch(() => {
-        if (live) setFacets(undefined); // tiles fall back to every category
+        if (live) setScoped(undefined); // tiles fall back to every category
       });
     return () => {
       live = false;
@@ -103,7 +107,9 @@ export default function CS2SkinMarket() {
     return () => clearTimeout(timer);
   }, [raw]); // eslint-disable-line react-hooks/exhaustive-deps -- debounce on typing only
 
-  if (facets === null) return <SkinsComingSoon />;
+  if (scoped === null) return <SkinsComingSoon />;
+  // The sheet's counts must describe the category on screen, not the last one.
+  const facets = scoped && scoped.category === query.category ? scoped.facets : undefined;
 
   return (
     <div className="yp-fade-in space-y-4 pb-2">
@@ -147,7 +153,7 @@ export default function CS2SkinMarket() {
             ))}
           </select>
         </div>
-        <SkinChips query={query} facets={facets} onChange={change} />
+        <SkinChips query={query} scoped={scoped} onChange={change} />
       </div>
 
       <div className="px-4">

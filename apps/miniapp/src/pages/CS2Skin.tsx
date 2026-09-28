@@ -167,7 +167,7 @@ export default function CS2Skin() {
       {worn && item.family.length > 1 && (
         <section>
           <h2 className="mb-2 text-[15px] font-bold text-white">{t("cs2.otherWears")}</h2>
-          <SkinWearRow family={item.family} current={item} />
+          <SkinWearRow family={item.family} current={item} currentPrice={price} />
         </section>
       )}
 

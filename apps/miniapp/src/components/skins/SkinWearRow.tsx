@@ -15,10 +15,20 @@ const SURFACE = { background: "hsl(var(--surface-2))", borderColor: "hsl(var(--b
  * tap replaces the route, so back still leaves for the catalogue. A wear with no
  * copies on sale stays visible, greyed.
  */
-export function SkinWearRow({ family, current }: { family: SkinFamilyMember[]; current: Current }) {
+export function SkinWearRow({
+  family,
+  current,
+  currentPrice,
+}: {
+  family: SkinFamilyMember[];
+  current: Current;
+  /** The headline price above — the current wear's chip must not show another one. */
+  currentPrice: string | null;
+}) {
   const { t } = useT();
   const c = wearChoices(family, current);
   const price = (slug: string | null) => {
+    if (slug === current.slug) return currentPrice;
     const m = family.find((f) => f.slug === slug);
     return m ? skinPriceText(m.price_uzs, m.price_usd) : null;
   };

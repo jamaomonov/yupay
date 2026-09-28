@@ -946,6 +946,7 @@
     "done": "Tayyor",
     "instantDelivery": "Tezkor yetkazib berish",
     "inStock": "Mavjud",
-    "pieces": "{count, number} dona"
+    "pieces": "{count, number} dona",
+    "close": "Yopish"
   }
 }

@@ -946,6 +946,7 @@
     "done": "Done",
     "instantDelivery": "Instant delivery",
     "inStock": "In stock",
-    "pieces": "{count, number} pcs"
+    "pieces": "{count, number} pcs",
+    "close": "Close"
   }
 }

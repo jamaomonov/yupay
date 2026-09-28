@@ -946,6 +946,7 @@
     "done": "Готово",
     "instantDelivery": "Мгновенная доставка",
     "inStock": "В наличии",
-    "pieces": "{count, number} шт."
+    "pieces": "{count, number} шт.",
+    "close": "Закрыть"
   }
 }
