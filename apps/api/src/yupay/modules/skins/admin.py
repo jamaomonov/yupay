@@ -25,6 +25,7 @@ from yupay.modules.admin.deps import require_admin
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.prices import bump_catalog_version
 from yupay.modules.skins.pricing import Channel, PricingRules, quote
+from yupay.modules.skins.repricing import reprice_rows
 from yupay.modules.skins.schemas import (
     SkinItemPricingIn,
     SkinQuoteOut,
@@ -75,6 +76,7 @@ async def admin_put_pricing(
         if cached is not None and cached.body is not None:
             return SkinsPricingOut.model_validate(cached.body)
     await save_rules(db, rules=body, admin_id=admin.id)
+    await reprice_rows(db, body)
     await db.commit()
     # Publish after the commit (the gifts/fx ordering), then expire every
     # cached catalogue page: the rules changed every price on the storefront.
@@ -157,6 +159,7 @@ async def admin_set_item_pricing(
     if "fixed_price_usd" in body.model_fields_set:
         item.fixed_price_usd = body.fixed_price_usd
     item.updated_at = now()
+    await reprice_rows(db, await load_rules(db), ids=[item.id])
     await db.commit()
     await bump_catalog_version(get_redis())
     out = SkinItemPricingIn(

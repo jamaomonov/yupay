@@ -32,6 +32,7 @@ from yupay.modules.skins.schemas import (
     FacetOut,
     SkinDetailOut,
     SkinFacetsOut,
+    SkinFamilyMemberOut,
     SkinItemOut,
     SkinListingOut,
     SkinListingsOut,
@@ -45,6 +46,7 @@ from yupay.modules.skins.service import (
     Sort,
     catalog_version,
     facets,
+    family,
     get_item,
     list_items,
     suggest,
@@ -85,26 +87,12 @@ def _units_to_usd(units: int | None) -> str | None:
 
 
 def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> SkinItemOut:
-    q = (
-        quote(
-            item.min_auto_units,
-            rules=rules,
-            category=item.category,
-            weapon=item.weapon,
-            count_auto=item.count_auto,
-            item_pp=item.margin_override_pp,
-            fixed_price_usd=item.fixed_price_usd,
-            steam_price_units=item.steam_price_units,
-        )
-        if item.min_auto_units is not None
-        else None
+    # Stored by ``repricing.reprice_rows`` from the same ``quote()``: the card
+    # shows the number every filter and sort reads.
+    price = item.sell_price_usd
+    discount = (
+        item.discount_percent if item.discount_percent and item.discount_percent > 0 else None
     )
-    price = None if q is None else q.price_usd
-    discount = None
-    if item.steam_price_units and price is not None:
-        steam = Decimal(item.steam_price_units) / Decimal(1000)
-        if steam > price:
-            discount = int(((steam - price) / steam * 100).quantize(Decimal("1")))
     return SkinItemOut(
         slug=item.slug,
         name=item.market_hash_name,
@@ -153,21 +141,28 @@ async def get_catalog(
     exterior: str | None = None,
     stattrak: bool | None = None,
     souvenir: bool | None = None,
-    min_usd: Annotated[Decimal | None, Query(ge=0)] = None,
-    max_usd: Annotated[Decimal | None, Query(ge=0)] = None,
+    rarity: Annotated[str | None, Query(max_length=64)] = None,
+    min_uzs: Annotated[Decimal | None, Query(ge=0, le=10**12)] = None,
+    max_uzs: Annotated[Decimal | None, Query(ge=0, le=10**12)] = None,
     q: Annotated[str | None, Query(max_length=80)] = None,
     sort: Sort = "price",
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 48,
 ) -> SkinsPageOut:
+    rate = await _uzs_rate(_fx())
+    # Bounds arrive in soʻm (what the customer typed) and compare with our
+    # USD sell price. Without a rate the bounds are dropped, not guessed.
+    min_usd = None if min_uzs is None or rate is None else min_uzs / rate
+    max_usd = None if max_uzs is None or rate is None else max_uzs / rate
     query = CatalogQuery(
         category=category,
         weapon=weapon,
         exterior=exterior,
         stattrak=stattrak,
         souvenir=souvenir,
-        min_units=None if min_usd is None else int(min_usd * 1000),
-        max_units=None if max_usd is None else int(max_usd * 1000),
+        rarity=rarity,
+        min_usd=min_usd,
+        max_usd=max_usd,
         q=q,
         sort=sort,
         cursor=cursor,
@@ -177,7 +172,6 @@ async def get_catalog(
 
     async def build() -> dict[str, Any]:
         rules = await load_rules(db)
-        rate = await _uzs_rate(_fx())
         items, next_cursor = await list_items(db, query, categories=categories)
         return SkinsPageOut(
             items=[_item_out(i, rules, rate) for i in items], next_cursor=next_cursor
@@ -196,6 +190,7 @@ async def get_facets(db: Annotated[AsyncSession, Depends(db_session)]) -> SkinFa
             categories=[FacetOut(value=v, count=c) for v, c in f.categories],
             weapons=[FacetOut(value=v, count=c) for v, c in f.weapons],
             exteriors=[FacetOut(value=v, count=c) for v, c in f.exteriors],
+            rarities=[FacetOut(value=v, count=c) for v, c in f.rarities],
         ).model_dump(mode="json")
 
     return SkinFacetsOut.model_validate(await _cached({"kind": "facets"}, build))
@@ -244,7 +239,19 @@ async def get_detail(slug: str, db: Annotated[AsyncSession, Depends(db_session)]
                 price_uzs=_to_uzs(usd, rate, rules),
             )
         )
-    return SkinDetailOut(**base.model_dump(), cheapest=cheapest)
+    members = [
+        SkinFamilyMemberOut(
+            slug=m.slug,
+            exterior=m.exterior,
+            stattrak=m.stattrak,
+            souvenir=m.souvenir,
+            price_usd=None if m.sell_price_usd is None else str(m.sell_price_usd),
+            price_uzs=_to_uzs(m.sell_price_usd, rate, rules),
+            count=m.count_auto,
+        )
+        for m in await family(db, item, categories=enabled_categories(get_settings()))
+    ]
+    return SkinDetailOut(**base.model_dump(), cheapest=cheapest, family=members)
 
 
 @router.get(

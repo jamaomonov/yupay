@@ -14622,6 +14622,13 @@
             ],
             "title": "Exterior"
           },
+          "family": {
+            "items": {
+              "$ref": "#/components/schemas/SkinFamilyMemberOut"
+            },
+            "title": "Family",
+            "type": "array"
+          },
           "image_url": {
             "anyOf": [
               {
@@ -14780,7 +14787,8 @@
           "count",
           "min_float",
           "max_float",
-          "cheapest"
+          "cheapest",
+          "family"
         ],
         "title": "SkinDetailOut",
         "type": "object"
@@ -14801,6 +14809,13 @@
             "title": "Exteriors",
             "type": "array"
           },
+          "rarities": {
+            "items": {
+              "$ref": "#/components/schemas/FacetOut"
+            },
+            "title": "Rarities",
+            "type": "array"
+          },
           "weapons": {
             "items": {
               "$ref": "#/components/schemas/FacetOut"
@@ -14812,9 +14827,75 @@
         "required": [
           "categories",
           "weapons",
-          "exteriors"
+          "exteriors",
+          "rarities"
         ],
         "title": "SkinFacetsOut",
+        "type": "object"
+      },
+      "SkinFamilyMemberOut": {
+        "description": "Another wear (or StatTrak/Souvenir twin) of the same skin.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "exterior": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Exterior"
+          },
+          "price_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Usd"
+          },
+          "price_uzs": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Price Uzs"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "souvenir": {
+            "title": "Souvenir",
+            "type": "boolean"
+          },
+          "stattrak": {
+            "title": "Stattrak",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "slug",
+          "exterior",
+          "stattrak",
+          "souvenir",
+          "price_usd",
+          "price_uzs",
+          "count"
+        ],
+        "title": "SkinFamilyMemberOut",
         "type": "object"
       },
       "SkinItemOut": {
@@ -35144,32 +35225,29 @@
           },
           {
             "in": "query",
-            "name": "min_usd",
+            "name": "rarity",
             "required": false,
             "schema": {
               "anyOf": [
                 {
-                  "minimum": 0.0,
-                  "type": "number"
-                },
-                {
-                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "maxLength": 64,
                   "type": "string"
                 },
                 {
                   "type": "null"
                 }
               ],
-              "title": "Min Usd"
+              "title": "Rarity"
             }
           },
           {
             "in": "query",
-            "name": "max_usd",
+            "name": "min_uzs",
             "required": false,
             "schema": {
               "anyOf": [
                 {
+                  "maximum": 1000000000000.0,
                   "minimum": 0.0,
                   "type": "number"
                 },
@@ -35181,7 +35259,29 @@
                   "type": "null"
                 }
               ],
-              "title": "Max Usd"
+              "title": "Min Uzs"
+            }
+          },
+          {
+            "in": "query",
+            "name": "max_uzs",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maximum": 1000000000000.0,
+                  "minimum": 0.0,
+                  "type": "number"
+                },
+                {
+                  "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Max Uzs"
             }
           },
           {

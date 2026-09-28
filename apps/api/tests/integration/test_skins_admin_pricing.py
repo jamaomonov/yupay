@@ -17,6 +17,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.core.ids import new_id
 from yupay.modules.skins.models import SkinItem
+from yupay.modules.skins.pricing import DEFAULT_RULES
+from yupay.modules.skins.repricing import reprice_rows
 from yupay.modules.users.models import TelegramLink, User
 
 pytestmark = pytest.mark.asyncio
@@ -86,6 +88,8 @@ async def ak(db_session: AsyncSession) -> SkinItem:
         cheapest_auto=[{"listing_id": 1, "price_units": 27867}],
     )
     db_session.add(row)
+    await db_session.commit()
+    await reprice_rows(db_session, DEFAULT_RULES)
     await db_session.commit()
     return row
 

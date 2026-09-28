@@ -12,11 +12,12 @@ import binascii
 import contextlib
 import json
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Any, Literal
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import Select, func, literal, or_, select, tuple_
+from sqlalchemy import Select, case, func, literal, or_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.errors import NotFoundError, ValidationError
@@ -35,8 +36,10 @@ class CatalogQuery:
     exterior: str | None = None
     stattrak: bool | None = None
     souvenir: bool | None = None
-    min_units: int | None = None
-    max_units: int | None = None
+    rarity: str | None = None
+    #: Bounds on our **sell** price (what the card shows), not on supplier cost.
+    min_usd: Decimal | None = None
+    max_usd: Decimal | None = None
     q: str | None = None
     sort: Sort = "price"
     cursor: str | None = None
@@ -48,23 +51,36 @@ class Facets:
     categories: list[tuple[str, int]]
     weapons: list[tuple[str, int]]
     exteriors: list[tuple[str, int]]
+    rarities: list[tuple[str, int]]
 
 
-def encode_cursor(value: int | None, item_id: str) -> str:
-    raw = json.dumps([value, item_id], separators=(",", ":")).encode()
+CursorValue = int | Decimal | None
+
+
+def encode_cursor(value: CursorValue, item_id: str) -> str:
+    # A Decimal travels as a string so no float ever touches a price.
+    wire = str(value) if isinstance(value, Decimal) else value
+    raw = json.dumps([wire, item_id], separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).decode().rstrip("=")
 
 
-def decode_cursor(token: str) -> tuple[int | None, str]:
+def decode_cursor(token: str) -> tuple[CursorValue, str]:
     """Inverse of :func:`encode_cursor`; anything else is a 422, not a 500."""
     try:
         padded = token + "=" * (-len(token) % 4)
         value, item_id = json.loads(base64.urlsafe_b64decode(padded).decode())
     except (binascii.Error, ValueError, UnicodeDecodeError, TypeError) as exc:
         raise ValidationError("invalid cursor") from exc
-    if (value is not None and not isinstance(value, int)) or not isinstance(item_id, str):
+    if not isinstance(item_id, str) or isinstance(value, bool):
         raise ValidationError("invalid cursor")
-    return value, item_id
+    if value is None or isinstance(value, int):
+        return value, item_id
+    if isinstance(value, str):
+        try:
+            return Decimal(value), item_id
+        except ArithmeticError as exc:
+            raise ValidationError("invalid cursor") from exc
+    raise ValidationError("invalid cursor")
 
 
 def _base(categories: list[str]) -> Select[tuple[SkinItem]]:
@@ -83,30 +99,34 @@ def _filtered(query: CatalogQuery, categories: list[str]) -> Select[tuple[SkinIt
         stmt = stmt.where(SkinItem.stattrak.is_(query.stattrak))
     if query.souvenir is not None:
         stmt = stmt.where(SkinItem.souvenir.is_(query.souvenir))
-    if query.min_units is not None:
-        stmt = stmt.where(SkinItem.min_auto_units >= query.min_units)
-    if query.max_units is not None:
-        stmt = stmt.where(SkinItem.min_auto_units <= query.max_units)
+    if query.rarity:
+        stmt = stmt.where(SkinItem.rarity == query.rarity)
+    if query.min_usd is not None:
+        stmt = stmt.where(SkinItem.sell_price_usd >= query.min_usd)
+    if query.max_usd is not None:
+        stmt = stmt.where(SkinItem.sell_price_usd <= query.max_usd)
     return stmt
 
 
-#: Integer percent, truncated toward zero — Postgres integer division. ``NULLIF``
-#: because a 0 Steam price is "unknown" (older rows may still carry one).
-_DISCOUNT = (
-    (SkinItem.steam_price_units - SkinItem.min_auto_units)
-    * 100
-    # ``//``: SQLAlchemy 2 renders ``/`` as NUMERIC true division (-2.5, not -2),
-    # and the cursor below carries the integer.
-    // func.nullif(SkinItem.steam_price_units, 0)
-)
+#: Stored by ``repricing.reprice_rows``; a row without a Steam price sorts last.
+_NO_DISCOUNT = -1000
 
 
 def _sort_column(sort: Sort) -> Any:
     if sort == "discount":
-        return func.coalesce(_DISCOUNT, 0)
+        return func.coalesce(SkinItem.discount_percent, _NO_DISCOUNT)
     if sort == "popular":
         return SkinItem.count_auto
-    return SkinItem.min_auto_units
+    return SkinItem.sell_price_usd
+
+
+def _sort_value(item: SkinItem, sort: Sort) -> CursorValue:
+    """The row's own stored sort value — exactly what the SQL ordered by."""
+    if sort == "discount":
+        return item.discount_percent if item.discount_percent is not None else _NO_DISCOUNT
+    if sort == "popular":
+        return item.count_auto
+    return item.sell_price_usd
 
 
 async def expand_aliases(db: AsyncSession, q: str) -> str:
@@ -138,8 +158,9 @@ async def list_items(
         similarity = func.similarity(SkinItem.search_text, needle)
         stmt = stmt.where(
             or_(similarity > _SIMILARITY_FLOOR, SkinItem.search_text.ilike(f"%{needle}%"))
-        ).order_by(similarity.desc(), SkinItem.min_auto_units.asc(), SkinItem.id)
-        offset = decode_cursor(query.cursor)[0] or 0 if query.cursor else 0
+        ).order_by(similarity.desc(), SkinItem.sell_price_usd.asc(), SkinItem.id)
+        raw = decode_cursor(query.cursor)[0] if query.cursor else 0
+        offset = max(0, raw) if isinstance(raw, int) else 0
         rows = list((await db.execute(stmt.offset(offset).limit(limit + 1))).scalars())
         more = len(rows) > limit
         return rows[:limit], encode_cursor(offset + limit, "") if more else None
@@ -161,26 +182,8 @@ async def list_items(
     if not more or not page:
         return page, None
     last = page[-1]
-    last_value = (
-        last.count_auto
-        if query.sort == "popular"
-        else (int(_discount_of(last)) if query.sort == "discount" else last.min_auto_units)
-    )
+    last_value = _sort_value(last, query.sort)
     return page, encode_cursor(last_value, last.id)
-
-
-def _discount_of(item: SkinItem) -> int:
-    """The same number :data:`_DISCOUNT` computes in SQL, so a cursor resumes exactly.
-
-    Python's ``//`` floors, Postgres truncates toward zero; for the negative
-    discounts that are a third of the real catalogue the two differ by one,
-    and a cursor built with ``//`` skipped every remaining row at that value.
-    """
-    if not item.steam_price_units or item.min_auto_units is None:
-        return 0
-    numerator = (item.steam_price_units - item.min_auto_units) * 100
-    quotient = abs(numerator) // item.steam_price_units
-    return quotient if numerator >= 0 else -quotient
 
 
 async def facets(db: AsyncSession, *, categories: list[str]) -> Facets:
@@ -201,6 +204,7 @@ async def facets(db: AsyncSession, *, categories: list[str]) -> Facets:
         categories=await count_by(SkinItem.category),
         weapons=await count_by(SkinItem.weapon),
         exteriors=await count_by(SkinItem.exterior),
+        rarities=await count_by(SkinItem.rarity),
     )
 
 
@@ -232,6 +236,32 @@ async def get_item(db: AsyncSession, slug: str, *, categories: list[str]) -> Ski
     return row
 
 
+_WEAR_ORDER = case(
+    (SkinItem.exterior == "FN", 0),
+    (SkinItem.exterior == "MW", 1),
+    (SkinItem.exterior == "FT", 2),
+    (SkinItem.exterior == "WW", 3),
+    (SkinItem.exterior == "BS", 4),
+    else_=5,
+)
+
+
+async def family(db: AsyncSession, item: SkinItem, *, categories: list[str]) -> list[SkinItem]:
+    """Every wear (and StatTrak/Souvenir twin) of the same skin, sold out included."""
+    stmt = (
+        select(SkinItem)
+        .where(
+            SkinItem.category.in_(categories),
+            SkinItem.category == item.category,
+            SkinItem.weapon.is_not_distinct_from(item.weapon),
+            SkinItem.skin.is_not_distinct_from(item.skin),
+            SkinItem.phase == item.phase,
+        )
+        .order_by(_WEAR_ORDER, SkinItem.stattrak, SkinItem.souvenir, SkinItem.id)
+    )
+    return list((await db.execute(stmt)).scalars())
+
+
 async def catalog_version(redis: Redis) -> int:
     with contextlib.suppress(RedisError, ValueError, TypeError):
         raw = await redis.get(CATALOG_VERSION_KEY)
@@ -248,6 +278,7 @@ __all__ = [
     "encode_cursor",
     "expand_aliases",
     "facets",
+    "family",
     "get_item",
     "list_items",
     "suggest",

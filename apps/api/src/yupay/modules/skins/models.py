@@ -87,6 +87,13 @@ class SkinItem(Base):
     #: A pinned sell price. Honoured only while it covers cost + min margin.
     fixed_price_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
 
+    # ---- derived, written by ``repricing.reprice_rows`` (never by hand) ----
+    #: Our sell price for the cheapest auto listing — what the card shows and
+    #: what every price filter and sort reads. NULL while inactive.
+    sell_price_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    #: Whole percent below Steam, truncated toward zero; NULL without a Steam price.
+    discount_percent: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

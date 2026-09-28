@@ -19,6 +19,8 @@ from yupay.modules.fx.quote_settings import ManualOverride
 from yupay.modules.skins.bymykel import dedupe, rows_from_file, rows_from_skins, upsert_items
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.prices import aggregate, apply_prices, sync_prices
+from yupay.modules.skins.pricing import DEFAULT_RULES
+from yupay.modules.skins.repricing import reprice_rows
 
 pytestmark = pytest.mark.asyncio
 
@@ -180,7 +182,9 @@ async def test_discount_sort_survives_zero_steam_and_pages_negatives(
     await _fx()
     db_session.add(_row(0, steam=0, cost=5000))
     for i in range(1, 6):
-        db_session.add(_row(i, steam=1000, cost=1025))  # -2.5 % -> SQL truncates to -2
+        db_session.add(_row(i, steam=1000, cost=1025))  # negative discounts after margin
+    await db_session.commit()
+    await reprice_rows(db_session, DEFAULT_RULES)
     await db_session.commit()
     seen: list[str] = []
     cursor: str | None = None

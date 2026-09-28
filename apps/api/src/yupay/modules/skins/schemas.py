@@ -46,6 +46,7 @@ class SkinFacetsOut(BaseModel):
     categories: list[FacetOut]
     weapons: list[FacetOut]
     exteriors: list[FacetOut]
+    rarities: list[FacetOut]
 
 
 class SkinSuggestOut(BaseModel):
@@ -58,8 +59,21 @@ class SkinListingSummaryOut(BaseModel):
     price_uzs: str | None
 
 
+class SkinFamilyMemberOut(BaseModel):
+    """Another wear (or StatTrak/Souvenir twin) of the same skin."""
+
+    slug: str
+    exterior: str | None
+    stattrak: bool
+    souvenir: bool
+    price_usd: str | None
+    price_uzs: str | None
+    count: int
+
+
 class SkinDetailOut(SkinItemOut):
     cheapest: list[SkinListingSummaryOut]
+    family: list[SkinFamilyMemberOut]
 
 
 class SkinsPricingOut(BaseModel):

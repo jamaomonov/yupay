@@ -16,6 +16,8 @@ from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.quote_settings import ManualOverride
 from yupay.modules.skins.models import SkinItem, SkinSearchAlias
 from yupay.modules.skins.naming import search_text, slug_for
+from yupay.modules.skins.pricing import DEFAULT_RULES
+from yupay.modules.skins.repricing import reprice_rows
 
 pytestmark = pytest.mark.asyncio
 _UZS_RATE = Decimal("12700")
@@ -103,6 +105,8 @@ async def seeded(db_session: AsyncSession) -> None:
         ]
     )
     await db_session.commit()
+    await reprice_rows(db_session, DEFAULT_RULES)
+    await db_session.commit()
 
 
 async def test_routes_404_while_disabled(
@@ -127,7 +131,7 @@ async def test_catalog_prices_and_hides_sold_out_and_hidden_categories(
     # brackets 1.80069 + (3 % expenses - 0.5 pp for 49 listings) × 27.867 = 2.4974 -> 30.37
     assert ak["price_usd"] == "30.37"
     assert ak["price_uzs"] == _uzs("30.37")
-    assert ak["discount_percent"] == 31
+    assert ak["discount_percent"] == 30  # stored, truncated: (43.794 - 30.37) / 43.794 = 30.65 %
     assert ak["count"] == 49
     assert names[0] == "Glock-18 | Water Elemental (Field-Tested)"  # cheapest first
 

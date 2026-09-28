@@ -29,6 +29,8 @@ from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.suppliers.waxpeer_client import SnapshotRow, WaxpeerClient
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.naming import canonical_name, parse_market_name, search_text, slug_for
+from yupay.modules.skins.repricing import reprice_rows
+from yupay.modules.skins.settings import load_rules
 from yupay.modules.skins.slugs import resolve
 from yupay.modules.skins.taxonomy import category_for_waxpeer_type
 
@@ -276,6 +278,7 @@ async def sync_prices(
             )
             return ApplyResult(changed=0, deactivated=0, stubs=0)
         result = await apply_prices(db, aggregates, meta=meta, at=now())
+        await reprice_rows(db, await load_rules(db))
         await db.commit()
     await bump_catalog_version(redis)
     log.info(
