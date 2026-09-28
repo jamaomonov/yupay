@@ -1,5 +1,6 @@
 "use client";
 
+import { steamImageSize, wearColor } from "@yupay/utils";
 import { Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -10,7 +11,7 @@ import type { SkinItem, SkinQuery } from "@/lib/skins";
 
 import { apiFetch } from "@/lib/client";
 import { pathFor } from "@/lib/seo";
-import { skinQueryString } from "@/lib/skins";
+import { displayPrice, skinQueryString } from "@/lib/skins";
 
 const DEBOUNCE_MS = 250;
 
@@ -95,10 +96,47 @@ export function SkinSearch({
             <li key={i.slug}>
               <Link
                 href={pathFor(locale, `/skins/${i.slug}`)}
-                className="hover:bg-muted flex items-center justify-between gap-3 px-3 py-2 text-[13px]"
+                className="hover:bg-muted flex items-center gap-3 px-3 py-2"
               >
-                <span className="truncate">{i.name}</span>
-                {i.phase && <span className="text-tx-dim shrink-0">{i.phase}</span>}
+                {i.image_url ? (
+                  // A Steam CDN thumbnail: next/image adds nothing at this size.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={steamImageSize(i.image_url, "128fx96f")}
+                    alt=""
+                    width={48}
+                    height={36}
+                    loading="lazy"
+                    className="h-9 w-12 shrink-0 object-contain"
+                  />
+                ) : (
+                  <span className="bg-muted h-9 w-12 shrink-0 rounded" aria-hidden />
+                )}
+                <span className="min-w-0 flex-1 leading-tight">
+                  <span className="text-tx-dim block truncate text-[12px]">
+                    {i.stattrak && <span className="text-orange-400">StatTrak™ </span>}
+                    {i.souvenir && <span className="text-yellow-400">Souvenir </span>}
+                    {i.weapon}
+                    {i.exterior && (
+                      <>
+                        {" · "}
+                        <span
+                          className="font-bold"
+                          style={{ color: wearColor(i.exterior) ?? undefined }}
+                        >
+                          {i.exterior}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                  <span className="block truncate text-[14px] font-semibold">
+                    {i.skin ?? i.name}
+                    {i.phase && <span className="text-tx-mute"> · {i.phase}</span>}
+                  </span>
+                </span>
+                <span className="shrink-0 whitespace-nowrap text-[13px] font-bold tabular-nums">
+                  {displayPrice(locale, i.price_uzs, i.price_usd) ?? t("soldOut")}
+                </span>
               </Link>
             </li>
           ))}
