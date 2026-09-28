@@ -26,6 +26,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from yupay.api.v1 import router as v1_router
+from yupay.core.cache_headers import NoStoreByDefault
 from yupay.core.client_ip import client_ip as _client_ip
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import dispose_engine
@@ -343,6 +344,10 @@ def create_app() -> FastAPI:
             allow_headers=["*"],
             expose_headers=exposed,
         )
+
+    # Outermost of all, so the limiter's 429 and CORS preflights carry it too:
+    # nothing the API answers is cacheable unless a route says so itself.
+    app.add_middleware(NoStoreByDefault)
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
     # Scoped, not app-wide: problem+json under the machine API's prefix and

@@ -85,6 +85,12 @@ afterEach(() => {
 });
 
 describe("apiFetch", () => {
+  it("never reads a stored copy — orders and offers change by the second", async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }));
+    await apiFetch("/orders/o1");
+    expect(fetchMock.mock.calls[0]![1]?.cache).toBe("no-store");
+  });
+
   it("attaches the stored access token as a Bearer header", async () => {
     setTokens("acc-1");
     fetchMock.mockResolvedValueOnce(jsonResponse(200, { ok: true }));

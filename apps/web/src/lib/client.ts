@@ -188,6 +188,9 @@ export async function apiFetch<T>(path: string, opts: ReqOpts = {}): Promise<T> 
     // Send the auth cookie so login/refresh can set/rotate the HttpOnly refresh
     // token and logout can clear it. Harmless on other calls (server ignores it).
     credentials: "include",
+    // Everything this client reads is live and per-user (orders, trades,
+    // offers, balances): never serve it from the HTTP cache.
+    cache: "no-store",
     // exactOptionalPropertyTypes: `body` must be BodyInit | null, not undefined
     ...(opts.body !== undefined && { body: JSON.stringify(opts.body) }),
     ...(opts.signal !== undefined && { signal: opts.signal }),

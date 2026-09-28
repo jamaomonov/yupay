@@ -135,7 +135,8 @@ export async function api<T = unknown>(path: string, options: RequestOptions = {
     if (idempotencyKey) h.set("Idempotency-Key", idempotencyKey);
     // Send the auth cookie so telegram-login/refresh can set/rotate the HttpOnly
     // refresh token and logout can clear it. Harmless on other calls.
-    return fetch(url, { ...init, headers: h, credentials: "include" });
+    // Orders, trades, offers and balances are live: never from the HTTP cache.
+    return fetch(url, { ...init, headers: h, credentials: "include", cache: "no-store" });
   };
 
   let response = await send(anonymous ? null : getAccessToken());

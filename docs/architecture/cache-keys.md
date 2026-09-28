@@ -57,3 +57,12 @@
 - Numeric TTLs are explicit in seconds inside the codebase (no implicit "forever" keys).
 - Multi-key writes that must succeed atomically use Lua scripts; the script source lives under
   `apps/api/src/yupay/modules/<module>/scripts/`.
+
+## HTTP caching (browsers, Cloudflare)
+
+The API answers every response with `Cache-Control: no-store` unless a route sets its own
+policy (`core/cache_headers.NoStoreByDefault`, outermost middleware, so 429s carry it too).
+No route opts in today. Orders, trade progress, live offers and balances change by the
+second; a stored copy anywhere between us and the customer is a wrong answer. The web and
+mini-app clients also fetch with `cache: "no-store"`. The web's server-side catalogue reads
+use Next's fetch cache on purpose (ISR, 60–300 s) — they never read per-user or live data.

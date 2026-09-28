@@ -1,6 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchSkinDetail, fetchSkinFacets, skinPriceText, skinsApiParams } from "./skins";
+import {
+  fetchSkinDetail,
+  fetchSkinFacets,
+  fetchSkinListings,
+  skinPriceText,
+  skinsApiParams,
+} from "./skins";
 
 function answer(status: number, body: unknown = {}): void {
   vi.stubGlobal(
@@ -50,5 +56,12 @@ describe("fetchers", () => {
     await fetchSkinFacets("rifles");
     const url = vi.mocked(fetch).mock.calls[0]?.[0] as string; // api() passes a string URL
     expect(url).toContain("/api/v1/skins/facets?category=rifles");
+  });
+
+  it("never reads a stored copy of live data", async () => {
+    answer(200, { items: [], degraded: false });
+    await fetchSkinListings("x");
+    const [, init] = vi.mocked(fetch).mock.calls[0] ?? [];
+    expect(init?.cache).toBe("no-store");
   });
 });
