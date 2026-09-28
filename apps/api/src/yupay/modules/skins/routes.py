@@ -264,7 +264,7 @@ async def get_listings(
     client = WaxpeerClient(
         api_key=settings.waxpeer_api_key,
         base_url=settings.waxpeer_base_url,
-        timeout_seconds=settings.waxpeer_request_timeout_seconds,
+        timeout_seconds=settings.cs2_skins_listings_timeout_seconds,
     )
     rows, degraded = await listings_for(
         item,

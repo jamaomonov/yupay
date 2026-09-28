@@ -40,6 +40,21 @@ docker compose -f docker-compose.prod.yml exec scheduler \
   python -c "import asyncio; from yupay_scheduler.jobs.skins_catalog_import import run_skins_catalog_import as r; asyncio.run(r())"
 ```
 
+Two kinds of stub the import never fills:
+
+- **Doppler without a phase** (`★ Karambit | Doppler (Factory New)`, ~108 names): the
+  phase decides the price and ByMykel only has phased rows. These stay `active = false` on
+  purpose (`prices._phase_unknown`).
+- **Sticker Slabs** (~430 names): ByMykel does not carry them; they sit in a category the
+  storefront does not show.
+
+## The sync refused a tick
+
+`skins.prices.refused names=… active_before=…` — the snapshot named fewer than half the
+items that are currently live (a truncated or empty body). Nothing was written; the next
+tick tries again. Repeated refusals mean Waxpeer's snapshot is broken — check it by hand
+before anything else.
+
 ## The item page says `degraded`
 
 The listings read answered from a stale cache or the snapshot instead of live Waxpeer:

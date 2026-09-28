@@ -100,3 +100,29 @@ async def test_search_listings_429_is_rate_limited() -> None:
     with pytest.raises(WaxpeerRateLimitedError) as exc:
         await _client().search_listings(["x"])
     assert exc.value.retry_after_ms == 2500
+
+
+@respx.mock
+async def test_snapshot_without_required_columns_raises_once() -> None:
+    respx.get(f"{HOST}/v1/prices/snapshot").mock(
+        return_value=httpx.Response(200, text='item_id,name,price_units,auto\n1,"A",100,true\n')
+    )
+    with pytest.raises(WaxpeerError, match="columns"):
+        _ = [row async for row in _client().iter_snapshot_rows()]
+
+
+@respx.mock
+async def test_snapshot_rows_with_an_unknown_price_are_skipped() -> None:
+    body = 'item_id,name,price,auto,inspect\n1,"A",,true,x\n2,"A",000000000000,true,x\n3,"A",000000000500,true,x\n'
+    respx.get(f"{HOST}/v1/prices/snapshot").mock(return_value=httpx.Response(200, text=body))
+    rows = [row async for row in _client().iter_snapshot_rows()]
+    assert [(r.item_id, r.price_units) for r in rows] == [(3, 500)]
+
+
+@respx.mock
+async def test_search_listings_html_body_is_a_waxpeer_error() -> None:
+    respx.get(f"{HOST}/v2/search-items-by-name").mock(
+        return_value=httpx.Response(200, text="<html>Just a moment...</html>")
+    )
+    with pytest.raises(WaxpeerError):
+        await _client().search_listings(["x"])

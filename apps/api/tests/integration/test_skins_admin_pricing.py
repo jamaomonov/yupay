@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import time
+from decimal import Decimal
 from urllib.parse import urlencode
 
 import pytest
@@ -154,3 +155,42 @@ async def test_item_override_pins_a_price_while_it_covers_cost(
     assert (await integration_client.get(f"/api/v1/skins/{ak.slug}")).json()["price_usd"] == "30.37"
     r = await integration_client.patch("/api/v1/admin/skins/items/nope", json={}, headers=headers)
     assert r.status_code == 404
+
+
+async def test_item_patch_changes_only_the_fields_sent_and_replays(
+    integration_client: AsyncClient, headers: dict[str, str], ak: SkinItem
+) -> None:
+    url = f"/api/v1/admin/skins/items/{ak.slug}"
+    await integration_client.patch(url, json={"fixed_price_usd": "35.00"}, headers=headers)
+    r = await integration_client.patch(url, json={"margin_override_pp": "5"}, headers=headers)
+    body = r.json()
+    assert Decimal(body["margin_override_pp"]) == Decimal(5)
+    assert Decimal(body["fixed_price_usd"]) == Decimal("35.00")  # not cleared by omission
+    keyed = {**headers, "Idempotency-Key": "skins-patch-0000000000000001"}
+    first = await integration_client.patch(url, json={"fixed_price_usd": None}, headers=keyed)
+    await integration_client.patch(url, json={"fixed_price_usd": "40.00"}, headers=headers)
+    replay = await integration_client.patch(url, json={"fixed_price_usd": None}, headers=keyed)
+    assert replay.json() == first.json()
+
+
+async def test_listings_call_uses_the_short_timeout(
+    integration_client: AsyncClient, ak: SkinItem, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.modules.skins import routes
+
+    seen: dict[str, float] = {}
+
+    class _Spy:
+        def __init__(self, **kwargs: object) -> None:
+            seen["timeout"] = float(kwargs["timeout_seconds"])  # type: ignore[arg-type]
+
+        async def search_listings(
+            self, names: list[str], *, game: str = "csgo"
+        ) -> dict[str, object]:
+            return {}
+
+    monkeypatch.setenv("WAXPEER_API_KEY", "k")
+    cfg.get_settings.cache_clear()
+    monkeypatch.setattr(routes, "WaxpeerClient", _Spy)
+    await integration_client.get(f"/api/v1/skins/{ak.slug}/listings")
+    assert seen["timeout"] == 4.0

@@ -6,9 +6,10 @@ metadata columns are written here — the Waxpeer side of a row belongs to
 ``skins.prices`` and is never touched by an import, so a re-import can run
 at any time without disturbing prices.
 
-Fetching is streamed to disk-free memory per file (the largest file is
-37 MB of JSON); the parse is one file at a time and rows are flushed in
-batches of 1 000.
+Each file is read whole and parsed in memory, one file at a time (the
+largest is 37 MB of JSON, ~200 MB resident while parsed), and rows are
+flushed in batches of 1 000. Streaming JSON would need a new dependency;
+see the final-review ruling on the plan ledger.
 """
 
 from __future__ import annotations
@@ -28,6 +29,7 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.naming import ParsedName, parse_market_name, search_text, slug_for
+from yupay.modules.skins.slugs import existing_slugs, resolve
 from yupay.modules.skins.taxonomy import FILE_CATEGORIES, category_for_file, category_for_skin
 
 log = get_logger("yupay.skins.bymykel")
@@ -150,7 +152,8 @@ def rows_from_file(file_key: str, entries: list[dict[str, Any]]) -> list[Catalog
 
 
 def dedupe(rows: Iterable[CatalogRow]) -> list[CatalogRow]:
-    """First row per ``(market_hash_name, phase)`` wins; slugs are unique by construction."""
+    """First row per ``(market_hash_name, phase)`` wins. Slugs are made unique on write
+    (``skins.slugs``), not here: two names can fold to one slug."""
     seen: set[tuple[str, str]] = set()
     kept: list[CatalogRow] = []
     for row in rows:
@@ -170,8 +173,8 @@ async def fetch_file(http: httpx.AsyncClient, base_url: str, file_key: str) -> l
     return body if isinstance(body, list) else []
 
 
+#: ``slug`` is not here: it is assigned on insert and never rewritten (a URL).
 _METADATA_COLUMNS: tuple[str, ...] = (
-    "slug",
     "category",
     "weapon",
     "skin",
@@ -203,8 +206,10 @@ async def upsert_items(db: AsyncSession, rows: Iterable[CatalogRow]) -> int:
         if not batch:
             return
         stmt = pg_insert(SkinItem).values(batch)
+        # IS DISTINCT FROM, not !=: a value appearing where NULL was is a change.
         changed = [
-            getattr(stmt.excluded, col) != getattr(SkinItem, col) for col in _METADATA_COLUMNS
+            getattr(stmt.excluded, col).is_distinct_from(getattr(SkinItem, col))
+            for col in _METADATA_COLUMNS
         ]
         stmt = stmt.on_conflict_do_update(
             constraint="uq_skin_items_name_phase",
@@ -220,8 +225,14 @@ async def upsert_items(db: AsyncSession, rows: Iterable[CatalogRow]) -> int:
         written += int(getattr(result, "rowcount", 0) or 0)
         batch.clear()
 
+    rows = list(rows)
+    slugs = resolve(
+        (((row.market_hash_name, row.phase), row.slug) for row in rows), await existing_slugs(db)
+    )
     for row in rows:
-        batch.append({"id": new_id(), "source": "bymykel", **asdict(row)})
+        values = asdict(row)
+        values["slug"] = slugs[(row.market_hash_name, row.phase)]
+        batch.append({"id": new_id(), "source": "bymykel", **values})
         if len(batch) >= _BATCH:
             await flush()
     await flush()

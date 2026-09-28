@@ -139,18 +139,32 @@ async def admin_set_item_pricing(
     body: SkinItemPricingIn,
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
 ) -> SkinItemPricingIn:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = f"skins.set_item_pricing:{slug}"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None and cached.body is not None:
+            return SkinItemPricingIn.model_validate(cached.body)
     item = (await db.execute(select(SkinItem).where(SkinItem.slug == slug))).scalar_one_or_none()
     if item is None:
         raise NotFoundError("skin not found")
-    item.margin_override_pp = body.margin_override_pp
-    item.fixed_price_usd = body.fixed_price_usd
+    # A PATCH: only what was sent changes. ``null`` clears a field; an omitted
+    # one keeps its value (a margin change must not unpin a price).
+    if "margin_override_pp" in body.model_fields_set:
+        item.margin_override_pp = body.margin_override_pp
+    if "fixed_price_usd" in body.model_fields_set:
+        item.fixed_price_usd = body.fixed_price_usd
     item.updated_at = now()
     await db.commit()
     await bump_catalog_version(get_redis())
-    return SkinItemPricingIn(
+    out = SkinItemPricingIn(
         margin_override_pp=item.margin_override_pp, fixed_price_usd=item.fixed_price_usd
     )
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
 
 
 __all__ = ["admin_router"]

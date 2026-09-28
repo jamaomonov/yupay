@@ -851,6 +851,9 @@ class Settings(BaseSettings):
     # listings proxy keeps a process-wide budget under it and degrades to
     # snapshot data when the budget is spent.
     cs2_skins_listings_bucket_per_minute: int = Field(default=18)
+    # Short on purpose (AGENTS.md §10 carve-out): a slow Waxpeer must not pin
+    # a request — and its pool connection — for the 20 s top-up timeout.
+    cs2_skins_listings_timeout_seconds: float = Field(default=4.0)
     bymykel_base_url: str = Field(
         default="https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en"
     )

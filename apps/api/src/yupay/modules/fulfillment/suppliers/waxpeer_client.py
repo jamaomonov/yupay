@@ -56,6 +56,10 @@ class WaxpeerUnavailableError(Exception):
     """Waxpeer could not be reached at all (network error, timeout, DNS)."""
 
 
+#: Columns the snapshot parser reads by name; any missing one fails the tick.
+_SNAPSHOT_COLUMNS = frozenset({"item_id", "name", "price", "auto"})
+
+
 class WaxpeerRateLimitedError(WaxpeerError):
     """HTTP 429. ``retry_after_ms`` is Waxpeer's own hint when it gave one."""
 
@@ -254,23 +258,40 @@ class WaxpeerClient:
                     await resp.aread()
                     raise WaxpeerError(resp.text[:200], status=resp.status_code, body=resp.text)
                 header: list[str] | None = None
+                bad_rows = 0
                 async for line in resp.aiter_lines():
                     if not line:
                         continue
                     cells = next(csv.reader([line]))
                     if header is None:
                         header = cells
+                        missing = _SNAPSHOT_COLUMNS.difference(header)
+                        if missing:
+                            # Once, loudly — not 1.19 M bad-row warnings per tick.
+                            raise WaxpeerError(
+                                f"snapshot columns missing: {sorted(missing)}", body=line[:200]
+                            )
                         continue
                     row = dict(zip(header, cells, strict=False))
                     try:
-                        yield SnapshotRow(
-                            item_id=int(row["item_id"]),
-                            name=row["name"],
-                            price_units=int(row["price"] or 0),
-                            auto=row.get("auto") == "true",
-                        )
+                        price = int(row["price"]) if row["price"] else 0
+                        item_id = int(row["item_id"])
                     except (KeyError, ValueError):
-                        log.warning("waxpeer.snapshot.bad_row", line=line[:120])
+                        bad_rows += 1
+                        continue
+                    if price <= 0:
+                        # Waxpeer writes an unknown value as an empty cell; a
+                        # listing priced 0 would sell a knife at the floor.
+                        bad_rows += 1
+                        continue
+                    yield SnapshotRow(
+                        item_id=item_id,
+                        name=row["name"],
+                        price_units=price,
+                        auto=row.get("auto") == "true",
+                    )
+                if bad_rows:
+                    log.warning("waxpeer.snapshot.bad_rows", count=bad_rows)
         except httpx.HTTPError as exc:
             raise WaxpeerUnavailableError(transport_error_text(exc)) from exc
 
@@ -325,7 +346,11 @@ class WaxpeerClient:
             )
         if resp.status_code >= 400:
             raise WaxpeerError(resp.text[:200], status=resp.status_code, body=resp.text)
-        payload = resp.json()
+        try:
+            payload = resp.json()
+        except ValueError as exc:
+            # An HTML challenge page on a 200 is a refusal, not a crash.
+            raise WaxpeerError("search returned a non-JSON body", body=resp.text[:200]) from exc
         items = payload.get("items") if isinstance(payload, dict) else None
         return items if isinstance(items, dict) else {}
 

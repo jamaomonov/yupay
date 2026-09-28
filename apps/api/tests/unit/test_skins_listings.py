@@ -100,3 +100,41 @@ async def test_outage_without_stale_is_snapshot_fallback(
     listings, degraded = await listings_for(_item(), client=down, redis=redis, budget_per_minute=18)
     assert degraded is True
     assert [x.listing_id for x in listings] == [53857957789]
+
+
+class _Weird:
+    def __init__(self, payload: Any = None, fail: Exception | None = None) -> None:
+        self.payload = payload
+        self.fail = fail
+
+    async def search_listings(self, names: list[str], *, game: str = "csgo") -> dict[str, Any]:
+        if self.fail:
+            raise self.fail
+        return self.payload  # type: ignore[no-any-return]
+
+
+async def test_any_client_error_degrades_instead_of_raising(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    for client in (_Weird(fail=ValueError("Expecting value")), _Weird(payload={NAME: None})):
+        listings, degraded = await listings_for(
+            _item(), client=client, redis=redis, budget_per_minute=18
+        )
+        assert degraded is (client.fail is not None)
+        assert [x.listing_id for x in listings] == ([53857957789] if client.fail else [])
+        await redis.flushdb()
+
+
+async def test_odd_sticker_fields_are_dropped_not_fatal(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    raw = {
+        "item_id": 1,
+        "price": 1000,
+        "auto": True,
+        "stickers": [{"name": "S", "slot": "top", "wear": "x", "image": 5}, {"name": 7}],
+    }
+    listings, _ = await listings_for(
+        _item(), client=_Weird(payload={NAME: [raw]}), redis=redis, budget_per_minute=18
+    )
+    assert listings[0].stickers == [{"name": "S", "image": None, "slot": None, "wear": None}]

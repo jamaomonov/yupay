@@ -53,6 +53,22 @@ class Listing:
     delivery: str | None
 
 
+def _sticker(raw: dict[str, Any]) -> dict[str, Any] | None:
+    """Keep only well-typed fields; an odd one is dropped, never a 500."""
+    name = raw.get("name")
+    if not isinstance(name, str) or not name:
+        return None
+    image, slot, wear = raw.get("image"), raw.get("slot"), raw.get("wear")
+    return {
+        "name": name,
+        "image": image if isinstance(image, str) else None,
+        "slot": slot if isinstance(slot, int) and not isinstance(slot, bool) else None,
+        "wear": float(wear)
+        if isinstance(wear, int | float) and not isinstance(wear, bool)
+        else None,
+    }
+
+
 def _parse(raw: dict[str, Any]) -> Listing | None:
     try:
         listing_id = int(raw["item_id"])
@@ -62,9 +78,9 @@ def _parse(raw: dict[str, Any]) -> Listing | None:
     float_value = raw.get("float")
     seed = raw.get("paintseed")
     stickers = [
-        {k: s.get(k) for k in ("name", "image", "slot", "wear")}
+        sticker
         for s in raw.get("stickers") or []
-        if isinstance(s, dict) and s.get("name")
+        if isinstance(s, dict) and (sticker := _sticker(s)) is not None
     ]
     return Listing(
         listing_id=listing_id,
@@ -135,11 +151,16 @@ async def listings_for(
                 await redis.set("skins:wax:breaker", "1", ex=BREAKER_TTL)
         except WaxpeerError as exc:
             log.warning("skins.listings.refused", slug=item.slug, error=str(exc)[:120])
+        except Exception as exc:  # noqa: BLE001 -- an item page must render whatever Waxpeer does
+            log.warning("skins.listings.unexpected", slug=item.slug, error=str(exc)[:120])
         else:
+            listed = found.get(name) if isinstance(found, dict) else None
             rows = [
                 listing
-                for raw in found.get(name, [])
-                if raw.get("auto") is True and (listing := _parse(raw)) is not None
+                for raw in (listed if isinstance(listed, list) else [])
+                if isinstance(raw, dict)
+                and raw.get("auto") is True
+                and (listing := _parse(raw)) is not None
             ]
             rows.sort(key=lambda row: (row.price_units, row.listing_id))
             payload = json.dumps([asdict(r) for r in rows])

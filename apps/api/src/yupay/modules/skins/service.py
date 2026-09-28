@@ -90,8 +90,14 @@ def _filtered(query: CatalogQuery, categories: list[str]) -> Select[tuple[SkinIt
     return stmt
 
 
+#: Integer percent, truncated toward zero — Postgres integer division. ``NULLIF``
+#: because a 0 Steam price is "unknown" (older rows may still carry one).
 _DISCOUNT = (
-    (SkinItem.steam_price_units - SkinItem.min_auto_units) * 100 / SkinItem.steam_price_units
+    (SkinItem.steam_price_units - SkinItem.min_auto_units)
+    * 100
+    # ``//``: SQLAlchemy 2 renders ``/`` as NUMERIC true division (-2.5, not -2),
+    # and the cursor below carries the integer.
+    // func.nullif(SkinItem.steam_price_units, 0)
 )
 
 
@@ -164,9 +170,17 @@ async def list_items(
 
 
 def _discount_of(item: SkinItem) -> int:
+    """The same number :data:`_DISCOUNT` computes in SQL, so a cursor resumes exactly.
+
+    Python's ``//`` floors, Postgres truncates toward zero; for the negative
+    discounts that are a third of the real catalogue the two differ by one,
+    and a cursor built with ``//`` skipped every remaining row at that value.
+    """
     if not item.steam_price_units or item.min_auto_units is None:
         return 0
-    return (item.steam_price_units - item.min_auto_units) * 100 // item.steam_price_units
+    numerator = (item.steam_price_units - item.min_auto_units) * 100
+    quotient = abs(numerator) // item.steam_price_units
+    return quotient if numerator >= 0 else -quotient
 
 
 async def facets(db: AsyncSession, *, categories: list[str]) -> Facets:

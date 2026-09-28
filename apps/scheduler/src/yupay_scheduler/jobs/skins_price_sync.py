@@ -42,6 +42,8 @@ async def run_skins_price_sync() -> None:
         await sync_prices(get_session_factory(), client, get_redis())
     except (WaxpeerError, WaxpeerUnavailableError) as exc:
         log.warning("skins.prices.failed", error=str(exc)[:200])
+    except Exception as exc:
+        log.exception("skins.prices.failed", error=str(exc)[:200])
 
 
 def register(scheduler: AsyncIOScheduler) -> None:

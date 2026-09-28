@@ -19,7 +19,7 @@ from typing import Any
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -29,12 +29,16 @@ from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.suppliers.waxpeer_client import SnapshotRow, WaxpeerClient
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.naming import canonical_name, parse_market_name, search_text, slug_for
+from yupay.modules.skins.slugs import resolve
 from yupay.modules.skins.taxonomy import category_for_waxpeer_type
 
 log = get_logger("yupay.skins.prices")
 
 CATALOG_VERSION_KEY = "skins:catalog:ver"
 CHEAPEST_KEPT = 10
+#: A tick whose snapshot names fewer than this share of the currently active
+#: items is refused rather than applied (a truncated or empty body).
+MIN_SNAPSHOT_SHARE = 0.5
 _BATCH = 1000
 
 
@@ -121,6 +125,13 @@ def price_hash(agg: PriceAggregate) -> str:
     return hashlib.sha1("|".join(parts).encode()).hexdigest()  # noqa: S324
 
 
+def _phase_unknown(key: tuple[str, str]) -> bool:
+    """A Doppler named without its phase: which gem it is decides its price, and
+    the catalogue has no row (or image) for "some phase" — never sold."""
+    name, phase = key
+    return phase == "" and parse_market_name(name).skin in {"Doppler", "Gamma Doppler"}
+
+
 def _meta_by_name(meta: Iterable[Mapping[str, Any]]) -> dict[tuple[str, str], Mapping[str, Any]]:
     return {canonical_name(str(m.get("name", ""))): m for m in meta if m.get("name")}
 
@@ -135,10 +146,20 @@ async def apply_prices(
     """Write the aggregates onto ``skin_items``: changed rows, deactivations, stubs."""
     existing = (
         await db.execute(
-            select(SkinItem.id, SkinItem.market_hash_name, SkinItem.phase, SkinItem.price_hash)
+            select(
+                SkinItem.id,
+                SkinItem.market_hash_name,
+                SkinItem.phase,
+                SkinItem.price_hash,
+                SkinItem.slug,
+            )
         )
     ).all()
-    by_key = {(name, phase): (item_id, digest) for item_id, name, phase, digest in existing}
+    by_key = {(name, phase): (item_id, digest) for item_id, name, phase, digest, _ in existing}
+    slugs = resolve(
+        ((key, slug_for(*key)) for key in aggregates if key not in by_key),
+        {(name, phase): slug for _, name, phase, _, slug in existing},
+    )
     meta_by_key = _meta_by_name(meta)
 
     updates: list[dict[str, Any]] = []
@@ -154,10 +175,14 @@ async def apply_prices(
             ],
             "min_all_units": agg.min_all,
             "count_all": agg.count_all,
-            "steam_price_units": int(steam) if isinstance(steam, int | float) else None,
+            # 0 is Waxpeer's "unknown", not a free item: stored as NULL so no
+            # discount is ever computed against it.
+            "steam_price_units": int(steam)
+            if isinstance(steam, int | float) and steam > 0
+            else None,
             "price_hash": digest,
             "prices_updated_at": at,
-            "active": agg.count_auto > 0,
+            "active": agg.count_auto > 0 and not _phase_unknown(key),
             "updated_at": at,
         }
         found = by_key.get(key)
@@ -170,7 +195,7 @@ async def apply_prices(
                     "id": new_id(),
                     "market_hash_name": name,
                     "phase": phase,
-                    "slug": slug_for(name, phase),
+                    "slug": slugs[key],
                     "category": category_for_waxpeer_type(m.get("type")),
                     "weapon": parsed.weapon,
                     "skin": parsed.skin,
@@ -233,6 +258,23 @@ async def sync_prices(
     aggregates = await aggregate_stream(client.iter_snapshot_rows())
     meta = await client.prices()
     async with session_factory() as db:
+        active_before = int(
+            (
+                await db.execute(
+                    select(func.count()).select_from(SkinItem).where(SkinItem.active.is_(True))
+                )
+            ).scalar_one()
+        )
+        # A truncated or empty snapshot would otherwise read as "everything sold
+        # out" and take the whole storefront down until the next good tick.
+        if active_before and len(aggregates) < active_before * MIN_SNAPSHOT_SHARE:
+            log.warning(
+                "skins.prices.refused",
+                names=len(aggregates),
+                active_before=active_before,
+                reason="snapshot far smaller than the live catalogue",
+            )
+            return ApplyResult(changed=0, deactivated=0, stubs=0)
         result = await apply_prices(db, aggregates, meta=meta, at=now())
         await db.commit()
     await bump_catalog_version(redis)
