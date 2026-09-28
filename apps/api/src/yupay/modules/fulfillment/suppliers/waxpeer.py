@@ -53,6 +53,13 @@ from yupay.modules.fulfillment.suppliers.waxpeer_client import (
     WaxpeerTopup,
     WaxpeerUnavailableError,
 )
+from yupay.modules.fulfillment.suppliers.waxpeer_skins import (
+    fulfill_skin,
+    is_skin_line,
+    is_skin_task,
+    skin_status,
+)
+from yupay.modules.fulfillment.suppliers.waxpeer_trades import WaxpeerTradeClient
 from yupay.modules.pricing.variable import UNITS_PER_USD, to_units
 
 log = get_logger("yupay.fulfillment.waxpeer")
@@ -173,6 +180,14 @@ class WaxpeerFulfiller(Fulfiller):
             timeout_seconds=s.waxpeer_request_timeout_seconds,
         )
 
+    def _trade_client(self) -> WaxpeerTradeClient:
+        s = get_settings()
+        return WaxpeerTradeClient(
+            api_key=s.waxpeer_api_key,
+            base_url=s.waxpeer_base_url,
+            timeout_seconds=s.waxpeer_request_timeout_seconds,
+        )
+
     @property
     def available(self) -> bool:
         return bool(get_settings().waxpeer_api_key)
@@ -182,13 +197,21 @@ class WaxpeerFulfiller(Fulfiller):
     async def fulfill(
         self,
         *,
-        db: AsyncSession,  # noqa: ARG002 -- not consulted; the item carries everything
-        order: Order,  # noqa: ARG002 -- not consulted; same
+        db: AsyncSession,
+        order: Order,  # noqa: ARG002 -- not consulted; the item carries everything
         item: OrderItem,
         idempotency_key: str,
     ) -> FulfillResult:
         if not self.available:
             raise FulfillerError("WAXPEER_API_KEY is not configured", money_outcome=_NEVER_ORDERED)
+
+        # A skin line is told apart by its shape: checkout (skins.checkout) is the
+        # only writer of a trade link + listing id, and a top-up line carries
+        # ``steam_login`` instead. The mapping kind 'skin' is what routed it here.
+        if is_skin_line(item.fulfillment_data or {}):
+            return await fulfill_skin(
+                self._trade_client(), db=db, item=item, idempotency_key=idempotency_key
+            )
 
         steam_login = str((item.fulfillment_data or {}).get("steam_login") or "").strip()
         if not steam_login:
@@ -245,6 +268,8 @@ class WaxpeerFulfiller(Fulfiller):
             # top-up has already been placed. A key that went missing since
             # says nothing about the money it was spent with.
             raise FulfillerError("WAXPEER_API_KEY is not configured", money_outcome=_MAY_HAVE_SPENT)
+        if is_skin_task(task):
+            return await skin_status(self._trade_client(), db=db, task=task)
         if not task.external_order_id:
             # The top-up may well exist upstream — we simply cannot look it up.
             raise FulfillerError(
