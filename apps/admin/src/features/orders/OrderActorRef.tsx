@@ -17,16 +17,15 @@
  * keys). A guest has no page, so their address is the whole answer.
  */
 
-import adminRu from "@yupay/i18n/locales/ru/admin.json";
-import { assertNever } from "@yupay/utils";
 import { Link } from "react-router-dom";
 
 import { orderActorOf, type OrderActorFields } from "./types";
 
+import { UserRef } from "@/components/UserRef";
 import type { UserRefData } from "@/lib/useAdminRefs";
 
-import { UserRef } from "@/components/UserRef";
-
+import adminRu from "@yupay/i18n/locales/ru/admin.json";
+import { assertNever } from "@yupay/utils";
 
 const ACTOR = adminRu.orders.actor;
 

@@ -5,11 +5,11 @@ import { expect, it, vi } from "vitest";
 
 import { OrdersListPage } from "./OrdersListPage";
 
+import { formatMoney } from "@/lib/money";
 
 import type { OrderAdminListOut, OrderAdminOut } from "./types";
 
 import { apiGet } from "@/lib/api";
-import { formatMoney } from "@/lib/money";
 
 /**
  * A "failed" order (closed via the "Отметить проблемным" button on the detail
