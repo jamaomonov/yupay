@@ -40,7 +40,10 @@ export interface StageCopy {
 /** What's this order made of? Drives status copy so a top-up never
  *  promises a "code" and a voucher never says "credited to account".
  *  ``mixed`` (both kinds in one order) falls back to neutral wording. */
-function orderKind(order: OrderOut): "top_up" | "voucher" | "mixed" {
+function orderKind(order: OrderOut): "top_up" | "voucher" | "mixed" | "skin" {
+  // A CS2 skin is seeded as a top-up (its form matches that shape) but is
+  // delivered as a Steam trade and refunded to the balance — its own copy.
+  if (order.items.some((i) => i.skin_trade)) return "skin";
   const kinds = new Set(
     order.items.map((i) => i.display?.product_kind).filter((k): k is ProductKind => Boolean(k)),
   );
@@ -67,11 +70,13 @@ export function stageFor(order: OrderOut): StageCopy {
       return {
         title: translate("success.stage.fulfillingTitle"),
         subtitle:
-          kind === "top_up"
-            ? translate("success.stage.fulfillingSubTopUp")
-            : kind === "voucher"
-              ? translate("success.stage.fulfillingSubVoucher")
-              : translate("success.stage.fulfillingSubMixed"),
+          kind === "skin"
+            ? translate("success.stage.fulfillingSubSkin")
+            : kind === "top_up"
+              ? translate("success.stage.fulfillingSubTopUp")
+              : kind === "voucher"
+                ? translate("success.stage.fulfillingSubVoucher")
+                : translate("success.stage.fulfillingSubMixed"),
       };
     case "fulfilled":
       return {
@@ -99,12 +104,16 @@ export function stageFor(order: OrderOut): StageCopy {
     case "refunded":
       return {
         title: translate("success.stage.refundedTitle"),
-        subtitle: translate("success.stage.refundedSub"),
+        subtitle: translate(
+          kind === "skin" ? "success.stage.refundedSubSkin" : "success.stage.refundedSub",
+        ),
       };
     case "failed":
       return {
         title: translate("success.stage.failedTitle"),
-        subtitle: translate("success.stage.failedSub"),
+        subtitle: translate(
+          kind === "skin" ? "success.stage.failedSubSkin" : "success.stage.failedSub",
+        ),
       };
     case "partially_refunded":
       return {

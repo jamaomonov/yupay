@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import { ArtifactBlock } from "./ArtifactBlock";
 import { GiftDeliveryCard } from "./GiftDeliveryCard";
 import { isGiftDelivery } from "./order-helpers";
+import { SkinTradeCard } from "./SkinTradeCard";
 import { TopUpReceipt } from "./TopUpReceipt";
 
 import type { DeliveryOut, OrderOut } from "@/lib/orders";
@@ -80,7 +81,10 @@ export function ItemCard({
       </div>
 
       <AnimatePresence>
-        {delivery ? (
+        {/* A skin's delivery is its Steam trade, not a receipt: checked first. */}
+        {item.skin_trade ? (
+          <SkinTradeCard trade={item.skin_trade} />
+        ) : delivery ? (
           // Checked before `isTopUp`: a Steam gift's product is seeded with
           // `kind="top_up"` (its checkout form matches that shape) and its
           // fulfiller reports `artifact_kind: "topup_receipt"` too — the only

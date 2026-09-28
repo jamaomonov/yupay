@@ -564,5 +564,8 @@
   "cs2.trade.refunded": "Обмен не состоялся — деньги вернулись на баланс",
   "cs2.trade.toWallet": "Открыть баланс",
   "cs2.trade.support": "Мы проверяем покупку — напишите в поддержку",
-  "cs2.trade.contactSupport": "Написать в поддержку"
+  "cs2.trade.contactSupport": "Написать в поддержку",
+  "success.stage.fulfillingSubSkin": "Покупаем скин — обмен придёт в Steam.",
+  "success.stage.refundedSubSkin": "Деньги вернулись на баланс YuPay.",
+  "success.stage.failedSubSkin": "Мы проверяем покупку — напишите в поддержку."
 }

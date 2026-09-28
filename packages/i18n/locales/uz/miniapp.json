@@ -564,5 +564,8 @@
   "cs2.trade.refunded": "Almashuv amalga oshmadi — pul balansga qaytdi",
   "cs2.trade.toWallet": "Balansni ochish",
   "cs2.trade.support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
-  "cs2.trade.contactSupport": "Qo'llab-quvvatlashga yozish"
+  "cs2.trade.contactSupport": "Qo'llab-quvvatlashga yozish",
+  "success.stage.fulfillingSubSkin": "Skinni sotib olyapmiz — almashuv Steam'ga keladi.",
+  "success.stage.refundedSubSkin": "Pul YuPay balansiga qaytdi.",
+  "success.stage.failedSubSkin": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing."
 }

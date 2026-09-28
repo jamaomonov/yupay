@@ -564,5 +564,8 @@
   "cs2.trade.refunded": "The trade did not happen — the money is back on your balance",
   "cs2.trade.toWallet": "Open balance",
   "cs2.trade.support": "We are checking the purchase — please contact support",
-  "cs2.trade.contactSupport": "Contact support"
+  "cs2.trade.contactSupport": "Contact support",
+  "success.stage.fulfillingSubSkin": "Buying the skin — the trade offer will arrive in Steam.",
+  "success.stage.refundedSubSkin": "The money is back on your YuPay balance.",
+  "success.stage.failedSubSkin": "We are checking the purchase — please contact support."
 }

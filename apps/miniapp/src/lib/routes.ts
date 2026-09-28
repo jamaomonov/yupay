@@ -16,13 +16,18 @@
  *  (`Home`, `OrderSuccess`, `History`) matches on to skip the redirect. */
 export const STEAM_GIFTS_SLUG = "steam-gifts";
 
+/** The CS2 skins brand: its page is the skins market, not a top-up form. */
+export const CS2_SKINS_SLUG = "cs2-skins";
+
 /**
  * Where a brand's "top up" / "buy again" link should point, given just its
- * slug. Steam Gifts routes straight to `/gifts`; every other brand goes to
- * its own `/topup/:slug` form.
+ * slug. Steam Gifts routes straight to `/gifts`, CS2 skins to `/cs2-market`;
+ * every other brand goes to its own `/topup/:slug` form.
  */
 export function hrefForGameSlug(slug: string): string {
-  return slug === STEAM_GIFTS_SLUG ? "/gifts" : `/topup/${slug}`;
+  if (slug === STEAM_GIFTS_SLUG) return "/gifts";
+  if (slug === CS2_SKINS_SLUG) return "/cs2-market";
+  return `/topup/${slug}`;
 }
 
 /** Convenience wrapper for callers that already hold a full game/brand
