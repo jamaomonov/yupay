@@ -10,12 +10,20 @@
   lost after delivery — the customer keeps nothing to refund, ops gets an alert and the
   task carries ``skin_rollback`` for the books.
 
+* **History audit** (daily, ``jobs/skins_history_audit.py``, spec §6.5): the last 14 days
+  of trades *we* consider settled — released (5), or failed with the customer refunded — are
+  read again from Waxpeer. It only alerts, never writes: a released trade that Waxpeer now
+  shows as 6 (a late rollback), a refunded one Waxpeer shows as 4/5 (the skin went out and
+  the money came back), or one Waxpeer has no record of. In-flight and accepted trades are
+  left to the two sweeps above, so nothing is alerted twice.
+
 The general ``waxpeer_reconcile`` sweep skips skin tasks: one owner per task.
 """
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
+from datetime import timedelta
 from typing import Protocol
 
 from sqlalchemy import or_, select
@@ -24,6 +32,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.models import FulfillmentTask
+from yupay.modules.fulfillment.suppliers.waxpeer_client import (
+    WaxpeerError,
+    WaxpeerUnavailableError,
+)
 from yupay.modules.fulfillment.suppliers.waxpeer_skins import (
     SKIN_KIND,
     AmbiguousTradeError,
@@ -31,6 +43,7 @@ from yupay.modules.fulfillment.suppliers.waxpeer_skins import (
     pick_trade,
 )
 from yupay.modules.fulfillment.suppliers.waxpeer_trades import WaxpeerTrade
+from yupay.modules.orders.models import OrderItem
 from yupay.modules.skins.models import SkinTrade
 
 log = get_logger("yupay.fulfillment.skin_sweeps")
@@ -147,10 +160,99 @@ async def _rolled_back(
     )
 
 
+AUDIT_DAYS = 14
+
+
+def _divergence(row: SkinTrade, refunded: bool, trade: WaxpeerTrade | None) -> str | None:
+    """What is wrong with a settled trade, in the alert's words; ``None`` when Waxpeer agrees."""
+    if trade is None:
+        # A row that never reached Waxpeer (status None: sold out before any buy) is fine.
+        return "Waxpeer не знает сделку" if row.status is not None else None
+    if not refunded and trade.status == 6:
+        return f"откат после выпуска; штраф: {trade.penalties or '—'}"
+    if refunded and trade.status in (4, 5):
+        return f"скин ушёл (статус {trade.status}), а деньги вернули"
+    return None
+
+
+async def _settled_rows(db: AsyncSession, days: int) -> list[tuple[SkinTrade, str, bool]]:
+    rows = await db.execute(
+        select(SkinTrade, OrderItem.order_id, OrderItem.fulfillment_state)
+        .join(OrderItem, OrderItem.id == SkinTrade.order_item_id)
+        .where(
+            SkinTrade.created_at >= now() - timedelta(days=days),
+            or_(
+                SkinTrade.status.in_((5, 6)),
+                SkinTrade.is_released.is_(True),
+                OrderItem.fulfillment_state == "failed",
+            ),
+        )
+        .order_by(SkinTrade.created_at, SkinTrade.id)
+    )
+    return [
+        (row, str(order_id), row.status == 6 or state == "failed")
+        for row, order_id, state in rows.all()
+    ]
+
+
+async def audit_recent_trades(
+    db: AsyncSession,
+    client: TradeLookup,
+    *,
+    alert: Callable[[str], Awaitable[None]],
+    days: int = AUDIT_DAYS,
+) -> int:
+    """Compare the last ``days`` of settled trades with Waxpeer; alert on each divergence.
+
+    Read-only: the fast sweep and the protection watch own every state change.
+
+    Args:
+        db: Active session.
+        client: Waxpeer lookup by our ``project_id`` (batches of 100).
+        alert: Sends one ops alert.
+        days: How far back to look.
+
+    Returns:
+        How many divergences were alerted; 0 when Waxpeer could not be read.
+    """
+    rows = await _settled_rows(db, days)
+    found: list[WaxpeerTrade] = []
+    try:
+        for start in range(0, len(rows), _BATCH):
+            chunk = rows[start : start + _BATCH]
+            found += await client.check_project_ids([r.project_id for r, _, _ in chunk])
+    except (WaxpeerError, WaxpeerUnavailableError) as exc:
+        log.warning("skins.audit.unavailable", error=type(exc).__name__, trades=len(rows))
+        return 0
+    diverged = 0
+    for row, order_id, refunded in rows:
+        problem: str | None
+        try:
+            trade = pick_trade([t for t in found if t.project_id == row.project_id], row.waxpeer_id)
+        except AmbiguousTradeError:
+            trade, problem = None, "несколько живых сделок под одним ключом"
+        else:
+            problem = _divergence(row, refunded, trade)
+        if problem is None:
+            continue
+        diverged += 1
+        log.warning("skins.audit.divergence", project_id=row.project_id, order_id=order_id)
+        await alert(
+            "<b>Скин: расхождение с Waxpeer</b>\n"
+            f"{row.market_hash_name} · заказ {order_id}\n"
+            f"{problem}; у нас статус {row.status if row.status is not None else '—'}, "
+            f"у Waxpeer {trade.status if trade is not None else '—'}"
+        )
+    log.info("skins.audit.done", trades=len(rows), diverged=diverged)
+    return diverged
+
+
 __all__ = [
+    "AUDIT_DAYS",
     "BUYING_RECHECK_SECONDS",
     "SENT_RECHECK_SECONDS",
     "TradeLookup",
+    "audit_recent_trades",
     "due_skin_task_ids",
     "skin_recheck_seconds",
     "skin_task_filter",

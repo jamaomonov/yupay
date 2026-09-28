@@ -59,6 +59,7 @@ from yupay_scheduler.jobs import (
     refresh_voucher_stock,
     review_reminder,
     skins_catalog_import,
+    skins_history_audit,
     skins_price_sync,
     skins_protection_watch,
     skins_trades_reconcile,
@@ -103,6 +104,7 @@ def build_scheduler() -> AsyncIOScheduler:
     skins_catalog_import.register(scheduler)
     skins_price_sync.register(scheduler)
     skins_protection_watch.register(scheduler)
+    skins_history_audit.register(scheduler)
     skins_trades_reconcile.register(scheduler)
     stuck_orders.register(scheduler)
     sync_supplier_catalog.register(scheduler)

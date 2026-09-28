@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.skin_sweeps import (
+    audit_recent_trades,
     due_skin_task_ids,
     skin_recheck_seconds,
     watch_protected_trades,
@@ -228,4 +229,102 @@ async def test_the_watch_reads_our_trade_not_a_refused_attempt(db_session: Async
     await watch_protected_trades(db_session, _Client([refused, ours]), alert=alert)
     await db_session.refresh(row)
     assert (row.status, row.is_released) == (5, True)
+    assert alerts == []
+
+
+# ---- daily history audit (plan 4, Task 3) ----------------------------------------------
+
+
+async def _settled(
+    db: AsyncSession, tag: str, *, status: int | None, failed: bool = False, **over: Any
+) -> SkinTrade:
+    """A trade we consider settled: released (5), or failed with the customer refunded."""
+    task_id = await _task(db, tag, skin=True, status=status)
+    row = (await db.execute(select(SkinTrade).where(SkinTrade.task_id == task_id))).scalar_one()
+    for key, value in over.items():
+        setattr(row, key, value)
+    if status == 5:
+        row.is_released = True
+    task = await db.get(FulfillmentTask, task_id)
+    assert task is not None
+    task.status = "failed" if failed else "succeeded"
+    if failed:
+        item = await db.get(OrderItem, row.order_item_id)
+        assert item is not None
+        item.fulfillment_state = "failed"
+    await db.commit()
+    return row
+
+
+class _Alerts(list[str]):
+    async def __call__(self, text: str) -> None:
+        self.append(text)
+
+
+async def test_the_audit_is_silent_when_waxpeer_agrees(db_session: AsyncSession) -> None:
+    released = await _settled(db_session, "au-ok-5", status=5)
+    declined = await _settled(db_session, "au-ok-6", status=6, failed=True)
+    await _task(db_session, "au-flight", skin=True, status=2)
+    alerts = _Alerts()
+    client = _Client([_trade(released.project_id, 5), _trade(declined.project_id, 6)])
+    assert await audit_recent_trades(db_session, client, alert=alerts) == 0
+    assert alerts == []
+    asked = [pid for batch in client.asked for pid in batch]
+    assert "key-au-flight" not in asked
+
+
+async def test_a_released_trade_rolled_back_later_alerts(db_session: AsyncSession) -> None:
+    row = await _settled(db_session, "au-rollback", status=5)
+    alerts = _Alerts()
+    client = _Client([_trade(row.project_id, 6, penalties={"total_penalty": 1500})])
+    assert await audit_recent_trades(db_session, client, alert=alerts) == 1
+    assert len(alerts) == 1
+    assert "откат" in alerts[0]
+
+
+async def test_a_refunded_trade_that_was_delivered_alerts(db_session: AsyncSession) -> None:
+    row = await _settled(db_session, "au-delivered", status=6, failed=True)
+    alerts = _Alerts()
+    client = _Client([_trade(row.project_id, 5)])
+    assert await audit_recent_trades(db_session, client, alert=alerts) == 1
+    assert "деньги вернули" in alerts[0]
+
+
+async def test_a_trade_waxpeer_does_not_know_alerts(db_session: AsyncSession) -> None:
+    await _settled(db_session, "au-unknown", status=5)
+    sold_out = await _settled(db_session, "au-soldout", status=None, failed=True)
+    alerts = _Alerts()
+    assert await audit_recent_trades(db_session, _Client([]), alert=alerts) == 1
+    assert "не знает" in alerts[0]
+    assert sold_out.project_id not in alerts[0]
+
+
+async def test_the_audit_asks_in_batches_of_a_hundred(db_session: AsyncSession) -> None:
+    for i in range(101):
+        await _settled(db_session, f"au-batch-{i}", status=5)
+    client = _Client([_trade(f"key-au-batch-{i}", 5) for i in range(101)])
+    await audit_recent_trades(db_session, client, alert=_Alerts())
+    assert [len(batch) for batch in client.asked] == [100, 1]
+
+
+async def test_the_audit_skips_trades_older_than_the_window(db_session: AsyncSession) -> None:
+    await _settled(
+        db_session, "au-old", status=5, created_at=datetime.now(UTC) - timedelta(days=20)
+    )
+    client = _Client([])
+    assert await audit_recent_trades(db_session, client, alert=_Alerts()) == 0
+    assert client.asked == []
+
+
+async def test_an_unreachable_waxpeer_never_alerts(db_session: AsyncSession) -> None:
+    from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerUnavailableError
+
+    await _settled(db_session, "au-down", status=5)
+
+    class _Down:
+        async def check_project_ids(self, ids: Sequence[str]) -> list[WaxpeerTrade]:
+            raise WaxpeerUnavailableError("down")
+
+    alerts = _Alerts()
+    assert await audit_recent_trades(db_session, _Down(), alert=alerts) == 0
     assert alerts == []
