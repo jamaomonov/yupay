@@ -76,6 +76,23 @@ const messages = {
     brandReviews: {
       writeCta: "Write a review",
     },
+    skins: {
+      trade: {
+        title: "Steam trade",
+        buying: "Buying",
+        offer_sent: "Offer sent",
+        acceptBy: "Accept by {time}",
+        openOffer: "Open the trade in Steam",
+        seller: "Seller",
+        accepted: "Received",
+        protectedUntil: "Protected until {date}",
+        released: "Received",
+        refunded: "Money back on the balance",
+        toWallet: "Open balance",
+        support: "Contact support",
+        contactSupport: "Support",
+      },
+    },
   },
 };
 
@@ -365,4 +382,45 @@ it("offers no way to pay an order that is already delivered", async () => {
   expect(screen.queryByRole("link", { name: "Pay" })).not.toBeInTheDocument();
   // Nothing even asks about a payment for an order past `pending_payment`.
   expect(mockApiFetch).not.toHaveBeenCalledWith(expect.stringContaining("/payments/by-order/"));
+});
+
+it("shows a skin line's trade card, not the generic receipt, once received", async () => {
+  mockUser = { id: "u1" };
+  const order = makeGiftOrder();
+  order.items[0] = {
+    ...order.items[0]!,
+    skin_trade: {
+      state: "accepted",
+      offer_url: "https://steamcommunity.com/tradeoffer/1/",
+      send_until: null,
+      release_date: "2026-10-05T16:00:00Z",
+      seller: null,
+      reason_code: null,
+    },
+  };
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.endsWith("/deliveries")) {
+      return Promise.resolve({
+        items: [
+          {
+            id: "d1",
+            order_item_id: "item-1",
+            channel: "in_app",
+            artifact_kind: "topup_receipt",
+            artifact: { kind: "skin", trade_id: "1" },
+            delivered_at: "2026-08-15T13:27:00Z",
+          },
+        ],
+      });
+    }
+    return Promise.resolve(order);
+  });
+
+  wrap(<OrderStatus orderId="01a00487-0000-0000-0000-000000000000" />);
+
+  expect(await screen.findByText("Received")).toBeInTheDocument();
+  await waitFor(() => {
+    expect(mockApiFetch.mock.calls.some(([p]) => p.endsWith("/deliveries"))).toBe(true);
+  });
+  expect(screen.queryByText("Your delivery")).not.toBeInTheDocument();
 });

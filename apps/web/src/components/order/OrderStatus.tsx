@@ -16,6 +16,7 @@ import { OrderPayNow } from "./OrderPayNow";
 import { isTrackedStatus, OrderProgress } from "./OrderProgress";
 import { OrderStatusSkeleton } from "./OrderStatusSkeleton";
 import { OrderSummary } from "./OrderSummary";
+import { SkinTradeCard } from "./SkinTradeCard";
 import { StatusBlock } from "./StatusBlock";
 
 import { ReviewAsk } from "@/components/store/ReviewAsk";
@@ -300,10 +301,17 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
 
         <OrderItems items={order.data.items} />
 
+        {order.data.items.map((item) =>
+          item.skin_trade ? (
+            <SkinTradeCard key={item.id} trade={item.skin_trade} locale={locale} />
+          ) : null,
+        )}
+
         {status === "delivered" &&
           canLoadCodes &&
           deliveries.data?.items.map((d) =>
-            d.artifact.kind === "gift" ? (
+            // A skin's delivery is the trade card above, not a receipt.
+            d.artifact.kind === "skin" ? null : d.artifact.kind === "gift" ? (
               <GiftDeliveryCard key={d.id} artifact={d.artifact} />
             ) : (
               <ArtifactReceipt key={d.id} artifact={d.artifact} />
