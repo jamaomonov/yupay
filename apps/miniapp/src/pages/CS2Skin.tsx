@@ -47,6 +47,14 @@ export default function CS2Skin() {
     setLink(s);
   }, []);
   const linkRef = useRef<HTMLInputElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
+  // Picking an offer glides back up to the picture, which now shows that offer's
+  // float and stickers, and to its price.
+  const pickOffer = (listingId: number) => {
+    haptic("select");
+    setPickedId(listingId);
+    topRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const item = state.phase === "ready" ? state.item : null;
   useDocumentTitle(item ? item.name : t("cs2.docTitle"));
 
@@ -153,7 +161,9 @@ export default function CS2Skin() {
 
   return (
     <div className={`yp-fade-in space-y-5 px-4 pt-4 ${buyable ? "pb-28" : "pb-4"}`}>
-      <SkinHeroCard item={item} offer={selected} />
+      <div ref={topRef} className="scroll-mt-[calc(var(--app-header-total)_+_8px)]">
+        <SkinHeroCard item={item} offer={selected} />
+      </div>
 
       <div>
         <p className="text-[13px] font-semibold text-white/60">
@@ -222,6 +232,9 @@ export default function CS2Skin() {
         <p className="text-sm text-white/60">{t("cs2.inStock", { count: item.count })}</p>
       )}
 
+      {/* Above the offers: with forty of them, the link would be forty rows down. */}
+      {buyable && <SkinTradeLinkInput onChange={onLink} inputRef={linkRef} initial={link.url} />}
+
       {worn && (
         <section>
           <h2 className="mb-2 text-[15px] font-bold text-white">
@@ -233,13 +246,12 @@ export default function CS2Skin() {
             items={offers}
             image={item.image_url}
             exterior={item.exterior}
-            {...(buyable ? { selectedId: selected.listing_id, onSelect: setPickedId } : {})}
+            {...(buyable ? { selectedId: selected.listing_id, onSelect: pickOffer } : {})}
           />
         </section>
       )}
       {buyable && (
         <>
-          <SkinTradeLinkInput onChange={onLink} inputRef={linkRef} initial={link.url} />
           <SkinFixedCta
             muted={!link.usable}
             onPress={() => {
