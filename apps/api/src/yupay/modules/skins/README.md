@@ -93,3 +93,12 @@ shapes recorded from the live API on 2026-09-28.
 
 See also: `docs/runbooks/skins-catalog.md`,
 `docs/architecture/sequence-diagrams/skins-catalog-sync.mmd`.
+
+## Purchase (plan 3a)
+
+`checkout.price_skin_line` prices a `cs2-skin` order line from the live listing the customer
+picked; `tradelink.py` parses, checks (`POST /skins/tradelink/check`) and saves trade links;
+`trade_view.skin_trade_out` is the buyer's view of a trade on the order API. Buying and
+tracking live in `fulfillment/suppliers/waxpeer_skins.py` and `fulfillment/skin_sweeps.py`;
+the automatic refund in `payments.service.refund_order_to_wallet`. Flow:
+`docs/product/flows/skins-buy.md`; runbook: `docs/runbooks/skins-purchase.md`.

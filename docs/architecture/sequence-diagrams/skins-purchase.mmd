@@ -1,0 +1,33 @@
+sequenceDiagram
+    participant C as Customer (web / mini app)
+    participant A as api
+    participant W as worker
+    participant S as scheduler
+    participant X as Waxpeer
+    participant ST as Steam
+
+    C->>A: POST /skins/tradelink/check (advisory)
+    A->>X: check-tradelink
+    A->>ST: GetTradeHoldDurations
+    A-->>C: ok / private / trade_ban / hold / unavailable
+    C->>A: POST /orders (cs2-skin: slug, listing_id, tradelink)
+    A->>A: skins.checkout — price the live listing (±2 %), snapshot expected_units
+    C->>A: pay (any acquirer)
+    A->>W: payment succeeded → fulfilment task (pg_notify)
+    W->>X: check-many-project-id (replay?) then buy-one-p2p(project_id, price ≤ paid)
+    alt listing gone
+        W->>X: search → buy a same-name auto listing ≤ paid (max 2)
+    end
+    loop every 5–10 s
+        S->>X: check-many-project-id
+        S->>A: skin_trades mirror; order page polls GET /orders/{id}
+    end
+    alt status 4 + release_date (accepted)
+        S->>A: task succeeded → order delivered
+        loop hourly until release_date
+            S->>X: check-many-project-id (protection watch)
+        end
+    else status 6 (declined / expired / sold out)
+        S->>A: task failed RETURNED → refund_order_to_wallet
+        A-->>C: money on the YuPay balance
+    end

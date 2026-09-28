@@ -103,3 +103,8 @@ def _connect_and_fail() -> None:
     """Raise with a credential sitting in the frame's locals, as asyncpg does."""
     dsn = "postgresql://yupay_app:s3cret-db-password@postgres:5432/yupay"  # noqa: F841
     raise OSError("connection refused")
+
+
+def test_redacted_keys_include_the_steam_trade_link() -> None:
+    # The link's token lets anyone send that account trade offers (skins, plan 3a).
+    assert {"tradelink", "trade_link", "trade_url"} <= REDACTED_KEYS

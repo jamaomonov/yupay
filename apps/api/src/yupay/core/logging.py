@@ -73,6 +73,11 @@ REDACTED_KEYS = frozenset(
         "click_secret_key_bot",
         "bearer_token",
         "merchant_token",
+        # A Steam trade link carries a token that lets anyone send that account
+        # offers (CS2 skins, plan 3a) — a credential, never a log value.
+        "tradelink",
+        "trade_link",
+        "trade_url",
         # Generic terms below aren't tied to a specific provider setting, but
         # are worth blocking outright wherever they show up as a literal key —
         # e.g. a provider's raw webhook JSON (audit/service.py replays these

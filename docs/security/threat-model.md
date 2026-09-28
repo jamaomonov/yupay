@@ -313,6 +313,25 @@ The SSRF row above covers the connection. This is what may travel over it.
   escaping.** The same is true of `last_error`, which interpolates a TLS or
   httpx failure summary — capped at 512 for the same reason.
 
+## CS2 skin purchases (plan 3a, 2026-09-29)
+
+- **Paying for someone else's trade link.** A trade link names the receiving account; a
+  customer signed in with Steam may only use their own account's link (checkout refuses
+  `tradelink_other_account`). A customer without a Steam link can send a skin anywhere —
+  the same as gifting — and pays for it.
+- **Double purchase.** `project_id` = the fulfilment idempotency key; a replay looks the
+  purchase up before buying, and a lost buy response is resolved by lookup, never by a
+  second buy.
+- **Price manipulation.** The client's amount is only a ±2 % courtesy check; the server bills
+  the live listing's price, and Waxpeer's `price` guard refuses a buy above what was paid.
+- **Refund abuse.** A declined or expired offer refunds to the YuPay balance, never to a card
+  automatically, and only once per payment (`refund:<payment.id>` shared with every refund).
+- **Trade link token leakage.** Never logged (redactor), never a Redis key in clear (the
+  check's cache key is a hash), shown only to the order's owner; the advisory check is `POST`
+  so the link stays out of the edge access log.
+- **Post-delivery rollback.** Steam's 7-day protection lets a trade be reverted; the hourly
+  watch alerts ops and records it on the task.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.
