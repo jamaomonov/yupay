@@ -36,6 +36,8 @@ describe("steamImageSize", () => {
     expect(steamImageSize(`${base}/360fx360f`, "256fx256f")).toBe(`${base}/256fx256f`);
   });
   it("leaves other URLs alone", () => {
-    expect(steamImageSize("https://example.com/x.png", "256fx256f")).toBe("https://example.com/x.png");
+    expect(steamImageSize("https://example.com/x.png", "256fx256f")).toBe(
+      "https://example.com/x.png",
+    );
   });
 });
