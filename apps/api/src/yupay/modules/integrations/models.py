@@ -143,7 +143,7 @@ class SkuSupplierMapping(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('voucher','game','gift')",
+            "kind IN ('voucher','game','gift','skin')",
             name="ck_sku_supplier_mapping_kind",
         ),
         CheckConstraint("quantity > 0", name="ck_sku_supplier_mapping_quantity_positive"),

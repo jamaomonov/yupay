@@ -28,6 +28,7 @@ from sqlalchemy import (
     Index,
     Integer,
     Numeric,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -142,4 +143,69 @@ class SkinSearchAlias(Base):
     text: Mapped[str] = mapped_column(String(128), nullable=False)
 
 
-__all__ = ["SkinItem", "SkinPricingRules", "SkinSearchAlias"]
+class SkinTrade(Base):
+    """One Waxpeer purchase for one order line, mirrored for the order page and for ops.
+
+    ``status`` is Waxpeer's own number (0 processing … 4 sent … 5 completed, 6 failed);
+    ``release_date`` appears when the buyer accepts and Steam's 7-day trade protection
+    starts (spec §8.1). ``project_id`` is the idempotency key sent to Waxpeer.
+    """
+
+    __tablename__ = "skin_trades"
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    order_item_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("order_items.id", ondelete="CASCADE"), nullable=False
+    )
+    task_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("fulfillment_tasks.id", ondelete="SET NULL"), nullable=True
+    )
+    project_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    waxpeer_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    listing_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    market_hash_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    phase: Mapped[str] = mapped_column(String(32), nullable=False, server_default=text("''"))
+    paid_units: Mapped[int] = mapped_column(Integer, nullable=False)
+    bought_units: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status: Mapped[int | None] = mapped_column(SmallInteger, nullable=True)
+    trade_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    send_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    release_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_released: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    penalties: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    seller: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb")
+    )
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+    __table_args__ = (
+        UniqueConstraint("order_item_id", name="uq_skin_trades_order_item"),
+        UniqueConstraint("project_id", name="uq_skin_trades_project"),
+        Index("ix_skin_trades_protection", "status", "is_released"),
+    )
+
+
+class SkinTradeLink(Base):
+    """A signed-in customer's saved Steam trade link (the token in it is a credential)."""
+
+    __tablename__ = "skin_trade_links"
+
+    user_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    url: Mapped[str] = mapped_column(String(255), nullable=False)
+    steam_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )
+
+
+__all__ = ["SkinItem", "SkinPricingRules", "SkinSearchAlias", "SkinTrade", "SkinTradeLink"]
