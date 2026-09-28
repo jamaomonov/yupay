@@ -2,7 +2,7 @@
 
 **Date:** 2026-09-28
 **Status:** Approved in chat — the delivery model, the catalogue source, the "show the seller and
-the inspect link" call and the ready-gate are the owner's, recorded in §2
+the inspect link" call and buying at payment (the ready gate was dropped after the spike) are the owner's, recorded in §2
 **Branch:** `feat/cs2-skins`
 **Builds on:** ADR-0066 (Steam Gifts: live prices, dynamic checkout, adopt-don't-rebuy),
 ADR-0064 (work reaches the worker as rows), the existing `waxpeer` supplier (Steam wallet top-ups)
