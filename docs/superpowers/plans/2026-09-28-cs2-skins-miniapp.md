@@ -47,6 +47,7 @@ Web counterpart: `docs/superpowers/plans/2026-09-28-cs2-skins-storefront.md`.
 ### Task 1: Share the query model and helpers via `@yupay/utils`
 
 **Files:**
+
 - Create: `packages/utils/src/skins.ts`, `packages/utils/src/skins.test.ts` (moved from `apps/web/src/lib/skins.test.ts`)
 - Create: `packages/utils/src/skin-float.ts`, `packages/utils/src/skin-float.test.ts` (moved from web)
 - Modify: `packages/utils/src/index.ts` (export both)
@@ -54,6 +55,7 @@ Web counterpart: `docs/superpowers/plans/2026-09-28-cs2-skins-storefront.md`.
 - Modify: `apps/web/src/lib/skin-float.ts` (becomes `export * from "@yupay/utils"` subset)
 
 **Interfaces:**
+
 - Produces (from `@yupay/utils`): `SkinSort`, `Exterior`, `SKIN_CATEGORIES`, `SkinCategory`,
   `DEFAULT_SORT`, `EXTERIORS`, `SkinItem`, `SkinsPage`, `Facet`, `SkinFacets`,
   `SkinFamilyMember`, `SkinDetail`, `SkinListing`, `SkinListings`, `SkinQuery`,
@@ -69,9 +71,11 @@ Web counterpart: `docs/superpowers/plans/2026-09-28-cs2-skins-storefront.md`.
 ### Task 2: Mini app `lib/skins.ts` — fetchers and price text
 
 **Files:**
+
 - Create: `apps/miniapp/src/lib/skins.ts`, `apps/miniapp/src/lib/skins.test.ts`
 
 **Interfaces:**
+
 - Consumes: Task 1 types and `skinQueryString`.
 - Produces:
   - `skinsApiParams(q: SkinQuery): string` — same mapping as web `apiParams` (`min_uzs`, `max_uzs`, `stattrak=true`, `limit=24`).
@@ -90,11 +94,16 @@ it("prints soʻm, falls back to dollars, null only without a price", () => {
   expect(skinPriceText(null, null)).toBeNull();
 });
 it("maps the query to API params", () => {
-  expect(skinsApiParams({ sort: "price", category: "rifles", minUzs: 1000, stattrak: true }))
-    .toBe("category=rifles&stattrak=true&min_uzs=1000&sort=price&limit=24");
+  expect(skinsApiParams({ sort: "price", category: "rifles", minUzs: 1000, stattrak: true })).toBe(
+    "category=rifles&stattrak=true&min_uzs=1000&sort=price&limit=24",
+  );
 });
-it("facets: null on 404 (feature off), throws on 503", async () => { /* stub 404 → null; 503 → rejects */ });
-it("detail: null on 404, throws on 503", async () => { /* same */ });
+it("facets: null on 404 (feature off), throws on 503", async () => {
+  /* stub 404 → null; 503 → rejects */
+});
+it("detail: null on 404, throws on 503", async () => {
+  /* same */
+});
 ```
 
 - [ ] **Step 2:** `pnpm vitest run src/lib/skins.test.ts` — Expected: FAIL (module missing).
@@ -105,12 +114,14 @@ it("detail: null on 404, throws on 503", async () => { /* same */ });
 ### Task 3: Catalogue page `/cs2-market`
 
 **Files:**
+
 - Modify: `apps/miniapp/src/pages/CS2SkinMarket.tsx` (the catalogue; the old "скоро" body becomes `SkinsComingSoon`)
 - Create: `apps/miniapp/src/components/skins/SkinsComingSoon.tsx`, `SkinCard.tsx`, `SkinChips.tsx` (category + weapon rows), `SkinFilterSheet.tsx` (exterior, rarity, StatTrak, price from/to, sort)
 - Create: `apps/miniapp/src/lib/skins-view.ts` + test — `accumulateSkins(prev, page, fromCursor)` (dedupe by slug) and `activeFilterCount(q)`
 - Modify: `packages/i18n/locales/{ru,en,uz}/miniapp.json` (`cs2.*` keys)
 
 **Behaviour:**
+
 - Query from `useSearch()` → `parseSkinQuery(Object.fromEntries(new URLSearchParams(search)))`; every filter change `navigate("/cs2-market" + skinQueryString(q, patch), { replace: true })` so Telegram back leaves the market instead of undoing filters one by one, while item → back returns to the same URL.
 - Facets load once; `null` → `SkinsComingSoon`. Page 1 loads per query; "Показать ещё" appends by `next_cursor`.
 - Search input debounced 400 ms (mirrors `GiftsCatalog`), writes `q`.
@@ -120,8 +131,12 @@ it("detail: null on 404, throws on 503", async () => { /* same */ });
 - [ ] **Step 1: failing tests** for `skins-view.ts`:
 
 ```ts
-it("appends the next page and drops duplicates", () => { /* prev [a,b] + page [b,c] with cursor → [a,b,c] */ });
-it("a first page replaces", () => { /* fromCursor false → page items only */ });
+it("appends the next page and drops duplicates", () => {
+  /* prev [a,b] + page [b,c] with cursor → [a,b,c] */
+});
+it("a first page replaces", () => {
+  /* fromCursor false → page items only */
+});
 it("counts active filters", () => {
   expect(activeFilterCount({ sort: "popular" })).toBe(0);
   expect(activeFilterCount({ sort: "price", exterior: "FT", stattrak: true, minUzs: 1 })).toBe(3);
@@ -136,6 +151,7 @@ it("counts active filters", () => {
 ### Task 4: Item page `/cs2-market/:slug`
 
 **Files:**
+
 - Create: `apps/miniapp/src/pages/CS2Skin.tsx`, `apps/miniapp/src/components/skins/SkinListingsList.tsx`, `SkinWearRow.tsx`, `SkinFloatBar.tsx`
 - Modify: `apps/miniapp/src/App.tsx` (lazy route `/cs2-market/:slug`), i18n
 
