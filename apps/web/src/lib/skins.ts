@@ -218,15 +218,12 @@ export async function getSkinFacets(locale: string): Promise<SkinFacets | null> 
   }
 }
 
+/**
+ * `null` only on a real 404. Any other failure throws to the error boundary: a
+ * swallowed outage rendered "not found", which tells search engines the page is gone.
+ */
 export async function getSkinDetail(locale: string, slug: string): Promise<SkinDetail | null> {
-  try {
-    return await apiGetOrNull<SkinDetail>(`/skins/${encodeURIComponent(slug)}`, {
-      locale,
-      ...OPTS,
-    });
-  } catch {
-    return null;
-  }
+  return apiGetOrNull<SkinDetail>(`/skins/${encodeURIComponent(slug)}`, { locale, ...OPTS });
 }
 
 export async function fetchSkinListings(slug: string): Promise<SkinListings> {
