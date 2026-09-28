@@ -1,26 +1,29 @@
 /**
- * CS2 skin trades — every skin purchase, newest first, with a tab for the ones a
- * human must settle (a rollback after delivery, a purchase Waxpeer never confirmed).
- * Row click opens the order. Tabs, search and page live in the URL.
+ * CS2 skin trades — every skin purchase, newest first, with tabs counting what is in
+ * flight and what a human must settle (a rollback after delivery, a purchase Waxpeer
+ * never confirmed). A row opens the trade's details; phones get cards instead of a
+ * table. Tab, search and page live in the URL.
  */
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ListChecks, Loader } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 
 import {
+  boughtUsd,
   fetchTrades,
   fill,
-  penaltyTotal,
-  resolveTrade,
+  marginText,
+  reasonText,
+  shortWhen,
   T,
   TRADES_PAGE_SIZE,
-  unitsToUsd,
+  usd,
   type AdminSkinTradeOut,
   type TradesView,
 } from "./api";
+import { TradeDrawer } from "./TradeDrawer";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -33,76 +36,137 @@ import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 const VIEWS: ReadonlySet<TradesView> = new Set<TradesView>(["all", "active", "attention"]);
 const PANEL_ID = "skin-trades-panel";
 const SEARCH_DEBOUNCE_MS = 300;
+const ATTENTION_ROW = "!bg-[var(--danger-soft)]";
 
-const when = (iso: string) =>
-  new Intl.DateTimeFormat("ru", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
-
-function deadline(t: AdminSkinTradeOut): string {
-  if (t.state === "offer_sent" && t.send_until)
-    return fill(T.trades.acceptBy, { time: when(t.send_until) });
-  if (t.state === "accepted" && t.release_date) {
-    return fill(T.trades.protectedUntil, { date: when(t.release_date) });
+function deadline(t: AdminSkinTradeOut): string | null {
+  if (t.state === "offer_sent" && t.send_until) {
+    return fill(T.trades.acceptBy, { time: shortWhen(t.send_until) });
   }
-  return "—";
+  if (t.state === "accepted" && t.release_date) {
+    return fill(T.trades.protectedUntil, { date: shortWhen(t.release_date) });
+  }
+  return null;
 }
 
-function why(t: AdminSkinTradeOut): string {
-  const parts: string[] = [];
-  if (t.task_sub_state) parts.push(T.trades.subState[t.task_sub_state]);
-  if (t.reason) parts.push(t.reason);
-  const penalty = penaltyTotal(t.penalties);
-  if (penalty) parts.push(fill(T.trades.penalty, { amount: penalty }));
-  return parts.length > 0 ? parts.join(" · ") : "—";
-}
-
-const BASE_COLUMNS: Column<AdminSkinTradeOut>[] = [
-  { key: "created", header: T.trades.cols.created, render: (t) => when(t.created_at) },
-  {
-    key: "item",
-    header: T.trades.cols.item,
-    render: (t) => (
-      <span className="inline-flex items-center gap-1.5">
-        {t.attention && (
-          <AlertTriangle
-            size={14}
-            className="text-[var(--danger)]"
-            aria-label={T.trades.attention}
-          />
-        )}
-        <span>{t.market_hash_name}</span>
-        {t.phase && <span className="text-[var(--text-secondary)]">{t.phase}</span>}
+function SkinName({ t }: { t: AdminSkinTradeOut }) {
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {t.image_url ? (
+        <img src={t.image_url} alt="" className="h-8 w-11 shrink-0 object-contain" />
+      ) : (
+        <span className="h-8 w-11 shrink-0 rounded bg-[var(--bg-muted)]" aria-hidden />
+      )}
+      <span className="min-w-0">
+        <span className="block truncate">{t.market_hash_name}</span>
+        {t.phase && <span className="block text-xs text-[var(--text-secondary)]">{t.phase}</span>}
       </span>
-    ),
+    </span>
+  );
+}
+
+const COLUMNS: Column<AdminSkinTradeOut>[] = [
+  {
+    key: "created",
+    header: T.trades.cols.created,
+    className: "whitespace-nowrap",
+    render: (t) => shortWhen(t.created_at),
   },
+  { key: "item", header: T.trades.cols.item, render: (t) => <SkinName t={t} /> },
   {
     key: "paid",
     header: T.trades.cols.paid,
-    render: (t) => (
-      <span className="tabular-nums">{unitsToUsd(t.bought_units ?? t.paid_units)}</span>
-    ),
+    className: "whitespace-nowrap tabular-nums",
+    render: (t) => usd(boughtUsd(t)),
+  },
+  {
+    key: "margin",
+    header: T.trades.cols.margin,
+    className: "whitespace-nowrap tabular-nums",
+    render: marginText,
   },
   {
     key: "state",
     header: T.trades.cols.state,
-    render: (t) => <StatusChip domain="skinTradeState" value={t.state} />,
+    render: (t) => (
+      <span className="flex flex-col gap-1">
+        <StatusChip domain="skinTradeState" value={t.state} />
+        {deadline(t) && <span className="text-xs text-[var(--text-secondary)]">{deadline(t)}</span>}
+      </span>
+    ),
   },
   { key: "seller", header: T.trades.cols.seller, render: (t) => t.seller_name ?? "—" },
-  { key: "until", header: T.trades.cols.until, render: deadline },
-  { key: "reason", header: T.trades.cols.reason, render: why },
+  {
+    key: "reason",
+    header: T.trades.cols.reason,
+    render: (t) =>
+      t.resolved_at ? (
+        <span className="text-xs text-[var(--text-secondary)]">
+          {fill(T.trades.resolvedOn, { date: shortWhen(t.resolved_at) })}
+        </span>
+      ) : (
+        <span className={t.attention ? "font-medium text-[var(--danger)]" : ""}>
+          {reasonText(t) ?? "—"}
+        </span>
+      ),
+  },
 ];
 
+/** Phones: one card per trade — the table would hide everything past the price. */
+function TradeCards({
+  rows,
+  onOpen,
+}: {
+  rows: AdminSkinTradeOut[];
+  onOpen: (t: AdminSkinTradeOut) => void;
+}) {
+  return (
+    <ul className="space-y-2 md:hidden" aria-label={T.trades.title}>
+      {rows.map((t) => (
+        <li key={t.id}>
+          <button
+            type="button"
+            onClick={() => {
+              onOpen(t);
+            }}
+            className={`w-full space-y-2 rounded-lg border border-[var(--border-default)] p-3 text-left text-sm ${
+              t.attention ? "bg-[var(--danger-soft)]" : "bg-[var(--bg-surface)]"
+            }`}
+          >
+            <SkinName t={t} />
+            <span className="flex flex-wrap items-center gap-2">
+              <StatusChip domain="skinTradeState" value={t.state} />
+              <span className="tabular-nums">{usd(boughtUsd(t))}</span>
+              <span className="text-xs text-[var(--text-secondary)]">
+                {shortWhen(t.created_at)}
+              </span>
+            </span>
+            {deadline(t) && <span className="block text-xs">{deadline(t)}</span>}
+            {(reasonText(t) ?? t.resolved_at) && (
+              <span
+                className={`block text-xs ${t.attention ? "font-medium text-[var(--danger)]" : "text-[var(--text-secondary)]"}`}
+              >
+                {t.resolved_at
+                  ? fill(T.trades.resolvedOn, { date: shortWhen(t.resolved_at) })
+                  : reasonText(t)}
+              </span>
+            )}
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function SkinTradesPage() {
-  const navigate = useNavigate();
   const [rawView] = useSearchParamsState("view", "all");
-  const [, setParams] = useSearchParams();
   const view: TradesView = VIEWS.has(rawView as TradesView) ? (rawView as TradesView) : "all";
   const [query] = useSearchParamsState("q", "");
+  const [, setParams] = useSearchParams();
+  const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
   // What is in the box; the URL (and the request) follows once typing pauses.
   const [typed, setTyped] = useState(query);
-  const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
+  const [open, setOpen] = useState<AdminSkinTradeOut | null>(null);
 
-  // One URL write per change: two setters in one handler do not compose (react-router
-  // reads the location once per call), so the tab/search and the page reset go together.
   const setFilter = (key: "view" | "q", value: string) => {
     setParams(
       (prev) => {
@@ -115,40 +179,6 @@ export function SkinTradesPage() {
       { replace: true },
     );
   };
-
-  const qc = useQueryClient();
-  const resolve = useMutation({
-    mutationFn: resolveTrade,
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["admin", "skins", "trades"] });
-    },
-  });
-  const columns: Column<AdminSkinTradeOut>[] = [
-    ...BASE_COLUMNS,
-    {
-      key: "resolve",
-      header: "",
-      render: (t) =>
-        t.resolved_at ? (
-          <span className="text-xs text-[var(--text-secondary)]">
-            {fill(T.trades.resolvedOn, { date: when(t.resolved_at) })}
-          </span>
-        ) : t.attention ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={resolve.isPending}
-            onClick={(e) => {
-              // The row opens the order; this button must not.
-              e.stopPropagation();
-              resolve.mutate(t.id);
-            }}
-          >
-            {T.trades.resolve}
-          </Button>
-        ) : null,
-    },
-  ];
 
   useEffect(() => {
     if (typed === query) return;
@@ -167,11 +197,25 @@ export function SkinTradesPage() {
     queryFn: () => fetchTrades(view, query, offset),
     refetchInterval: 15_000,
   });
+  const counts = trades.data?.counts;
+  const rows = trades.data?.items ?? [];
 
   const tabs: TabDescriptor<TradesView>[] = [
     { id: "all", label: T.trades.tabs.all, icon: ListChecks, panelId: PANEL_ID },
-    { id: "active", label: T.trades.tabs.active, icon: Loader, panelId: PANEL_ID },
-    { id: "attention", label: T.trades.tabs.attention, icon: AlertTriangle, panelId: PANEL_ID },
+    {
+      id: "active",
+      label: T.trades.tabs.active,
+      icon: Loader,
+      badge: { count: counts?.active ?? 0, tone: "muted" },
+      panelId: PANEL_ID,
+    },
+    {
+      id: "attention",
+      label: T.trades.tabs.attention,
+      icon: AlertTriangle,
+      badge: { count: counts?.attention ?? 0, tone: "warn" },
+      panelId: PANEL_ID,
+    },
   ];
 
   return (
@@ -197,22 +241,20 @@ export function SkinTradesPage() {
       />
       <div role="tabpanel" id={PANEL_ID} className="space-y-3">
         {trades.isError && <p className="text-sm text-[var(--danger)]">{T.trades.loadError}</p>}
-        {resolve.isError && (
-          <p role="alert" className="text-sm text-[var(--danger)]">
-            {T.trades.resolveError}
-          </p>
-        )}
-        <DataTable
-          rows={trades.data?.items ?? []}
-          columns={columns}
-          rowKey={(t) => t.id}
-          loading={trades.isLoading}
-          empty={T.trades.empty}
-          ariaLabel={T.trades.title}
-          onRowClick={(t) => {
-            void navigate(`/orders/${t.order_id}`);
-          }}
-        />
+        <TradeCards rows={rows} onOpen={setOpen} />
+        <div className="hidden md:block">
+          <DataTable
+            rows={rows}
+            columns={COLUMNS}
+            rowKey={(t) => t.id}
+            loading={trades.isLoading}
+            empty={T.trades.empty}
+            ariaLabel={T.trades.title}
+            onRowClick={setOpen}
+            selectedKey={open?.id ?? null}
+            rowClassName={(t) => (t.attention ? ATTENTION_ROW : "")}
+          />
+        </div>
         {(trades.data?.total ?? 0) > TRADES_PAGE_SIZE && (
           <Pagination
             total={trades.data?.total ?? 0}
@@ -222,6 +264,14 @@ export function SkinTradesPage() {
           />
         )}
       </div>
+      {open && (
+        <TradeDrawer
+          trade={open}
+          onClose={() => {
+            setOpen(null);
+          }}
+        />
+      )}
     </div>
   );
 }

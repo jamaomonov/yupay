@@ -406,7 +406,6 @@
     }
   },
   "skins": {
-    "nav": "Skinlar",
     "navPricing": "Skin narxlari",
     "trades": {
       "title": "Skin almashuvlari",
@@ -428,7 +427,8 @@
         "state": "Holat",
         "seller": "Sotuvchi",
         "until": "Muddat",
-        "reason": "Sabab"
+        "reason": "Sabab",
+        "margin": "Marja"
       },
       "acceptBy": "{time} gacha qabul",
       "protectedUntil": "{date} gacha himoya",
@@ -438,7 +438,44 @@
       },
       "resolve": "Hal qilindi",
       "resolvedOn": "{date} hal qilindi",
-      "resolveError": "Belgilab bo'lmadi"
+      "resolveError": "Belgilab bo'lmadi",
+      "marginValue": "{amount} ({percent})",
+      "reasons": {
+        "not_accepted": "Xaridor almashuvni qabul qilmadi",
+        "sold_out": "Xariddan oldin lotlar tugadi",
+        "buy_unconfirmed": "Waxpeer xaridni tasdiqlamadi",
+        "ambiguous_trade": "Bitta kalit ostida bir nechta bitim",
+        "rollback": "Yetkazilgandan keyin bekor qilindi",
+        "buy_pending": "Xarid hali yuborilmagan"
+      },
+      "penaltyUsd": "jarima {amount}",
+      "drawer": {
+        "title": "Almashuv",
+        "close": "Yopish",
+        "openOrder": "Buyurtmani ochish",
+        "openOffer": "Steam'dagi almashuv",
+        "projectId": "Project ID (Waxpeer)",
+        "waxpeerId": "Waxpeer ID",
+        "tradeId": "Steam trade ID",
+        "order": "Buyurtma",
+        "sold": "Mijoz to'ladi",
+        "bought": "Biz Waxpeer'ga to'ladik",
+        "margin": "Marja",
+        "seller": "Sotuvchi",
+        "created": "Yaratilgan",
+        "sendUntil": "Qabul qilish muddati",
+        "releaseDate": "Steam himoyasi",
+        "acceptedAt": "Qabul qilingan",
+        "lastChecked": "Tekshirilgan",
+        "waxpeerStatus": "Waxpeer holati",
+        "reason": "Sabab",
+        "raw": "Waxpeer'da: {text}",
+        "resolveTitle": "Hal qilish",
+        "notePlaceholder": "Nima qilindi: pul qaytarildi, qo'llab-quvvatlashga yozildi, Waxpeer tiketi…",
+        "resolve": "Hal qilindi deb belgilash",
+        "resolvedBy": "{date} hal qilindi",
+        "noteLabel": "Izoh"
+      }
     },
     "pricing": {
       "title": "Skin narxlari",
@@ -465,7 +502,16 @@
         "removeRow": "Olib tashlash",
         "save": "Qoidalarni saqlash",
         "saved": "Qoidalar saqlandi, katalog qayta hisoblandi",
-        "incomplete": "Qoidalardagi barcha raqamlarni to'ldiring"
+        "incomplete": "Qoidalardagi barcha raqamlarni to'ldiring",
+        "bracketHint": "Ko'rsatilgan summadan boshlab narx shu ustamani oladi. Birinchi qator $0 dan.",
+        "bracketFrom": "Narx dan, $",
+        "bracketPercent": "Ustama, %",
+        "liquidityHint": "Lotlari kamida shuncha bo'lgan skinlarga tuzatish qo'shiladi. Oxirgi qator 0 dan.",
+        "liquidityCount": "Lotlar dan",
+        "liquidityPp": "Tuzatish, f.p.",
+        "dirty": "Saqlanmagan o'zgarishlar bor",
+        "reset": "O'zgarishlarni bekor qilish",
+        "willReprice": "Saqlash {count} ta skinni qayta hisoblaydi"
       },
       "preview": {
         "title": "Narxni oldindan ko'rish",
@@ -490,6 +536,16 @@
           "item_pp": "Skin, f.p.",
           "effective_percent": "Jami, %",
           "applied": "Qo'llandi"
+        },
+        "pickSkin": "Skin tanlash",
+        "manual": "Qo'lda kiritish",
+        "pickedSkin": "Skin: {name}",
+        "applied": {
+          "formula": "qoidalar bo'yicha",
+          "fixed": "qat'iy narx",
+          "min_margin": "minimal marja",
+          "steam_cap": "Steam'dan qimmat emas",
+          "floor": "minimal narx"
         }
       },
       "items": {
@@ -503,8 +559,44 @@
         "fixed": "Qat'iy narx, $",
         "save": "Saqlash",
         "clear": "Ustamani bekor qilish",
-        "saved": "Saqlandi"
+        "saved": "Saqlandi",
+        "precedence": "Qat'iy narx ustamadan ustun: berilgan bo'lsa, ustama amal qilmaydi.",
+        "willSell": "{price} ga sotiladi",
+        "clearHint": "Bo'sh — o'z ustamasi yo'q"
+      },
+      "status": {
+        "title": "Holat",
+        "siteOn": "Saytda skinlar: yoqilgan",
+        "siteOff": "Saytda skinlar: o'chirilgan",
+        "syncOn": "Narx sinxronizatsiyasi: yoqilgan",
+        "syncOff": "Narx sinxronizatsiyasi: o'chirilgan",
+        "lastSync": "oxirgi yozuv {date}",
+        "never": "hali bo'lmagan",
+        "active": "Faol skinlar: {count}"
+      },
+      "categories": {
+        "rifles": "Miltiqlar",
+        "pistols": "To'pponchalar",
+        "smgs": "PP",
+        "heavy": "Og'ir",
+        "knives": "Pichoqlar",
+        "gloves": "Qo'lqoplar",
+        "agents": "Agentlar",
+        "cases": "Keyslar",
+        "keys": "Kalitlar",
+        "music-kits": "Musiqa",
+        "charms": "Brelok",
+        "stickers": "Stikerlar",
+        "graffiti": "Graffiti",
+        "patches": "Yamoqlar",
+        "other": "Boshqa"
       }
+    },
+    "navTrades": "Skin almashuvlari",
+    "orderLine": {
+      "openOffer": "Steam'dagi almashuv",
+      "trades": "Buyurtma almashuvlari",
+      "seller": "Sotuvchi: {name}"
     }
   }
 }

@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { SkinTradesPage } from "./SkinTradesPage";
 
-import type { AdminSkinTradesOut } from "./api";
+import type { AdminSkinTradeOut, AdminSkinTradesOut } from "./api";
 
 import { apiGet, apiPost } from "@/lib/api";
 
@@ -20,36 +20,39 @@ vi.mock("@/lib/api", () => ({
 const mockedApiGet = vi.mocked(apiGet);
 const mockedApiPost = vi.mocked(apiPost);
 
-const PAGE: AdminSkinTradesOut = {
-  total: 1,
-  items: [
-    {
-      id: "t1",
-      order_id: "01a0e987-eede-7d40-892f-fe7f3b3bd0e9",
-      order_item_id: "i1",
-      created_at: "2026-09-29T10:00:00Z",
-      market_hash_name: "AK-47 | Redline (Field-Tested)",
-      phase: "",
-      paid_units: 27867,
-      bought_units: 27000,
-      waxpeer_status: 6,
-      state: "failed",
-      reason_code: "other",
-      reason: "rollback",
-      penalties: { total_penalty: 1500 },
-      seller_name: "darpan6awx",
-      trade_id: "9393511289",
-      send_until: null,
-      release_date: "2026-10-05T16:00:00Z",
-      accepted_at: "2026-09-28T16:00:00Z",
-      last_checked_at: null,
-      task_status: "succeeded",
-      task_sub_state: null,
-      resolved_at: null,
-      attention: true,
-    },
-  ],
+const ROW: AdminSkinTradeOut = {
+  id: "t1",
+  project_id: "p-key-1",
+  waxpeer_id: 77,
+  order_id: "01a0e987-eede-7d40-892f-fe7f3b3bd0e9",
+  order_item_id: "i1",
+  created_at: "2026-09-29T10:00:00Z",
+  market_hash_name: "AK-47 | Redline (Field-Tested)",
+  phase: "",
+  image_url: null,
+  sold_usd: "30.00",
+  paid_units: 27867,
+  bought_units: 27000,
+  waxpeer_status: 6,
+  state: "failed",
+  reason_code: "other",
+  reason: "rollback",
+  penalties: { total_penalty: 1500 },
+  seller_name: "darpan6awx",
+  trade_id: "9393511289",
+  offer_url: "https://steamcommunity.com/tradeoffer/9393511289/",
+  send_until: null,
+  release_date: "2026-10-05T16:00:00Z",
+  accepted_at: "2026-09-28T16:00:00Z",
+  last_checked_at: null,
+  task_status: "succeeded",
+  task_sub_state: null,
+  resolved_at: null,
+  resolved_note: null,
+  attention: true,
 };
+
+const PAGE: AdminSkinTradesOut = { total: 1, items: [ROW], counts: { active: 3, attention: 1 } };
 
 function renderPage(entry = "/skins/trades") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -65,23 +68,31 @@ function renderPage(entry = "/skins/trades") {
   );
 }
 
+const table = () => screen.getByRole("table");
+
 beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApiPost.mockReset();
+  mockedApiGet.mockResolvedValue(PAGE);
 });
 
-it("lists trades with the dollars paid, the seller and a flag for attention", async () => {
-  mockedApiGet.mockResolvedValue(PAGE);
+it("says why in words and dollars, and shows the margin", async () => {
   renderPage();
-  expect(await screen.findByText("AK-47 | Redline (Field-Tested)")).toBeInTheDocument();
-  expect(screen.getByText("$27.00")).toBeInTheDocument();
-  expect(screen.getByText("darpan6awx")).toBeInTheDocument();
-  expect(screen.getByText(/Штраф: 1500/)).toBeInTheDocument();
-  expect(mockedApiGet.mock.calls[0]![0]).toContain("view=all");
+  await screen.findByRole("table");
+  expect(within(table()).getByText(/Откат после доставки/)).toBeInTheDocument();
+  expect(within(table()).getByText(/штраф \$1\.50/)).toBeInTheDocument();
+  expect(within(table()).getByText("$27.00")).toBeInTheDocument();
+  expect(within(table()).getByText(/\$3\.00/)).toBeInTheDocument();
+  expect(within(table()).queryByText("rollback")).not.toBeInTheDocument();
+});
+
+it("counts what is in flight and what needs a human on the tabs", async () => {
+  renderPage();
+  expect(await screen.findByRole("tab", { name: /В процессе\s*3/ })).toBeInTheDocument();
+  expect(screen.getByRole("tab", { name: /Требуют внимания\s*1/ })).toBeInTheDocument();
 });
 
 it("asks for the trades needing a human on that tab", async () => {
-  mockedApiGet.mockResolvedValue(PAGE);
   renderPage();
   fireEvent.click(await screen.findByRole("tab", { name: /Требуют внимания/ }));
   await waitFor(() => {
@@ -89,35 +100,40 @@ it("asks for the trades needing a human on that tab", async () => {
   });
 });
 
-it("opens the order on a row click", async () => {
-  mockedApiGet.mockResolvedValue(PAGE);
+it("opens the trade's details — Waxpeer keys, Steam link, the order", async () => {
   renderPage();
-  fireEvent.click(await screen.findByText("AK-47 | Redline (Field-Tested)"));
+  await screen.findByRole("table");
+  fireEvent.click(within(table()).getByText("AK-47 | Redline (Field-Tested)"));
+  const drawer = await screen.findByRole("dialog");
+  expect(within(drawer).getByText("p-key-1")).toBeInTheDocument();
+  expect(within(drawer).getByRole("link", { name: /Обмен в Steam/ })).toHaveAttribute(
+    "href",
+    "https://steamcommunity.com/tradeoffer/9393511289/",
+  );
+  fireEvent.click(within(drawer).getByRole("link", { name: "Открыть заказ" }));
   expect(await screen.findByText("order-stub")).toBeInTheDocument();
 });
 
-it("says so when there are none", async () => {
-  mockedApiGet.mockResolvedValue({ total: 0, items: [] });
+it("resolves from the details with a note", async () => {
+  mockedApiPost.mockResolvedValue({ ...ROW, resolved_at: "2026-09-29T12:00:00Z" });
   renderPage();
-  expect(await screen.findByText("Обменов нет")).toBeInTheDocument();
-});
-
-it("marks a trade needing a human as resolved, without opening the order", async () => {
-  mockedApiGet.mockResolvedValue(PAGE);
-  mockedApiPost.mockResolvedValue({ ...PAGE.items[0], resolved_at: "2026-09-29T12:00:00Z" });
-  renderPage();
-  fireEvent.click(await screen.findByRole("button", { name: "Разобрано" }));
+  await screen.findByRole("table");
+  fireEvent.click(within(table()).getByText("AK-47 | Redline (Field-Tested)"));
+  const drawer = await screen.findByRole("dialog");
+  fireEvent.change(within(drawer).getByRole("textbox"), {
+    target: { value: "вернули на баланс" },
+  });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Отметить разобранным" }));
   await waitFor(() => {
     expect(mockedApiPost).toHaveBeenCalledTimes(1);
   });
-  const [path, , headers] = mockedApiPost.mock.calls[0]!;
+  const [path, body, headers] = mockedApiPost.mock.calls[0]!;
   expect(path).toBe("/api/v1/admin/skins/trades/t1/resolve");
+  expect(body).toEqual({ note: "вернули на баланс" });
   expect(headers).toEqual(expect.objectContaining({ "Idempotency-Key": expect.any(String) }));
-  expect(screen.queryByText("order-stub")).not.toBeInTheDocument();
 });
 
 it("searches once the operator stops typing, not per keystroke", async () => {
-  mockedApiGet.mockResolvedValue(PAGE);
   renderPage();
   const box = await screen.findByRole("searchbox");
   fireEvent.change(box, { target: { value: "a" } });
@@ -126,4 +142,10 @@ it("searches once the operator stops typing, not per keystroke", async () => {
     expect(mockedApiGet.mock.calls.some(([p]) => p.endsWith("q=ak"))).toBe(true);
   });
   expect(mockedApiGet.mock.calls.some(([p]) => p.endsWith("q=a"))).toBe(false);
+});
+
+it("says so when there are none", async () => {
+  mockedApiGet.mockResolvedValue({ total: 0, items: [], counts: { active: 0, attention: 0 } });
+  renderPage();
+  expect(await screen.findByText("Обменов нет")).toBeInTheDocument();
 });

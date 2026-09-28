@@ -25,6 +25,7 @@ import { EvidenceCard } from "./EvidenceCard";
 import { MerchantDepositCard } from "./MerchantDepositCard";
 import { OrderActorRef } from "./OrderActorRef";
 import { OrderStateBadge } from "./OrderStateBadge";
+import { SkinTradeLine } from "./SkinTradeLine";
 import {
   type EvidencePackOut,
   type OrderAdminOut,
@@ -642,7 +643,9 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                       <img
                         src={d.image_url}
                         alt=""
-                        className="size-10 flex-shrink-0 rounded-md border border-[var(--border-default)] object-cover"
+                        className={`size-10 flex-shrink-0 rounded-md border border-[var(--border-default)] ${
+                          it.skin_trade ? "object-contain p-0.5" : "object-cover"
+                        }`}
                       />
                     ) : (
                       <div
@@ -663,6 +666,7 @@ function ItemsCard({ order }: { order: OrderAdminOut }) {
                         )}
                         {d && <code className="text-[10px] opacity-70">{d.sku_code}</code>}
                       </div>
+                      {it.skin_trade && <SkinTradeLine trade={it.skin_trade} orderId={order.id} />}
                       {Object.keys(it.fulfillment_data).length > 0 && (
                         <pre className="mt-1 whitespace-pre-wrap break-all text-[10px] text-[var(--text-secondary)]">
                           {JSON.stringify(it.fulfillment_data, null, 0)}

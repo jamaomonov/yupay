@@ -54,11 +54,13 @@
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import adminRu from "@yupay/i18n/locales/ru/admin.json";
 import { Button } from "@yupay/ui";
 import { Coins } from "lucide-react";
 import { useRef, useState } from "react";
 
 import { merchantSettlement, settlementBlock } from "./settlement";
+
 import type { OrderAdminOut } from "./types";
 
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -68,7 +70,6 @@ import { type ApiError, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
-import adminRu from "@yupay/i18n/locales/ru/admin.json";
 
 const T = adminRu.orders.settle;
 

@@ -440,3 +440,41 @@ it("cannot be escaped out of while the credit is in flight", async () => {
 
   expect(screen.getByRole("dialog")).toBeInTheDocument();
 });
+
+it("shows a skin line's trade and a way to it on the trades screen", async () => {
+  mockEndpoints(
+    makeOrder({
+      items: [
+        {
+          id: "i1",
+          sku_id: "sku",
+          qty: 1,
+          unit_price_usd: "30.00",
+          fulfillment_state: "in_progress",
+          fulfillment_data: {},
+          supplier_order_id: null,
+          display: null,
+          skin_trade: {
+            state: "offer_sent",
+            offer_url: "https://steamcommunity.com/tradeoffer/9393511289/",
+            send_until: null,
+            release_date: null,
+            seller: { name: "darpan6awx" },
+            reason_code: null,
+          },
+        },
+      ],
+    }),
+  );
+  renderPage();
+  expect(await screen.findByText("Обмен отправлен")).toBeInTheDocument();
+  expect(screen.getByText(/darpan6awx/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /Обмен в Steam/ })).toHaveAttribute(
+    "href",
+    "https://steamcommunity.com/tradeoffer/9393511289/",
+  );
+  expect(screen.getByRole("link", { name: /Все обмены заказа/ })).toHaveAttribute(
+    "href",
+    expect.stringContaining("/skins/trades?q="),
+  );
+});

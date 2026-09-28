@@ -31,6 +31,8 @@ interface Props<T> {
    *  expands a detail panel elsewhere and we want the source row to stay
    *  visually anchored. */
   selectedKey?: string | null;
+  /** Extra classes for a row — e.g. a tint for rows that need attention. */
+  rowClassName?: (row: T) => string;
   /** Skip the client-side sort entirely (e.g. table already comes pre-sorted
    *  and the dataset is server-paginated). Headers stay non-clickable. */
   sortable?: boolean;
@@ -48,6 +50,7 @@ export function DataTable<T>({
   loading = false,
   onRowClick,
   selectedKey = null,
+  rowClassName,
   sortable = true,
 }: Props<T>) {
   const [sort, setSort] = useState<{ key: string; dir: SortDir } | null>(null);
@@ -148,6 +151,7 @@ export function DataTable<T>({
                   interactive
                     ? "cursor-pointer focus-visible:bg-[var(--bg-accent-soft)] focus-visible:outline-none"
                     : "",
+                  rowClassName?.(row) ?? "",
                 ].join(" ")}
                 onClick={
                   onRowClick

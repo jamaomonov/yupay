@@ -406,7 +406,6 @@
     }
   },
   "skins": {
-    "nav": "Skins",
     "navPricing": "Skin pricing",
     "trades": {
       "title": "Skin trades",
@@ -428,7 +427,8 @@
         "state": "State",
         "seller": "Seller",
         "until": "Deadline",
-        "reason": "Reason"
+        "reason": "Reason",
+        "margin": "Margin"
       },
       "acceptBy": "accept by {time}",
       "protectedUntil": "protected until {date}",
@@ -438,7 +438,44 @@
       },
       "resolve": "Resolved",
       "resolvedOn": "resolved {date}",
-      "resolveError": "Could not mark it"
+      "resolveError": "Could not mark it",
+      "marginValue": "{amount} ({percent})",
+      "reasons": {
+        "not_accepted": "The buyer did not accept",
+        "sold_out": "Listings ran out before buying",
+        "buy_unconfirmed": "Waxpeer did not confirm the buy",
+        "ambiguous_trade": "Several trades under one key",
+        "rollback": "Rolled back after delivery",
+        "buy_pending": "The buy is not sent yet"
+      },
+      "penaltyUsd": "penalty {amount}",
+      "drawer": {
+        "title": "Trade",
+        "close": "Close",
+        "openOrder": "Open order",
+        "openOffer": "Trade in Steam",
+        "projectId": "Project ID (Waxpeer)",
+        "waxpeerId": "Waxpeer ID",
+        "tradeId": "Steam trade ID",
+        "order": "Order",
+        "sold": "Customer paid",
+        "bought": "We paid Waxpeer",
+        "margin": "Margin",
+        "seller": "Seller",
+        "created": "Created",
+        "sendUntil": "Accept by",
+        "releaseDate": "Steam protection until",
+        "acceptedAt": "Accepted",
+        "lastChecked": "Checked",
+        "waxpeerStatus": "Waxpeer status",
+        "reason": "Reason",
+        "raw": "As Waxpeer says: {text}",
+        "resolveTitle": "Settle",
+        "notePlaceholder": "What was done: refund, support reply, Waxpeer ticket…",
+        "resolve": "Mark as resolved",
+        "resolvedBy": "Resolved {date}",
+        "noteLabel": "Note"
+      }
     },
     "pricing": {
       "title": "Skin pricing",
@@ -465,7 +502,16 @@
         "removeRow": "Remove",
         "save": "Save rules",
         "saved": "Rules saved, catalogue repriced",
-        "incomplete": "Fill in every number in the rules"
+        "incomplete": "Fill in every number in the rules",
+        "bracketHint": "A price from this amount gets this markup. The first row starts at $0.",
+        "bracketFrom": "Price from, $",
+        "bracketPercent": "Markup, %",
+        "liquidityHint": "Skins with at least this many listings get the adjustment. The last row starts at 0.",
+        "liquidityCount": "Listings from",
+        "liquidityPp": "Adjustment, pp",
+        "dirty": "Unsaved changes",
+        "reset": "Discard changes",
+        "willReprice": "Saving reprices {count} skins"
       },
       "preview": {
         "title": "Price preview",
@@ -490,6 +536,16 @@
           "item_pp": "Skin, pp",
           "effective_percent": "Total, %",
           "applied": "Applied"
+        },
+        "pickSkin": "Pick a skin",
+        "manual": "Enter by hand",
+        "pickedSkin": "Skin: {name}",
+        "applied": {
+          "formula": "by the rules",
+          "fixed": "fixed price",
+          "min_margin": "minimum margin",
+          "steam_cap": "capped at Steam",
+          "floor": "price floor"
         }
       },
       "items": {
@@ -503,8 +559,44 @@
         "fixed": "Fixed price, $",
         "save": "Save",
         "clear": "Clear override",
-        "saved": "Saved"
+        "saved": "Saved",
+        "precedence": "A fixed price wins over the markup: when set, the markup does not apply.",
+        "willSell": "Will sell for {price}",
+        "clearHint": "Empty — no own markup"
+      },
+      "status": {
+        "title": "Status",
+        "siteOn": "Skins on the site: on",
+        "siteOff": "Skins on the site: off",
+        "syncOn": "Price sync: on",
+        "syncOff": "Price sync: off",
+        "lastSync": "last write {date}",
+        "never": "not yet",
+        "active": "Active skins: {count}"
+      },
+      "categories": {
+        "rifles": "Rifles",
+        "pistols": "Pistols",
+        "smgs": "SMGs",
+        "heavy": "Heavy",
+        "knives": "Knives",
+        "gloves": "Gloves",
+        "agents": "Agents",
+        "cases": "Cases",
+        "keys": "Keys",
+        "music-kits": "Music kits",
+        "charms": "Charms",
+        "stickers": "Stickers",
+        "graffiti": "Graffiti",
+        "patches": "Patches",
+        "other": "Other"
       }
+    },
+    "navTrades": "Skin trades",
+    "orderLine": {
+      "openOffer": "Trade in Steam",
+      "trades": "This order's trades",
+      "seller": "Seller: {name}"
     }
   }
 }

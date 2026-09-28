@@ -406,7 +406,6 @@
     }
   },
   "skins": {
-    "nav": "Скины",
     "navPricing": "Цены скинов",
     "trades": {
       "title": "Обмены скинов",
@@ -428,7 +427,8 @@
         "state": "Состояние",
         "seller": "Продавец",
         "until": "Срок",
-        "reason": "Причина"
+        "reason": "Причина",
+        "margin": "Маржа"
       },
       "acceptBy": "принять до {time}",
       "protectedUntil": "защита до {date}",
@@ -438,7 +438,44 @@
       },
       "resolve": "Разобрано",
       "resolvedOn": "разобрано {date}",
-      "resolveError": "Не удалось отметить"
+      "resolveError": "Не удалось отметить",
+      "marginValue": "{amount} ({percent})",
+      "reasons": {
+        "not_accepted": "Покупатель не принял обмен",
+        "sold_out": "Лоты закончились до покупки",
+        "buy_unconfirmed": "Waxpeer не подтвердил покупку",
+        "ambiguous_trade": "Несколько сделок под одним ключом",
+        "rollback": "Откат после доставки",
+        "buy_pending": "Покупка ещё не отправлена"
+      },
+      "penaltyUsd": "штраф {amount}",
+      "drawer": {
+        "title": "Обмен",
+        "close": "Закрыть",
+        "openOrder": "Открыть заказ",
+        "openOffer": "Обмен в Steam",
+        "projectId": "Project ID (Waxpeer)",
+        "waxpeerId": "Waxpeer ID",
+        "tradeId": "Steam trade ID",
+        "order": "Заказ",
+        "sold": "Клиент заплатил",
+        "bought": "Мы заплатили Waxpeer",
+        "margin": "Маржа",
+        "seller": "Продавец",
+        "created": "Создан",
+        "sendUntil": "Принять до",
+        "releaseDate": "Защита Steam до",
+        "acceptedAt": "Принят",
+        "lastChecked": "Проверен",
+        "waxpeerStatus": "Статус Waxpeer",
+        "reason": "Причина",
+        "raw": "Как у Waxpeer: {text}",
+        "resolveTitle": "Разобрать",
+        "notePlaceholder": "Что сделано: вернули деньги, написали в поддержку, тикет Waxpeer…",
+        "resolve": "Отметить разобранным",
+        "resolvedBy": "Разобрано {date}",
+        "noteLabel": "Заметка"
+      }
     },
     "pricing": {
       "title": "Цены скинов",
@@ -465,7 +502,16 @@
         "removeRow": "Убрать",
         "save": "Сохранить правила",
         "saved": "Правила сохранены, каталог пересчитан",
-        "incomplete": "Заполните все числа в правилах"
+        "incomplete": "Заполните все числа в правилах",
+        "bracketHint": "Цена от указанной суммы получает эту наценку. Первая строка — от $0.",
+        "bracketFrom": "Цена от, $",
+        "bracketPercent": "Наценка, %",
+        "liquidityHint": "Скинам, у которых лотов не меньше указанного, добавляется поправка. Последняя строка — от 0.",
+        "liquidityCount": "Лотов от",
+        "liquidityPp": "Поправка, п.п.",
+        "dirty": "Есть несохранённые изменения",
+        "reset": "Отменить изменения",
+        "willReprice": "Сохранение пересчитает {count} скинов"
       },
       "preview": {
         "title": "Предпросмотр цены",
@@ -490,6 +536,16 @@
           "item_pp": "Скин, п.п.",
           "effective_percent": "Итого, %",
           "applied": "Сработало"
+        },
+        "pickSkin": "Выбрать скин",
+        "manual": "Ввести вручную",
+        "pickedSkin": "Скин: {name}",
+        "applied": {
+          "formula": "по правилам",
+          "fixed": "фиксированная цена",
+          "min_margin": "минимальная маржа",
+          "steam_cap": "не дороже Steam",
+          "floor": "минимальная цена"
         }
       },
       "items": {
@@ -503,8 +559,44 @@
         "fixed": "Фикс. цена, $",
         "save": "Сохранить",
         "clear": "Сбросить наценку",
-        "saved": "Сохранено"
+        "saved": "Сохранено",
+        "precedence": "Фиксированная цена важнее наценки: если она задана, наценка не действует.",
+        "willSell": "Будет продаваться за {price}",
+        "clearHint": "Пустое поле — без своей наценки"
+      },
+      "status": {
+        "title": "Состояние",
+        "siteOn": "Скины на сайте: включены",
+        "siteOff": "Скины на сайте: выключены",
+        "syncOn": "Синхронизация цен: включена",
+        "syncOff": "Синхронизация цен: выключена",
+        "lastSync": "последняя запись {date}",
+        "never": "ещё не было",
+        "active": "Активных скинов: {count}"
+      },
+      "categories": {
+        "rifles": "Винтовки",
+        "pistols": "Пистолеты",
+        "smgs": "ПП",
+        "heavy": "Тяжёлое",
+        "knives": "Ножи",
+        "gloves": "Перчатки",
+        "agents": "Агенты",
+        "cases": "Кейсы",
+        "keys": "Ключи",
+        "music-kits": "Музыка",
+        "charms": "Брелоки",
+        "stickers": "Наклейки",
+        "graffiti": "Граффити",
+        "patches": "Нашивки",
+        "other": "Другое"
       }
+    },
+    "navTrades": "Обмены скинов",
+    "orderLine": {
+      "openOffer": "Обмен в Steam",
+      "trades": "Все обмены заказа",
+      "seller": "Продавец: {name}"
     }
   }
 }

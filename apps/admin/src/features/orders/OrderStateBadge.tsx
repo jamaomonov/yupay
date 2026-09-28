@@ -20,6 +20,7 @@
  */
 
 import { failureReasonLabel, FAILURE_REASON_TONE, STATUS_LABEL, STATUS_TONE } from "./types";
+
 import type { OrderFailureReason, OrderStatus } from "./types";
 
 import { Badge } from "@/components/Badge";

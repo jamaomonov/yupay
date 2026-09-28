@@ -90,6 +90,15 @@ export interface OrderItemOut {
   fulfillment_data: Record<string, unknown>;
   supplier_order_id: string | null;
   display: OrderItemDisplay | null;
+  /** A CS2 skin line's Steam trade, as the customer sees it; absent elsewhere. */
+  skin_trade?: {
+    state: string;
+    offer_url: string | null;
+    send_until: string | null;
+    release_date: string | null;
+    seller: { name?: string | null } | null;
+    reason_code: string | null;
+  } | null;
 }
 
 export interface OrderEventOut {
