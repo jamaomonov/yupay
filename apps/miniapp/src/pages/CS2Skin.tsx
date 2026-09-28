@@ -5,11 +5,13 @@ import { useParams } from "wouter";
 
 import type { SkinDetail, SkinListing } from "@yupay/utils";
 
+import { SkinBuyPanel } from "@/components/skins/SkinBuyPanel";
 import { SkinListingsList } from "@/components/skins/SkinListingsList";
 import { SkinWearRow } from "@/components/skins/SkinWearRow";
 import { SafeImage } from "@/components/ui/safe-image";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/lib/i18n";
+import { cheapestOffer } from "@/lib/skin-buy";
 import { fetchSkinDetail, fetchSkinListings, skinPriceText } from "@/lib/skins";
 import { openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -22,7 +24,7 @@ type State =
 const steamMarketUrl = (name: string) =>
   `https://steamcommunity.com/market/listings/730/${encodeURIComponent(name)}`;
 
-/** One skin: art, price, the other wears, and the live offers. Read-only until plan 3. */
+/** One skin: art, price, the other wears, the live offers, and buying one of them. */
 export default function CS2Skin() {
   const { t } = useT();
   const { slug } = useParams<{ slug: string }>();
@@ -30,6 +32,8 @@ export default function CS2Skin() {
   const [attempt, setAttempt] = useState(0);
   // Loaded here, not in the list: the cheapest offer is also the headline price.
   const [offers, setOffers] = useState<SkinListing[] | null>(null);
+  // The offer the buy panel charges: the one tapped, else the cheapest.
+  const [pickedId, setPickedId] = useState<number | null>(null);
   const item = state.phase === "ready" ? state.item : null;
   useDocumentTitle(item ? item.name : t("cs2.docTitle"));
 
@@ -51,6 +55,7 @@ export default function CS2Skin() {
   useEffect(() => {
     let live = true;
     setOffers(null);
+    setPickedId(null);
     fetchSkinListings(slug)
       .then((r) => {
         if (live) setOffers(r.items);
@@ -78,7 +83,9 @@ export default function CS2Skin() {
         <p className="text-sm text-white/50">{t("cs2.error")}</p>
         <button
           type="button"
-          onClick={() => setAttempt((n) => n + 1)}
+          onClick={() => {
+            setAttempt((n) => n + 1);
+          }}
           className="text-primary text-sm font-semibold"
         >
           {t("common.retry")}
@@ -93,8 +100,12 @@ export default function CS2Skin() {
   const head = offerHeadline(item.price_uzs, item.price_usd, offers);
   const price = skinPriceText(head.uzs, head.usd);
   const worn = hasWear(item.category);
+  const selected =
+    offers?.find((o) => o.listing_id === pickedId) ?? (offers ? cheapestOffer(offers) : null);
+  const buySku = item.buy_sku_id ?? null;
+  const buyable = buySku !== null && selected !== null;
   return (
-    <div className="yp-fade-in space-y-5 px-4 pb-4 pt-4">
+    <div className={`yp-fade-in space-y-5 px-4 pt-4 ${buyable ? "pb-28" : "pb-4"}`}>
       <div
         className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-b-[3px]"
         style={{
@@ -145,24 +156,29 @@ export default function CS2Skin() {
             </p>
           )}
         </div>
-        {/* Purchase is plan 3; the button says so, and does not look clickable. */}
         <button
           type="button"
-          disabled
-          className="w-full cursor-not-allowed rounded-xl py-3.5 text-[15px] font-bold text-white/40"
-          style={{ background: "hsl(var(--surface-2))" }}
-        >
-          {t("cs2.buySoon")}
-        </button>
-        <button
-          type="button"
-          onClick={() => openExternalLink(steamMarketUrl(item.name))}
+          onClick={() => {
+            openExternalLink(steamMarketUrl(item.name));
+          }}
           className="inline-flex items-center gap-1 text-[12px] text-white/50"
         >
           {t("cs2.steamPrice")}
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
         </button>
       </div>
+
+      {buyable && (
+        <SkinBuyPanel
+          skuId={buySku}
+          slug={item.slug}
+          offer={selected}
+          onListingGone={(next) => {
+            setOffers((all) => all?.filter((o) => o.listing_id !== selected.listing_id) ?? null);
+            setPickedId(next?.listing_id ?? null);
+          }}
+        />
+      )}
 
       {worn && item.family.length > 1 && (
         <section>
@@ -181,7 +197,11 @@ export default function CS2Skin() {
             {t("cs2.offers")}{" "}
             <span className="font-mono text-[13px] text-white/50">{item.count}</span>
           </h2>
-          <SkinListingsList key={item.slug} items={offers} />
+          <SkinListingsList
+            key={item.slug}
+            items={offers}
+            {...(buyable ? { selectedId: selected.listing_id, onSelect: setPickedId } : {})}
+          />
         </section>
       )}
     </div>

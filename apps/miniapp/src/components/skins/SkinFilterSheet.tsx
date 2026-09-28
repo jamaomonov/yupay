@@ -1,4 +1,5 @@
 import { EXTERIORS } from "@yupay/utils";
+import { activeFilterCount } from "@yupay/utils";
 import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
@@ -6,7 +7,6 @@ import type { Exterior, SkinFacets, SkinQuery, SkinQueryPatch } from "@yupay/uti
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
-import { activeFilterCount } from "@yupay/utils";
 
 const FIELD = { background: "hsl(var(--surface-2))", border: "1px solid hsl(var(--border))" };
 
@@ -56,7 +56,9 @@ export function SkinFilterSheet({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftOf(query));
   const count = activeFilterCount(query);
-  const set = (patch: Partial<Draft>) => setDraft((d) => ({ ...d, ...patch }));
+  const set = (patch: Partial<Draft>) => {
+    setDraft((d) => ({ ...d, ...patch }));
+  };
 
   function apply(): void {
     onChange({
@@ -101,7 +103,9 @@ export function SkinFilterSheet({
         className="max-h-[85vh] rounded-t-3xl"
         aria-describedby={undefined}
         // Focusing the close button on open drew a lime ring on it for no reason.
-        onOpenAutoFocus={(e) => e.preventDefault()}
+        onOpenAutoFocus={(e) => {
+          e.preventDefault();
+        }}
       >
         <SheetHeader>
           <SheetTitle>{t("cs2.filters")}</SheetTitle>
@@ -117,7 +121,9 @@ export function SkinFilterSheet({
                   aria-pressed={draft.exterior === e}
                   className={pill(draft.exterior === e)}
                   style={draft.exterior === e ? undefined : FIELD}
-                  onClick={() => set({ exterior: draft.exterior === e ? undefined : e })}
+                  onClick={() => {
+                    set({ exterior: draft.exterior === e ? undefined : e });
+                  }}
                 >
                   {t(`cs2.exterior.${e}`)}
                 </button>
@@ -134,7 +140,9 @@ export function SkinFilterSheet({
                   aria-label={`${t("cs2.price")} — ${t(k === "min" ? "cs2.from" : "cs2.to")}`}
                   placeholder={t(k === "min" ? "cs2.from" : "cs2.to")}
                   value={draft[k]}
-                  onChange={(e) => set({ [k]: e.target.value })}
+                  onChange={(e) => {
+                    set({ [k]: e.target.value });
+                  }}
                   className="placeholder:text-body-faint w-full rounded-xl px-3 py-2.5 text-sm text-white outline-none"
                   style={FIELD}
                 />
@@ -145,7 +153,9 @@ export function SkinFilterSheet({
             type="button"
             role="switch"
             aria-checked={draft.stattrak}
-            onClick={() => set({ stattrak: !draft.stattrak })}
+            onClick={() => {
+              set({ stattrak: !draft.stattrak });
+            }}
             className="flex w-full items-center justify-between text-sm text-white"
           >
             {t("cs2.stattrak")}
@@ -171,7 +181,9 @@ export function SkinFilterSheet({
                     aria-pressed={draft.rarity === value}
                     className={pill(draft.rarity === value)}
                     style={draft.rarity === value ? undefined : FIELD}
-                    onClick={() => set({ rarity: draft.rarity === value ? undefined : value })}
+                    onClick={() => {
+                      set({ rarity: draft.rarity === value ? undefined : value });
+                    }}
                   >
                     <span className="inline-flex items-center gap-1.5">
                       <span

@@ -1,8 +1,8 @@
 import { SKIN_CATEGORIES } from "@yupay/utils";
 import { useEffect, useRef } from "react";
 
-import type { SkinCategory, SkinQuery, SkinQueryPatch } from "@yupay/utils";
 import type { ScopedFacets } from "@/lib/skins-view";
+import type { SkinCategory, SkinQuery, SkinQueryPatch } from "@yupay/utils";
 
 import { SkinCategoryIcon } from "@/components/skins/SkinCategoryIcon";
 import { useT } from "@/lib/i18n";

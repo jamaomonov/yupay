@@ -7,9 +7,9 @@
  * Vitest suite can pin it.
  */
 
-import type { TradeLinkVerdict } from "./skins";
-
 import { ApiError } from "./api";
+
+import type { TradeLinkVerdict } from "./skins";
 
 export interface NextOffer {
   listing_id: number;
@@ -86,4 +86,13 @@ export function tradeLinkVerdict(v: TradeLinkVerdict | null): {
   if (v === null || v.reason === "unavailable") return { line: null, usable: true };
   if (v.ok) return { line: "ok", usable: true };
   return { line: v.reason ?? "invalid", usable: false };
+}
+
+/** The cheapest offer by its dollar price (what the API bills); `null` when there are none. */
+export function cheapestOffer<T extends { price_usd: string }>(offers: readonly T[]): T | null {
+  let best: T | null = null;
+  for (const o of offers) {
+    if (best === null || Number(o.price_usd) < Number(best.price_usd)) best = o;
+  }
+  return best;
 }

@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import { ApiError } from "./api";
-import { orderKeyFor, skinBuyFailure, tradeLinkShapeOk, tradeLinkVerdict } from "./skin-buy";
+import {
+  cheapestOffer,
+  orderKeyFor,
+  skinBuyFailure,
+  tradeLinkShapeOk,
+  tradeLinkVerdict,
+} from "./skin-buy";
 
 const unprocessable = (extra: Record<string, unknown>) =>
   new ApiError(422, "Unprocessable", { detail: "x", extra });
@@ -99,5 +105,17 @@ describe("tradeLinkVerdict", () => {
       line: "hold",
       usable: false,
     });
+  });
+});
+
+describe("cheapestOffer", () => {
+  it("picks by the dollar price, numerically", () => {
+    const offers = [
+      { listing_id: 1, price_usd: "100.00" },
+      { listing_id: 2, price_usd: "9.50" },
+      { listing_id: 3, price_usd: "31.00" },
+    ];
+    expect(cheapestOffer(offers)?.listing_id).toBe(2);
+    expect(cheapestOffer([])).toBeNull();
   });
 });
