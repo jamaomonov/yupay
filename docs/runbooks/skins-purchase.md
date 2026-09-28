@@ -13,6 +13,19 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
    item API then names `buy_sku_id` — and `CS2_SKINS_ENABLED` is on. Without the seed the
    pages stay browse-only and no customer can create a skin order.
 
+## Admin screens
+
+- **Скины → Обмены** (`/skins/trades`): every skin purchase, newest first — Waxpeer's status
+  as our state, the dollars bought, the seller, the accept-by or protection date, the reason
+  and any penalty. «В процессе» is what is not settled yet; «Требуют внимания» is what a human
+  settles: a rollback after delivery (status 6 with penalties), a purchase we could not
+  confirm (`buy_unconfirmed` / `ambiguous_trade`), or an in-flight buy with no Waxpeer status.
+  A row opens the order. There is no «recheck» button: an in-flight trade is re-read every
+  5–10 s and an accepted one hourly.
+- **Скины → Цены скинов** (`/skins/pricing`): the pricing document (saved whole, the
+  catalogue reprices at once), a price preview that names the rule that won, and per-skin
+  overrides (margin pp or a fixed price; «Сбросить наценку» clears both).
+
 ## Alerts
 
 - **Low balance** (`supplier_low_balance`): the order stays «в обработке». Top up Waxpeer, then
@@ -29,6 +42,16 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
   `project_id` and we hold no Waxpeer id to tell ours. Check the Waxpeer dashboard; the order
   page tells the customer to contact support, not that money is coming back.
 - **`skin_refund_failed`**: the automatic refund to the balance raised. Refund manually.
+- **«Скин: расхождение с Waxpeer»** (`skin_history_divergence`, daily at 04:30 Tashkent, the
+  last 14 days of trades we consider settled; read-only):
+  - _откат после выпуска_ — a released trade Waxpeer now shows as failed: a late rollback.
+    Handle as the rollback alert above.
+  - _скин ушёл, а деньги вернули_ — we refunded the customer, but Waxpeer shows the offer sent
+    or completed. Money lost twice over: check the Waxpeer dashboard and the customer's Steam
+    before deciding; the balance refund can be reversed by an admin adjustment.
+  - _Waxpeer не знает сделку_ — a trade with a Waxpeer status that its lookup no longer
+    returns. Check the dashboard by project id; report to Waxpeer if it is gone.
+  - _несколько живых сделок под одним ключом_ — as `ambiguous_trade`.
 
 ## Refunds
 
@@ -41,6 +64,11 @@ cancelled by the acquirer: Payme answers `-31007`, Uzum `10017`, Paynet `306`. I
 asks for the card instead, take the money off the balance first, then refund the card.
 
 ## Still to verify on prod
+
+- **Orphan buys** (a Waxpeer purchase with no `skin_trades` row of ours) are not detected: the
+  daily audit reads trades back by our own `project_id`. Detecting them needs `my-history`,
+  whose response shape was never captured (the key works only from the prod IP) — probe it
+  once on prod, then extend `audit_recent_trades`.
 
 - A **refused buy followed by a substitute under the same `project_id`** has not been exercised
   against Waxpeer (the spike bought, it never refused first). The code picks our trade by the

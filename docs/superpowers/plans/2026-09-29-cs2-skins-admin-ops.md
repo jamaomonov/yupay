@@ -89,12 +89,13 @@ gated on `waxpeer_api_key` and `cs2_skins_enabled`), `main.py` registration, tes
 
 **Produces:** `audit_recent_trades(db, client, *, alert, days=14) -> int` (divergences found).
 Divergence = Waxpeer's status differs from ours on a row we consider settled:
+
 - ours accepted/released, Waxpeer 6 → «откат после доставки» (+ penalties);
 - ours failed (customer refunded), Waxpeer 4 or 5 → «скин ушёл, а деньги вернули»;
 - ours has a row, Waxpeer has no trade for the project id → «Waxpeer не знает сделку».
-In-flight rows are skipped (the 5 s sweep owns them). One alert per divergence,
-`kind="skin_history_divergence"`, order id and Waxpeer status in the text. Waxpeer
-unavailable → log, return 0.
+  In-flight rows are skipped (the 5 s sweep owns them). One alert per divergence,
+  `kind="skin_history_divergence"`, order id and Waxpeer status in the text. Waxpeer
+  unavailable → log, return 0.
 
 Tests: each divergence alerts once; agreeing rows are silent; 150 rows → two lookups;
 client error → no alert.

@@ -113,3 +113,11 @@ picked; `tradelink.py` parses, checks (`POST /skins/tradelink/check`) and saves 
 tracking live in `fulfillment/suppliers/waxpeer_skins.py` and `fulfillment/skin_sweeps.py`;
 the automatic refund in `payments.service.refund_order_to_wallet`. Flow:
 `docs/product/flows/skins-buy.md`; runbook: `docs/runbooks/skins-purchase.md`.
+
+## Admin and ops (plan `docs/superpowers/plans/2026-09-29-cs2-skins-admin-ops.md`)
+
+`admin_trades.py` lists every trade with the views `all`, `active` and `attention` for the
+admin SPA's `/skins/trades`; `GET /admin/skins/items` finds items for `/skins/pricing`'s
+per-skin overrides. The daily `skins_history_audit` job
+(`fulfillment.skin_sweeps.audit_recent_trades`) reads the last 14 days of settled trades back
+from Waxpeer and alerts on divergence — see `docs/runbooks/skins-purchase.md`.
