@@ -64,8 +64,28 @@ function toneFor(status: string): { tone: Tone; Icon: LucideIcon; spin: boolean 
  * `isTopUp` swaps the `delivered` copy for top-up-flavored wording
  * ("Credited" instead of "Delivered") to match the Mini App's phrasing —
  * a top-up never gets "delivered", it gets credited to the account.
+ *
+ * `isSkin` swaps the in-flight and failure copy for a CS2 skin: it arrives
+ * as a Steam trade, and a trade that falls through refunds to the YuPay
+ * balance — never "credited to the account", never "back to your card".
  */
-export function StatusBlock({ status, isTopUp }: { status: string; isTopUp?: boolean }) {
+const SKIN_BODY: Partial<Record<string, "fulfillingSkin" | "failedSkin" | "refundedSkin">> = {
+  paid: "fulfillingSkin",
+  fulfilling: "fulfillingSkin",
+  fulfilled: "fulfillingSkin",
+  failed: "failedSkin",
+  refunded: "refundedSkin",
+};
+
+export function StatusBlock({
+  status,
+  isTopUp,
+  isSkin = false,
+}: {
+  status: string;
+  isTopUp?: boolean;
+  isSkin?: boolean;
+}) {
   const t = useTranslations("web.orders");
   const known = KNOWN.has(status);
   const isDeliveredTopUp = status === "delivered" && Boolean(isTopUp);
@@ -81,7 +101,14 @@ export function StatusBlock({ status, isTopUp }: { status: string; isTopUp?: boo
     : known
       ? t(`status.${status}`)
       : t("status.unknown");
-  const body = isDeliveredTopUp ? t("body.deliveredTopup") : known ? t(`body.${status}`) : null;
+  const skinBody = isSkin ? SKIN_BODY[status] : undefined;
+  const body = skinBody
+    ? t(`body.${skinBody}`)
+    : isDeliveredTopUp
+      ? t("body.deliveredTopup")
+      : known
+        ? t(`body.${status}`)
+        : null;
 
   return (
     <div className="flex items-start gap-3.5" role="status" aria-live="polite" aria-atomic="true">

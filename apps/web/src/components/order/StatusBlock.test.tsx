@@ -38,6 +38,9 @@ const messages = {
         expired: "This order expired before payment.",
         refunded: "This order was refunded.",
         partially_refunded: "This order was partially refunded.",
+        fulfillingSkin: "Buying the skin — the trade offer will arrive in Steam.",
+        failedSkin: "We are checking the purchase — please contact support.",
+        refundedSkin: "The money is back on your YuPay balance.",
       },
     },
   },
@@ -83,4 +86,19 @@ it("still shows plain delivered wording when isTopUp is false", () => {
 it("still shows plain delivered wording when isTopUp is omitted", () => {
   wrap(<StatusBlock status="delivered" />);
   expect(screen.getByRole("heading", { name: "Delivered" })).toBeInTheDocument();
+});
+
+it("says a skin's trade, not an account credit, while it is being bought", () => {
+  wrap(<StatusBlock status="fulfilling" isSkin />);
+  expect(screen.getByText(/trade offer will arrive in Steam/)).toBeInTheDocument();
+});
+
+it("says a skin refund went to the balance", () => {
+  wrap(<StatusBlock status="refunded" isSkin />);
+  expect(screen.getByText(/back on your YuPay balance/)).toBeInTheDocument();
+});
+
+it("never promises a card refund for a failed skin", () => {
+  wrap(<StatusBlock status="failed" isSkin />);
+  expect(screen.getByText(/checking the purchase/)).toBeInTheDocument();
 });

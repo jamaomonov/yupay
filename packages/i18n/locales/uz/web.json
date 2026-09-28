@@ -724,7 +724,10 @@
       "cancelled": "Bu buyurtma bekor qilindi.",
       "expired": "Bu buyurtma toʻlovdan oldin muddati oʻtdi.",
       "refunded": "Bu buyurtma boʻyicha mablagʻ qaytarildi.",
-      "partially_refunded": "Bu buyurtma boʻyicha mablagʻ qisman qaytarildi."
+      "partially_refunded": "Bu buyurtma boʻyicha mablagʻ qisman qaytarildi.",
+      "fulfillingSkin": "To'lov qabul qilindi, skinni sotib olyapmiz — almashuv Steam'ga keladi. Batafsil pastda.",
+      "failedSkin": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing, buyurtma raqami allaqachon qo'yilgan.",
+      "refundedSkin": "Almashuv amalga oshmadi — pul YuPay balansiga qaytdi."
     },
     "receipt": {
       "code": "Kod",

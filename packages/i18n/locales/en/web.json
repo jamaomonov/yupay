@@ -724,7 +724,10 @@
       "cancelled": "This order was cancelled.",
       "expired": "This order expired before payment.",
       "refunded": "This order was refunded.",
-      "partially_refunded": "This order was partially refunded."
+      "partially_refunded": "This order was partially refunded.",
+      "fulfillingSkin": "Payment accepted, buying the skin — the trade offer will arrive in Steam. Details below.",
+      "failedSkin": "We are checking the purchase — please contact support, the order number is already filled in.",
+      "refundedSkin": "The trade did not happen — the money is back on your YuPay balance."
     },
     "receipt": {
       "code": "Code",

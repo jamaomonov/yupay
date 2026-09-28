@@ -255,7 +255,10 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   const canRate = status === "delivered" && Boolean(user) && brandSlug !== null && reviewsKnown;
   // Top-up only when every item is a top-up (mirrors the Mini App's
   // `orderKind`); a mixed cart falls back to the neutral "delivered" wording.
+  // A CS2 skin is seeded as a top-up but arrives as a Steam trade: its own copy.
+  const isSkin = order.data.items.some((i) => i.skin_trade);
   const isTopUp =
+    !isSkin &&
     order.data.items.length > 0 &&
     order.data.items.every((i) => i.display?.product_kind === "top_up");
 
@@ -273,7 +276,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
       <div className="border-border bg-card space-y-5 rounded-2xl border p-5 sm:p-6">
         <div className="space-y-3">
           <OrderIdChip orderId={order.data.id} />
-          <StatusBlock status={order.data.status} isTopUp={isTopUp} />
+          <StatusBlock status={order.data.status} isTopUp={isTopUp} isSkin={isSkin} />
           {/* Timeline only for the happy path — see OrderProgress on why a
               refunded/failed order gets the status hero alone. */}
           {isTrackedStatus(order.data.status) && (
