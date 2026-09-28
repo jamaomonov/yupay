@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -30,7 +30,9 @@ const mockedPatch = vi.mocked(apiPatch);
 
 const PRICING: SkinsPricingOut = {
   enabled: true,
-  sync_enabled: true,
+  sync_enabled: false,
+  items_active: 12,
+  prices_updated_at: "2026-09-29T10:00:00Z",
   categories: ["rifles", "knives"],
   rules: {
     expenses_percent: "3",
@@ -178,4 +180,58 @@ it("asks for every number before sending anything", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Сохранить правила" }));
   expect(await screen.findByText("Заполните все числа в правилах")).toBeInTheDocument();
   expect(mockedPut).not.toHaveBeenCalled();
+});
+
+it("says whether skins are on and when prices last synced", async () => {
+  renderPage();
+  expect(await screen.findByText("Скины на сайте: включены")).toBeInTheDocument();
+  expect(screen.getByText(/Синхронизация цен: выключена/)).toBeInTheDocument();
+  expect(screen.getByText("Активных скинов: 12")).toBeInTheDocument();
+});
+
+it("marks unsaved edits and can discard them", async () => {
+  renderPage();
+  const expenses = await screen.findByLabelText("Расходы, %");
+  expect(screen.queryByText("Есть несохранённые изменения")).not.toBeInTheDocument();
+  fireEvent.change(expenses, { target: { value: "9" } });
+  expect(screen.getByText("Есть несохранённые изменения")).toBeInTheDocument();
+  expect(screen.getByText("Сохранение пересчитает 12 скинов")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Отменить изменения" }));
+  expect(screen.getByLabelText("Расходы, %")).toHaveValue(3);
+});
+
+it("names categories in Russian and the bracket columns", async () => {
+  renderPage();
+  expect(await screen.findByLabelText("Ножи")).toHaveValue(-2);
+  expect(screen.getAllByText("Цена от, $").length).toBeGreaterThan(0);
+  expect(screen.getAllByText("Наценка, %").length).toBeGreaterThan(0);
+});
+
+it("previews a real skin picked by name, in words", async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "Выбрать скин" }));
+  fireEvent.change(screen.getByLabelText("Название скина для предпросмотра"), {
+    target: { value: "asiimov" },
+  });
+  fireEvent.click(await screen.findByRole("option", { name: /AWP \| Asiimov/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Рассчитать" }));
+  expect(await screen.findByText("по правилам")).toBeInTheDocument();
+  const call = mockedGet.mock.calls.find(([p]) => p.includes("/pricing/preview"));
+  expect(call?.[0]).toContain("slug=awp-asiimov-ft");
+});
+
+it("shows the price an override would give before saving it", async () => {
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: /AWP \| Asiimov/ }));
+  const editor = screen.getByRole("group", { name: /AWP \| Asiimov/ });
+  fireEvent.change(within(editor).getByLabelText("Наценка скина, п.п."), {
+    target: { value: "5" },
+  });
+  await waitFor(() => {
+    const call = mockedGet.mock.calls.find(
+      ([p]) => p.includes("/pricing/preview") && p.includes("item_pp=5"),
+    );
+    expect(call?.[0]).toContain("slug=awp-asiimov-ft");
+  });
+  expect(await screen.findByText("Будет продаваться за $11.20")).toBeInTheDocument();
 });

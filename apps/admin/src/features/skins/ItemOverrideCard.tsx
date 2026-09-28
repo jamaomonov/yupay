@@ -6,12 +6,13 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-import { fill, T } from "./api";
+import { fill, T, usd } from "./api";
 import {
   findItems,
   patchItem,
+  previewPrice,
   refusal,
   type AdminSkinItemOut,
   type ItemPricingIn,
@@ -39,9 +40,33 @@ function ItemEditor({ item, onSaved }: { item: AdminSkinItemOut; onSaved: () => 
     },
   });
   const orNull = (v: string) => (v.trim() === "" ? null : v.trim());
+  // The price these numbers would give, before saving: the preview with the skin's own
+  // data and the typed override on top. Debounced so typing does not fire per key.
+  const [probe, setProbe] = useState({ margin, fixed });
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setProbe({ margin, fixed });
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [margin, fixed]);
+  const live = useQuery({
+    queryKey: ["admin", "skins", "preview", item.slug, probe.margin, probe.fixed],
+    queryFn: () =>
+      previewPrice({
+        slug: item.slug,
+        item_pp: probe.margin.trim() === "" ? "0" : probe.margin,
+        fixed_price_usd: probe.fixed,
+      }),
+  });
 
   return (
-    <div className="space-y-3 rounded-md border border-[var(--border-default)] p-3">
+    <div
+      role="group"
+      aria-label={item.name}
+      className="space-y-3 rounded-md border border-[var(--border-default)] p-3"
+    >
       <p className="text-sm font-medium">{item.name}</p>
       <div className="grid max-w-md grid-cols-2 gap-3">
         <NumberField
@@ -61,6 +86,14 @@ function ItemEditor({ item, onSaved }: { item: AdminSkinItemOut; onSaved: () => 
           }}
         />
       </div>
+      <p className="text-xs text-[var(--text-secondary)]">
+        {P.precedence} {P.clearHint}.
+      </p>
+      {live.data && (
+        <p className="text-sm font-medium">
+          {fill(P.willSell, { price: usd(live.data.price_usd) })}
+        </p>
+      )}
       <div className="flex items-center gap-2">
         <Button
           size="sm"
@@ -144,8 +177,8 @@ export function ItemOverrideCard() {
             >
               <span className="font-medium">{it.name}</span>{" "}
               <span className="text-[var(--text-secondary)]">
-                · {fill(P.cost, { cost: it.cost_usd ? `$${it.cost_usd}` : "—" })} ·{" "}
-                {fill(P.sell, { price: it.sell_price_usd ? `$${it.sell_price_usd}` : "—" })}
+                · {fill(P.cost, { cost: it.cost_usd ? usd(it.cost_usd) : "—" })} ·{" "}
+                {fill(P.sell, { price: it.sell_price_usd ? usd(it.sell_price_usd) : "—" })}
               </span>
             </button>
           </li>

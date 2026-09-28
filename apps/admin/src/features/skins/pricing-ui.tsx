@@ -26,11 +26,13 @@ export function NumberField({
   value,
   onChange,
   step = "0.01",
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (next: string) => void;
   step?: string;
+  placeholder?: string;
 }) {
   return (
     <label className="block space-y-1 text-sm">
@@ -39,6 +41,7 @@ export function NumberField({
         type="number"
         step={step}
         value={value}
+        placeholder={placeholder}
         onChange={(e) => {
           onChange(e.target.value);
         }}
@@ -63,6 +66,11 @@ export function BracketRows({
   return (
     <fieldset className="space-y-2">
       <legend className="text-sm font-medium">{title}</legend>
+      <div className="flex gap-2 text-xs text-[var(--text-secondary)]" aria-hidden>
+        <span className="flex-1">{P.bracketFrom}</span>
+        <span className="flex-1">{P.bracketPercent}</span>
+        <span className="w-16" />
+      </div>
       {rows.map((r, i) => (
         <div key={i} className="flex items-center gap-2">
           <input
@@ -106,6 +114,7 @@ export function BracketRows({
       >
         {P.addRow}
       </Button>
+      <p className="text-xs text-[var(--text-secondary)]">{P.bracketHint}</p>
     </fieldset>
   );
 }
@@ -115,11 +124,13 @@ export function MapRows({
   keys,
   values,
   onChange,
+  labelOf = (k) => k,
 }: {
   title: string;
   keys: string[];
   values: Record<string, string>;
   onChange: (next: Record<string, string>) => void;
+  labelOf?: (key: string) => string;
 }) {
   return (
     <fieldset className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -127,7 +138,8 @@ export function MapRows({
       {keys.map((k) => (
         <NumberField
           key={k}
-          label={k}
+          label={labelOf(k)}
+          placeholder="0"
           value={values[k] ?? ""}
           onChange={(v) => {
             const rest = Object.fromEntries(Object.entries(values).filter(([key]) => key !== k));

@@ -35,6 +35,10 @@ export interface SkinsPricingOut {
   enabled: boolean;
   sync_enabled: boolean;
   categories: string[];
+  /** How many sellable skins a save reprices. */
+  items_active: number;
+  /** When the price sync last wrote a price; `null` before the first. */
+  prices_updated_at: string | null;
 }
 
 export interface SkinQuoteOut {

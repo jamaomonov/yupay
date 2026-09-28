@@ -10,7 +10,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { useRef, useState } from "react";
 
-import { T } from "./api";
+import { fill, T } from "./api";
 import { putPricing, refusal, type PricingRules } from "./pricing-api";
 import { BracketRows, Card, INPUT, MapRows, NumberField } from "./pricing-ui";
 
@@ -31,15 +31,22 @@ function complete(r: PricingRules): boolean {
   );
 }
 
+const CATEGORY_NAMES: Record<string, string> = T.pricing.categories;
+
 export function PricingRulesCard({
   rules,
   categories,
+  itemsActive,
 }: {
   rules: PricingRules;
   categories: string[];
+  itemsActive: number;
 }) {
   const qc = useQueryClient();
+  // What the server holds: the baseline for "unsaved changes" and «Отменить».
+  const [saved, setSaved] = useState<PricingRules>(rules);
   const [draft, setDraft] = useState<PricingRules>(rules);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved);
   const [newWeapon, setNewWeapon] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const key = useRef<string | null>(null);
@@ -61,6 +68,7 @@ export function PricingRulesCard({
     },
     onSuccess: ({ out, sentAt }) => {
       key.current = null;
+      setSaved(out.rules);
       if (sentAt === version.current) setDraft(out.rules);
       setMessage({ ok: true, text: P.saved });
       void qc.invalidateQueries({ queryKey: qk.skinPricing() });
@@ -131,6 +139,10 @@ export function PricingRulesCard({
       </div>
       <fieldset className="space-y-2">
         <legend className="text-sm font-medium">{P.liquidity}</legend>
+        <div className="flex gap-2 text-xs text-[var(--text-secondary)]" aria-hidden>
+          <span className="flex-1">{P.liquidityCount}</span>
+          <span className="flex-1">{P.liquidityPp}</span>
+        </div>
         {draft.liquidity.map((band, i) => (
           <div key={i} className="flex items-center gap-2">
             <input
@@ -163,10 +175,12 @@ export function PricingRulesCard({
             />
           </div>
         ))}
+        <p className="text-xs text-[var(--text-secondary)]">{P.liquidityHint}</p>
       </fieldset>
       <MapRows
         title={P.categories}
         keys={categories}
+        labelOf={(k) => CATEGORY_NAMES[k] ?? k}
         values={draft.category_pp}
         onChange={(category_pp) => {
           edit({ category_pp });
@@ -202,9 +216,17 @@ export function PricingRulesCard({
           {P.addRow}
         </Button>
       </div>
-      <div className="flex items-center gap-3">
+      {dirty && (
+        <p className="flex flex-wrap gap-x-2 text-sm">
+          <span className="font-medium text-[var(--warning-fg)]">{P.dirty}</span>
+          <span className="text-[var(--text-secondary)]">
+            {fill(P.willReprice, { count: String(itemsActive) })}
+          </span>
+        </p>
+      )}
+      <div className="flex flex-wrap items-center gap-3">
         <Button
-          disabled={save.isPending}
+          disabled={save.isPending || !dirty}
           onClick={() => {
             if (!complete(draft)) {
               setMessage({ ok: false, text: P.incomplete });
@@ -215,6 +237,20 @@ export function PricingRulesCard({
         >
           {P.save}
         </Button>
+        {dirty && (
+          <Button
+            variant="ghost"
+            disabled={save.isPending}
+            onClick={() => {
+              key.current = null;
+              version.current += 1;
+              setMessage(null);
+              setDraft(saved);
+            }}
+          >
+            {P.reset}
+          </Button>
+        )}
         {message && (
           <p
             role={message.ok ? "status" : "alert"}

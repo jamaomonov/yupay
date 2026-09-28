@@ -546,7 +546,8 @@
           "min_margin": "minimal marja",
           "steam_cap": "Steam'dan qimmat emas",
           "floor": "minimal narx"
-        }
+        },
+        "pickLabel": "Oldindan ko'rish uchun skin nomi"
       },
       "items": {
         "title": "Alohida skin ustamasi",

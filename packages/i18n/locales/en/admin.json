@@ -546,7 +546,8 @@
           "min_margin": "minimum margin",
           "steam_cap": "capped at Steam",
           "floor": "price floor"
-        }
+        },
+        "pickLabel": "Skin name for the preview"
       },
       "items": {
         "title": "Per-skin markup",
