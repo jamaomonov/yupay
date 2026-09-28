@@ -464,7 +464,8 @@
         "addRow": "Add",
         "removeRow": "Remove",
         "save": "Save rules",
-        "saved": "Rules saved, catalogue repriced"
+        "saved": "Rules saved, catalogue repriced",
+        "incomplete": "Fill in every number in the rules"
       },
       "preview": {
         "title": "Price preview",

@@ -7,6 +7,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { AlertTriangle, ListChecks, Loader } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import {
@@ -31,6 +32,7 @@ import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
 
 const VIEWS: ReadonlySet<TradesView> = new Set<TradesView>(["all", "active", "attention"]);
 const PANEL_ID = "skin-trades-panel";
+const SEARCH_DEBOUNCE_MS = 300;
 
 const when = (iso: string) =>
   new Intl.DateTimeFormat("ru", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso));
@@ -95,6 +97,8 @@ export function SkinTradesPage() {
   const [, setParams] = useSearchParams();
   const view: TradesView = VIEWS.has(rawView as TradesView) ? (rawView as TradesView) : "all";
   const [query] = useSearchParamsState("q", "");
+  // What is in the box; the URL (and the request) follows once typing pauses.
+  const [typed, setTyped] = useState(query);
   const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
 
   // One URL write per change: two setters in one handler do not compose (react-router
@@ -146,6 +150,18 @@ export function SkinTradesPage() {
     },
   ];
 
+  useEffect(() => {
+    if (typed === query) return;
+    const timer = setTimeout(() => {
+      setFilter("q", typed);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      clearTimeout(timer);
+    };
+    // `setFilter` is recreated each render; the typed text is what re-arms the timer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typed, query]);
+
   const trades = useQuery({
     queryKey: qk.skinTrades(view, query, offset),
     queryFn: () => fetchTrades(view, query, offset),
@@ -171,9 +187,9 @@ export function SkinTradesPage() {
       />
       <input
         type="search"
-        value={query}
+        value={typed}
         onChange={(e) => {
-          setFilter("q", e.target.value);
+          setTyped(e.target.value);
         }}
         placeholder={T.trades.search}
         aria-label={T.trades.search}

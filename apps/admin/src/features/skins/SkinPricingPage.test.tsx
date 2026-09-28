@@ -153,3 +153,29 @@ it("clears an item's override by sending null", async () => {
   expect(body).toEqual({ margin_override_pp: null, fixed_price_usd: null });
   expect(headers).toEqual(expect.objectContaining({ "Idempotency-Key": expect.any(String) }));
 });
+
+it("keeps what was typed while a save was in flight", async () => {
+  let finish: (v: SkinsPricingOut) => void = () => undefined;
+  mockedPut.mockReturnValue(
+    new Promise<SkinsPricingOut>((resolve) => {
+      finish = resolve;
+    }),
+  );
+  renderPage();
+  const expenses = await screen.findByLabelText("Расходы, %");
+  fireEvent.change(expenses, { target: { value: "4" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить правила" }));
+  fireEvent.change(expenses, { target: { value: "6" } });
+  finish({ ...PRICING, rules: { ...PRICING.rules, expenses_percent: "4" } });
+  expect(await screen.findByText("Правила сохранены, каталог пересчитан")).toBeInTheDocument();
+  expect(screen.getByLabelText("Расходы, %")).toHaveValue(6);
+});
+
+it("asks for every number before sending anything", async () => {
+  renderPage();
+  const floor = await screen.findByLabelText("Мин. цена, $");
+  fireEvent.change(floor, { target: { value: "" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить правила" }));
+  expect(await screen.findByText("Заполните все числа в правилах")).toBeInTheDocument();
+  expect(mockedPut).not.toHaveBeenCalled();
+});

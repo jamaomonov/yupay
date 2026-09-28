@@ -27,6 +27,9 @@ const stringCodec: SearchParamCodec<string> = {
   isDefault: (v) => v === "",
 };
 
+/** The search params written so far in the current tick (see `setValue`). */
+let pending: URLSearchParams | null = null;
+
 export function useSearchParamsState<T = string>(
   key: string,
   defaultValue: T,
@@ -38,24 +41,30 @@ export function useSearchParamsState<T = string>(
   const raw = params.get(key);
   const value: T = raw === null ? defaultValue : effective.parse(raw);
 
-  // Uses the functional-updater form of `setSearchParams` (reads `prev`
-  // rather than the `params` closed over at render time) so that firing
-  // several of these setters back-to-back in one handler — e.g. a "reset
-  // filters" button clearing status + date range + offset together —
-  // composes correctly instead of each call clobbering the others' writes
-  // with its own stale snapshot of the URL.
+  // Setters fired back-to-back in one handler — a filter change plus a page reset,
+  // "reset filters" clearing several keys — must compose. `setSearchParams`' functional
+  // updater does NOT queue: react-router hands every call the same location, so each
+  // write used to clobber the one before it (a filter + `offset` reset lost the filter).
+  // The writes of one tick therefore accumulate in `pending` and each navigation
+  // carries all of them; the last one wins with the full set.
   const setValue = useCallback(
     (next: T) => {
       setParams(
         (prev) => {
-          const updated = new URLSearchParams(prev);
+          const updated = new URLSearchParams(pending ?? prev);
           const isDefault = effective.isDefault?.(next) ?? next === defaultValue;
           if (isDefault) {
             updated.delete(key);
           } else {
             updated.set(key, effective.serialize(next));
           }
-          return updated;
+          if (pending === null) {
+            queueMicrotask(() => {
+              pending = null;
+            });
+          }
+          pending = updated;
+          return new URLSearchParams(updated);
         },
         { replace: true },
       );

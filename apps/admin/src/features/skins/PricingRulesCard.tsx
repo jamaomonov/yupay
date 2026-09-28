@@ -18,6 +18,19 @@ import { qk } from "@/lib/queryKeys";
 
 const P = T.pricing.rules;
 
+/** Every number filled in: an empty field would reach the server as 0 or "". */
+function complete(r: PricingRules): boolean {
+  const filled = (v: string) => v.trim() !== "";
+  return (
+    [r.expenses_percent, r.min_margin_usd, r.price_floor_usd].every(filled) &&
+    Number.isInteger(r.uzs_round_to) &&
+    r.uzs_round_to >= 1 &&
+    [...r.retail, ...r.b2b].every((b) => filled(b.from_usd) && filled(b.percent)) &&
+    r.liquidity.every((b) => Number.isInteger(b.min_count) && filled(b.pp)) &&
+    Object.values({ ...r.category_pp, ...r.weapon_pp }).every(filled)
+  );
+}
+
 export function PricingRulesCard({
   rules,
   categories,
@@ -30,21 +43,25 @@ export function PricingRulesCard({
   const [newWeapon, setNewWeapon] = useState("");
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const key = useRef<string | null>(null);
+  // Bumped on every edit: a save's answer replaces the form only if nothing was typed
+  // while it was in flight — otherwise the newer input is kept (and not yet saved).
+  const version = useRef(0);
 
   const edit = (patch: Partial<PricingRules>) => {
     key.current = null;
+    version.current += 1;
     setMessage(null);
     setDraft((d) => ({ ...d, ...patch }));
   };
 
   const save = useMutation({
-    mutationFn: () => {
+    mutationFn: (sentAt: number) => {
       key.current ??= `skins-pricing-${crypto.randomUUID()}`;
-      return putPricing(draft, key.current);
+      return putPricing(draft, key.current).then((out) => ({ out, sentAt }));
     },
-    onSuccess: (out) => {
+    onSuccess: ({ out, sentAt }) => {
       key.current = null;
-      setDraft(out.rules);
+      if (sentAt === version.current) setDraft(out.rules);
       setMessage({ ok: true, text: P.saved });
       void qc.invalidateQueries({ queryKey: qk.skinPricing() });
     },
@@ -189,7 +206,11 @@ export function PricingRulesCard({
         <Button
           disabled={save.isPending}
           onClick={() => {
-            save.mutate();
+            if (!complete(draft)) {
+              setMessage({ ok: false, text: P.incomplete });
+              return;
+            }
+            save.mutate(version.current);
           }}
         >
           {P.save}

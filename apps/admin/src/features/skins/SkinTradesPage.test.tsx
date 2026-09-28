@@ -115,3 +115,15 @@ it("marks a trade needing a human as resolved, without opening the order", async
   expect(headers).toEqual(expect.objectContaining({ "Idempotency-Key": expect.any(String) }));
   expect(screen.queryByText("order-stub")).not.toBeInTheDocument();
 });
+
+it("searches once the operator stops typing, not per keystroke", async () => {
+  mockedApiGet.mockResolvedValue(PAGE);
+  renderPage();
+  const box = await screen.findByRole("searchbox");
+  fireEvent.change(box, { target: { value: "a" } });
+  fireEvent.change(box, { target: { value: "ak" } });
+  await waitFor(() => {
+    expect(mockedApiGet.mock.calls.some(([p]) => p.endsWith("q=ak"))).toBe(true);
+  });
+  expect(mockedApiGet.mock.calls.some(([p]) => p.endsWith("q=a"))).toBe(false);
+});

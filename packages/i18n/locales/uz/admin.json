@@ -464,7 +464,8 @@
         "addRow": "Qo'shish",
         "removeRow": "Olib tashlash",
         "save": "Qoidalarni saqlash",
-        "saved": "Qoidalar saqlandi, katalog qayta hisoblandi"
+        "saved": "Qoidalar saqlandi, katalog qayta hisoblandi",
+        "incomplete": "Qoidalardagi barcha raqamlarni to'ldiring"
       },
       "preview": {
         "title": "Narxni oldindan ko'rish",
