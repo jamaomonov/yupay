@@ -38,7 +38,7 @@ The full design, with the live measurements behind every number, is
 
 1. **Deliver through our own Steam bot account** — buy to our inventory, accept, re-send to the
    customer; optionally pre-buy stock.
-2. **Deliver straight to the customer's trade link**, buy on the customer's "I am ready" tap.
+2. **Deliver straight to the customer's trade link**, buying as soon as the order is paid.
 3. **Catalogue = Waxpeer's `/v1/prices` aggregate** with Waxpeer's images (the shape the
    `skinmarket` pet project used).
 4. **Catalogue = an independent item database** (ByMykel/CSGO-API, MIT, from the game files,
@@ -52,9 +52,12 @@ The full design, with the live measurements behind every number, is
 
 - **2, because a bot buys nothing and costs a lot.** CS2 locks items received by trade for
   7 days, so a bot cannot resell what it just received; the customer still has to accept an
-  offer; and the bot account carries every Steam risk. Buying on the ready tap rather than at
-  payment is the cheapest way to cut "Buyer failed to accept" rollbacks — the customer is at the
-  keyboard when the offer arrives. Only `auto` listings are ever offered; hold listings never.
+  offer; and the bot account carries every Steam risk. The purchase goes out at payment. An
+  earlier draft waited for a «Я готов принять обмен» tap to cut "Buyer failed to accept"
+  rollbacks; the 2026-09-28 spike showed a declined or unaccepted offer is refunded by Waxpeer in
+  full with no penalty, and the owner dropped the gate the same day — a buyer who just paid is
+  at the keyboard anyway, and the offer waits 30 minutes. Only `auto` listings are ever offered;
+  hold listings never.
 - **4, because 96.1 % of Waxpeer's names match ByMykel directly and 100 % of what we sell
   after normalising Doppler phases out of Waxpeer's names**, and because its images are Steam's
   own CDN — the host the customer's inventory already loads from. Item names stay English;
@@ -80,8 +83,8 @@ truth, `status 5` is the only success, `6` returns the money through the existin
 
 - A second daily-updated third-party dataset (ByMykel) becomes a dependency; a brand-new item
   is a stub row for up to a day.
-- The ready gate means fulfilment is not automatic on payment; an unconfirmed order needs a
-  timeout-and-refund path.
+- An offer the customer does not accept within Waxpeer's 30-minute window comes back as a
+  refund (status 6), which our side must turn into a customer refund.
 - Search is limited to 20/min until Waxpeer grants partner status; the item page has a
   token bucket and a fallback for that.
 

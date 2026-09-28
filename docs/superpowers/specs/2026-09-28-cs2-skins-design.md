@@ -46,10 +46,10 @@ Everything numeric in this document was measured against the live API with our k
    StatTrak/Souvenir flags get RU/EN/UZ labels from a hand-kept table; "Redline" is "Redline"
    in every locale. No Russian localisation of item names exists in the open any more (§4.3),
    and that is how the market people buy from already works.
-6. **The Waxpeer purchase happens when the customer says they are ready**, not at payment.
-   Money is taken at payment as usual; the order page then shows «Я готов принять обмен», and
-   the buy call goes out on that tap. This exists to cut "Buyer failed to accept" rollbacks,
-   which are ours to pay for (§6.4). Unconfirmed after a configurable window → refund.
+6. **The Waxpeer purchase happens at payment.** (Revised 2026-09-28.) The first draft waited for
+   a «Я готов принять обмен» tap to cut "Buyer failed to accept" rollbacks; the spike (§8.1)
+   showed a declined or unaccepted offer is refunded by Waxpeer in full with no penalty, and the
+   owner dropped the gate. The offer waits 30 minutes for the customer to accept.
 
 ## 3. Shape of the Waxpeer buy side (what the API actually does)
 
@@ -182,8 +182,8 @@ Sell price = `ceil_to_cent(partner_price × (1 + margin_percent/100))`, never be
 
 ## 6. Fulfilment and tracking
 
-1. Payment confirmed → task `pending`, order page shows the ready gate (§2.6).
-2. Ready tap → `POST /v1/buy` with `project_id = task.id`, `price = expected_units`. Success →
+1. Payment confirmed → the fulfilment task runs at once (no ready gate, §2.6).
+2. `POST /v1/buy` with `project_id = task.id`, `price = expected_units`. Success →
    task `in_progress`, a `skin_trades` row (Waxpeer trade id, listing id, name, units paid,
    numeric status, `escrow_status`, `is_released`, `release_date`, `send_until`, Steam
    `trade_id`, seller fields, `penalties`, `last_checked_at`). Lost response → look up by
