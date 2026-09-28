@@ -51,6 +51,7 @@ from yupay.core.logging import get_logger
 # Reach into ``service`` directly; both functions are in
 # ``fulfillment.api.__all__`` so this stays inside the module's public surface.
 from yupay.modules.fulfillment.service import list_tasks_admin, process_webhook_update
+from yupay.modules.fulfillment.suppliers.waxpeer_skins import is_skin_task
 
 log = get_logger("yupay.scheduler.waxpeer_reconcile")
 
@@ -83,7 +84,9 @@ async def _list_stuck_task_ids() -> list[str]:
             )
             if not tasks:
                 break
-            task_ids.extend(t.id for t in tasks)
+            # Skin purchases have their own faster sweep (skins_trades_reconcile):
+            # one owner per task, so a trade is never checked twice per tick.
+            task_ids.extend(t.id for t in tasks if not is_skin_task(t))
             offset += len(tasks)
             if offset >= total:
                 break

@@ -60,6 +60,8 @@ from yupay_scheduler.jobs import (
     review_reminder,
     skins_catalog_import,
     skins_price_sync,
+    skins_protection_watch,
+    skins_trades_reconcile,
     stuck_orders,
     sync_supplier_catalog,
     uzum_timeout,
@@ -100,6 +102,8 @@ def build_scheduler() -> AsyncIOScheduler:
     review_reminder.register(scheduler)
     skins_catalog_import.register(scheduler)
     skins_price_sync.register(scheduler)
+    skins_protection_watch.register(scheduler)
+    skins_trades_reconcile.register(scheduler)
     stuck_orders.register(scheduler)
     sync_supplier_catalog.register(scheduler)
     uzum_timeout.register(scheduler)
