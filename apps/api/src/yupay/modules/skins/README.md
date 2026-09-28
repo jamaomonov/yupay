@@ -30,6 +30,9 @@ Web pages (plan `docs/superpowers/plans/2026-09-28-cs2-skins-storefront.md`):
 server-rendered) and `skins/[slug]/page.tsx` (item — wear tiles, live listings loaded
 from the browser). Nav/footer/sitemap entries appear only with `SKINS_ENABLED=true` in
 the web env (`apps/web/src/lib/features.ts`). Flow: `docs/product/flows/skins-browse.md`.
+Mini app (plan `docs/superpowers/plans/2026-09-28-cs2-skins-miniapp.md`): `/cs2-market` and
+`/cs2-market/:slug` (`apps/miniapp/src/pages/CS2SkinMarket.tsx`, `CS2Skin.tsx`), gated only
+by this API's flag.
 
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,

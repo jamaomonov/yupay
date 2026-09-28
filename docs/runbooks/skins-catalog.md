@@ -78,6 +78,9 @@ raise `CS2_SKINS_LISTINGS_BUCKET_PER_MINUTE`.
 5. `SKINS_ENABLED=true` in `secrets/web.env`, restart web — this adds «Скины CS2» to the
    header, mobile menu, footer and sitemap. The pages themselves work (and 404 with the
    API) regardless of it.
+6. The mini app needs nothing: `/cs2-market` shows the catalogue as soon as step 4 is live,
+   and the «Скоро» screen while the API 404s. The Home promo card keeps its «Скоро» badge
+   until purchase ships (plan 3) — buying is still disabled on the item page.
 
 ## Adding a search alias
 

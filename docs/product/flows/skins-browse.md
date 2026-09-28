@@ -38,3 +38,18 @@ sequenceDiagram
 Prices everywhere are our sell price from `pricing.quote()`, stored per row by
 `repricing.reprice_rows` after every price sync and every pricing change, so a
 filter bound, a sort and a card always agree.
+
+## Mini app
+
+`/cs2-market` (catalogue) and `/cs2-market/:slug` (item) in the Telegram mini app read the
+same `/skins/*` endpoints from the browser; the query model is shared with web through
+`@yupay/utils` (`parseSkinQuery`, `skinQueryString`).
+
+- Filters live in the route's query string. A filter change **replaces** the history entry,
+  so Telegram's back button from an item returns to the same filtered grid, and from the
+  grid leaves the market instead of undoing filters one tap at a time. Wear tiles on the
+  item page also replace, for the same reason.
+- Wear, rarity, StatTrak and the soʻm price range sit in a bottom sheet applied together;
+  sort is a native select beside it.
+- While the API has skins switched off, `/skins/facets` 404s and the page shows the
+  «Скоро» screen — the mini app has no flag of its own.
