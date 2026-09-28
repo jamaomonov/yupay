@@ -53,3 +53,19 @@ same `/skins/*` endpoints from the browser; the query model is shared with web t
   sort is a native select beside it.
 - While the API has skins switched off, `/skins/facets` 404s and the page shows the
   «Скоро» screen — the mini app has no flag of its own.
+
+## What the pages show (plan 2c)
+
+- **Default order** is «Сначала дороже» (`-price`): knives and gloves first, as skinsavdo.uz
+  opens. `popular` opened on a wall of cases and capsules.
+- **Categories** are icon tiles: one Steam item image per category, self-hosted in each
+  app's `public/skins/categories/` (`scripts/skins/fetch-category-icons.sh`) and drawn as a
+  `currentColor` silhouette with a CSS mask. The weapon row and the filter counts come from
+  `/skins/facets?category=`, so they describe the whole category, classics first.
+- **Headline price** on an item page is the cheapest live offer once offers load; before
+  that, or with none, the stored price reads «от …». The price is never one nobody sells at.
+- **Wear** is a row of plain names plus StatTrak™/Souvenir toggles; a wear with nothing on
+  sale is greyed, not hidden.
+- **Cases, keys, agents, music kits, charms** (`hasWear` false) show «В наличии: N шт.»
+  instead of a list of identical offers.
+- **Web on a phone**: filters open in a bottom drawer beside sort.

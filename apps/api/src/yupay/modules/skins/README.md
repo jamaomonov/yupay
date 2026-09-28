@@ -57,6 +57,10 @@ from yupay.modules.skins.api import (
 )
 ```
 
+`/skins/facets?category=<slug>` scopes weapons, wears and rarities to one category
+(categories stay global for the tile row); rarities carry their colour. Weapons lead with
+`service.WEAPON_PRIORITY` (AK-47, M4A4, M4A1-S, AWP, …), then by count.
+
 ## Stored prices
 
 `sell_price_usd` and `discount_percent` are derived by `repricing.reprice_rows` after
