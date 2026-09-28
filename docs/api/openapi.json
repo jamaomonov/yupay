@@ -10283,6 +10283,16 @@
             "title": "Qty",
             "type": "integer"
           },
+          "skin_trade": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkinTradeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "sku_id": {
             "title": "Sku Id",
             "type": "string"
@@ -10468,6 +10478,16 @@
           "qty": {
             "title": "Qty",
             "type": "integer"
+          },
+          "skin_trade": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkinTradeOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sku_id": {
             "title": "Sku Id",
@@ -14412,6 +14432,27 @@
         "title": "SavedSegmentOut",
         "type": "object"
       },
+      "SavedTradeLinkOut": {
+        "description": "The customer's saved link, or ``null``.",
+        "properties": {
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "SavedTradeLinkOut",
+        "type": "object"
+      },
       "SearchHit": {
         "description": "One row in the search palette.",
         "properties": {
@@ -15376,6 +15417,58 @@
         "title": "SkinQuoteOut",
         "type": "object"
       },
+      "SkinSellerOut": {
+        "description": "Who the offer comes from.",
+        "properties": {
+          "avatar_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avatar Url"
+          },
+          "joined_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Joined At"
+          },
+          "level": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Level"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "SkinSellerOut",
+        "type": "object"
+      },
       "SkinStickerOut": {
         "properties": {
           "image": {
@@ -15439,6 +15532,88 @@
           "items"
         ],
         "title": "SkinSuggestOut",
+        "type": "object"
+      },
+      "SkinTradeOut": {
+        "description": "One order line's trade, as the buyer sees it.",
+        "properties": {
+          "offer_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Offer Url"
+          },
+          "reason_code": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_accepted",
+                  "sold_out",
+                  "other"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Code"
+          },
+          "release_date": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Release Date"
+          },
+          "seller": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkinSellerOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "send_until": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Send Until"
+          },
+          "state": {
+            "enum": [
+              "buying",
+              "offer_sent",
+              "accepted",
+              "released",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "SkinTradeOut",
         "type": "object"
       },
       "SkinsPageOut": {
@@ -17152,7 +17327,8 @@
             "enum": [
               "voucher",
               "game",
-              "gift"
+              "gift",
+              "skin"
             ],
             "title": "Kind",
             "type": "string"
@@ -17231,7 +17407,8 @@
             "enum": [
               "voucher",
               "game",
-              "gift"
+              "gift",
+              "skin"
             ],
             "title": "Kind",
             "type": "string"
@@ -17507,6 +17684,54 @@
           "hash"
         ],
         "title": "TelegramWidgetIn",
+        "type": "object"
+      },
+      "TradeLinkCheckOut": {
+        "description": "``ok`` false blocks checkout; ``reason`` names what to fix.",
+        "properties": {
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "invalid",
+                  "private",
+                  "trade_ban",
+                  "hold",
+                  "unavailable"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "ok",
+          "reason"
+        ],
+        "title": "TradeLinkCheckOut",
+        "type": "object"
+      },
+      "TradeLinkIn": {
+        "description": "A pasted trade link.",
+        "properties": {
+          "url": {
+            "maxLength": 300,
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "url"
+        ],
+        "title": "TradeLinkIn",
         "type": "object"
       },
       "TransactionListOut": {
@@ -35493,6 +35718,170 @@
           }
         },
         "summary": "Search-as-you-type",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/tradelink": {
+      "get": {
+        "operationId": "get_saved_api_v1_skins_tradelink_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedTradeLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My saved trade link",
+        "tags": [
+          "skins"
+        ]
+      },
+      "put": {
+        "operationId": "put_saved_api_v1_skins_tradelink_put",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TradeLinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedTradeLinkOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Save my trade link",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/tradelink/check": {
+      "post": {
+        "description": "Advisory: will an offer to this link arrive? Never blocks on an outage.",
+        "operationId": "check_link_api_v1_skins_tradelink_check_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TradeLinkIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TradeLinkCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check a trade link",
         "tags": [
           "skins"
         ]

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_serializer, f
 # cycles start. ``ClientHints`` is a leaf value object either way.
 from yupay.modules.catalog.unit_sku import UNIT_QTY_WIRE_MAX
 from yupay.modules.evidence.schemas import ClientHints
+from yupay.modules.skins.trade_view import SkinTradeOut
 
 OrderStatus = Literal[
     "pending_payment",
@@ -162,6 +163,9 @@ class OrderItemOut(BaseModel):
     fulfillment_state: str
     fulfillment_data: dict[str, Any]
     display: OrderItemDisplay | None = None
+    #: A CS2 skin line's trade as the buyer sees it (``skins.trade_view``); ``None``
+    #: on every other line. Filled by the routes with one query per response.
+    skin_trade: SkinTradeOut | None = None
 
     @field_serializer("fulfillment_data")
     def _serialize_fulfillment_data(self, value: dict[str, Any]) -> dict[str, Any]:

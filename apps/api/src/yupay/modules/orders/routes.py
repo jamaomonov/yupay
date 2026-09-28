@@ -11,6 +11,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, Query, Request, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -44,6 +45,8 @@ from yupay.modules.orders.schemas import (
     OrderOut,
 )
 from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
+from yupay.modules.skins.models import SkinTrade
+from yupay.modules.skins.trade_view import skin_trade_out
 from yupay.modules.users.models import User
 from yupay.modules.users.service import is_email_banned
 
@@ -61,6 +64,26 @@ def _to_order_out(order: Order, locale: str = "ru") -> OrderOut:
     out.payment_provider = succeeded_provider_for(order)
     _attach_displays(out, order, locale=locale)
     return out
+
+
+async def _attach_skin_trades(db: AsyncSession, pairs: Sequence[tuple[OrderOut, Order]]) -> None:
+    """Fill ``skin_trade`` on skin lines — one query for the whole response."""
+    items = {item.id: item for _, order in pairs for item in order.items}
+    if not items:
+        return
+    rows = (
+        await db.execute(select(SkinTrade).where(SkinTrade.order_item_id.in_(list(items))))
+    ).scalars()
+    by_item = {row.order_item_id: row for row in rows}
+    if not by_item:
+        return
+    for out, _ in pairs:
+        for item_out in out.items:
+            row = by_item.get(item_out.id)
+            if row is not None:
+                item_out.skin_trade = skin_trade_out(
+                    row, fulfillment_state=items[item_out.id].fulfillment_state
+                )
 
 
 def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:
@@ -310,7 +333,9 @@ async def get_order_route(
         raise UnauthorizedError("authorization required")
 
     order = await svc.get_order_for_actor(db, order_id, actor=actor)
-    return _to_order_out(order)
+    out = _to_order_out(order)
+    await _attach_skin_trades(db, [(out, order)])
+    return out
 
 
 @router.get("", response_model=OrderListOut)
@@ -320,7 +345,9 @@ async def list_orders_route(
 ) -> OrderListOut:
     """List orders for the logged-in user. Guests get this view via the email link."""
     orders = await svc.list_orders_for_actor(db, actor=Actor(user_id=user.id, email=None))
-    return OrderListOut(items=[_to_order_out(o) for o in orders])
+    pairs = [(_to_order_out(o), o) for o in orders]
+    await _attach_skin_trades(db, pairs)
+    return OrderListOut(items=[out for out, _ in pairs])
 
 
 @router.post("/claim", response_model=ClaimOut, summary="Claim guest orders for the logged-in user")
