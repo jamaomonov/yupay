@@ -1,0 +1,244 @@
+"""Public ``/skins/*`` reads. Every one 404s while ``cs2_skins_enabled`` is off.
+
+No per-route rate bucket here: these read only our own database, the same
+posture as ``catalog/routes.py``. The listings proxy (``listings.py``) is
+the exception and carries its own bucket.
+"""
+
+from __future__ import annotations
+
+import contextlib
+import hashlib
+import json
+from decimal import Decimal
+from typing import Annotated, Any
+
+from fastapi import APIRouter, Depends, Query
+from redis.exceptions import RedisError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from yupay.api.v1.deps import db_session
+from yupay.core.config import get_settings
+from yupay.core.errors import NotFoundError
+from yupay.core.redis import get_redis
+from yupay.modules.fx.factory import build_default_service
+from yupay.modules.fx.service import FxService, FxUnavailableError
+from yupay.modules.skins.models import SkinItem
+from yupay.modules.skins.pricing import PricingRules, quote, to_uzs
+from yupay.modules.skins.schemas import (
+    FacetOut,
+    SkinDetailOut,
+    SkinFacetsOut,
+    SkinItemOut,
+    SkinListingSummaryOut,
+    SkinsPageOut,
+    SkinSuggestOut,
+)
+from yupay.modules.skins.service import (
+    CatalogQuery,
+    Sort,
+    catalog_version,
+    facets,
+    get_item,
+    list_items,
+    suggest,
+)
+from yupay.modules.skins.settings import enabled_categories, load_rules
+
+_PAGE_TTL = 60
+
+
+def _ensure_enabled() -> None:
+    """404 every route under this router while the feature flag is off."""
+    if not get_settings().cs2_skins_enabled:
+        raise NotFoundError("cs2 skins catalog is not enabled")
+
+
+router = APIRouter(prefix="/skins", tags=["skins"], dependencies=[Depends(_ensure_enabled)])
+
+
+def _fx() -> FxService:
+    return build_default_service()
+
+
+async def _uzs_rate(fx: FxService) -> Decimal | None:
+    try:
+        return (await fx.convert(Decimal("1"), base="USD", quote="UZS")).rate
+    except FxUnavailableError:
+        return None
+
+
+def _to_uzs(usd: Decimal | None, rate: Decimal | None, rules: PricingRules) -> str | None:
+    if usd is None or rate is None:
+        return None
+    return str(to_uzs(usd, rate, round_to=rules.uzs_round_to))
+
+
+def _units_to_usd(units: int | None) -> str | None:
+    return None if units is None else str(Decimal(units) / Decimal(1000))
+
+
+def _item_out(item: SkinItem, rules: PricingRules, rate: Decimal | None) -> SkinItemOut:
+    q = (
+        quote(
+            item.min_auto_units,
+            rules=rules,
+            category=item.category,
+            weapon=item.weapon,
+            count_auto=item.count_auto,
+            item_pp=item.margin_override_pp,
+            fixed_price_usd=item.fixed_price_usd,
+            steam_price_units=item.steam_price_units,
+        )
+        if item.min_auto_units is not None
+        else None
+    )
+    price = None if q is None else q.price_usd
+    discount = None
+    if item.steam_price_units and price is not None:
+        steam = Decimal(item.steam_price_units) / Decimal(1000)
+        if steam > price:
+            discount = int(((steam - price) / steam * 100).quantize(Decimal("1")))
+    return SkinItemOut(
+        slug=item.slug,
+        name=item.market_hash_name,
+        phase=item.phase or None,
+        category=item.category,
+        weapon=item.weapon,
+        skin=item.skin,
+        exterior=item.exterior,
+        stattrak=item.stattrak,
+        souvenir=item.souvenir,
+        rarity=item.rarity,
+        rarity_color=item.rarity_color,
+        image_url=item.image_url,
+        price_usd=None if price is None else str(price),
+        price_uzs=_to_uzs(price, rate, rules),
+        steam_price_usd=_units_to_usd(item.steam_price_units),
+        discount_percent=discount,
+        count=item.count_auto,
+        min_float=None if item.min_float is None else str(item.min_float),
+        max_float=None if item.max_float is None else str(item.max_float),
+    )
+
+
+async def _cached(key_parts: dict[str, Any], build: Any) -> Any:
+    """60 s Redis cache keyed by the catalogue version and a digest of the query."""
+    redis = get_redis()
+    version = await catalog_version(redis)
+    # A cache key, not a secret: sha1 keeps arbitrary query text out of Redis keys.
+    digest = hashlib.sha1(json.dumps(key_parts, sort_keys=True, default=str).encode()).hexdigest()  # noqa: S324
+    key = f"skins:{key_parts['kind']}:{version}:{digest}"
+    with contextlib.suppress(RedisError):
+        cached = await redis.get(key)
+        if cached is not None:
+            return json.loads(cached)
+    value = await build()
+    with contextlib.suppress(RedisError):
+        await redis.set(key, json.dumps(value), ex=_PAGE_TTL)
+    return value
+
+
+@router.get("/catalog", response_model=SkinsPageOut, summary="Browse the skins catalogue")
+async def get_catalog(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    category: str | None = None,
+    weapon: str | None = None,
+    exterior: str | None = None,
+    stattrak: bool | None = None,
+    souvenir: bool | None = None,
+    min_usd: Annotated[Decimal | None, Query(ge=0)] = None,
+    max_usd: Annotated[Decimal | None, Query(ge=0)] = None,
+    q: Annotated[str | None, Query(max_length=80)] = None,
+    sort: Sort = "price",
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 48,
+) -> SkinsPageOut:
+    query = CatalogQuery(
+        category=category,
+        weapon=weapon,
+        exterior=exterior,
+        stattrak=stattrak,
+        souvenir=souvenir,
+        min_units=None if min_usd is None else int(min_usd * 1000),
+        max_units=None if max_usd is None else int(max_usd * 1000),
+        q=q,
+        sort=sort,
+        cursor=cursor,
+        limit=limit,
+    )
+    categories = enabled_categories(get_settings())
+
+    async def build() -> dict[str, Any]:
+        rules = await load_rules(db)
+        rate = await _uzs_rate(_fx())
+        items, next_cursor = await list_items(db, query, categories=categories)
+        return SkinsPageOut(
+            items=[_item_out(i, rules, rate) for i in items], next_cursor=next_cursor
+        ).model_dump(mode="json")
+
+    return SkinsPageOut.model_validate(await _cached({"kind": "catalog", **query.__dict__}, build))
+
+
+@router.get("/facets", response_model=SkinFacetsOut, summary="Counts per category, weapon, wear")
+async def get_facets(db: Annotated[AsyncSession, Depends(db_session)]) -> SkinFacetsOut:
+    categories = enabled_categories(get_settings())
+
+    async def build() -> dict[str, Any]:
+        f = await facets(db, categories=categories)
+        return SkinFacetsOut(
+            categories=[FacetOut(value=v, count=c) for v, c in f.categories],
+            weapons=[FacetOut(value=v, count=c) for v, c in f.weapons],
+            exteriors=[FacetOut(value=v, count=c) for v, c in f.exteriors],
+        ).model_dump(mode="json")
+
+    return SkinFacetsOut.model_validate(await _cached({"kind": "facets"}, build))
+
+
+@router.get("/suggest", response_model=SkinSuggestOut, summary="Search-as-you-type")
+async def get_suggest(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    q: Annotated[str, Query(min_length=1, max_length=80)],
+) -> SkinSuggestOut:
+    categories = enabled_categories(get_settings())
+
+    async def build() -> dict[str, Any]:
+        rules = await load_rules(db)
+        rate = await _uzs_rate(_fx())
+        items = await suggest(db, q, categories=categories)
+        return SkinSuggestOut(items=[_item_out(i, rules, rate) for i in items]).model_dump(
+            mode="json"
+        )
+
+    return SkinSuggestOut.model_validate(await _cached({"kind": "suggest", "q": q.lower()}, build))
+
+
+@router.get("/{slug}", response_model=SkinDetailOut, summary="One item with its cheapest listings")
+async def get_detail(slug: str, db: Annotated[AsyncSession, Depends(db_session)]) -> SkinDetailOut:
+    item = await get_item(db, slug, categories=enabled_categories(get_settings()))
+    rules = await load_rules(db)
+    rate = await _uzs_rate(_fx())
+    base = _item_out(item, rules, rate)
+    cheapest = []
+    for entry in item.cheapest_auto:
+        usd = quote(
+            int(entry["price_units"]),
+            rules=rules,
+            category=item.category,
+            weapon=item.weapon,
+            count_auto=item.count_auto,
+            item_pp=item.margin_override_pp,
+            fixed_price_usd=item.fixed_price_usd,
+            steam_price_units=item.steam_price_units,
+        ).price_usd
+        cheapest.append(
+            SkinListingSummaryOut(
+                listing_id=int(entry["listing_id"]),
+                price_usd=str(usd),
+                price_uzs=_to_uzs(usd, rate, rules),
+            )
+        )
+    return SkinDetailOut(**base.model_dump(), cheapest=cheapest)
+
+
+__all__ = ["router"]

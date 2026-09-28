@@ -56,6 +56,8 @@ from yupay.modules.promo.api import router as promo_router
 from yupay.modules.realtime.api import router as realtime_router
 from yupay.modules.reviews.api import admin_router as reviews_admin_router
 from yupay.modules.reviews.api import router as reviews_router
+from yupay.modules.skins.api import admin_router as skins_admin_router
+from yupay.modules.skins.api import router as skins_router
 from yupay.modules.sourcing.api import admin_router as sourcing_admin_router
 from yupay.modules.stats.api import admin_router as stats_admin_router
 from yupay.modules.storage.api import admin_router as storage_admin_router
@@ -81,6 +83,8 @@ router.include_router(fx_router)
 router.include_router(fx_admin_router)
 router.include_router(gifts_router)
 router.include_router(gifts_admin_router)
+router.include_router(skins_router)
+router.include_router(skins_admin_router)
 router.include_router(orders_router)
 router.include_router(orders_admin_router)
 router.include_router(payments_router)
