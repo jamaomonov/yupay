@@ -112,7 +112,7 @@ export function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
             border: "1px solid hsl(var(--border))",
           }}
         >
-          <span className="text-white/45">{t("success.credited")} · </span>
+          <span className="text-white/45">{t("success.issued")} · </span>
           <span>{display.value}</span>
         </div>
       )}
@@ -140,7 +140,7 @@ export function ArtifactBlock({ delivery }: { delivery: DeliveryOut }) {
             border: "1px solid hsl(var(--border))",
           }}
         >
-          {t("success.credited")}
+          {t("success.issued")}
         </div>
       )}
     </motion.div>

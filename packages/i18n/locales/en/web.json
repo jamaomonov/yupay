@@ -290,8 +290,8 @@
     "hubStep2D": "Enter your player ID (or login) and pick an amount — the total in sum is shown right away, no password.",
     "hubStep3T": "Pay in sum",
     "hubStep3D": "Pay with an Uzcard or Humo card via Click, Payme or Uzum — crediting is automatic.",
-    "hubGuidesTitle": "Guides: how to top up",
-    "hubGuideLink": "How to top up {name}",
+    "hubGuidesTitle": "Guides",
+    "hubGuideLink": "{name} — guide",
     "hubFaqTitle": "Frequently asked questions",
     "hubFaqQ1": "Can I pay in sum?",
     "hubFaqA1": "Yes. Every top-up is paid in Uzbek sum with Uzcard and Humo cards via Click, Payme or Uzum. The price in sum is shown before payment.",
@@ -322,7 +322,17 @@
     "successPaidTitle": "Paid from your balance",
     "successPaidNote": "The order is paid — we're delivering it. Track it below.",
     "payFromBalanceLoading": "Loading your balance…",
-    "payFromBalanceTopUp": "Top up your balance"
+    "payFromBalanceTopUp": "Top up your balance",
+    "brandMetaTitleVoucher": "{name} — buy in Uzbekistan | yupay",
+    "brandMetaDescriptionVoucher": "Buy {name} in Uzbekistan: the code right after payment. Prices in soʻm, pay with Click, Payme or Uzum — yupay.",
+    "etaChipVoucher": "Code in 1–5 minutes",
+    "instructionsTitleVoucher": "How to redeem",
+    "howToLinkVoucher": "How to buy and redeem",
+    "howToTitleVoucher": "How to buy {name} in Uzbekistan",
+    "howToMetaTitleVoucher": "How to buy {name} in Uzbekistan for soʻm — YuPay",
+    "howToMetaDescriptionVoucher": "Step by step: how to buy {name} in Uzbekistan for soʻm, get the code and redeem it.",
+    "breadcrumbHowToVoucher": "How to buy",
+    "guideCtaButtonVoucher": "Buy {name}"
   },
   "gifts": {
     "meta": {
@@ -796,9 +806,25 @@
     "emptyHint": "Reviews will show up here after the first orders."
   },
   "orderResult": {
-    "deliveredTitle": "Top-up successful",
-    "deliveredBody": "Your order has been delivered. Check your balance or the code you received.",
-    "close": "Close"
+    "close": "Close",
+    "delivered": {
+      "topUp": {
+        "title": "Top-up successful",
+        "body": "The funds are on your account."
+      },
+      "voucher": {
+        "title": "Your code is ready",
+        "body": "The code is on the order page."
+      },
+      "skin": {
+        "title": "Skin received",
+        "body": "It is already in your Steam inventory."
+      },
+      "mixed": {
+        "title": "Order complete",
+        "body": "All done — details are on the order page."
+      }
+    }
   },
   "wallet": {
     "title": "Wallet",

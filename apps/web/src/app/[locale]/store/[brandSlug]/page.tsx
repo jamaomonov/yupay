@@ -28,6 +28,7 @@ import {
   getProductDetail,
   type ProductDetail,
 } from "@/lib/catalog";
+import { isVoucherBrand } from "@/lib/brand-kind";
 import { isOptimizable } from "@/lib/image";
 import { regionSibling } from "@/lib/region-sibling";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
@@ -73,12 +74,14 @@ export async function generateMetadata({
   const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) return {};
   const t = await getTranslations("web.store");
-  const title = t("brandMetaTitle", { name: brand.name });
+  // A codes-only brand is bought and redeemed, never «пополнен».
+  const v = isVoucherBrand(brand) ? "Voucher" : "";
+  const title = t(`brandMetaTitle${v}`, { name: brand.name });
   // short_description first (skips the API's `""` blanks), trimmed to a clean
   // SERP length — the raw blurbs run ~450 chars and would be cut mid-word.
   const description = truncate(
     firstNonEmpty(brand.short_description, brand.description) ??
-      t("brandMetaDescription", { name: brand.name }),
+      t(`brandMetaDescription${v}`, { name: brand.name }),
   );
   const path = `/store/${brand.slug}`;
   return {
@@ -112,6 +115,8 @@ export default async function BrandPage({
 
   const t = await getTranslations("web.store");
   const t2 = await getTranslations("web.brandReviews");
+  // A codes-only brand is bought and redeemed, never «пополнен».
+  const v = isVoucherBrand(brand) ? "Voucher" : "";
   const tn = await getTranslations("web.nav");
 
   const products = (
@@ -124,7 +129,7 @@ export default async function BrandPage({
   const about = firstNonEmpty(brand.description, brand.short_description) ?? "";
   const metaDescription =
     firstNonEmpty(brand.short_description, brand.description) ??
-    t("brandMetaDescription", { name: brand.name });
+    t(`brandMetaDescription${v}`, { name: brand.name });
   const heroImg = brand.hero_image_url ?? brand.logo_url;
   const highlights = brand.highlights ?? [];
   // The other region's brand, when this one is one half of a `<slug>` /
@@ -401,7 +406,7 @@ export default async function BrandPage({
                   "Без пароля") would duplicate them. */}
               {highlights.length === 0 && (
                 <>
-                  <Chip icon={<Clock size={13} />}>{t("etaChip")}</Chip>
+                  <Chip icon={<Clock size={13} />}>{t(`etaChip${v}`)}</Chip>
                   <Chip icon={<ShieldCheck size={13} />}>{t("securityChip")}</Chip>
                 </>
               )}
@@ -447,7 +452,7 @@ export default async function BrandPage({
               {brand.instructions && (
                 <section className="mt-14 scroll-mt-[88px]">
                   <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-                    {t("instructionsTitle")}
+                    {t(`instructionsTitle${v}`)}
                   </h2>
                   <div className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
                     {brand.instructions}
@@ -456,7 +461,7 @@ export default async function BrandPage({
                     href={pathFor(locale, `/store/${brand.slug}/how-to`)}
                     className="text-primary mt-4 inline-flex items-center gap-1 text-[14px] font-semibold hover:underline"
                   >
-                    {t("howToLink")}
+                    {t(`howToLink${v}`)}
                     <ChevronRight size={15} />
                   </Link>
                 </section>

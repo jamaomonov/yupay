@@ -285,6 +285,7 @@ export default function OrderSuccess() {
 
       {isDelivered && (
         <DeliveredExtras
+          order={order}
           brandName={order.items[0]?.display?.brand_name ?? null}
           imageUrl={order.items[0]?.display?.image_url ?? null}
         />

@@ -290,8 +290,8 @@
     "hubStep2D": "Oʻyin IDsi (yoki login) ni kiriting va nominalni tanlang — soʻmdagi summa darhol koʻrinadi, parolsiz.",
     "hubStep3T": "Soʻmda toʻlang",
     "hubStep3D": "Uzcard yoki Humo kartasi bilan Click, Payme yoki Uzum orqali toʻlang — hisobga olish avtomatik.",
-    "hubGuidesTitle": "Qoʻllanmalar: qanday toʻldirish",
-    "hubGuideLink": "{name} ni qanday toʻldirish",
+    "hubGuidesTitle": "Qo'llanmalar",
+    "hubGuideLink": "{name} — qo'llanma",
     "hubFaqTitle": "Koʻp beriladigan savollar",
     "hubFaqQ1": "Soʻmda toʻlash mumkinmi?",
     "hubFaqA1": "Ha. Barcha toʻldirishlar oʻzbek soʻmida Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali toʻlanadi. Soʻmdagi narx toʻlovdan oldin koʻrinadi.",
@@ -322,7 +322,17 @@
     "successPaidTitle": "Balansdan toʻlandi",
     "successPaidNote": "Buyurtma toʻlandi — yetkazmoqdamiz. Holatni quyida kuzating.",
     "payFromBalanceLoading": "Balans yuklanmoqda…",
-    "payFromBalanceTopUp": "Balansni toʻldirish"
+    "payFromBalanceTopUp": "Balansni toʻldirish",
+    "brandMetaTitleVoucher": "{name} — O'zbekistonda sotib olish | yupay",
+    "brandMetaDescriptionVoucher": "{name} ni O'zbekistonda sotib oling: kod to'lovdan so'ng darhol. Narxlar so'mda, Click, Payme yoki Uzum orqali to'lov — yupay.",
+    "etaChipVoucher": "Kod 1–5 daqiqada",
+    "instructionsTitleVoucher": "Qanday faollashtirish",
+    "howToLinkVoucher": "Qanday sotib olish va faollashtirish",
+    "howToTitleVoucher": "{name} ni O'zbekistonda qanday sotib olish",
+    "howToMetaTitleVoucher": "{name} ni O'zbekistonda so'mga qanday sotib olish — YuPay",
+    "howToMetaDescriptionVoucher": "Qadamma-qadam: {name} ni O'zbekistonda so'mga qanday sotib olish, kodni olish va faollashtirish.",
+    "breadcrumbHowToVoucher": "Qanday sotib olish",
+    "guideCtaButtonVoucher": "{name} sotib olish"
   },
   "gifts": {
     "meta": {
@@ -796,9 +806,25 @@
     "emptyHint": "Sharhlar birinchi buyurtmalardan soʻng shu yerda paydo boʻladi."
   },
   "orderResult": {
-    "deliveredTitle": "Toʻldirish muvaffaqiyatli",
-    "deliveredBody": "Buyurtmangiz yetkazildi. Balansingizni yoki olingan kodni tekshiring.",
-    "close": "Yopish"
+    "close": "Yopish",
+    "delivered": {
+      "topUp": {
+        "title": "Toʻldirish muvaffaqiyatli",
+        "body": "Mablagʻ akkauntingizga tushdi."
+      },
+      "voucher": {
+        "title": "Kod tayyor",
+        "body": "Kod buyurtma sahifasida."
+      },
+      "skin": {
+        "title": "Skin olindi",
+        "body": "U allaqachon Steam inventaringizda."
+      },
+      "mixed": {
+        "title": "Buyurtma bajarildi",
+        "body": "Hammasi tayyor — tafsilotlar buyurtma sahifasida."
+      }
+    }
   },
   "wallet": {
     "title": "Hamyon",

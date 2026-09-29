@@ -117,6 +117,23 @@ async def test_delivery_lines_for_email_splits_codes_and_topup() -> None:
 
 
 @pytest.mark.asyncio
+async def test_a_skin_is_not_reported_as_money_credited() -> None:
+    """A CS2 skin's receipt is a Steam trade, not funds on an account."""
+    from yupay.modules.notifications.service import (
+        _delivery_lines_for_email,  # type: ignore[attr-defined]
+    )
+
+    class _D:
+        def __init__(self, artifact: dict[str, object], kind: str) -> None:
+            self.artifact = artifact
+            self.artifact_kind = kind
+
+    skin = _D({"kind": "skin", "name": "AK-47 | Slate", "trade_id": "1"}, "topup_receipt")
+    codes, credited = _delivery_lines_for_email([skin])  # type: ignore[list-item]
+    assert (codes, credited) == ([], [])
+
+
+@pytest.mark.asyncio
 async def test_delivered_email_renders_topup_credited(monkeypatch: pytest.MonkeyPatch) -> None:
     """A top-up delivery (no code) renders the 'credited' line, not a code chip."""
     sent: list[dict[str, str]] = []

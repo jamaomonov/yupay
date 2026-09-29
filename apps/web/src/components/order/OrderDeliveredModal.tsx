@@ -9,6 +9,7 @@ import type { OrderOut } from "@/lib/orders-types";
 
 import { ReviewAsk } from "@/components/store/ReviewAsk";
 import { apiFetch } from "@/lib/client";
+import { deliveredKind } from "@/lib/order-kind";
 import { getMyReviews } from "@/lib/reviews";
 import { useOrderDeliveredModal } from "@/store/useOrderDeliveredModal";
 
@@ -63,6 +64,7 @@ export function OrderDeliveredModal() {
 
   if (!isOpen || !order.data) return null;
 
+  const kind = deliveredKind(order.data.items);
   const display = order.data.items[0]?.display;
   const brandSlug = display?.brand_slug ?? null;
   const ownReview = (myReviews.data?.items ?? []).find((r) => r.order_id === orderId) ?? null;
@@ -75,7 +77,7 @@ export function OrderDeliveredModal() {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label={t("deliveredTitle")}
+      aria-label={t(`delivered.${kind}.title`)}
       className="fixed inset-0 z-[100] flex items-center justify-center p-4"
     >
       <button
@@ -100,9 +102,9 @@ export function OrderDeliveredModal() {
         </button>
 
         <h2 className="font-display max-w-[16rem] text-2xl font-bold leading-tight tracking-[-0.02em]">
-          {t("deliveredTitle")}
+          {t(`delivered.${kind}.title`)}
         </h2>
-        <p className="text-tx-mute mt-3 text-sm leading-relaxed">{t("deliveredBody")}</p>
+        <p className="text-tx-mute mt-3 text-sm leading-relaxed">{t(`delivered.${kind}.body`)}</p>
 
         {canRate && orderId !== null && brandSlug !== null && (
           <ReviewAsk

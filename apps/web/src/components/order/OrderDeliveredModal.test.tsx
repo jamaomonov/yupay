@@ -36,7 +36,7 @@ vi.mock("@/lib/reviews", () => ({
 
 const ORDER_ID = "order-abc-123";
 
-function makeOrder(brandSlug: string): OrderOut {
+function makeOrder(brandSlug: string, productKind = "top_up", skuCode = "STEAM-10"): OrderOut {
   return {
     id: ORDER_ID,
     status: "delivered",
@@ -64,8 +64,8 @@ function makeOrder(brandSlug: string): OrderOut {
           brand_name: "Steam",
           product_slug: "steam-wallet",
           product_name: "Steam Wallet",
-          product_kind: "topup",
-          sku_code: "STEAM-10",
+          product_kind: productKind,
+          sku_code: skuCode,
           denomination: "$10",
           region: null,
           image_url: null,
@@ -202,4 +202,17 @@ test("a review that already has its words is shown back, not re-asked", async ()
     expect(screen.getByText("web.brandReviews.thanks")).toBeInTheDocument();
   });
   expect(screen.queryByText("web.brandReviews.followUp")).not.toBeInTheDocument();
+});
+
+test.each([
+  ["a top-up", "top_up", "STEAM-10", "topUp"],
+  ["a code", "voucher", "DISCORD-NITRO", "voucher"],
+  ["a CS2 skin", "top_up", "cs2-skin", "skin"],
+])("says what %s delivered, not a generic top-up", async (_label, kind, sku, key) => {
+  mockApiFetch.mockResolvedValue(makeOrder("brand", kind, sku));
+  mockGetMyReviews.mockResolvedValue({ items: [] });
+  useOrderDeliveredModal.setState({ orderId: ORDER_ID });
+  renderModal();
+  expect(await screen.findByText(`web.orderResult.delivered.${key}.title`)).toBeInTheDocument();
+  expect(screen.getByText(`web.orderResult.delivered.${key}.body`)).toBeInTheDocument();
 });

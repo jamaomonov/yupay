@@ -1,11 +1,11 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, ExternalLink, HeadphonesIcon, Loader2, XCircle } from "lucide-react";
 
-import type { OrderOut, ProductKind } from "@/lib/orders";
+import type { OrderOut } from "@/lib/orders";
 
 import { useT } from "@/lib/i18n";
 import { translate } from "@/lib/i18n/core";
-import { isSkinItem } from "@/lib/skin-trade";
+import { orderKind } from "@/lib/order-kind";
 
 // Soft SLA thresholds. The order is allowed to take whatever it takes
 // (fulfillment can poll suppliers, manual intervention etc.), but we lower
@@ -41,18 +41,6 @@ export interface StageCopy {
 /** What's this order made of? Drives status copy so a top-up never
  *  promises a "code" and a voucher never says "credited to account".
  *  ``mixed`` (both kinds in one order) falls back to neutral wording. */
-function orderKind(order: OrderOut): "top_up" | "voucher" | "mixed" | "skin" {
-  // A CS2 skin is seeded as a top-up (its form matches that shape) but is
-  // delivered as a Steam trade and refunded to the balance — its own copy.
-  if (order.items.some(isSkinItem)) return "skin";
-  const kinds = new Set(
-    order.items.map((i) => i.display?.product_kind).filter((k): k is ProductKind => Boolean(k)),
-  );
-  if (kinds.size === 1) {
-    return kinds.has("top_up") ? "top_up" : "voucher";
-  }
-  return "mixed";
-}
 
 export function stageFor(order: OrderOut): StageCopy {
   const kind = orderKind(order);

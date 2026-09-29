@@ -1,3 +1,4 @@
+import { isVoucherBrand } from "./brand-kind";
 import {
   getBrandDetail,
   getBrands,
@@ -108,6 +109,8 @@ export async function storeMarkdown(locale: string): Promise<string> {
 /** Locale-aware section headers for the how-to guide markdown. */
 interface HowToLabels {
   title: (n: string) => string;
+  /** A codes-only brand is bought and redeemed, never «пополнен». */
+  titleVoucher: (n: string) => string;
   steps: string;
   where: string;
   /** Placeholder for a step screenshot that carries no caption — an agent
@@ -119,6 +122,7 @@ interface HowToLabels {
 }
 const HOWTO_RU: HowToLabels = {
   title: (n) => `Как пополнить ${n} в Узбекистане`,
+  titleVoucher: (n) => `Как купить ${n} в Узбекистане`,
   steps: "Пошаговая инструкция",
   where: "Где найти ID / логин",
   screenshot: "Скриншот",
@@ -129,6 +133,7 @@ const HOWTO_L: Record<string, HowToLabels> = {
   ru: HOWTO_RU,
   en: {
     title: (n) => `How to top up ${n} in Uzbekistan`,
+    titleVoucher: (n) => `How to buy ${n} in Uzbekistan`,
     steps: "Step by step",
     where: "Where to find your ID / login",
     screenshot: "Screenshot",
@@ -137,6 +142,7 @@ const HOWTO_L: Record<string, HowToLabels> = {
   },
   uz: {
     title: (n) => `${n} ni Oʻzbekistonda qanday toʻldirish`,
+    titleVoucher: (n) => `${n} ni Oʻzbekistonda qanday sotib olish`,
     steps: "Bosqichma-bosqich",
     where: "ID / login qayerdan olinadi",
     screenshot: "Skrinshot",
@@ -152,7 +158,8 @@ export async function howToMarkdown(locale: string, slug: string): Promise<strin
   if (!brand) return null;
   const L = HOWTO_L[locale] ?? HOWTO_RU;
 
-  const out: string[] = [`# ${L.title(brand.name)}`, ``];
+  const heading = isVoucherBrand(brand) ? L.titleVoucher : L.title;
+  const out: string[] = [`# ${heading(brand.name)}`, ``];
   const intro = firstNonEmpty(brand.short_description, brand.description);
   if (intro) out.push(block(intro), ``);
 
@@ -242,7 +249,10 @@ export async function brandMarkdown(locale: string, slug: string): Promise<strin
     out.push(``);
   }
 
-  if (brand.instructions) out.push(`## Как пополнить`, block(brand.instructions), ``);
+  if (brand.instructions) {
+    const how = isVoucherBrand(brand) ? "Как активировать" : "Как пополнить";
+    out.push(`## ${how}`, block(brand.instructions), ``);
+  }
 
   if (brand.faqs && brand.faqs.length > 0) {
     out.push(`## Частые вопросы`);

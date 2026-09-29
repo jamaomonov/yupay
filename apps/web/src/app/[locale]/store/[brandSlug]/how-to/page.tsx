@@ -17,6 +17,7 @@ import {
   type LocaleMap,
   type ProductDetail,
 } from "@/lib/catalog";
+import { isVoucherBrand } from "@/lib/brand-kind";
 import { isOptimizable } from "@/lib/image";
 import {
   alternates,
@@ -99,8 +100,9 @@ export async function generateMetadata({
   const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) return {};
   const t = await getTranslations("web.store");
-  const title = t("howToMetaTitle", { name: brand.name });
-  const description = truncate(t("howToMetaDescription", { name: brand.name }));
+  const v = isVoucherBrand(brand) ? "Voucher" : "";
+  const title = t(`howToMetaTitle${v}`, { name: brand.name });
+  const description = truncate(t(`howToMetaDescription${v}`, { name: brand.name }));
   const path = `/store/${brand.slug}/how-to`;
   return {
     title: { absolute: title },
@@ -138,7 +140,9 @@ export default async function HowToPage({
     (brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)),
   );
 
-  const title = t("howToTitle", { name: brand.name });
+  // A codes-only brand is bought and redeemed, never «пополнен».
+  const v = isVoucherBrand(brand) ? "Voucher" : "";
+  const title = t(`howToTitle${v}`, { name: brand.name });
   const intro = firstNonEmpty(brand.short_description, brand.description);
   const instructions = brand.instructions ?? null;
   const steps = instructions ? parseSteps(instructions) : [];
@@ -191,7 +195,7 @@ export default async function HowToPage({
       {
         "@type": "ListItem",
         position: 4,
-        name: t("breadcrumbHowTo"),
+        name: t(`breadcrumbHowTo${v}`),
         item: localeUrl(locale, `${moneyPath}/how-to`),
       },
     ],
@@ -229,7 +233,7 @@ export default async function HowToPage({
             {brand.name}
           </Link>
           <ChevronRight size={12} />
-          <span className="text-tx-mute">{t("breadcrumbHowTo")}</span>
+          <span className="text-tx-mute">{t(`breadcrumbHowTo${v}`)}</span>
         </nav>
 
         <h1 className="font-display text-[clamp(1.8rem,4vw,2.6rem)] font-bold leading-tight tracking-[-0.02em]">
@@ -388,7 +392,7 @@ export default async function HowToPage({
             href={pathFor(locale, moneyPath)}
             className="bg-primary text-primary-foreground rounded-btn inline-flex shrink-0 items-center gap-2 px-6 py-3 text-[15px] font-bold transition hover:brightness-110"
           >
-            {t("guideCtaButton", { name: brand.name })}
+            {t(`guideCtaButton${v}`, { name: brand.name })}
             <ChevronRight size={18} />
           </Link>
         </div>

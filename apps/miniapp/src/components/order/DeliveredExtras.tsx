@@ -3,7 +3,10 @@ import { useEffect, useState } from "react";
 
 import { ActionButton } from "./ActionButton";
 
+import type { OrderOut } from "@/lib/orders";
+
 import { useT } from "@/lib/i18n";
+import { shareStoryCopy } from "@/lib/order-kind";
 import {
   addToHomeScreen,
   canShareToStory,
@@ -12,15 +15,18 @@ import {
 } from "@/lib/telegram";
 
 /**
- * Post-delivery offers: pin the app, brag about the top-up.
+ * Post-delivery offers: pin the app, share the purchase (a top-up, a code or a skin —
+ * `shareStoryCopy` picks the words).
  *
  * Rating lives next to the receipt (`RateAsk`), not here — a secondary tile
  * among pin/share is the wrong job at this moment.
  */
 export function DeliveredExtras({
+  order,
   brandName,
   imageUrl,
 }: {
+  order: Pick<OrderOut, "items">;
   brandName: string | null;
   imageUrl: string | null;
 }) {
@@ -58,11 +64,8 @@ export function DeliveredExtras({
           label={t("success.share")}
           variant="secondary"
           onClick={() => {
-            shareToStory(imageUrl, {
-              text: brandName
-                ? t("success.shareStoryText", { game: brandName })
-                : t("success.shareStoryTextGeneric"),
-            });
+            const copy = shareStoryCopy(order, brandName);
+            shareToStory(imageUrl, { text: t(copy.key, copy.params) });
           }}
         />
       )}

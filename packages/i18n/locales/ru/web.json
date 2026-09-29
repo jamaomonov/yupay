@@ -290,8 +290,8 @@
     "hubStep2D": "Укажите игровой ID (или логин) и выберите номинал — итог в сумах виден сразу, без пароля.",
     "hubStep3T": "Оплатите в сумах",
     "hubStep3D": "Оплатите картой Uzcard или Humo через Click, Payme или Uzum — зачисление автоматическое.",
-    "hubGuidesTitle": "Гайды: как пополнить",
-    "hubGuideLink": "Как пополнить {name}",
+    "hubGuidesTitle": "Инструкции",
+    "hubGuideLink": "{name} — инструкция",
     "hubFaqTitle": "Частые вопросы",
     "hubFaqQ1": "Можно ли платить в сумах?",
     "hubFaqA1": "Да. Все пополнения оплачиваются в узбекских сумах картами Uzcard и Humo через Click, Payme или Uzum. Цена в сумах видна до оплаты.",
@@ -322,7 +322,17 @@
     "successPaidTitle": "Оплачено с баланса",
     "successPaidNote": "Заказ оплачен — выдаём товар. Следите за статусом ниже.",
     "payFromBalanceLoading": "Загружаем баланс…",
-    "payFromBalanceTopUp": "Пополнить баланс"
+    "payFromBalanceTopUp": "Пополнить баланс",
+    "brandMetaTitleVoucher": "{name} — купить в Узбекистане | yupay",
+    "brandMetaDescriptionVoucher": "Купить {name} в Узбекистане: код сразу после оплаты. Цены в сумах, оплата Click, Payme или Uzum — yupay.",
+    "etaChipVoucher": "Код за 1–5 минут",
+    "instructionsTitleVoucher": "Как активировать",
+    "howToLinkVoucher": "Как купить и активировать",
+    "howToTitleVoucher": "Как купить {name} в Узбекистане",
+    "howToMetaTitleVoucher": "Как купить {name} в Узбекистане за сумы — YuPay",
+    "howToMetaDescriptionVoucher": "Пошаговая инструкция: как купить {name} в Узбекистане за сумы, получить код и активировать его.",
+    "breadcrumbHowToVoucher": "Как купить",
+    "guideCtaButtonVoucher": "Купить {name}"
   },
   "gifts": {
     "meta": {
@@ -796,9 +806,25 @@
     "emptyHint": "Отзывы появятся здесь после первых заказов."
   },
   "orderResult": {
-    "deliveredTitle": "Пополнение успешно",
-    "deliveredBody": "Ваш заказ доставлен. Проверьте баланс или полученный код.",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "delivered": {
+      "topUp": {
+        "title": "Пополнение успешно",
+        "body": "Средства зачислены на ваш аккаунт."
+      },
+      "voucher": {
+        "title": "Код готов",
+        "body": "Код — на странице заказа."
+      },
+      "skin": {
+        "title": "Скин получен",
+        "body": "Он уже в вашем инвентаре Steam."
+      },
+      "mixed": {
+        "title": "Заказ выполнен",
+        "body": "Всё готово — подробности на странице заказа."
+      }
+    }
   },
   "wallet": {
     "title": "Кошелёк",

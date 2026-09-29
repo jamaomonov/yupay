@@ -168,7 +168,8 @@ def _delivery_lines_for_email(
         code = d.artifact.get("code") or d.artifact.get("key")
         if isinstance(code, str) and code:
             codes.append(code)
-        elif d.artifact_kind == "topup_receipt":
+        elif d.artifact_kind == "topup_receipt" and d.artifact.get("kind") != "skin":
+            # A CS2 skin rides the top-up receipt kind but is a Steam trade, not funds.
             credited.append(_credited_line_for_email(d))
     return codes, credited
 
@@ -331,6 +332,30 @@ async def _send_guest_email_delivered(
         )
 
 
+def paid_note(*, kinds: set[str], skin: bool) -> str:
+    """What happens next, by what was bought — a code only for a code.
+
+    Args:
+        kinds: The order's product kinds.
+        skin: A line is a CS2 skin (seeded as a top-up, delivered as a Steam trade).
+    """
+    if skin:
+        return "Выдаём скин — обмен придёт в Steam."
+    if kinds == {"voucher"}:
+        return "Передаём заказ в выдачу — пришлём код, как только он будет готов."
+    if kinds == {"top_up"}:
+        return "Передаём заказ в выдачу — сообщим, как только средства будут зачислены."
+    return "Передаём заказ в выдачу — сообщим, как только всё будет готово."
+
+
+def _order_kinds(order: Order) -> tuple[set[str], bool]:
+    from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
+
+    items = list(order.items)
+    kinds = {i.sku.product.kind for i in items}
+    return kinds, any(i.sku.sku_code == CS2_SKIN_SKU_CODE for i in items)
+
+
 async def notify_order_paid(order_id: str) -> bool:
     """Telegram + email: «Заказ оплачен, передаём в выдачу». Returns Telegram success."""
     async with get_session_factory()() as db:
@@ -358,12 +383,13 @@ async def notify_order_paid(order_id: str) -> bool:
         return False
 
     summary = _summarise_order(order)
+    kinds, skin = _order_kinds(order)
     amount = _format_amount(order.total_charged, order.currency)
     text = (
         f"<b>Оплата получена</b>\n\n"
         f"{summary}\n"
         f"Сумма: <b>{amount}</b>\n\n"
-        f"<i>Передаём заказ в выдачу — пришлём код как только будет готово.</i>"
+        f"<i>{paid_note(kinds=kinds, skin=skin)}</i>"
     )
     result: bool = await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
     return result

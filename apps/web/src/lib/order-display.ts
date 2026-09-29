@@ -1,5 +1,7 @@
 import type { OrderOut } from "@/lib/orders-types";
 
+import { isSkinItem } from "@/lib/orders-types";
+
 /** Tailwind classes per order status — background + text for the status chip.
  *  Shared between the logged-in and guest order-history cards. */
 export const STATUS_CLS: Record<string, string> = {
@@ -31,7 +33,12 @@ export function orderTitle(o: OrderOut, fallback: string): string {
  *  App's order-kind check and `StatusBlock`'s `isTopUp`) — a delivered
  *  top-up order shows "Credited" instead of "Delivered". */
 export function isTopUpOrder(o: OrderOut): boolean {
-  return o.items.length > 0 && o.items.every((i) => i.display?.product_kind === "top_up");
+  // A CS2 skin is seeded as a top-up but arrives as a Steam trade: not «Зачислено».
+  return (
+    o.items.length > 0 &&
+    !o.items.some(isSkinItem) &&
+    o.items.every((i) => i.display?.product_kind === "top_up")
+  );
 }
 
 /** Muted subtitle for an order card: the product name when it differs from
