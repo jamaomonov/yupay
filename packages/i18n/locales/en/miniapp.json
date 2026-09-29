@@ -577,5 +577,16 @@
   "cs2.buy.itemTitle": "Skin",
   "cs2.belowSteam": "−{percent}% vs Steam",
   "cs2.inspect": "Inspect in game",
-  "cs2.buy.unavailable": "Purchase temporarily unavailable"
+  "cs2.buy.unavailable": "Purchase temporarily unavailable",
+  "cs2.how.title": "How buying works",
+  "cs2.how.link.title": "Trade link",
+  "cs2.how.link.body": "The skin goes to the account behind this link. Steam Guard on your phone must be on for 7 days, or Steam holds the trade.",
+  "cs2.how.pay.title": "Payment",
+  "cs2.how.pay.body": "By card or from your YuPay balance. The trade offer arrives in Steam within a minute.",
+  "cs2.how.accept.title": "Accept the trade",
+  "cs2.how.accept.body": "In Steam, within 30 minutes.",
+  "cs2.how.protect.title": "7 days of protection",
+  "cs2.how.protect.body": "The skin is yours at once. For a week Steam protects the trade — you cannot sell or trade the skin yet.",
+  "cs2.how.refund.title": "Did not work out?",
+  "cs2.how.refund.body": "The money goes straight back to your YuPay balance."
 }

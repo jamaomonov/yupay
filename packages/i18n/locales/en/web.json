@@ -996,6 +996,29 @@
       "refundToast": "We could not buy the skin — the money is back on your YuPay balance"
     },
     "belowSteam": "−{percent}% vs Steam",
-    "buyUnavailable": "Purchase temporarily unavailable"
+    "buyUnavailable": "Purchase temporarily unavailable",
+    "how": {
+      "title": "How buying works",
+      "link": {
+        "title": "Trade link",
+        "body": "The skin goes to the account behind this link. Steam Guard on your phone must be on for 7 days, or Steam holds the trade."
+      },
+      "pay": {
+        "title": "Payment",
+        "body": "By card or from your YuPay balance. The trade offer arrives in Steam within a minute."
+      },
+      "accept": {
+        "title": "Accept the trade",
+        "body": "In Steam, within 30 minutes."
+      },
+      "protect": {
+        "title": "7 days of protection",
+        "body": "The skin is yours at once. For a week Steam protects the trade — you cannot sell or trade the skin yet."
+      },
+      "refund": {
+        "title": "Did not work out?",
+        "body": "The money goes straight back to your YuPay balance."
+      }
+    }
   }
 }

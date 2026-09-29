@@ -8,6 +8,7 @@ import type { SkinDetail, SkinListing } from "@yupay/utils";
 
 import { PaymentMethodGrid } from "@/components/gifts/PaymentMethodGrid";
 import { SkinFixedCta } from "@/components/skins/SkinFixedCta";
+import { SkinHowItWorks } from "@/components/skins/SkinHowItWorks";
 import { SafeImage } from "@/components/ui/safe-image";
 import { WalletPayOption } from "@/components/WalletPayOption";
 import { useToast } from "@/hooks/use-toast";
@@ -286,6 +287,8 @@ export function SkinPayStep({
           onSelect={setMethodId}
         />
       </section>
+
+      <SkinHowItWorks />
 
       {notice && (
         <p role="status" className="text-[13px] font-semibold text-amber-400">

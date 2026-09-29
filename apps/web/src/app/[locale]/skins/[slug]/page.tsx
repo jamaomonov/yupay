@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 
 import { SkinBuyPanel } from "@/components/skins/SkinBuyPanel";
 import { SkinHero } from "@/components/skins/SkinHero";
+import { SkinHowItWorks } from "@/components/skins/SkinHowItWorks";
 import { SkinListings } from "@/components/skins/SkinListings";
 import { SkinOffersProvider } from "@/components/skins/SkinOffers";
 import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
@@ -175,6 +176,8 @@ export default async function SkinPage({ params }: Props) {
           </section>
         )}
       </SkinOffersProvider>
+
+      {item.buy_sku_id && <SkinHowItWorks />}
     </main>
   );
 }

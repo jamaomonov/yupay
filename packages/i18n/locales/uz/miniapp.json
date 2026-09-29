@@ -577,5 +577,16 @@
   "cs2.buy.itemTitle": "Skin",
   "cs2.belowSteam": "Steam'dan −{percent}%",
   "cs2.inspect": "O'yinda ko'rish",
-  "cs2.buy.unavailable": "Xarid vaqtincha mavjud emas"
+  "cs2.buy.unavailable": "Xarid vaqtincha mavjud emas",
+  "cs2.how.title": "Xarid qanday o'tadi",
+  "cs2.how.link.title": "Treyd-havola",
+  "cs2.how.link.body": "Skin shu havoladagi akkauntga keladi. Telefondagi Steam Guard 7 kun ishlagan bo'lishi kerak, aks holda Steam almashuvni ushlab qoladi.",
+  "cs2.how.pay.title": "To'lov",
+  "cs2.how.pay.body": "Karta yoki YuPay balansidan. Almashuv bir daqiqada Steam'ga keladi.",
+  "cs2.how.accept.title": "Almashuvni qabul qiling",
+  "cs2.how.accept.body": "Steam'da, 30 daqiqa ichida.",
+  "cs2.how.protect.title": "7 kunlik himoya",
+  "cs2.how.protect.body": "Skin darhol sizniki. Bir hafta Steam almashuvni himoya qiladi — skinni hozircha sotib yoki berib bo'lmaydi.",
+  "cs2.how.refund.title": "Bo'lmadimi?",
+  "cs2.how.refund.body": "Pul darhol YuPay balansingizga qaytadi."
 }

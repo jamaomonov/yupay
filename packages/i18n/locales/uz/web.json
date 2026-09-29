@@ -996,6 +996,29 @@
       "refundToast": "Skinni sotib ololmadik — pul YuPay balansingizga qaytdi"
     },
     "belowSteam": "Steam'dan −{percent}%",
-    "buyUnavailable": "Xarid vaqtincha mavjud emas"
+    "buyUnavailable": "Xarid vaqtincha mavjud emas",
+    "how": {
+      "title": "Xarid qanday o'tadi",
+      "link": {
+        "title": "Treyd-havola",
+        "body": "Skin shu havoladagi akkauntga keladi. Telefondagi Steam Guard 7 kun ishlagan bo'lishi kerak, aks holda Steam almashuvni ushlab qoladi."
+      },
+      "pay": {
+        "title": "To'lov",
+        "body": "Karta yoki YuPay balansidan. Almashuv bir daqiqada Steam'ga keladi."
+      },
+      "accept": {
+        "title": "Almashuvni qabul qiling",
+        "body": "Steam'da, 30 daqiqa ichida."
+      },
+      "protect": {
+        "title": "7 kunlik himoya",
+        "body": "Skin darhol sizniki. Bir hafta Steam almashuvni himoya qiladi — skinni hozircha sotib yoki berib bo'lmaydi."
+      },
+      "refund": {
+        "title": "Bo'lmadimi?",
+        "body": "Pul darhol YuPay balansingizga qaytadi."
+      }
+    }
   }
 }

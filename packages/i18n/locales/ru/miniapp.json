@@ -577,5 +577,16 @@
   "cs2.buy.itemTitle": "Скин",
   "cs2.belowSteam": "−{percent}% к Steam",
   "cs2.inspect": "Осмотр в игре",
-  "cs2.buy.unavailable": "Покупка временно недоступна"
+  "cs2.buy.unavailable": "Покупка временно недоступна",
+  "cs2.how.title": "Как проходит покупка",
+  "cs2.how.link.title": "Трейд-ссылка",
+  "cs2.how.link.body": "Скин придёт на аккаунт по этой ссылке. Steam Guard в телефоне должен работать 7 дней, иначе Steam задержит обмен.",
+  "cs2.how.pay.title": "Оплата",
+  "cs2.how.pay.body": "Картой или с баланса YuPay. Обмен придёт в Steam через минуту.",
+  "cs2.how.accept.title": "Примите обмен",
+  "cs2.how.accept.body": "В Steam, в течение 30 минут.",
+  "cs2.how.protect.title": "7 дней защиты",
+  "cs2.how.protect.body": "Скин сразу ваш. Неделю Steam защищает обмен — продать или передать скин пока нельзя.",
+  "cs2.how.refund.title": "Не получилось?",
+  "cs2.how.refund.body": "Деньги сразу вернутся на баланс YuPay."
 }
