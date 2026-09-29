@@ -41,16 +41,32 @@
     "skins": "Скины CS2"
   },
   "hero": {
-    "badge": "Игры и подписки · 1 центр",
-    "titleLine1": "Весь донат",
-    "titleLine2": "в одной точке.",
-    "subtitle": "Steam, PUBG Mobile, Genshin и другие — по ID, без пароля от аккаунта. Оплата Click, Payme и Uzum, цены в сумах.",
-    "ctaPrimary": "Открыть каталог",
-    "ctaSecondary": "Как это работает",
+    "badge": "Steam · игры · скины CS2",
+    "titleLine1": "Пополните Steam",
+    "titleLine2": "в сумах.",
+    "subtitle": "По логину, без пароля. Оплата Click, Payme и Uzum.",
     "ctaTelegram": "Открыть в Telegram",
     "chip1": "Без комиссии сверху",
     "chip2": "Оплата Click · Payme · Uzum",
-    "chip3": "Не зачислили — вернём деньги"
+    "chip3": "Не зачислили — вернём деньги",
+    "moreTitle": "Ещё у нас",
+    "tiles": {
+      "skins": "Скины CS2",
+      "games": "Игры",
+      "giftCards": "Подарочные карты"
+    },
+    "form": {
+      "title": "Пополнение Steam",
+      "login": "Логин Steam",
+      "loginPlaceholder": "Логин, не почта",
+      "loginHint": "Пароль не нужен",
+      "loginInvalid": "Латиница, цифры, _ и -, от 3 символов",
+      "amount": "Сумма в долларах",
+      "range": "От {min} до {max}",
+      "total": "К оплате",
+      "submit": "Пополнить",
+      "open": "Открыть пополнение Steam"
+    }
   },
   "catalog": {
     "eyebrow": "Каталог",

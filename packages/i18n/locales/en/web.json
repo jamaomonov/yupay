@@ -41,16 +41,32 @@
     "skins": "CS2 skins"
   },
   "hero": {
-    "badge": "Games & subscriptions · 1 hub",
-    "titleLine1": "All your top-ups",
-    "titleLine2": "in one place.",
-    "subtitle": "Steam, PUBG Mobile, Genshin and more — by ID, no account password. Pay with Click, Payme and Uzum, prices in som.",
-    "ctaPrimary": "Browse catalog",
-    "ctaSecondary": "How it works",
+    "badge": "Steam · games · CS2 skins",
+    "titleLine1": "Top up Steam",
+    "titleLine2": "in soʻm.",
+    "subtitle": "By login, no password. Pay with Click, Payme or Uzum.",
     "ctaTelegram": "Open in Telegram",
     "chip1": "No fee on top",
     "chip2": "Pay with Click · Payme · Uzum",
-    "chip3": "Not credited — money back"
+    "chip3": "Not credited — money back",
+    "moreTitle": "Also here",
+    "tiles": {
+      "skins": "CS2 skins",
+      "games": "Games",
+      "giftCards": "Gift cards"
+    },
+    "form": {
+      "title": "Steam top-up",
+      "login": "Steam login",
+      "loginPlaceholder": "Login, not email",
+      "loginHint": "No password needed",
+      "loginInvalid": "Latin letters, digits, _ and -, at least 3",
+      "amount": "Amount in dollars",
+      "range": "From {min} to {max}",
+      "total": "To pay",
+      "submit": "Top up",
+      "open": "Open Steam top-up"
+    }
   },
   "catalog": {
     "eyebrow": "Catalog",

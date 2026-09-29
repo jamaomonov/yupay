@@ -32,6 +32,7 @@ import {
   type ProvidersOut,
 } from "@/lib/payment-providers";
 import { withAutoOpen } from "@/lib/payment-return";
+import { prefillFromQuery } from "@/lib/purchase-prefill";
 import {
   blocksCheckout,
   checkBlocker,
@@ -1046,6 +1047,17 @@ export function PurchasePanel({
   // The dollar amount typed for a variable-amount SKU. Raw string, not a
   // number — see `@/lib/variable-amount` for parsing/validation.
   const [amountInput, setAmountInput] = useState("");
+  // A hand-off from a link (the home page's Steam form): seeds the fields and
+  // amount it names, once, on arrival. Read from `window` rather than
+  // `useSearchParams`, which would opt this ISR page into dynamic rendering.
+  useEffect(() => {
+    const seed = prefillFromQuery(
+      new URLSearchParams(window.location.search),
+      products[0]?.required_fields ?? [],
+    );
+    if (Object.keys(seed.fields).length > 0) setForm((s) => ({ ...seed.fields, ...s }));
+    if (seed.amount !== null) setAmountInput((v) => (v === "" ? (seed.amount ?? "") : v));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, on arrival
   const [methodId, setMethodId] = useState<string>(METHODS[0]?.id ?? "click");
   // Admin-controlled provider availability (`GET /payments/providers`). `null`
   // until the fetch resolves — `methodVisibility` treats that as "fail open"

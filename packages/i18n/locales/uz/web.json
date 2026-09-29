@@ -41,16 +41,32 @@
     "skins": "CS2 skinlari"
   },
   "hero": {
-    "badge": "Oʻyin va obunalar · 1 markaz",
-    "titleLine1": "Barcha donat",
-    "titleLine2": "bir joyda.",
-    "subtitle": "Steam, PUBG Mobile, Genshin va boshqalar — ID orqali, akkaunt parolisiz. Click, Payme va Uzum bilan toʻlang, narxlar soʻmda.",
-    "ctaPrimary": "Katalogni ochish",
-    "ctaSecondary": "Qanday ishlaydi",
+    "badge": "Steam · oʻyinlar · CS2 skinlari",
+    "titleLine1": "Steamni soʻmda",
+    "titleLine2": "toʻldiring.",
+    "subtitle": "Login orqali, parolsiz. Click, Payme yoki Uzum orqali toʻlov.",
     "ctaTelegram": "Telegramda ochish",
     "chip1": "Ustiga komissiyasiz",
     "chip2": "Click · Payme · Uzum bilan toʻlov",
-    "chip3": "Tushmadi — pulni qaytaramiz"
+    "chip3": "Tushmadi — pulni qaytaramiz",
+    "moreTitle": "Yana bizda",
+    "tiles": {
+      "skins": "CS2 skinlari",
+      "games": "Oʻyinlar",
+      "giftCards": "Sovgʻa kartalari"
+    },
+    "form": {
+      "title": "Steamni toʻldirish",
+      "login": "Steam login",
+      "loginPlaceholder": "Login, pochta emas",
+      "loginHint": "Parol kerak emas",
+      "loginInvalid": "Lotin harflari, raqamlar, _ va -, kamida 3 ta",
+      "amount": "Dollarda summa",
+      "range": "{min} dan {max} gacha",
+      "total": "Toʻlov",
+      "submit": "Toʻldirish",
+      "open": "Steam toʻldirishni ochish"
+    }
   },
   "catalog": {
     "eyebrow": "Katalog",

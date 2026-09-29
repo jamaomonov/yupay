@@ -1,20 +1,46 @@
-import { ArrowRight, Check, ChevronDown, Send } from "lucide-react";
+import { Check, Crosshair, Gamepad2, Gift, Send } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { PhoneShowcase } from "./PhoneShowcase";
+import { SteamQuickTopUp } from "./SteamQuickTopUp";
 
-import { buttonStyles } from "@/lib/button";
+import { getProductDetail } from "@/lib/catalog";
+import { skinsEnabled } from "@/lib/features";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 import { pathFor } from "@/lib/seo";
 
+/** The Steam wallet product — the hero's form prices and pre-fills it. */
+const STEAM_PRODUCT = "steam-wallet";
+
+/** The Steam SKU's rate and bounds, or nulls when the API could not say. */
+async function steamQuote(locale: string) {
+  const product = await getProductDetail(STEAM_PRODUCT, locale, "UZS").catch(() => null);
+  const sku = product?.skus.find((s) => s.variable_amount ?? false);
+  const login = product?.required_fields.find((f) => f.key === "steam_login");
+  return {
+    rateUzs: sku?.display_price ? Number(sku.display_price.amount) : null,
+    minUsd: sku?.min_amount_usd != null ? Number(sku.min_amount_usd) : 1,
+    maxUsd: sku?.max_amount_usd != null ? Number(sku.max_amount_usd) : 300,
+    loginPattern: login?.pattern ?? null,
+  };
+}
+
 /**
- * Storefront hero — type-led left column + a real product shot on the right:
- * two screenshots of the YuPay mini app layered into a floating device
- * cluster. Trust block underneath: avatar stack + counter + 5-star rating.
+ * Storefront hero, led by what most visitors come for: topping up Steam. Copy on
+ * the left, a working Steam form on the right (`SteamQuickTopUp`), and the other
+ * sections — CS2 skins, games, gift cards — as tiles under the copy. The mini app
+ * is shown further down (`AppShowcase`); here it is one link, on phones only.
  */
 export async function Hero({ locale }: { locale: string }) {
   const t = await getTranslations("web.hero");
+  const quote = await steamQuote(locale);
+  const tiles = [
+    ...(skinsEnabled()
+      ? [{ key: "skins" as const, href: pathFor(locale, "/skins"), Icon: Crosshair }]
+      : []),
+    { key: "games" as const, href: `${pathFor(locale, "/store")}?cat=games`, Icon: Gamepad2 },
+    { key: "giftCards" as const, href: `${pathFor(locale, "/store")}?cat=gift-cards`, Icon: Gift },
+  ];
 
   return (
     <header className="relative overflow-hidden pb-20 pt-28 sm:pb-[120px] sm:pt-[180px]">
@@ -57,73 +83,36 @@ export async function Hero({ locale }: { locale: string }) {
             {t("subtitle")}
           </p>
 
-          {/* Device-aware CTA priority. Telegram opens the Mini App (the
-              lower-friction, higher-retention surface on phones, where a deep
-              link is one tap) and is the bold primary on mobile. On desktop,
-              opening Telegram is more friction than just browsing the web
-              store, so the catalog leads and Telegram is the ghost secondary.
-              The split is at `md` (768) because that is where "phone" ends —
-              it used to sit at `lg`, which handed tablets and any laptop in a
-              narrow window the phone treatment, i.e. a primary button that
-              leaves the site. */}
-          <div className="mt-8">
-            <div className="flex flex-col gap-3.5 sm:flex-row sm:items-center md:hidden">
-              <a
-                href={TELEGRAM_MINIAPP_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={buttonStyles({ size: "lg", className: "group" })}
-              >
-                <Send size={16} strokeWidth={2.4} />
-                {t("ctaTelegram")}
-                <ArrowRight
-                  size={16}
-                  strokeWidth={2.6}
-                  className="transition group-hover:translate-x-0.5"
-                />
-              </a>
+          {/* Everything that is not Steam, one tap away. */}
+          <p className="text-tx-dim mt-8 text-[12px] font-semibold uppercase tracking-[0.08em]">
+            {t("moreTitle")}
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2.5">
+            {tiles.map(({ key, href, Icon }) => (
               <Link
-                href={pathFor(locale, "/store")}
-                className={buttonStyles({ variant: "ghost", size: "lg" })}
+                key={key}
+                href={href}
+                className="border-border bg-card/60 hover:border-primary/60 hover:text-foreground text-tx-mute inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-[14px] font-semibold transition"
               >
-                {t("ctaPrimary")}
+                <Icon size={16} className="text-primary" aria-hidden />
+                {t(`tiles.${key}`)}
               </Link>
-            </div>
-            <div className="hidden items-center gap-3.5 md:flex">
-              <Link
-                href={pathFor(locale, "/store")}
-                className={buttonStyles({ size: "lg", className: "group" })}
-              >
-                {t("ctaPrimary")}
-                <ArrowRight
-                  size={16}
-                  strokeWidth={2.6}
-                  className="transition group-hover:translate-x-0.5"
-                />
-              </Link>
-              <a
-                href={TELEGRAM_MINIAPP_URL}
-                target="_blank"
-                rel="noreferrer noopener"
-                className={buttonStyles({ variant: "ghost", size: "lg" })}
-              >
-                <Send size={16} strokeWidth={2.4} />
-                {t("ctaTelegram")}
-              </a>
-            </div>
-            <a
-              href="#how"
-              className="text-tx-mute hover:text-foreground mt-4 inline-flex items-center gap-1.5 text-sm font-medium transition"
-            >
-              <ChevronDown size={14} strokeWidth={2.6} className="text-primary" />
-              {t("ctaSecondary")}
-            </a>
+            ))}
           </div>
+          <a
+            href={TELEGRAM_MINIAPP_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="text-tx-mute hover:text-foreground mt-5 inline-flex items-center gap-1.5 text-sm font-medium transition md:hidden"
+          >
+            <Send size={14} strokeWidth={2.4} className="text-primary" />
+            {t("ctaTelegram")}
+          </a>
 
           {/* Trust chips — honest, verifiable signals only (no review counts
               or invented totals): the Steam commission, local rails, refund
               window. */}
-          <div className="mt-12 flex flex-wrap gap-2.5">
+          <div className="mt-8 flex flex-wrap gap-2.5">
             {(["chip1", "chip2", "chip3"] as const).map((k) => (
               <span
                 key={k}
@@ -136,9 +125,9 @@ export async function Hero({ locale }: { locale: string }) {
           </div>
         </div>
 
-        {/* ── RIGHT: real product shot ── */}
-        <div className="mt-6 md:mt-0">
-          <PhoneShowcase />
+        {/* ── RIGHT: the Steam form ── */}
+        <div className="mx-auto w-full max-w-[440px] md:mr-0">
+          <SteamQuickTopUp locale={locale} {...quote} />
         </div>
       </div>
     </header>
