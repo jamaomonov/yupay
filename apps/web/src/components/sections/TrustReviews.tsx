@@ -54,7 +54,7 @@ export function ReviewCard({
   const photo = review.author_photo_url ?? null;
   const logo = review.brand_logo_url ?? null;
   return (
-    <figure className="border-border bg-card/80 hover:border-border-2 flex w-[300px] shrink-0 flex-col rounded-2xl border p-5 backdrop-blur transition sm:w-[340px]">
+    <figure className="border-border bg-card/80 hover:border-border-2 flex h-full w-[300px] shrink-0 flex-col rounded-2xl border p-5 backdrop-blur transition sm:w-[340px]">
       <figcaption className="flex items-center gap-3">
         {photo ? (
           <Image
@@ -78,10 +78,15 @@ export function ReviewCard({
           <Stars rating={review.rating} label={starsLabel} />
         </span>
       </figcaption>
-      <blockquote className="text-foreground/90 mt-4 line-clamp-4 flex-1 text-[14px] leading-relaxed">
+      {/* Always three lines tall — a short review keeps the space, a long one is cut —
+          so every card in a row is the same height and the brand rows line up. */}
+      <blockquote
+        title={review.body ?? undefined}
+        className="text-foreground/90 mt-4 line-clamp-3 min-h-[4.875em] text-[14px] leading-[1.625]"
+      >
         «{review.body}»
       </blockquote>
-      <span className="border-border mt-4 flex items-center gap-2 border-t pt-3.5">
+      <span className="border-border mt-auto flex items-center gap-2 border-t pt-3.5">
         {logo ? (
           <Image
             src={logo}
@@ -91,7 +96,14 @@ export function ReviewCard({
             unoptimized={!isOptimizable(logo)}
             className="size-[22px] rounded-md object-cover"
           />
-        ) : null}
+        ) : (
+          <span
+            aria-hidden
+            className="bg-muted text-tx-mute flex size-[22px] shrink-0 items-center justify-center rounded-md text-[11px] font-bold"
+          >
+            {review.brand_name.charAt(0)}
+          </span>
+        )}
         <span className="text-tx-mute truncate text-[12px] font-medium">{review.brand_name}</span>
       </span>
     </figure>
@@ -134,7 +146,7 @@ export async function TrustReviews({ locale }: { locale: string }) {
   const fmt = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 2 });
 
   const card = (r: FeaturedReview, copy: boolean) => (
-    <div key={`${r.id}${copy ? "-copy" : ""}`} aria-hidden={copy || undefined}>
+    <div key={`${r.id}${copy ? "-copy" : ""}`} aria-hidden={copy || undefined} className="flex">
       <ReviewCard
         review={r}
         anonymous={t("anonymous")}
