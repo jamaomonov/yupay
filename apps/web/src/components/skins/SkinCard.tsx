@@ -28,8 +28,7 @@ export function SkinCard({ item, locale }: { item: SkinItem; locale: string }) {
   return (
     <Link
       href={pathFor(locale, `/skins/${item.slug}`)}
-      className="border-border bg-card hover:border-border-2 group flex h-full flex-col overflow-hidden rounded-xl border border-b-[3px] transition hover:-translate-y-1"
-      style={item.rarity_color ? { borderBottomColor: item.rarity_color } : undefined}
+      className="border-border bg-card hover:border-border-2 group flex h-full flex-col overflow-hidden rounded-xl border transition hover:-translate-y-1"
     >
       <div className="bg-muted relative aspect-[4/3] w-full overflow-hidden">
         {glow && (

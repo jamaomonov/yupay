@@ -22,11 +22,10 @@ export function SkinCard({ item }: { item: SkinItem }) {
   return (
     <Link
       href={`/cs2-market/${item.slug}`}
-      className="flex flex-col overflow-hidden rounded-2xl border border-b-[3px]"
+      className="flex flex-col overflow-hidden rounded-2xl border"
       style={{
         borderColor: "hsl(var(--border))",
         background: "hsl(var(--surface-2))",
-        ...(item.rarity_color ? { borderBottomColor: item.rarity_color } : {}),
       }}
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-black/20">
