@@ -280,6 +280,10 @@ http://api.yupay.uz {
 	# Same ``client_ip``-not-``remote_ip`` reasoning as the Payme matcher
 	# above — read that comment before touching this one.
 	#
+	# 213.230.106.112/28 and 213.230.65.80/28 are the ranges their technical
+	# contract (Приложение №2, «Порядок технического взаимодействия», п. 4.2)
+	# says ПАК PAYNET calls from — added 2026-09-29 alongside the seven hosts.
+	#
 	# 195.158.21.42 is their **test** address. It is listed here rather
 	# than left out so certification can run against production, and it
 	# should come out once Paynet has signed the integration off. Removing
@@ -292,7 +296,7 @@ http://api.yupay.uz {
 	# break — which is exactly why it goes in before go-live, not after.
 	@paynetUwsBlocked {
 		path /api/v1/payments/paynet/uws
-		not client_ip 109.207.244.62 62.209.139.94 109.207.244.94 89.236.220.222 91.196.76.52 94.158.63.240 195.158.21.42
+		not client_ip 109.207.244.62 62.209.139.94 109.207.244.94 89.236.220.222 91.196.76.52 94.158.63.240 195.158.21.42 213.230.106.112/28 213.230.65.80/28
 	}
 	respond @paynetUwsBlocked 403
 

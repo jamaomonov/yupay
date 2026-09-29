@@ -125,15 +125,18 @@ letting a counterparty rewrite our credential store buys nothing.
 ## The IP allowlist
 
 Live since 2026-09-22. `infra/caddy/Caddyfile.prod` restricts
-`/api/v1/payments/paynet/uws` to the seven addresses Paynet gave us:
+`/api/v1/payments/paynet/uws` to the seven addresses Paynet gave us, plus the two
+ranges their technical contract names (Приложение №2 «Порядок технического
+взаимодействия», п. 4.2 — added 2026-09-29):
 
 ```
 109.207.244.62   62.209.139.94   109.207.244.94   89.236.220.222
 91.196.76.52     94.158.63.240   195.158.21.42 (test)
+213.230.106.112/28   213.230.65.80/28
 ```
 
-Individual hosts, not a range. Basic auth stays the real control; this is
-depth, the same shape as Payme's block directly above it in the file.
+Basic auth stays the real control; this is depth, the same shape as Payme's
+block directly above it in the file.
 
 **195.158.21.42 is their test address and should come out once Paynet signs
 the integration off.** Edit the Caddyfile, then
