@@ -32,6 +32,12 @@ ARG NEXT_PUBLIC_TELEGRAM_BOT_ID=
 ENV NEXT_PUBLIC_TELEGRAM_BOT_ID=${NEXT_PUBLIC_TELEGRAM_BOT_ID}
 ARG NEXT_PUBLIC_GOOGLE_CLIENT_ID=
 ENV NEXT_PUBLIC_GOOGLE_CLIENT_ID=${NEXT_PUBLIC_GOOGLE_CLIENT_ID}
+# Server flags (`src/lib/features.ts`) are read at request time, but the prerendered
+# pages (home, /store, /blog…) are rendered here, where web.env is absent: without
+# this, every deploy served pages with the skins links missing until ISR regenerated
+# them (~5 min). Build with the flag as prod runs it; web.env still decides at runtime.
+ARG SKINS_ENABLED=true
+ENV SKINS_ENABLED=${SKINS_ENABLED}
 RUN pnpm --filter @yupay/web build
 
 FROM node:22-alpine AS runner
