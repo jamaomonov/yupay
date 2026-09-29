@@ -4,15 +4,16 @@ import { ArrowLeft, Check, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { PlacedOrder, Product, Sku } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { ApiError, api } from "@/lib/api";
+import { soleSku } from "@/lib/catalog";
 import { orderStatusLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
-import { fixedTotal, formatUsd, scaledTotal, toCents } from "@/lib/money";
+import { fixedTotal, formatPrice, formatUsd, scaledTotal, toCents } from "@/lib/money";
 
 /** What this SKU is sized by, and therefore which box the form shows. */
 function countLabel(sku: Sku): "none" | "quantity" | "amount" {
@@ -41,6 +42,19 @@ export default function BrandPage() {
   const [error, setError] = useState<string | null>(null);
 
   const brand = catalog?.brands.find((b) => b.slug === slug) ?? null;
+
+  // Steam's «any amount», Stars: one card and nothing to choose — open with it picked.
+  // Once only, so closing the sheet on a phone does not bring it straight back.
+  const autoPicked = useRef(false);
+  useEffect(() => {
+    if (autoPicked.current || brand === null) return;
+    autoPicked.current = true;
+    const only = soleSku(brand);
+    if (only !== null) {
+      setSelected(only);
+      setCount(only.kind === "unit" ? String(only.min_qty ?? 1) : "1");
+    }
+  }, [brand]);
   const product: Product | null =
     brand?.products.find((p) => p.skus.some((s) => s.sku_id === selected?.sku_id)) ??
     brand?.products[0] ??
@@ -183,7 +197,7 @@ export default function BrandPage() {
                         </span>
                       )}
                       <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 font-mono text-sm">
-                        <span>{price ? `$${price}` : "—"}</span>
+                        <span>{price ? `$${formatPrice(price)}` : "—"}</span>
                         {sku.kind === "amount" && price && (
                           <span className="text-tx-dim font-sans text-[11px]">
                             {t("perDollar")}
@@ -191,7 +205,7 @@ export default function BrandPage() {
                         )}
                         {sku.retail_price_usd && (
                           <span className="text-tx-dim text-xs line-through">
-                            ${sku.retail_price_usd}
+                            ${formatPrice(sku.retail_price_usd)}
                           </span>
                         )}
                       </p>

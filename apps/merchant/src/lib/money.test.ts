@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fixedTotal, formatUsd, scaledTotal, toCents } from "./money";
+import { fixedTotal, formatPrice, formatUsd, scaledTotal, toCents } from "./money";
 
 describe("parsing and formatting", () => {
   it("reads the decimal strings the API actually sends", () => {
@@ -46,5 +46,15 @@ describe("order totals agree with the server", () => {
 
   it("handles a fractional amount", () => {
     expect(formatUsd(scaledTotal("1.040000", "7.64"))).toBe("7.95");
+  });
+});
+
+describe("formatPrice", () => {
+  it("drops the zeros the API pads a price with, keeping cents", () => {
+    expect(formatPrice("1.020000")).toBe("1.02");
+    expect(formatPrice("0.820000")).toBe("0.82");
+    expect(formatPrice("5")).toBe("5.00");
+    // A per-Star price lives below a cent: its digits stay.
+    expect(formatPrice("0.015500")).toBe("0.0155");
   });
 });

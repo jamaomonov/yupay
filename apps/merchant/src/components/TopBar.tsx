@@ -1,6 +1,6 @@
 "use client";
 
-import { Search } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 
@@ -92,7 +92,7 @@ export function TopBar() {
 
       <div className="ml-auto flex min-w-0 items-center gap-2 sm:ml-0 sm:shrink-0 sm:gap-3">
         <div className="border-border bg-card rounded-btn flex items-center gap-2 border py-1 pl-3 pr-1 sm:gap-3 sm:pl-4">
-          <span className="text-primary-ink font-mono text-sm font-extrabold">
+          <span className="text-primary-ink font-mono text-sm font-extrabold tabular-nums">
             {balance === null ? "—" : `$${formatUsd(balance)}`}
           </span>
           {/* New tab. It navigated the cabinet away to Telegram, so an
@@ -101,15 +101,18 @@ export function TopBar() {
             href="https://t.me/yupay_support"
             target="_blank"
             rel="noopener noreferrer"
-            className="bg-primary text-primary-foreground rounded-btn whitespace-nowrap px-3 py-1.5 text-xs font-bold"
+            aria-label={t("topUp")}
+            className="bg-primary text-primary-foreground rounded-btn flex items-center gap-1 whitespace-nowrap px-2 py-1.5 text-xs font-bold sm:px-3"
           >
-            {t("topUp")}
+            {/* On a phone the «+» alone: the row also carries the language now. */}
+            <Plus aria-hidden size={14} strokeWidth={3} />
+            <span className="hidden sm:inline">{t("topUp")}</span>
           </a>
         </div>
-        {/* Below `md` language and theme move into the tab bar's «Ещё» sheet:
-            still one tap away, and the row keeps room for the balance, which is
-            the number a phone user actually opens this bar for. */}
-        <LocaleSwitcher className="hidden md:flex" />
+        {/* The language stays in the bar on a phone too: the cabinet is not machine
+            translated (see the cabinet layout), so this is how it becomes Uzbek. The
+            theme moves into the tab bar's «Ещё» sheet. */}
+        <LocaleSwitcher className="order-first sm:order-none" />
         <span className="hidden md:block">
           <ThemeToggle />
         </span>

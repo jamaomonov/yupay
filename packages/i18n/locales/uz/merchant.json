@@ -230,7 +230,7 @@
     "todayTitle": "Bugun",
     "todayDelivered": "Yetkazildi",
     "todayHint": "Brauzeringiz soati boʻyicha yarim tundan beri",
-    "topUp": "+ Toʻldirish",
+    "topUp": "Toʻldirish",
     "groupCatalog": "MAHSULOTLAR",
     "groupAccount": "HISOB",
     "groupDevelopers": "DASTURCHILAR UCHUN",
@@ -265,7 +265,7 @@
     "orderFailed": "Buyurtma yaratib boʻlmadi",
     "priceBefore": "Hozirgi balans",
     "selected": "tanlandi",
-    "whatsNext": "Kod shu yerda va «Buyurtmalar»da paydo boʻladi — odatda 1–2 daqiqada.",
+    "whatsNext": "Natija shu yerda va «Buyurtmalar»da paydo boʻladi — odatda 1–2 daqiqada.",
     "perDollar": "$1 uchun"
   },
   "docs": {

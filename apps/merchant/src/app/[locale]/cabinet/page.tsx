@@ -92,11 +92,13 @@ export default function Dashboard() {
         <TodayStats today={today} balance={balance === null ? "—" : `$${formatUsd(balance)}`} />
       </div>
 
-      <section className="mt-4 grid items-start gap-4 lg:grid-cols-3">
+      {/* `grid-cols-1` and `min-w-0`: an implicit track sizes to its widest content, and
+          on a phone the logo grid pushed both cards 20px past the screen's edge. */}
+      <section className="mt-4 grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         {/* The catalog card was a lone link that stretched to the height of
             the orders list beside it — a tall empty box. The brands themselves
             are the useful shortcut: one tap from here to a manual order. */}
-        <div className="border-border bg-card rounded-xl border p-5">
+        <div className="border-border bg-card min-w-0 rounded-xl border p-5">
           <Link
             href={pathFor(locale, "/cabinet/catalog")}
             className="group flex items-center gap-2 text-sm font-semibold"
@@ -131,7 +133,7 @@ export default function Dashboard() {
             ))}
           </ul>
         </div>
-        <div className="border-border bg-card rounded-xl border p-5 lg:col-span-2">
+        <div className="border-border bg-card min-w-0 rounded-xl border p-5 lg:col-span-2">
           <Link
             href={pathFor(locale, "/cabinet/orders")}
             className="text-tx-mute flex items-center gap-2 text-sm"

@@ -56,3 +56,13 @@ export function scaledTotal(unitPrice: string, count: string): bigint {
   const quantity = scaled(`${whole}.${fraction}`, MICROS);
   return ceilToCent((unit * quantity) / MICROS);
 }
+
+/**
+ * A price string as a reseller reads it: the API pads decimals (`1.020000`), so trailing
+ * zeros go — down to cents, never below. A price under a cent (a Star) keeps its digits.
+ */
+export function formatPrice(value: string): string {
+  const [whole = "0", fraction = ""] = value.split(".");
+  const trimmed = fraction.replace(/0+$/, "");
+  return `${whole}.${trimmed.padEnd(2, "0")}`;
+}
