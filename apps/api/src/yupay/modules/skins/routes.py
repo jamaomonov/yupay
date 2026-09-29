@@ -268,15 +268,28 @@ async def get_detail(slug: str, db: Annotated[AsyncSession, Depends(db_session)]
 
 
 async def _buy_sku_id(db: AsyncSession) -> str | None:
-    """The active ``cs2-skin`` SKU (one indexed lookup by ``sku_code``)."""
-    from yupay.modules.catalog.models import Sku
+    """The ``cs2-skin`` SKU while it can be bought, else ``None`` (the page is browse-only).
+
+    Buyable means what checkout means (``orders.service.sku_is_buyable``): the SKU, its
+    product and its brand active, and the brand not in maintenance. That makes the brand
+    the admin's switch for skin purchases — off, or in maintenance, and the item pages
+    stop offering the buy panel instead of letting a buyer reach «unknown or inactive
+    SKU» at the pay button. The catalogue itself stays up (``cs2_skins_enabled``).
+    """
+    from sqlalchemy.orm import selectinload
+
+    from yupay.modules.catalog.models import Product, Sku
+    from yupay.modules.orders.service import sku_is_buyable
     from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
 
-    found = await db.execute(
-        select(Sku.id).where(Sku.sku_code == CS2_SKIN_SKU_CODE, Sku.active.is_(True))
-    )
-    sku_id = found.scalar_one_or_none()
-    return str(sku_id) if sku_id is not None else None
+    sku = (
+        await db.execute(
+            select(Sku)
+            .options(selectinload(Sku.product).selectinload(Product.brand))
+            .where(Sku.sku_code == CS2_SKIN_SKU_CODE)
+        )
+    ).scalar_one_or_none()
+    return str(sku.id) if sku is not None and sku_is_buyable(sku) else None
 
 
 @router.get(

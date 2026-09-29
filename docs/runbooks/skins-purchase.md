@@ -13,6 +13,17 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
    item API then names `buy_sku_id` — and `CS2_SKINS_ENABLED` is on. Without the seed the
    pages stay browse-only and no customer can create a skin order.
 
+## Switching purchases off
+
+- **Stop selling skins:** admin → Бренды → «CS2 скины»: switch it off, or put it in
+  maintenance. New orders are refused (the SKU → product → brand chain must be buyable)
+  and the item pages drop the buy panel within a minute (web pages revalidate every 60 s;
+  the mini app reads live). The catalogue stays browsable; trades already paid for carry
+  on and are tracked as usual.
+- **Hide the whole market:** `CS2_SKINS_ENABLED=false` in the API env and an API restart
+  (every `/skins/*` read answers 404; the mini app shows its «скоро» screen). The web nav
+  follows `SKINS_ENABLED` in the web env.
+
 ## Admin screens
 
 - **Скины → Обмены** (`/skins/trades`): every skin purchase, newest first — Waxpeer's status

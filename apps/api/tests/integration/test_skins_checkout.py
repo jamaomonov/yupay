@@ -233,3 +233,27 @@ async def test_the_item_page_names_the_sku_to_order(
 ) -> None:
     body = (await integration_client.get(f"/api/v1/skins/{SLUG}")).json()
     assert body["buy_sku_id"] == sku.id
+
+
+@pytest.mark.parametrize("switch", ["brand_off", "brand_maintenance", "product_off"])
+async def test_switching_skins_off_in_the_admin_hides_buying(
+    integration_client: AsyncClient, db_session: AsyncSession, sku: Sku, switch: str
+) -> None:
+    """The admin's lever: the brand (or its product) off, or the brand in maintenance.
+
+    Orders already refuse such a SKU; the item page must stop offering it too, or a
+    buyer fills in a trade link only to hit «unknown or inactive SKU».
+    """
+    product = await db_session.get(Product, sku.product_id)
+    assert product is not None
+    brand = await db_session.get(Brand, product.brand_id)
+    assert brand is not None
+    if switch == "brand_off":
+        brand.active = False
+    elif switch == "brand_maintenance":
+        brand.maintenance = True
+    else:
+        product.active = False
+    await db_session.commit()
+    body = (await integration_client.get(f"/api/v1/skins/{SLUG}")).json()
+    assert body["buy_sku_id"] is None
