@@ -8,8 +8,11 @@ import {
   xmlResponse,
 } from "@/lib/skins-sitemap";
 
-/** Rebuilt hourly: the item count moves as the market does. */
-export const revalidate = 3600;
+/**
+ * Per request: `SKINS_ENABLED` lives in the web env at runtime, and a render baked at
+ * build (flag off in CI) answered 404 on prod. The API read is still cached an hour.
+ */
+export const dynamic = "force-dynamic";
 
 /** The CS2 skins sitemap index: one file per 5000 items, and the landing pages. */
 export async function GET(): Promise<Response> {

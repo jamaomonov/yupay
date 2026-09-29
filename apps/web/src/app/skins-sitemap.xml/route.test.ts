@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GET } from "./route";
+import { dynamic, GET } from "./route";
 
 import { apiGet } from "@/lib/api";
 
@@ -25,5 +25,10 @@ describe("GET /skins-sitemap.xml", () => {
   it("is not there while skins are off", async () => {
     vi.stubEnv("SKINS_ENABLED", "false");
     expect((await GET()).status).toBe(404);
+  });
+
+  it("reads the flag per request, not once at build", () => {
+    // Built with SKINS_ENABLED off, a static render would 404 on prod until a rebuild.
+    expect(dynamic).toBe("force-dynamic");
   });
 });

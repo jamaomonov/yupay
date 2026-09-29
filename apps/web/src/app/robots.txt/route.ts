@@ -58,6 +58,9 @@ function group(agents: string[]): string {
   ].join("\n");
 }
 
+/** Per request: the skins sitemap line follows `SKINS_ENABLED` in the runtime web env. */
+export const dynamic = "force-dynamic";
+
 export function GET(): Response {
   const body = [
     group(["*"]),

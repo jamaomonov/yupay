@@ -1,6 +1,6 @@
 import { expect, test, vi } from "vitest";
 
-import { GET } from "./route";
+import { dynamic, GET } from "./route";
 
 test("robots.txt declares content signals and welcomes AI crawlers", async () => {
   const body = await GET().text();
@@ -31,4 +31,8 @@ test("names the CS2 skins sitemap while skins are on, and only then", async () =
   vi.stubEnv("SKINS_ENABLED", "false");
   expect(await GET().text()).not.toContain("skins-sitemap");
   vi.unstubAllEnvs();
+});
+
+test("is rendered per request, so the skins flag in the web env is seen", () => {
+  expect(dynamic).toBe("force-dynamic");
 });
