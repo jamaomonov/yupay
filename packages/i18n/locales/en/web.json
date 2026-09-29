@@ -1053,5 +1053,11 @@
     "cta": "Open the market",
     "count": "{count}+ skins",
     "fast": "Steam trade in a minute"
+  },
+  "skinsPromo": {
+    "eyebrow": "CS2",
+    "title": "CS2 skins — straight to your inventory",
+    "body": "Knives, gloves and weapons for soʻm. The Steam trade arrives within a minute.",
+    "cta": "Browse CS2 skins"
   }
 }

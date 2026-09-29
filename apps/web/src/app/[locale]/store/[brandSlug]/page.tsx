@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 
 import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
 import { JsonLd } from "@/components/JsonLd";
+import { SteamSkinsPromo } from "@/components/skins/SteamSkinsPromo";
 import { AboutText } from "@/components/store/AboutText";
 import { HighlightChips } from "@/components/store/HighlightChips";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
@@ -441,6 +442,8 @@ export default async function BrandPage({
               locale={locale}
               regionSibling={sibling ? { slug: sibling.slug, name: sibling.name } : null}
             >
+              {/* Most Steam buyers play CS2: show them the skins market. */}
+              {brand.slug === "steam" && <SteamSkinsPromo locale={locale} />}
               {brand.instructions && (
                 <section className="mt-14 scroll-mt-[88px]">
                   <h2 className="font-display text-xl font-bold tracking-[-0.02em]">

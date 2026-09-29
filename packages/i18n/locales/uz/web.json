@@ -1053,5 +1053,11 @@
     "cta": "Marketni ochish",
     "count": "{count}+ skin",
     "fast": "Steam'da almashuv bir daqiqada"
+  },
+  "skinsPromo": {
+    "eyebrow": "CS2",
+    "title": "CS2 skinlari — darhol inventarga",
+    "body": "Pichoqlar, qo'lqoplar va qurollar so'mga. Almashuv bir daqiqada Steam'ga keladi.",
+    "cta": "CS2 skinlarini ko'rish"
   }
 }
