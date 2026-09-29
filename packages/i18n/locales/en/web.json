@@ -886,9 +886,10 @@
     "meta": {
       "title": "CS2 skins in soʻm — buy in Uzbekistan",
       "description": "CS2 skins with instant delivery: weapons, knives, gloves, agents and cases. Pay in soʻm.",
-      "itemTitle": "{name} — buy in soʻm",
-      "itemDescription": "{name}: from {price}. Instant delivery by Steam trade, pay in soʻm.",
-      "itemDescriptionNoPrice": "{name} — CS2 skin, buy in soʻm with instant delivery."
+      "itemTitle": "{name} — buy in Uzbekistan for {price}",
+      "itemDescription": "Buy {name} in Uzbekistan: from {price}, {count, plural, one {# offer} other {# offers}}. Pay in soʻm with Click, Payme, Uzum; the Steam trade arrives within a minute.",
+      "itemDescriptionNoPrice": "{name} — CS2 skin, buy in soʻm with instant delivery.",
+      "itemTitleNoPrice": "{name} — buy in Uzbekistan for soʻm"
     },
     "title": "CS2 skin market",
     "searchPlaceholder": "Skin name…",
@@ -1019,6 +1020,30 @@
         "title": "Did not work out?",
         "body": "The money goes straight back to your YuPay balance."
       }
+    },
+    "faq": {
+      "title": "FAQ",
+      "priceQ": "How much is {name} in Uzbekistan?",
+      "priceA": "{name} costs from {price} on YuPay — the cheapest of {count, plural, one {# offer} other {# offers}}.",
+      "steamQ": "Is {name} cheaper than on Steam?",
+      "steamA": "Yes: on the Steam Community Market it costs ${steam}; here it is {percent} % cheaper right now.",
+      "floatQ": "What float does {name} have?",
+      "floatA": "{exterior}: float from {min} to {max}. Each offer's exact float is in the list above.",
+      "buyQ": "How do I buy {name} in soʻm?",
+      "buyA": "Pick an offer, paste your Steam trade link and pay with Click, Payme, Uzum or your YuPay balance. The trade offer arrives in Steam within a minute — accept it within 30 minutes."
+    },
+    "landing": {
+      "weaponTitle": "{weapon} skins CS2 — buy in Uzbekistan for soʻm",
+      "weaponH1": "{weapon} skins",
+      "categoryTitle": "CS2 {name} — buy in Uzbekistan for soʻm",
+      "categoryH1": "CS2 {name}",
+      "intro": "{count, plural, one {# skin} other {# skins}} from {price}. Pay in soʻm with Click, Payme, Uzum; the Steam trade arrives within a minute.",
+      "description": "Buy {name} in Uzbekistan: {count, plural, one {# skin} other {# skins}} from {price}. Pay in soʻm; the Steam trade arrives within a minute.",
+      "all": "All, with filters",
+      "weapons": "Weapons",
+      "categories": "Sections",
+      "popular": "Popular weapons",
+      "skinsOf": "{weapon} skins"
     }
   }
 }

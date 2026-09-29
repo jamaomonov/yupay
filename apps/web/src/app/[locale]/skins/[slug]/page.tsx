@@ -8,7 +8,9 @@ import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { SkinCategory } from "@/lib/skins";
 import type { Metadata } from "next";
 
+import { JsonLd } from "@/components/JsonLd";
 import { SkinBuyPanel } from "@/components/skins/SkinBuyPanel";
+import { SkinFaq } from "@/components/skins/SkinFaq";
 import { SkinHero } from "@/components/skins/SkinHero";
 import { SkinHowItWorks } from "@/components/skins/SkinHowItWorks";
 import { SkinListings } from "@/components/skins/SkinListings";
@@ -18,6 +20,7 @@ import { SkinWearPicker } from "@/components/skins/SkinWearPicker";
 import { routing } from "@/i18n/routing";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
+import { skinFaq, skinFullName, skinProductLd } from "@/lib/skin-seo";
 import { DEFAULT_SORT, displayPrice, getSkinDetail, skinQueryString } from "@/lib/skins";
 
 interface Props {
@@ -33,13 +36,15 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const item = await getSkinDetail(locale, slug);
   if (item === null) return {};
   const t = await getTranslations({ locale, namespace: "web.skins" });
-  const name = item.phase ? `${item.name} ${item.phase}` : item.name;
+  const name = skinFullName(item);
   const price = displayPrice(locale, item.price_uzs, item.price_usd);
-  const title = t("meta.itemTitle", { name });
-  // No price, no "от —": the description drops the price rather than print a hole.
+  // "купить X в Узбекистане за 40 000 сум": the query people type. No price, no "от —":
+  // the copy drops the price rather than print a hole.
+  const title =
+    price !== null ? t("meta.itemTitle", { name, price }) : t("meta.itemTitleNoPrice", { name });
   const description =
-    price !== null
-      ? t("meta.itemDescription", { name, price })
+    price !== null && item.count > 0
+      ? t("meta.itemDescription", { name, price, count: item.count })
       : t("meta.itemDescriptionNoPrice", { name });
   const path = `/skins/${slug}`;
   return {
@@ -81,6 +86,15 @@ export default async function SkinPage({ params }: Props) {
       ? `${Number(item.min_float).toFixed(2)}–${Number(item.max_float).toFixed(2)}`
       : null;
   const worn = hasWear(item.category);
+  const url = localeUrl(locale, `/skins/${item.slug}`);
+  const breadcrumbLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: t("market"), item: localeUrl(locale, "/skins") },
+      { "@type": "ListItem", position: 2, name: skinFullName(item), item: url },
+    ],
+  };
   // The other wears and the facts: under the picture on wide screens, under the price on
   // phones (rendered once per breakpoint).
   const details = (
@@ -110,6 +124,8 @@ export default async function SkinPage({ params }: Props) {
 
   return (
     <main className="mx-auto min-h-screen max-w-[1320px] px-4 pb-28 pt-[104px] sm:px-6">
+      <JsonLd data={skinProductLd(item, url)} />
+      <JsonLd data={breadcrumbLd} />
       <nav className="text-tx-dim mb-4 flex flex-wrap items-center gap-1 text-[13px]">
         <Link href={pathFor(locale, "/skins")} className="hover:text-foreground">
           {t("market")}
@@ -178,6 +194,7 @@ export default async function SkinPage({ params }: Props) {
       </SkinOffersProvider>
 
       {item.buy_sku_id && <SkinHowItWorks />}
+      <SkinFaq title={t("faq.title")} entries={skinFaq(item, t, locale)} />
     </main>
   );
 }

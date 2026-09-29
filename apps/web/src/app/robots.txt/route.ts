@@ -9,6 +9,9 @@
  * isn't needed to be cited in answers, bakes stale prices into weights, and is
  * irreversible. Flip ai-train to yes here if that stance ever changes.
  */
+import { skinsEnabled } from "@/lib/features";
+import { SKINS_SITEMAP_INDEX } from "@/lib/skins-sitemap";
+
 const CONTENT_SIGNAL = "Content-Signal: search=yes, ai-input=yes, ai-train=no";
 
 /** AI assistant / answer-engine crawlers we explicitly welcome to the public
@@ -63,6 +66,8 @@ export function GET(): Response {
     "",
     "Host: https://yupay.uz",
     "Sitemap: https://yupay.uz/sitemap.xml",
+    // ~24 000 CS2 item pages: their own index, named only while the market is on.
+    ...(skinsEnabled() ? [`Sitemap: ${SKINS_SITEMAP_INDEX}`] : []),
     "",
   ].join("\n");
 

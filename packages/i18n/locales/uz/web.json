@@ -886,9 +886,10 @@
     "meta": {
       "title": "CS2 skinlari soʻmda — Oʻzbekistonda sotib olish",
       "description": "CS2 skinlari tezkor yetkazib berish bilan: qurollar, pichoqlar, qoʻlqoplar, agentlar va keyslar. Soʻmda toʻlov.",
-      "itemTitle": "{name} — soʻmda sotib olish",
-      "itemDescription": "{name}: {price} dan. Steam almashuvi orqali tezkor yetkazib berish, soʻmda toʻlov.",
-      "itemDescriptionNoPrice": "{name} — CS2 skini, soʻmda tezkor yetkazib berish bilan sotib oling."
+      "itemTitle": "{name} — O'zbekistonda {price} ga sotib olish",
+      "itemDescription": "{name} ni O'zbekistonda sotib oling: {price} dan, {count} ta taklif. Click, Payme, Uzum orqali so'mda to'lov, Steam'da almashuv bir daqiqada.",
+      "itemDescriptionNoPrice": "{name} — CS2 skini, soʻmda tezkor yetkazib berish bilan sotib oling.",
+      "itemTitleNoPrice": "{name} — O'zbekistonda so'mga sotib olish"
     },
     "title": "CS2 skinlari bozori",
     "searchPlaceholder": "Skin nomi…",
@@ -1019,6 +1020,30 @@
         "title": "Bo'lmadimi?",
         "body": "Pul darhol YuPay balansingizga qaytadi."
       }
+    },
+    "faq": {
+      "title": "Ko'p so'raladigan savollar",
+      "priceQ": "{name} O'zbekistonda qancha turadi?",
+      "priceA": "{name} YuPay'da {price} dan — {count} ta taklifning eng arzoni.",
+      "steamQ": "{name} Steam'dagidan arzonmi?",
+      "steamA": "Ha: Steam savdo maydonchasida u ${steam}, bizda hozir {percent} % arzonroq.",
+      "floatQ": "{name} floati qanday?",
+      "floatA": "{exterior}: float {min} dan {max} gacha. Har bir taklifning aniq floati yuqoridagi ro'yxatda.",
+      "buyQ": "{name} ni so'mga qanday sotib olish mumkin?",
+      "buyA": "Taklifni tanlang, Steam treyd-havolasini kiriting va Click, Payme, Uzum yoki YuPay balansidan to'lang. Almashuv bir daqiqada Steam'ga keladi — uni 30 daqiqa ichida qabul qiling."
+    },
+    "landing": {
+      "weaponTitle": "{weapon} skinlari CS2 — O'zbekistonda so'mga sotib olish",
+      "weaponH1": "{weapon} skinlari",
+      "categoryTitle": "CS2 {name} — O'zbekistonda so'mga sotib olish",
+      "categoryH1": "CS2 {name}",
+      "intro": "{count} ta skin {price} dan. Click, Payme, Uzum orqali so'mda to'lov, Steam'da almashuv bir daqiqada.",
+      "description": "{name} ni O'zbekistonda sotib oling: {count} ta skin {price} dan. So'mda to'lov, Steam'da almashuv bir daqiqada.",
+      "all": "Hammasi, filtrlar bilan",
+      "weapons": "Qurollar",
+      "categories": "Bo'limlar",
+      "popular": "Mashhur qurollar",
+      "skinsOf": "{weapon} skinlari"
     }
   }
 }

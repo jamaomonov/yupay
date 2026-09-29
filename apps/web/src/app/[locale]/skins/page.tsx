@@ -11,6 +11,7 @@ import { SkinCard } from "@/components/skins/SkinCard";
 import { SkinCategoryBar } from "@/components/skins/SkinCategoryBar";
 import { SkinFilterDrawer } from "@/components/skins/SkinFilterDrawer";
 import { SkinFilters } from "@/components/skins/SkinFilters";
+import { SkinLandingLinks } from "@/components/skins/SkinLandingLinks";
 import { SkinSearch } from "@/components/skins/SkinSearch";
 import { SkinSort } from "@/components/skins/SkinSort";
 import { routing } from "@/i18n/routing";
@@ -51,7 +52,9 @@ export default async function SkinsPage({ params, searchParams }: Props) {
   if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
   const t = await getTranslations("web.skins");
-  const query = parseSkinQuery(await searchParams);
+  const raw = await searchParams;
+  const query = parseSkinQuery(raw);
+  const filtered = Object.keys(raw).length > 0;
   const [page, facets] = await Promise.all([
     getSkinsPage(locale, query),
     getSkinFacets(locale, query.category),
@@ -106,6 +109,8 @@ export default async function SkinsPage({ params, searchParams }: Props) {
             {t("loadMore")}
           </Link>
         )}
+        {/* The unfiltered hub links its landing pages; a filtered view is noindex anyway. */}
+        {!filtered && <SkinLandingLinks facets={facets} locale={locale} />}
       </section>
     </main>
   );

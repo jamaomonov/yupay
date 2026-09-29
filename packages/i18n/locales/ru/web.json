@@ -886,9 +886,10 @@
     "meta": {
       "title": "Скины CS2 за сумы — купить в Узбекистане",
       "description": "Скины CS2 с моментальной доставкой: оружие, ножи, перчатки, агенты и кейсы. Оплата в сумах.",
-      "itemTitle": "{name} — купить за сумы",
-      "itemDescription": "{name}: от {price}. Моментальная доставка обменом в Steam, оплата в сумах.",
-      "itemDescriptionNoPrice": "{name} — скин CS2, купить за сумы с моментальной доставкой."
+      "itemTitle": "{name} — купить в Узбекистане за {price}",
+      "itemDescription": "Купить {name} в Узбекистане: от {price}, {count, plural, one {# предложение} few {# предложения} many {# предложений} other {# предложения}}. Оплата в сумах через Click, Payme, Uzum, обмен в Steam за минуту.",
+      "itemDescriptionNoPrice": "{name} — скин CS2, купить за сумы с моментальной доставкой.",
+      "itemTitleNoPrice": "{name} — купить в Узбекистане за сумы"
     },
     "title": "Маркет скинов CS2",
     "searchPlaceholder": "Название скина…",
@@ -1019,6 +1020,30 @@
         "title": "Не получилось?",
         "body": "Деньги сразу вернутся на баланс YuPay."
       }
+    },
+    "faq": {
+      "title": "Частые вопросы",
+      "priceQ": "Сколько стоит {name} в Узбекистане?",
+      "priceA": "{name} на YuPay стоит от {price} — это самое дешёвое из {count, plural, one {# предложения} other {# предложений}}.",
+      "steamQ": "{name} дешевле, чем в Steam?",
+      "steamA": "Да: на торговой площадке Steam он стоит ${steam}, у нас сейчас на {percent} % дешевле.",
+      "floatQ": "Какой флоат у {name}?",
+      "floatA": "{exterior}: флоат от {min} до {max}. Точный флоат каждого предложения — в списке выше.",
+      "buyQ": "Как купить {name} за сумы?",
+      "buyA": "Выберите предложение, вставьте трейд-ссылку Steam и оплатите через Click, Payme, Uzum или с баланса YuPay. Обмен придёт в Steam через минуту — примите его в течение 30 минут."
+    },
+    "landing": {
+      "weaponTitle": "Скины {weapon} CS2 — купить в Узбекистане за сумы",
+      "weaponH1": "Скины {weapon}",
+      "categoryTitle": "{name} CS2 — купить в Узбекистане за сумы",
+      "categoryH1": "{name} CS2",
+      "intro": "{count, plural, one {# скин} few {# скина} many {# скинов} other {# скина}} от {price}. Оплата в сумах через Click, Payme, Uzum, обмен в Steam за минуту.",
+      "description": "Купить {name} в Узбекистане: {count, plural, one {# скин} few {# скина} many {# скинов} other {# скина}} от {price}. Оплата в сумах, обмен в Steam за минуту.",
+      "all": "Все с фильтрами",
+      "weapons": "Оружие",
+      "categories": "Разделы",
+      "popular": "Популярное оружие",
+      "skinsOf": "скины {weapon}"
     }
   }
 }

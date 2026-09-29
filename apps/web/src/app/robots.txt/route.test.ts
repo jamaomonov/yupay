@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import { GET } from "./route";
 
@@ -23,4 +23,12 @@ test("keeps crawlers off the token-bearing auth links, in every locale", async (
   // crawlable — blocking them here would strand any indexed URL.
   expect(body).not.toContain("Disallow: /orders/");
   expect(body).not.toContain("Disallow: /account/");
+});
+
+test("names the CS2 skins sitemap while skins are on, and only then", async () => {
+  vi.stubEnv("SKINS_ENABLED", "true");
+  expect(await GET().text()).toContain("Sitemap: https://yupay.uz/skins-sitemap.xml");
+  vi.stubEnv("SKINS_ENABLED", "false");
+  expect(await GET().text()).not.toContain("skins-sitemap");
+  vi.unstubAllEnvs();
 });

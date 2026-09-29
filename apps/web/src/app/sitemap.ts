@@ -88,8 +88,8 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   }[] = [
     { path: "", priority: 1.0, changeFrequency: "daily" },
     { path: "/store", priority: 0.9, changeFrequency: "daily" },
-    // The hub only: filtered views are noindex, and ~15k item pages are
-    // deferred like Steam Gifts' per-game pages (spec §9).
+    // The hub only: filtered views are noindex; the item and landing pages
+    // (~17k × 3 locales) have their own index, /skins-sitemap.xml.
     ...(skinsEnabled()
       ? [{ path: "/skins", priority: 0.8, changeFrequency: "daily" as const }]
       : []),
