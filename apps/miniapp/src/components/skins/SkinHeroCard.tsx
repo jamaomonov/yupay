@@ -34,7 +34,7 @@ export function SkinHeroCard({ item, offer }: { item: SkinDetail; offer: SkinLis
         <SafeImage
           src={steamImageSize(item.image_url, "512fx384f")}
           alt={item.name}
-          className="h-full w-full object-contain px-6 py-10"
+          className="relative h-full w-full object-contain px-6 py-10"
         />
       )}
 

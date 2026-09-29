@@ -34,7 +34,7 @@ export function SkinCard({ item }: { item: SkinItem }) {
           <SafeImage
             src={steamImageSize(item.image_url, "256fx256f")}
             alt={item.name}
-            className="h-full w-full object-contain p-2"
+            className="relative h-full w-full object-contain p-2"
           />
         )}
         {discount !== null && (
