@@ -446,7 +446,8 @@
         "buy_unconfirmed": "Waxpeer не подтвердил покупку",
         "ambiguous_trade": "Несколько сделок под одним ключом",
         "rollback": "Откат после доставки",
-        "buy_pending": "Покупка ещё не отправлена"
+        "buy_pending": "Покупка ещё не отправлена",
+        "low_balance": "Не хватило баланса Waxpeer — клиенту вернули деньги на баланс"
       },
       "penaltyUsd": "штраф {amount}",
       "drawer": {

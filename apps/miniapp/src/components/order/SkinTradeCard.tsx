@@ -97,7 +97,9 @@ export function SkinTradeCard({ trade }: { trade: SkinTradeOut }) {
 
       {view.kind === "refunded" && (
         <div className="space-y-2">
-          <p className="text-[13px] text-white">{t("cs2.trade.refunded")}</p>
+          <p className="text-[13px] text-white">
+            {t(view.tryLater ? "cs2.trade.tryLater" : "cs2.trade.refunded")}
+          </p>
           <Link
             href="/wallet"
             className="text-primary inline-flex min-h-[32px] items-center gap-1.5 text-[13px] font-semibold"
@@ -106,6 +108,10 @@ export function SkinTradeCard({ trade }: { trade: SkinTradeOut }) {
             {t("cs2.trade.toWallet")}
           </Link>
         </div>
+      )}
+
+      {view.kind === "refundedCard" && (
+        <p className="text-[13px] text-white">{t("cs2.trade.refundedCard")}</p>
       )}
 
       {view.kind === "support" && (

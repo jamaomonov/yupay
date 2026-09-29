@@ -41,8 +41,11 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
 
 ## Alerts
 
-- **Low balance** (`supplier_low_balance`): the order stays «в обработке». Top up Waxpeer, then
-  retry the task from the admin fulfilment inbox.
+- **«Waxpeer: не хватило баланса на скин»** (`supplier_low_balance`, once per window): nothing
+  was bought; the line failed `RETURNED` and the order already went back to the customer's
+  balance, with «попробуйте через несколько минут» on the order page. Top up Waxpeer. **Do not
+  retry** — the money is back, so a retry is refused (`order_already_refunded`); the customer
+  buys again.
 - **`buy_pending`** is not an alert: a lookup failed before anything was sent, and the 5 s
   sweep retries the lookup and then buys.
 - **`buy_unconfirmed`** (task failed `UNKNOWN` after 10 min): a buy call's answer was lost and
@@ -77,6 +80,18 @@ the balance can then be paid out or the card refunded by an admin as for any ord
 A payment refunded to the balance (`last_refund.refunded_to = "wallet"`) cannot also be
 cancelled by the acquirer: Payme answers `-31007`, Uzum `10017`, Paynet `306`. If a customer
 asks for the card instead, take the money off the balance first, then refund the card.
+
+**While a skin is on its way nothing refunds** (`skins/refund_guard.py`): a skin line that is
+neither `delivered` nor `failed` — being bought, or its offer in Steam — makes an acquirer
+cancel read as goods shipped (the same codes as above) and an admin refund answer `409
+skin_trade_in_flight`. Waxpeer cannot recall a paid offer, so a refund then would hand over the
+skin and the money. Wait until it is received or fails (a failed one refunds itself).
+
+A retail order already refunded cannot be retried from the fulfilment inbox
+(`order_already_refunded`): the retry would buy the skin on our money.
+
+The order page promises a refund only where one was made: `skin_trade.refunded_to` (`wallet` /
+`card`) is read off the payment. A failed line with no refund yet says «напишите в поддержку».
 
 ## Still to verify on prod
 

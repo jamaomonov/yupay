@@ -446,7 +446,8 @@
         "buy_unconfirmed": "Waxpeer xaridni tasdiqlamadi",
         "ambiguous_trade": "Bitta kalit ostida bir nechta bitim",
         "rollback": "Yetkazilgandan keyin bekor qilindi",
-        "buy_pending": "Xarid hali yuborilmagan"
+        "buy_pending": "Xarid hali yuborilmagan",
+        "low_balance": "Waxpeer balansi yetmadi — mijozga pul balansiga qaytarildi"
       },
       "penaltyUsd": "jarima {amount}",
       "drawer": {

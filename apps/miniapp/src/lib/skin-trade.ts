@@ -1,8 +1,8 @@
 /**
  * What the order page says about a CS2 skin line's Steam trade — the pure
  * half of `components/order/SkinTradeCard.tsx`, mirroring the web's card.
- * A refund to the balance is promised only where the API made one (the
- * customer declined, or every offer was sold); anything else is support's.
+ * A refund is promised only where the API says one was made (`refunded_to`,
+ * read off the payment); anything else is support's.
  */
 
 import type { OrderItemOut, SkinTradeOut } from "./orders";
@@ -11,7 +11,8 @@ export type SkinTradeView =
   | { kind: "buying" }
   | { kind: "offer"; offerUrl: string | null; seller: string | null; acceptBy: string | null }
   | { kind: "received"; protectedUntil: string | null }
-  | { kind: "refunded" }
+  | { kind: "refunded"; tryLater: boolean }
+  | { kind: "refundedCard" }
   | { kind: "support" };
 
 export function skinTradeView(trade: SkinTradeOut): SkinTradeView {
@@ -30,9 +31,10 @@ export function skinTradeView(trade: SkinTradeOut): SkinTradeView {
     case "released":
       return { kind: "received", protectedUntil: null };
     case "failed":
-      return trade.reason_code === "not_accepted" || trade.reason_code === "sold_out"
-        ? { kind: "refunded" }
-        : { kind: "support" };
+      if (trade.refunded_to === "wallet") {
+        return { kind: "refunded", tryLater: trade.reason_code === "try_later" };
+      }
+      return trade.refunded_to === "card" ? { kind: "refundedCard" } : { kind: "support" };
     default: {
       const never: never = trade.state;
       return never;
@@ -59,4 +61,5 @@ export const SKIN_TRADE_PENDING: SkinTradeOut = {
   release_date: null,
   seller: null,
   reason_code: null,
+  refunded_to: null,
 };

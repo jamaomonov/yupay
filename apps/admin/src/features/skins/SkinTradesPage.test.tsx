@@ -159,3 +159,23 @@ it("writes a loss with a minus before the dollar", async () => {
   await screen.findByRole("table");
   expect(within(table()).getByText(/−\$7\.00/)).toBeInTheDocument();
 });
+
+it("names a Waxpeer balance shortfall and that the customer got the money back", async () => {
+  mockedApiGet.mockResolvedValue({
+    ...PAGE,
+    items: [
+      {
+        ...ROW,
+        waxpeer_status: null,
+        reason_code: "try_later",
+        reason: "supplier_low_balance",
+        penalties: null,
+        task_status: "failed",
+      },
+    ],
+  });
+  renderPage();
+  await screen.findByRole("table");
+  expect(within(table()).getByText(/Не хватило баланса Waxpeer/)).toBeInTheDocument();
+  expect(within(table()).queryByText("supplier_low_balance")).not.toBeInTheDocument();
+});

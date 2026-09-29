@@ -990,7 +990,9 @@
       "refunded": "The trade did not happen — the money is back on your balance",
       "toWallet": "Open balance",
       "support": "We are checking the purchase — please contact support",
-      "contactSupport": "Contact support"
+      "contactSupport": "Contact support",
+      "tryLater": "We could not buy the skin — the money is on your YuPay balance. Please try again in a few minutes",
+      "refundedCard": "The trade did not happen — the money went back to your card"
     },
     "belowSteam": "−{percent}% vs Steam",
     "buyUnavailable": "Purchase temporarily unavailable"

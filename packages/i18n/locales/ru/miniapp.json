@@ -562,6 +562,8 @@
   "cs2.trade.protectedUntil": "Steam защищает обмен до {date}",
   "cs2.trade.released": "Получено",
   "cs2.trade.refunded": "Обмен не состоялся — деньги вернулись на баланс",
+  "cs2.trade.tryLater": "Не получилось купить скин — деньги на балансе YuPay. Попробуйте через несколько минут",
+  "cs2.trade.refundedCard": "Обмен не состоялся — деньги вернули на карту",
   "cs2.trade.toWallet": "Открыть баланс",
   "cs2.trade.support": "Мы проверяем покупку — напишите в поддержку",
   "cs2.trade.contactSupport": "Написать в поддержку",

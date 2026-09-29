@@ -990,7 +990,9 @@
       "refunded": "Almashuv amalga oshmadi — pul balansga qaytdi",
       "toWallet": "Balansni ochish",
       "support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
-      "contactSupport": "Qo'llab-quvvatlashga yozish"
+      "contactSupport": "Qo'llab-quvvatlashga yozish",
+      "tryLater": "Skinni sotib ololmadik — pul YuPay balansingizda. Bir necha daqiqadan so'ng qayta urinib ko'ring",
+      "refundedCard": "Almashuv amalga oshmadi — pul kartangizga qaytarildi"
     },
     "belowSteam": "Steam'dan −{percent}%",
     "buyUnavailable": "Xarid vaqtincha mavjud emas"

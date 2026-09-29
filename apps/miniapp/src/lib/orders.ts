@@ -76,7 +76,8 @@ export interface OrderItemOut {
 }
 
 export type SkinTradeState = "buying" | "offer_sent" | "accepted" | "released" | "failed";
-export type SkinTradeReason = "not_accepted" | "sold_out" | "support" | "other";
+export type SkinTradeReason = "not_accepted" | "sold_out" | "try_later" | "support" | "other";
+export type SkinRefundedTo = "wallet" | "card";
 
 export interface SkinTradeOut {
   state: SkinTradeState;
@@ -90,6 +91,7 @@ export interface SkinTradeOut {
     joined_at: string | null;
   } | null;
   reason_code: SkinTradeReason | null;
+  refunded_to: SkinRefundedTo | null;
 }
 
 export interface OrderOut {

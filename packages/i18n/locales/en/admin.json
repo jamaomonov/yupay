@@ -446,7 +446,8 @@
         "buy_unconfirmed": "Waxpeer did not confirm the buy",
         "ambiguous_trade": "Several trades under one key",
         "rollback": "Rolled back after delivery",
-        "buy_pending": "The buy is not sent yet"
+        "buy_pending": "The buy is not sent yet",
+        "low_balance": "Waxpeer balance ran short — the customer got the money back on their balance"
       },
       "penaltyUsd": "penalty {amount}",
       "drawer": {

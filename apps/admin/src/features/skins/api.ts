@@ -39,7 +39,7 @@ export interface AdminSkinTradeOut {
   bought_units: number | null;
   waxpeer_status: number | null;
   state: SkinTradeState;
-  reason_code: "not_accepted" | "sold_out" | "support" | "other" | null;
+  reason_code: "not_accepted" | "sold_out" | "try_later" | "support" | "other" | null;
   reason: string | null;
   /** Waxpeer's own penalty object, passed through. */
   penalties: unknown;
@@ -143,6 +143,7 @@ export function reasonText(t: AdminSkinTradeOut): string | null {
     parts.push(R[t.reason as "buy_unconfirmed" | "ambiguous_trade"]); // narrowed by the set
   } else if (t.state === "failed" && t.reason_code === "not_accepted") parts.push(R.not_accepted);
   else if (t.state === "failed" && t.reason_code === "sold_out") parts.push(R.sold_out);
+  else if (t.state === "failed" && t.reason_code === "try_later") parts.push(R.low_balance);
   else if (t.reason) parts.push(t.reason);
   if (penalty) parts.push(fill(T.trades.penaltyUsd, { amount: usd(Number(penalty) / 1000) }));
   return parts.length > 0 ? parts.join(" · ") : null;

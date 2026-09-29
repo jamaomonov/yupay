@@ -396,6 +396,7 @@ it("shows a skin line's trade card, not the generic receipt, once received", asy
       release_date: "2026-10-05T16:00:00Z",
       seller: null,
       reason_code: null,
+      refunded_to: null,
     },
   };
   mockApiFetch.mockImplementation((path: string) => {

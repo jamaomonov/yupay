@@ -24,7 +24,8 @@ export interface OrderItemOut {
 }
 
 export type SkinTradeState = "buying" | "offer_sent" | "accepted" | "released" | "failed";
-export type SkinTradeReason = "not_accepted" | "sold_out" | "support" | "other";
+export type SkinTradeReason = "not_accepted" | "sold_out" | "try_later" | "support" | "other";
+export type SkinRefundedTo = "wallet" | "card";
 
 export interface SkinSellerOut {
   name: string | null;
@@ -40,6 +41,7 @@ export interface SkinTradeOut {
   release_date: string | null;
   seller: SkinSellerOut | null;
   reason_code: SkinTradeReason | null;
+  refunded_to: SkinRefundedTo | null;
 }
 
 export interface OrderOut {
@@ -104,4 +106,5 @@ export const SKIN_TRADE_PENDING: SkinTradeOut = {
   release_date: null,
   seller: null,
   reason_code: null,
+  refunded_to: null,
 };

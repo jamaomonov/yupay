@@ -25,8 +25,8 @@ function useMinuteTick(active: boolean): void {
 /**
  * A CS2 skin line's Steam trade on the order page: buying → the offer (open it
  * in Steam, from whom, accept by when) → received, protected by Steam until
- * a date; or the money back on the balance — or, for a purchase we could not
- * confirm, support, with no refund promised.
+ * a date; or, failed, where the refund went (`refunded_to`, read off the
+ * payment) — and support whenever no refund was made, so nothing is promised.
  */
 export function SkinTradeCard({ trade, locale }: { trade: SkinTradeOut; locale: string }) {
   const t = useTranslations("web.skins.trade");
@@ -103,31 +103,38 @@ export function SkinTradeCard({ trade, locale }: { trade: SkinTradeOut; locale: 
         </div>
       )}
 
-      {trade.state === "failed" &&
-        (trade.reason_code === "not_accepted" || trade.reason_code === "sold_out" ? (
-          <div className="space-y-2">
-            <p className="text-[14px]">{t("refunded")}</p>
-            <Link
-              href={pathFor(locale, "/account/wallet")}
-              className="text-primary inline-flex items-center gap-1.5 text-[13px] font-semibold"
-            >
-              <Wallet className="h-4 w-4" aria-hidden />
-              {t("toWallet")}
-            </Link>
-          </div>
-        ) : (
-          <div className="space-y-2">
-            <p className="text-[14px]">{t("support")}</p>
-            <a
-              href={SUPPORT_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-primary text-[13px] font-semibold"
-            >
-              {t("contactSupport")}
-            </a>
-          </div>
-        ))}
+      {trade.state === "failed" && trade.refunded_to === "wallet" && (
+        <div className="space-y-2">
+          <p className="text-[14px]">
+            {t(trade.reason_code === "try_later" ? "tryLater" : "refunded")}
+          </p>
+          <Link
+            href={pathFor(locale, "/account/wallet")}
+            className="text-primary inline-flex items-center gap-1.5 text-[13px] font-semibold"
+          >
+            <Wallet className="h-4 w-4" aria-hidden />
+            {t("toWallet")}
+          </Link>
+        </div>
+      )}
+
+      {trade.state === "failed" && trade.refunded_to === "card" && (
+        <p className="text-[14px]">{t("refundedCard")}</p>
+      )}
+
+      {trade.state === "failed" && trade.refunded_to === null && (
+        <div className="space-y-2">
+          <p className="text-[14px]">{t("support")}</p>
+          <a
+            href={SUPPORT_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary text-[13px] font-semibold"
+          >
+            {t("contactSupport")}
+          </a>
+        </div>
+      )}
     </section>
   );
 }

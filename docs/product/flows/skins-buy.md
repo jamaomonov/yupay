@@ -33,8 +33,10 @@ Rules the customer meets:
   no dearer is bought instead; if none, the money goes back to the balance.
 - **Order page states**: `buying` → `offer_sent` (link to the offer, seller's name and avatar,
   accept-by time) → `accepted` (Steam protection until `release_date`) → `released`; or
-  `failed` with `not_accepted` / `sold_out` (refunded to the balance) or `support` / `other`
-  (we could not confirm the purchase — support, no refund promised).
+  `failed` with `not_accepted` / `sold_out` / `try_later` (Waxpeer was short of our money —
+  «попробуйте через несколько минут») or `support` / `other`. Where the money went is its own
+  field, `refunded_to` (`wallet` / `card`, from the payment): the page says «деньги на балансе»
+  only when that is true, and support otherwise.
 
 ## UI states
 

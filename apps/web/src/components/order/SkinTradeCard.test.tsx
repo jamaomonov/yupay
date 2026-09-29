@@ -16,6 +16,7 @@ const base: SkinTradeOut = {
   release_date: null,
   seller: null,
   reason_code: null,
+  refunded_to: null,
 };
 
 function card(over: Partial<SkinTradeOut>) {
@@ -54,7 +55,7 @@ describe("SkinTradeCard", () => {
   });
 
   it("says the money is back for a declined offer", () => {
-    card({ state: "failed", reason_code: "not_accepted" });
+    card({ state: "failed", reason_code: "not_accepted", refunded_to: "wallet" });
     expect(screen.getByText(/деньги вернулись на баланс/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Открыть баланс" })).toBeInTheDocument();
   });
@@ -63,5 +64,22 @@ describe("SkinTradeCard", () => {
     card({ state: "failed", reason_code: "support" });
     expect(screen.getByText(/напишите в поддержку/)).toBeInTheDocument();
     expect(screen.queryByText(/вернулись/)).not.toBeInTheDocument();
+  });
+
+  it("asks to try again later when Waxpeer could not pay", () => {
+    card({ state: "failed", reason_code: "try_later", refunded_to: "wallet" });
+    expect(screen.getByText(/Попробуйте через несколько минут/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Открыть баланс" })).toBeInTheDocument();
+  });
+
+  it("says the card when the refund went to the card", () => {
+    card({ state: "failed", reason_code: "not_accepted", refunded_to: "card" });
+    expect(screen.getByText(/деньги вернули на карту/)).toBeInTheDocument();
+  });
+
+  it("does not promise a refund that has not landed", () => {
+    card({ state: "failed", reason_code: "not_accepted" });
+    expect(screen.queryByText(/вернулись/)).not.toBeInTheDocument();
+    expect(screen.getByText(/напишите в поддержку/)).toBeInTheDocument();
   });
 });

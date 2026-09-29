@@ -11,6 +11,7 @@ const base: SkinTradeOut = {
   release_date: null,
   seller: null,
   reason_code: null,
+  refunded_to: null,
 };
 
 describe("skinTradeView", () => {
@@ -44,18 +45,20 @@ describe("skinTradeView", () => {
     ).toEqual({ kind: "received", protectedUntil: null });
   });
 
-  it("promises the balance only for a declined or sold-out trade", () => {
-    expect(skinTradeView({ ...base, state: "failed", reason_code: "not_accepted" })).toEqual({
+  it("promises the balance only when the refund went there", () => {
+    const failed = { ...base, state: "failed" as const };
+    expect(
+      skinTradeView({ ...failed, reason_code: "not_accepted", refunded_to: "wallet" }),
+    ).toEqual({ kind: "refunded", tryLater: false });
+    expect(skinTradeView({ ...failed, reason_code: "try_later", refunded_to: "wallet" })).toEqual({
       kind: "refunded",
+      tryLater: true,
     });
-    expect(skinTradeView({ ...base, state: "failed", reason_code: "sold_out" })).toEqual({
-      kind: "refunded",
+    expect(skinTradeView({ ...failed, reason_code: "sold_out", refunded_to: "card" })).toEqual({
+      kind: "refundedCard",
     });
-    expect(skinTradeView({ ...base, state: "failed", reason_code: "support" })).toEqual({
-      kind: "support",
-    });
-    expect(skinTradeView({ ...base, state: "failed", reason_code: null })).toEqual({
-      kind: "support",
-    });
+    // A declined trade whose refund has not landed: support, not a promise.
+    expect(skinTradeView({ ...failed, reason_code: "not_accepted" })).toEqual({ kind: "support" });
+    expect(skinTradeView({ ...failed, reason_code: "support" })).toEqual({ kind: "support" });
   });
 });
