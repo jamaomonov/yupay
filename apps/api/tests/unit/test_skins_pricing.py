@@ -27,6 +27,7 @@ from yupay.modules.skins.pricing import (
 RULES = DEFAULT_RULES.model_copy(
     update={
         "min_margin_usd": Decimal("0.10"),
+        "price_floor_usd": Decimal("0.20"),
         "retail": [
             Bracket(from_usd=Decimal("0"), percent=Decimal("10")),
             Bracket(from_usd=Decimal("1"), percent=Decimal("5")),
@@ -156,12 +157,14 @@ def test_rules_validation() -> None:
 def test_launch_rules_match_the_owners_2026_09_29_call() -> None:
     """Parity with skinsavdo, no overprice on cheap skins, more margin on dear ones.
 
-    Measured on 19 103 shared items (2026-09-29): a $0.10 floor made skins under $0.9
-    ~9 % dearer than skinsavdo; 3 % on $100–1000 and 2 % above keep parity while
-    earning 0.6–0.9 pp more.
+    Measured on 19 103 shared items (2026-09-29): a $0.10 minimum margin made skins under
+    $0.9 ~9 % dearer than skinsavdo; $0.03 and a $0.10 floor bring them in line. 3 % on
+    $100–1000 and 2 % above keep parity while earning 0.6–0.9 pp more.
     """
     rules = DEFAULT_RULES
-    assert rules.min_margin_usd == Decimal("0.05")
+    assert rules.min_margin_usd == Decimal("0.03")
+    # The acquirers' minimum payment is 1000 soʻm; $0.10 is ~1200 at ~11 800 soʻm/$.
+    assert rules.price_floor_usd == Decimal("0.10")
     assert [(b.from_usd, b.percent) for b in rules.retail] == [
         (Decimal("0"), Decimal("10")),
         (Decimal("1"), Decimal("5")),

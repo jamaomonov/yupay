@@ -118,8 +118,11 @@ DEFAULT_RULES = PricingRules(
         LiquidityBand(min_count=0, pp=Decimal("3")),
     ],
     category_pp={"stickers": Decimal("5")},
-    # $0.10 made skins under $0.9 ~9 % dearer than skinsavdo; $0.05 brings them to ~1 %.
-    min_margin_usd=Decimal("0.05"),
+    # A $0.10 minimum margin made skins under $0.9 ~9 % dearer than skinsavdo (2026-09-29).
+    min_margin_usd=Decimal("0.03"),
+    # The acquirers' minimum payment is 1000 soʻm: $0.10 is ~1200 at ~11 800 soʻm/$.
+    # Revisit if the rate ever falls near 10 000.
+    price_floor_usd=Decimal("0.10"),
 )
 
 

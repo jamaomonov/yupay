@@ -126,8 +126,9 @@ from Waxpeer and alerts on divergence — see `docs/runbooks/skins-purchase.md`.
 
 `DEFAULT_RULES` is what production prices with until an admin saves rules (no row is
 seeded). Tuned on 19 103 items shared with skinsavdo.uz (Waxpeer synced the same hour):
-retail brackets 10 % to $1, 5 % to $10, 7 % to $100, **3 %** to $1000, **2 %** above, and a
-**$0.05** minimum margin. The owner's aim: no overprice, a good margin, not a price war —
-result: parity overall (cheaper on 51 %, median −0.1 %), net after the 3 % expenses 18 % on
-skins under $0.9, 6 % on $5–200, 2.7 % above $1000. What stays dearer is mostly Waxpeer's
+retail brackets 10 % to $1, 5 % to $10, 7 % to $100, **3 %** to $1000, **2 %** above, a
+**$0.03** minimum margin and a **$0.10** price floor (≈1 200 soʻm — the acquirers take
+nothing under 1 000; the balance could, but one floor keeps every skin payable by card). The owner's aim: no overprice, a good margin, not a price war —
+result: parity overall (cheaper on 55 %, median −0.3 %, 12 % of items more than 5 % dearer),
+net after the 3 % expenses 15 % on skins under $0.9, 6 % on $5–200, 2.7 % above $1000. What stays dearer is mostly Waxpeer's
 own price on thin items, which an aggregator source is meant to fix.
