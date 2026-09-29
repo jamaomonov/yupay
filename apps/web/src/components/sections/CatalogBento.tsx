@@ -38,7 +38,7 @@ export async function CatalogBento({ locale }: { locale: string }) {
   if (!feature) return null;
 
   return (
-    <section id="catalog" className="relative scroll-mt-[88px] py-16 sm:py-24 lg:py-28">
+    <section id="catalog" className="relative scroll-mt-[88px] py-14 sm:py-20">
       <div className="mx-auto max-w-[1200px] px-6 sm:px-10">
         <div className="mb-14 flex items-end justify-between gap-6">
           <div>

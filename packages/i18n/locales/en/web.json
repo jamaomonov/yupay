@@ -90,7 +90,7 @@
   "catalog": {
     "eyebrow": "Catalog",
     "titleLine1": "Every game.",
-    "titleLine2": "One checkout.",
+    "titleLine2": "Pay in soʻm.",
     "viewAll": "Full catalog",
     "commission": "Commission",
     "speed": "Speed",
@@ -457,46 +457,29 @@
     },
     "comingSoon": "This section is opening soon"
   },
-  "how": {
-    "eyebrow": "Flow",
-    "titleLine1": "From tap",
-    "titleLine2": "to game —",
-    "titleLine3": "automatic.",
-    "subtitle": "No signup, no verifications. Three steps and you're back in the lobby.",
-    "step1Title": "Pick a game",
-    "step1Sub": "Find your game in the catalog or via search — from Steam to Genshin.",
-    "step2Title": "Enter ID and amount",
-    "step2Sub": "No password — just the public profile ID. Pick a pack and we show exactly what lands.",
-    "step3Title": "Pay and you're in",
-    "step3Sub": "Card. Auto-credit, email receipt, support whenever you need it."
-  },
   "metrics": {
-    "eyebrow": "Facts",
+    "eyebrow": "Reviews",
     "title": "Why people trust us.",
-    "feeValue": "0",
-    "feeSuffix": "%",
-    "feeLabel": "Fee on Steam",
-    "feeNote": "on top of the top-up",
-    "methodsValue": "3",
-    "methodsSuffix": "",
-    "methodsLabel": "Ways to pay",
-    "methodsNote": "Click, Payme and Uzum",
-    "guaranteeValue": "24",
-    "guaranteeSuffix": "h",
-    "guaranteeLabel": "Decision on a claim",
-    "guaranteeNote": "not credited — we refund"
+    "reviews": "{count, plural, one {# review} other {# reviews}} from buyers",
+    "outOf": "out of 5",
+    "supportTitle": "24/7 support",
+    "supportNote": "We answer on Telegram day and night",
+    "refundTitle": "Not credited — money back",
+    "refundNote": "Every request decided within 24 hours",
+    "anonymous": "Buyer",
+    "stars": "Rated {rating} out of 5"
   },
   "showcase": {
     "eyebrow": "The app",
     "titleLine1": "Not a site for show —",
     "titleLine2": "a live app.",
-    "subtitle": "All of yupay lives right inside Telegram. Catalog, payment and wallet — no install, no signup, in the same chat you hang out with friends.",
+    "subtitle": "All of yupay lives right inside Telegram. Catalog, payment and wallet — no install, no signup, in the same chat where you talk to friends.",
     "f1Title": "A couple of taps",
     "f1Sub": "Pick a game, enter the ID, pay — the top-up is credited automatically. No password handover.",
     "f2Title": "Telegram-native",
     "f2Sub": "Opens from the bot as a Mini App. Dark theme, native gestures, nothing extra.",
-    "f3Title": "Wallet & cashback",
-    "f3Sub": "Keep a balance, stack cashback on every top-up and pay in one tap next time.",
+    "f3Title": "Wallet",
+    "f3Sub": "Keep a balance and pay in one tap next time.",
     "cta": "Open in Telegram",
     "labelCatalog": "Catalog",
     "labelTopup": "Top-up",
@@ -505,7 +488,7 @@
   "cta": {
     "titleLine1": "Ready to get",
     "titleLine2": "back in the game?",
-    "subtitle": "Instant delivery and help whenever you need it.",
+    "subtitle": "Instant delivery and 24/7 support.",
     "button": "Top up now",
     "offerCaption": "support, always on"
   },
@@ -530,7 +513,7 @@
     "copyright": "© {year} yupay",
     "disclaimer": "Not affiliated with Valve, Tencent, Riot or miHoYo.",
     "madeBy": "Made by",
-    "gamesTitle": "Games"
+    "gamesTitle": "Catalog"
   },
   "legal": {
     "home": "Home",

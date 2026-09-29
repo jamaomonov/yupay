@@ -53,6 +53,21 @@ class ReviewStatsOut(BaseModel):
     dist: dict[int, int]
 
 
+class FeaturedReviewOut(ReviewOut):
+    """A review on the home page's wall, carrying the brand it was left for."""
+
+    brand_slug: str
+    brand_name: str
+    brand_logo_url: str | None = None
+
+
+class FeaturedReviewsOut(BaseModel):
+    """The newest written reviews across brands, and the stats over every published one."""
+
+    items: list[FeaturedReviewOut]
+    stats: ReviewStatsOut
+
+
 class ReviewListOut(BaseModel):
     items: list[ReviewOut]
     next_cursor: str | None

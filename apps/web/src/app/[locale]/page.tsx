@@ -5,9 +5,8 @@ import { CatalogBento } from "@/components/sections/CatalogBento";
 import { CS2SkinsBand } from "@/components/sections/CS2SkinsBand";
 import { CtaBand } from "@/components/sections/CtaBand";
 import { Hero } from "@/components/sections/Hero";
-import { HowItWorks } from "@/components/sections/HowItWorks";
-import { MetricsBand } from "@/components/sections/MetricsBand";
 import { SteamZeroCommission } from "@/components/sections/SteamZeroCommission";
+import { TrustReviews } from "@/components/sections/TrustReviews";
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -22,9 +21,8 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       <SteamZeroCommission locale={locale} />
       <CS2SkinsBand locale={locale} />
       <CatalogBento locale={locale} />
-      <HowItWorks />
       <AppShowcase />
-      <MetricsBand />
+      <TrustReviews locale={locale} />
       <CtaBand locale={locale} />
     </main>
   );

@@ -7255,6 +7255,108 @@
         "title": "FaqUpdate",
         "type": "object"
       },
+      "FeaturedReviewOut": {
+        "description": "A review on the home page's wall, carrying the brand it was left for.",
+        "properties": {
+          "author_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Name"
+          },
+          "author_photo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Author Photo Url"
+          },
+          "body": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Body"
+          },
+          "brand_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Logo Url"
+          },
+          "brand_name": {
+            "title": "Brand Name",
+            "type": "string"
+          },
+          "brand_slug": {
+            "title": "Brand Slug",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "rating": {
+            "title": "Rating",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "rating",
+          "body",
+          "author_name",
+          "created_at",
+          "brand_slug",
+          "brand_name"
+        ],
+        "title": "FeaturedReviewOut",
+        "type": "object"
+      },
+      "FeaturedReviewsOut": {
+        "description": "The newest written reviews across brands, and the stats over every published one.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FeaturedReviewOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "stats": {
+            "$ref": "#/components/schemas/ReviewStatsOut"
+          }
+        },
+        "required": [
+          "items",
+          "stats"
+        ],
+        "title": "FeaturedReviewsOut",
+        "type": "object"
+      },
       "FieldCheck": {
         "additionalProperties": false,
         "description": "Opts a form field into storefront player verification.\n\nPresent only on the player-id field. ``server_field`` names the sibling\nfield whose value is passed as the checker's ``server_id``; set it when\nthe product has a sibling server/zone field, leave unset otherwise.",
@@ -36416,6 +36518,68 @@
           }
         },
         "summary": "Whether the actor's order can be reviewed / already was",
+        "tags": [
+          "reviews"
+        ]
+      }
+    },
+    "/api/v1/reviews/featured": {
+      "get": {
+        "description": "Parse and dispatch; the selection lives in ``reviews.featured``.",
+        "operationId": "list_featured_reviews_api_v1_reviews_featured_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 12,
+              "maximum": 30,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "accept-language",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Accept-Language"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FeaturedReviewsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "The newest written reviews across brands + overall stats (home page)",
         "tags": [
           "reviews"
         ]

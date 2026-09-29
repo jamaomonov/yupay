@@ -200,6 +200,29 @@
   animation: sheet-in 0.2s ease;
 }
 
+/* Home review wall: a row of cards drifting sideways, the list rendered twice so
+   -50% lands on the same frame it started from. Hover or focus holds it. */
+@keyframes marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.anim-marquee {
+  animation: marquee var(--marquee-duration, 60s) linear infinite;
+}
+.anim-marquee-reverse {
+  animation: marquee var(--marquee-duration, 60s) linear infinite reverse;
+}
+.marquee-host:hover .anim-marquee,
+.marquee-host:hover .anim-marquee-reverse,
+.marquee-host:focus-within .anim-marquee,
+.marquee-host:focus-within .anim-marquee-reverse {
+  animation-play-state: paused;
+}
+
 /* Home hero headline swapping between Steam and Stars. */
 @keyframes hero-swap {
   from {

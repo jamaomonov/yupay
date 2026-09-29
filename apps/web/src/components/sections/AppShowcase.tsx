@@ -22,7 +22,7 @@ export async function AppShowcase() {
   const t = await getTranslations("web.showcase");
 
   return (
-    <section className="py-16 sm:py-24">
+    <section className="py-12 sm:py-16">
       <div className="mx-auto max-w-[1280px] px-6 sm:px-10">
         <div className="border-border relative overflow-hidden rounded-2xl border bg-[radial-gradient(120%_120%_at_85%_0%,hsl(var(--card)),hsl(var(--bg))_60%)] px-6 py-14 sm:px-12 sm:py-16">
           {/* atmosphere */}
@@ -42,7 +42,7 @@ export async function AppShowcase() {
             {/* ── LEFT: copy + features ── */}
             <div>
               <div className="text-primary font-mono text-xs font-semibold uppercase tracking-[0.16em]">
-                [ 03 / {t("eyebrow")} ]
+                [ 02 / {t("eyebrow")} ]
               </div>
               <h2 className="font-display mt-3 text-[clamp(2rem,3.8vw,3.2rem)] font-extrabold leading-[0.98] tracking-[-0.04em]">
                 <span className="block">{t("titleLine1")}</span>

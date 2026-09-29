@@ -14,7 +14,7 @@ export async function CtaBand({ locale }: { locale: string }) {
   const t = await getTranslations("web.cta");
 
   return (
-    <section className="py-20">
+    <section className="py-12 sm:py-16">
       <div className="mx-auto max-w-[1280px] px-6 sm:px-10">
         <div
           className="relative overflow-hidden rounded-2xl p-12 sm:p-16"

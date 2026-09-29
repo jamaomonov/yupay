@@ -77,6 +77,36 @@ export function getBrandReviews(
   });
 }
 
+/** A review on the home page's wall: a `Review` plus the brand it was left for. */
+export interface FeaturedReview extends Review {
+  brand_slug: string;
+  brand_name: string;
+  brand_logo_url?: string | null;
+}
+
+export interface FeaturedReviews {
+  items: FeaturedReview[];
+  /** Over every published review, star-only ones included. */
+  stats: ReviewStats;
+}
+
+/**
+ * The home page's review wall. `null` on any failure, never a throw: the home
+ * page must render without it, including a build prerendering against an API
+ * deployed before the endpoint existed.
+ */
+export async function getFeaturedReviews(locale: string): Promise<FeaturedReviews | null> {
+  try {
+    return await apiGet<FeaturedReviews>("/reviews/featured?limit=16", {
+      locale,
+      revalidate: 300,
+      tags: ["reviews"],
+    });
+  } catch {
+    return null;
+  }
+}
+
 /** Client-side fetch of another page (used by the interactive "load more"). */
 export function fetchMoreReviews(slug: string, cursor: string): Promise<ReviewPage> {
   return apiFetch<ReviewPage>(

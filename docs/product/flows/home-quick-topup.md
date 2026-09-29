@@ -42,3 +42,13 @@ sequenceDiagram
     B->>S: check the recipient, then pay
     S->>A: player check, order, payment (unchanged)
 ```
+
+## Below the hero
+
+Steam 0% → CS2 skins → catalogue → the mini app → «Почему нам доверяют» → the closing
+call to action. «От тапа до игры» and the old facts band (0% / 3 / 24 h) are gone: the
+trust block (`TrustReviews`) now shows the overall rating from every published review,
+24/7 support and the money-back promise, then a wall of the newest written reviews
+(`GET /reviews/featured`) — author, avatar or initial, stars, text and the brand bought —
+drifting in two rows (one on phones), paused on hover. Without the endpoint (an older
+API) it shows the two promises alone.

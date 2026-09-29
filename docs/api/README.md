@@ -103,7 +103,10 @@ Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gat
 ## Reviews
 
 Public: `GET /reviews/brands/{slug}` (published reviews + aggregate, keyset
-`cursor`), `POST /reviews` (body `{order_id, brand_slug, rating, body?}`;
+`cursor`), `GET /reviews/featured?limit=` (1–30, default 12: the newest published
+reviews with text across brands, each with `brand_slug` / `brand_name` / `brand_logo_url`,
+plus `stats` over every published review — the home page's review wall; brand name in
+the `Accept-Language` locale), `POST /reviews` (body `{order_id, brand_slug, rating, body?}`;
 **requires `Idempotency-Key`**; a repeat for the same `(order, brand)` returns
 `409 already_reviewed` — the client treats that as "already submitted";
 clients POST on the star tap, `body` optional), `PATCH /reviews/{id}`

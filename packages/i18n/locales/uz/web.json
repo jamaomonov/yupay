@@ -90,7 +90,7 @@
   "catalog": {
     "eyebrow": "Katalog",
     "titleLine1": "Barcha oʻyinlar.",
-    "titleLine2": "Bitta chek.",
+    "titleLine2": "Soʻmda toʻlov.",
     "viewAll": "Toʻliq katalog",
     "commission": "Komissiya",
     "speed": "Tezlik",
@@ -457,34 +457,17 @@
     },
     "comingSoon": "Boʻlim tez orada ochiladi"
   },
-  "how": {
-    "eyebrow": "Flow",
-    "titleLine1": "Bosishdan",
-    "titleLine2": "oʻyingacha —",
-    "titleLine3": "avtomatik.",
-    "subtitle": "Roʻyxatdan oʻtish va tekshiruvlar yoʻq. Uch qadam — va oʻynay olasiz.",
-    "step1Title": "Oʻyinni tanlang",
-    "step1Sub": "Katalogdan yoki qidiruv orqali oʻyinni toping — Steam dan Genshin gacha.",
-    "step2Title": "ID va summani kiriting",
-    "step2Sub": "Parolsiz — faqat profilning ochiq IDsi. Paketni tanlang, hisobingizga nima tushishini koʻrsatamiz.",
-    "step3Title": "Toʻlov va tayyor",
-    "step3Sub": "Karta. Avtomatik tushadi, chek emailga, yordam — istalgan paytda."
-  },
   "metrics": {
-    "eyebrow": "Faktlar",
+    "eyebrow": "Sharhlar",
     "title": "Nega bizga ishonishadi.",
-    "feeValue": "0",
-    "feeSuffix": "%",
-    "feeLabel": "Steam uchun komissiya",
-    "feeNote": "toʻldirish summasi ustiga",
-    "methodsValue": "3",
-    "methodsSuffix": "",
-    "methodsLabel": "Toʻlov usuli",
-    "methodsNote": "Click, Payme va Uzum",
-    "guaranteeValue": "24",
-    "guaranteeSuffix": "soat",
-    "guaranteeLabel": "Murojaat boʻyicha qaror",
-    "guaranteeNote": "tushmadi — pulni qaytaramiz"
+    "reviews": "Xaridorlardan {count} ta sharh",
+    "outOf": "5 dan",
+    "supportTitle": "24/7 yordam",
+    "supportNote": "Telegramda kechayu kunduz javob beramiz",
+    "refundTitle": "Tushmasa — pulni qaytaramiz",
+    "refundNote": "Har bir murojaat 24 soat ichida hal qilinadi",
+    "anonymous": "Xaridor",
+    "stars": "Baho: 5 dan {rating}"
   },
   "showcase": {
     "eyebrow": "Ilova",
@@ -495,8 +478,8 @@
     "f1Sub": "Oʻyinni tanladingiz, ID kiritdingiz, toʻladingiz — donat avtomatik tushadi. Parolsiz.",
     "f2Title": "Telegram uchun moslangan",
     "f2Sub": "Botdan Mini App sifatida ochiladi. Qora mavzu, tabiiy imo-ishoralar, ortiqcha narsa yoʻq.",
-    "f3Title": "Hamyon va keshbek",
-    "f3Sub": "Balansni saqlang, har toʻldirishdan keshbek yigʻing va keyingi safar bir bosishda toʻlang.",
+    "f3Title": "Hamyon",
+    "f3Sub": "Balansni saqlang va keyingi safar bir bosishda toʻlang.",
     "cta": "Telegramda ochish",
     "labelCatalog": "Katalog",
     "labelTopup": "Toʻldirish",
@@ -505,7 +488,7 @@
   "cta": {
     "titleLine1": "Oʻyinga",
     "titleLine2": "qaytishga tayyormisiz?",
-    "subtitle": "Bir lahzada yetkazib berish va istalgan vaqtda yordam.",
+    "subtitle": "Bir lahzada yetkazib berish va 24/7 yordam.",
     "button": "Hozir toʻldiring",
     "offerCaption": "doimiy yordam"
   },
@@ -530,7 +513,7 @@
     "copyright": "© {year} yupay",
     "disclaimer": "Valve, Tencent, Riot yoki miHoYo bilan bogʻliq emas.",
     "madeBy": "Made by",
-    "gamesTitle": "Oʻyinlar"
+    "gamesTitle": "Katalog"
   },
   "legal": {
     "home": "Bosh sahifa",

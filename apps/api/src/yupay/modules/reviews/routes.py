@@ -13,6 +13,8 @@ from yupay.core.errors import ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user, resolve_request_actor
+from yupay.modules.catalog.deps import resolve_locale
+from yupay.modules.reviews import featured
 from yupay.modules.reviews import service as svc
 from yupay.modules.reviews.amend import amend_review_body, can_amend
 from yupay.modules.reviews.models import BrandRatingStats, Review
@@ -22,6 +24,7 @@ from yupay.modules.reviews.schemas import (
     AdminBrandReviewStatsOut,
     AdminReviewListOut,
     AdminReviewOut,
+    FeaturedReviewsOut,
     OwnReviewListOut,
     OwnReviewOut,
     ReviewAmendIn,
@@ -90,6 +93,23 @@ async def list_brand_reviews(
     items, next_cursor = await svc.list_published(db, brand_id=brand_id, limit=limit, cursor=cursor)
     stats = (await svc.get_stats(db, [brand_id])).get(brand_id)
     return ReviewListOut(items=items, next_cursor=next_cursor, stats=_stats_out(stats))
+
+
+@router.get(
+    "/featured",
+    response_model=FeaturedReviewsOut,
+    summary="The newest written reviews across brands + overall stats (home page)",
+)
+async def list_featured_reviews(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    locale: Annotated[str, Depends(resolve_locale)],
+    limit: int = Query(default=12, ge=1, le=30),
+) -> FeaturedReviewsOut:
+    """Parse and dispatch; the selection lives in ``reviews.featured``."""
+    return FeaturedReviewsOut(
+        items=await featured.list_featured(db, locale=locale, limit=limit),
+        stats=await featured.overall_stats(db),
+    )
 
 
 @router.post(
