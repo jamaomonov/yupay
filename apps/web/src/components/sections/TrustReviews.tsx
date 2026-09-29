@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 
 import type { FeaturedReview } from "@/lib/reviews";
 
+import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { isOptimizable } from "@/lib/image";
 import { getFeaturedReviews } from "@/lib/reviews";
 
@@ -55,28 +56,18 @@ export function ReviewCard({
   starsLabel: string;
 }) {
   const name = review.author_name ?? (review.guest === true ? guest : anonymous);
-  const photo = review.author_photo_url ?? null;
   const logo = review.brand_logo_url ?? null;
   return (
     <figure className="border-border bg-card/80 hover:border-border-2 flex h-full w-[300px] shrink-0 flex-col rounded-2xl border p-5 backdrop-blur transition sm:w-[340px]">
       <figcaption className="flex items-center gap-3">
-        {photo ? (
-          <Image
-            src={photo}
-            alt=""
-            width={40}
-            height={40}
-            unoptimized={!isOptimizable(photo)}
-            className="size-10 shrink-0 rounded-full object-cover ring-2 ring-white/10"
-          />
-        ) : (
-          <span
-            aria-hidden
-            className={`flex size-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-[15px] font-bold text-white ring-2 ring-white/10 ${avatarTint(name)}`}
-          >
-            {name.trim().charAt(0).toUpperCase()}
-          </span>
-        )}
+        {/* The brand page's avatar: a plain <img> that falls back to the initial when
+            Telegram's redirecting userpic fails or comes back blank — next/image
+            cannot follow that redirect to another host. */}
+        <ReviewAvatar
+          photoUrl={review.author_photo_url}
+          name={name}
+          className={`size-10 bg-gradient-to-br text-[15px] text-white ring-2 ring-white/10 ${avatarTint(name)}`}
+        />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-[14px] font-semibold">{name}</span>
           <Stars rating={review.rating} label={starsLabel} />

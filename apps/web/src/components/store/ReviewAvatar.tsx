@@ -8,6 +8,8 @@ export interface ReviewAvatarProps {
   photoUrl: string | null | undefined;
   /** Display name — its first letter is the fallback. */
   name: string | null | undefined;
+  /** Replaces the default 32px lime look (size, ring, fallback background). */
+  className?: string;
 }
 
 /**
@@ -20,7 +22,7 @@ export interface ReviewAvatarProps {
  * does not even fail a dead userpic: it answers 200 with an empty image,
  * which is why a 1-pixel "success" counts as a failure too.
  */
-export function ReviewAvatar({ photoUrl, name }: ReviewAvatarProps) {
+export function ReviewAvatar({ photoUrl, name, className }: ReviewAvatarProps) {
   const [failed, setFailed] = useState(false);
   const img = useRef<HTMLImageElement>(null);
   const initial = name?.trim()[0]?.toUpperCase();
@@ -34,7 +36,11 @@ export function ReviewAvatar({ photoUrl, name }: ReviewAvatarProps) {
   }, []);
 
   return (
-    <span className="border-border bg-primary/20 text-primary flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border text-xs font-bold">
+    <span
+      className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold ${
+        className ?? "border-border bg-primary/20 text-primary h-8 w-8 border text-xs"
+      }`}
+    >
       {photoUrl && !failed ? (
         // A plain <img>, not next/image: third-party hosts that change, one
         // 32px picture each, nothing for the optimizer to earn.
