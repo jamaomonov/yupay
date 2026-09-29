@@ -14,8 +14,9 @@ import { pathFor } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
 
 /** The brands whose art fronts each tile, most recognisable first. */
-const GAME_BRANDS = ["pubg-mobile", "genshin-impact", "free-fire", "mobile-legends"];
-const GIFT_BRANDS = ["roblox", "discord", "minecraft"];
+const GAME_BRANDS = ["pubg-mobile", "mobile-legends", "free-fire"];
+// Back to front: Roblox, the most bought, on top.
+const GIFT_BRANDS = ["minecraft", "discord", "roblox"];
 
 /** A fan: where each piece of art sits, by how many there are, back to front. */
 const LEFT = "left-[10%] top-[28%] -rotate-[14deg]";
@@ -98,7 +99,7 @@ function IconFan({ art, skins }: { art: Art[]; skins: boolean }) {
             unoptimized={!isOptimizable(a.src)}
             className={
               skins
-                ? "scale-[1.35] object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
+                ? "object-contain p-[6%] drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
                 : "object-cover"
             }
           />

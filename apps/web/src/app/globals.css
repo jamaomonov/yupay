@@ -185,15 +185,6 @@
   }
 }
 
-@keyframes ticker-scroll {
-  from {
-    transform: translateX(0);
-  }
-  to {
-    transform: translateX(-50%);
-  }
-}
-
 /* Mobile nav sheet entrance — a short fade + slide so the menu doesn't pop. */
 @keyframes sheet-in {
   from {
@@ -234,9 +225,6 @@
 }
 .anim-pulse-glow {
   animation: pulse-glow 7s ease-in-out infinite;
-}
-.anim-ticker {
-  animation: ticker-scroll 50s linear infinite;
 }
 
 /* Counter-rotate the orbit nodes so their content stays upright while the

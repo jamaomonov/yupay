@@ -8,8 +8,8 @@ page; nothing is charged on the home page.
 - **Left:** the headline and subtitle of the product in front («Пополните Steam в сумах»
   / «Купите Stars в сумах»), then `HeroTiles` for everything else, each fronted by catalogue art: CS2 skins (while
   the section is on; the skins band's gloves, Karambit and AK-47 as app-icon squares on
-  their rarity colour), games (PUBG Mobile, Genshin, Free Fire icons) and gift cards
-  (Roblox, Discord, Minecraft as plastic cards in the brand's colours, fanned). A
+  their rarity colour), games (PUBG Mobile, Mobile Legends, Free Fire icons) and gift cards
+  (Minecraft, Discord, Roblox as plastic cards in the brand's colours, fanned, Roblox on top). A
   tile links to the category its brands actually sit in — production files games under
   `top-ups` — and shows its icon when no logo is set. Both
   headlines share one grid cell, so switching never moves the tiles. On phones, one

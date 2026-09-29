@@ -8,8 +8,6 @@ import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
 import { MetricsBand } from "@/components/sections/MetricsBand";
 import { SteamZeroCommission } from "@/components/sections/SteamZeroCommission";
-import { Ticker } from "@/components/sections/Ticker";
-import { TrustBand } from "@/components/sections/TrustBand";
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -21,8 +19,6 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     // page a skip-link has to land on.
     <main id="main-content">
       <Hero locale={locale} />
-      <Ticker />
-      <TrustBand />
       <SteamZeroCommission locale={locale} />
       <CS2SkinsBand locale={locale} />
       <CatalogBento locale={locale} />
