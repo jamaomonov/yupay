@@ -26,9 +26,16 @@ from sqlalchemy.sql.elements import ColumnElement
 from yupay.core.clock import now
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import OrderItem
+from yupay.modules.payments.models import Payment
 from yupay.modules.skins.models import SkinTrade
 from yupay.modules.skins.order_display import skin_images
-from yupay.modules.skins.trade_view import SkinTradeReason, SkinTradeState, skin_trade_out
+from yupay.modules.skins.refund_guard import refund_destination
+from yupay.modules.skins.trade_view import (
+    SkinRefundedTo,
+    SkinTradeReason,
+    SkinTradeState,
+    skin_trade_out,
+)
 
 TradesView = Literal["all", "active", "attention"]
 
@@ -64,8 +71,15 @@ class AdminSkinTradeOut(BaseModel):
     release_date: datetime | None
     accepted_at: datetime | None
     last_checked_at: datetime | None
+    task_id: str | None
     task_status: str | None
     task_sub_state: Literal["buy_pending", "buy_unconfirmed"] | None
+    #: Where the order's money went back, if it did.
+    refunded_to: SkinRefundedTo | None
+    #: The money is still ours and the line has settled (received or failed): «Вернуть деньги».
+    can_refund: bool
+    #: The task failed and nothing was refunded: «Повторить» (the fulfilment retry).
+    can_retry: bool
     resolved_at: datetime | None
     resolved_note: str | None
     attention: bool
@@ -162,14 +176,18 @@ def _is_attention(row: SkinTrade, task: FulfillmentTask | None, sub_state: str |
     return rolled_back or row.reason in _SUPPORT_REASONS or stuck
 
 
-def _out(
+def trade_out(
     row: SkinTrade,
     item: OrderItem,
     task: FulfillmentTask | None,
     images: dict[str, str | None] | None = None,
+    payments: list[Payment] | None = None,
 ) -> AdminSkinTradeOut:
+    """One trade as the screen shows it; ``payments`` are its order's, for the refund."""
     view = skin_trade_out(row, fulfillment_state=item.fulfillment_state)
     sub_state = _sub_state(task, row)
+    refunded_to = refund_destination(payments or [])
+    ours = refunded_to is None and any(p.status == "succeeded" for p in payments or [])
     return AdminSkinTradeOut(
         id=row.id,
         project_id=row.project_id,
@@ -195,8 +213,12 @@ def _out(
         release_date=row.release_date,
         accepted_at=row.accepted_at,
         last_checked_at=row.last_checked_at,
+        task_id=task.id if task is not None else None,
         task_status=task.status if task is not None else None,
         task_sub_state=sub_state,
+        refunded_to=refunded_to,
+        can_refund=ours and item.fulfillment_state in ("delivered", "failed"),
+        can_retry=ours and task is not None and task.status == "failed",
         resolved_at=row.resolved_at,
         resolved_note=row.resolved_note,
         attention=_is_attention(row, task, sub_state),
@@ -249,11 +271,44 @@ async def list_trades(
     images = await skin_images(
         db, (str((item.fulfillment_data or {}).get("slug") or "") for _, item, _ in page)
     )
+    payments = await payments_by_order(db, {item.order_id for _, item, _ in page})
     return AdminSkinTradesOut(
-        items=[_out(row, item, task, images) for row, item, task in page],
+        items=[
+            trade_out(row, item, task, images, payments.get(item.order_id))
+            for row, item, task in page
+        ],
         total=int(total),
         counts=await _counts(db),
     )
+
+
+async def payments_by_order(db: AsyncSession, order_ids: set[str]) -> dict[str, list[Payment]]:
+    """Every payment of these orders, one query — for where each refund went."""
+    if not order_ids:
+        return {}
+    rows = (await db.execute(select(Payment).where(Payment.order_id.in_(order_ids)))).scalars()
+    out: dict[str, list[Payment]] = {}
+    for p in rows:
+        out.setdefault(p.order_id, []).append(p)
+    return out
+
+
+async def load_trade(db: AsyncSession, trade_id: str) -> AdminSkinTradeOut | None:
+    """One trade as the screen shows it, or ``None``."""
+    found = (
+        await db.execute(
+            select(SkinTrade, OrderItem, FulfillmentTask)
+            .join(OrderItem, OrderItem.id == SkinTrade.order_item_id)
+            .outerjoin(FulfillmentTask, FulfillmentTask.id == SkinTrade.task_id)
+            .where(SkinTrade.id == trade_id)
+        )
+    ).first()
+    if found is None:
+        return None
+    row, item, task = found
+    images = await skin_images(db, [str((item.fulfillment_data or {}).get("slug") or "")])
+    payments = await payments_by_order(db, {item.order_id})
+    return trade_out(row, item, task, images, payments.get(item.order_id))
 
 
 async def _counts(db: AsyncSession) -> TradeCounts:
@@ -293,14 +348,13 @@ async def resolve_trade(
     ).first()
     if found is None:
         return None
-    row, item, task = found
+    row = found[0]
     if row.resolved_at is None:
         row.resolved_at = now()
         row.resolved_by = by
         row.resolved_note = (note or "").strip() or None
         await db.commit()
-    images = await skin_images(db, [str((item.fulfillment_data or {}).get("slug") or "")])
-    return _out(row, item, task, images)
+    return await load_trade(db, trade_id)
 
 
 __all__ = [
@@ -309,5 +363,8 @@ __all__ = [
     "TradeCounts",
     "TradesView",
     "list_trades",
+    "load_trade",
+    "payments_by_order",
     "resolve_trade",
+    "trade_out",
 ]

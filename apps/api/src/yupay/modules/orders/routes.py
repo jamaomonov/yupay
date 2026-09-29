@@ -124,12 +124,9 @@ async def _attach_skin_trades(db: AsyncSession, pairs: Sequence[tuple[OrderOut, 
 
 def _refunded_to(order: Order) -> SkinRefundedTo | None:
     """Where the order's money went back, read off its eager-loaded payments."""
-    from yupay.modules.payments.service import refunded_to_wallet
+    from yupay.modules.skins.refund_guard import refund_destination
 
-    refunded = [p for p in order.payments if p.status == "refunded"]
-    if not refunded:
-        return None
-    return "wallet" if any(refunded_to_wallet(p) for p in refunded) else "card"
+    return refund_destination(order.payments)
 
 
 def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:

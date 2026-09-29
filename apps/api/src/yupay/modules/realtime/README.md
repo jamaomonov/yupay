@@ -118,7 +118,7 @@ internal remediation state as their own final outcome, and it is unchanged.
 
 `order.refunded` (`{orderId, to: "wallet"}`) rides beside the status nudge for one case: a
 skin purchase that fell through and refunded itself to the balance
-(`_tell_the_buyer_about_the_refund`). Web and mini app re-read the order and the balance and
+(`skins/refund_notice.py`). Web and mini app re-read the order and the balance and
 show a toast wherever the buyer is; the bot sends the same news after commit
 (`notify_skin_refunded`, never with the trade link).
 

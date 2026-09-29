@@ -1,6 +1,7 @@
 """Public interface of the ``skins`` module (AGENTS.md §4)."""
 
 from yupay.modules.skins.admin import admin_router
+from yupay.modules.skins.admin_ops import ops_router as admin_ops_router
 from yupay.modules.skins.bymykel import import_catalog
 from yupay.modules.skins.models import SkinItem, SkinPricingRules, SkinSearchAlias
 from yupay.modules.skins.prices import sync_prices
@@ -16,6 +17,7 @@ __all__ = [
     "SkinItem",
     "SkinPricingRules",
     "SkinSearchAlias",
+    "admin_ops_router",
     "admin_router",
     "import_catalog",
     "load_rules",

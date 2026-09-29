@@ -1259,7 +1259,9 @@ def refunded_to_wallet(payment: Payment) -> bool:
     return ((payment.extra_metadata or {}).get("last_refund") or {}).get("refunded_to") == "wallet"
 
 
-async def refund_order_to_wallet(db: AsyncSession, *, order_id: str, reason: str) -> bool:
+async def refund_order_to_wallet(
+    db: AsyncSession, *, order_id: str, reason: str, actor: str = "system:refund_to_wallet"
+) -> bool:
     """Refund an order's whole captured payment to the customer's YuPay balance.
 
     The automatic refund for a CS2 skin purchase that fell through (plan 3a): the
@@ -1307,7 +1309,7 @@ async def refund_order_to_wallet(db: AsyncSession, *, order_id: str, reason: str
         db,
         payment=payment,
         amount=payment.amount,
-        actor="system:refund_to_wallet",
+        actor=actor,
         external_ref=reason,
         to_wallet=True,
     )

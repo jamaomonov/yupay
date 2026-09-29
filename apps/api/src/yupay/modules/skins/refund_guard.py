@@ -12,6 +12,9 @@ too, or by its trade row.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
+from typing import TYPE_CHECKING
+
 from sqlalchemy import exists, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +22,10 @@ from yupay.modules.catalog.models import Sku
 from yupay.modules.orders.models import OrderItem
 from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
 from yupay.modules.skins.models import SkinTrade
+from yupay.modules.skins.trade_view import SkinRefundedTo
+
+if TYPE_CHECKING:  # pragma: no cover -- type hints only
+    from yupay.modules.payments.models import Payment
 
 #: A skin line in one of these has finished travelling, one way or the other.
 _SETTLED_STATES = ("delivered", "failed")
@@ -49,4 +56,18 @@ async def skin_trade_in_flight(db: AsyncSession, order_id: str) -> bool:
     return row is not None
 
 
-__all__ = ["skin_trade_in_flight"]
+def refund_destination(payments: Iterable[Payment]) -> SkinRefundedTo | None:
+    """Where an order's money went back, if it did: the balance or the card.
+
+    Args:
+        payments: The order's payments.
+    """
+    from yupay.modules.payments.service import refunded_to_wallet
+
+    refunded = [p for p in payments if p.status == "refunded"]
+    if not refunded:
+        return None
+    return "wallet" if any(refunded_to_wallet(p) for p in refunded) else "card"
+
+
+__all__ = ["refund_destination", "skin_trade_in_flight"]

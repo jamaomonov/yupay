@@ -1643,6 +1643,14 @@
             ],
             "title": "Bought Units"
           },
+          "can_refund": {
+            "title": "Can Refund",
+            "type": "boolean"
+          },
+          "can_retry": {
+            "title": "Can Retry",
+            "type": "boolean"
+          },
           "created_at": {
             "format": "date-time",
             "title": "Created At",
@@ -1742,6 +1750,21 @@
             ],
             "title": "Reason Code"
           },
+          "refunded_to": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wallet",
+                  "card"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refunded To"
+          },
           "release_date": {
             "anyOf": [
               {
@@ -1815,6 +1838,17 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "task_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Task Id"
           },
           "task_status": {
             "anyOf": [
@@ -1901,8 +1935,12 @@
           "release_date",
           "accepted_at",
           "last_checked_at",
+          "task_id",
           "task_status",
           "task_sub_state",
+          "refunded_to",
+          "can_refund",
+          "can_retry",
           "resolved_at",
           "resolved_note",
           "attention"
@@ -6163,6 +6201,42 @@
           "created_at"
         ],
         "title": "CustomerPaymentSummary",
+        "type": "object"
+      },
+      "CustomerSkinsOut": {
+        "description": "One customer's Steam side: the saved link, the accounts ordered to, the last trades.",
+        "properties": {
+          "accounts": {
+            "items": {
+              "$ref": "#/components/schemas/OrderedAccountOut"
+            },
+            "title": "Accounts",
+            "type": "array"
+          },
+          "saved": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SavedLinkOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trades": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSkinTradeOut"
+            },
+            "title": "Trades",
+            "type": "array"
+          }
+        },
+        "required": [
+          "saved",
+          "accounts",
+          "trades"
+        ],
+        "title": "CustomerSkinsOut",
         "type": "object"
       },
       "CustomerStatsOut": {
@@ -11164,6 +11238,30 @@
         "title": "OrderRefOut",
         "type": "object"
       },
+      "OrderedAccountOut": {
+        "description": "An account the customer's skin orders went to.",
+        "properties": {
+          "orders": {
+            "title": "Orders",
+            "type": "integer"
+          },
+          "profile_url": {
+            "title": "Profile Url",
+            "type": "string"
+          },
+          "steam_id": {
+            "title": "Steam Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steam_id",
+          "profile_url",
+          "orders"
+        ],
+        "title": "OrderedAccountOut",
+        "type": "object"
+      },
       "OwnReviewListOut": {
         "properties": {
           "items": {
@@ -14814,6 +14912,95 @@
         "title": "ReviewStatsOut",
         "type": "object"
       },
+      "SalesDay": {
+        "description": "One Tashkent day of received skins.",
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "day": {
+            "format": "date",
+            "title": "Day",
+            "type": "string"
+          },
+          "margin_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin Usd",
+            "type": "string"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "day",
+          "count",
+          "revenue_usd",
+          "margin_usd"
+        ],
+        "title": "SalesDay",
+        "type": "object"
+      },
+      "SalesTotals": {
+        "description": "A group of trades: how many, and their money.",
+        "properties": {
+          "cost_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "margin_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Margin Usd",
+            "type": "string"
+          },
+          "revenue_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Revenue Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "revenue_usd",
+          "cost_usd",
+          "margin_usd"
+        ],
+        "title": "SalesTotals",
+        "type": "object"
+      },
+      "SavedLinkOut": {
+        "description": "The customer's saved trade link, as its account.",
+        "properties": {
+          "profile_url": {
+            "title": "Profile Url",
+            "type": "string"
+          },
+          "steam_id": {
+            "title": "Steam Id",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "steam_id",
+          "profile_url",
+          "updated_at"
+        ],
+        "title": "SavedLinkOut",
+        "type": "object"
+      },
       "SavedSegmentIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/segments`` \u2014 create a bookmark.",
@@ -16181,6 +16368,40 @@
           "categories"
         ],
         "title": "SkinsPricingOut",
+        "type": "object"
+      },
+      "SkinsSummaryOut": {
+        "description": "Sales and margin over the last ``days`` days.",
+        "properties": {
+          "by_day": {
+            "items": {
+              "$ref": "#/components/schemas/SalesDay"
+            },
+            "title": "By Day",
+            "type": "array"
+          },
+          "days": {
+            "title": "Days",
+            "type": "integer"
+          },
+          "failed": {
+            "$ref": "#/components/schemas/SalesTotals"
+          },
+          "in_flight": {
+            "$ref": "#/components/schemas/SalesTotals"
+          },
+          "sold": {
+            "$ref": "#/components/schemas/SalesTotals"
+          }
+        },
+        "required": [
+          "days",
+          "sold",
+          "failed",
+          "in_flight",
+          "by_day"
+        ],
+        "title": "SkinsSummaryOut",
         "type": "object"
       },
       "SkuB2bOut": {
@@ -30193,6 +30414,65 @@
         ]
       }
     },
+    "/api/v1/admin/skins/customers/{user_id}": {
+      "get": {
+        "description": "The saved trade link's account, the accounts ordered to, the last 20 trades.",
+        "operationId": "admin_customer_skins_api_v1_admin_skins_customers__user_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CustomerSkinsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "A customer's Steam accounts and skin trades",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
     "/api/v1/admin/skins/items": {
       "get": {
         "description": "Items by part of the name (most liquid first), or every item with an override.",
@@ -30696,6 +30976,68 @@
         ]
       }
     },
+    "/api/v1/admin/skins/summary": {
+      "get": {
+        "description": "Received, failed and in-flight skins, their revenue, cost and margin, and per day.",
+        "operationId": "admin_skins_summary_api_v1_admin_skins_summary_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "days",
+            "required": false,
+            "schema": {
+              "default": 30,
+              "maximum": 365,
+              "minimum": 1,
+              "title": "Days",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinsSummaryOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Skin sales and margin over a period",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
     "/api/v1/admin/skins/trades": {
       "get": {
         "description": "The trades screen: Waxpeer status, our state, seller, and what needs settling.",
@@ -30793,6 +31135,81 @@
           }
         },
         "summary": "Skin trades, newest first \u2014 all, in flight, or needing a human",
+        "tags": [
+          "admin:skins"
+        ]
+      }
+    },
+    "/api/v1/admin/skins/trades/{trade_id}/refund": {
+      "post": {
+        "description": "Refund to the balance (owner's rule for skins); refused while the skin is on its way.",
+        "operationId": "admin_refund_trade_api_v1_admin_skins_trades__trade_id__refund_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "trade_id",
+            "required": true,
+            "schema": {
+              "title": "Trade Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSkinTradeOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Refund a skin trade's order to the buyer's YuPay balance",
         "tags": [
           "admin:skins"
         ]

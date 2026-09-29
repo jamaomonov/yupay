@@ -959,7 +959,9 @@ async def _refund_skin_to_wallet(db: AsyncSession, *, task_id: str) -> None:
             )
         if refunded:
             log.info("fulfillment.skin_refunded_to_wallet", order_id=task.order_id)
-            await _tell_the_buyer_about_the_refund(
+            from yupay.modules.skins.refund_notice import tell_buyer_refunded
+
+            await tell_buyer_refunded(
                 db, order_id=task.order_id, try_later=task.last_error == _LOW_BALANCE_ERROR
             )
     except Exception as exc:  # as the merchant settle: never stall the queue; logged and alerted
@@ -973,31 +975,6 @@ async def _refund_skin_to_wallet(db: AsyncSession, *, task_id: str) -> None:
                 error=f"refund to balance failed: {type(exc).__name__}",
             )
         )
-
-
-async def _tell_the_buyer_about_the_refund(
-    db: AsyncSession, *, order_id: str, try_later: bool
-) -> None:
-    """Push ``order.refunded`` to an open page and message the bot after commit.
-
-    The push is a nudge like every realtime message (the page re-reads the order);
-    the bot message waits for the commit so a rolled-back refund tells nobody.
-    """
-    from yupay.modules.notifications import api as notifications
-    from yupay.modules.realtime import api as realtime
-
-    user_id = (
-        await db.execute(select(Order.user_id).where(Order.id == order_id))
-    ).scalar_one_or_none()
-    try:
-        await realtime.publish_order_event(
-            user_id, {"type": "order.refunded", "orderId": order_id, "to": "wallet"}
-        )
-    except Exception as exc:  # noqa: BLE001 -- a lost nudge must not read as a failed refund
-        log.warning("fulfillment.skin_refund_push_failed", order_id=order_id, error=str(exc)[:200])
-    notifications.schedule_after_commit(
-        db, lambda: notifications.notify_skin_refunded(order_id, try_later=try_later)
-    )
 
 
 async def _settle_merchant_deposit(db: AsyncSession, *, task_id: str) -> None:

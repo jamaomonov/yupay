@@ -35,6 +35,19 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
   the trade leaves the tab and keeps «разобрано <дата>» in «Все». A row opens the order.
   There is no «recheck» button: an in-flight trade is re-read every
   5–10 s and an accepted one hourly.
+  The details drawer has **«Вернуть деньги»** — the order to the buyer's YuPay balance
+  (`POST /admin/skins/trades/{id}/refund`), shown once the skin was received or failed and
+  the money is still ours; the buyer gets the toast and the bot message, and the trade is
+  marked «разобрано». Refused while the skin is on its way. And **«Повторить»** — the
+  fulfilment retry, shown only for a failed task whose money was not refunded: before
+  pressing it on `buy_unconfirmed`, look the project id up in the Waxpeer dashboard, or the
+  skin may be bought twice.
+- **Скины → Сводка**: sales and margin for 7 / 30 / 90 days — received, failed, in flight,
+  revenue, Waxpeer cost, margin — and received skins per Tashkent day
+  (`GET /admin/skins/summary?days=`). Cost is what Waxpeer charged (`bought_units`).
+- **Клиент → CS2 скины**: the saved trade link's Steam account, every account their orders
+  went to, and their last 20 trades (`GET /admin/skins/customers/{id}`). Accounts only: the
+  link's token is a credential and is never shown.
 - **Скины → Цены скинов** (`/skins/pricing`): the pricing document (saved whole, the
   catalogue reprices at once), a price preview that names the rule that won, and per-skin
   overrides (margin pp or a fixed price; «Сбросить наценку» clears both).

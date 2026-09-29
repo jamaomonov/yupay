@@ -59,6 +59,7 @@ from yupay.modules.skins.api import (
     SkinItem,          # ORM: one item at one wear (+ Doppler phase)
     SkinPricingRules,  # ORM: row 1, the pricing document as JSONB
     SkinSearchAlias,   # ORM: alias -> text for search
+    admin_ops_router,  # /api/v1/admin/skins/{trades/{id}/refund,summary,customers/{id}}
     admin_router,      # /api/v1/admin/skins/*
     import_catalog,    # the daily ByMykel import (scheduler)
     load_rules,        # Redis -> row 1 -> DEFAULT_RULES
@@ -121,6 +122,12 @@ admin SPA's `/skins/trades`; `GET /admin/skins/items` finds items for `/skins/pr
 per-skin overrides. The daily `skins_history_audit` job
 (`fulfillment.skin_sweeps.audit_recent_trades`) reads the last 14 days of settled trades back
 from Waxpeer and alerts on divergence — see `docs/runbooks/skins-purchase.md`.
+
+`admin_ops.py` acts and reports: refund a trade's order to the balance (`refund_trade`, with
+`refund_guard.skin_trade_in_flight` first, then `refund_notice.tell_buyer_refunded`), sales
+and margin (`admin_reports.sales_summary`), a customer's Steam accounts and trades
+(`admin_reports.customer_skins`). The trade row's `can_refund` / `can_retry` say which
+buttons apply; retry is the fulfilment retry, which refuses a refunded order.
 
 ## Launch pricing (2026-09-29)
 

@@ -133,6 +133,14 @@ boolean}`, letting the client gate a "rate your purchase" CTA/form without a
 failed POST. `guest_email` is a capability credential only — it is never
 returned in any reviews response body and never logged.
 
+## CS2 skins admin
+
+`POST /admin/skins/trades/{id}/refund` **requires** `Idempotency-Key` (a repeat replays the
+first answer): it moves money. `409` with `reason` `skin_trade_in_flight` while the skin is
+being bought or sent, `already_refunded` after. `POST /admin/skins/trades/{id}/resolve` takes
+an optional key. `GET /admin/skins/summary?days=1..365` and
+`GET /admin/skins/customers/{user_id}` are reads.
+
 ## Steam gifts catalog
 
 `GET /gifts/catalog`, `GET /gifts/catalog/hot`, `GET /gifts/catalog/{app_id}`,
