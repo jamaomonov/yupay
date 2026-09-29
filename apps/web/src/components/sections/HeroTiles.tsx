@@ -27,20 +27,26 @@ const FAN: Record<number, readonly string[]> = {
   3: [LEFT, MID, RIGHT],
 };
 
-/** Skins are wide and transparent, so they fan wider and overlap less. */
-const SKIN_FAN: readonly string[] = [
-  "-left-[6%] top-[34%] -rotate-[18deg]",
-  "left-1/2 top-[4%] z-10 -translate-x-1/2",
-  "-right-[6%] top-[34%] rotate-[18deg]",
+/** Gift cards fan from one corner, like a hand of cards. */
+const CARD_FAN: readonly string[] = [
+  "-rotate-[16deg]",
+  "-rotate-[3deg] translate-x-[8%]",
+  "rotate-[10deg] translate-x-[16%]",
 ];
 
 type TileKey = "skins" | "games" | "giftCards";
+
+/** One piece of a tile's art: the image, and for a skin its rarity colour. */
+interface Art {
+  src: string;
+  tint?: string | null;
+}
 
 interface Tile {
   key: TileKey;
   href: string;
   Icon: LucideIcon;
-  art: string[];
+  art: Art[];
   /** Light behind the art, in the section's own colour. */
   glow: string;
 }
@@ -62,7 +68,90 @@ export function categoryHref(
   return `${pathFor(locale, "/store")}?cat=${encodeURIComponent(cat)}`;
 }
 
-function Art({ tile }: { tile: Tile }) {
+const MOTION = "transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]";
+
+/** An app-icon square: game logos as they are, skins on their rarity colour. */
+function IconFan({ art, skins }: { art: Art[]; skins: boolean }) {
+  const pieces = art.slice(0, 3);
+  return (
+    <>
+      {pieces.map((a, i) => (
+        <span
+          key={a.src}
+          className={`absolute aspect-square w-[30%] overflow-hidden rounded-[22%] shadow-xl ring-1 group-hover:-translate-y-1 ${MOTION} ${
+            FAN[pieces.length]?.[i] ?? MID
+          } ${skins ? "" : "ring-white/15"}`}
+          style={
+            skins
+              ? {
+                  background: `radial-gradient(circle at 50% 70%, ${a.tint ?? "#8847ff"}aa, #11141d 78%)`,
+                  boxShadow: `inset 0 0 0 1px ${a.tint ?? "#8847ff"}66`,
+                }
+              : undefined
+          }
+        >
+          <Image
+            src={a.src}
+            alt=""
+            fill
+            sizes="96px"
+            unoptimized={!isOptimizable(a.src)}
+            className={
+              skins
+                ? "scale-[1.35] object-contain drop-shadow-[0_4px_8px_rgba(0,0,0,0.6)]"
+                : "object-cover"
+            }
+          />
+        </span>
+      ))}
+    </>
+  );
+}
+
+/** Plastic gift cards: the brand's own colours as the face, its logo, a chip. */
+function CardFan({ art }: { art: Art[] }) {
+  const pieces = art.slice(0, 3);
+  return (
+    <>
+      {pieces.map((a, i) => (
+        <span
+          key={a.src}
+          className={`absolute left-[18%] top-[30%] aspect-[1.58/1] w-[48%] origin-bottom-left overflow-hidden rounded-[9%/14%] shadow-[0_10px_24px_rgba(0,0,0,0.55)] ring-1 ring-white/20 group-hover:-translate-y-1 ${MOTION} ${
+            CARD_FAN[i] ?? ""
+          }`}
+          style={{ zIndex: i }}
+        >
+          {/* The logo blown up and blurred is the card's face — the brand's colour
+              without a colour table to keep. */}
+          <Image
+            src={a.src}
+            alt=""
+            fill
+            sizes="96px"
+            unoptimized={!isOptimizable(a.src)}
+            className="scale-[2.4] object-cover blur-md brightness-[0.7] saturate-200"
+          />
+          <span className="absolute inset-0 bg-[linear-gradient(135deg,rgba(255,255,255,0.18),transparent_40%,rgba(0,0,0,0.45))]" />
+          <span className="absolute left-[8%] top-[12%] aspect-square h-[40%] overflow-hidden rounded-[22%] ring-1 ring-white/30">
+            <Image
+              src={a.src}
+              alt=""
+              fill
+              sizes="32px"
+              unoptimized={!isOptimizable(a.src)}
+              className="object-cover"
+            />
+          </span>
+          <span className="absolute right-[8%] top-[16%] h-[18%] w-[16%] rounded-[3px] bg-gradient-to-br from-amber-200 to-amber-500 opacity-90" />
+          <span className="absolute bottom-[14%] left-[8%] h-[7%] w-[46%] rounded-full bg-white/60" />
+          <span className="absolute bottom-[14%] right-[8%] h-[7%] w-[18%] rounded-full bg-white/35" />
+        </span>
+      ))}
+    </>
+  );
+}
+
+function TileArt({ tile }: { tile: Tile }) {
   const { art, key, Icon } = tile;
   if (art.length === 0) {
     return (
@@ -71,37 +160,10 @@ function Art({ tile }: { tile: Tile }) {
       </span>
     );
   }
-  const pieces = art.slice(0, 3);
-  const skins = key === "skins";
-  const cards = key === "giftCards";
-  return (
-    <>
-      {pieces.map((src, i) => (
-        <span
-          key={src}
-          className={`absolute transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] ${
-            (skins && pieces.length === 3 ? SKIN_FAN[i] : FAN[pieces.length]?.[i]) ?? MID
-          } ${
-            skins
-              ? "aspect-[4/3] w-[54%] group-hover:scale-110"
-              : cards
-                ? "aspect-[3/4] w-[28%] overflow-hidden rounded-lg shadow-xl ring-1 ring-white/15 group-hover:-translate-y-1"
-                : "aspect-square w-[30%] overflow-hidden rounded-[22%] shadow-xl ring-1 ring-white/15 group-hover:-translate-y-1"
-          }`}
-        >
-          <Image
-            src={src}
-            alt=""
-            fill
-            sizes="96px"
-            unoptimized={!isOptimizable(src)}
-            className={
-              skins ? "object-contain drop-shadow-[0_8px_16px_rgba(0,0,0,0.6)]" : "object-cover"
-            }
-          />
-        </span>
-      ))}
-    </>
+  return key === "giftCards" ? (
+    <CardFan art={art} />
+  ) : (
+    <IconFan art={art} skins={key === "skins"} />
   );
 }
 
@@ -126,7 +188,9 @@ export async function HeroTiles({ locale }: { locale: string }) {
             href: pathFor(locale, "/skins"),
             Icon: Crosshair,
             art: skins.flatMap((s) =>
-              s.image_url ? [steamImageSize(s.image_url, "256fx256f")] : [],
+              s.image_url
+                ? [{ src: steamImageSize(s.image_url, "256fx256f"), tint: s.rarity_color }]
+                : [],
             ),
             glow: "rgba(235,75,75,0.35)",
           },
@@ -136,14 +200,14 @@ export async function HeroTiles({ locale }: { locale: string }) {
       key: "games",
       href: categoryHref(locale, brands, "pubg-mobile", "games"),
       Icon: Gamepad2,
-      art: logos(brands, GAME_BRANDS),
+      art: logos(brands, GAME_BRANDS).map((src) => ({ src })),
       glow: "rgba(102,192,244,0.3)",
     },
     {
       key: "giftCards",
       href: categoryHref(locale, brands, "roblox", "gift-cards"),
       Icon: Gift,
-      art: logos(brands, GIFT_BRANDS),
+      art: logos(brands, GIFT_BRANDS).map((src) => ({ src })),
       glow: "rgba(168,85,247,0.32)",
     },
   ];
@@ -164,7 +228,7 @@ export async function HeroTiles({ locale }: { locale: string }) {
                 background: `radial-gradient(70% 80% at 50% 45%, ${tile.glow}, transparent 70%)`,
               }}
             />
-            <Art tile={tile} />
+            <TileArt tile={tile} />
           </div>
           <span className="flex items-center justify-between gap-1 px-3 pb-3 text-[13px] font-semibold leading-tight sm:px-3.5 sm:text-[14px]">
             {t(`tiles.${tile.key}`)}
