@@ -7,14 +7,14 @@ import { MobileNav } from "./MobileNav";
 import { PrimaryNav } from "./PrimaryNav";
 import { Wordmark } from "./Wordmark";
 
-import { buttonStyles } from "@/lib/button";
 import { skinsEnabled } from "@/lib/features";
 import { pathFor } from "@/lib/seo";
 
 /**
- * Fixed glass header. On md+ the full lockup shows (mark + 4 nav links +
- * LocaleSwitcher + account control + lime ‟Пополнить"); below md it collapses
- * to a persistent top-up pill + hamburger sheet (see MobileNav).
+ * Fixed glass header. On lg+ the full lockup shows (mark + the section links +
+ * LocaleSwitcher + account control); below lg the links move into a hamburger
+ * sheet (see MobileNav). No "Купить" button: it named no product and only
+ * repeated the catalogue link (owner, 2026-09-29).
  */
 export async function Header({ locale }: { locale: string }) {
   const t = await getTranslations("web.nav");
@@ -32,22 +32,12 @@ export async function Header({ locale }: { locale: string }) {
         <PrimaryNav
           locale={locale}
           label={t("primaryLabel")}
-          store={t("store")}
-          blog={t("blog")}
-          how={t("how")}
-          support={t("support")}
-          skins={skinsEnabled() ? t("skins") : undefined}
+          labels={{ steam: t("steam"), skins: t("skins"), store: t("store"), blog: t("blog") }}
+          skins={skinsEnabled()}
         />
 
         {/* Desktop controls */}
         <div className="hidden items-center gap-2.5 lg:flex">
-          {/* The one filled control in the header belongs to the action that
-              earns money. It says "Купить", not "Пополнить": with a wallet in
-              the product the latter promises a balance top-up and delivered
-              the catalogue — which the nav's own "Магазин" already links to. */}
-          <Link href={pathFor(locale, "/store")} className={buttonStyles({ size: "md" })}>
-            {t("buy")}
-          </Link>
           <LocaleSwitcher />
           {/* The balance rides inside AccountMenu now — one control instead of
               two competing for the same corner, and it reaches mobile, which

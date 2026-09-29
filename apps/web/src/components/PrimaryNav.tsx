@@ -3,70 +3,38 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-import { navSectionActive } from "@/lib/locale-href";
-import { pathFor } from "@/lib/seo";
+import type { NavLink } from "@/lib/primary-nav";
+
+import { activeNavHref, primaryNavLinks } from "@/lib/primary-nav";
 
 interface Props {
   locale: string;
   label: string;
-  store: string;
-  blog: string;
-  how: string;
-  support: string;
-  /** The CS2 skins section's label, or undefined while the section is off. */
-  skins?: string | undefined;
+  /** Each section's label, keyed as in `primaryNavLinks`. */
+  labels: Record<NavLink["key"], string>;
+  /** Whether the CS2 skins section is on. */
+  skins: boolean;
 }
 
-export function PrimaryNav({ locale, label, store, blog, how, support, skins }: Props) {
+export function PrimaryNav({ locale, label, labels, skins }: Props) {
   const pathname = usePathname();
-  const storeHref = pathFor(locale, "/store");
-  const blogHref = pathFor(locale, "/blog");
-  const skinsHref = pathFor(locale, "/skins");
-  const howHref = `${pathFor(locale)}#how`;
-
-  const cls = (href: string, hash = false) => {
-    const active = hash ? false : navSectionActive(pathname, href);
-    return `whitespace-nowrap text-sm font-medium transition ${
-      active ? "text-foreground" : "text-tx-mute hover:text-foreground"
-    }`;
-  };
+  const links = primaryNavLinks(locale, skins);
+  const active = activeNavHref(pathname, links);
 
   return (
     <nav aria-label={label} className="hidden items-center gap-8 lg:flex">
-      <Link
-        href={storeHref}
-        aria-current={navSectionActive(pathname, storeHref) ? "page" : undefined}
-        className={cls(storeHref)}
-      >
-        {store}
-      </Link>
-      {skins !== undefined && (
+      {links.map((l) => (
         <Link
-          href={skinsHref}
-          aria-current={navSectionActive(pathname, skinsHref) ? "page" : undefined}
-          className={cls(skinsHref)}
+          key={l.key}
+          href={l.href}
+          aria-current={l.href === active ? "page" : undefined}
+          className={`whitespace-nowrap text-sm font-medium transition ${
+            l.href === active ? "text-foreground" : "text-tx-mute hover:text-foreground"
+          }`}
         >
-          {skins}
+          {labels[l.key]}
         </Link>
-      )}
-      <Link
-        href={blogHref}
-        aria-current={navSectionActive(pathname, blogHref) ? "page" : undefined}
-        className={cls(blogHref)}
-      >
-        {blog}
-      </Link>
-      <a href={howHref} className={cls(howHref, true)}>
-        {how}
-      </a>
-      <a
-        href="https://t.me/yupay_support"
-        target="_blank"
-        rel="noreferrer noopener"
-        className={cls("/support", true)}
-      >
-        {support}
-      </a>
+      ))}
     </nav>
   );
 }

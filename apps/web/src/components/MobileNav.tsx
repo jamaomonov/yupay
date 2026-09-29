@@ -13,7 +13,8 @@ import { type AppLocale } from "@/i18n/routing";
 import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
-import { hrefForLocale, navSectionActive } from "@/lib/locale-href";
+import { hrefForLocale } from "@/lib/locale-href";
+import { activeNavHref, primaryNavLinks } from "@/lib/primary-nav";
 import { pathFor } from "@/lib/seo";
 
 const LOCALES: { code: AppLocale; label: string }[] = [
@@ -23,15 +24,14 @@ const LOCALES: { code: AppLocale; label: string }[] = [
 ];
 
 /**
- * Mobile-only header controls (<md): a persistent lime "top up" pill plus a
+ * Mobile-only header controls (<lg): the account control plus a
  * hamburger that opens a full-width sheet with the nav links, an Open-in-
- * Telegram action, and a language row. Keeps a sticky conversion entry point
- * on phones, which is where the UZ/RU/Telegram-native traffic actually lands.
+ * Telegram action, and a language row.
  */
 /** `skins` — whether the CS2 skins section is on (a server flag the header reads). */
 export function MobileNav({ skins = false }: { skins?: boolean }) {
   const t = useTranslations("web.nav");
-  const { user, isLoading } = useAuth();
+  const { user } = useAuth();
   const tShow = useTranslations("web.showcase");
   const router = useRouter();
   const pathname = usePathname();
@@ -69,26 +69,17 @@ export function MobileNav({ skins = false }: { skins?: boolean }) {
     router.push(hrefForLocale(next, pathname, blogSlugs));
   };
 
-  const storeHref = pathFor(current, "/store");
-  const blogHref = pathFor(current, "/blog");
-  const skinsHref = pathFor(current, "/skins");
+  const links = primaryNavLinks(current, skins);
+  const active = activeNavHref(pathname, links);
   const sheetLinkClass =
     "border-border/60 border-b py-3.5 text-[15px] font-semibold text-foreground transition active:text-primary";
   const linkClass = (href: string) =>
     `border-border/60 border-b py-3.5 text-[15px] font-semibold transition active:text-primary ${
-      navSectionActive(pathname, href) ? "text-primary" : "text-foreground"
+      href === active ? "text-primary" : "text-foreground"
     }`;
 
   return (
     <div className="flex min-w-0 items-center gap-2 lg:hidden">
-      {/* Signed-in phones show the balance chip instead: Купить + amount +
-          burger will not fit a 390px bar, and the chip is the same control
-          desktop already uses for that corner. */}
-      {!user && !isLoading ? (
-        <Link href={storeHref} className={buttonStyles({ size: "sm", className: "px-3.5" })}>
-          {t("buy")}
-        </Link>
-      ) : null}
       <AccountMenu locale={current} />
       <button
         type="button"
@@ -115,44 +106,17 @@ export function MobileNav({ skins = false }: { skins?: boolean }) {
         >
           <div className="mx-auto max-w-[1200px] px-6 py-5">
             <nav className="flex flex-col">
-              <Link
-                href={storeHref}
-                onClick={close}
-                aria-current={navSectionActive(pathname, storeHref) ? "page" : undefined}
-                className={linkClass(storeHref)}
-              >
-                {t("store")}
-              </Link>
-              {skins && (
+              {links.map((l) => (
                 <Link
-                  href={skinsHref}
+                  key={l.key}
+                  href={l.href}
                   onClick={close}
-                  aria-current={navSectionActive(pathname, skinsHref) ? "page" : undefined}
-                  className={linkClass(skinsHref)}
+                  aria-current={l.href === active ? "page" : undefined}
+                  className={linkClass(l.href)}
                 >
-                  {t("skins")}
+                  {t(l.key)}
                 </Link>
-              )}
-              <Link
-                href={blogHref}
-                onClick={close}
-                aria-current={navSectionActive(pathname, blogHref) ? "page" : undefined}
-                className={linkClass(blogHref)}
-              >
-                {t("blog")}
-              </Link>
-              <a href={`${pathFor(current)}#how`} onClick={close} className={sheetLinkClass}>
-                {t("how")}
-              </a>
-              <a
-                href="https://t.me/yupay_support"
-                target="_blank"
-                rel="noreferrer noopener"
-                onClick={close}
-                className={sheetLinkClass}
-              >
-                {t("support")}
-              </a>
+              ))}
               {/* Signed-in customers already see the amount in the header
                   chip; this row is the same destination without repeating it. */}
               {user && (
