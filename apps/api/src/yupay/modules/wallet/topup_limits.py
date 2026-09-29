@@ -75,7 +75,7 @@ def assert_provider_matches_surface(provider: str, source: str) -> None:
 
 # min, max, quantum (inclusive bounds).
 _LIMITS: dict[str, tuple[Decimal, Decimal, Decimal]] = {
-    "UZS": (Decimal("10000"), Decimal("5000000"), Decimal("1")),
+    "UZS": (Decimal("5000"), Decimal("5000000"), Decimal("1")),
     "USDT": (Decimal("5"), Decimal("500"), Decimal("0.01")),
 }
 

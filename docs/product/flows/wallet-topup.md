@@ -28,7 +28,7 @@ sequenceDiagram
     MA->>C: balance updated
 ```
 
-Limits: UZS 10 000–5 000 000 (whole so'm); USDT 5–500 (0.01). Topping the
+Limits: UZS 5 000–5 000 000 (whole so'm); USDT 5–500 (0.01). Topping the
 wallet up _from_ the wallet is refused.
 
 ## Surfaces

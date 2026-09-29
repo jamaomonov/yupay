@@ -42,7 +42,7 @@ const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "click";
  *  knows UZS and USDT, and a top-up in anything else is a 422, so an unknown
  *  currency here blocks rather than guessing a limit. */
 const AMOUNT_LIMITS: Record<string, { min: number; max: number }> = {
-  UZS: { min: 10_000, max: 5_000_000 },
+  UZS: { min: 5_000, max: 5_000_000 },
   USDT: { min: 5, max: 500 },
 };
 

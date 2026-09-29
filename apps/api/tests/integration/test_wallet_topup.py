@@ -116,7 +116,7 @@ async def test_topup_rejects_amount_below_min(integration_client: AsyncClient) -
             "Authorization": f"Bearer {token}",
             "Idempotency-Key": "wallet-topup-reject-minxx",
         },
-        json={"amount": "9999", "provider": "mock"},
+        json={"amount": "4999", "provider": "mock"},
     )
     assert r.status_code == 422
 

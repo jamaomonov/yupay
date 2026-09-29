@@ -203,7 +203,7 @@ export function topUpAttemptKey(
  * The server is still the authority — this only spares the customer a round
  * trip to be told no. An unrecognised currency blocks rather than guessing. */
 export const TOP_UP_LIMITS: Record<string, { min: number; max: number }> = {
-  UZS: { min: 10_000, max: 5_000_000 },
+  UZS: { min: 5_000, max: 5_000_000 },
 };
 
 /** Round numbers a customer would actually transfer. */

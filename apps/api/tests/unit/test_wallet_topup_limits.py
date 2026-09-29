@@ -35,7 +35,7 @@ def test_unknown_provider_is_refused() -> None:
 
 
 def test_uzs_accepts_whole_som_in_range() -> None:
-    assert quantize_topup_amount(Decimal("10000"), "UZS") == Decimal("10000")
+    assert quantize_topup_amount(Decimal("5000"), "UZS") == Decimal("5000")
     assert quantize_topup_amount(Decimal("5000000"), "UZS") == Decimal("5000000")
 
 
@@ -46,7 +46,7 @@ def test_uzs_rejects_fractional() -> None:
 
 def test_uzs_rejects_below_min() -> None:
     with pytest.raises(ValidationError, match="below the minimum"):
-        quantize_topup_amount(Decimal("9999"), "UZS")
+        quantize_topup_amount(Decimal("4999"), "UZS")
 
 
 def test_usdt_accepts_cents() -> None:
