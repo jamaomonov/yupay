@@ -133,6 +133,12 @@ boolean}`, letting the client gate a "rate your purchase" CTA/form without a
 failed POST. `guest_email` is a capability credential only — it is never
 returned in any reviews response body and never logged.
 
+## CS2 skins SEO
+
+`GET /skins/seo/slugs?offset=&limit=` (≤ 5000, no auth, 404 while the flag is off): the
+slugs of every item the catalogue shows, alphabetical, and `total` — the web sitemap reads it
+hourly. Postgres only.
+
 ## CS2 skins admin
 
 `POST /admin/skins/trades/{id}/refund` **requires** `Idempotency-Key` (a repeat replays the

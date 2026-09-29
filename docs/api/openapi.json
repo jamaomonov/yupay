@@ -16130,6 +16130,28 @@
         "title": "SkinSellerOut",
         "type": "object"
       },
+      "SkinSlugsOut": {
+        "description": "A page of item slugs on sale, and how many there are.",
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "SkinSlugsOut",
+        "type": "object"
+      },
       "SkinStickerOut": {
         "properties": {
           "image": {
@@ -36925,6 +36947,63 @@
           }
         },
         "summary": "Counts per category, weapon, wear",
+        "tags": [
+          "skins"
+        ]
+      }
+    },
+    "/api/v1/skins/seo/slugs": {
+      "get": {
+        "description": "Slugs of active items in enabled categories, alphabetical \u2014 the same set the\ncatalogue shows, so a sitemap never lists a page the market hides.",
+        "operationId": "get_slugs_api_v1_skins_seo_slugs_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 5000,
+              "maximum": 5000,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkinSlugsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Item pages for the sitemap",
         "tags": [
           "skins"
         ]

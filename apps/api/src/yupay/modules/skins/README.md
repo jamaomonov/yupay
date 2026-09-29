@@ -45,6 +45,18 @@ order page never reads as a top-up in the seconds before the worker writes that 
 The order API names and pictures a skin line as the skin bought (`order_display.py`,
 applied in `orders/routes.py`).
 
+SEO: every on-sale item page (the catalogue's own set) is listed by
+`GET /skins/seo/slugs` (`seo_routes.py`, alphabetical pages of up to 5000) and published as
+`/skins-sitemap.xml` — an index over `/skins-sitemap/<n>.xml` (5000 items × 3 locales each)
+and `/skins-sitemap/landings.xml` — which `robots.txt` names while `SKINS_ENABLED`. The item
+page's title and description read «купить X в Узбекистане за 40 000 сум», and it carries
+Product + AggregateOffer (lowest price in soʻm, offer count), BreadcrumbList and FAQPage
+JSON-LD; the FAQ is built from the item's numbers (`apps/web/src/lib/skin-seo.ts`) and shown
+on the page too. Landing pages: `/skins/category/<category>` («Ножи CS2») and
+`/skins/weapon/<weapon>` («Скины AK-47»), from the facets (`lib/skin-landing.ts`), linked
+from the `/skins` hub. Unknown slugs answer a soft 404 (200 + `noindex`): `skins/loading.tsx`
+streams the shell before `notFound()`.
+
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,
 2026-09-28) and the web asks for `/256fx256f` on cards, `/512fx384f` on the item page.

@@ -194,3 +194,36 @@ async def test_detail_has_phase_and_cheapest(integration_client: AsyncClient, se
         {"listing_id": 1, "price_usd": "1579.85", "price_uzs": _uzs("1579.85")}
     ]
     assert (await integration_client.get("/api/v1/skins/nope")).status_code == 404
+
+
+# ---------- GET /skins/seo/slugs: every item page a sitemap should list ----------
+
+
+async def test_lists_on_sale_items_in_enabled_categories(
+    integration_client: AsyncClient, seeded: None
+) -> None:
+    r = await integration_client.get("/api/v1/skins/seo/slugs")
+    assert r.status_code == 200, r.text
+    body = r.json()
+    slugs = body["items"]
+    assert "ak-47-redline-field-tested" in slugs
+    assert "awp-manual-only-field-tested" not in slugs  # not on sale
+    assert not any(s.startswith("sticker") for s in slugs)  # category not enabled
+    assert body["total"] == len(slugs)
+    assert slugs == sorted(slugs)
+
+
+async def test_pages_are_stable_slices(integration_client: AsyncClient, seeded: None) -> None:
+    whole = (await integration_client.get("/api/v1/skins/seo/slugs")).json()["items"]
+    first = (await integration_client.get("/api/v1/skins/seo/slugs?limit=2")).json()
+    second = (await integration_client.get("/api/v1/skins/seo/slugs?limit=2&offset=2")).json()
+    assert first["items"] + second["items"] == whole[:4]
+    assert first["total"] == len(whole)
+
+
+async def test_seo_slugs_404_while_disabled(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("CS2_SKINS_ENABLED", "false")
+    cfg.get_settings.cache_clear()
+    assert (await integration_client.get("/api/v1/skins/seo/slugs")).status_code == 404

@@ -59,6 +59,7 @@ from yupay.modules.reviews.api import router as reviews_router
 from yupay.modules.skins.api import admin_ops_router as skins_admin_ops_router
 from yupay.modules.skins.api import admin_router as skins_admin_router
 from yupay.modules.skins.api import router as skins_router
+from yupay.modules.skins.api import seo_router as skins_seo_router
 from yupay.modules.skins.api import tradelink_router as skins_tradelink_router
 from yupay.modules.sourcing.api import admin_router as sourcing_admin_router
 from yupay.modules.stats.api import admin_router as stats_admin_router
@@ -87,6 +88,7 @@ router.include_router(gifts_router)
 router.include_router(gifts_admin_router)
 # Before skins_router: its GET /skins/{slug} would swallow /skins/tradelink.
 router.include_router(skins_tradelink_router)
+router.include_router(skins_seo_router)
 router.include_router(skins_router)
 router.include_router(skins_admin_router)
 router.include_router(skins_admin_ops_router)
