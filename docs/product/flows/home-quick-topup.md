@@ -6,8 +6,11 @@ away. The form prices the amount in soʻm as it is typed and hands off to the pr
 page; nothing is charged on the home page.
 
 - **Left:** the headline and subtitle of the product in front («Пополните Steam в сумах»
-  / «Купите Stars в сумах»), then tiles for everything else — CS2 skins (while the
-  section is on), games (`/store?cat=games`), gift cards (`/store?cat=gift-cards`). Both
+  / «Купите Stars в сумах»), then `HeroTiles` for everything else, each fronted by catalogue art: CS2 skins (while
+  the section is on; the gloves, Karambit and AK-47 of the skins band, fanned), games
+  (PUBG Mobile, Genshin, Free Fire logos) and gift cards (Roblox, Discord, Minecraft). A
+  tile links to the category its brands actually sit in — production files games under
+  `top-ups` — and shows its icon when no logo is set. Both
   headlines share one grid cell, so switching never moves the tiles. On phones, one
   «Открыть в Telegram» link; the mini app itself is shown further down (`AppShowcase`).
 - **Right:** `HeroTopUp` — tabs «Steam» / «Telegram Stars» over a stack of two

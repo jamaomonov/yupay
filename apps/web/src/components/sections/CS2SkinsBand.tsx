@@ -15,7 +15,7 @@ import { categoryPath, weaponPath } from "@/lib/skin-landing";
 import { displayPrice, getSkinFacets, getSkinsPage } from "@/lib/skins";
 
 /** The three showcase cards: the most wanted gloves, Karambit and AK-47 right now. */
-async function showcase(locale: string): Promise<SkinItem[]> {
+export async function showcase(locale: string): Promise<SkinItem[]> {
   const pick = async (q: Parameters<typeof getSkinsPage>[1]) =>
     (await getSkinsPage(locale, q)).items.find((i) => i.image_url && i.price_usd) ?? null;
   const items = await Promise.all([
