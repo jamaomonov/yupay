@@ -586,6 +586,28 @@ async def test_reverse_from_created_cancels_pending(db_session: AsyncSession) ->
     assert order.status == "pending_payment"
 
 
+async def test_a_new_transaction_after_a_reversed_one_can_pay(db_session: AsyncSession) -> None:
+    """The buyer tries again after a reversed attempt: the retry must not trip the
+    ``uzum:<order>`` external id the first payment already holds (Payme's twin bug)."""
+    order_id = await _seed_order(db_session)
+    await uzum_svc.create(
+        db_session,
+        service_id=SERVICE_ID,
+        trans_id="uz-retry-1",
+        params={"order_id": order_id},
+        amount=EXPECTED_TIYIN,
+    )
+    await uzum_svc.reverse(db_session, trans_id="uz-retry-1")
+    second = await uzum_svc.create(
+        db_session,
+        service_id=SERVICE_ID,
+        trans_id="uz-retry-2",
+        params={"order_id": order_id},
+        amount=EXPECTED_TIYIN,
+    )
+    assert second["status"] == "CREATED"
+
+
 async def test_reverse_from_confirmed_reverses_ledger(db_session: AsyncSession) -> None:
     # Seed a paid (not delivered) order with a succeeded uzum payment and a
     # CONFIRMED transaction directly, so the reverse call takes the ledger

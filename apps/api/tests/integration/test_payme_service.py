@@ -385,6 +385,34 @@ async def test_perform_on_cancelled_is_31008(db_session: AsyncSession) -> None:
     assert exc.value.code == -31008
 
 
+async def test_a_new_transaction_after_a_cancelled_one_can_pay(db_session: AsyncSession) -> None:
+    """Card declined, the buyer tries again: Payme opens a second transaction.
+
+    Prod 2026-09-29 (order 01a0eca7…): the retry answered -32400 — a second Payment
+    reused ``payme:<order>`` and hit ``uq_payments_provider_external`` — so Payme
+    told the buyer «Сервис поставщика услуг недоступен». 19 such errors in a week.
+    """
+    order_id = await _seed_order(db_session)
+    await payme_svc.create_transaction(
+        db_session,
+        payme_id="pt-retry-1",
+        time=1_700_000_000_000,
+        amount=EXPECTED_TIYIN,
+        account={"order_id": order_id},
+    )
+    await payme_svc.cancel_transaction(db_session, payme_id="pt-retry-1", reason=2)
+    second = await payme_svc.create_transaction(
+        db_session,
+        payme_id="pt-retry-2",
+        time=1_700_000_100_000,
+        amount=EXPECTED_TIYIN,
+        account={"order_id": order_id},
+    )
+    assert second["state"] == 1
+    performed = await payme_svc.perform_transaction(db_session, payme_id="pt-retry-2")
+    assert performed["state"] == 2
+
+
 # ---------- cancel_transaction ----------
 
 
@@ -875,3 +903,37 @@ async def test_cancel_state_2_after_a_refund_to_the_balance_is_31007(
     with pytest.raises(PaymeError) as exc:
         await payme_svc.cancel_transaction(db_session, payme_id="pt-cancel-wallet", reason=5)
     assert exc.value.code == -31007
+
+
+async def test_the_site_can_start_payme_again_after_a_cancelled_attempt(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Back on our page after a declined card, «Оплатить через Payme» must open a new
+    checkout — not a 409 from the ``payme:<order>`` id the cancelled payment holds."""
+    from yupay.core import config as cfg
+    from yupay.modules.payments import service as pay_svc
+
+    monkeypatch.setenv("PAYME_MERCHANT_ID", "6a1faaca155c8e168e2a9828")
+    monkeypatch.setenv("PAYME_KEY", "test-key")
+    cfg.get_settings.cache_clear()
+    try:
+        order_id = await _seed_order(db_session)
+        first = await pay_svc.create_intent(
+            db_session, order_id=order_id, provider="payme", return_url=None
+        )
+        await payme_svc.create_transaction(
+            db_session,
+            payme_id="pt-site-retry",
+            time=1_700_000_000_000,
+            amount=EXPECTED_TIYIN,
+            account={"order_id": order_id},
+        )
+        await payme_svc.cancel_transaction(db_session, payme_id="pt-site-retry", reason=2)
+        second = await pay_svc.create_intent(
+            db_session, order_id=order_id, provider="payme", return_url=None
+        )
+        assert second.id != first.id
+        assert second.status == "pending"
+        assert second.intent_url
+    finally:
+        cfg.get_settings.cache_clear()

@@ -29,6 +29,7 @@ from yupay.core.logging import get_logger
 from yupay.modules.affiliate import attribution as affiliate_attribution
 from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.payments import provider_state
+from yupay.modules.payments.external_ids import unclaimed_external_id
 from yupay.modules.payments.gateways import (
     PaymentGatewayError,
     PaymentNotIntegratedError,
@@ -274,7 +275,14 @@ async def create_intent(
         amount=order.total_charged,
         currency=order.currency,
         intent_url=intent.intent_url,
-        external_id=intent.external_id,
+        # A retry after a cancelled attempt must not reuse the cancelled one's id.
+        external_id=(
+            await unclaimed_external_id(
+                db, provider=gw.provider, external_id=intent.external_id, payment_id=payment_id
+            )
+            if intent.external_id is not None
+            else None
+        ),
         extra_metadata=intent.extra_metadata,
         idempotency_key=idempotency_key,
     )

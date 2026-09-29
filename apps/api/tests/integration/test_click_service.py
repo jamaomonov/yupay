@@ -871,3 +871,15 @@ async def test_build_checkout_url_unknown_provider_raises(_click_env: None) -> N
             amount=TOTAL_CHARGED,
             return_url="https://yupay.uz/return",
         )
+
+
+async def test_a_new_prepare_after_a_cancelled_one_can_pay(
+    db_session: AsyncSession, _click_env: None
+) -> None:
+    """A declined card, then a retry: Click prepares again on the same order, and the
+    cancelled payment's ``click:<order>`` id must not turn it into a system error."""
+    order_id = await _seed_order(db_session, total_charged=TOTAL_CHARGED)
+    first = await _prepared_txn(db_session, order_id=order_id, click_trans_id=3101)
+    await click_svc.cancel(db_session, merchant_prepare_id=first["merchant_prepare_id"])
+    second = await _prepared_txn(db_session, order_id=order_id, click_trans_id=3102)
+    assert second["merchant_prepare_id"] != first["merchant_prepare_id"]

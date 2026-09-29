@@ -36,6 +36,7 @@ from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.risk import precharge_veto_full, record_precharge_veto
 from yupay.modules.payments import service as pay_svc
+from yupay.modules.payments.external_ids import unclaimed_external_id
 from yupay.modules.payments.models import Payment
 from yupay.modules.uzum.errors import (
     invalid_amount,
@@ -201,14 +202,17 @@ async def _ensure_payment(db: AsyncSession, order: Order) -> Payment:
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+    payment_id = new_id()
     payment = Payment(
-        id=new_id(),
+        id=payment_id,
         order_id=order.id,
         provider="uzum",
         status="pending",
         amount=order.total_charged,
         currency="UZS",
-        external_id=f"uzum:{order.id}",
+        external_id=await unclaimed_external_id(
+            db, provider="uzum", external_id=f"uzum:{order.id}", payment_id=payment_id
+        ),
     )
     db.add(payment)
     await db.flush()

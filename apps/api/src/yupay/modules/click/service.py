@@ -52,6 +52,7 @@ from yupay.modules.click.models import ClickTransaction
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.risk import precharge_veto_full, record_precharge_veto
 from yupay.modules.payments import service as pay_svc
+from yupay.modules.payments.external_ids import unclaimed_external_id
 from yupay.modules.payments.models import Payment
 
 
@@ -190,14 +191,18 @@ async def _ensure_payment(db: AsyncSession, order: Order, *, provider: str) -> P
     ).scalar_one_or_none()
     if existing is not None:
         return existing
+    payment_id = new_id()
     payment = Payment(
-        id=new_id(),
+        id=payment_id,
         order_id=order.id,
         provider=provider,
         status="pending",
         amount=order.total_charged,
         currency="UZS",
-        external_id=f"{provider}:{order.id}",
+        # A retry after a cancelled attempt must not reuse the cancelled one's id.
+        external_id=await unclaimed_external_id(
+            db, provider=provider, external_id=f"{provider}:{order.id}", payment_id=payment_id
+        ),
     )
     db.add(payment)
     await db.flush()
