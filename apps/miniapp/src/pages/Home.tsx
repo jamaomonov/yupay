@@ -11,7 +11,7 @@ import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { useT } from "@/lib/i18n";
 import { mergeRegions } from "@/lib/region";
-import { hrefForGame } from "@/lib/routes";
+import { hrefForGame, inHomeGrid } from "@/lib/routes";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
 const ALL_KEY = "__all__";
@@ -160,12 +160,16 @@ export default function Home() {
     [gamesQuery.data],
   );
 
+  // What the services grid (and its count and category chips) shows; search looks
+  // through every brand.
+  const gridGames = useMemo(() => games.filter((g) => inHomeGrid(g.id)), [games]);
+
   const categoriesQuery = useCategoriesList();
   const apiCategories = categoriesQuery.data ?? [];
   // Only show category chips that actually have at least one brand attached —
   // an empty filter is just visual noise.
   const visibleCategorySlugs = new Set(
-    games.map((g) => g.category_slug).filter(Boolean) as string[],
+    gridGames.map((g) => g.category_slug).filter(Boolean) as string[],
   );
   const categoryChips: { key: string; label: string }[] = [
     { key: ALL_KEY, label: t("home.all") },
@@ -196,7 +200,9 @@ export default function Home() {
   }, [search, games]);
 
   const filtered =
-    activeCategory === ALL_KEY ? games : games.filter((g) => g.category_slug === activeCategory);
+    activeCategory === ALL_KEY
+      ? gridGames
+      : gridGames.filter((g) => g.category_slug === activeCategory);
 
   const displayGames = searchOpen && search.trim() ? searchResults : filtered;
 

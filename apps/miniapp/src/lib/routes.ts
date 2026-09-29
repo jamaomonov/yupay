@@ -35,3 +35,12 @@ export function hrefForGameSlug(slug: string): string {
 export function hrefForGame(game: { id: string }): string {
   return hrefForGameSlug(game.id);
 }
+
+/**
+ * Whether a brand gets a tile in the home screen's services grid. CS2 skins does not:
+ * the market has its own promo card at the top of the home screen, and a second, plain
+ * tile in the grid only repeats it. Search still finds it.
+ */
+export function inHomeGrid(slug: string): boolean {
+  return slug !== CS2_SKINS_SLUG;
+}
