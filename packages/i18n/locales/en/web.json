@@ -725,7 +725,7 @@
       "expired": "This order expired before payment.",
       "refunded": "This order was refunded.",
       "partially_refunded": "This order was partially refunded.",
-      "fulfillingSkin": "Payment accepted, buying the skin — the trade offer will arrive in Steam. Details below.",
+      "fulfillingSkin": "Payment accepted, delivering the skin — the trade offer will arrive in Steam. Details below.",
       "failedSkin": "We are checking the purchase — please contact support, the order number is already filled in.",
       "refundedSkin": "The trade did not happen — the money is back on your YuPay balance."
     },
@@ -980,7 +980,7 @@
     },
     "trade": {
       "title": "Steam trade",
-      "buying": "Buying the skin — the trade offer will arrive in Steam within a minute",
+      "buying": "Delivering the skin — the trade offer will arrive in Steam within a minute",
       "offer_sent": "The trade offer is sent — accept it in Steam",
       "acceptBy": "Accept by {time}",
       "openOffer": "Open the trade in Steam",

@@ -38,7 +38,7 @@ const messages = {
         expired: "This order expired before payment.",
         refunded: "This order was refunded.",
         partially_refunded: "This order was partially refunded.",
-        fulfillingSkin: "Buying the skin — the trade offer will arrive in Steam.",
+        fulfillingSkin: "Delivering the skin — the trade offer will arrive in Steam.",
         failedSkin: "We are checking the purchase — please contact support.",
         refundedSkin: "The money is back on your YuPay balance.",
       },

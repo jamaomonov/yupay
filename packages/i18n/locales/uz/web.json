@@ -725,7 +725,7 @@
       "expired": "Bu buyurtma toʻlovdan oldin muddati oʻtdi.",
       "refunded": "Bu buyurtma boʻyicha mablagʻ qaytarildi.",
       "partially_refunded": "Bu buyurtma boʻyicha mablagʻ qisman qaytarildi.",
-      "fulfillingSkin": "To'lov qabul qilindi, skinni sotib olyapmiz — almashuv Steam'ga keladi. Batafsil pastda.",
+      "fulfillingSkin": "To'lov qabul qilindi, skinni jo'natyapmiz — almashuv Steam'ga keladi. Batafsil pastda.",
       "failedSkin": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing, buyurtma raqami allaqachon qo'yilgan.",
       "refundedSkin": "Almashuv amalga oshmadi — pul YuPay balansiga qaytdi."
     },
@@ -980,7 +980,7 @@
     },
     "trade": {
       "title": "Steam'dagi almashuv",
-      "buying": "Skinni sotib olyapmiz — almashuv taklifi bir daqiqada Steam'ga keladi",
+      "buying": "Skinni jo'natyapmiz — almashuv taklifi bir daqiqada Steam'ga keladi",
       "offer_sent": "Almashuv yuborildi — uni Steam'da qabul qiling",
       "acceptBy": "{time} gacha qabul qiling",
       "openOffer": "Almashuvni Steam'da ochish",
