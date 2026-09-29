@@ -39,6 +39,11 @@ Prices everywhere are our sell price from `pricing.quote()`, stored per row by
 `repricing.reprice_rows` after every price sync and every pricing change, so a
 filter bound, a sort and a card always agree.
 
+The grid has no «Показать ещё» button: the first 48 are server-rendered, and the next
+batch is appended as the reader nears the end, with a spinner while it loads and a retry
+button only if a batch fails (`SkinGridMore` on the web; the same in the mini app). A
+`<noscript>` link still walks the pages by cursor.
+
 The filter panel follows the category, as Waxpeer's does (`filterSections` in
 `@yupay/utils`, shared by web and mini app): its rarities are the category's own (agents:
 Master…Distinguished; cases: Base / Highlight Base Grade); with no category picked it offers

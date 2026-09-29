@@ -1,5 +1,5 @@
 import { parseSkinQuery, skinQueryString } from "@yupay/utils";
-import { Search, SearchX } from "lucide-react";
+import { Loader2, Search, SearchX } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 
@@ -77,6 +77,8 @@ export default function CS2SkinMarket() {
     };
   }, [query.category]);
 
+  const more = useRef<HTMLDivElement>(null);
+
   function load(append: boolean): void {
     const mine = ++seq.current;
     setPhase(append ? "loadingMore" : "loading");
@@ -96,6 +98,22 @@ export default function CS2SkinMarket() {
   useEffect(() => {
     load(false);
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps -- `key` is the query
+
+  // The next batch loads as the reader nears the end of the grid — no button.
+  useEffect(() => {
+    const el = more.current;
+    if (!el || cursor === null || phase !== "idle") return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((e) => e.isIntersecting)) load(true);
+      },
+      { rootMargin: "600px 0px" },
+    );
+    io.observe(el);
+    return () => {
+      io.disconnect();
+    };
+  }, [cursor, phase]); // eslint-disable-line react-hooks/exhaustive-deps -- `load` reads this render's cursor
 
   useEffect(() => {
     const text = raw.trim();
@@ -192,16 +210,14 @@ export default function CS2SkinMarket() {
               <Retry label={t("cs2.error")} onRetry={() => load(true)} />
             ) : (
               cursor !== null && (
-                <div className="mt-5 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => load(true)}
-                    disabled={phase === "loadingMore"}
-                    className="rounded-xl px-4 py-2 text-sm font-semibold text-white/70 disabled:opacity-50"
-                    style={FIELD}
-                  >
-                    {t("cs2.loadMore")}
-                  </button>
+                <div ref={more} className="mt-5 flex min-h-8 justify-center">
+                  {phase === "loadingMore" && (
+                    <Loader2
+                      size={22}
+                      className="animate-spin text-white/50"
+                      aria-label={t("cs2.loadMore")}
+                    />
+                  )}
                 </div>
               )
             )}

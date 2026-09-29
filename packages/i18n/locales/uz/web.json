@@ -958,6 +958,7 @@
     },
     "soldOut": "Mavjud emas",
     "loadMore": "Yana koʻrsatish",
+    "loading": "Yuklanmoqda…",
     "empty": "Hech narsa topilmadi. Boshqa nom bilan qidiring yoki filtrlarni tozalang.",
     "fromPrice": "{price} dan",
     "steamPrice": "Steam’dagi narx",

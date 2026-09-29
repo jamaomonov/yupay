@@ -958,6 +958,7 @@
     },
     "soldOut": "Out of stock",
     "loadMore": "Show more",
+    "loading": "Loading…",
     "empty": "Nothing found. Try another name or reset the filters.",
     "fromPrice": "from {price}",
     "steamPrice": "Steam price",

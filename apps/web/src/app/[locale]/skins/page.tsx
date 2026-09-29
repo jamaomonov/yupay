@@ -11,6 +11,7 @@ import { SkinCard } from "@/components/skins/SkinCard";
 import { SkinCategoryBar } from "@/components/skins/SkinCategoryBar";
 import { SkinFilterDrawer } from "@/components/skins/SkinFilterDrawer";
 import { SkinFilters } from "@/components/skins/SkinFilters";
+import { SkinGridMore } from "@/components/skins/SkinGridMore";
 import { SkinLandingLinks } from "@/components/skins/SkinLandingLinks";
 import { SkinSearch } from "@/components/skins/SkinSearch";
 import { SkinSort } from "@/components/skins/SkinSort";
@@ -102,12 +103,13 @@ export default async function SkinsPage({ params, searchParams }: Props) {
           </ul>
         )}
         {page.next_cursor && (
-          <Link
-            href={pathFor(locale, PATH) + skinQueryString(query, { cursor: page.next_cursor })}
-            className="border-border mx-auto mt-6 block w-fit rounded-xl border px-6 py-3 font-semibold"
-          >
-            {t("loadMore")}
-          </Link>
+          <SkinGridMore
+            key={skinQueryString(query)}
+            query={query}
+            cursor={page.next_cursor}
+            locale={locale}
+            shown={page.items.map((i) => i.slug)}
+          />
         )}
         {/* The unfiltered hub links its landing pages; a filtered view is noindex anyway. */}
         {!filtered && <SkinLandingLinks facets={facets} locale={locale} />}

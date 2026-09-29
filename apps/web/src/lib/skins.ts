@@ -53,6 +53,14 @@ export async function getSkinsPage(locale: string, q: SkinQuery): Promise<SkinsP
   }
 }
 
+/** The next catalogue batch from the browser, for the grid's infinite scroll. */
+export async function fetchSkinsPage(locale: string, q: SkinQuery): Promise<SkinsPage> {
+  return apiFetch<SkinsPage>(`/skins/catalog?${apiParams(q)}`, {
+    anonymous: true,
+    headers: { "Accept-Language": locale },
+  });
+}
+
 /** Facets; with a category, weapons/wears/rarities are counted inside it. */
 export async function getSkinFacets(locale: string, category?: string): Promise<SkinFacets | null> {
   const qs = category ? `?category=${encodeURIComponent(category)}` : "";
