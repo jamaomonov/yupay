@@ -45,6 +45,8 @@ Master…Distinguished; cases: Base / Highlight Base Grade); with no category pi
 the weapon scale, Contraband…Consumer Grade, not all seventeen grades mixed. Wear shows only
 where items have an exterior (not agents, cases, keys, charms, music kits), StatTrak™ only
 for weapons, knives and music kits. A value already chosen from a link stays visible.
+Agents also get a side — All agents / Counter-Terrorists / Terrorists (`?team=ct|t`), as on
+Waxpeer. Options carry no item counts (owner, 2026-09-29).
 
 ## Mini app
 

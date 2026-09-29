@@ -50,3 +50,22 @@ def test_dedupe_keeps_the_first_of_a_name_and_phase() -> None:
     kept = dedupe(doubled)
     assert len(kept) == len(rows)
     assert all(isinstance(row, CatalogRow) for row in kept)
+
+
+def test_an_agent_carries_its_side() -> None:
+    rows = rows_from_file(
+        "agents",
+        [
+            {"market_hash_name": "Bloody Darryl | The Professionals", "team": {"id": "terrorists"}},
+            {"market_hash_name": "Cmdr. Mae | SWAT", "team": {"id": "counter-terrorists"}},
+            {"market_hash_name": "Someone | Nobody"},
+        ],
+    )
+    assert [r.team for r in rows] == ["t", "ct", None]
+
+
+def test_a_weapon_has_no_side() -> None:
+    rows = rows_from_skins(
+        [{"market_hash_name": "AK-47 | Redline (Field-Tested)", "weapon": {"name": "AK-47"}}]
+    )
+    assert rows[0].team is None

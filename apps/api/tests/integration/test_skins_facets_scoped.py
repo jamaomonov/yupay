@@ -60,6 +60,9 @@ async def seeded(db_session: AsyncSession) -> None:
             _row("AK-47 | C (Field-Tested)", "rifles", "AK-47", "FT", count=1),
             _row("Glock-18 | D (Factory New)", "pistols", "Glock-18", "FN", count=500),
             _row("Kilowatt Case", "cases", None, None, count=9000),
+            _row("Cmdr. Mae | SWAT", "agents", None, None, team="ct", rarity="Master"),
+            _row("Sir Bloody | Guerrilla", "agents", None, None, team="t", rarity="Superior"),
+            _row("Bloody Darryl | The Professionals", "agents", None, None, team="t"),
         ]
     )
     await db_session.commit()
@@ -72,7 +75,7 @@ async def test_weapons_are_scoped_and_led_by_the_classics(
     assert [w["value"] for w in body["weapons"]] == ["AK-47", "AWP", "Galil AR"]
     assert {e["value"]: e["count"] for e in body["exteriors"]} == {"FT": 2, "MW": 1}
     # The tile row still sees every category.
-    assert {c["value"] for c in body["categories"]} == {"rifles", "pistols", "cases"}
+    assert {c["value"] for c in body["categories"]} == {"rifles", "pistols", "cases", "agents"}
 
 
 async def test_rarities_carry_their_colour(integration_client: AsyncClient, seeded: None) -> None:
@@ -107,3 +110,19 @@ async def test_rarities_run_from_rarest_to_commonest(
 async def test_an_unknown_category_is_refused(integration_client: AsyncClient) -> None:
     r = await integration_client.get("/api/v1/skins/facets?category=bogus")
     assert r.status_code == 422
+
+
+async def test_agents_count_their_sides(integration_client: AsyncClient, seeded: None) -> None:
+    body = (await integration_client.get("/api/v1/skins/facets?category=agents")).json()
+    assert body["teams"] == [{"value": "t", "count": 2}, {"value": "ct", "count": 1}]
+    rifles = (await integration_client.get("/api/v1/skins/facets?category=rifles")).json()
+    assert rifles["teams"] == []
+
+
+async def test_the_catalogue_filters_agents_by_side(
+    integration_client: AsyncClient, seeded: None
+) -> None:
+    body = (await integration_client.get("/api/v1/skins/catalog?category=agents&team=ct")).json()
+    assert [i["name"] for i in body["items"]] == ["Cmdr. Mae | SWAT"]
+    bad = await integration_client.get("/api/v1/skins/catalog?category=agents&team=zz")
+    assert bad.status_code == 422

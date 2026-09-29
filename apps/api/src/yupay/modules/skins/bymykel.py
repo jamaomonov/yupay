@@ -60,6 +60,8 @@ class CatalogRow:
     max_float: Decimal | None
     paint_index: int | None
     search_text: str
+    #: An agent's side (``ct`` / ``t``); ``None`` for everything that is not an agent.
+    team: str | None = None
 
 
 @dataclass(frozen=True)
@@ -94,6 +96,15 @@ def _rarity(entry: dict[str, Any]) -> tuple[str | None, str | None]:
     return (name if isinstance(name, str) else None, color if isinstance(color, str) else None)
 
 
+#: ByMykel's ``team.id`` → ours.
+_TEAMS = {"terrorists": "t", "counter-terrorists": "ct"}
+
+
+def _team(entry: dict[str, Any]) -> str | None:
+    team = entry.get("team")
+    return _TEAMS.get(team.get("id", "")) if isinstance(team, dict) else None
+
+
 def _row(
     entry: dict[str, Any], category: Callable[[ParsedName], str], *, weapons: bool = True
 ) -> CatalogRow | None:
@@ -123,6 +134,7 @@ def _row(
         max_float=_decimal(entry.get("max_float")),
         paint_index=_int(entry.get("paint_index")),
         search_text=search_text(parsed.market_hash_name, phase or ""),
+        team=_team(entry),
     )
 
 
@@ -188,6 +200,7 @@ _METADATA_COLUMNS: tuple[str, ...] = (
     "max_float",
     "paint_index",
     "search_text",
+    "team",
 )
 
 

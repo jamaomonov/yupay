@@ -52,6 +52,8 @@ class SkinFacetsOut(BaseModel):
     weapons: list[FacetOut]
     exteriors: list[FacetOut]
     rarities: list[RarityFacetOut]
+    #: An agent's side (``ct`` / ``t``); empty outside a category that has sides.
+    teams: list[FacetOut] = []
 
 
 class SkinSuggestOut(BaseModel):

@@ -64,3 +64,37 @@ it("offers the weapon rarity scale when no category is picked", () => {
   expect(screen.getByText("Качество")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: /StatTrak/ })).toBeInTheDocument();
 });
+
+it("lets agents be narrowed to one side", () => {
+  render(
+    <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
+      <SkinFilters
+        query={{ sort: "-price", category: "agents", team: "ct" }}
+        facets={{
+          categories: [],
+          weapons: [],
+          exteriors: [],
+          rarities: [],
+          teams: [
+            { value: "t", count: 2 },
+            { value: "ct", count: 1 },
+          ],
+        }}
+        locale="ru"
+      />
+    </NextIntlClientProvider>,
+  );
+  const ct = screen.getByRole("radio", { name: /Спецназ/ });
+  expect(ct).toHaveAttribute("aria-checked", "true");
+  const all = screen.getByRole("radio", { name: /Все агенты/ });
+  expect(all).toHaveAttribute("aria-checked", "false");
+  expect(all.getAttribute("href")).not.toContain("team=");
+  expect(screen.getByRole("radio", { name: /Террористы/ }).getAttribute("href")).toContain(
+    "team=t",
+  );
+});
+
+it("has no side filter outside agents", () => {
+  renderFilters(undefined, ["Covert"], 5);
+  expect(screen.queryByRole("radio", { name: /Спецназ/ })).not.toBeInTheDocument();
+});

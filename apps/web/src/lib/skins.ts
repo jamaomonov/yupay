@@ -32,6 +32,7 @@ function apiParams(q: SkinQuery): string {
   if (q.weapon) p.set("weapon", q.weapon);
   if (q.exterior) p.set("exterior", q.exterior);
   if (q.rarity) p.set("rarity", q.rarity);
+  if (q.team) p.set("team", q.team);
   if (q.stattrak) p.set("stattrak", "true");
   if (q.q) p.set("q", q.q);
   if (q.minUzs !== undefined) p.set("min_uzs", String(q.minUzs));

@@ -53,7 +53,6 @@ export function SkinFilters({
   const t = useTranslations("web.skins");
   const base = pathFor(locale, PATH);
   const href = (patch: SkinQueryPatch) => base + skinQueryString(query, patch);
-  const wearCounts = new Map(facets.exteriors.map((f) => [f.value, f.count]));
   // Only the filters this category has: no wear on agents or cases, StatTrak only where
   // it exists, the category's own rarities (the weapon scale when none is picked).
   const show = filterSections(query.category, facets, query.rarity);
@@ -61,6 +60,39 @@ export function SkinFilters({
   return (
     <div>
       <SkinPriceFilter query={query} locale={locale} />
+
+      {show.team && (
+        <>
+          <p className="text-tx-mute mb-1 mt-5 text-[12px] font-semibold uppercase">
+            {t("team.title")}
+          </p>
+          <ul role="radiogroup" aria-label={t("team.title")}>
+            {([undefined, "ct", "t"] as const).map((side) => {
+              const on = query.team === side;
+              return (
+                <li key={side ?? "all"}>
+                  <Link
+                    href={href({ team: side })}
+                    role="radio"
+                    aria-checked={on}
+                    className={option(on)}
+                  >
+                    <span
+                      aria-hidden
+                      className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${
+                        on ? "border-primary" : "border-border-2"
+                      }`}
+                    >
+                      {on && <span className="bg-primary size-2 rounded-full" />}
+                    </span>
+                    <span className="flex-1">{t(`team.${side ?? "all"}`)}</span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </>
+      )}
 
       {show.wear && (
         <>
@@ -75,9 +107,6 @@ export function SkinFilters({
                 >
                   <Check on={query.exterior === e} />
                   <span className="flex-1">{t(`exterior.${e}`)}</span>
-                  <span className="text-tx-dim font-mono text-[11px]">
-                    {wearCounts.get(e) ?? 0}
-                  </span>
                 </Link>
               </li>
             ))}
@@ -107,7 +136,6 @@ export function SkinFilters({
                     />
                     {r.value}
                   </span>
-                  <span className="text-tx-dim font-mono text-[11px]">{r.count}</span>
                 </Link>
               </li>
             ))}

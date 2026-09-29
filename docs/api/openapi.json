@@ -15547,6 +15547,14 @@
             "title": "Rarities",
             "type": "array"
           },
+          "teams": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/FacetOut"
+            },
+            "title": "Teams",
+            "type": "array"
+          },
           "weapons": {
             "items": {
               "$ref": "#/components/schemas/FacetOut"
@@ -36765,6 +36773,26 @@
                 }
               ],
               "title": "Rarity"
+            }
+          },
+          {
+            "in": "query",
+            "name": "team",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "enum": [
+                    "ct",
+                    "t"
+                  ],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Team"
             }
           },
           {

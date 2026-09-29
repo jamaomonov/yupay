@@ -138,6 +138,7 @@ export function activeFilterCount(q: SkinQuery): number {
   return [
     q.exterior !== undefined,
     q.rarity !== undefined,
+    q.team !== undefined,
     q.stattrak === true,
     q.minUzs !== undefined || q.maxUzs !== undefined,
   ].filter(Boolean).length;

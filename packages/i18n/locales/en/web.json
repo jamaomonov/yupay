@@ -1070,6 +1070,12 @@
       "categories": "Sections",
       "popular": "Popular weapons",
       "skinsOf": "{weapon} skins"
+    },
+    "team": {
+      "title": "Team",
+      "all": "All agents",
+      "ct": "Counter-Terrorists",
+      "t": "Terrorists"
     }
   },
   "cs2Band": {

@@ -11,7 +11,7 @@ import contextlib
 import hashlib
 import json
 from decimal import Decimal
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
 from redis.exceptions import RedisError
@@ -145,6 +145,7 @@ async def get_catalog(
     stattrak: bool | None = None,
     souvenir: bool | None = None,
     rarity: Annotated[str | None, Query(max_length=64)] = None,
+    team: Annotated[Literal["ct", "t"] | None, Query()] = None,
     min_uzs: Annotated[Decimal | None, Query(ge=0, le=10**12)] = None,
     max_uzs: Annotated[Decimal | None, Query(ge=0, le=10**12)] = None,
     q: Annotated[str | None, Query(max_length=80)] = None,
@@ -164,6 +165,7 @@ async def get_catalog(
         stattrak=stattrak,
         souvenir=souvenir,
         rarity=rarity,
+        team=team,
         min_usd=min_usd,
         max_usd=max_usd,
         q=q,
@@ -200,6 +202,7 @@ async def get_facets(
             weapons=[FacetOut(value=v, count=c) for v, c in f.weapons],
             exteriors=[FacetOut(value=v, count=c) for v, c in f.exteriors],
             rarities=[RarityFacetOut(value=v, count=c, color=k) for v, c, k in f.rarities],
+            teams=[FacetOut(value=v, count=c) for v, c in f.teams],
         ).model_dump(mode="json")
 
     return SkinFacetsOut.model_validate(

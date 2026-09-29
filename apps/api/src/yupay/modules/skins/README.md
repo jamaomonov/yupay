@@ -85,6 +85,10 @@ from yupay.modules.skins.api import (
 (categories stay global for the tile row); rarities carry their colour. Weapons lead with
 `service.WEAPON_PRIORITY` (AK-47, M4A4, M4A1-S, AWP, …), then by count.
 
+`skin_items.team` (`ct` / `t`, null for everything but agents) comes from ByMykel's
+`team.id` on import; `/skins/catalog?team=` filters by it and the scoped facets return
+`teams` counts. A row imported before migration 0091 stays null until the next import.
+
 ## Stored prices
 
 `sell_price_usd` and `discount_percent` are derived by `repricing.reprice_rows` after

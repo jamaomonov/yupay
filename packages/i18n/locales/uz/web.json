@@ -1070,6 +1070,12 @@
       "categories": "Bo'limlar",
       "popular": "Mashhur qurollar",
       "skinsOf": "{weapon} skinlari"
+    },
+    "team": {
+      "title": "Tomon",
+      "all": "Barcha agentlar",
+      "ct": "Maxsus kuchlar",
+      "t": "Terrorchilar"
     }
   },
   "cs2Band": {

@@ -20,6 +20,9 @@ export const SKIN_CATEGORIES = [
   "charms",
 ] as const;
 export type SkinCategory = (typeof SKIN_CATEGORIES)[number];
+/** An agent's side: Counter-Terrorist or Terrorist. */
+export const SKIN_TEAMS = ["ct", "t"] as const;
+export type SkinTeam = (typeof SKIN_TEAMS)[number];
 const SORTS: readonly SkinSort[] = ["price", "-price", "discount", "popular"];
 /** What the market opens on: knives and gloves first, as skinsavdo.uz does — `popular` opened on a wall of cases, `price` on $0.20 stickers. */
 export const DEFAULT_SORT: SkinSort = "-price";
@@ -61,6 +64,8 @@ export interface SkinFacets {
   weapons: Facet[];
   exteriors: Facet[];
   rarities: Facet[];
+  /** An agent's side, counted inside a category; optional: an older API omits it. */
+  teams?: Facet[];
 }
 export interface SkinFamilyMember {
   slug: string;
@@ -96,6 +101,8 @@ export interface SkinQuery {
   weapon?: string;
   exterior?: Exterior;
   rarity?: string;
+  /** An agent's side. */
+  team?: SkinTeam;
   stattrak?: boolean;
   q?: string;
   minUzs?: number;
@@ -132,6 +139,8 @@ export function parseSkinQuery(params: Params): SkinQuery {
   }
   const rarity = first(params.rarity);
   if (rarity && SAFE_TEXT.test(rarity)) q.rarity = rarity;
+  const team = first(params.team);
+  if (team && (SKIN_TEAMS as readonly string[]).includes(team)) q.team = team as SkinTeam; // narrowed above
   if (first(params.stattrak) === "1") q.stattrak = true;
   const text = first(params.q);
   if (text && SAFE_TEXT.test(text)) q.q = text;
@@ -151,6 +160,7 @@ const ORDER: readonly (keyof SkinQuery)[] = [
   "weapon",
   "exterior",
   "rarity",
+  "team",
   "stattrak",
   "q",
   "minUzs",
@@ -163,6 +173,7 @@ const KEY: Record<keyof SkinQuery, string> = {
   weapon: "weapon",
   exterior: "exterior",
   rarity: "rarity",
+  team: "team",
   stattrak: "stattrak",
   q: "q",
   minUzs: "min",
@@ -211,6 +222,8 @@ const STATTRAK_CATEGORIES: ReadonlySet<SkinCategory> = new Set([
 ]);
 
 export interface FilterSections {
+  /** Side filter (Counter-Terrorist / Terrorist): only where the facets carry sides — agents. */
+  team: boolean;
   /** Wear filter: only where items have an exterior (not agents, cases, charms…). */
   wear: boolean;
   /** StatTrak™ toggle: only where StatTrak items exist. */
@@ -237,6 +250,7 @@ export function filterSections(
       ? facets.rarities.filter((r) => weaponScale.includes(r.value) || r.value === chosenRarity)
       : facets.rarities;
   return {
+    team: (facets.teams ?? []).length > 0,
     wear: facets.exteriors.length > 0,
     stattrak: category === undefined || STATTRAK_CATEGORIES.has(category),
     rarities,

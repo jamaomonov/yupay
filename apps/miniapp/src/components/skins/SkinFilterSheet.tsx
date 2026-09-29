@@ -1,9 +1,9 @@
-import { EXTERIORS, filterSections } from "@yupay/utils";
+import { EXTERIORS, SKIN_TEAMS, filterSections } from "@yupay/utils";
 import { activeFilterCount } from "@yupay/utils";
 import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
-import type { Exterior, SkinFacets, SkinQuery, SkinQueryPatch } from "@yupay/utils";
+import type { Exterior, SkinFacets, SkinQuery, SkinQueryPatch, SkinTeam } from "@yupay/utils";
 
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useT } from "@/lib/i18n";
@@ -13,6 +13,7 @@ const FIELD = { background: "hsl(var(--surface-2))", border: "1px solid hsl(var(
 interface Draft {
   exterior: Exterior | undefined;
   rarity: string | undefined;
+  team: SkinTeam | undefined;
   stattrak: boolean;
   min: string;
   max: string;
@@ -22,6 +23,7 @@ function draftOf(q: SkinQuery): Draft {
   return {
     exterior: q.exterior,
     rarity: q.rarity,
+    team: q.team,
     stattrak: q.stattrak === true,
     min: q.minUzs === undefined ? "" : String(q.minUzs),
     max: q.maxUzs === undefined ? "" : String(q.maxUzs),
@@ -37,6 +39,7 @@ function bound(text: string): number | undefined {
 const CLEARED: SkinQueryPatch = {
   exterior: undefined,
   rarity: undefined,
+  team: undefined,
   stattrak: undefined,
   minUzs: undefined,
   maxUzs: undefined,
@@ -66,6 +69,7 @@ export function SkinFilterSheet({
     onChange({
       exterior: draft.exterior,
       rarity: draft.rarity,
+      team: draft.team,
       stattrak: draft.stattrak || undefined,
       minUzs: bound(draft.min),
       maxUzs: bound(draft.max),
@@ -113,6 +117,32 @@ export function SkinFilterSheet({
           <SheetTitle>{t("cs2.filters")}</SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-5">
+          {show?.team && (
+            <fieldset>
+              <legend className="mb-2 text-xs font-semibold text-white/60">
+                {t("cs2.team.title")}
+              </legend>
+              <div className="flex flex-wrap gap-2">
+                {([undefined, ...SKIN_TEAMS] as const).map((side) => {
+                  const on = draft.team === side;
+                  return (
+                    <button
+                      key={side ?? "all"}
+                      type="button"
+                      aria-pressed={on}
+                      className={pill(on)}
+                      style={on ? undefined : FIELD}
+                      onClick={() => {
+                        set({ team: side });
+                      }}
+                    >
+                      {t(`cs2.team.${side ?? "all"}`)}
+                    </button>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
           {(show === null || show.wear) && (
             <fieldset>
               <legend className="mb-2 text-xs font-semibold text-white/60">{t("cs2.wear")}</legend>

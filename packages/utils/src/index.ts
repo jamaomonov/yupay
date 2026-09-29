@@ -10,6 +10,7 @@ export {
   filterSections,
   parseSkinQuery,
   SKIN_CATEGORIES,
+  SKIN_TEAMS,
   skinQueryString,
 } from "./skins";
 export type {
@@ -27,6 +28,7 @@ export type {
   SkinQueryPatch,
   SkinSort,
   SkinsPage,
+  SkinTeam,
 } from "./skins";
 export { floatPosition, steamImageSize, wearBand } from "./skin-float";
 export type { WearBand } from "./skin-float";

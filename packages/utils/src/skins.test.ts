@@ -115,3 +115,22 @@ describe("filterSections", () => {
     expect(filterSections("cases", facets(["Base Grade"], 0), undefined).stattrak).toBe(false);
   });
 });
+
+describe("team", () => {
+  it("reads and writes an agent's side, and ignores anything else", () => {
+    expect(parseSkinQuery({ category: "agents", team: "ct" }).team).toBe("ct");
+    expect(parseSkinQuery({ team: "zz" }).team).toBeUndefined();
+    expect(skinQueryString({ sort: "-price", category: "agents", team: "t" })).toBe(
+      "?category=agents&team=t",
+    );
+  });
+
+  it("offers the side filter only where the facets have sides", () => {
+    const base = { categories: [], weapons: [], exteriors: [], rarities: [] };
+    expect(
+      filterSections("agents", { ...base, teams: [{ value: "ct", count: 1 }] }, undefined).team,
+    ).toBe(true);
+    expect(filterSections("rifles", { ...base, teams: [] }, undefined).team).toBe(false);
+    expect(filterSections("rifles", base, undefined).team).toBe(false);
+  });
+});

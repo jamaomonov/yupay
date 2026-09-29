@@ -37,6 +37,8 @@ class CatalogQuery:
     stattrak: bool | None = None
     souvenir: bool | None = None
     rarity: str | None = None
+    #: An agent's side, ``ct`` / ``t``.
+    team: str | None = None
     #: Bounds on our **sell** price (what the card shows), not on supplier cost.
     min_usd: Decimal | None = None
     max_usd: Decimal | None = None
@@ -49,6 +51,7 @@ class CatalogQuery:
 @dataclass(frozen=True)
 class Facets:
     categories: list[tuple[str, int]]
+    teams: list[tuple[str, int]]
     weapons: list[tuple[str, int]]
     exteriors: list[tuple[str, int]]
     #: (name, count, colour) — the colour is the game's for that grade.
@@ -102,6 +105,8 @@ def _filtered(query: CatalogQuery, categories: list[str]) -> Select[tuple[SkinIt
         stmt = stmt.where(SkinItem.souvenir.is_(query.souvenir))
     if query.rarity:
         stmt = stmt.where(SkinItem.rarity == query.rarity)
+    if query.team:
+        stmt = stmt.where(SkinItem.team == query.team)
     if query.min_usd is not None:
         stmt = stmt.where(SkinItem.sell_price_usd >= query.min_usd)
     if query.max_usd is not None:
@@ -245,6 +250,8 @@ async def facets(db: AsyncSession, *, categories: list[str], category: str | Non
         categories=await count_by(SkinItem.category, live),
         weapons=weapons,
         exteriors=await count_by(SkinItem.exterior, scoped),
+        # Only inside a category: agents are the one category with sides.
+        teams=await count_by(SkinItem.team, scoped) if category else [],
         rarities=sorted(
             ((str(r), int(c), color) for r, c, color in rarity_rows.all()),
             key=lambda rc: (-RARITY_TIER.get(rc[0], -1), rc[0]),

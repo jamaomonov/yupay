@@ -61,6 +61,8 @@ class SkinItem(Base):
     min_float: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
     max_float: Mapped[Decimal | None] = mapped_column(Numeric(6, 5), nullable=True)
     paint_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    #: An agent's side, ``'ct'`` or ``'t'``; ``None`` for everything else.
+    team: Mapped[str | None] = mapped_column(String(2), nullable=True)
     #: ``'bymykel'`` once the daily import has written the row, ``'stub'``
     #: while it only exists because the snapshot named it.
     source: Mapped[str] = mapped_column(String(16), nullable=False, server_default=text("'stub'"))
