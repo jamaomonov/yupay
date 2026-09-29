@@ -111,6 +111,20 @@ async def test_identity_pair_returns_one(redis) -> None:
     assert q.rate == Decimal(1)
 
 
+async def test_usdt_is_pegged_to_the_dollar_without_asking_anyone(redis) -> None:
+    """USDT is a dollar stablecoin: 1:1, no provider call, no alert. CoinGecko timing
+    out spammed «FX: курс недоступен» into the ops chat for a rate nobody sells in
+    (owner, 2026-09-29)."""
+    silent = StubProvider(fail=True)
+    svc = FxService(providers=[silent], redis=redis)
+    for base, quote in (("USD", "USDT"), ("USDT", "USD"), ("usd", "usdt")):
+        q = await svc.get_market_rate(base, quote, force=True)
+        assert q.rate == Decimal(1)
+        assert q.source == "peg"
+    assert (await svc.get_rate("USD", "USDT")).rate == Decimal(1)
+    assert silent.calls == 0
+
+
 async def test_convert_uses_current_rate(redis) -> None:
     svc = FxService(providers=[StubProvider(rate=Decimal("90"))], redis=redis)
     result = await svc.convert(Decimal("10.50"), base="USD", quote="RUB")
@@ -122,7 +136,7 @@ async def test_unsupported_pair_falls_to_stale_or_raises(redis) -> None:
     only_rub = StubProvider(rate=Decimal("90"), supported_pairs={("USD", "RUB")})
     svc = FxService(providers=[only_rub], redis=redis)
     with pytest.raises(FxUnavailableError):
-        await svc.get_rate("USD", "USDT")  # provider doesn't support it
+        await svc.get_rate("USD", "UZS")  # provider doesn't support it
 
 
 async def test_get_rate_uses_manual_override_over_provider(redis) -> None:

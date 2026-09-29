@@ -60,8 +60,10 @@ async def test_get_rates_returns_supported_pairs(
     quotes = {rate["quote"]: rate for rate in body["rates"]}
     assert quotes["RUB"]["rate"] == "90.5"
     assert quotes["UZS"]["rate"] == "12700.25"
-    assert quotes["USDT"]["rate"] == "1.0001"
-    assert all(r["source"] == "stub" for r in body["rates"])
+    # USDT is pegged 1:1 to the dollar, never fetched (owner, 2026-09-29).
+    assert quotes["USDT"]["rate"] == "1"
+    assert quotes["USDT"]["source"] == "peg"
+    assert all(r["source"] == "stub" for r in body["rates"] if r["quote"] != "USDT")
 
 
 async def test_get_rates_503_when_chain_completely_fails(

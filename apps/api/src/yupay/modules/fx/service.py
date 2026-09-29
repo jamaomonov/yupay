@@ -37,6 +37,24 @@ from yupay.modules.fx.quote_settings import (
 log = get_logger("yupay.fx.service")
 
 
+#: USD and USDT: pegged 1:1, never fetched (see ``get_market_rate``).
+_DOLLAR_PEG = frozenset({"USD", "USDT"})
+
+
+def _fixed_quote(base: str, quote: str) -> Quote | None:
+    """A rate that is never fetched: a currency to itself, and USD↔USDT.
+
+    USDT is a dollar stablecoin, and the wallet and supplier costs already count it
+    1:1. Asking CoinGecko only produced «FX: курс недоступен» alerts in the ops chat
+    whenever it timed out, for a rate nothing sells in (owner, 2026-09-29).
+    """
+    if base == quote:
+        return Quote(base=base, quote=quote, rate=Decimal(1), fetched_at=now(), source="identity")
+    if {base, quote} == _DOLLAR_PEG:
+        return Quote(base=base, quote=quote, rate=Decimal(1), fetched_at=now(), source="peg")
+    return None
+
+
 class FxUnavailableError(Exception):
     """Raised when no provider could service a request and no stale cache exists."""
 
@@ -156,10 +174,9 @@ class FxService:
                 every concurrent request falls into.
         """
         base_u, quote_u = base.upper(), quote.upper()
-        if base_u == quote_u:
-            return Quote(
-                base=base_u, quote=quote_u, rate=Decimal(1), fetched_at=now(), source="identity"
-            )
+        fixed = _fixed_quote(base_u, quote_u)
+        if fixed is not None:
+            return fixed
 
         if not force:
             # A read that *failed* is not a read that found nothing. Returning

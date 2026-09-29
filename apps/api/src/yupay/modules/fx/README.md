@@ -37,6 +37,11 @@ Default seed (admin can reorder):
 4. `openexchangerates.org` — fiat, keyed
 5. `coingecko` — USDT / crypto only
 
+**USD↔USDT is pegged 1:1 and never fetched** (`service._fixed_quote`, source `peg`),
+since 2026-09-29: USDT is a dollar stablecoin the wallet and supplier costs already count
+1:1, and CoinGecko timing out spammed «FX: курс недоступен» into the ops chat for a rate
+nothing sells in. CoinGecko stays in the chain for any other crypto pair.
+
 Each provider implements :class:`FxProvider`. Empty keys make `supports` false
 so the chain skips that adapter.
 
