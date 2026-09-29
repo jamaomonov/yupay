@@ -82,6 +82,8 @@ export interface FeaturedReview extends Review {
   brand_slug: string;
   brand_name: string;
   brand_logo_url?: string | null;
+  /** Left from a guest checkout; absent from an API older than 2026-09-29. */
+  guest?: boolean;
 }
 
 export interface FeaturedReviews {

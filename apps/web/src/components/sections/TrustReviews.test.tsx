@@ -23,7 +23,9 @@ const REVIEW: FeaturedReview = {
 };
 
 it("shows who wrote it, their stars, the text and what they bought", () => {
-  render(<ReviewCard review={REVIEW} anonymous="Покупатель" starsLabel="Оценка 4 из 5" />);
+  render(
+    <ReviewCard review={REVIEW} anonymous="Покупатель" guest="Гость" starsLabel="Оценка 4 из 5" />,
+  );
   expect(screen.getByText("Aziz")).toBeInTheDocument();
   expect(screen.getByRole("img", { name: "Оценка 4 из 5" })).toBeInTheDocument();
   expect(screen.getByText("«Алмазы пришли за пару минут»")).toBeInTheDocument();
@@ -36,10 +38,24 @@ it("names an anonymous reviewer generically", () => {
     <ReviewCard
       review={{ ...REVIEW, author_name: null }}
       anonymous="Покупатель"
+      guest="Гость"
       starsLabel="Оценка 4 из 5"
     />,
   );
   expect(screen.getByText("Покупатель")).toBeInTheDocument();
+});
+
+it("names a guest checkout a guest", () => {
+  render(
+    <ReviewCard
+      review={{ ...REVIEW, author_name: null, guest: true }}
+      anonymous="Покупатель"
+      guest="Гость"
+      starsLabel="Оценка 4 из 5"
+    />,
+  );
+  expect(screen.getByText("Гость")).toBeInTheDocument();
+  expect(screen.getByText("Г")).toBeInTheDocument();
 });
 
 it("keeps a reviewer's avatar colour stable", () => {

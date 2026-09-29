@@ -65,6 +65,7 @@ async def list_featured(db: AsyncSession, *, locale: str, limit: int) -> list[Fe
             brand_slug=r.slug,
             brand_name=r.brand_name,
             brand_logo_url=public_photo(r.logo_url),
+            guest=r.Review.user_id is None,
         )
         for r in rows
     ]

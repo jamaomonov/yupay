@@ -467,6 +467,7 @@
     "refundTitle": "Not credited — money back",
     "refundNote": "Every request decided within 24 hours",
     "anonymous": "Buyer",
+    "guest": "Guest",
     "stars": "Rated {rating} out of 5"
   },
   "showcase": {

@@ -59,6 +59,8 @@ class FeaturedReviewOut(ReviewOut):
     brand_slug: str
     brand_name: str
     brand_logo_url: str | None = None
+    guest: bool = False
+    """Left from a guest checkout — no account, so no name to show."""
 
 
 class FeaturedReviewsOut(BaseModel):

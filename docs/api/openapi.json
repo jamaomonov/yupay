@@ -7315,6 +7315,11 @@
             "title": "Created At",
             "type": "string"
           },
+          "guest": {
+            "default": false,
+            "title": "Guest",
+            "type": "boolean"
+          },
           "id": {
             "title": "Id",
             "type": "string"

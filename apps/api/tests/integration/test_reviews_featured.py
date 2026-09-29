@@ -83,9 +83,24 @@ async def test_newest_written_reviews_with_their_brand_and_overall_stats(
     assert first["brand_slug"].startswith("mlbb-")
     assert first["brand_name"].startswith("Mlbb-")
     assert first["brand_logo_url"] == "https://cdn.yupay.uz/mlbb.webp"
+    assert first["guest"] is False
     # Stats count every published review, star-only ones included.
     assert body["stats"]["count"] == 4
     assert body["stats"]["avg"] == pytest.approx(4.5)
+
+
+async def test_a_guest_review_says_so(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    review = await _review(db_session, slug="guest", name=None)
+    review.user_id = None
+    review.guest_email = "buyer@example.com"
+    await db_session.commit()
+
+    item = (await integration_client.get("/api/v1/reviews/featured")).json()["items"][0]
+    assert item["guest"] is True
+    assert item["author_name"] is None
+    assert "buyer@example.com" not in str(item)  # the email never leaves
 
 
 async def test_the_limit_is_bounded(integration_client: AsyncClient) -> None:

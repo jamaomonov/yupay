@@ -44,13 +44,17 @@ function Stars({ rating, label }: { rating: number; label: string }) {
 export function ReviewCard({
   review,
   anonymous,
+  guest,
   starsLabel,
 }: {
   review: FeaturedReview;
+  /** For an account with no name. */
   anonymous: string;
+  /** For a guest checkout, which has no account and so no name. */
+  guest: string;
   starsLabel: string;
 }) {
-  const name = review.author_name ?? anonymous;
+  const name = review.author_name ?? (review.guest === true ? guest : anonymous);
   const photo = review.author_photo_url ?? null;
   const logo = review.brand_logo_url ?? null;
   return (
@@ -150,6 +154,7 @@ export async function TrustReviews({ locale }: { locale: string }) {
       <ReviewCard
         review={r}
         anonymous={t("anonymous")}
+        guest={t("guest")}
         starsLabel={t("stars", { rating: r.rating })}
       />
     </div>
