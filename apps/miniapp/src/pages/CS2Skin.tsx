@@ -160,7 +160,7 @@ export default function CS2Skin() {
   }
 
   return (
-    <div className={`yp-fade-in space-y-5 px-4 pt-4 ${buyable ? "pb-28" : "pb-4"}`}>
+    <div className={`yp-fade-in space-y-5 px-4 pt-4 ${selected !== null ? "pb-28" : "pb-4"}`}>
       <div ref={topRef} className="scroll-mt-[calc(var(--app-header-total)_+_8px)]">
         <SkinHeroCard item={item} offer={selected} />
       </div>
@@ -249,6 +249,11 @@ export default function CS2Skin() {
             {...(buyable ? { selectedId: selected.listing_id, onSelect: pickOffer } : {})}
           />
         </section>
+      )}
+      {/* Buying switched off in the admin (brand off or in maintenance) while the
+          market is still up: say so where «Далее» would be, instead of nothing. */}
+      {buySku === null && selected !== null && (
+        <SkinFixedCta disabled onPress={() => undefined} label={t("cs2.buy.unavailable")} />
       )}
       {buyable && (
         <>

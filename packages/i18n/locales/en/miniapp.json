@@ -573,5 +573,6 @@
   "cs2.buy.wear": "Wear",
   "cs2.buy.itemTitle": "Skin",
   "cs2.belowSteam": "−{percent}% vs Steam",
-  "cs2.inspect": "Inspect in game"
+  "cs2.inspect": "Inspect in game",
+  "cs2.buy.unavailable": "Purchase temporarily unavailable"
 }

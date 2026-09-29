@@ -938,7 +938,6 @@
     "inspect": "Осмотр в игре",
     "seed": "Seed",
     "float": "Float",
-    "buySoon": "Покупка скоро",
     "ready": "Мгновенно",
     "stickers": "Наклейки",
     "nav": "Скины CS2",
@@ -993,6 +992,7 @@
       "support": "Мы проверяем покупку — напишите в поддержку",
       "contactSupport": "Написать в поддержку"
     },
-    "belowSteam": "−{percent}% к Steam"
+    "belowSteam": "−{percent}% к Steam",
+    "buyUnavailable": "Покупка временно недоступна"
   }
 }

@@ -70,7 +70,7 @@ describe("SkinPriceBlock", () => {
   it("keeps the buy button disabled and the Steam link nofollow", () => {
     mocked.mockResolvedValue({ degraded: false, items: [] });
     wrap(price());
-    expect(screen.getByRole("button", { name: "Покупка скоро" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Покупка временно недоступна" })).toBeDisabled();
     expect(screen.getByRole("link", { name: /Steam/ })).toHaveAttribute(
       "rel",
       expect.stringContaining("nofollow"),
@@ -81,7 +81,7 @@ describe("SkinPriceBlock", () => {
 describe("SkinPriceBlock when skins are sellable", () => {
   beforeEach(() => mocked.mockReset());
 
-  it("leaves buying to the panel — no disabled «Покупка скоро»", () => {
+  it("leaves buying to the panel — no disabled «Покупка временно недоступна»", () => {
     mocked.mockResolvedValue({ degraded: false, items: [] });
     wrap(
       <SkinOffersProvider slug="ak-ft">
@@ -94,7 +94,9 @@ describe("SkinPriceBlock when skins are sellable", () => {
         />
       </SkinOffersProvider>,
     );
-    expect(screen.queryByRole("button", { name: "Покупка скоро" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Покупка временно недоступна" }),
+    ).not.toBeInTheDocument();
   });
 
   it("prices the picked offer and says how much cheaper than Steam", async () => {

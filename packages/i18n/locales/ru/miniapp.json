@@ -573,5 +573,6 @@
   "cs2.buy.wear": "Качество",
   "cs2.buy.itemTitle": "Скин",
   "cs2.belowSteam": "−{percent}% к Steam",
-  "cs2.inspect": "Осмотр в игре"
+  "cs2.inspect": "Осмотр в игре",
+  "cs2.buy.unavailable": "Покупка временно недоступна"
 }

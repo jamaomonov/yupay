@@ -938,7 +938,6 @@
     "inspect": "Oʻyinda koʻrish",
     "seed": "Seed",
     "float": "Float",
-    "buySoon": "Tez orada sotuvda",
     "ready": "Tezkor",
     "stickers": "Stikerlar",
     "nav": "CS2 skinlari",
@@ -993,6 +992,7 @@
       "support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
       "contactSupport": "Qo'llab-quvvatlashga yozish"
     },
-    "belowSteam": "Steam'dan −{percent}%"
+    "belowSteam": "Steam'dan −{percent}%",
+    "buyUnavailable": "Xarid vaqtincha mavjud emas"
   }
 }

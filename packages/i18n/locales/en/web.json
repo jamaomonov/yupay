@@ -938,7 +938,6 @@
     "inspect": "Inspect in game",
     "seed": "Seed",
     "float": "Float",
-    "buySoon": "Buying soon",
     "ready": "Instant",
     "stickers": "Stickers",
     "nav": "CS2 skins",
@@ -993,6 +992,7 @@
       "support": "We are checking the purchase — please contact support",
       "contactSupport": "Contact support"
     },
-    "belowSteam": "−{percent}% vs Steam"
+    "belowSteam": "−{percent}% vs Steam",
+    "buyUnavailable": "Purchase temporarily unavailable"
   }
 }

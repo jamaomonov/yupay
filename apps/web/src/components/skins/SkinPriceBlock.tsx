@@ -62,13 +62,14 @@ export function SkinPriceBlock({
       </div>
       {!buyable && (
         <>
-          {/* Purchase is plan 3; the button says so, and does not look clickable. */}
+          {/* Buying is switched off in the admin (brand off or in maintenance): say so,
+              and do not look clickable. */}
           <button
             type="button"
             disabled
             className="bg-muted text-tx-mute w-full cursor-not-allowed rounded-xl py-3.5 text-[15px] font-bold"
           >
-            {t("buySoon")}
+            {t("buyUnavailable")}
           </button>
         </>
       )}
