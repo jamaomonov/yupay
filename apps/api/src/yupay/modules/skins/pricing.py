@@ -99,8 +99,10 @@ DEFAULT_RULES = PricingRules(
         Bracket(from_usd=Decimal("0"), percent=Decimal("10")),
         Bracket(from_usd=Decimal("1"), percent=Decimal("5")),
         Bracket(from_usd=Decimal("10"), percent=Decimal("7")),
-        Bracket(from_usd=Decimal("100"), percent=Decimal("2")),
-        Bracket(from_usd=Decimal("1000"), percent=Decimal("1")),
+        # 2026-09-29, owner: parity with skinsavdo, more margin on dear skins
+        # (was 2 % and 1 %; measured on 19 103 shared items).
+        Bracket(from_usd=Decimal("100"), percent=Decimal("3")),
+        Bracket(from_usd=Decimal("1000"), percent=Decimal("2")),
     ],
     b2b=[
         Bracket(from_usd=Decimal("0"), percent=Decimal("6")),
@@ -116,6 +118,8 @@ DEFAULT_RULES = PricingRules(
         LiquidityBand(min_count=0, pp=Decimal("3")),
     ],
     category_pp={"stickers": Decimal("5")},
+    # $0.10 made skins under $0.9 ~9 % dearer than skinsavdo; $0.05 brings them to ~1 %.
+    min_margin_usd=Decimal("0.05"),
 )
 
 

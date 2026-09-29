@@ -121,3 +121,13 @@ admin SPA's `/skins/trades`; `GET /admin/skins/items` finds items for `/skins/pr
 per-skin overrides. The daily `skins_history_audit` job
 (`fulfillment.skin_sweeps.audit_recent_trades`) reads the last 14 days of settled trades back
 from Waxpeer and alerts on divergence — see `docs/runbooks/skins-purchase.md`.
+
+## Launch pricing (2026-09-29)
+
+`DEFAULT_RULES` is what production prices with until an admin saves rules (no row is
+seeded). Tuned on 19 103 items shared with skinsavdo.uz (Waxpeer synced the same hour):
+retail brackets 10 % to $1, 5 % to $10, 7 % to $100, **3 %** to $1000, **2 %** above, and a
+**$0.05** minimum margin. The owner's aim: no overprice, a good margin, not a price war —
+result: parity overall (cheaper on 51 %, median −0.1 %), net after the 3 % expenses 18 % on
+skins under $0.9, 6 % on $5–200, 2.7 % above $1000. What stays dearer is mostly Waxpeer's
+own price on thin items, which an aggregator source is meant to fix.
