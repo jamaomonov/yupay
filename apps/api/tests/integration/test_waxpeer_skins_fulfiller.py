@@ -402,3 +402,75 @@ async def test_a_bad_trade_link_fails_with_the_money_back_and_is_marked_skin(
     result = await fulfill_skin(_Client(), db=db_session, item=item, idempotency_key=KEY)
     assert (result.outcome, result.money_outcome) == ("failed", MoneyOutcome.RETURNED)
     assert result.extra_metadata["waxpeer_kind"] == "skin"
+
+
+# ---------- edges the happy paths do not reach ----------
+
+
+async def test_pick_trade_chooses_the_live_one_or_refuses_to_guess() -> None:
+    from yupay.modules.fulfillment.suppliers.waxpeer_skins import AmbiguousTradeError, pick_trade
+
+    failed, live, other = _trade(6), _trade(4, id=2), _trade(2, id=3)
+    assert pick_trade([failed, live, other], 3) is other  # by Waxpeer's id
+    assert pick_trade([failed, live], None) is live  # the one still alive
+    assert pick_trade([failed, _trade(6, id=9)], None).id == 9  # all failed: the latest
+    with pytest.raises(AmbiguousTradeError):
+        pick_trade([live, other], None)
+
+
+async def test_an_unconfirmed_window_reads_bad_and_naive_timestamps() -> None:
+    from yupay.modules.fulfillment.suppliers.waxpeer_skins import _unconfirmed_expired
+
+    def task(raw: object) -> FulfillmentTask:
+        return FulfillmentTask(extra_metadata={"buy_unconfirmed_at": raw})
+
+    assert _unconfirmed_expired(task("not a date")) is True  # unreadable: stop waiting
+    assert _unconfirmed_expired(task("2020-01-01T00:00:00")) is True  # naive, long ago
+    assert _unconfirmed_expired(FulfillmentTask(extra_metadata={})) is False
+
+
+async def test_a_5xx_on_the_buy_is_resolved_by_lookup_never_rebought(
+    db_session: AsyncSession,
+) -> None:
+    item = await _item(db_session, "sk-5xx")
+    client = _Client(buy_error=WaxpeerError("bad gateway", status=502))
+    result = await fulfill_skin(client, db=db_session, item=item, idempotency_key=KEY)
+    assert result.outcome == "in_progress"
+    assert "buy_unconfirmed_at" in result.extra_metadata
+
+
+async def test_two_live_trades_on_the_first_lookup_buy_nothing(db_session: AsyncSession) -> None:
+    item = await _item(db_session, "sk-amb1")
+    client = _Client(trades=[_trade(2), _trade(4, id=2)])
+    result = await fulfill_skin(client, db=db_session, item=item, idempotency_key=KEY)
+    assert result.outcome == "in_progress"
+    assert client.bought == []
+
+
+async def test_two_live_trades_on_the_status_check_fail_it_unknown(
+    db_session: AsyncSession,
+) -> None:
+    item = await _item(db_session, "sk-amb2")
+    await fulfill_skin(_Client(), db=db_session, item=item, idempotency_key=KEY)
+    row = await _row(db_session)
+    row.waxpeer_id = None
+    await db_session.commit()
+    task = await _task(db_session, item)
+    status = await skin_status(
+        _Client(trades=[_trade(2), _trade(4, id=2)]), db=db_session, task=task
+    )
+    assert (status.outcome, status.money_outcome) == ("failed", MoneyOutcome.UNKNOWN)
+    assert status.error == "ambiguous_trade"
+    assert (await _row(db_session)).reason == "ambiguous_trade"
+
+
+async def test_a_postponed_buy_with_a_broken_link_fails_with_the_money_back(
+    db_session: AsyncSession,
+) -> None:
+    item = await _item(db_session, "sk-pend-bad")
+    task = await _task(db_session, item, buy_pending=True)
+    item.fulfillment_data = {**(item.fulfillment_data or {}), "tradelink": "nope"}
+    await db_session.commit()
+    status = await skin_status(_Client(), db=db_session, task=task)
+    assert (status.outcome, status.money_outcome) == ("failed", MoneyOutcome.RETURNED)
+    assert status.error == "invalid_tradelink"

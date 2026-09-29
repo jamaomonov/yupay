@@ -368,3 +368,25 @@ async def test_one_failed_alert_does_not_silence_the_rest(db_session: AsyncSessi
     await db_session.refresh(second)
     # The one that was never sent is tried again tomorrow.
     assert sorted([first.audit_verdict, second.audit_verdict], key=str) == [None, "rolled_back"]
+
+
+async def test_the_watch_skips_a_trade_it_cannot_tell_apart(db_session: AsyncSession) -> None:
+    row = await _protected(db_session, "pw-amb")
+    row.waxpeer_id = None
+    await db_session.commit()
+    alerts = _Alerts()
+    two_live = [_trade(row.project_id, 4, id=1), _trade(row.project_id, 4, id=2)]
+    await watch_protected_trades(db_session, _Client(two_live), alert=alerts)
+    assert alerts == []
+    await db_session.refresh(row)
+    assert (row.status, row.is_released) == (4, False)  # nothing mirrored from a guess
+
+
+async def test_the_audit_alerts_several_live_trades_under_one_key(
+    db_session: AsyncSession,
+) -> None:
+    row = await _settled(db_session, "au-amb", status=5, waxpeer_id=None)
+    alerts = _Alerts()
+    two_live = [_trade(row.project_id, 4, id=1), _trade(row.project_id, 4, id=2)]
+    assert await audit_recent_trades(db_session, _Client(two_live), alert=alerts) == 1
+    assert "несколько" in alerts[0]

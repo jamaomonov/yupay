@@ -299,3 +299,75 @@ async def test_a_replayed_refund_pushes_nothing(
     monkeypatch.setattr(notifications, "schedule_after_commit", lambda *_: pushed.append({}))
     await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
     assert pushed == []
+
+
+def _low_balance_result() -> object:
+    from yupay.modules.fulfillment.suppliers.base import FulfillResult
+
+    return FulfillResult(
+        outcome="failed",
+        external_order_id=None,
+        artifact_kind=None,
+        artifact=None,
+        error="supplier_low_balance",
+        extra_metadata={"waxpeer_kind": "skin", "required_units": 27867},
+        money_outcome=MoneyOutcome.RETURNED,
+    )
+
+
+async def test_the_skin_low_balance_alert_says_how_much_and_fires_once(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.core.redis import get_redis
+    from yupay.modules.notifications import api as notifications
+
+    await get_redis().delete("alert:low_balance:waxpeer_skin")
+    sent: list[str] = []
+
+    async def _send(text: str, *, kind: str) -> None:
+        sent.append(text)
+
+    monkeypatch.setattr(notifications, "send_admin_alert", _send)
+    task = FulfillmentTask(id=new_id(), supplier="waxpeer", extra_metadata={})
+    await ff_svc._alert_skin_low_balance(task=task, result=_low_balance_result())  # type: ignore[arg-type]
+    await ff_svc._alert_skin_low_balance(task=task, result=_low_balance_result())  # type: ignore[arg-type]
+    assert len(sent) == 1
+    assert "$27.87" in sent[0]
+    await get_redis().delete("alert:low_balance:waxpeer_skin")
+
+
+async def test_a_failing_alert_never_breaks_the_sale(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.core.redis import get_redis
+    from yupay.modules.notifications import api as notifications
+
+    await get_redis().delete("alert:low_balance:waxpeer_skin")
+
+    async def _boom(text: str, *, kind: str) -> None:
+        raise RuntimeError("telegram down")
+
+    monkeypatch.setattr(notifications, "send_admin_alert", _boom)
+    task = FulfillmentTask(id=new_id(), supplier="waxpeer", extra_metadata={})
+    await ff_svc._alert_skin_low_balance(task=task, result=_low_balance_result())  # type: ignore[arg-type]
+    await get_redis().delete("alert:low_balance:waxpeer_skin")
+
+
+async def test_a_refund_that_raises_is_alerted_and_does_not_stall_the_queue(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    alerts: list[object] = []
+
+    def _capture(coro: object) -> None:
+        alerts.append(coro)
+        coro.close()  # type: ignore[attr-defined] # a coroutine; not run here
+
+    async def _raise(*_a: object, **_k: object) -> bool:
+        raise RuntimeError("ledger down")
+
+    monkeypatch.setattr(ff_svc, "_dispatch_alert", _capture)
+    monkeypatch.setattr(_payments(), "refund_order_to_wallet", _raise)
+    order, _ = await _paid(db_session, "rw-raise")
+    task_id = await _failed_skin_task(db_session, order, MoneyOutcome.RETURNED)
+    await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
+    assert len(alerts) == 1
