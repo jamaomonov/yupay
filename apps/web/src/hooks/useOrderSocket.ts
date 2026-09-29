@@ -1,6 +1,7 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
+import { useTranslations } from "next-intl";
 import { useEffect, useRef, type ReactNode } from "react";
 
 import type { OrderUpdateMessage } from "@yupay/api-client";
@@ -9,6 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { createOrderSocket } from "@/lib/realtime";
 import { useOrderDeliveredModal } from "@/store/useOrderDeliveredModal";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
+import { toast } from "@/store/useToast";
 
 /**
  * Opens a single order-updates `OrderSocket` for the lifetime of an
@@ -19,6 +21,8 @@ import { useRealtimeStatus } from "@/store/useRealtimeStatus";
  * `invalidateQueries(["order", orderId])` refetch rather than writing the
  * payload straight into the cache. `order.delivered` additionally opens the
  * delivered modal (`useOrderDeliveredModal`, UI built in a follow-up task).
+ * `order.refunded` (a CS2 skin that fell through, money on the balance) also
+ * re-reads the balance and says so in a toast, wherever the buyer is.
  *
  * `order.failed` is intentionally NOT handled: fulfillment failures keep the
  * order at `fulfilling` for admin remediation, never a customer-facing status
@@ -29,6 +33,9 @@ export function useOrderSocket(): void {
   const queryClient = useQueryClient();
   const setConnected = useRealtimeStatus((s) => s.setConnected);
   const openDeliveredModal = useOrderDeliveredModal((s) => s.open);
+  const t = useTranslations("web.skins.trade");
+  const refundToastRef = useRef("");
+  refundToastRef.current = t("refundToast");
 
   // Refs so the connect effect only depends on `user` — reconnecting the
   // socket whenever the query client or a store setter identity changes would
@@ -60,6 +67,13 @@ export function useOrderSocket(): void {
             queryKey: ["order", message.orderId],
           });
           openDeliveredModalRef.current(message.orderId);
+          break;
+        case "order.refunded":
+          void queryClientRef.current.invalidateQueries({
+            queryKey: ["order", message.orderId],
+          });
+          void queryClientRef.current.invalidateQueries({ queryKey: ["wallet"] });
+          toast.info(refundToastRef.current);
           break;
         case "order.failed":
         case "ping":

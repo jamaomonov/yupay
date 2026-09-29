@@ -547,6 +547,51 @@ async def notify_order_failed(order_id: str, *, reason: str | None = None) -> bo
     return await tg.send_message(bot_token=token, chat_id=chat_id, text=body)
 
 
+def skin_refund_text(*, name: str, amount: str, try_later: bool = False) -> str:
+    """The bot's message for a CS2 skin purchase that fell through.
+
+    Never carries the trade link: its token is a credential (AGENTS.md §9).
+
+    Args:
+        name: The skin, as bought.
+        amount: The refunded amount, formatted.
+        try_later: Waxpeer was short of our balance — a retry soon may work.
+    """
+    body = (
+        "<b>Скин не получилось купить</b>\n\n"
+        f"{html.escape(name)}\n"
+        f"Деньги вернулись на баланс YuPay: <b>{html.escape(amount)}</b>"
+    )
+    if try_later:
+        body += "\n\nПопробуйте через несколько минут."
+    return body
+
+
+async def notify_skin_refunded(order_id: str, *, try_later: bool = False) -> bool:
+    """Telegram: a skin purchase fell through and the money is on the balance."""
+    from yupay.modules.skins.order_display import skin_line_name
+
+    async with get_session_factory()() as db:
+        order = await _load_order(db, order_id)
+        if order is None:
+            return False
+        chat = await _resolve_chat_id(db, user_id=order.user_id)
+        if chat is None:
+            return False
+        chat_id, _name = chat
+    token = get_settings().telegram_bot_token
+    if not token:
+        return False
+    items = list(order.items)
+    name = (skin_line_name(items[0].fulfillment_data or {}) if items else None) or "CS2"
+    text = skin_refund_text(
+        name=name,
+        amount=_format_amount(order.total_charged, order.currency),
+        try_later=try_later,
+    )
+    return await tg.send_message(bot_token=token, chat_id=chat_id, text=text)
+
+
 async def _load_order(db: AsyncSession, order_id: str) -> Order | None:
     """Eager-load the chain we need to summarise the order in one go.
 
@@ -626,6 +671,7 @@ __all__ = [
     "notify_order_delivered",
     "notify_order_failed",
     "notify_order_paid",
+    "notify_skin_refunded",
     "review_webapp_markup",
     "schedule",
     "schedule_after_commit",

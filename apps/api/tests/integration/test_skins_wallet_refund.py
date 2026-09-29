@@ -240,3 +240,52 @@ async def test_a_retry_after_the_refund_is_refused(db_session: AsyncSession) -> 
     await db_session.commit()
     with pytest.raises(ConflictError):
         await ff_svc.retry_task(db_session, task_id=task_id)
+
+
+async def test_the_refund_is_pushed_to_the_open_page_and_the_bot(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.modules.notifications import api as notifications
+    from yupay.modules.realtime import api as realtime
+
+    pushed: list[tuple[str | None, dict[str, object]]] = []
+    scheduled: list[object] = []
+
+    async def _publish(user_id: str | None, message: dict[str, object]) -> None:
+        pushed.append((user_id, message))
+
+    def _schedule(_db: object, factory: object) -> None:
+        scheduled.append(factory)
+
+    monkeypatch.setattr(realtime, "publish_order_event", _publish)
+    monkeypatch.setattr(notifications, "schedule_after_commit", _schedule)
+    order, _ = await _paid(db_session, "rw-push")
+    task_id = await _failed_skin_task(db_session, order, MoneyOutcome.RETURNED)
+    await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
+    await db_session.commit()
+    refunded = [m for _, m in pushed if m.get("type") == "order.refunded"]
+    assert refunded == [{"type": "order.refunded", "orderId": order.id, "to": "wallet"}]
+    assert [u for u, m in pushed if m.get("type") == "order.refunded"] == [order.user_id]
+    assert len(scheduled) == 1
+
+
+async def test_a_replayed_refund_pushes_nothing(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.modules.notifications import api as notifications
+    from yupay.modules.realtime import api as realtime
+
+    order, _ = await _paid(db_session, "rw-push2")
+    task_id = await _failed_skin_task(db_session, order, MoneyOutcome.RETURNED)
+    await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
+    await db_session.commit()
+
+    pushed: list[dict[str, object]] = []
+
+    async def _publish(_user_id: str | None, message: dict[str, object]) -> None:
+        pushed.append(message)
+
+    monkeypatch.setattr(realtime, "publish_order_event", _publish)
+    monkeypatch.setattr(notifications, "schedule_after_commit", lambda *_: pushed.append({}))
+    await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
+    assert pushed == []

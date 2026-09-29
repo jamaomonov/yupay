@@ -12,6 +12,7 @@ from yupay.modules.notifications.service import (
     notify_order_failed,
     notify_order_paid,
     notify_review_reminder,
+    notify_skin_refunded,
     schedule,
     schedule_after_commit,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "notify_order_failed",
     "notify_order_paid",
     "notify_review_reminder",
+    "notify_skin_refunded",
     "schedule",
     "schedule_after_commit",
     "send_admin_alert",

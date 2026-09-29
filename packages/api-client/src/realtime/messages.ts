@@ -9,4 +9,6 @@ export type OrderUpdateMessage =
   | { type: "order.status_changed"; orderId: string; status: string; at: string }
   | { type: "order.delivered"; orderId: string; payload: { kind: string; data: unknown } }
   | { type: "order.failed"; orderId: string; reason: string }
+  // A CS2 skin purchase fell through and the money went back to the balance.
+  | { type: "order.refunded"; orderId: string; to: "wallet" }
   | { type: "ping"; at: string };

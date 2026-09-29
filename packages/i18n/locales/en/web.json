@@ -992,7 +992,8 @@
       "support": "We are checking the purchase — please contact support",
       "contactSupport": "Contact support",
       "tryLater": "We could not buy the skin — the money is on your YuPay balance. Please try again in a few minutes",
-      "refundedCard": "The trade did not happen — the money went back to your card"
+      "refundedCard": "The trade did not happen — the money went back to your card",
+      "refundToast": "We could not buy the skin — the money is back on your YuPay balance"
     },
     "belowSteam": "−{percent}% vs Steam",
     "buyUnavailable": "Purchase temporarily unavailable"

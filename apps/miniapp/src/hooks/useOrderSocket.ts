@@ -18,7 +18,9 @@ import { useEffect, useRef } from "react";
 
 import type { OrderUpdateMessage } from "@yupay/api-client";
 
+import { toast } from "@/hooks/use-toast";
 import { useMe } from "@/lib/auth";
+import { useT } from "@/lib/i18n";
 import { createOrderSocket } from "@/lib/realtime";
 import { useOrderDeliveredDialog } from "@/store/useOrderDeliveredDialog";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
@@ -26,6 +28,8 @@ import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 export interface OrderUpdateHandlers {
   invalidateOrder: (orderId: string) => void;
   openDelivered: (orderId: string) => void;
+  /** A CS2 skin fell through and the money went to the balance. */
+  refunded: (orderId: string) => void;
 }
 
 /**
@@ -44,6 +48,10 @@ export function routeOrderUpdateMessage(
     case "order.delivered":
       handlers.invalidateOrder(message.orderId);
       handlers.openDelivered(message.orderId);
+      break;
+    case "order.refunded":
+      handlers.invalidateOrder(message.orderId);
+      handlers.refunded(message.orderId);
       break;
     case "order.failed":
     case "ping":
@@ -64,6 +72,9 @@ export function useOrderSocket(): void {
   const queryClient = useQueryClient();
   const setConnected = useRealtimeStatus((s) => s.setConnected);
   const openDeliveredDialog = useOrderDeliveredDialog((s) => s.open);
+  const { t } = useT();
+  const refundToastRef = useRef("");
+  refundToastRef.current = t("cs2.trade.refundToast");
 
   // Refs so the connect effect only depends on the signed-in user id —
   // reconnecting the socket whenever the query client or a store setter
@@ -91,6 +102,10 @@ export function useOrderSocket(): void {
         },
         openDelivered: (orderId) => {
           openDeliveredDialogRef.current(orderId);
+        },
+        refunded: () => {
+          void queryClientRef.current.invalidateQueries({ queryKey: ["wallet"] });
+          toast({ title: refundToastRef.current });
         },
       });
     };

@@ -23,7 +23,7 @@ describe("routeOrderUpdateMessage", () => {
         status: "paid",
         at: "2026-07-28T00:00:00Z",
       },
-      { invalidateOrder, openDelivered },
+      { invalidateOrder, openDelivered, refunded: vi.fn() },
     );
 
     expect(invalidateOrder).toHaveBeenCalledWith("order-abc");
@@ -36,7 +36,7 @@ describe("routeOrderUpdateMessage", () => {
 
     routeOrderUpdateMessage(
       { type: "order.delivered", orderId: "order-xyz", payload: { kind: "code", data: {} } },
-      { invalidateOrder, openDelivered },
+      { invalidateOrder, openDelivered, refunded: vi.fn() },
     );
 
     expect(invalidateOrder).toHaveBeenCalledWith("order-xyz");
@@ -52,10 +52,21 @@ describe("routeOrderUpdateMessage", () => {
       { type: "order.failed", orderId: "order-nope", reason: "supplier_error" },
     ];
     for (const message of messages) {
-      routeOrderUpdateMessage(message, { invalidateOrder, openDelivered });
+      routeOrderUpdateMessage(message, { invalidateOrder, openDelivered, refunded: vi.fn() });
     }
 
     expect(invalidateOrder).not.toHaveBeenCalled();
     expect(openDelivered).not.toHaveBeenCalled();
+  });
+
+  it("re-reads the order and tells the buyer on order.refunded", () => {
+    const invalidateOrder = vi.fn();
+    const refunded = vi.fn();
+    routeOrderUpdateMessage(
+      { type: "order.refunded", orderId: "order-r", to: "wallet" },
+      { invalidateOrder, openDelivered: vi.fn(), refunded },
+    );
+    expect(invalidateOrder).toHaveBeenCalledWith("order-r");
+    expect(refunded).toHaveBeenCalledWith("order-r");
   });
 });

@@ -113,6 +113,14 @@ internal remediation state as their own final outcome, and it is unchanged.
 | `fulfillment` | → `delivered`                             | `order.delivered`      |
 | `orders`      | → `cancelled` (admin cancel)              | `order.status_changed` |
 | `orders`      | → `expired` (TTL, lazy or scheduler bulk) | `order.status_changed` |
+| `payments`    | → `refunded` (any full refund)            | `order.status_changed` |
+| `fulfillment` | a CS2 skin refunded to the balance        | `order.refunded`       |
+
+`order.refunded` (`{orderId, to: "wallet"}`) rides beside the status nudge for one case: a
+skin purchase that fell through and refunded itself to the balance
+(`_tell_the_buyer_about_the_refund`). Web and mini app re-read the order and the balance and
+show a toast wherever the buyer is; the bot sends the same news after commit
+(`notify_skin_refunded`, never with the trade link).
 
 Each call site imports `yupay.modules.realtime.api` **lazily, inside the
 function** (`from yupay.modules.realtime import api as realtime`) rather than

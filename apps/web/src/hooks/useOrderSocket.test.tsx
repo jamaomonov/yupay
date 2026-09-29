@@ -2,9 +2,11 @@
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, renderHook } from "@testing-library/react";
+import { NextIntlClientProvider } from "next-intl";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useOrderSocket } from "./useOrderSocket";
+import messages from "../../../../packages/i18n/locales/ru/web.json";
 
 import type { Me } from "@/lib/auth";
 import type { OrderUpdateMessage } from "@yupay/api-client";
@@ -44,10 +46,15 @@ vi.mock("@/lib/auth", () => ({
 
 import { useOrderDeliveredModal } from "@/store/useOrderDeliveredModal";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
+import { useToast } from "@/store/useToast";
 
 function renderWithClient(client: QueryClient) {
   function wrapper({ children }: { children: ReactNode }) {
-    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    return (
+      <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      </NextIntlClientProvider>
+    );
   }
   return renderHook(
     () => {
@@ -114,6 +121,23 @@ describe("useOrderSocket", () => {
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["order", "order-xyz"] });
     expect(useOrderDeliveredModal.getState().orderId).toBe("order-xyz");
+  });
+
+  it("re-reads the order and the balance and says so on order.refunded", () => {
+    const qc = new QueryClient();
+    const invalidateSpy = vi.spyOn(qc, "invalidateQueries");
+    useToast.setState({ toasts: [] });
+    renderWithClient(qc);
+
+    act(() => {
+      capturedHandlers?.onMessage({ type: "order.refunded", orderId: "order-r", to: "wallet" });
+    });
+
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["order", "order-r"] });
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ["wallet"] });
+    expect(useToast.getState().toasts.map((t) => t.message)).toEqual([
+      "Скин не получилось купить — деньги вернулись на баланс YuPay",
+    ]);
   });
 
   it("ignores ping and order.failed messages", () => {

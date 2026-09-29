@@ -564,6 +564,7 @@
   "cs2.trade.refunded": "Almashuv amalga oshmadi — pul balansga qaytdi",
   "cs2.trade.tryLater": "Skinni sotib ololmadik — pul YuPay balansingizda. Bir necha daqiqadan so'ng qayta urinib ko'ring",
   "cs2.trade.refundedCard": "Almashuv amalga oshmadi — pul kartangizga qaytarildi",
+  "cs2.trade.refundToast": "Skinni sotib ololmadik — pul YuPay balansingizga qaytdi",
   "cs2.trade.toWallet": "Balansni ochish",
   "cs2.trade.support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
   "cs2.trade.contactSupport": "Qo'llab-quvvatlashga yozish",
