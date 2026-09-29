@@ -1,6 +1,6 @@
 import { EXTERIORS, SKIN_TEAMS, filterSections } from "@yupay/utils";
 import { activeFilterCount } from "@yupay/utils";
-import { SlidersHorizontal } from "lucide-react";
+import { RotateCcw, SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import type { Exterior, SkinFacets, SkinQuery, SkinQueryPatch, SkinTeam } from "@yupay/utils";
@@ -241,9 +241,10 @@ export function SkinFilterSheet({
                 onChange(CLEARED);
                 setOpen(false);
               }}
-              className="flex-1 rounded-xl py-3 text-sm font-semibold text-white/70"
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl py-3 text-sm font-semibold text-white/70"
               style={FIELD}
             >
+              <RotateCcw size={16} aria-hidden="true" />
               {t("cs2.reset")}
             </button>
             <button

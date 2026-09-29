@@ -1,5 +1,5 @@
-import { filterSections } from "@yupay/utils";
-import { Check as CheckIcon } from "lucide-react";
+import { activeFilterCount, filterSections } from "@yupay/utils";
+import { Check as CheckIcon, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
@@ -52,6 +52,7 @@ export function SkinFilters({
 }) {
   const t = useTranslations("web.skins");
   const base = pathFor(locale, PATH);
+  const active = activeFilterCount(query);
   const href = (patch: SkinQueryPatch) => base + skinQueryString(query, patch);
   // Only the filters this category has: no wear on agents or cases, StatTrak only where
   // it exists, the category's own rarities (the weapon scale when none is picked).
@@ -154,9 +155,25 @@ export function SkinFilters({
         </Link>
       )}
 
-      <Link href={base} className="text-tx-dim mt-4 block text-center text-[13px] underline">
-        {t("reset")}
-      </Link>
+      {active > 0 && (
+        <Link
+          href={href({
+            exterior: undefined,
+            rarity: undefined,
+            team: undefined,
+            stattrak: undefined,
+            minUzs: undefined,
+            maxUzs: undefined,
+          })}
+          className="border-border-2 text-tx-mute hover:border-primary hover:text-foreground mt-5 flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-[13px] font-semibold transition-colors"
+        >
+          <RotateCcw className="h-4 w-4" aria-hidden />
+          {t("reset")}
+          <span className="bg-primary text-primary-foreground rounded-full px-1.5 text-[11px] font-bold leading-[18px]">
+            {active}
+          </span>
+        </Link>
+      )}
     </div>
   );
 }

@@ -98,3 +98,24 @@ it("has no side filter outside agents", () => {
   renderFilters(undefined, ["Covert"], 5);
   expect(screen.queryByRole("radio", { name: /Спецназ/ })).not.toBeInTheDocument();
 });
+
+it("resets only the panel's filters, keeping the category, and hides with none set", () => {
+  const { unmount } = render(
+    <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
+      <SkinFilters
+        query={{ sort: "-price", category: "rifles", exterior: "FN", stattrak: true }}
+        facets={{ categories: [], weapons: [], exteriors: [], rarities: [] }}
+        locale="ru"
+      />
+    </NextIntlClientProvider>,
+  );
+  const reset = screen.getByRole("link", { name: /Сбросить/ });
+  expect(reset).toHaveTextContent("2");
+  const href = reset.getAttribute("href") ?? "";
+  expect(href).toContain("category=rifles");
+  expect(href).not.toContain("exterior");
+  expect(href).not.toContain("stattrak");
+  unmount();
+  renderFilters("rifles", [], 0);
+  expect(screen.queryByRole("link", { name: /Сбросить/ })).not.toBeInTheDocument();
+});
