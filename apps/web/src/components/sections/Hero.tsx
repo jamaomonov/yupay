@@ -2,38 +2,65 @@ import { ArrowUpRight, Crosshair, Gamepad2, Gift, Send } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
-import { SteamQuickTopUp } from "./SteamQuickTopUp";
+import { HeroTopUp } from "./HeroTopUp";
+
+import type { TopUpOffer } from "./QuickTopUpCard";
+import type { ProductDetail } from "@/lib/catalog";
 
 import { getProductDetail } from "@/lib/catalog";
 import { skinsEnabled } from "@/lib/features";
 import { TELEGRAM_MINIAPP_URL } from "@/lib/links";
 import { pathFor } from "@/lib/seo";
 
-/** The Steam wallet product — the hero's form prices and pre-fills it. */
-const STEAM_PRODUCT = "steam-wallet";
+async function product(slug: string, locale: string): Promise<ProductDetail | null> {
+  return getProductDetail(slug, locale, "UZS").catch(() => null);
+}
 
-/** The Steam SKU's rate and bounds, or nulls when the API could not say. */
-async function steamQuote(locale: string) {
-  const product = await getProductDetail(STEAM_PRODUCT, locale, "UZS").catch(() => null);
-  const sku = product?.skus.find((s) => s.variable_amount ?? false);
-  const login = product?.required_fields.find((f) => f.key === "steam_login");
+/** Steam: a dollar amount, priced per dollar. Falls back to a plain link without a rate. */
+function steamOffer(locale: string, p: ProductDetail | null): TopUpOffer {
+  const sku = p?.skus.find((s) => s.variable_amount ?? false);
   return {
+    kind: "steam",
+    href: pathFor(locale, "/store/steam"),
+    fieldKey: "steam_login",
+    pattern: p?.required_fields.find((f) => f.key === "steam_login")?.pattern ?? null,
     rateUzs: sku?.display_price ? Number(sku.display_price.amount) : null,
-    minUsd: sku?.min_amount_usd != null ? Number(sku.min_amount_usd) : 1,
-    maxUsd: sku?.max_amount_usd != null ? Number(sku.max_amount_usd) : 300,
-    loginPattern: login?.pattern ?? null,
+    min: sku?.min_amount_usd != null ? Number(sku.min_amount_usd) : 1,
+    max: sku?.max_amount_usd != null ? Number(sku.max_amount_usd) : 300,
+    initial: "10",
+  };
+}
+
+/** Stars: a whole number of stars, priced per star. */
+function starsOffer(locale: string, p: ProductDetail | null): TopUpOffer {
+  const sku = p?.skus.find((s) => s.min_qty != null && s.max_qty != null);
+  const min = sku?.min_qty ?? 50;
+  return {
+    kind: "stars",
+    href: pathFor(locale, "/store/telegram-stars"),
+    fieldKey: "username",
+    pattern: p?.required_fields.find((f) => f.key === "username")?.pattern ?? null,
+    rateUzs: sku?.display_price ? Number(sku.display_price.amount) : null,
+    min,
+    max: sku?.max_qty ?? 15000,
+    initial: String(Math.max(min, 100)),
   };
 }
 
 /**
- * Storefront hero, led by what most visitors come for: topping up Steam. Copy on
- * the left, a working Steam form on the right (`SteamQuickTopUp`), and the other
+ * Storefront hero, led by what most visitors come for: topping up Steam, with
+ * Telegram Stars one tab away. Copy on the left and the product forms on the right
+ * (`HeroTopUp`, which switches both together), and the other
  * sections — CS2 skins, games, gift cards — as tiles under the copy. The mini app
  * is shown further down (`AppShowcase`); here it is one link, on phones only.
  */
 export async function Hero({ locale }: { locale: string }) {
   const t = await getTranslations("web.hero");
-  const quote = await steamQuote(locale);
+  const [steam, stars] = await Promise.all([
+    product("steam-wallet", locale),
+    product("telegram-stars", locale),
+  ]);
+  const offers = [steamOffer(locale, steam), starsOffer(locale, stars)];
   const tiles = [
     ...(skinsEnabled()
       ? [{ key: "skins" as const, href: pathFor(locale, "/skins"), Icon: Crosshair }]
@@ -68,36 +95,7 @@ export async function Hero({ locale }: { locale: string }) {
           the form is on the first screen; on desktop the form spans the right
           column beside both. */}
       <div className="relative z-10 mx-auto grid max-w-[1200px] grid-cols-1 gap-x-14 gap-y-8 px-6 sm:px-10 md:grid-cols-[1fr_440px] md:grid-rows-[auto_1fr]">
-        <div className="md:self-end">
-          <span className="border-primary/30 bg-primary/10 text-primary inline-flex items-center gap-2 rounded-full border px-3 py-1.5 font-mono text-[11px] font-bold uppercase tracking-[0.08em]">
-            <span className="bg-primary relative inline-block h-1.5 w-1.5 rounded-full">
-              <span className="bg-primary/60 absolute inset-0 animate-ping rounded-full" />
-            </span>
-            {t("badge")}
-          </span>
-
-          <h1 className="font-display text-foreground mt-6 text-[clamp(2.6rem,6vw,4.4rem)] font-extrabold leading-[0.96] tracking-[-0.04em]">
-            <span className="block">{t("titleLine1")}</span>
-            <span className="text-primary block">{t("titleLine2")}</span>
-          </h1>
-
-          <p className="text-tx-mute mt-6 max-w-[440px] text-base sm:text-lg sm:leading-relaxed">
-            {t("subtitle")}
-          </p>
-        </div>
-
-        <div className="relative w-full md:col-start-2 md:row-span-2 md:row-start-1 md:self-center">
-          {/* Steam-blue light behind the card. */}
-          <div
-            aria-hidden
-            className="pointer-events-none absolute -inset-10 -z-10 rounded-full opacity-60 blur-3xl"
-            style={{
-              background:
-                "radial-gradient(closest-side, rgba(102,192,244,0.35), rgba(102,192,244,0) 70%)",
-            }}
-          />
-          <SteamQuickTopUp locale={locale} {...quote} />
-        </div>
+        <HeroTopUp offers={offers} locale={locale} />
 
         {/* Everything that is not Steam, one tap away. */}
         <div className="md:self-start">

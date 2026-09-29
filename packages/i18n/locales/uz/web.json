@@ -41,30 +41,50 @@
     "skins": "CS2 skinlari"
   },
   "hero": {
-    "badge": "Steam · oʻyinlar · CS2 skinlari",
-    "titleLine1": "Steamni soʻmda",
-    "titleLine2": "toʻldiring.",
-    "subtitle": "Login orqali, parolsiz. Click, Payme yoki Uzum orqali toʻlov.",
+    "badge": "Steam · Stars · CS2 skinlari",
     "ctaTelegram": "Telegramda ochish",
-    "chip1": "Ustiga komissiyasiz",
-    "chip3": "Tushmadi — pulni qaytaramiz",
     "moreTitle": "Yana bizda",
     "tiles": {
       "skins": "CS2 skinlari",
       "games": "Oʻyinlar",
       "giftCards": "Sovgʻa kartalari"
     },
+    "switchLabel": "Nimani toʻldirish",
     "form": {
-      "title": "Steamni toʻldirish",
-      "login": "Steam login",
-      "loginPlaceholder": "Login, pochta emas",
-      "loginHint": "Parol kerak emas",
-      "loginInvalid": "Lotin harflari, raqamlar, _ va -, kamida 3 ta",
-      "amount": "Dollarda summa",
-      "range": "{min} dan {max} gacha",
       "total": "Toʻlov",
-      "submit": "Toʻldirish",
-      "open": "Steam toʻldirishni ochish"
+      "weAccept": "Qabul qilamiz"
+    },
+    "offers": {
+      "steam": {
+        "tab": "Steam",
+        "titleLine1": "Steamni soʻmda",
+        "titleLine2": "toʻldiring.",
+        "subtitle": "Login orqali, parolsiz. Click, Payme yoki Uzum orqali toʻlov.",
+        "title": "Steamni toʻldirish",
+        "note": "Ustama komissiyasiz",
+        "field": "Steam login",
+        "placeholder": "Login, pochta emas",
+        "invalid": "Lotin harflari, raqamlar, _ va -, kamida 3 ta",
+        "amount": "Dollarda summa",
+        "range": "{min} dan {max} gacha",
+        "submit": "Toʻldirish",
+        "open": "Steam toʻldirishni ochish"
+      },
+      "stars": {
+        "tab": "Telegram Stars",
+        "titleLine1": "Starsni soʻmda",
+        "titleLine2": "sotib oling.",
+        "subtitle": "Telegram username orqali. Click, Payme yoki Uzum orqali toʻlov.",
+        "title": "Telegram Stars",
+        "note": "50 yulduzdan",
+        "field": "Telegram username",
+        "placeholder": "@username",
+        "invalid": "Username: lotin harflari, raqamlar va _, kamida 5 ta",
+        "amount": "Nechta yulduz",
+        "range": "Butun son, {min} dan {max} gacha",
+        "submit": "Stars sotib olish",
+        "open": "Telegram Starsni ochish"
+      }
     }
   },
   "catalog": {

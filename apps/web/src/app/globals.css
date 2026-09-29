@@ -209,6 +209,23 @@
   animation: sheet-in 0.2s ease;
 }
 
+/* Home hero headline swapping between Steam and Stars. */
+@keyframes hero-swap {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+    filter: blur(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+.anim-hero-swap {
+  animation: hero-swap 0.45s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 .anim-orbit-cw {
   animation: orbit-cw 34s linear infinite;
 }

@@ -41,30 +41,50 @@
     "skins": "Скины CS2"
   },
   "hero": {
-    "badge": "Steam · игры · скины CS2",
-    "titleLine1": "Пополните Steam",
-    "titleLine2": "в сумах.",
-    "subtitle": "По логину, без пароля. Оплата Click, Payme и Uzum.",
+    "badge": "Steam · Stars · скины CS2",
     "ctaTelegram": "Открыть в Telegram",
-    "chip1": "Без комиссии сверху",
-    "chip3": "Не зачислили — вернём деньги",
     "moreTitle": "Ещё у нас",
     "tiles": {
       "skins": "Скины CS2",
       "games": "Игры",
       "giftCards": "Подарочные карты"
     },
+    "switchLabel": "Что пополнить",
     "form": {
-      "title": "Пополнение Steam",
-      "login": "Логин Steam",
-      "loginPlaceholder": "Логин, не почта",
-      "loginHint": "Пароль не нужен",
-      "loginInvalid": "Латиница, цифры, _ и -, от 3 символов",
-      "amount": "Сумма в долларах",
-      "range": "От {min} до {max}",
       "total": "К оплате",
-      "submit": "Пополнить",
-      "open": "Открыть пополнение Steam"
+      "weAccept": "Мы принимаем"
+    },
+    "offers": {
+      "steam": {
+        "tab": "Steam",
+        "titleLine1": "Пополните Steam",
+        "titleLine2": "в сумах.",
+        "subtitle": "По логину, без пароля. Оплата Click, Payme и Uzum.",
+        "title": "Пополнение Steam",
+        "note": "Без комиссии сверху",
+        "field": "Логин Steam",
+        "placeholder": "Логин, не почта",
+        "invalid": "Латиница, цифры, _ и -, от 3 символов",
+        "amount": "Сумма в долларах",
+        "range": "От {min} до {max}",
+        "submit": "Пополнить",
+        "open": "Открыть пополнение Steam"
+      },
+      "stars": {
+        "tab": "Telegram Stars",
+        "titleLine1": "Купите Stars",
+        "titleLine2": "в сумах.",
+        "subtitle": "По юзернейму в Telegram. Оплата Click, Payme и Uzum.",
+        "title": "Telegram Stars",
+        "note": "От 50 звёзд",
+        "field": "Юзернейм в Telegram",
+        "placeholder": "@username",
+        "invalid": "Юзернейм: латиница, цифры и _, от 5 символов",
+        "amount": "Сколько звёзд",
+        "range": "Целое число, от {min} до {max}",
+        "submit": "Купить Stars",
+        "open": "Открыть Telegram Stars"
+      }
     }
   },
   "catalog": {

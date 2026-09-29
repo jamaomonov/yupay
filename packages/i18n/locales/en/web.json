@@ -41,30 +41,50 @@
     "skins": "CS2 skins"
   },
   "hero": {
-    "badge": "Steam · games · CS2 skins",
-    "titleLine1": "Top up Steam",
-    "titleLine2": "in soʻm.",
-    "subtitle": "By login, no password. Pay with Click, Payme or Uzum.",
+    "badge": "Steam · Stars · CS2 skins",
     "ctaTelegram": "Open in Telegram",
-    "chip1": "No fee on top",
-    "chip3": "Not credited — money back",
     "moreTitle": "Also here",
     "tiles": {
       "skins": "CS2 skins",
       "games": "Games",
       "giftCards": "Gift cards"
     },
+    "switchLabel": "What to top up",
     "form": {
-      "title": "Steam top-up",
-      "login": "Steam login",
-      "loginPlaceholder": "Login, not email",
-      "loginHint": "No password needed",
-      "loginInvalid": "Latin letters, digits, _ and -, at least 3",
-      "amount": "Amount in dollars",
-      "range": "From {min} to {max}",
       "total": "To pay",
-      "submit": "Top up",
-      "open": "Open Steam top-up"
+      "weAccept": "We accept"
+    },
+    "offers": {
+      "steam": {
+        "tab": "Steam",
+        "titleLine1": "Top up Steam",
+        "titleLine2": "in soʻm.",
+        "subtitle": "By login, no password. Pay with Click, Payme or Uzum.",
+        "title": "Steam top-up",
+        "note": "No commission on top",
+        "field": "Steam login",
+        "placeholder": "Login, not email",
+        "invalid": "Latin letters, digits, _ and -, at least 3",
+        "amount": "Amount in dollars",
+        "range": "From {min} to {max}",
+        "submit": "Top up",
+        "open": "Open Steam top-up"
+      },
+      "stars": {
+        "tab": "Telegram Stars",
+        "titleLine1": "Buy Stars",
+        "titleLine2": "in soʻm.",
+        "subtitle": "By Telegram username. Pay with Click, Payme or Uzum.",
+        "title": "Telegram Stars",
+        "note": "From 50 stars",
+        "field": "Telegram username",
+        "placeholder": "@username",
+        "invalid": "Username: Latin letters, digits and _, at least 5",
+        "amount": "How many stars",
+        "range": "A whole number, from {min} to {max}",
+        "submit": "Buy Stars",
+        "open": "Open Telegram Stars"
+      }
     }
   },
   "catalog": {
