@@ -60,6 +60,14 @@ details (skin, wear, the offer's float and seed, the Steam account the trade goe
 the link's token — and the price) with the payment methods and «Оплатить». The web keeps the
 one-panel form.
 
+«Как проходит покупка» explains the five steps — trade link and Steam Guard, payment, accept
+within 30 minutes, Steam's 7-day protection, the refund to the balance — under the offers on
+the web (only where buying is on) and on the mini app's pay step.
+
+A refund reaches the buyer wherever they are: `order.refunded` over the order socket re-reads
+the order and the balance and shows a toast, and the bot sends «Скин не получилось купить —
+деньги вернулись на баланс YuPay».
+
 After paying, the customer lands on the order page. Its status hero never says "credited"
 or "back to your card" for a skin: in flight it says the trade is coming, a refund says the
 YuPay balance, a failure says support. The trade card below it follows the states above.
