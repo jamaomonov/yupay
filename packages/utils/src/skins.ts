@@ -188,3 +188,57 @@ export function skinQueryString(q: SkinQuery, patch: SkinQueryPatch = {}): strin
   const s = out.toString();
   return s ? `?${s}` : "";
 }
+
+/** The weapon rarity scale, high to low — what the catalogue offers before a category is picked. */
+const WEAPON_RARITIES = [
+  "Contraband",
+  "Covert",
+  "Classified",
+  "Restricted",
+  "Mil-Spec Grade",
+  "Industrial Grade",
+  "Consumer Grade",
+] as const;
+
+/** Categories where StatTrak™ exists: weapons, knives and music kits. */
+const STATTRAK_CATEGORIES: ReadonlySet<SkinCategory> = new Set([
+  "rifles",
+  "pistols",
+  "smgs",
+  "heavy",
+  "knives",
+  "music-kits",
+]);
+
+export interface FilterSections {
+  /** Wear filter: only where items have an exterior (not agents, cases, charms…). */
+  wear: boolean;
+  /** StatTrak™ toggle: only where StatTrak items exist. */
+  stattrak: boolean;
+  /** The rarity checkboxes to offer. */
+  rarities: Facet[];
+}
+
+/**
+ * Which filters make sense for the category picked — the way Waxpeer's panel changes
+ * with it: a weapon category lists weapon rarities, agents list Master…Distinguished,
+ * cases have no wear. The facets are already counted inside the category; with none
+ * picked, the rarity list is the weapon scale rather than all seventeen grades of every
+ * item type mixed together. A rarity already chosen (a shared link) is always kept.
+ */
+export function filterSections(
+  category: SkinCategory | undefined,
+  facets: SkinFacets,
+  chosenRarity: string | undefined,
+): FilterSections {
+  const weaponScale: readonly string[] = WEAPON_RARITIES;
+  const rarities =
+    category === undefined
+      ? facets.rarities.filter((r) => weaponScale.includes(r.value) || r.value === chosenRarity)
+      : facets.rarities;
+  return {
+    wear: facets.exteriors.length > 0,
+    stattrak: category === undefined || STATTRAK_CATEGORIES.has(category),
+    rarities,
+  };
+}

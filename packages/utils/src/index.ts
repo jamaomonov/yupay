@@ -4,10 +4,18 @@ export { serializeJsonLd } from "./json-ld";
 export { reviewFollowUp } from "./review-draft";
 export type { ReviewFollowUp, ReviewFollowUpInput } from "./review-draft";
 export { isReviewSnoozeActive, REVIEW_SNOOZE_MS, reviewSnoozeValue } from "./review-snooze";
-export { DEFAULT_SORT, EXTERIORS, parseSkinQuery, SKIN_CATEGORIES, skinQueryString } from "./skins";
+export {
+  DEFAULT_SORT,
+  EXTERIORS,
+  filterSections,
+  parseSkinQuery,
+  SKIN_CATEGORIES,
+  skinQueryString,
+} from "./skins";
 export type {
   Exterior,
   Facet,
+  FilterSections,
   SkinCategory,
   SkinDetail,
   SkinFacets,

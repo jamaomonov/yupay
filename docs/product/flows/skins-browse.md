@@ -39,6 +39,13 @@ Prices everywhere are our sell price from `pricing.quote()`, stored per row by
 `repricing.reprice_rows` after every price sync and every pricing change, so a
 filter bound, a sort and a card always agree.
 
+The filter panel follows the category, as Waxpeer's does (`filterSections` in
+`@yupay/utils`, shared by web and mini app): its rarities are the category's own (agents:
+Master…Distinguished; cases: Base / Highlight Base Grade); with no category picked it offers
+the weapon scale, Contraband…Consumer Grade, not all seventeen grades mixed. Wear shows only
+where items have an exterior (not agents, cases, keys, charms, music kits), StatTrak™ only
+for weapons, knives and music kits. A value already chosen from a link stays visible.
+
 ## Mini app
 
 `/cs2-market` (catalogue) and `/cs2-market/:slug` (item) in the Telegram mini app read the

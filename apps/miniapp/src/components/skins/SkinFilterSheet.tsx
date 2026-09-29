@@ -1,4 +1,4 @@
-import { EXTERIORS } from "@yupay/utils";
+import { EXTERIORS, filterSections } from "@yupay/utils";
 import { activeFilterCount } from "@yupay/utils";
 import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
@@ -56,6 +56,8 @@ export function SkinFilterSheet({
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(() => draftOf(query));
   const count = activeFilterCount(query);
+  // Only the filters this category has — see `filterSections` (shared with the web).
+  const show = facets ? filterSections(query.category, facets, draft.rarity) : null;
   const set = (patch: Partial<Draft>) => {
     setDraft((d) => ({ ...d, ...patch }));
   };
@@ -111,25 +113,27 @@ export function SkinFilterSheet({
           <SheetTitle>{t("cs2.filters")}</SheetTitle>
         </SheetHeader>
         <div className="mt-4 space-y-5">
-          <fieldset>
-            <legend className="mb-2 text-xs font-semibold text-white/60">{t("cs2.wear")}</legend>
-            <div className="flex flex-wrap gap-2">
-              {EXTERIORS.map((e) => (
-                <button
-                  key={e}
-                  type="button"
-                  aria-pressed={draft.exterior === e}
-                  className={pill(draft.exterior === e)}
-                  style={draft.exterior === e ? undefined : FIELD}
-                  onClick={() => {
-                    set({ exterior: draft.exterior === e ? undefined : e });
-                  }}
-                >
-                  {t(`cs2.exterior.${e}`)}
-                </button>
-              ))}
-            </div>
-          </fieldset>
+          {(show === null || show.wear) && (
+            <fieldset>
+              <legend className="mb-2 text-xs font-semibold text-white/60">{t("cs2.wear")}</legend>
+              <div className="flex flex-wrap gap-2">
+                {EXTERIORS.map((e) => (
+                  <button
+                    key={e}
+                    type="button"
+                    aria-pressed={draft.exterior === e}
+                    className={pill(draft.exterior === e)}
+                    style={draft.exterior === e ? undefined : FIELD}
+                    onClick={() => {
+                      set({ exterior: draft.exterior === e ? undefined : e });
+                    }}
+                  >
+                    {t(`cs2.exterior.${e}`)}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+          )}
           <fieldset>
             <legend className="mb-2 text-xs font-semibold text-white/60">{t("cs2.price")}</legend>
             <div className="flex gap-2">
@@ -149,32 +153,34 @@ export function SkinFilterSheet({
               ))}
             </div>
           </fieldset>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={draft.stattrak}
-            onClick={() => {
-              set({ stattrak: !draft.stattrak });
-            }}
-            className="flex w-full items-center justify-between text-sm text-white"
-          >
-            {t("cs2.stattrak")}
-            <span
-              className={`relative h-6 w-10 rounded-full transition ${draft.stattrak ? "bg-primary" : ""}`}
-              style={draft.stattrak ? undefined : { background: "hsl(var(--border))" }}
+          {(show === null || show.stattrak || draft.stattrak) && (
+            <button
+              type="button"
+              role="switch"
+              aria-checked={draft.stattrak}
+              onClick={() => {
+                set({ stattrak: !draft.stattrak });
+              }}
+              className="flex w-full items-center justify-between text-sm text-white"
             >
+              {t("cs2.stattrak")}
               <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${draft.stattrak ? "left-[18px]" : "left-0.5"}`}
-              />
-            </span>
-          </button>
-          {facets && facets.rarities.length > 0 && (
+                className={`relative h-6 w-10 rounded-full transition ${draft.stattrak ? "bg-primary" : ""}`}
+                style={draft.stattrak ? undefined : { background: "hsl(var(--border))" }}
+              >
+                <span
+                  className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all ${draft.stattrak ? "left-[18px]" : "left-0.5"}`}
+                />
+              </span>
+            </button>
+          )}
+          {show !== null && show.rarities.length > 0 && (
             <fieldset>
               <legend className="mb-2 text-xs font-semibold text-white/60">
                 {t("cs2.rarity")}
               </legend>
               <div className="flex flex-wrap gap-2">
-                {facets.rarities.map(({ value, color }) => (
+                {show.rarities.map(({ value, color }) => (
                   <button
                     key={value}
                     type="button"
