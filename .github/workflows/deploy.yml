@@ -136,3 +136,14 @@ jobs:
             # the health checks pass, so a good rollback image is never pruned
             # out from under a failed deploy.
             docker image prune -f
+            # Deploys by ``sha-<x>`` tag leave nothing dangling: every one keeps a
+            # tagged image per service, and a day of five deploys filled the disk
+            # again (DiskSpaceLow, 2026-09-29: 127 stale yupay images, ~70GB).
+            # Keep the three newest per service — the running one and two to roll
+            # back to; ``rmi`` refuses anything a container still uses. Only our
+            # own ``ghcr.io/jamaomonov/yupay-*`` repos, never another stack's.
+            for repo in $(docker images --format '{{.Repository}}' | grep '^ghcr.io/jamaomonov/yupay-' | sort -u); do
+              docker images "$repo" --format '{{.Repository}}:{{.Tag}}' | tail -n +4 \
+                | while read -r img; do docker rmi "$img" >/dev/null 2>&1 || true; done
+            done
+            df -h / | tail -1
