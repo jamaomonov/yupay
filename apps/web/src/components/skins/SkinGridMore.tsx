@@ -23,8 +23,9 @@ interface SkinGridMoreProps {
 }
 
 /**
- * The rest of the catalogue, appended under the server-rendered first page as the
- * reader nears the end — a spinner while a batch loads, a retry button if one fails.
+ * The rest of the catalogue as `<li>`s inside the server page's own grid — one grid,
+ * so a short last row fills — appended as the reader nears the end: a spinner while a
+ * batch loads, a retry button if one fails.
  * Without JS the `<noscript>` link still walks the pages by cursor.
  */
 export function SkinGridMore({ query, cursor: first, locale, shown }: SkinGridMoreProps) {
@@ -73,39 +74,37 @@ export function SkinGridMore({ query, cursor: first, locale, shown }: SkinGridMo
 
   return (
     <>
-      {items.length > 0 && (
-        <ul className="mt-3 grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {items.map((item) => (
-            <li key={item.slug}>
-              <SkinCard item={item} locale={locale} />
-            </li>
-          ))}
-        </ul>
-      )}
-      <div ref={sentinel} aria-hidden className="h-px" />
-      {phase === "loading" && (
-        <div role="status" className="mt-6 flex justify-center">
-          <Loader2 className="text-tx-dim h-6 w-6 animate-spin" aria-hidden />
-          <span className="sr-only">{t("loading")}</span>
-        </div>
-      )}
-      {phase === "error" && (
-        <button
-          type="button"
-          onClick={load}
-          className="border-border mx-auto mt-6 block w-fit rounded-xl border px-6 py-3 font-semibold"
-        >
-          {t("loadMore")}
-        </button>
-      )}
-      <noscript>
-        <Link
-          href={pathFor(locale, "/skins") + skinQueryString(query, { cursor: first })}
-          className="border-border mx-auto mt-6 block w-fit rounded-xl border px-6 py-3 font-semibold"
-        >
-          {t("loadMore")}
-        </Link>
-      </noscript>
+      {items.map((item) => (
+        <li key={item.slug}>
+          <SkinCard item={item} locale={locale} />
+        </li>
+      ))}
+      <li className="col-span-full">
+        <div ref={sentinel} aria-hidden className="h-px" />
+        {phase === "loading" && (
+          <div role="status" className="mt-3 flex justify-center">
+            <Loader2 className="text-tx-dim h-6 w-6 animate-spin" aria-hidden />
+            <span className="sr-only">{t("loading")}</span>
+          </div>
+        )}
+        {phase === "error" && (
+          <button
+            type="button"
+            onClick={load}
+            className="border-border mx-auto mt-3 block w-fit rounded-xl border px-6 py-3 font-semibold"
+          >
+            {t("loadMore")}
+          </button>
+        )}
+        <noscript>
+          <Link
+            href={pathFor(locale, "/skins") + skinQueryString(query, { cursor: first })}
+            className="border-border mx-auto mt-3 block w-fit rounded-xl border px-6 py-3 font-semibold"
+          >
+            {t("loadMore")}
+          </Link>
+        </noscript>
+      </li>
     </>
   );
 }

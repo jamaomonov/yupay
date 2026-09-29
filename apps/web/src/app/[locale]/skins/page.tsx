@@ -100,16 +100,17 @@ export default async function SkinsPage({ params, searchParams }: Props) {
                 <SkinCard item={item} locale={locale} />
               </li>
             ))}
+            {/* Later batches join this same grid, so a short last row fills up. */}
+            {page.next_cursor && (
+              <SkinGridMore
+                key={skinQueryString(query)}
+                query={query}
+                cursor={page.next_cursor}
+                locale={locale}
+                shown={page.items.map((i) => i.slug)}
+              />
+            )}
           </ul>
-        )}
-        {page.next_cursor && (
-          <SkinGridMore
-            key={skinQueryString(query)}
-            query={query}
-            cursor={page.next_cursor}
-            locale={locale}
-            shown={page.items.map((i) => i.slug)}
-          />
         )}
         {/* The unfiltered hub links its landing pages; a filtered view is noindex anyway. */}
         {!filtered && <SkinLandingLinks facets={facets} locale={locale} />}

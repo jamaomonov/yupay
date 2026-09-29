@@ -61,7 +61,9 @@ function skin(slug: string): SkinItem {
 function renderMore() {
   render(
     <NextIntlClientProvider locale="ru" messages={{ web: messages }}>
-      <SkinGridMore query={{ sort: "-price" }} cursor="c1" locale="ru" shown={["a"]} />
+      <ul>
+        <SkinGridMore query={{ sort: "-price" }} cursor="c1" locale="ru" shown={["a"]} />
+      </ul>
     </NextIntlClientProvider>,
   );
 }
@@ -85,7 +87,7 @@ it("appends the next batch when the reader nears the end, without repeating a ca
     return Promise.resolve();
   });
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
-  expect(screen.getAllByRole("listitem")).toHaveLength(1); // "a" was on the server page
+  expect(screen.getAllByRole("listitem")).toHaveLength(2); // "b" + the loader row; "a" was on the server page
   expect(screen.queryByRole("button")).not.toBeInTheDocument();
 });
 
@@ -99,6 +101,6 @@ it("offers a retry when a batch fails", async () => {
   const retry = await screen.findByRole("button", { name: "Показать ещё" });
   fireEvent.click(retry);
   await waitFor(() => {
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getAllByRole("listitem")).toHaveLength(2); // "b" + the loader row
   });
 });
