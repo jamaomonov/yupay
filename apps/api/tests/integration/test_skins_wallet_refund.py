@@ -257,12 +257,20 @@ async def test_the_refund_is_pushed_to_the_open_page_and_the_bot(
     def _schedule(_db: object, factory: object) -> None:
         scheduled.append(factory)
 
+    async def _no_bot(_order_id: str, *, try_later: bool = False) -> bool:
+        return True
+
     monkeypatch.setattr(realtime, "publish_order_event", _publish)
     monkeypatch.setattr(notifications, "schedule_after_commit", _schedule)
     order, _ = await _paid(db_session, "rw-push")
     task_id = await _failed_skin_task(db_session, order, MoneyOutcome.RETURNED)
     await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
     await db_session.commit()
+    # Nothing is pushed until the refund is committed; then the page and the bot hear it.
+    assert [m for _, m in pushed if m.get("type") == "order.refunded"] == []
+    assert len(scheduled) == 1
+    monkeypatch.setattr(notifications, "notify_skin_refunded", _no_bot)
+    await scheduled[0]()  # type: ignore[operator] # the scheduled zero-arg coroutine factory
     refunded = [m for _, m in pushed if m.get("type") == "order.refunded"]
     assert refunded == [{"type": "order.refunded", "orderId": order.id, "to": "wallet"}]
     assert [u for u, m in pushed if m.get("type") == "order.refunded"] == [order.user_id]
@@ -275,6 +283,8 @@ async def test_a_replayed_refund_pushes_nothing(
     from yupay.modules.notifications import api as notifications
     from yupay.modules.realtime import api as realtime
 
+    # The first refund's own after-commit notice is not what this test is about.
+    monkeypatch.setattr(notifications, "schedule_after_commit", lambda *_: None)
     order, _ = await _paid(db_session, "rw-push2")
     task_id = await _failed_skin_task(db_session, order, MoneyOutcome.RETURNED)
     await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)

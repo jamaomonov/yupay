@@ -50,7 +50,7 @@ async def _order(db: AsyncSession, tag: str, *, state: str, **trade: Any) -> str
         ("in_progress", {"status": 0}, True),
         ("in_progress", {"status": 4}, True),  # the offer is in Steam
         ("delivered", {"status": 4}, False),  # received: the delivered-goods guard's job
-        ("failed", {"status": 6}, False),  # declined: Waxpeer gave the money back
+        ("failed", {"status": 6}, True),  # failed, but no task says where the money is
     ],
 )
 async def test_only_a_trade_on_its_way_blocks(
@@ -94,3 +94,46 @@ async def test_an_admin_refund_is_refused_mid_trade(db_session: AsyncSession) ->
     with pytest.raises(ConflictError) as err:
         await refund_admin(db_session, payment_id=payment.id, admin_id=new_id())
     assert err.value.extra["reason"] == "skin_trade_in_flight"
+
+
+async def _failed_with(db: AsyncSession, tag: str, money: str, *, resolved: bool = False) -> str:
+    from yupay.core.clock import now
+    from yupay.modules.fulfillment.models import FulfillmentTask
+
+    order_id = await _order(db, tag, state="failed", status=None, reason="ambiguous_trade")
+    item = (await db.execute(select(OrderItem).where(OrderItem.order_id == order_id))).scalar_one()
+    task = FulfillmentTask(
+        id=new_id(),
+        order_id=order_id,
+        order_item_id=item.id,
+        supplier="waxpeer",
+        status="failed",
+        extra_metadata={"waxpeer_kind": "skin", "money_outcome": money},
+    )
+    db.add(task)
+    row = (
+        await db.execute(select(SkinTrade).where(SkinTrade.order_item_id == item.id))
+    ).scalar_one()
+    row.task_id = task.id
+    if resolved:
+        row.resolved_at = now()
+    await db.commit()
+    return order_id
+
+
+@pytest.mark.parametrize(
+    ("money", "resolved", "blocked"),
+    [
+        ("unknown", False, True),  # ambiguous: an offer may still be open in Steam
+        ("unknown", True, False),  # an operator checked Waxpeer and marked it settled
+        ("returned", False, False),
+        ("spent", False, False),
+    ],
+)
+async def test_a_failure_we_cannot_account_for_still_blocks(
+    db_session: AsyncSession, money: str, resolved: bool, blocked: bool
+) -> None:
+    order_id = await _failed_with(
+        db_session, f"rg-fail-{money}-{resolved}", money, resolved=resolved
+    )
+    assert await skin_trade_in_flight(db_session, order_id) is blocked

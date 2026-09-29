@@ -95,10 +95,17 @@ cancelled by the acquirer: Payme answers `-31007`, Uzum `10017`, Paynet `306`. I
 asks for the card instead, take the money off the balance first, then refund the card.
 
 **While a skin is on its way nothing refunds** (`skins/refund_guard.py`): a skin line that is
-neither `delivered` nor `failed` — being bought, or its offer in Steam — makes an acquirer
+not `delivered` and not `failed` with the money accounted for (`returned` / `spent`) — being
+bought, its offer in Steam, or a failure we cannot account for (`buy_unconfirmed`,
+`ambiguous_trade`, money `unknown`) — makes an acquirer
 cancel read as goods shipped (the same codes as above) and an admin refund answer `409
 skin_trade_in_flight`. Waxpeer cannot recall a paid offer, so a refund then would hand over the
 skin and the money. Wait until it is received or fails (a failed one refunds itself).
+
+For an `unknown` failure: look the project id up in the Waxpeer dashboard; once you know no
+offer is open, press «Разобрано» on the trade — only then does «Вернуть деньги» appear and
+the acquirers' cancel go through. The refund and a fulfilment retry both lock the order row
+before checking, so the two can never both succeed.
 
 A retail order already refunded cannot be retried from the fulfilment inbox
 (`order_already_refunded`): the retry would buy the skin on our money.

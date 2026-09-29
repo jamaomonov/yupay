@@ -74,7 +74,7 @@ async def sales_summary(db: AsyncSession, *, days: int) -> SkinsSummaryOut:
         (OrderItem.fulfillment_state == "failed", "failed"),
         else_="in_flight",
     ).label("grp")
-    revenue = OrderItem.unit_price_usd * OrderItem.qty
+    revenue = OrderItem.unit_price_usd * OrderItem.qty - func.coalesce(OrderItem.discount_usd, 0)
     cost = _cost()
     base = (
         select(SkinTrade)

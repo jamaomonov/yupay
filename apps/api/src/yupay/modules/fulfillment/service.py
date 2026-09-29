@@ -1550,7 +1550,12 @@ async def _refuse_a_refunded_retail_order(db: AsyncSession, *, task: Fulfillment
     Raises:
         ConflictError: ``order_already_refunded``.
     """
-    status = (await db.execute(select(Order.status).where(Order.id == task.order_id))).scalar_one()
+    # Locked, and held through the retry's supplier call: a refund locks the same row
+    # (``skins.refund_guard.skin_trade_in_flight``) before it checks, so whichever comes
+    # second sees the first — never a bought skin and returned money both.
+    status = (
+        await db.execute(select(Order.status).where(Order.id == task.order_id).with_for_update())
+    ).scalar_one()
     if status == "refunded":
         raise ConflictError(
             "the order's money already went back; place a new order instead",

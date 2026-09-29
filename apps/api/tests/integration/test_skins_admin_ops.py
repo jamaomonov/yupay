@@ -95,6 +95,21 @@ async def test_a_failed_trade_with_the_money_still_ours_can_be_refunded(
     order, row = await _skin(
         db_session, "ops-refund", state="failed", task_status="failed", reason="buy_unconfirmed"
     )
+    # Unconfirmed buy: an offer may be open in Steam — no refund until an operator checks.
+    listed = (await integration_client.get("/api/v1/admin/skins/trades", headers=headers)).json()
+    assert _find(listed, row.id)["can_refund"] is False
+    refused = await integration_client.post(
+        f"/api/v1/admin/skins/trades/{row.id}/refund",
+        headers={**headers, "Idempotency-Key": f"ops-refund-early-{new_id()}"},
+    )
+    assert refused.status_code == 409, refused.text
+    # They checked Waxpeer: nothing bought, marked «Разобрано» — now the money can go back.
+    r = await integration_client.post(
+        f"/api/v1/admin/skins/trades/{row.id}/resolve",
+        json={"note": "в Waxpeer покупки нет"},
+        headers=headers,
+    )
+    assert r.status_code == 200, r.text
     listed = (await integration_client.get("/api/v1/admin/skins/trades", headers=headers)).json()
     before = _find(listed, row.id)
     assert (before["can_refund"], before["can_retry"], before["refunded_to"]) == (True, True, None)
@@ -200,3 +215,22 @@ async def test_the_customer_card_shows_their_steam_accounts_and_skins(
     accounts = {a["steam_id"]: a["orders"] for a in body["accounts"]}
     assert accounts == {str(1039652352 + 76561197960265728): 1}
     assert [t["id"] for t in body["trades"]] == [row.id]
+
+
+async def test_revenue_is_what_the_customer_paid_after_discount(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    headers = await _admin_headers(integration_client, db_session, tg_id=951_006)
+    url = "/api/v1/admin/skins/summary?days=30"
+    before = (await integration_client.get(url, headers=headers)).json()
+    order, _ = await _skin(db_session, "sum-disc", state="delivered", sold="20.00", status=5)
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    ).scalar_one()
+    item.discount_usd = Decimal("1.50")
+    await db_session.commit()
+    body = (await integration_client.get(url, headers=headers)).json()
+    revenue = Decimal(str(body["sold"]["revenue_usd"])) - Decimal(
+        str(before["sold"]["revenue_usd"])
+    )
+    assert revenue == Decimal("18.50")

@@ -176,6 +176,17 @@ def _is_attention(row: SkinTrade, task: FulfillmentTask | None, sub_state: str |
     return rolled_back or row.reason in _SUPPORT_REASONS or stuck
 
 
+def _settled(row: SkinTrade, item: OrderItem, task: FulfillmentTask | None) -> bool:
+    """The row-level twin of ``refund_guard._settled``: received, or failed with the money
+    accounted for, or settled by an operator — only then may the money go back."""
+    if item.fulfillment_state == "delivered":
+        return True
+    if item.fulfillment_state != "failed":
+        return False
+    money = (task.extra_metadata or {}).get("money_outcome") if task is not None else None
+    return money in ("returned", "spent") or row.resolved_at is not None
+
+
 def trade_out(
     row: SkinTrade,
     item: OrderItem,
@@ -217,7 +228,7 @@ def trade_out(
         task_status=task.status if task is not None else None,
         task_sub_state=sub_state,
         refunded_to=refunded_to,
-        can_refund=ours and item.fulfillment_state in ("delivered", "failed"),
+        can_refund=ours and _settled(row, item, task),
         can_retry=ours and task is not None and task.status == "failed",
         resolved_at=row.resolved_at,
         resolved_note=row.resolved_note,
