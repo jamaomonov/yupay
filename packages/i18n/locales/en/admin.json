@@ -475,7 +475,15 @@
         "notePlaceholder": "What was done: refund, support reply, Waxpeer ticket…",
         "resolve": "Mark as resolved",
         "resolvedBy": "Resolved {date}",
-        "noteLabel": "Note"
+        "noteLabel": "Note",
+        "actionsTitle": "Actions",
+        "refund": "Refund to balance",
+        "refundConfirm": "Refund {amount} to the buyer's YuPay balance? The customer is notified.",
+        "retry": "Retry the purchase",
+        "retryConfirm": "First look {project} up in the Waxpeer dashboard: if the purchase is there, a retry buys the skin twice. Retry?",
+        "refundedWallet": "Refunded to the YuPay balance",
+        "refundedCard": "Refunded to the card",
+        "actionError": "Failed: {error}"
       }
     },
     "pricing": {
@@ -599,6 +607,31 @@
       "openOffer": "Trade in Steam",
       "trades": "This order's trades",
       "seller": "Seller: {name}"
+    },
+    "navSales": "Skin sales",
+    "sales": {
+      "title": "Skin sales",
+      "description": "Received, failed and in-flight trades: revenue, Waxpeer cost and margin.",
+      "periods": "Period",
+      "days": "{n} days",
+      "sold": "Received",
+      "revenue": "Revenue",
+      "cost": "Cost",
+      "margin": "Margin",
+      "failed": "Failed",
+      "inFlight": "In flight",
+      "byDay": "By day",
+      "day": "Day",
+      "count": "Count",
+      "empty": "No skins received in this period",
+      "error": "Could not load the summary"
+    },
+    "customer": {
+      "title": "CS2 skins",
+      "saved": "Saved Steam",
+      "accounts": "Accounts ordered to",
+      "orders": "{n} order(s)",
+      "trades": "Recent trades"
     }
   }
 }

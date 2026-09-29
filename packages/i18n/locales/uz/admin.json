@@ -475,7 +475,15 @@
         "notePlaceholder": "Nima qilindi: pul qaytarildi, qo'llab-quvvatlashga yozildi, Waxpeer tiketi…",
         "resolve": "Hal qilindi deb belgilash",
         "resolvedBy": "{date} hal qilindi",
-        "noteLabel": "Izoh"
+        "noteLabel": "Izoh",
+        "actionsTitle": "Amallar",
+        "refund": "Pulni balansga qaytarish",
+        "refundConfirm": "{amount} xaridorning YuPay balansiga qaytarilsinmi? Mijozga xabar boradi.",
+        "retry": "Xaridni takrorlash",
+        "retryConfirm": "Avval {project} ni Waxpeer kabinetidan qidiring: xarid u yerda bo'lsa, takror skinni ikkinchi marta sotib oladi. Takrorlansinmi?",
+        "refundedWallet": "Pul YuPay balansiga qaytarildi",
+        "refundedCard": "Pul kartaga qaytarildi",
+        "actionError": "Bo'lmadi: {error}"
       }
     },
     "pricing": {
@@ -599,6 +607,31 @@
       "openOffer": "Steam'dagi almashuv",
       "trades": "Buyurtma almashuvlari",
       "seller": "Sotuvchi: {name}"
+    },
+    "navSales": "Skin savdosi",
+    "sales": {
+      "title": "Skin savdosi",
+      "description": "Olingan, amalga oshmagan va jarayondagi almashuvlar: tushum, Waxpeer xaridi va marja.",
+      "periods": "Davr",
+      "days": "{n} kun",
+      "sold": "Olindi",
+      "revenue": "Tushum",
+      "cost": "Xarid",
+      "margin": "Marja",
+      "failed": "Amalga oshmadi",
+      "inFlight": "Jarayonda",
+      "byDay": "Kunlar bo'yicha",
+      "day": "Kun",
+      "count": "Dona",
+      "empty": "Bu davrda olingan skinlar yo'q",
+      "error": "Hisobotni yuklab bo'lmadi"
+    },
+    "customer": {
+      "title": "CS2 skinlar",
+      "saved": "Saqlangan Steam",
+      "accounts": "Buyurtmalardagi akkauntlar",
+      "orders": "{n} ta buyurtma",
+      "trades": "So'nggi almashuvlar"
     }
   }
 }

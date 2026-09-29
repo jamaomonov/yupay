@@ -79,6 +79,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { to: "/", label: "Обзор", icon: Gauge, end: true },
       { to: "/analytics", label: "Аналитика", icon: BarChart3 },
+      { to: "/skins/sales", label: adminRu.skins.navSales, icon: Crosshair },
     ],
   },
   {

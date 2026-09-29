@@ -45,8 +45,12 @@ const ROW: AdminSkinTradeOut = {
   release_date: "2026-10-05T16:00:00Z",
   accepted_at: "2026-09-28T16:00:00Z",
   last_checked_at: null,
+  task_id: "task-1",
   task_status: "succeeded",
   task_sub_state: null,
+  refunded_to: null,
+  can_refund: false,
+  can_retry: false,
   resolved_at: null,
   resolved_note: null,
   attention: true,
@@ -178,4 +182,47 @@ it("names a Waxpeer balance shortfall and that the customer got the money back",
   await screen.findByRole("table");
   expect(within(table()).getByText(/Не хватило баланса Waxpeer/)).toBeInTheDocument();
   expect(within(table()).queryByText("supplier_low_balance")).not.toBeInTheDocument();
+});
+
+async function openDrawer(row: AdminSkinTradeOut) {
+  mockedApiGet.mockResolvedValue({ ...PAGE, items: [row] });
+  renderPage();
+  await screen.findByRole("table");
+  fireEvent.click(within(table()).getByText("AK-47 | Redline (Field-Tested)"));
+  return screen.findByRole("dialog");
+}
+
+it("refunds to the balance from the details, after a confirm", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  mockedApiPost.mockResolvedValue({ ...ROW, refunded_to: "wallet" });
+  const drawer = await openDrawer({ ...ROW, can_refund: true });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Вернуть деньги на баланс" }));
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+  const [path, , headers] = mockedApiPost.mock.calls[0]!;
+  expect(path).toBe("/api/v1/admin/skins/trades/t1/refund");
+  expect(headers).toEqual(expect.objectContaining({ "Idempotency-Key": expect.any(String) }));
+  expect(confirm).toHaveBeenCalled();
+  confirm.mockRestore();
+});
+
+it("retries the task, warning to check Waxpeer first", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  mockedApiPost.mockResolvedValue({});
+  const drawer = await openDrawer({ ...ROW, can_retry: true, task_status: "failed" });
+  fireEvent.click(within(drawer).getByRole("button", { name: "Повторить покупку" }));
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledTimes(1);
+  });
+  expect(mockedApiPost.mock.calls[0]![0]).toBe("/api/v1/admin/fulfillment/tasks/task-1/retry");
+  expect(confirm.mock.calls[0]![0]).toMatch(/p-key-1/);
+  confirm.mockRestore();
+});
+
+it("offers neither when the money is back or the skin is on its way", async () => {
+  const drawer = await openDrawer({ ...ROW, refunded_to: "wallet" });
+  expect(within(drawer).queryByRole("button", { name: "Вернуть деньги на баланс" })).toBeNull();
+  expect(within(drawer).queryByRole("button", { name: "Повторить покупку" })).toBeNull();
+  expect(within(drawer).getByText(/Деньги вернули на баланс/)).toBeInTheDocument();
 });

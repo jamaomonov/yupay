@@ -50,8 +50,15 @@ export interface AdminSkinTradeOut {
   release_date: string | null;
   accepted_at: string | null;
   last_checked_at: string | null;
+  task_id: string | null;
   task_status: string | null;
   task_sub_state: "buy_pending" | "buy_unconfirmed" | null;
+  /** Where the order's money went back, if it did. */
+  refunded_to: "wallet" | "card" | null;
+  /** The money is still ours and the line has settled: «Вернуть деньги». */
+  can_refund: boolean;
+  /** The task failed and nothing was refunded: «Повторить» (the fulfilment retry). */
+  can_retry: boolean;
   /** An operator marked it settled; it has left «needs attention». */
   resolved_at: string | null;
   resolved_note: string | null;
@@ -100,6 +107,24 @@ export function resolveTrade(id: string, note: string): Promise<AdminSkinTradeOu
     `/api/v1/admin/skins/trades/${encodeURIComponent(id)}/resolve`,
     { note },
     { "Idempotency-Key": `skin-resolve-${id}-${crypto.randomUUID()}` },
+  );
+}
+
+/** Refund the trade's order to the buyer's YuPay balance (refused while the skin travels). */
+export function refundTrade(id: string): Promise<AdminSkinTradeOut> {
+  return apiPost<AdminSkinTradeOut>(
+    `/api/v1/admin/skins/trades/${encodeURIComponent(id)}/refund`,
+    {},
+    { "Idempotency-Key": `skin-refund-${id}-${crypto.randomUUID()}` },
+  );
+}
+
+/** Re-run the trade's failed fulfilment task (the fulfilment retry). */
+export function retryTask(taskId: string): Promise<unknown> {
+  return apiPost<unknown>(
+    `/api/v1/admin/fulfillment/tasks/${encodeURIComponent(taskId)}/retry`,
+    {},
+    { "Idempotency-Key": `skin-retry-${taskId}-${crypto.randomUUID()}` },
   );
 }
 

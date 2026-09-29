@@ -46,6 +46,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { Spinner } from "@/components/States";
 import { StatusChip } from "@/components/StatusChip";
 import { useToast } from "@/components/Toast";
+import { CustomerSkins } from "@/features/skins/CustomerSkins";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { formatMoney, formatMoneyValue } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
@@ -174,6 +175,7 @@ export function CustomerPage() {
           <RecentOrders rows={data.recent_orders} onOpen={goOrder} />
           <RecentPayments rows={data.recent_payments} onOpen={goOrder} />
           <OpenTasks rows={data.open_fulfillment_tasks} onOpen={goOrder} />
+          <CustomerSkins userId={userId} />
         </section>
         <aside className="space-y-6 lg:sticky lg:top-[calc(var(--topbar-height)+1rem)] lg:self-start">
           <UserHeader

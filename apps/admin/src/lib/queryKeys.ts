@@ -188,6 +188,8 @@ export const qk = {
   skinTrades: (view: string, q: string, offset: number) =>
     ["admin", "skins", "trades", view, q, offset] as const,
   skinPricing: () => ["admin", "skins", "pricing"] as const,
+  skinSales: (days: number) => ["admin", "skins", "sales", days] as const,
+  skinCustomer: (userId: string) => ["admin", "skins", "customer", userId] as const,
   skinItems: (q: string, overridden: boolean) =>
     ["admin", "skins", "items", q, overridden] as const,
 

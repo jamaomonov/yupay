@@ -1,7 +1,8 @@
 /**
  * One skin trade in full, beside the list: what ops looks up on Waxpeer (project id,
  * Waxpeer id), the Steam offer, the money both ways, the dates, the reason in words and
- * as Waxpeer wrote it — and the way to mark it settled, with what was done.
+ * as Waxpeer wrote it — the refund and retry buttons (`TradeActions`), and the way to mark
+ * it settled, with what was done.
  */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import {
   usd,
   type AdminSkinTradeOut,
 } from "./api";
+import { TradeActions } from "./TradeActions";
 
 import { CopyId } from "@/components/CopyId";
 import { StatusChip } from "@/components/StatusChip";
@@ -146,6 +148,8 @@ export function TradeDrawer({ trade, onClose }: { trade: AdminSkinTradeOut; onCl
               <CopyId value={trade.order_id} chars={64} />
             </Row>
           </dl>
+
+          <TradeActions trade={trade} onDone={onClose} />
 
           {trade.resolved_at ? (
             <p className="rounded-md bg-[var(--bg-muted)] p-3 text-sm">
