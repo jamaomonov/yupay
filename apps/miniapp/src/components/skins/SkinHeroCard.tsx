@@ -1,4 +1,4 @@
-import { steamImageSize, wearColor } from "@yupay/utils";
+import { rarityGlow, steamImageSize, wearColor } from "@yupay/utils";
 import { Eye } from "lucide-react";
 
 import type { SkinDetail, SkinListing } from "@yupay/utils";
@@ -18,6 +18,7 @@ export function SkinHeroCard({ item, offer }: { item: SkinDetail; offer: SkinLis
   const float = offer?.float_value ?? null;
   const stickers = offer?.stickers ?? [];
   const inspect = offer?.inspect_url?.startsWith("steam://") ? offer.inspect_url : null;
+  const glow = rarityGlow(item.rarity_color);
   const panel = { background: "hsl(var(--background) / 0.72)", backdropFilter: "blur(6px)" };
 
   return (
@@ -29,6 +30,7 @@ export function SkinHeroCard({ item, offer }: { item: SkinDetail; offer: SkinLis
         ...(item.rarity_color ? { borderBottomColor: item.rarity_color } : {}),
       }}
     >
+      {glow && <span aria-hidden className="absolute inset-0" style={{ background: glow }} />}
       {item.image_url && (
         <SafeImage
           src={steamImageSize(item.image_url, "512fx384f")}

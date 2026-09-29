@@ -1,4 +1,4 @@
-import { isVanilla, steamImageSize } from "@yupay/utils";
+import { isVanilla, rarityGlow, steamImageSize } from "@yupay/utils";
 import { Link } from "wouter";
 
 import type { SkinItem } from "@yupay/utils";
@@ -17,6 +17,7 @@ export function SkinCard({ item }: { item: SkinItem }) {
   // Under 5 % a badge on every other card only dilutes the ones that matter.
   const discount =
     item.discount_percent !== null && item.discount_percent >= 5 ? item.discount_percent : null;
+  const glow = rarityGlow(item.rarity_color);
 
   return (
     <Link
@@ -29,6 +30,7 @@ export function SkinCard({ item }: { item: SkinItem }) {
       }}
     >
       <div className="relative aspect-[4/3] w-full overflow-hidden bg-black/20">
+        {glow && <span aria-hidden className="absolute inset-0" style={{ background: glow }} />}
         {item.image_url && (
           <SafeImage
             src={steamImageSize(item.image_url, "256fx256f")}

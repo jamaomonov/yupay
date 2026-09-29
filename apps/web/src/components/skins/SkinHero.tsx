@@ -1,6 +1,6 @@
 "use client";
 
-import { steamImageSize, wearColor } from "@yupay/utils";
+import { rarityGlow, steamImageSize, wearColor } from "@yupay/utils";
 import { Eye } from "lucide-react";
 import Image from "next/image";
 import { useTranslations } from "next-intl";
@@ -28,6 +28,7 @@ export function SkinHero({
 }) {
   const t = useTranslations("web.skins");
   const { selected } = useSelectedOffer();
+  const glow = rarityGlow(rarityColor);
   const float = selected?.float_value ?? null;
   const stickers = selected?.stickers ?? [];
   const inspect = selected?.inspect_url?.startsWith("steam://") ? selected.inspect_url : null;
@@ -37,6 +38,7 @@ export function SkinHero({
       className="bg-muted relative aspect-[4/3] overflow-hidden rounded-xl border-b-[3px] border-transparent"
       style={rarityColor ? { borderBottomColor: rarityColor } : undefined}
     >
+      {glow && <span aria-hidden className="absolute inset-0" style={{ background: glow }} />}
       {image && (
         <Image
           src={steamImageSize(image, "512fx384f")}

@@ -28,6 +28,7 @@ export {
   hasWear,
   isVanilla,
   offerHeadline,
+  rarityGlow,
   repriceOffer,
   steamDiscount,
   wearChoices,

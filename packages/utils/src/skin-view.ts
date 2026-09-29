@@ -201,3 +201,19 @@ export function steamDiscount(priceUsd: string, steamUsd: string | null): number
   const off = Math.floor(((steam - price) / steam) * 100);
   return off >= 1 ? off : null;
 }
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+
+/**
+ * The brand's glow behind a skin's picture: its rarity colour lighting it from behind,
+ * strongest under the item and fading to nothing. A CSS `background` value, or `null`
+ * when there is no (well-formed) colour — the value is set inline, so only a plain hex
+ * colour is ever let through.
+ */
+export function rarityGlow(color: string | null): string | null {
+  if (!color || !HEX_COLOR.test(color)) return null;
+  return (
+    `radial-gradient(ellipse 62% 58% at 50% 56%, ${color}59 0%, ${color}1f 42%, transparent 72%), ` +
+    `radial-gradient(ellipse 45% 12% at 50% 88%, ${color}40 0%, transparent 100%)`
+  );
+}

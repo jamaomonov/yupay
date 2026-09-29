@@ -6,6 +6,7 @@ import {
   hasWear,
   isVanilla,
   offerHeadline,
+  rarityGlow,
   repriceOffer,
   steamDiscount,
   wearColor,
@@ -195,5 +196,19 @@ describe("steamDiscount", () => {
     expect(steamDiscount("40.00", "35.00")).toBeNull();
     expect(steamDiscount("30.00", null)).toBeNull();
     expect(steamDiscount("34.90", "35.00")).toBeNull();
+  });
+});
+
+describe("rarityGlow", () => {
+  it("lights the picture from behind in the rarity's colour, fading out", () => {
+    const glow = rarityGlow("#eb4b4b");
+    expect(glow).toContain("radial-gradient");
+    expect(glow).toContain("#eb4b4b");
+    expect(glow).toContain("transparent");
+  });
+
+  it("stays dark without a colour or with a malformed one", () => {
+    expect(rarityGlow(null)).toBeNull();
+    expect(rarityGlow("red; background:url(x)")).toBeNull();
   });
 });

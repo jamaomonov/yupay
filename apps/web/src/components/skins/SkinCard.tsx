@@ -1,3 +1,4 @@
+import { isVanilla, rarityGlow } from "@yupay/utils";
 import Image from "next/image";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
@@ -8,7 +9,6 @@ import { isOptimizable } from "@/lib/image";
 import { pathFor } from "@/lib/seo";
 import { steamImageSize } from "@/lib/skin-float";
 import { displayPrice } from "@/lib/skins";
-import { isVanilla } from "@yupay/utils";
 
 /**
  * One catalogue tile: art, skin and weapon, wear, discount vs
@@ -20,6 +20,7 @@ import { isVanilla } from "@yupay/utils";
 export function SkinCard({ item, locale }: { item: SkinItem; locale: string }) {
   const t = useTranslations("web.skins");
   const price = displayPrice(locale, item.price_uzs, item.price_usd);
+  const glow = rarityGlow(item.rarity_color);
   // Under 5 % a badge on every other card only dilutes the ones that matter.
   const discount =
     item.discount_percent !== null && item.discount_percent >= 5 ? item.discount_percent : null;
@@ -31,6 +32,13 @@ export function SkinCard({ item, locale }: { item: SkinItem; locale: string }) {
       style={item.rarity_color ? { borderBottomColor: item.rarity_color } : undefined}
     >
       <div className="bg-muted relative aspect-[4/3] w-full overflow-hidden">
+        {glow && (
+          <span
+            aria-hidden
+            className="absolute inset-0 opacity-80 transition duration-500 group-hover:scale-110 group-hover:opacity-100"
+            style={{ background: glow }}
+          />
+        )}
         {item.image_url && (
           <Image
             src={steamImageSize(item.image_url, "256fx256f")}
