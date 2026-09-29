@@ -173,3 +173,43 @@ async def test_the_admin_order_page_shows_the_skin_and_its_trade(
     assert listed["items"][0]["items"][0]["display"]["denomination"] == (
         "AK-47 | Redline (Field-Tested)"
     )
+
+
+async def test_a_refunded_skin_says_the_money_is_on_the_balance(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    from decimal import Decimal
+
+    from yupay.modules.orders.models import OrderItem as _Item
+    from yupay.modules.payments.models import Payment
+    from yupay.modules.payments.service import refund_order_to_wallet
+
+    token = await _login_user(integration_client, tg_id=940_009)
+    auth = {"Authorization": f"Bearer {token}"}
+    me = (await integration_client.get("/api/v1/auth/me", headers=auth)).json()
+    order_id = await _owned_order(
+        db_session, me["id"], "ov-refund", status=6, reason="Buyer failed to accept"
+    )
+    item = (await db_session.execute(select(_Item).where(_Item.order_id == order_id))).scalar_one()
+    item.fulfillment_state = "failed"
+    db_session.add(
+        Payment(
+            id=new_id(),
+            order_id=order_id,
+            provider="click",
+            status="succeeded",
+            amount=Decimal("385700"),
+            currency="UZS",
+            extra_metadata={},
+        )
+    )
+    await db_session.commit()
+
+    before = (await integration_client.get(f"/api/v1/orders/{order_id}", headers=auth)).json()
+    assert before["items"][0]["skin_trade"]["refunded_to"] is None
+
+    await refund_order_to_wallet(db_session, order_id=order_id, reason="not_accepted")
+    await db_session.commit()
+    after = (await integration_client.get(f"/api/v1/orders/{order_id}", headers=auth)).json()
+    trade = after["items"][0]["skin_trade"]
+    assert (trade["state"], trade["refunded_to"]) == ("failed", "wallet")

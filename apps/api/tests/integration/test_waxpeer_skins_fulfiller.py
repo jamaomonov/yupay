@@ -212,13 +212,16 @@ async def test_a_lost_buy_response_is_parked_not_retried(db_session: AsyncSessio
     assert "buy_unconfirmed_at" in result.extra_metadata
 
 
-async def test_low_balance_is_the_soft_path(db_session: AsyncSession) -> None:
+async def test_low_balance_fails_with_the_money_back(db_session: AsyncSession) -> None:
+    # Owner's call 2026-09-29: a skin buyer is not kept waiting on our top-up —
+    # nothing was bought, so the money goes back to their balance at once.
     item = await _item(db_session, "sk-low")
     client = _Client(buy_error=WaxpeerError("Not enough balance", status=200))
     result = await fulfill_skin(client, db=db_session, item=item, idempotency_key=KEY)
-    assert result.outcome == "failed"
-    assert result.money_outcome is None
+    assert (result.outcome, result.money_outcome) == ("failed", MoneyOutcome.RETURNED)
     assert result.error == "supplier_low_balance"
+    assert result.extra_metadata["required_units"] == 27867
+    assert (await _row(db_session)).reason == "supplier_low_balance"
 
 
 async def test_status_follows_the_offer_to_acceptance(db_session: AsyncSession) -> None:

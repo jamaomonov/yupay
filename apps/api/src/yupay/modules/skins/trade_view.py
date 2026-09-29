@@ -7,9 +7,13 @@ Waxpeer's numbers become five states a customer understands:
   ``release_date``);
 * ``accepted`` — received; Steam's trade protection runs to ``release_date`` (4 with it);
 * ``released`` — protection over (5);
-* ``failed`` — ``not_accepted`` (declined or expired) or ``sold_out`` (nothing left to buy):
-  the money is back on the balance; ``support``: a purchase we could not confirm, settled by
-  a human — no refund is promised; ``other``.
+* ``failed`` — ``not_accepted`` (declined or expired), ``sold_out`` (nothing left to buy),
+  ``try_later`` (Waxpeer was short of our money — a retry in a few minutes may work);
+  ``support``: a purchase we could not confirm, settled by a human; ``other``.
+
+Whether the money came back is not read off the reason: ``refunded_to`` says where a refund
+actually went (``wallet`` / ``card``), from the order's payment, so the page never promises a
+refund that failed or has not happened.
 
 The seller is shown on purpose (spec §2.3): the customer should recognise the offer.
 """
@@ -24,7 +28,8 @@ from pydantic import BaseModel
 from yupay.modules.skins.models import SkinTrade
 
 SkinTradeState = Literal["buying", "offer_sent", "accepted", "released", "failed"]
-SkinTradeReason = Literal["not_accepted", "sold_out", "support", "other"]
+SkinTradeReason = Literal["not_accepted", "sold_out", "try_later", "support", "other"]
+SkinRefundedTo = Literal["wallet", "card"]
 
 
 class SkinSellerOut(BaseModel):
@@ -45,6 +50,7 @@ class SkinTradeOut(BaseModel):
     release_date: datetime | None = None
     seller: SkinSellerOut | None = None
     reason_code: SkinTradeReason | None = None
+    refunded_to: SkinRefundedTo | None = None
 
 
 def _state(row: SkinTrade, fulfillment_state: str) -> SkinTradeState:
@@ -58,10 +64,11 @@ def _state(row: SkinTrade, fulfillment_state: str) -> SkinTradeState:
 
 
 def _reason(row: SkinTrade) -> SkinTradeReason:
-    # Only these three give the money back on their own; ``support`` is a purchase we
-    # could not confirm — a human settles it, so the page must not promise a refund.
+    # ``support`` is a purchase we could not confirm — a human settles it.
     if row.reason in ("buy_unconfirmed", "ambiguous_trade"):
         return "support"
+    if row.reason == "supplier_low_balance":
+        return "try_later"
     if row.status is None:
         return "sold_out"
     if row.reason and "accept" in row.reason.lower():
@@ -75,8 +82,16 @@ def _seller(raw: dict[str, Any]) -> SkinSellerOut | None:
     return SkinSellerOut.model_validate(raw)
 
 
-def skin_trade_out(row: SkinTrade, *, fulfillment_state: str) -> SkinTradeOut:
-    """Map our mirror of a Waxpeer trade to the buyer's view."""
+def skin_trade_out(
+    row: SkinTrade, *, fulfillment_state: str, refunded_to: SkinRefundedTo | None = None
+) -> SkinTradeOut:
+    """Map our mirror of a Waxpeer trade to the buyer's view.
+
+    Args:
+        row: The trade mirror.
+        fulfillment_state: The order line's state.
+        refunded_to: Where the order's refund went, if one was made.
+    """
     state = _state(row, fulfillment_state)
     return SkinTradeOut(
         state=state,
@@ -87,7 +102,15 @@ def skin_trade_out(row: SkinTrade, *, fulfillment_state: str) -> SkinTradeOut:
         release_date=row.release_date,
         seller=_seller(row.seller or {}),
         reason_code=_reason(row) if state == "failed" else None,
+        refunded_to=refunded_to if state == "failed" else None,
     )
 
 
-__all__ = ["SkinSellerOut", "SkinTradeOut", "SkinTradeReason", "SkinTradeState", "skin_trade_out"]
+__all__ = [
+    "SkinRefundedTo",
+    "SkinSellerOut",
+    "SkinTradeOut",
+    "SkinTradeReason",
+    "SkinTradeState",
+    "skin_trade_out",
+]

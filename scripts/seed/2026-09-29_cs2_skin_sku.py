@@ -72,11 +72,11 @@ REQUIRED_FIELDS: list[dict[str, Any]] = [
     },
 ]
 
-#: The pricing floor is $0.20 (``PricingRules.price_floor_usd``); $10 000 covers the dearest
+#: The pricing floor is $0.10 (``PricingRules.price_floor_usd``); $10 000 covers the dearest
 #: knives and gloves on sale. The line is re-priced from the live listing regardless.
 SKU_PRICE_USD_PLACEHOLDER = Decimal("1")
 SKU_RATE_MULTIPLIER_PLACEHOLDER = Decimal("1")
-SKU_MIN_AMOUNT_USD = Decimal("0.20")
+SKU_MIN_AMOUNT_USD = Decimal("0.10")
 SKU_MAX_AMOUNT_USD = Decimal("10000")
 
 _SKU_MANAGED_FIELDS: dict[str, Decimal] = {

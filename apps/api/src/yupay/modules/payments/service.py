@@ -1163,6 +1163,15 @@ async def refund_admin(
             "payment can't be refunded in its current state",
             extra={"status": payment.status},
         )
+    from yupay.modules.skins.refund_guard import skin_trade_in_flight
+
+    if await skin_trade_in_flight(db, payment.order_id):
+        # Waxpeer cannot recall the offer: refunding now gives the skin and the money.
+        raise ConflictError(
+            "a CS2 skin on this order is still being bought or sent; "
+            "wait until it is received or fails",
+            reason="skin_trade_in_flight",
+        )
     refund_amount = amount if amount is not None else payment.amount
     if refund_amount <= 0:
         raise ValidationError("refund amount must be positive")

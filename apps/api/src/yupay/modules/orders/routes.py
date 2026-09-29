@@ -47,7 +47,7 @@ from yupay.modules.orders.schemas import (
 from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
 from yupay.modules.skins.models import SkinTrade
 from yupay.modules.skins.order_display import skin_images, skin_line_name
-from yupay.modules.skins.trade_view import skin_trade_out
+from yupay.modules.skins.trade_view import SkinRefundedTo, skin_trade_out
 from yupay.modules.users.models import User
 from yupay.modules.users.service import is_email_banned
 
@@ -110,13 +110,26 @@ async def _attach_skin_trades(db: AsyncSession, pairs: Sequence[tuple[OrderOut, 
     by_item = {row.order_item_id: row for row in rows}
     if not by_item:
         return
-    for out, _ in pairs:
+    for out, order in pairs:
+        refunded_to = _refunded_to(order)
         for item_out in out.items:
             row = by_item.get(item_out.id)
             if row is not None:
                 item_out.skin_trade = skin_trade_out(
-                    row, fulfillment_state=items[item_out.id].fulfillment_state
+                    row,
+                    fulfillment_state=items[item_out.id].fulfillment_state,
+                    refunded_to=refunded_to,
                 )
+
+
+def _refunded_to(order: Order) -> SkinRefundedTo | None:
+    """Where the order's money went back, read off its eager-loaded payments."""
+    from yupay.modules.payments.service import refunded_to_wallet
+
+    refunded = [p for p in order.payments if p.status == "refunded"]
+    if not refunded:
+        return None
+    return "wallet" if any(refunded_to_wallet(p) for p in refunded) else "card"
 
 
 def _to_admin_order_out(order: Order, locale: str = "ru") -> OrderAdminOut:

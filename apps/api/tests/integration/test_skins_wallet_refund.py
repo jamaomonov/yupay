@@ -191,3 +191,52 @@ async def test_a_declined_offer_seen_by_the_sweep_lands_on_the_balance(
         await db_session.commit()
     cfg.get_settings.cache_clear()
     assert await _balance(db_session, user_id) == AMOUNT
+
+
+async def test_a_skin_low_balance_ends_the_line_and_alerts(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.modules.fulfillment.suppliers.base import FulfillResult
+
+    alerts: list[str] = []
+
+    def _capture(coro: object) -> None:
+        alerts.append(getattr(coro, "__qualname__", ""))
+        coro.close()  # type: ignore[attr-defined] # a coroutine; never run in a unit test
+
+    monkeypatch.setattr(ff_svc, "_dispatch_alert", _capture)
+    order, _ = await _paid(db_session, "rw-lowbal")
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    ).scalar_one()
+    task = FulfillmentTask(
+        id=new_id(),
+        order_id=order.id,
+        order_item_id=item.id,
+        supplier="waxpeer",
+        status="in_progress",
+        extra_metadata={"waxpeer_kind": "skin"},
+    )
+    result = FulfillResult(
+        outcome="failed",
+        external_order_id=None,
+        artifact_kind=None,
+        artifact=None,
+        error="supplier_low_balance",
+        extra_metadata={"waxpeer_kind": "skin", "required_units": 27867},
+        money_outcome=MoneyOutcome.RETURNED,
+    )
+    ff_svc._apply_failure(task=task, item=item, result=result)
+    assert item.fulfillment_state == "failed"
+    assert (task.extra_metadata or {})["money_outcome"] == MoneyOutcome.RETURNED.value
+    assert alerts == ["_alert_skin_low_balance"]
+
+
+async def test_a_retry_after_the_refund_is_refused(db_session: AsyncSession) -> None:
+    # Retrying a refunded skin would buy it on our money: the customer has it back.
+    order, _ = await _paid(db_session, "rw-retry")
+    task_id = await _failed_skin_task(db_session, order, MoneyOutcome.RETURNED)
+    await ff_svc._settle_merchant_deposit(db_session, task_id=task_id)
+    await db_session.commit()
+    with pytest.raises(ConflictError):
+        await ff_svc.retry_task(db_session, task_id=task_id)

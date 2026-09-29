@@ -907,6 +907,13 @@ def _apply_failure(*, task: FulfillmentTask, item: OrderItem, result: FulfillRes
     task.failed_at = now()
     task.last_error = result.error
 
+    if result.error == _LOW_BALANCE_ERROR and result.money_outcome is MoneyOutcome.RETURNED:
+        # A CS2 skin: nothing was bought, so the line ends and the buyer's money goes
+        # back to their balance (``_refund_skin_to_wallet``) instead of waiting on us.
+        item.fulfillment_state = "failed"
+        _record_or_warn(task, result.money_outcome, discovered="fulfill")
+        _dispatch_alert(_alert_skin_low_balance(task=task, result=result))
+        return
     if result.error == _LOW_BALANCE_ERROR:
         item.fulfillment_state = "in_progress"
         _dispatch_alert(_maybe_alert_low_balance(task=task, result=result))
@@ -1529,6 +1536,23 @@ async def end_a_refunded_merchant_order(
     log.info("merchant_refund.order_closed", order_id=order.id, task_id=task_id, by=by)
 
 
+async def _refuse_a_refunded_retail_order(db: AsyncSession, *, task: FulfillmentTask) -> None:
+    """Refuse to re-drive a retail order whose money already went back.
+
+    A failed CS2 skin refunds itself to the buyer's balance; retrying it would buy
+    the skin on our money. Any refunded retail order is the same loophole.
+
+    Raises:
+        ConflictError: ``order_already_refunded``.
+    """
+    status = (await db.execute(select(Order.status).where(Order.id == task.order_id))).scalar_one()
+    if status == "refunded":
+        raise ConflictError(
+            "the order's money already went back; place a new order instead",
+            reason="order_already_refunded",
+        )
+
+
 async def _refuse_a_settled_merchant_order(db: AsyncSession, *, task: FulfillmentTask) -> None:
     """Refuse to re-drive a merchant order whose money has already gone back.
 
@@ -1563,6 +1587,7 @@ async def _refuse_a_settled_merchant_order(db: AsyncSession, *, task: Fulfillmen
         await db.execute(select(Order.merchant_id).where(Order.id == task.order_id))
     ).scalar_one()
     if merchant_id is None:
+        await _refuse_a_refunded_retail_order(db, task=task)
         return
     from yupay.modules.merchants import refund as merchant_refund
 
@@ -2422,6 +2447,32 @@ async def _alert_merchant_refund_failed(*, task_id: str, order_id: str | None, e
 
 
 # ---------- low-balance alerting ----------
+
+
+async def _alert_skin_low_balance(*, task: FulfillmentTask, result: FulfillResult) -> None:
+    """Tell ops Waxpeer could not pay for a skin — once per dedupe window.
+
+    Unlike :func:`_maybe_alert_low_balance` the customer is not waiting: the order
+    already went back to their balance, so the advice is to top up, not to retry.
+    """
+    from yupay.modules.notifications import api as notifications
+
+    try:
+        if await _set_redis_dedupe(
+            "alert:low_balance:waxpeer_skin", ttl_seconds=_LOW_BALANCE_ALERT_DEDUPE_SECONDS
+        ):
+            return
+        units = (result.extra_metadata or {}).get("required_units")
+        need = f"${int(units) / 1000:.2f}" if units else "?"
+        text = (
+            "<b>⚠️ Waxpeer: не хватило баланса на скин</b>\n"
+            f"Нужно было: <b>{need}</b>\n"
+            f"<i>Задача: {task.id[:8]}… · клиенту вернули деньги на баланс YuPay.</i>\n"
+            "Пополни Waxpeer — повторять заказ не нужно."
+        )
+        await notifications.send_admin_alert(text, kind="supplier_low_balance")
+    except Exception as exc:  # noqa: BLE001 -- alerting must never break a sale
+        log.warning("fulfillment.skin_low_balance_alert_failed", error=str(exc)[:200])
 
 
 async def _maybe_alert_low_balance(

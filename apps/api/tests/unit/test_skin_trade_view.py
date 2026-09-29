@@ -81,3 +81,30 @@ def test_an_unconfirmed_buy_sends_the_customer_to_support_not_to_a_refund() -> N
 def test_a_sold_out_line_is_named_by_its_reason() -> None:
     out = skin_trade_out(_row(status=None, reason="sold_out"), fulfillment_state="failed")
     assert out.reason_code == "sold_out"
+
+
+def test_waxpeer_short_of_money_asks_to_try_again_later() -> None:
+    out = skin_trade_out(
+        _row(status=None, reason="supplier_low_balance"),
+        fulfillment_state="failed",
+        refunded_to="wallet",
+    )
+    assert (out.reason_code, out.refunded_to) == ("try_later", "wallet")
+
+
+def test_the_page_promises_a_refund_only_when_one_was_made() -> None:
+    # A declined offer whose refund has not landed (it failed and was alerted)
+    # must not say "the money is on your balance".
+    out = skin_trade_out(
+        _row(status=6, reason="Buyer failed to accept"), fulfillment_state="failed"
+    )
+    assert out.refunded_to is None
+
+
+def test_a_refund_is_reported_where_it_went() -> None:
+    out = skin_trade_out(
+        _row(status=6, reason="Buyer failed to accept"),
+        fulfillment_state="failed",
+        refunded_to="card",
+    )
+    assert out.refunded_to == "card"

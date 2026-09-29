@@ -244,7 +244,12 @@ async def _any_goods_delivered(db: AsyncSession, order_id: str) -> bool:
             .limit(1)
         )
     ).first()
-    return row is not None
+    if row is not None:
+        return True
+    # A CS2 skin on its way counts as shipped: Waxpeer cannot recall the offer.
+    from yupay.modules.skins.refund_guard import skin_trade_in_flight
+
+    return await skin_trade_in_flight(db, order_id)
 
 
 async def check(db: AsyncSession, *, service_id: int, params: dict[str, Any]) -> dict[str, Any]:

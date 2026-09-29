@@ -1730,6 +1730,7 @@
                 "enum": [
                   "not_accepted",
                   "sold_out",
+                  "try_later",
                   "support",
                   "other"
                 ],
@@ -16027,6 +16028,7 @@
                 "enum": [
                   "not_accepted",
                   "sold_out",
+                  "try_later",
                   "support",
                   "other"
                 ],
@@ -16037,6 +16039,21 @@
               }
             ],
             "title": "Reason Code"
+          },
+          "refunded_to": {
+            "anyOf": [
+              {
+                "enum": [
+                  "wallet",
+                  "card"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Refunded To"
           },
           "release_date": {
             "anyOf": [

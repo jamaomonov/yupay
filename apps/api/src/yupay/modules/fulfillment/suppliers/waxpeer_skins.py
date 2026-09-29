@@ -57,6 +57,7 @@ log = get_logger("yupay.fulfillment.waxpeer_skins")
 SKIN_KIND = "skin"
 MAX_SUBSTITUTES = 2
 UNCONFIRMED_WINDOW = timedelta(minutes=10)
+LOW_BALANCE_ERROR = "supplier_low_balance"
 _LOW_BALANCE_HINTS = ("not enough balance", "insufficient balance", "insufficient funds")
 
 
@@ -233,8 +234,16 @@ async def _buy(
             )
         except WaxpeerError as exc:
             if _looks_like_low_balance(exc):
+                # Nothing was bought: the buyer gets the money back now rather
+                # than waiting on our top-up (owner, 2026-09-29); ops is alerted.
+                row.reason = LOW_BALANCE_ERROR
+                await db.flush()
                 return _result(
-                    "failed", None, error="supplier_low_balance", required_units=max_units
+                    "failed",
+                    None,
+                    error=LOW_BALANCE_ERROR,
+                    money=MoneyOutcome.RETURNED,
+                    required_units=max_units,
                 )
             if exc.status >= 500:
                 # A server error may have bought it: resolve by lookup, never rebuy.
