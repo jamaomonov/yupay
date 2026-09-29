@@ -413,7 +413,9 @@ async def test_pick_trade_chooses_the_live_one_or_refuses_to_guess() -> None:
     failed, live, other = _trade(6), _trade(4, id=2), _trade(2, id=3)
     assert pick_trade([failed, live, other], 3) is other  # by Waxpeer's id
     assert pick_trade([failed, live], None) is live  # the one still alive
-    assert pick_trade([failed, _trade(6, id=9)], None).id == 9  # all failed: the latest
+    latest = pick_trade([failed, _trade(6, id=9)], None)  # all failed: the latest
+    assert latest is not None
+    assert latest.id == 9
     with pytest.raises(AmbiguousTradeError):
         pick_trade([live, other], None)
 
