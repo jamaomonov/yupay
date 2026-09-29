@@ -1045,5 +1045,13 @@
       "popular": "Mashhur qurollar",
       "skinsOf": "{weapon} skinlari"
     }
+  },
+  "cs2Band": {
+    "eyebrow": "Yangi · CS2",
+    "title": "CS2 skinlari so'mga",
+    "subtitle": "Pichoqlar, qo'lqoplar va qurollar. Click, Payme, Uzum orqali to'lov — almashuv bir daqiqada Steam'ga keladi.",
+    "cta": "Marketni ochish",
+    "count": "{count}+ skin",
+    "fast": "Steam'da almashuv bir daqiqada"
   }
 }

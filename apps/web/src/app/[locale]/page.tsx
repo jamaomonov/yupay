@@ -2,6 +2,7 @@ import { setRequestLocale } from "next-intl/server";
 
 import { AppShowcase } from "@/components/sections/AppShowcase";
 import { CatalogBento } from "@/components/sections/CatalogBento";
+import { CS2SkinsBand } from "@/components/sections/CS2SkinsBand";
 import { CtaBand } from "@/components/sections/CtaBand";
 import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
@@ -23,6 +24,7 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
       <Ticker />
       <TrustBand />
       <SteamZeroCommission locale={locale} />
+      <CS2SkinsBand locale={locale} />
       <CatalogBento locale={locale} />
       <HowItWorks />
       <AppShowcase />

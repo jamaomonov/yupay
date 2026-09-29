@@ -1045,5 +1045,13 @@
       "popular": "Popular weapons",
       "skinsOf": "{weapon} skins"
     }
+  },
+  "cs2Band": {
+    "eyebrow": "New · CS2",
+    "title": "CS2 skins for soʻm",
+    "subtitle": "Knives, gloves and weapons. Pay with Click, Payme, Uzum — the Steam trade arrives within a minute.",
+    "cta": "Open the market",
+    "count": "{count}+ skins",
+    "fast": "Steam trade in a minute"
   }
 }
