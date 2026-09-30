@@ -20,6 +20,7 @@ from httpx import AsyncClient
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import get_settings
+from yupay.core.ids import new_id
 from yupay.modules.catalog.models import Product
 from yupay.modules.users.models import TelegramLink, User
 
@@ -372,6 +373,61 @@ async def test_patch_brand_highlights_persist_and_round_trip(
     by_locale = {t["locale"]: t for t in brand["translations"]}
     assert by_locale["ru"]["highlights"] == ["Оплата в сумах", "По ID игрока", "Без пароля"]
     assert by_locale["en"]["highlights"] == ["No password"]
+
+
+async def test_brand_seo_copy_round_trips_through_admin(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/categories",
+        headers=_admin_headers,
+        json={"slug": "seo-cat", "translations": [{"locale": "ru", "name": "Кат"}]},
+    )
+    category_id = r.json()["id"]
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=_admin_headers,
+        json={
+            "slug": "seo-brand",
+            "category_id": category_id,
+            "translations": [
+                {
+                    "locale": "ru",
+                    "name": "Бренд",
+                    "seo_title": "Алмазы Бренда — купить",
+                    "seo_description": "Описание для поиска.",
+                }
+            ],
+        },
+    )
+    assert r.status_code == 201, r.text
+    brand_id = r.json()["id"]
+    assert r.json()["translations"][0]["seo_title"] == "Алмазы Бренда — купить"
+
+    r = await integration_client.patch(
+        f"/api/v1/admin/catalog/brands/{brand_id}",
+        headers=_admin_headers,
+        json={"translations": [{"locale": "ru", "name": "Бренд", "seo_title": "Новый"}]},
+    )
+    assert r.status_code == 200, r.text
+    ru = r.json()["translations"][0]
+    assert ru["seo_title"] == "Новый"
+    assert ru["seo_description"] is None  # a PATCH replaces the translation set
+
+
+async def test_brand_seo_title_over_120_chars_returns_422(
+    integration_client: AsyncClient, _admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.post(
+        "/api/v1/admin/catalog/brands",
+        headers=_admin_headers,
+        json={
+            "slug": "seo-long",
+            "category_id": new_id(),
+            "translations": [{"locale": "ru", "name": "Б", "seo_title": "x" * 121}],
+        },
+    )
+    assert r.status_code == 422
 
 
 async def test_brand_highlight_over_40_chars_returns_422(

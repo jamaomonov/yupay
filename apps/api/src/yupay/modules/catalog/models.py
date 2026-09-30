@@ -148,6 +148,10 @@ class BrandTranslation(Base):
     # Short localized value-prop chips shown on the brand hero (e.g. Steam's
     # "0% комиссии", "Оплата в сумах"). NULL/absent -> no chips rendered.
     highlights: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Search copy for the brand page, this locale only; NULL -> the storefront's
+    # template (see ``catalog.service._pick_seo``).
+    seo_title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    seo_description: Mapped[str | None] = mapped_column(String(320), nullable=True)
 
     __table_args__ = (PrimaryKeyConstraint("brand_id", "locale", name="pk_brand_translations"),)
 

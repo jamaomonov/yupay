@@ -211,6 +211,17 @@ to R2, then persist the returned `public_url` into this field — see the
 `storage` module's README for the upload workflow and its `field_help_image`
 media-kind row.
 
+## Brand search copy (`seo_title`, `seo_description`)
+
+`brand_translations` carries an optional search title and meta description per
+locale (migration 0092), edited in the admin brand form. The brand page uses them
+instead of its template («{name} — пополнение в Узбекистане»), appending « | yupay»
+to the title. They are read for the page's **own locale only** — no fallback to
+another locale, because a Russian title on the English page is worse than the
+template. Set them where search demand says the template misses the buyer's words:
+Mobile Legends first (`scripts/seed/2026-10-01_mlbb_seo_titles.sql` — «MLBB»,
+«diamonds», «алмазы»).
+
 ## Display-price policy
 
 For every SKU and a requested currency `Q`:

@@ -15,6 +15,10 @@ export interface Translation {
   /** Short localized value-prop chips shown on the brand hero (e.g. "0%
    *  комиссии", "Оплата в сумах"). Brand-only — categories/products ignore it. */
   highlights?: string[];
+  /** The brand page's <title> / meta description in this locale. Brand-only;
+   *  empty -> the storefront's template. */
+  seo_title?: string | null;
+  seo_description?: string | null;
 }
 
 export interface CategoryTranslation {

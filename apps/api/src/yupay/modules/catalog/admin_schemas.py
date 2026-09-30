@@ -155,6 +155,11 @@ class TranslationIn(BaseModel):
     # комиссии", "Оплата в сумах"). Same precedent as ``instructions`` above:
     # only brands persist this; categories/products ignore it.
     highlights: list[str] = Field(default_factory=list, max_length=8)
+    # The brand page's <title> and meta description for this locale, when the
+    # template's «{name} — пополнение…» does not say what buyers search for.
+    # Only brands persist these; categories/products ignore them.
+    seo_title: str | None = Field(default=None, max_length=120)
+    seo_description: str | None = Field(default=None, max_length=320)
 
     @field_validator("highlights")
     @classmethod

@@ -447,6 +447,10 @@ class BrandDetailOut(BaseModel):
     faqs: list[FaqOut] = Field(default_factory=list)
     highlights: list[str] = Field(default_factory=list)
     rating: BrandRatingOut | None = None
+    # This locale's own search copy, never another locale's; ``None`` -> the
+    # storefront's template.
+    seo_title: str | None = None
+    seo_description: str | None = None
 
 
 class CategoryListOut(BaseModel):

@@ -71,6 +71,18 @@ def _pick_translation(
     )
 
 
+def _pick_seo(translations: list[Any], locale: str) -> tuple[str | None, str | None]:
+    """The brand's ``(seo_title, seo_description)`` in exactly ``locale``.
+
+    Unlike the name, no fallback to another locale: a Russian title on the
+    English page reads worse than the template the storefront falls back to.
+    """
+    row = next((t for t in translations if t.locale == locale), None)
+    if row is None:
+        return (None, None)
+    return (row.seo_title, row.seo_description)
+
+
 def _pick_highlights(
     translations: list[Any],
     locale: str,
@@ -400,6 +412,7 @@ async def get_brand_by_slug(
     rating = _to_rating((await _reviews_get_stats(db, [brand.id])).get(brand.id))
     name, short_desc, description, instructions = _pick_translation(brand.translations, locale)
     highlights = _pick_highlights(brand.translations, locale)
+    seo_title, seo_description = _pick_seo(brand.translations, locale)
 
     faqs_out: list[FaqOut] = []
     for faq in sorted((f for f in brand.faqs if f.active), key=lambda f: f.sort_order):
@@ -448,6 +461,8 @@ async def get_brand_by_slug(
         products=products_out,
         faqs=faqs_out,
         highlights=highlights,
+        seo_title=seo_title,
+        seo_description=seo_description,
         rating=rating,
     )
 

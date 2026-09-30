@@ -141,6 +141,9 @@ export interface BrandDetail extends BrandSummary {
   // Optional: an older deployed API (or a build prerendering against one) may
   // omit this, so consumers must tolerate `undefined` and default to `[]`.
   highlights?: string[];
+  /** This locale's own search copy (never another locale's); absent from an older API. */
+  seo_title?: string | null;
+  seo_description?: string | null;
 }
 
 export interface ProductDetail extends ProductSummary {

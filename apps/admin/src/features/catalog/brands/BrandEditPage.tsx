@@ -28,6 +28,8 @@ const translationSchema = z.object({
   // loading from and submitting to the API (see the load-mapping useEffect
   // and the `save` mutationFn below).
   highlights: z.string().optional().nullable(),
+  seo_title: z.string().max(120, "до 120 символов").optional().nullable(),
+  seo_description: z.string().max(320, "до 320 символов").optional().nullable(),
 });
 
 const brandSchema = z.object({
@@ -61,6 +63,8 @@ const EMPTY: FormValues = {
       description: "",
       instructions: "",
       highlights: "",
+      seo_title: "",
+      seo_description: "",
     },
     {
       locale: "en",
@@ -69,6 +73,8 @@ const EMPTY: FormValues = {
       description: "",
       instructions: "",
       highlights: "",
+      seo_title: "",
+      seo_description: "",
     },
     {
       locale: "uz",
@@ -77,6 +83,8 @@ const EMPTY: FormValues = {
       description: "",
       instructions: "",
       highlights: "",
+      seo_title: "",
+      seo_description: "",
     },
   ],
 };
@@ -146,6 +154,8 @@ export function BrandEditPage() {
           description: t?.description ?? "",
           instructions: t?.instructions ?? "",
           highlights: (t?.highlights ?? []).join(", "),
+          seo_title: t?.seo_title ?? "",
+          seo_description: t?.seo_description ?? "",
         };
       }),
     });
@@ -163,6 +173,9 @@ export function BrandEditPage() {
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean),
+          // Blank means "use the template", which the API reads as null.
+          seo_title: t.seo_title?.trim() ? t.seo_title.trim() : null,
+          seo_description: t.seo_description?.trim() ? t.seo_description.trim() : null,
         })),
       };
       if (isNew) return apiPost<Brand>("/api/v1/admin/catalog/brands", payload);
@@ -311,6 +324,24 @@ export function BrandEditPage() {
                 />
                 <span className="mt-1 block text-xs text-[var(--text-secondary)]">
                   короткие чипы, через запятую
+                </span>
+              </Field>
+              <Field label="SEO-заголовок (title страницы бренда)">
+                <Input
+                  {...form.register(`translations.${idx}.seo_title`)}
+                  placeholder="Алмазы Mobile Legends (MLBB) — купить в Узбекистане за сумы"
+                />
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+                  до 120 символов, «| yupay» добавится сам; пусто — общий шаблон
+                </span>
+              </Field>
+              <Field label="SEO-описание (meta description)">
+                <textarea
+                  {...form.register(`translations.${idx}.seo_description`)}
+                  className="min-h-16 w-full rounded-md border border-[var(--border-default)] bg-[var(--bg-surface)] px-3 py-2 text-sm"
+                />
+                <span className="mt-1 block text-xs text-[var(--text-secondary)]">
+                  до 320 символов; пусто — короткое описание бренда
                 </span>
               </Field>
             </fieldset>

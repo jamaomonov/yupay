@@ -207,6 +207,32 @@ async def test_brand_detail_returns_localized_highlights(db_session: AsyncSessio
     assert uz.highlights == ["0% комиссии", "Оплата в сумах"]
 
 
+async def test_brand_detail_seo_copy_is_per_locale_only(db_session: AsyncSession) -> None:
+    """A brand's SEO title and description come from the page's own locale or not
+    at all: a Russian title on the English page would be worse than the template."""
+    await _seed_brand_with_translations(
+        db_session,
+        slug="mlbbtest",
+        translations={
+            "ru": {
+                "name": "Mobile Legends",
+                "seo_title": "Алмазы Mobile Legends (MLBB) — купить в Узбекистане",
+                "seo_description": "Алмазы млбб за сумы.",
+            },
+            "en": {"name": "Mobile Legends"},
+        },
+    )
+    ru = await get_brand_by_slug(db_session, "mlbbtest", locale="ru")
+    assert ru is not None
+    assert ru.seo_title == "Алмазы Mobile Legends (MLBB) — купить в Узбекистане"
+    assert ru.seo_description == "Алмазы млбб за сумы."
+    for locale in ("en", "uz"):  # en has a row without SEO copy; uz has no row
+        other = await get_brand_by_slug(db_session, "mlbbtest", locale=locale)
+        assert other is not None
+        assert other.seo_title is None
+        assert other.seo_description is None
+
+
 async def test_brand_detail_highlights_default_empty(db_session: AsyncSession) -> None:
     await _seed_brand_with_translations(
         db_session,

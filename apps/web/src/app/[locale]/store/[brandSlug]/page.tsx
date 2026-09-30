@@ -29,6 +29,7 @@ import {
   type ProductDetail,
 } from "@/lib/catalog";
 import { isVoucherBrand } from "@/lib/brand-kind";
+import { brandPageDescription, brandPageTitle } from "@/lib/brand-seo";
 import { isOptimizable } from "@/lib/image";
 import { regionSibling } from "@/lib/region-sibling";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
@@ -76,12 +77,15 @@ export async function generateMetadata({
   const t = await getTranslations("web.store");
   // A codes-only brand is bought and redeemed, never «пополнен».
   const v = isVoucherBrand(brand) ? "Voucher" : "";
-  const title = t(`brandMetaTitle${v}`, { name: brand.name });
+  const title = brandPageTitle(brand.seo_title, t(`brandMetaTitle${v}`, { name: brand.name }));
   // short_description first (skips the API's `""` blanks), trimmed to a clean
   // SERP length — the raw blurbs run ~450 chars and would be cut mid-word.
   const description = truncate(
-    firstNonEmpty(brand.short_description, brand.description) ??
-      t(`brandMetaDescription${v}`, { name: brand.name }),
+    brandPageDescription(
+      brand.seo_description,
+      firstNonEmpty(brand.short_description, brand.description) ??
+        t(`brandMetaDescription${v}`, { name: brand.name }),
+    ),
   );
   const path = `/store/${brand.slug}`;
   return {
