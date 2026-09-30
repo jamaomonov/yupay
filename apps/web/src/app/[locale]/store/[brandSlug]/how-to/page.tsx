@@ -337,7 +337,7 @@ export default async function HowToPage({
                   <dl className="border-border divide-border/70 rounded-btn divide-y overflow-hidden border">
                     {p.skus.map((s) => {
                       const name = s.variable_amount
-                        ? `${s.min_amount_usd ? `$${String(Number(s.min_amount_usd))}` : "$1"}–${s.max_amount_usd ? `$${String(Number(s.max_amount_usd))}` : "$300"}`
+                        ? `${s.min_amount_usd ? `$${String(Number(s.min_amount_usd))}` : "$1"}–${s.max_amount_usd ? `$${String(Number(s.max_amount_usd))}` : "$500"}`
                         : (s.denomination ?? s.sku_code);
                       const price = s.display_price
                         ? formatUzs(locale, Math.round(Number(s.display_price.amount)))

@@ -6,7 +6,7 @@
 --   * The closing store link pointed at `/en/store/steam` — the locale bug
 --     seen in the Genshin post, again. Now `/store/steam`.
 --   * Nothing said what our own Steam card says: the amount is in dollars,
---     $1–$300; it is the *login*, not the profile name; it works for CIS
+--     $1–$500; it is the *login*, not the profile name; it works for CIS
 --     accounts only (UZ, KZ, RU, BY); an Uzbek account's wallet is in USD.
 --   * It sold the wallet for Community Market purchases without saying the
 --     market stays shut until the account has spent $5 and has had Steam
@@ -52,7 +52,7 @@ VALUES (
 $html$<h2>Главное</h2>
 <ul>
 <li>Баланс Steam-кошелька тратится на игры, DLC, внутриигровые покупки и предметы на торговой площадке Steam.</li>
-<li>В Узбекистане его удобно пополнять в сумах через YuPay: нужен только логин Steam, сумма — от $1 до $300, комиссии сверху нет.</li>
+<li>В Узбекистане его удобно пополнять в сумах через YuPay: нужен только логин Steam, сумма — от $1 до $500, комиссии сверху нет.</li>
 <li>Прямое пополнение и подарочная карта дают один и тот же баланс, но карта — это код, который удобно подарить.</li>
 <li>Кошелёк привязан к валюте региона аккаунта: потратить средства в другой валюте не получится.</li>
 <li>Самые большие скидки — на летней и зимней распродажах Steam, и они же длятся дольше остальных.</li>
@@ -77,7 +77,7 @@ $html$<h2>Главное</h2>
 <ol>
 <li>Откройте страницу <a href="https://yupay.uz/store/steam">пополнения Steam</a>.</li>
 <li>Введите логин Steam — имя, под которым вы входите в аккаунт, а не отображаемое имя профиля. Пароль не нужен.</li>
-<li>Укажите сумму в долларах — от $1 до $300. Итог в сумах виден сразу.</li>
+<li>Укажите сумму в долларах — от $1 до $500. Итог в сумах виден сразу.</li>
 <li>Оплатите картой Uzcard или Humo через Click, Payme или Uzum — баланс пополнится автоматически.</li>
 </ol>
 <p>Комиссии сверху нет: сколько долларов вы указали, столько и придёт на кошелёк, а сумма в сумах на экране — это и есть сумма платежа. Подробная инструкция с разбором частых ошибок — в статье <a href="https://yupay.uz/blog/steam">Как пополнить Steam в Узбекистане</a>, а обо всех локальных способах оплаты мы писали в материале <a href="https://yupay.uz/blog/oplata-igr-v-sumah">Оплата игр в сумах: локальные методы Узбекистана</a>.</p>
@@ -107,13 +107,13 @@ $html$<h2>Главное</h2>
 </ul>
 <p>Готовы к ближайшей распродаже? Откройте <a href="https://yupay.uz/store/steam">Steam на YuPay</a>, укажите сумму и пополните кошелёк заранее, чтобы купить нужные игры, пока действует скидка.</p>$html$,
   'Steam-кошелёк: как пополнить в сумах и на что тратить',
-  'Как пополнить Steam-кошелёк в Узбекистане в сумах без комиссии: логин, сумма от $1 до $300, оплата через Click, Payme или Uzum. На что тратить баланс и как его планировать под распродажи.'
+  'Как пополнить Steam-кошелёк в Узбекистане в сумах без комиссии: логин, сумма от $1 до $500, оплата через Click, Payme или Uzum. На что тратить баланс и как его планировать под распродажи.'
 );
 
 INSERT INTO blog_post_faqs (id, post_id, locale, sort_order, question, answer) VALUES
   (gen_random_uuid(), :post_id, 'ru', 0,
    'Можно ли пополнить Steam-кошелёк в сумах без комиссии?',
-   'Да. Через YuPay достаточно указать логин Steam и сумму от $1 до $300 и оплатить через Click, Payme или Uzum. Комиссии сверху нет: сколько долларов указали, столько и зачислится.'),
+   'Да. Через YuPay достаточно указать логин Steam и сумму от $1 до $500 и оплатить через Click, Payme или Uzum. Комиссии сверху нет: сколько долларов указали, столько и зачислится.'),
   (gen_random_uuid(), :post_id, 'ru', 1,
    'На что можно потратить деньги со Steam-кошелька?',
    'На игры и дополнения в магазине Steam, внутриигровые покупки в поддерживаемых играх, предметы на торговой площадке и игры в подарок другим игрокам.'),
@@ -138,7 +138,7 @@ VALUES (
 $html$<h2>The short version</h2>
 <ul>
 <li>Steam Wallet funds pay for games, DLC, in-game purchases and items on the Steam Community Market.</li>
-<li>From Uzbekistan the easy way to add funds is in soʻm through YuPay: all it needs is your Steam login, any amount from $1 to $300, and there is no fee on top.</li>
+<li>From Uzbekistan the easy way to add funds is in soʻm through YuPay: all it needs is your Steam login, any amount from $1 to $500, and there is no fee on top.</li>
 <li>A direct top-up and a gift card end up as the same balance, but a gift card is a code, which makes it easy to give away.</li>
 <li>Your wallet is tied to your account region's currency, so the funds cannot pay for a purchase in another one.</li>
 <li>The deepest discounts come in the Summer and Winter Sales, which also run longer than the others.</li>
@@ -163,7 +163,7 @@ $html$<h2>The short version</h2>
 <ol>
 <li>Open the <a href="https://yupay.uz/en/store/steam">Steam top-up page</a>.</li>
 <li>Enter your Steam login — the name you sign in with, not your profile's display name. No password is needed.</li>
-<li>Enter an amount in dollars, from $1 to $300. The total in soʻm shows immediately.</li>
+<li>Enter an amount in dollars, from $1 to $500. The total in soʻm shows immediately.</li>
 <li>Pay with an Uzcard or Humo card through Click, Payme or Uzum, and the balance tops up automatically.</li>
 </ol>
 <p>There is no fee on top: the dollars you enter are the dollars that reach the wallet, and the soʻm amount on screen is the amount you pay. A full walkthrough with the common mistakes is in <a href="https://yupay.uz/en/blog/steam">How to top up Steam in Uzbekistan</a>, and the local payment methods themselves are covered in <a href="https://yupay.uz/en/blog/buy-game-top-ups-in-uzbekistan">a separate article</a>.</p>
@@ -193,13 +193,13 @@ $html$<h2>The short version</h2>
 </ul>
 <p>Ready for the next sale? Open <a href="https://yupay.uz/en/store/steam">Steam on YuPay</a>, enter an amount and top up your wallet in advance, so you can buy the games you want while the discount lasts.</p>$html$,
   'Steam Wallet: top it up in soʻm and what to spend it on',
-  'How to top up a Steam Wallet from Uzbekistan in soʻm with no fee on top: your login, $1 to $300, paid through Click, Payme or Uzum. What the balance buys and how to plan it around the sales.'
+  'How to top up a Steam Wallet from Uzbekistan in soʻm with no fee on top: your login, $1 to $500, paid through Click, Payme or Uzum. What the balance buys and how to plan it around the sales.'
 );
 
 INSERT INTO blog_post_faqs (id, post_id, locale, sort_order, question, answer) VALUES
   (gen_random_uuid(), :post_id, 'en', 0,
    'Can I top up a Steam Wallet in soʻm with no fee?',
-   'Yes. With YuPay you enter your Steam login and an amount from $1 to $300, and pay through Click, Payme or Uzum. There is no fee on top: the dollars you enter are the dollars credited.'),
+   'Yes. With YuPay you enter your Steam login and an amount from $1 to $500, and pay through Click, Payme or Uzum. There is no fee on top: the dollars you enter are the dollars credited.'),
   (gen_random_uuid(), :post_id, 'en', 1,
    'What can Steam Wallet funds be spent on?',
    'Games and add-ons in the Steam store, in-game purchases in supported games, Community Market items, and games bought as gifts for other players.'),
@@ -224,7 +224,7 @@ VALUES (
 $html$<h2>Asosiysi</h2>
 <ul>
 <li>Steam hamyonidagi pul oʻyinlar, DLC, oʻyin ichidagi xaridlar va Steam savdo maydonchasidagi buyumlarga sarflanadi.</li>
-<li>Oʻzbekistonda uni YuPay orqali soʻmda toʻldirish qulay: faqat Steam logini kerak, summa $1 dan $300 gacha, ustama komissiya yoʻq.</li>
+<li>Oʻzbekistonda uni YuPay orqali soʻmda toʻldirish qulay: faqat Steam logini kerak, summa $1 dan $500 gacha, ustama komissiya yoʻq.</li>
 <li>Toʻgʻridan-toʻgʻri toʻldirish ham, sovgʻa kartasi ham bir xil balans beradi, lekin karta — bu kod, uni sovgʻa qilish qulay.</li>
 <li>Hamyon akkaunt mintaqasining valyutasiga bogʻlangan: boshqa valyutadagi xaridni undagi pul bilan toʻlab boʻlmaydi.</li>
 <li>Eng katta chegirmalar Steam’ning yozgi va qishki savdolarida boʻladi, ular boshqalaridan uzoqroq ham davom etadi.</li>
@@ -249,7 +249,7 @@ $html$<h2>Asosiysi</h2>
 <ol>
 <li><a href="https://yupay.uz/uz/store/steam">Steam’ni toʻldirish</a> sahifasini oching.</li>
 <li>Steam loginini kiriting — bu akkauntga kiradigan nomingiz, profilda koʻrinadigan ism emas. Parol kerak emas.</li>
-<li>Summani dollarda kiriting — $1 dan $300 gacha. Soʻmdagi jami darhol koʻrinadi.</li>
+<li>Summani dollarda kiriting — $1 dan $500 gacha. Soʻmdagi jami darhol koʻrinadi.</li>
 <li>Uzcard yoki Humo kartasi bilan Click, Payme yoki Uzum orqali toʻlang — balans avtomatik toʻldiriladi.</li>
 </ol>
 <p>Ustama komissiya yoʻq: qancha dollar kiritsangiz, hamyonga shuncha tushadi, ekrandagi soʻmdagi summa esa toʻlov summasining oʻzi. Koʻp uchraydigan xatolar tahlili bilan batafsil yoʻriqnoma — <a href="https://yupay.uz/uz/blog/steam">Oʻzbekistonda Steam’ni qanday toʻldirish</a> maqolasida, mahalliy toʻlov usullari haqida esa <a href="https://yupay.uz/uz/blog/ozbekistonda-donat-sotib-olish">alohida maqolada</a> yozganmiz.</p>
@@ -279,13 +279,13 @@ $html$<h2>Asosiysi</h2>
 </ul>
 <p>Navbatdagi savdoga tayyormisiz? <a href="https://yupay.uz/uz/store/steam">YuPay’dagi Steam</a> sahifasini oching, summani kiriting va chegirma amal qilayotganda kerakli oʻyinlarni sotib olish uchun hamyonni oldindan toʻldiring.</p>$html$,
   'Steam hamyoni: soʻmda toʻldirish va nimaga sarflash',
-  'Oʻzbekistondan Steam hamyonini soʻmda, ustama komissiyasiz toʻldirish: login, $1 dan $300 gacha, Click, Payme yoki Uzum orqali toʻlov. Balansni nimaga sarflash va savdolarga qanday rejalashtirish.'
+  'Oʻzbekistondan Steam hamyonini soʻmda, ustama komissiyasiz toʻldirish: login, $1 dan $500 gacha, Click, Payme yoki Uzum orqali toʻlov. Balansni nimaga sarflash va savdolarga qanday rejalashtirish.'
 );
 
 INSERT INTO blog_post_faqs (id, post_id, locale, sort_order, question, answer) VALUES
   (gen_random_uuid(), :post_id, 'uz', 0,
    'Steam hamyonini soʻmda komissiyasiz toʻldirish mumkinmi?',
-   'Ha. YuPay orqali Steam logini va $1 dan $300 gacha summani kiritib, Click, Payme yoki Uzum orqali toʻlash kifoya. Ustama komissiya yoʻq: qancha dollar kiritsangiz, shuncha tushadi.'),
+   'Ha. YuPay orqali Steam logini va $1 dan $500 gacha summani kiritib, Click, Payme yoki Uzum orqali toʻlash kifoya. Ustama komissiya yoʻq: qancha dollar kiritsangiz, shuncha tushadi.'),
   (gen_random_uuid(), :post_id, 'uz', 1,
    'Steam hamyonidagi pulni nimaga sarflash mumkin?',
    'Steam doʻkonidagi oʻyinlar va qoʻshimchalarga, qoʻllab-quvvatlanadigan oʻyinlardagi xaridlarga, savdo maydonchasidagi buyumlarga va boshqa oʻyinchilarga sovgʻa qilinadigan oʻyinlarga.'),

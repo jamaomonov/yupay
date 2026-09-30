@@ -693,7 +693,7 @@ function VariableAmountCard({
             : t("amountPrecision")
           : null;
 
-  // Hard-cap the typed amount at the SKU's max ($300 for Steam, 50 000 Stars):
+  // Hard-cap the typed amount at the SKU's max ($500 for Steam, 50 000 Stars):
   // the field would otherwise accept a number the server is bound to refuse.
   const handleAmountChange = (raw: string) => {
     const n = parseAmount(raw);

@@ -159,7 +159,7 @@ REQUIRED_FIELDS: list[dict[str, Any]] = [
 # $0.50 floor 422'd those with a generic "amount is outside the allowed
 # range" instead of ever reaching the gift hook's own, more specific checks.
 # $1000 covers the priciest AAA collector/bundle packages G-Engine lists,
-# with headroom — well above ``steam-wallet-usd``'s $300 ceiling, which
+# with headroom — well above ``steam-wallet-usd``'s $500 ceiling, which
 # exists for a different reason (an unbacked top-up amount) and doesn't
 # apply here (a gift line is re-priced and bounds-checked again against the
 # live supplier price by ``price_gift_line`` regardless of this ceiling).

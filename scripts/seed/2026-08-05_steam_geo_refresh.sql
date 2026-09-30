@@ -2,7 +2,7 @@
 --
 -- Measured AI-answer probes for "пополнить Steam в Узбекистане" cite paytool.ru,
 -- banks (Unired, AVO) and steam.ru — not YuPay. This refresh adds the concrete,
--- extractable answers those queries want: a som price example, the $1–$300
+-- extractable answers those queries want: a som price example, the $1–$500
 -- limits, the supported account regions, and where to find the Steam login.
 --
 -- Content-managed, NOT a fixture / Alembic migration. Idempotent:
@@ -17,16 +17,16 @@ BEGIN;
 
 UPDATE brand_translations SET
     highlights = $c$["0% комиссии","Оплата в сумах (Uzcard/Humo)","Зачисление моментальное","По логину, без пароля"]$c$::json,
-    short_description = $c$Пополнение Steam в Узбекистане за сумы без комиссии: Любая сумма от $1 до $300 по логину Steam (без пароля), оплата картами Uzcard и Humo через Click, Payme или Uzum, зачисление моментальное и автоматическое.$c$,
+    short_description = $c$Пополнение Steam в Узбекистане за сумы без комиссии: Любая сумма от $1 до $500 по логину Steam (без пароля), оплата картами Uzcard и Humo через Click, Payme или Uzum, зачисление моментальное и автоматическое.$c$,
     description = $c$YuPay — независимый сервис пополнения кошелька Steam в Узбекистане (не связан с Valve). Пополнение идёт по логину Steam (имя для входа) — пароль от аккаунта не нужен, и мы его не запрашиваем.
 
-Комиссия сервиса 0%: сколько вы вводите, столько и зачисляется на кошелёк, один к одному; наша маржа заложена в курс, а итог виден до оплаты. Пополнить можно на любую сумму от $1 до $300 за одну операцию — итог в сумах по текущему курсу показывается сразу.
+Комиссия сервиса 0%: сколько вы вводите, столько и зачисляется на кошелёк, один к одному; наша маржа заложена в курс, а итог виден до оплаты. Пополнить можно на любую сумму от $1 до $500 за одну операцию — итог в сумах по текущему курсу показывается сразу.
 
 Оплата — в узбекских сумах картами Uzcard и Humo через Click, Payme или Uzum. Средства зачисляются на баланс Steam моментально и автоматически после подтверждения платежа. Поддерживаются аккаунты в регионах СНГ (РФ, Беларусь, Казахстан, Узбекистан).$c$,
     instructions = $c$Как пополнить кошелёк Steam в Узбекистане:
 
 1. Введите логин Steam (имя для входа в аккаунт) — пароль не нужен.
-2. Укажите сумму пополнения от $1 до $300. Итог к оплате в сумах показывается сразу, без дополнительной комиссии.
+2. Укажите сумму пополнения от $1 до $500. Итог к оплате в сумах показывается сразу, без дополнительной комиссии.
 3. Выберите способ оплаты: Click, Payme или Uzum.
 4. Оплатите — средства зачисляются на баланс Steam моментально и автоматически.
 
@@ -35,16 +35,16 @@ WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'ru';
 
 UPDATE brand_translations SET
     highlights = $c$["0% commission","Pay in sum (Uzcard/Humo)","Instant crediting","By login, no password"]$c$::json,
-    short_description = $c$Top up Steam in Uzbekistan in sum with no commission: Any amount from $1 to $300 by Steam login (no password), pay with Uzcard and Humo via Click, Payme or Uzum, credited instantly and automatically.$c$,
+    short_description = $c$Top up Steam in Uzbekistan in sum with no commission: Any amount from $1 to $500 by Steam login (no password), pay with Uzcard and Humo via Click, Payme or Uzum, credited instantly and automatically.$c$,
     description = $c$YuPay is an independent Steam wallet top-up service in Uzbekistan (not affiliated with Valve). Top-ups go by your Steam login (the account name you sign in with) — no account password is needed, and we never ask for it.
 
-The service commission is 0%: what you enter is exactly what lands on your wallet, one to one; our margin is in the rate, and the total is shown before you pay. You can top up any amount from $1 to $300 per transaction — the total in sum at the current rate is shown right away.
+The service commission is 0%: what you enter is exactly what lands on your wallet, one to one; our margin is in the rate, and the total is shown before you pay. You can top up any amount from $1 to $500 per transaction — the total in sum at the current rate is shown right away.
 
 You pay in Uzbek sum with Uzcard and Humo cards via Click, Payme or Uzum. Funds are credited to your Steam balance instantly and automatically after the payment is confirmed. Accounts in the CIS region (Russia, Belarus, Kazakhstan, Uzbekistan) are supported.$c$,
     instructions = $c$How to top up a Steam wallet in Uzbekistan:
 
 1. Enter your Steam login (the account name you sign in with) — no password needed.
-2. Enter an amount from $1 to $300. The total to pay in sum is shown right away, with no extra commission.
+2. Enter an amount from $1 to $500. The total to pay in sum is shown right away, with no extra commission.
 3. Choose a payment method: Click, Payme or Uzum.
 4. Pay — the funds are credited to your Steam balance instantly and automatically.
 
@@ -53,16 +53,16 @@ WHERE brand_id = (SELECT id FROM brands WHERE slug = 'steam') AND locale = 'en';
 
 UPDATE brand_translations SET
     highlights = $c$["0% komissiya","Soʻmda toʻlov (Uzcard/Humo)","Bir zumda tushadi","Login boʻyicha, parolsiz"]$c$::json,
-    short_description = $c$Steam ni Oʻzbekistonda soʻmda komissiyasiz toʻldirish: $1 dan $300 gacha istalgan summa Steam login boʻyicha (parolsiz), Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali, bir zumda va avtomatik tushadi.$c$,
+    short_description = $c$Steam ni Oʻzbekistonda soʻmda komissiyasiz toʻldirish: $1 dan $500 gacha istalgan summa Steam login boʻyicha (parolsiz), Uzcard va Humo kartalari bilan Click, Payme yoki Uzum orqali, bir zumda va avtomatik tushadi.$c$,
     description = $c$YuPay — Oʻzbekistonda Steam hamyonini toʻldirish uchun mustaqil xizmat (Valve bilan bogʻliq emas). Toʻldirish Steam login (kirish uchun hisob nomi) boʻyicha amalga oshiriladi — akkaunt paroli kerak emas, biz uni soʻramaymiz.
 
-Xizmat komissiyasi 0%: qancha kiritsangiz, shuncha hamyonga tushadi, bir xil; marjamiz kursda, yakuniy summa toʻlovdan oldin koʻrinadi. Bir operatsiyada $1 dan $300 gacha istalgan summani toʻldirish mumkin — joriy kurs boʻyicha soʻmdagi summa darhol koʻrsatiladi.
+Xizmat komissiyasi 0%: qancha kiritsangiz, shuncha hamyonga tushadi, bir xil; marjamiz kursda, yakuniy summa toʻlovdan oldin koʻrinadi. Bir operatsiyada $1 dan $500 gacha istalgan summani toʻldirish mumkin — joriy kurs boʻyicha soʻmdagi summa darhol koʻrsatiladi.
 
 Toʻlov — oʻzbek soʻmida Uzcard va Humo kartalari orqali Click, Payme yoki Uzum bilan. Mablagʻ toʻlov tasdiqlangach Steam balansiga bir zumda va avtomatik tushadi. MDH mintaqasidagi (Rossiya, Belarus, Qozogʻiston, Oʻzbekiston) akkauntlar qoʻllab-quvvatlanadi.$c$,
     instructions = $c$Steam hamyonini Oʻzbekistonda qanday toʻldirish:
 
 1. Steam login (kirish uchun hisob nomi) ni kiriting — parol kerak emas.
-2. $1 dan $300 gacha summani kiriting. Soʻmdagi toʻlov summasi darhol, qoʻshimcha komissiyasiz koʻrsatiladi.
+2. $1 dan $500 gacha summani kiriting. Soʻmdagi toʻlov summasi darhol, qoʻshimcha komissiyasiz koʻrsatiladi.
 3. Toʻlov usulini tanlang: Click, Payme yoki Uzum.
 4. Toʻlang — mablagʻ Steam balansiga bir zumda va avtomatik tushadi.
 
@@ -111,11 +111,11 @@ JOIN (
 
         -- 4. NEW: мин/макс
         (4, 'ru', $q$Какая минимальная и максимальная сумма пополнения?$q$,
-            $a$За одну операцию можно пополнить от $1 до $300. Для большей суммы оформите несколько пополнений. Итог в сумах по текущему курсу виден до оплаты.$a$),
+            $a$За одну операцию можно пополнить от $1 до $500. Для большей суммы оформите несколько пополнений. Итог в сумах по текущему курсу виден до оплаты.$a$),
         (4, 'en', $q$What are the minimum and maximum top-up amounts?$q$,
-            $a$You can top up from $1 to $300 per transaction. For a larger amount, make several top-ups. The total in sum at the current rate is shown before payment.$a$),
+            $a$You can top up from $1 to $500 per transaction. For a larger amount, make several top-ups. The total in sum at the current rate is shown before payment.$a$),
         (4, 'uz', $q$Toʻldirishning eng kam va eng koʻp summasi qancha?$q$,
-            $a$Bitta operatsiyada $1 dan $300 gacha toʻldirish mumkin. Katta summa uchun bir necha marta toʻldiring. Joriy kurs boʻyicha soʻmdagi summa toʻlovdan oldin koʻrinadi.$a$),
+            $a$Bitta operatsiyada $1 dan $500 gacha toʻldirish mumkin. Katta summa uchun bir necha marta toʻldiring. Joriy kurs boʻyicha soʻmdagi summa toʻlovdan oldin koʻrinadi.$a$),
 
         -- 5. NEW: регион аккаунта
         (5, 'ru', $q$В каком регионе должен быть аккаунт Steam?$q$,

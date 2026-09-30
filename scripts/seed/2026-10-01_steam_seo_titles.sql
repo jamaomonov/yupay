@@ -7,8 +7,8 @@
 -- Uzbek («steam toldirish») is near zero. Wordstat shows «без комиссии» as a
 -- large query across the CIS (22.5k), and 0% commission is what we offer.
 --
--- The description gives no maximum amount: the brand copy says $300 while the
--- SKU takes up to $500 (2026-10-01), a mismatch for the owner to settle.
+-- The description gives no maximum amount (the limit is $500 since 2026-10-01;
+-- the copy said $300 until 2026-10-01_steam_limit_500.sql) — it can change again.
 --
 -- Run after the deploy that carries 0092. Idempotent.
 
