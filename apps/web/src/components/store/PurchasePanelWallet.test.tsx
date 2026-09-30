@@ -133,6 +133,27 @@ it("offers the balance when it covers the order", async () => {
   expect(tile).not.toHaveTextContent("payFromBalanceGuest");
 });
 
+it("starts on the balance when it covers the order (owner, 2026-09-30)", async () => {
+  mockApi("2000000.000000");
+  renderPanel();
+
+  const tile = await screen.findByRole("button", { name: /payFromBalance/ });
+  await waitFor(() => {
+    expect(tile).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
+it("stays on a card when the balance is short", async () => {
+  mockApi("12500.000000");
+  renderPanel();
+
+  const tile = await screen.findByRole("button", { name: /payFromBalance/ });
+  await waitFor(() => {
+    expect(tile).toBeDisabled();
+  });
+  expect(tile).toHaveAttribute("aria-pressed", "false");
+});
+
 it("refuses and says how much is missing when the balance is short", async () => {
   mockApi("12500.000000");
   renderPanel();

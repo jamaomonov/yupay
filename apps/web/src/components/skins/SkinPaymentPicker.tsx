@@ -13,6 +13,7 @@ import { WalletMark } from "@/components/icons/WalletMark";
 import { apiFetch } from "@/lib/client";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { formatUzs, pathFor } from "@/lib/seo";
+import { usePreferBalance } from "@/lib/prefer-balance";
 import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
 import { canPayFromBalance, spendableBalance, walletTile } from "@/lib/wallet-balance";
 
@@ -83,6 +84,18 @@ export function SkinPaymentPicker({
   const ready = fromBalance
     ? canPayFromBalance(tile) && walletVisibility === "active"
     : methodId !== "" && methodVisibility(methodId, status) === "active";
+  // A balance that covers the order is the default method until the buyer picks one.
+  const markPicked = usePreferBalance(
+    canPayFromBalance(tile) && walletVisibility === "active",
+    setMethodId,
+    status
+      ? (selectActiveMethodId(
+          [...METHODS].map((m) => ({ ...m, provider: m.id })),
+          "",
+          status,
+        ) ?? "")
+      : "payme",
+  );
 
   useEffect(() => {
     onChange({ provider: methodId || null, ready });
@@ -111,7 +124,10 @@ export function SkinPaymentPicker({
           type="button"
           aria-pressed={fromBalance}
           disabled={walletVisibility !== "active" || tile.state !== "ready"}
-          onClick={() => setMethodId(WALLET_METHOD_ID)}
+          onClick={() => {
+            markPicked();
+            setMethodId(WALLET_METHOD_ID);
+          }}
           className={`rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition disabled:cursor-not-allowed ${
             fromBalance && tile.state === "ready"
               ? "border-primary bg-primary/10"
@@ -151,7 +167,10 @@ export function SkinPaymentPicker({
               aria-label={m.name}
               aria-pressed={active}
               disabled={disabled}
-              onClick={() => setMethodId(m.id)}
+              onClick={() => {
+                markPicked();
+                setMethodId(m.id);
+              }}
               className={`rounded-btn flex items-center justify-center border px-3 py-3 transition disabled:cursor-not-allowed disabled:opacity-60 ${
                 active
                   ? "border-primary bg-primary/10"

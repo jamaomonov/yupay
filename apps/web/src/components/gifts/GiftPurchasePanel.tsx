@@ -32,6 +32,7 @@ import { currentVerdict, isValidInviteUrl, type RecipientVerdict } from "@/lib/g
 import { profileCheckBlocks, profileCheckFound } from "@/lib/gifts";
 import { methodVisibility, providerStatusMap, selectActiveMethodId } from "@/lib/payment-providers";
 import { withAutoOpen } from "@/lib/payment-return";
+import { usePreferBalance } from "@/lib/prefer-balance";
 import { countryName, flagEmoji } from "@/lib/regions";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { getWallet, WALLET_CURRENCY } from "@/lib/wallet";
@@ -405,6 +406,14 @@ export function GiftPurchasePanel({
     ? canPayFromBalance(walletState) && walletVisibility === "active"
     : selectedProvider !== undefined &&
       methodVisibility(selectedProvider, providerStatus) === "active";
+  // A balance that covers the order is the default method until the buyer picks one.
+  const markPicked = usePreferBalance(
+    canPayFromBalance(walletState) && walletVisibility === "active",
+    setMethodId,
+    providerStatus
+      ? (selectActiveMethodId(METHODS, "", providerStatus) ?? "")
+      : (METHODS[0]?.id ?? "click"),
+  );
   const anyMethodVisible = METHODS.some(
     (m) => methodVisibility(m.provider, providerStatus) !== "hidden",
   );
@@ -912,6 +921,7 @@ export function GiftPurchasePanel({
                     openLogin();
                     return;
                   }
+                  markPicked();
                   setMethodId(WALLET_METHOD_ID);
                 }}
                 className={`rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition disabled:cursor-not-allowed ${
@@ -987,6 +997,7 @@ export function GiftPurchasePanel({
                     aria-describedby={disabled ? statusId : undefined}
                     disabled={disabled}
                     onClick={() => {
+                      markPicked();
                       setMethodId(m.id);
                     }}
                     className={`rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition disabled:cursor-not-allowed disabled:opacity-60 ${

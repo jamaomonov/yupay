@@ -20,6 +20,7 @@ import {
   PROVIDER_BY_METHOD_FULL,
   WALLET_METHOD_ID,
   walletPayState,
+  walletSubmitReady,
 } from "@/lib/checkout-shared";
 import { useT } from "@/lib/i18n";
 import {
@@ -34,6 +35,7 @@ import { skinPriceText } from "@/lib/skins";
 import { haptic, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
+import { usePreferBalance } from "@/lib/prefer-balance";
 
 /**
  * The skin page's second step, as for every other brand (`TopUp`'s review stage): what
@@ -100,6 +102,22 @@ export function SkinPayStep({
     loading: walletQuery.isPending,
     visibility: walletVisibility,
   });
+  // A balance that covers the skin is the default method until the buyer picks one.
+  const markPicked = usePreferBalance(
+    walletVisibility === "active" &&
+      walletSubmitReady({
+        methodId: WALLET_METHOD_ID,
+        balance,
+        total: offer.price_uzs !== null ? Number(offer.price_uzs) : null,
+      }),
+    setMethodId,
+    nextSelectedMethodId({
+      current: PAYMENT_METHODS[0]?.id ?? "click",
+      statusBySlug,
+      providerByMethod: PROVIDER_BY_METHOD_FULL,
+      methods: PAYMENT_METHODS,
+    }),
+  );
 
   const provider = PROVIDER_BY_METHOD_FULL[methodId];
   const methodReady =
@@ -277,6 +295,7 @@ export function SkinPayStep({
           visibility={walletVisibility}
           unknownTotal={wallet.unknownTotal}
           onSelect={() => {
+            markPicked();
             setMethodId(WALLET_METHOD_ID);
           }}
         />
@@ -284,7 +303,10 @@ export function SkinPayStep({
           methods={PAYMENT_METHODS}
           activeId={methodId}
           providerStatusBySlug={statusBySlug}
-          onSelect={setMethodId}
+          onSelect={(id) => {
+            markPicked();
+            setMethodId(id);
+          }}
         />
       </section>
 

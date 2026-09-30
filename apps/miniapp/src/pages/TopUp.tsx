@@ -68,6 +68,7 @@ import {
 } from "@/lib/variable-amount";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
+import { usePreferBalance } from "@/lib/prefer-balance";
 
 // ─── Adapter: API Package → local Package ─────────────────────────────────────
 // Keeps badge/bonus optional for future enrichment.
@@ -464,6 +465,16 @@ export default function TopUp() {
 
   // Redirect is in flight (the effect above) — render nothing rather than a
   // skeleton for a form this route is about to leave.
+  // A balance that covers the order is the default method until the buyer picks
+  // one. The hook must run on every render, so it sits above the early returns;
+  // `walletCovers` is set further down, where the order's price is known.
+  const [walletCovers, setWalletCovers] = useState(false);
+  const markPicked = usePreferBalance(
+    walletCovers,
+    setPaymentMethod,
+    PAYMENT_METHODS.find((m) => isMethodAvailable(m.id))?.id ?? DEFAULT_PAYMENT_METHOD,
+  );
+
   if (gameId === "steam-gifts") {
     return null;
   }
@@ -651,6 +662,18 @@ export default function TopUp() {
       ? true // optimistic during load — submit will re-check
       : walletBalance >= finalPrice;
   const walletShortfall = walletBalance === null || walletEnough ? 0 : finalPrice - walletBalance;
+  // Whether the balance covers the priced order — the default-method signal for
+  // `usePreferBalance`, whose hook sits above the early returns. Only once
+  // something is picked and priced: with nothing chosen `finalPrice` is 0, which
+  // any balance "covers". Updated during render, React's pattern for state
+  // derived from values computed after an early return.
+  const walletCoversNow =
+    walletBalance !== null &&
+    finalPrice > 0 &&
+    variableAmountReady &&
+    walletBalance >= finalPrice &&
+    isMethodAvailable(WALLET_METHOD_ID);
+  if (walletCoversNow !== walletCovers) setWalletCovers(walletCoversNow);
 
   const accountRequired = requiredFields.length > 0;
   const missingFieldKey = requiredFields.find((f) => {
@@ -1427,6 +1450,7 @@ export default function TopUp() {
                 currency={priceCode}
                 visibility={methodVisibility("wallet", providerStatusBySlug)}
                 onSelect={() => {
+                  markPicked();
                   setPaymentMethod(WALLET_METHOD_ID);
                 }}
               />
@@ -1451,6 +1475,7 @@ export default function TopUp() {
                       type="button"
                       onClick={() => {
                         if (!available) return;
+                        markPicked();
                         setPaymentMethod(m.id);
                       }}
                       disabled={!available}

@@ -32,6 +32,7 @@ import {
   type ProvidersOut,
 } from "@/lib/payment-providers";
 import { withAutoOpen } from "@/lib/payment-return";
+import { usePreferBalance } from "@/lib/prefer-balance";
 import { prefillFromQuery } from "@/lib/purchase-prefill";
 import {
   blocksCheckout,
@@ -1361,6 +1362,14 @@ export function PurchasePanel({
     total: orderTotalUzs,
   });
   const payingFromBalance = methodId === WALLET_METHOD_ID;
+  // A balance that covers the order is the default method until the buyer picks one.
+  const markPicked = usePreferBalance(
+    walletState.state === "ready",
+    setMethodId,
+    providerStatus
+      ? (selectActiveMethodId(METHODS, "", providerStatus) ?? "")
+      : (METHODS[0]?.id ?? "click"),
+  );
 
   const openLogin = useLoginModal((st) => st.open);
   const queryClient = useQueryClient();
@@ -1992,6 +2001,7 @@ export function PurchasePanel({
                     openLogin();
                     return;
                   }
+                  markPicked();
                   setMethodId(WALLET_METHOD_ID);
                 }}
                 className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn mb-2 flex w-full items-center gap-3 border px-3 py-3 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${
@@ -2065,6 +2075,7 @@ export function PurchasePanel({
                       title={disabled ? t("paymentMaintenance") : undefined}
                       disabled={disabled}
                       onClick={() => {
+                        markPicked();
                         setMethodId(m.id);
                       }}
                       className={`focus-visible:ring-primary focus-visible:ring-offset-bg rounded-btn relative flex flex-col items-center justify-center gap-1 overflow-hidden border px-3 py-3 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:cursor-not-allowed ${

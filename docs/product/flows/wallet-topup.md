@@ -85,3 +85,11 @@ The whole order is charged or none of it: there is no split between the
 balance and a card. The storefront therefore refuses the tile before
 submitting — showing the shortfall — rather than letting the gateway answer
 409 after the order row exists.
+
+**The default method.** When the balance covers the order, «Баланс» is selected
+by default in every checkout — web (`PurchasePanel`, Steam Gifts, CS2 skins) and
+mini app (`TopUp`, `GiftGame`, `SkinPayStep`) — through `usePreferBalance`
+(`lib/prefer-balance.ts`, one copy per app) (owner, 2026-09-30). The balance has
+to be loaded, something picked and priced, and the wallet rail active. If the order
+then grows past the balance, an automatic choice goes back to the first active
+acquirer; a method the buyer tapped is never changed.

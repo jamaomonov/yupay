@@ -48,6 +48,7 @@ import { useDocumentTitle } from "@/lib/use-document-title";
 import { useGiftProfileCheck } from "@/lib/use-gift-profile-check";
 import { formatBalance, groupBalancesByCurrency, useWallet } from "@/lib/wallet";
 import { ensureBotCanWrite } from "@/lib/write-access";
+import { usePreferBalance } from "@/lib/prefer-balance";
 
 export {
   isOrderNotAwaitingPaymentConflict,
@@ -575,6 +576,18 @@ export default function GiftGame() {
     loading: walletQuery.isPending,
     visibility: walletVisibility,
   });
+  // A balance that covers the order is the default method until the buyer picks one.
+  const markPicked = usePreferBalance(
+    walletVisibility === "active" &&
+      walletSubmitReady({ methodId: WALLET_METHOD_ID, balance: walletBalance, total: walletTotal }),
+    setMethodId,
+    nextSelectedMethodId({
+      current: PAYMENT_METHODS[0]?.id ?? "click",
+      statusBySlug: providerStatusBySlug,
+      providerByMethod: PROVIDER_BY_METHOD_FULL,
+      methods: PAYMENT_METHODS,
+    }),
+  );
 
   function selectPackage(pkg: GiftPackage): void {
     haptic("select");
@@ -1228,7 +1241,10 @@ export default function GiftGame() {
             skuStatus={skuStatus}
             methodId={methodId}
             providerStatusBySlug={providerStatusBySlug}
-            onMethodChange={setMethodId}
+            onMethodChange={(id) => {
+              markPicked();
+              setMethodId(id);
+            }}
             walletActive={methodId === WALLET_METHOD_ID}
             walletEnough={walletPay.enough}
             walletLoading={walletQuery.isPending}
@@ -1237,6 +1253,7 @@ export default function GiftGame() {
             walletVisibility={walletVisibility}
             walletUnknownTotal={walletPay.unknownTotal}
             onSelectWallet={() => {
+              markPicked();
               setMethodId(WALLET_METHOD_ID);
             }}
           />
