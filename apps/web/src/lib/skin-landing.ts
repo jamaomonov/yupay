@@ -38,3 +38,16 @@ export function landingPaths(facets: SkinFacets): string[] {
     ...facets.weapons.map((w) => weaponPath(w.value)).filter((p, i, all) => all.indexOf(p) === i),
   ];
 }
+
+/** Which noun a landing's count takes (`web.skins.landing.count`): a case is not a skin. */
+const COUNT_UNITS: Record<string, string> = {
+  cases: "cases",
+  keys: "keys",
+  agents: "agents",
+  charms: "charms",
+  "music-kits": "music",
+};
+
+export function countUnit(category: string | undefined): string {
+  return (category !== undefined ? COUNT_UNITS[category] : undefined) ?? "other";
+}

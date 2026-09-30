@@ -2,10 +2,12 @@ import { ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import type { FaqEntry } from "@/lib/skin-seo";
 import type { SkinItem } from "@/lib/skins";
 
 import { JsonLd } from "@/components/JsonLd";
 import { SkinCard } from "@/components/skins/SkinCard";
+import { SkinFaq } from "@/components/skins/SkinFaq";
 import { localeUrl, pathFor } from "@/lib/seo";
 
 interface Crumb {
@@ -23,6 +25,8 @@ interface Props {
   crumbs: Crumb[];
   /** Weapon pages to link to (a category's weapons). */
   links?: { title: string; items: { label: string; path: string; count: number }[] };
+  /** Questions answered from the page's own numbers, shown last and as FAQPage JSON-LD. */
+  faq?: { title: string; entries: FaqEntry[] };
 }
 
 /**
@@ -30,7 +34,16 @@ interface Props {
  * a line of real numbers (how many, from what price), the most popular 48, a link into the
  * filtered market for the rest, and links to the pages beneath it. Breadcrumbs as JSON-LD.
  */
-export async function SkinLanding({ locale, h1, intro, items, allHref, crumbs, links }: Props) {
+export async function SkinLanding({
+  locale,
+  h1,
+  intro,
+  items,
+  allHref,
+  crumbs,
+  links,
+  faq,
+}: Props) {
   const t = await getTranslations("web.skins");
   const breadcrumbLd = {
     "@context": "https://schema.org",
@@ -90,6 +103,7 @@ export async function SkinLanding({ locale, h1, intro, items, allHref, crumbs, l
       >
         {t("landing.all")}
       </Link>
+      {faq && <SkinFaq title={faq.title} entries={faq.entries} />}
     </main>
   );
 }

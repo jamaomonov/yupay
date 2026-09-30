@@ -7,7 +7,7 @@ import type { Metadata } from "next";
 import { SkinLanding } from "@/components/skins/SkinLanding";
 import { routing } from "@/i18n/routing";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
-import { categoryPath, isSkinCategory, weaponPath } from "@/lib/skin-landing";
+import { categoryPath, countUnit, isSkinCategory, weaponPath } from "@/lib/skin-landing";
 import { displayPrice, getSkinFacets, getSkinsPage, skinQueryString } from "@/lib/skins";
 
 interface Props {
@@ -26,7 +26,7 @@ async function load(locale: string, category: string) {
   if (!facet || !scoped) return null;
   const first = cheapest.items[0];
   const from = first ? displayPrice(locale, first.price_uzs, first.price_usd) : null;
-  return { category, facet, scoped, from };
+  return { category, facet, scoped, from, cheapest: first ?? null };
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -39,8 +39,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const title = t("landing.categoryTitle", { name });
   const description = data.from
     ? t("landing.description", {
-        name: t("landing.categoryH1", { name }),
-        count: data.facet.count,
+        // «Купить агентов», not «агенты»: the one animate noun among the categories.
+        name:
+          data.category === "agents"
+            ? t("landing.agentsInline")
+            : t("landing.categoryInline", { name: name.toLocaleLowerCase(locale) }),
+        items: t("landing.count", { unit: countUnit(data.category), count: data.facet.count }),
         price: data.from,
       })
     : t("meta.description");
@@ -72,13 +76,32 @@ export default async function SkinCategoryPage({ params }: Props) {
   const cat = data.category;
   const name = t(`category.${cat}`);
   const page = await getSkinsPage(locale, { sort: "popular", category: cat });
+  const items = t("landing.count", { unit: countUnit(cat), count: data.facet.count });
+  // "самый дешёвый нож в кс2" is how buyers ask; the answer is live, not written.
+  const faq =
+    cat === "knives" && data.cheapest && data.from
+      ? {
+          title: t("faq.title"),
+          entries: [
+            {
+              question: t("landing.cheapestKnifeQ"),
+              answer: t("landing.cheapestKnifeA", {
+                name: data.cheapest.name.replace(/^★\s*/, ""),
+                price: data.from,
+                items,
+              }),
+            },
+          ],
+        }
+      : undefined;
   const query = { sort: "popular" as const, category: cat };
   return (
     <SkinLanding
       locale={locale}
       h1={t("landing.categoryH1", { name })}
-      intro={data.from ? t("landing.intro", { count: data.facet.count, price: data.from }) : null}
+      intro={data.from ? t("landing.intro", { items, price: data.from }) : null}
       items={page.items}
+      {...(faq ? { faq } : {})}
       allHref={pathFor(locale, "/skins") + skinQueryString(query, {})}
       crumbs={[
         { name: t("market"), path: "/skins" },

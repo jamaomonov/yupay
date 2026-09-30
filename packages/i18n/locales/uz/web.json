@@ -930,7 +930,7 @@
   },
   "skins": {
     "meta": {
-      "title": "CS2 skinlari soʻmda — Oʻzbekistonda sotib olish",
+      "title": "CS2 skinlari (CS2 skins) — Oʻzbekistonda soʻmga sotib olish",
       "description": "CS2 skinlari tezkor yetkazib berish bilan: qurollar, pichoqlar, qoʻlqoplar, agentlar va keyslar. Soʻmda toʻlov.",
       "itemTitle": "{name} — O'zbekistonda {price} ga sotib olish",
       "itemDescription": "{name} ni O'zbekistonda sotib oling: {price} dan, {count} ta taklif. Click, Payme, Uzum orqali so'mda to'lov, Steam'da almashuv bir daqiqada.",
@@ -1084,13 +1084,18 @@
       "weaponH1": "{weapon} skinlari",
       "categoryTitle": "CS2 {name} — O'zbekistonda so'mga sotib olish",
       "categoryH1": "CS2 {name}",
-      "intro": "{count} ta skin {price} dan. Click, Payme, Uzum orqali so'mda to'lov, Steam'da almashuv bir daqiqada.",
-      "description": "{name} ni O'zbekistonda sotib oling: {count} ta skin {price} dan. So'mda to'lov, Steam'da almashuv bir daqiqada.",
+      "intro": "{items} {price} dan. Click, Payme, Uzum orqali soʻmda toʻlov, Steamʼda almashuv bir daqiqada.",
+      "description": "{name}ni Oʻzbekistonda sotib oling: {items} {price} dan. Soʻmda toʻlov, Steamʼda almashuv bir daqiqada.",
       "all": "Hammasi, filtrlar bilan",
       "weapons": "Qurollar",
       "categories": "Bo'limlar",
       "popular": "Mashhur qurollar",
-      "skinsOf": "{weapon} skinlari"
+      "skinsOf": "{weapon} skinlari",
+      "categoryInline": "CS2 {name}",
+      "count": "{unit, select, cases {{count} ta keys} keys {{count} ta kalit} agents {{count} ta agent} charms {{count} ta brelok} music {{count} ta musiqa toʻplami} other {{count} ta skin}}",
+      "cheapestKnifeQ": "Eng arzon CS2 pichogʻi qancha turadi?",
+      "cheapestKnifeA": "Hozir eng arzon CS2 pichogʻi — {name}, {price}. Jami {items} mavjud.",
+      "agentsInline": "CS2 agentlar"
     },
     "team": {
       "title": "Tomon",

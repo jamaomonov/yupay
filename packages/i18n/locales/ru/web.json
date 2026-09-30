@@ -930,14 +930,14 @@
   },
   "skins": {
     "meta": {
-      "title": "Скины CS2 за сумы — купить в Узбекистане",
-      "description": "Скины CS2 с моментальной доставкой: оружие, ножи, перчатки, агенты и кейсы. Оплата в сумах.",
+      "title": "Скины КС2 (CS2 skins) — купить в Узбекистане за сумы",
+      "description": "Скины КС2 с моментальной доставкой: оружие, ножи, перчатки, агенты и кейсы CS2. Оплата в сумах через Click, Payme, Uzum.",
       "itemTitle": "{name} — купить в Узбекистане за {price}",
       "itemDescription": "Купить {name} в Узбекистане: от {price}, {count, plural, one {# предложение} few {# предложения} many {# предложений} other {# предложения}}. Оплата в сумах через Click, Payme, Uzum, обмен в Steam за минуту.",
       "itemDescriptionNoPrice": "{name} — скин CS2, купить за сумы с моментальной доставкой.",
       "itemTitleNoPrice": "{name} — купить в Узбекистане за сумы"
     },
-    "title": "Маркет скинов CS2",
+    "title": "Скины КС2 (CS2)",
     "searchPlaceholder": "Название скина…",
     "filters": "Фильтры",
     "price": "Цена, сум",
@@ -1080,17 +1080,22 @@
       "buyA": "Выберите предложение, вставьте трейд-ссылку Steam и оплатите через Click, Payme, Uzum или с баланса YuPay. Обмен придёт в Steam через минуту — примите его в течение 30 минут."
     },
     "landing": {
-      "weaponTitle": "Скины {weapon} CS2 — купить в Узбекистане за сумы",
-      "weaponH1": "Скины {weapon}",
-      "categoryTitle": "{name} CS2 — купить в Узбекистане за сумы",
-      "categoryH1": "{name} CS2",
-      "intro": "{count, plural, one {# скин} few {# скина} many {# скинов} other {# скина}} от {price}. Оплата в сумах через Click, Payme, Uzum, обмен в Steam за минуту.",
-      "description": "Купить {name} в Узбекистане: {count, plural, one {# скин} few {# скина} many {# скинов} other {# скина}} от {price}. Оплата в сумах, обмен в Steam за минуту.",
+      "weaponTitle": "Скины {weapon} КС2 (CS2) — купить в Узбекистане за сумы",
+      "weaponH1": "Скины {weapon} КС2",
+      "categoryTitle": "{name} КС2 (CS2) — купить в Узбекистане за сумы",
+      "categoryH1": "{name} КС2",
+      "intro": "{items} от {price}. Оплата в сумах через Click, Payme, Uzum, обмен в Steam за минуту.",
+      "description": "Купить {name} в Узбекистане: {items} от {price}. Оплата в сумах, обмен в Steam за минуту.",
       "all": "Все с фильтрами",
       "weapons": "Оружие",
       "categories": "Разделы",
       "popular": "Популярное оружие",
-      "skinsOf": "скины {weapon}"
+      "skinsOf": "скины {weapon}",
+      "categoryInline": "{name} КС2",
+      "count": "{unit, select, cases {{count, plural, one {# кейс} few {# кейса} many {# кейсов} other {# кейса}}} keys {{count, plural, one {# ключ} few {# ключа} many {# ключей} other {# ключа}}} agents {{count, plural, one {# агент} few {# агента} many {# агентов} other {# агента}}} charms {{count, plural, one {# брелок} few {# брелока} many {# брелоков} other {# брелока}}} music {{count, plural, one {# набор музыки} few {# набора музыки} many {# наборов музыки} other {# набора музыки}}} other {{count, plural, one {# скин} few {# скина} many {# скинов} other {# скина}}}}",
+      "cheapestKnifeQ": "Сколько стоит самый дешёвый нож в КС2?",
+      "cheapestKnifeA": "Самый дешёвый нож CS2 у нас сейчас — {name} за {price}. Всего в наличии {items}.",
+      "agentsInline": "агентов КС2"
     },
     "team": {
       "title": "Сторона",

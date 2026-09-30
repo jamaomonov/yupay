@@ -937,7 +937,7 @@
       "itemDescriptionNoPrice": "{name} — CS2 skin, buy in soʻm with instant delivery.",
       "itemTitleNoPrice": "{name} — buy in Uzbekistan for soʻm"
     },
-    "title": "CS2 skin market",
+    "title": "CS2 skins",
     "searchPlaceholder": "Skin name…",
     "filters": "Filters",
     "price": "Price, soʻm",
@@ -1084,13 +1084,18 @@
       "weaponH1": "{weapon} skins",
       "categoryTitle": "CS2 {name} — buy in Uzbekistan for soʻm",
       "categoryH1": "CS2 {name}",
-      "intro": "{count, plural, one {# skin} other {# skins}} from {price}. Pay in soʻm with Click, Payme, Uzum; the Steam trade arrives within a minute.",
-      "description": "Buy {name} in Uzbekistan: {count, plural, one {# skin} other {# skins}} from {price}. Pay in soʻm; the Steam trade arrives within a minute.",
+      "intro": "{items} from {price}. Pay in soʻm with Click, Payme, Uzum; the Steam trade arrives within a minute.",
+      "description": "Buy {name} in Uzbekistan: {items} from {price}. Pay in soʻm; the Steam trade arrives within a minute.",
       "all": "All, with filters",
       "weapons": "Weapons",
       "categories": "Sections",
       "popular": "Popular weapons",
-      "skinsOf": "{weapon} skins"
+      "skinsOf": "{weapon} skins",
+      "categoryInline": "CS2 {name}",
+      "count": "{unit, select, cases {{count, plural, one {# case} other {# cases}}} keys {{count, plural, one {# key} other {# keys}}} agents {{count, plural, one {# agent} other {# agents}}} charms {{count, plural, one {# charm} other {# charms}}} music {{count, plural, one {# music kit} other {# music kits}}} other {{count, plural, one {# skin} other {# skins}}}}",
+      "cheapestKnifeQ": "How much is the cheapest CS2 knife?",
+      "cheapestKnifeA": "The cheapest CS2 knife here right now is {name} at {price}, out of {items} in stock.",
+      "agentsInline": "CS2 agents"
     },
     "team": {
       "title": "Team",

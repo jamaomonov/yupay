@@ -57,6 +57,16 @@ on the page too. Landing pages: `/skins/category/<category>` («Ножи CS2») 
 from the `/skins` hub. Unknown slugs answer a soft 404 (200 + `noindex`): `skins/loading.tsx`
 streams the shell before `notFound()`.
 
+Wording follows search demand (Wordstat + Google Keyword Planner, 2026-09-30): in
+Uzbekistan Google the biggest query is the English «cs2 skins» (1k–10k/month), and the
+Russian ones are written «кс2» in Cyrillic («скины кс2», «ножи кс2», «кейсы кс2», «агенты
+кс2», 100–1k each) — Yandex is near zero there. So the Russian titles and H1s say «КС2»
+with «(CS2)» / «(CS2 skins)» beside it, the Uzbek hub title carries «CS2 skins», and the
+English hub H1 is plainly «CS2 skins». Counts use the category's own noun
+(`landing.count` + `countUnit`: «394 кейса», «63 агента»), a category in running text is
+lower-case («Купить ножи КС2», agents in the accusative), and the knives page answers
+«Сколько стоит самый дешёвый нож в КС2?» from the live cheapest listing.
+
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,
 2026-09-28) and the web asks for `/256fx256f` on cards, `/512fx384f` on the item page.
