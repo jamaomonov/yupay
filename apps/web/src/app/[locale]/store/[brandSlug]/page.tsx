@@ -29,7 +29,7 @@ import {
   type ProductDetail,
 } from "@/lib/catalog";
 import { isVoucherBrand } from "@/lib/brand-kind";
-import { brandPageDescription, brandPageTitle } from "@/lib/brand-seo";
+import { brandPageDescription, brandPageTitle, brandReviewsLd } from "@/lib/brand-seo";
 import { isOptimizable } from "@/lib/image";
 import { regionSibling } from "@/lib/region-sibling";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
@@ -170,6 +170,7 @@ export default async function BrandPage({
       }
     : undefined;
 
+  const reviewLd = brandReviewsLd(reviews.items, t2("anonymous"));
   const productLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -194,6 +195,8 @@ export default async function BrandPage({
           },
         }
       : {}),
+    // The written reviews the page itself lists, so the rating has its evidence.
+    ...(reviewLd.length > 0 ? { review: reviewLd } : {}),
   };
   // Per-SKU Product entries so Google Images can pin a price and stock badge
   // to each SKU image, the way it already does for the brand hero. Fixed-price
