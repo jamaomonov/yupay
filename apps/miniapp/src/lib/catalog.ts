@@ -107,8 +107,9 @@ export interface FormOption {
   label: Record<string, string>;
 }
 
+/** That a field is checkable. The API does not say who checks it (the server
+ *  picks); an older API still sends `provider`, which nothing reads. */
 export interface FieldCheck {
-  provider: "g2b";
   server_field?: string | null;
 }
 

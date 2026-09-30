@@ -13387,7 +13387,7 @@
           },
           "required_fields": {
             "items": {
-              "$ref": "#/components/schemas/FormField"
+              "$ref": "#/components/schemas/PublicFormField"
             },
             "title": "Required Fields",
             "type": "array"
@@ -14281,6 +14281,140 @@
           "providers"
         ],
         "title": "ProvidersOut",
+        "type": "object"
+      },
+      "PublicFieldCheck": {
+        "description": "``FieldCheck`` as the public catalogue shows it: that the field is checkable.\n\n``provider`` stays behind \u2014 it named the supplier (G2B, Waxpeer) to anyone\nreading the catalogue, and the storefront never needed it: the server picks\nthe checker itself from the product.",
+        "properties": {
+          "server_field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Field"
+          }
+        },
+        "title": "PublicFieldCheck",
+        "type": "object"
+      },
+      "PublicFormField": {
+        "additionalProperties": false,
+        "description": "A form field as the public catalogue shows it \u2014 ``check`` without its provider.",
+        "properties": {
+          "check": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicFieldCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "help_images": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/HelpImage"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help Images"
+          },
+          "help_text": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help Text"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Label",
+            "type": "object"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FormOption"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options"
+          },
+          "pattern": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pattern"
+          },
+          "placeholder": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placeholder"
+          },
+          "required": {
+            "default": true,
+            "title": "Required",
+            "type": "boolean"
+          },
+          "type": {
+            "enum": [
+              "text",
+              "email",
+              "number",
+              "select"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "type"
+        ],
+        "title": "PublicFormField",
         "type": "object"
       },
       "RarityFacetOut": {

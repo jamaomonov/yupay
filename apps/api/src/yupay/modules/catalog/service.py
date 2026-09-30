@@ -25,6 +25,7 @@ from yupay.modules.catalog.schemas import (
     PriceOut,
     ProductDetailOut,
     ProductSummaryOut,
+    PublicFormField,
     SkuOut,
 )
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
@@ -593,7 +594,7 @@ async def get_product_by_slug(
         image_url=product.image_url,
         kind=product.kind,  # type: ignore[arg-type]
         required_fields=[
-            FormField.model_validate(f, context=HELP_IMAGES_READ_CONTEXT)
+            PublicFormField.of(FormField.model_validate(f, context=HELP_IMAGES_READ_CONTEXT))
             for f in product.required_fields
         ],
         skus=skus_out,

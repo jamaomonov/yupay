@@ -375,6 +375,32 @@ class ProductSummaryOut(BaseModel):
     starting_display_price: PriceOut | None = None
 
 
+class PublicFieldCheck(BaseModel):
+    """``FieldCheck`` as the public catalogue shows it: that the field is checkable.
+
+    ``provider`` stays behind — it named the supplier (G2B, Waxpeer) to anyone
+    reading the catalogue, and the storefront never needed it: the server picks
+    the checker itself from the product.
+    """
+
+    server_field: str | None = None
+
+
+class PublicFormField(FormField):
+    """A form field as the public catalogue shows it — ``check`` without its provider."""
+
+    check: PublicFieldCheck | None = None  # type: ignore[assignment]  # narrower on purpose
+
+    @classmethod
+    def of(cls, field: FormField) -> PublicFormField:
+        """The public view of a stored, validated field."""
+        data = field.model_dump()
+        data["check"] = (
+            {"server_field": field.check.server_field} if field.check is not None else None
+        )
+        return cls.model_validate(data, context=HELP_IMAGES_READ_CONTEXT)
+
+
 class ProductDetailOut(BaseModel):
     """Full product page payload (with brand + form schema + SKUs)."""
 
@@ -389,7 +415,7 @@ class ProductDetailOut(BaseModel):
     description: str | None
     image_url: str | None
     kind: Literal["top_up", "voucher"]
-    required_fields: list[FormField]
+    required_fields: list[PublicFormField]
     skus: list[SkuOut]
 
 
@@ -457,5 +483,7 @@ __all__ = [
     "ProductDetailOut",
     "ProductListOut",
     "ProductSummaryOut",
+    "PublicFieldCheck",
+    "PublicFormField",
     "SkuOut",
 ]

@@ -339,6 +339,29 @@ async def test_product_detail_carries_brand_and_form(
     assert body["required_fields"][0]["type"] == "text"
 
 
+async def test_product_detail_does_not_name_the_checker(
+    integration_client: AsyncClient, db_session: AsyncSession, _seed_one
+) -> None:
+    """The storefront needs to know a field is checkable, not who checks it:
+    ``check.provider`` named our supplier (G2B, Waxpeer) to anyone reading the
+    public catalogue. Only ``server_field`` goes out."""
+    await db_session.execute(
+        update(Product)
+        .where(Product.slug == "pubg-uc")
+        .values(
+            required_fields=[
+                {**_PLAYER_ID_FIELD, "check": {"provider": "g2b", "server_field": "zone_id"}}
+            ]
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.get("/api/v1/catalog/products/pubg-uc")
+    assert r.status_code == 200, r.text
+    assert r.json()["required_fields"][0]["check"] == {"server_field": "zone_id"}
+    assert "g2b" not in r.text
+
+
 async def test_product_detail_drops_a_foreign_help_images_url_instead_of_500ing(
     integration_client: AsyncClient, db_session: AsyncSession, _seed_one
 ) -> None:

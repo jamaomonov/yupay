@@ -141,6 +141,12 @@ gates checkout. `provider` may also be `"waxpeer"` — that branch validates a
 Steam login instead of resolving a game player id, and returns no nickname
 (`name` is always `null`).
 
+That is the stored shape, as the admin writes it. The public catalogue
+(`GET /catalog/products/{slug}`) sends `check` **without `provider`** — only
+`server_field` (`PublicFormField` / `PublicFieldCheck`): the storefront needs to
+know a field is checkable, not who checks it, and the name gave our suppliers
+away to anyone reading the API. The server picks the checker from the stored row.
+
 `check` belongs on the field holding the **player id**, never on the server
 field: the storefront sends the checked field's own value as `player_id` and
 the field named by `server_field` as `server_id`. Putting it on the server

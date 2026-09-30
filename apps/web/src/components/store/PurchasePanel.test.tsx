@@ -700,7 +700,7 @@ it("disables the check button and explains why until the paired server field is 
         type: "text",
         required: true,
         pattern: "^[0-9]{5,20}$",
-        check: { provider: "g2b", server_field: "server" },
+        check: { server_field: "server" },
       },
       {
         key: "server",
@@ -743,7 +743,7 @@ const MLBB_FIELDS: ProductDetail["required_fields"] = [
     type: "text",
     required: true,
     pattern: "^[0-9]{5,20}$",
-    check: { provider: "g2b", server_field: "server" },
+    check: { server_field: "server" },
   },
   { key: "server", label: { ru: "ID сервера" }, type: "text", required: true },
 ];
