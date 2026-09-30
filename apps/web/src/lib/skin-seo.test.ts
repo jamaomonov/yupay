@@ -71,22 +71,30 @@ describe("skinFaq", () => {
 });
 
 describe("skinProductLd", () => {
-  it("offers the cheapest price in soʻm with the number of offers", () => {
+  it("offers the cheapest price in soʻm as a single offer", () => {
     const ld = skinProductLd(ITEM, "https://yupay.uz/skins/ak-47-slate-battle-scarred");
-    expect(ld["@type"]).toBe("Product");
-    expect(ld.name).toBe("AK-47 | Slate (Battle-Scarred)");
-    expect(ld.offers).toEqual(
+    expect(ld?.["@type"]).toBe("Product");
+    expect(ld?.name).toBe("AK-47 | Slate (Battle-Scarred)");
+    // A single Offer, not an AggregateOffer: the page knows the cheapest price but
+    // not the dearest, and Search Console flags an AggregateOffer without highPrice.
+    expect(ld?.offers).toEqual(
       expect.objectContaining({
-        "@type": "AggregateOffer",
-        lowPrice: 40000,
+        "@type": "Offer",
+        price: 40000,
         priceCurrency: "UZS",
-        offerCount: 23,
         availability: "https://schema.org/InStock",
       }),
     );
   });
 
-  it("has no offer without a price", () => {
-    expect(skinProductLd({ ...ITEM, price_uzs: null }, "u").offers).toBeUndefined();
+  it("keeps a priced item that sold out valid: an out-of-stock offer, never a bare Product", () => {
+    const ld = skinProductLd({ ...ITEM, count: 0 }, "u");
+    expect(ld?.offers).toEqual(
+      expect.objectContaining({ price: 40000, availability: "https://schema.org/OutOfStock" }),
+    );
+  });
+
+  it("emits no Product at all without a price", () => {
+    expect(skinProductLd({ ...ITEM, price_uzs: null }, "u")).toBeNull();
   });
 });

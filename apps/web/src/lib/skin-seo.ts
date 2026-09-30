@@ -95,18 +95,27 @@ export type ProductLd = {
   image?: string;
   category: string;
   url: string;
-  offers?: {
-    "@type": "AggregateOffer";
-    lowPrice: number;
+  offers: {
+    "@type": "Offer";
+    price: number;
     priceCurrency: "UZS";
-    offerCount: number;
     availability: string;
     url: string;
+    priceValidUntil: string;
   };
 };
 
-export function skinProductLd(item: SkinDetail, url: string): ProductLd {
-  const uzs = item.price_uzs === null ? null : Math.round(Number(item.price_uzs));
+/**
+ * The item's Product JSON-LD, or `null` when it has no price — a Product with no
+ * offer, review or rating is invalid for Google and is reported as an error.
+ *
+ * A single Offer at our cheapest price rather than an AggregateOffer: the page
+ * knows the lowest price but not the highest, and an AggregateOffer without
+ * `highPrice` is flagged in Search Console. A priced item that has sold out keeps
+ * its Offer, marked out of stock.
+ */
+export function skinProductLd(item: SkinDetail, url: string): ProductLd | null {
+  if (item.price_uzs === null) return null;
   return {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -114,17 +123,14 @@ export function skinProductLd(item: SkinDetail, url: string): ProductLd {
     ...(item.image_url ? { image: item.image_url } : {}),
     category: `CS2 ${item.weapon ?? item.category}`,
     url,
-    ...(uzs !== null && item.count > 0
-      ? {
-          offers: {
-            "@type": "AggregateOffer" as const,
-            lowPrice: uzs,
-            priceCurrency: "UZS" as const,
-            offerCount: item.count,
-            availability: "https://schema.org/InStock",
-            url,
-          },
-        }
-      : {}),
+    offers: {
+      "@type": "Offer",
+      price: Math.round(Number(item.price_uzs)),
+      priceCurrency: "UZS",
+      availability: item.count > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+      url,
+      // Prices follow a five-minute sync; a short, rolling window keeps the claim true.
+      priceValidUntil: new Date(Date.now() + 7 * 864e5).toISOString().slice(0, 10),
+    },
   };
 }

@@ -284,7 +284,9 @@ export default async function BrandPage({
 
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
-      <JsonLd data={productLd} />
+      {/* A Product with neither an offer nor a rating is invalid for Google (Search
+          Console reports it as an error): skip it while no price can be shown. */}
+      {(offers || reviews.stats.count > 0) && <JsonLd data={productLd} />}
       {skuListLd && <JsonLd data={skuListLd} />}
       <JsonLd data={breadcrumbLd} />
       {faqLd && <JsonLd data={faqLd} />}

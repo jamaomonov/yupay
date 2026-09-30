@@ -165,7 +165,8 @@ export default async function GiftGamePage({
 
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
-      <JsonLd data={productLd} />
+      {/* No offer means no valid Product for Google — skip it rather than emit one. */}
+      {offer && <JsonLd data={productLd} />}
       <JsonLd data={breadcrumbLd} />
 
       <div className="mx-auto max-w-[1100px] px-6 sm:px-10">

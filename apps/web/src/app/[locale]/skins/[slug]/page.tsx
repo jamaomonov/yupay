@@ -87,6 +87,7 @@ export default async function SkinPage({ params }: Props) {
       : null;
   const worn = hasWear(item.category);
   const url = localeUrl(locale, `/skins/${item.slug}`);
+  const productLd = skinProductLd(item, url);
   const breadcrumbLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
@@ -124,7 +125,7 @@ export default async function SkinPage({ params }: Props) {
 
   return (
     <main className="mx-auto min-h-screen max-w-[1320px] px-4 pb-28 pt-[104px] sm:px-6">
-      <JsonLd data={skinProductLd(item, url)} />
+      {productLd && <JsonLd data={productLd} />}
       <JsonLd data={breadcrumbLd} />
       <nav className="text-tx-dim mb-4 flex flex-wrap items-center gap-1 text-[13px]">
         <Link href={pathFor(locale, "/skins")} className="hover:text-foreground">
