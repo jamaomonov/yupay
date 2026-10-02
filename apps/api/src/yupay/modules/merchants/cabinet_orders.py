@@ -23,7 +23,7 @@ from sqlalchemy.orm import aliased
 
 from yupay.core.errors import ValidationError
 from yupay.modules.catalog.models import Brand, BrandTranslation, Product, Sku
-from yupay.modules.merchants import deposit, order_status, transactions
+from yupay.modules.merchants import deposit, order_status, recipient, transactions
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetOrderDetailOut,
     CabinetOrderRowOut,
@@ -138,6 +138,7 @@ async def build(
     refunded = await deposit.refunded_for_orders(db, pairs=pairs)
 
     labels = await _sku_labels(db, [order.id for order in page], DEFAULT_LOCALE)
+    recipients = await recipient.recipients_for_orders(db, [order.id for order in page])
 
     items = []
     for order in page:
@@ -157,6 +158,7 @@ async def build(
                 refunded_usd=refunded.get(order.id, _ZERO),
                 created_at=order.created_at,
                 delivered_at=order.delivered_at,
+                recipient=recipient.recipient_summary(recipients.get(order.id, []), DEFAULT_LOCALE),
             )
         )
     next_cursor = (
@@ -195,6 +197,7 @@ async def read_detail(
     status = await order_status.read(db, merchant=merchant, merchant_order_id=merchant_order_id)
     labels = await _sku_labels(db, [status.order_id], DEFAULT_LOCALE)
     sku_code, sku_name, brand_name = labels.get(status.order_id, ("", None, None))
+    fields = (await recipient.recipients_for_orders(db, [status.order_id])).get(status.order_id, [])
     return CabinetOrderDetailOut(
         merchant_order_id=status.merchant_order_id,
         order_id=status.order_id,
@@ -211,6 +214,7 @@ async def read_detail(
         failure_reason=status.failure_reason,
         delivery=status.delivery,
         timeline=status.timeline,
+        recipient=fields,
     )
 
 

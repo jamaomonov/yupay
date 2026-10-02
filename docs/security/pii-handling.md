@@ -38,6 +38,15 @@ supplier (`source`) and internal/external ids (`external_id`,
 `amount_units`) are never exposed to the customer — admins see the full row via
 `/admin/fulfillment`.
 
+**Recipient echo in the merchant cabinet.** The cabinet's order list and detail
+show a reseller the recipient fields they themselves sent with the order
+(`order_items.fulfillment_data`: Telegram username, Steam login, player id,
+server) — `apps/api/src/yupay/modules/merchants/recipient.py`. They are that
+reseller's own end-customer identifiers and reach only that reseller's signed-in
+cabinet; they still never go to a log or a URL. Only keys the product's form
+defines are shown, and a Steam trade link (`tradelink`) is never echoed — its
+token works as a credential. `/merchant/v1` does not carry them.
+
 **Steam profile URL / steamid64 (gift delivery).** A Steam gift order's
 `order_items.fulfillment_data.invite_url` carries the buyer-entered Steam
 profile/friend link (`steamcommunity.com/profiles/{steamid64}`,

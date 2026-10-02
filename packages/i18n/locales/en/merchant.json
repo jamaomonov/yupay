@@ -440,6 +440,7 @@
     "ourId": "Our id",
     "sku": "SKU",
     "timeline": "Timeline",
+    "recipient": "Recipient",
     "delivery": "Delivery",
     "deliveredAt": "Delivered",
     "paidAt": "Paid",

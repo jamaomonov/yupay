@@ -4465,6 +4465,13 @@
             "title": "Price Usd",
             "type": "string"
           },
+          "recipient": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetRecipientFieldOut"
+            },
+            "title": "Recipient",
+            "type": "array"
+          },
           "refunded_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Refunded Usd",
@@ -4627,6 +4634,17 @@
             "title": "Price Usd",
             "type": "string"
           },
+          "recipient": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recipient"
+          },
           "refunded_usd": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Refunded Usd",
@@ -4780,6 +4798,47 @@
           "timezone"
         ],
         "title": "CabinetProfilePatchIn",
+        "type": "object"
+      },
+      "CabinetRecipientFieldOut": {
+        "description": "One thing the reseller entered for the order's recipient\n(``merchants.recipient``).",
+        "properties": {
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Label",
+            "type": "object"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          },
+          "value_label": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Label"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "value"
+        ],
+        "title": "CabinetRecipientFieldOut",
         "type": "object"
       },
       "CabinetRegisterIn": {

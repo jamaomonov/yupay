@@ -440,6 +440,7 @@
     "ourId": "Наш ID",
     "sku": "SKU",
     "timeline": "История",
+    "recipient": "Получатель",
     "delivery": "Выдача",
     "deliveredAt": "Выдан",
     "paidAt": "Оплачен",

@@ -201,6 +201,21 @@ class CabinetOrderIn(BaseModel):
     fulfillment_data: dict[str, str] = Field(default_factory=dict)
 
 
+class CabinetRecipientFieldOut(BaseModel):
+    """One thing the reseller entered for the order's recipient
+    (``merchants.recipient``)."""
+
+    #: The form field's key — ``username``, ``steam_login``, ``player_id``.
+    key: str
+    #: The form field's label per locale; the browser picks its own.
+    label: dict[str, str]
+    #: What the reseller sent, as sent.
+    value: str
+    #: For a select field, the chosen option's label per locale ("Asia" for
+    #: server ``2045``); ``None`` otherwise or when the value is not an option.
+    value_label: dict[str, str] | None = None
+
+
 class CabinetOrderRowOut(BaseModel):
     """One line of the Orders list.
 
@@ -228,6 +243,9 @@ class CabinetOrderRowOut(BaseModel):
     refunded_usd: UsdAmount
     created_at: datetime
     delivered_at: datetime | None
+    #: Who it was for, one line of values (``"@ivan"``, ``"123456 · Asia"``),
+    #: so a row can be found by eye. ``None`` when nothing was entered.
+    recipient: str | None = None
 
 
 class CabinetOrdersOut(BaseModel):
@@ -268,6 +286,9 @@ class CabinetOrderDetailOut(BaseModel):
     failure_reason: str | None
     delivery: MerchantDeliveryOut | None
     timeline: list[MerchantOrderEventOut]
+    #: What the reseller entered for the recipient, labelled
+    #: (``merchants.recipient``). Cabinet only — not on the machine contract.
+    recipient: list[CabinetRecipientFieldOut] = Field(default_factory=list)
 
 
 class CabinetApiKeyOut(BaseModel):

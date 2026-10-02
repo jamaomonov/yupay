@@ -14,28 +14,7 @@ import { formatMoment } from "@/lib/datetime";
 import { failureLabel, orderStatusLabel, orderTitle } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
-
-/**
- * Flatten a delivery artifact into copyable lines.
- *
- * The shape follows `artifact_kind` and the vocabulary grows, so this reads
- * whatever is there rather than switching on the kind: `code`, `codes`, a
- * receipt's fields. Anything that is not a string or a list of strings is
- * rendered as JSON — visible and copyable, which beats hiding it.
- */
-function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "string");
-}
-
-function artifactLines(artifact: Record<string, unknown>): { key: string; value: string }[] {
-  return Object.entries(artifact).flatMap(([key, value]) => {
-    if (typeof value === "string") return [{ key, value }];
-    if (isStringArray(value)) {
-      return value.map((item, index) => ({ key: `${key}[${String(index)}]`, value: item }));
-    }
-    return [{ key, value: JSON.stringify(value) }];
-  });
-}
+import { recipientLines, visibleArtifactLines } from "@/lib/recipient";
 
 /** `order.created` → «Создан», `order.paid` → the status label, and so on. */
 function timelineLabel(event: string, t: (key: string) => string): string {
@@ -60,6 +39,8 @@ export default function OrderDetailPage() {
   }, [id]);
 
   const refunded = order ? toCents(order.refunded_usd) : 0n;
+  const recipient = order ? recipientLines(order.recipient, locale) : [];
+  const delivered = order?.delivery ? visibleArtifactLines(order.delivery.artifact) : [];
 
   return (
     // A reading measure. These two run long forms, and a two-column grid
@@ -85,6 +66,21 @@ export default function OrderDetailPage() {
             <p className="text-tx-dim mt-1 text-xs">
               {t("idLabel")}: {order.merchant_order_id}
             </p>
+          )}
+
+          {recipient.length > 0 && (
+            <section className="border-border bg-card mt-6 rounded-xl border p-6">
+              <h2 className="font-semibold">{t("recipient")}</h2>
+              <dl className="mt-4 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-3">
+                {recipient.map((line) => (
+                  <Fragment key={line.key}>
+                    <dt className="text-tx-mute whitespace-nowrap text-sm">{line.label}</dt>
+                    <dd className="min-w-0 break-all font-mono text-sm">{line.shown}</dd>
+                    <CopyButton value={line.value} label={t("copy")} done={t("copied")} />
+                  </Fragment>
+                ))}
+              </dl>
+            </section>
           )}
 
           <section className="border-border bg-card mt-6 rounded-xl border p-6">
@@ -143,7 +139,7 @@ export default function OrderDetailPage() {
             </details>
           </section>
 
-          {order.delivery !== null && (
+          {delivered.length > 0 && (
             <section className="border-border bg-card mt-6 rounded-xl border p-6">
               <h2 className="font-semibold">{t("delivery")}</h2>
               {/* A two-column grid, not a fixed `w-28`: `supplier_reference`
@@ -152,7 +148,7 @@ export default function OrderDetailPage() {
                   buttons line up in a column of their own instead of landing
                   at four different x positions. */}
               <dl className="mt-4 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-3">
-                {artifactLines(order.delivery.artifact).map(({ key, value }) => (
+                {delivered.map(({ key, value }) => (
                   <Fragment key={key}>
                     <dt className="text-tx-dim whitespace-nowrap font-mono text-xs">{key}</dt>
                     <dd className="min-w-0 break-all font-mono text-sm">{value}</dd>

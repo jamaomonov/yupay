@@ -146,7 +146,7 @@ async def _credit(
     assert r.status_code == 201, r.text
 
 
-def _seed_stars(db: AsyncSession) -> str:
+def _seed_stars(db: AsyncSession, required_fields: list[dict[str, object]] | None = None) -> str:
     """One unit SKU priced like Telegram Stars, returning its id."""
     category = Category(id=new_id(), slug=f"cat-{new_id()[:8]}", sort_order=0, active=True)
     category.translations = [CategoryTranslation(locale="ru", name="Категория")]
@@ -166,7 +166,7 @@ def _seed_stars(db: AsyncSession) -> str:
         kind="top_up",
         sort_order=0,
         active=True,
-        required_fields=[],
+        required_fields=required_fields or [],
     )
     product.translations = [ProductTranslation(locale="ru", name="Продукт")]
     sku = Sku(
@@ -328,6 +328,42 @@ async def test_the_order_detail_names_the_product_too(
     assert body["sku_code"] == "stars-unit"
     assert body["sku_name"] == "Любое количество"
     assert body["brand_name"] == "Бренд"
+
+
+async def test_the_order_shows_who_it_was_for(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    sent: list[dict[str, str]],
+) -> None:
+    """The username the reseller sent comes back, labelled, on both screens."""
+    access, merchant_id = await _signed_up(integration_client, sent, "who@acme.example.com")
+    await _credit(integration_client, admin_headers, merchant_id, "40.00")
+    label = {"ru": "Telegram username", "en": "Telegram username", "uz": "Telegram username"}
+    sku_id = _seed_stars(db_session, [{"key": "username", "type": "text", "label": label}])
+    await db_session.commit()
+
+    placed = await integration_client.post(
+        f"{BASE}/orders",
+        headers=_auth(access),
+        json={
+            "sku_id": sku_id,
+            "quantity": 1000,
+            "expected_price": "16.54",
+            "fulfillment_data": {"username": "ivan"},
+        },
+    )
+    assert placed.status_code == 201, placed.text
+
+    detail = await integration_client.get(
+        f"{BASE}/orders/{placed.json()['merchant_order_id']}", headers=_auth(access)
+    )
+    listed = await integration_client.get(f"{BASE}/orders", headers=_auth(access))
+
+    assert detail.json()["recipient"] == [
+        {"key": "username", "label": label, "value": "ivan", "value_label": None}
+    ]
+    assert listed.json()["items"][0]["recipient"] == "ivan"
 
 
 async def test_search_finds_an_order_by_either_id(

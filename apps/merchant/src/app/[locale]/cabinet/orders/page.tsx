@@ -158,9 +158,16 @@ export default function OrdersList() {
                   className="block px-4 py-3.5"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <p className="min-w-0 text-sm font-semibold leading-snug">
-                      {orderTitle(row, t("colOrder"))}
-                    </p>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold leading-snug">
+                        {orderTitle(row, t("colOrder"))}
+                      </p>
+                      {row.recipient && (
+                        <p className="text-tx-mute mt-0.5 break-all font-mono text-xs">
+                          {row.recipient}
+                        </p>
+                      )}
+                    </div>
                     <span className="shrink-0 font-mono text-sm">
                       ${formatUsd(toCents(row.price_usd))}
                     </span>
@@ -220,6 +227,11 @@ export default function OrdersList() {
                       >
                         {orderTitle(row, t("colOrder"))}
                       </Link>
+                      {row.recipient && (
+                        <p className="text-tx-mute mt-0.5 break-all font-mono text-xs">
+                          {row.recipient}
+                        </p>
+                      )}
                       {!row.merchant_order_id.startsWith("manual-") && (
                         <p className="text-tx-dim mt-0.5 text-xs">{row.merchant_order_id}</p>
                       )}

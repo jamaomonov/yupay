@@ -89,6 +89,16 @@ export interface OrderRow {
   refunded_usd: string;
   created_at: string;
   delivered_at: string | null;
+  /** Who it was for, as one line of values (`"123456 · Asia"`). Absent from an older API. */
+  recipient?: string | null;
+}
+
+/** One thing the reseller entered for the recipient, labelled by the product's form. */
+export interface RecipientField {
+  key: string;
+  label: Record<string, string>;
+  value: string;
+  value_label: Record<string, string> | null;
 }
 
 export interface OrdersPage {
@@ -126,6 +136,8 @@ export interface OrderDetail {
   failure_reason: string | null;
   delivery: Delivery | null;
   timeline: OrderEvent[];
+  /** Absent from an API older than the field. */
+  recipient?: RecipientField[];
 }
 
 /** One movement of the deposit. `amount_usd` is signed. */
