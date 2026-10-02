@@ -3041,9 +3041,18 @@ BUYER_SAFE_ARTIFACT_KEYS: frozenset[str] = frozenset(
         "kind",  # sub-kind of a supplier artifact, e.g. gengine gift vs top-up
         "app_name",  # the Steam app a gift was bought for
         "package_name",  # the Steam gift edition/package name
-        "status",  # supplier-reported delivery status, e.g. "shipped"
+        "status",  # always DELIVERED_STATUS on the way out — see buyer_safe_artifact
     }
 )
+
+#: The one word a delivered artifact's ``status`` says. Each panel vendor spells
+#: success its own way (FazerCards "completed", NOVA "success", G-Engine
+#: "shipped"), and passing theirs through made ``/merchant/v1`` answer
+#: differently depending on which supplier routing picked — a reseller who
+#: parsed "completed" read a G-Engine top-up as undelivered (2026-10-02). A
+#: delivery row exists only once the item was handed over, so one constant is
+#: the honest answer.
+DELIVERED_STATUS: Final = "completed"
 
 
 def buyer_safe_artifact(delivery: Delivery) -> dict[str, Any]:
@@ -3056,9 +3065,14 @@ def buyer_safe_artifact(delivery: Delivery) -> dict[str, Any]:
         Only the keys in :data:`BUYER_SAFE_ARTIFACT_KEYS`. A voucher code is a
         bearer instrument, so this is *not* redaction for its own sake — the
         code is meant to go out; what must not go with it is our supplier's
-        name and order id.
+        name and order id. ``status`` is :data:`DELIVERED_STATUS` whatever
+        the supplier wrote, and a top-up receipt always carries it, so the
+        answer does not depend on which supplier ran the order.
     """
-    return {k: v for k, v in (delivery.artifact or {}).items() if k in BUYER_SAFE_ARTIFACT_KEYS}
+    kept = {k: v for k, v in (delivery.artifact or {}).items() if k in BUYER_SAFE_ARTIFACT_KEYS}
+    if "status" in kept or delivery.artifact_kind == "topup_receipt":
+        kept["status"] = DELIVERED_STATUS
+    return kept
 
 
 async def list_deliveries_for_order(db: AsyncSession, *, order_id: str) -> list[Delivery]:

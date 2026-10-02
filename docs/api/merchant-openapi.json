@@ -108,7 +108,7 @@
         "properties": {
           "artifact": {
             "additionalProperties": true,
-            "description": "The delivered thing. For `voucher_code` it carries `code` (or `codes`). Internal fields \u2014 our supplier, their order id, our warehouse row \u2014 are never in here.",
+            "description": "The delivered thing. For `voucher_code` it carries `code` (or `codes`). Internal fields \u2014 our supplier, their order id, our warehouse row \u2014 are never in here. A `topup_receipt` always carries `status: \"completed\"`, whichever supplier filled it; whether the order is delivered is the order's own `status`, not this.",
             "title": "Artifact",
             "type": "object"
           },

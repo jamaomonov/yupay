@@ -1816,7 +1816,11 @@ line as sent. Signing the decoded path is a `401`, not a `404`.
 today: `voucher_code`, which carries `code` (or `codes` for a line delivered as
 several), and `topup_receipt`, which confirms a credit applied directly to the
 account in your `fulfillment_data` and carries a `message` and/or that
-`fulfillment_data` echoed back. More kinds may be added.
+`fulfillment_data` echoed back. A `topup_receipt` always carries
+`status: "completed"` — one word whichever supplier filled the order (until
+2026-10-02 the supplier's own word leaked through: "completed", "success" or
+"shipped"). To tell whether an order is delivered, read the order's own `status`
+(`delivered`), not anything inside `artifact`. More kinds may be added.
 
 `artifact` is filtered through an allow-list, so the keys you may ever see are
 exactly: `code`, `codes`, `key`, `pin`, `serial`, `login`, `steam_login`,

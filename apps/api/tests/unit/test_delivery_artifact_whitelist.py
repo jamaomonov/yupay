@@ -75,3 +75,31 @@ def test_customer_supplied_and_deliverable_keys_survive() -> None:
 def test_an_empty_artifact_survives_without_a_crash() -> None:
     """``Delivery.artifact`` is NOT NULL, but an empty dict is legal."""
     assert buyer_safe_artifact(_row({})) == {}
+
+
+def _receipt(artifact: dict[str, Any]) -> Delivery:
+    row = _row(artifact)
+    row.artifact_kind = "topup_receipt"
+    return row
+
+
+def test_a_top_up_reads_completed_whichever_supplier_ran_it() -> None:
+    """Each panel vendor spells success its own way — FazerCards "completed",
+    NOVA "success", G-Engine "shipped" — and a reseller who parsed the first
+    read the others as undelivered. Only our word goes out."""
+    for word in ("completed", "success", "shipped"):
+        kept = buyer_safe_artifact(
+            _receipt({"external_order_id": "x", "status": word, "supplier": "fzr"})
+        )
+        assert kept == {"status": "completed"}
+
+
+def test_a_top_up_without_a_supplier_status_still_says_completed() -> None:
+    assert buyer_safe_artifact(_receipt({"message": "OK", "source": "g2b"})) == {
+        "message": "OK",
+        "status": "completed",
+    }
+
+
+def test_a_code_delivery_gains_no_status_it_did_not_have() -> None:
+    assert buyer_safe_artifact(_row({"code": "GIFT-1"})) == {"code": "GIFT-1"}

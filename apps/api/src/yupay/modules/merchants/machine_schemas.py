@@ -573,7 +573,9 @@ class MerchantDeliveryOut(BaseModel):
         description=(
             "The delivered thing. For `voucher_code` it carries `code` (or `codes`). "
             "Internal fields — our supplier, their order id, our warehouse row — are "
-            "never in here."
+            'never in here. A `topup_receipt` always carries `status: "completed"`, '
+            "whichever supplier filled it; whether the order is delivered is the "
+            "order's own `status`, not this."
         )
     )
     delivered_at: datetime = Field(description="When it was handed over, ISO 8601 UTC.")
