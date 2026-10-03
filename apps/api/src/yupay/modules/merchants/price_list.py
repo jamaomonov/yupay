@@ -187,6 +187,7 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 Product.id.label("product_id"),
                 Product.slug.label("product_slug"),
                 Product.required_fields.label("required_fields"),
+                Product.image_url.label("product_image_url"),
                 Sku,
             )
             .join(Product, Product.brand_id == Brand.id)
@@ -351,7 +352,14 @@ async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
                 skus=[],
             )
             brands[brand_id].products.append(products[product_id])
-        products[product_id].skus.append(_row(sku, unit=unit, price=price))
+        products[product_id].skus.append(
+            _row(
+                sku,
+                unit=unit,
+                price=price,
+                image_url=sku.image_url or row.product_image_url,
+            )
+        )
     if below_floor:
         # One line per request, not one per SKU: a merchant polls this
         # endpoint, so a per-row warning would be thousands of lines a day for
@@ -401,7 +409,7 @@ def _fields(raw: list[dict[str, Any]] | None) -> list[MerchantFieldOut]:
     return out
 
 
-def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
+def _row(sku: Sku, *, unit: Decimal, price: Decimal, image_url: str | None) -> MerchantSkuOut:
     """One catalog row, in whichever of the three shapes this SKU is.
 
     Exactly one shape's fields carry values and the rest stay ``None``, so a
@@ -410,9 +418,10 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
     ``catalog.unit_sku.is_unit_sku``), so the catalog cannot advertise a shape
     ``quote.resolve_shape`` would refuse.
 
-    The four shared fields are repeated per branch rather than spread from a
-    dict: on a contract surface an explicit keyword is checked by the type
-    checker, and ``**common`` is not.
+    The shared fields are repeated per branch rather than spread from a dict:
+    on a contract surface an explicit keyword is checked by the type checker,
+    and ``**common`` is not. ``image_url`` is the SKU's own artwork, or the
+    product's when the line has none — the same fallback the storefront uses.
     """
     name = sku.denomination or sku.sku_code
     # A variable-amount row's ``price_usd`` is a face-value placeholder, not a
@@ -428,6 +437,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
             unit="usd",
             min_amount_usd=sku.min_amount_usd,
             max_amount_usd=sku.max_amount_usd,
+            image_url=image_url,
             updated_at=sku.updated_at,
         )
     if is_unit_sku(sku):
@@ -441,6 +451,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
             unit=sku.amount_unit,
             min_qty=sku.min_qty,
             max_qty=sku.max_qty,
+            image_url=image_url,
             updated_at=sku.updated_at,
         )
     return MerchantSkuOut(
@@ -450,6 +461,7 @@ def _row(sku: Sku, *, unit: Decimal, price: Decimal) -> MerchantSkuOut:
         kind="fixed",
         price_usd=price,
         retail_price_usd=retail,
+        image_url=image_url,
         updated_at=sku.updated_at,
     )
 

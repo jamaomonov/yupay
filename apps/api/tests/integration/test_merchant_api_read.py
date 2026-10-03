@@ -436,6 +436,7 @@ async def test_catalog_returns_the_b2b_visible_tree(
         "max_qty",
         "min_amount_usd",
         "max_amount_usd",
+        "image_url",
         "updated_at",
     }
     assert set(product) == {"product_id", "slug", "name", "required_fields", "skus"}
@@ -478,7 +479,37 @@ async def test_catalog_returns_the_b2b_visible_tree(
     assert sku["max_qty"] is None
     assert sku["min_amount_usd"] is None
     assert sku["max_amount_usd"] is None
+    assert sku["image_url"] is None
     assert sku["updated_at"]
+
+
+async def test_catalog_sku_carries_image_url(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """Each line's artwork, so a reseller's storefront can render the pack.
+
+    The SKU's own file wins; a denomination without one inherits the product's,
+    the same fallback the retail storefront uses. Neither uploaded is ``null``,
+    never a missing key.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(
+        db_session,
+        n=21,
+        skus=[{"sku_code": "img-own", "image_url": "https://cdn.yupay.uz/skus/own.png"}],
+    )
+    inherited = _seed_brand(db_session, n=22, skus=[{"sku_code": "img-inherited"}])
+    product = await db_session.get(Product, inherited["product"])
+    assert product is not None
+    product.image_url = "https://cdn.yupay.uz/products/box.png"
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+    assert r.status_code == 200, r.text
+    skus = _skus_of(r.json())
+    assert skus["img-own"]["image_url"] == "https://cdn.yupay.uz/skus/own.png"
+    assert skus["img-inherited"]["image_url"] == "https://cdn.yupay.uz/products/box.png"
 
 
 async def test_the_catalog_publishes_the_form_a_product_expects(

@@ -17,6 +17,7 @@ const sku = (id: string): Sku => ({
   max_qty: null,
   min_amount_usd: "1",
   max_amount_usd: "500",
+  image_url: null,
   updated_at: "2026-09-29T00:00:00Z",
 });
 

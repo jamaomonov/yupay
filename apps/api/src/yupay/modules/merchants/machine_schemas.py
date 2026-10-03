@@ -307,6 +307,15 @@ class MerchantSkuOut(BaseModel):
         default=None,
         description="`kind=amount` only: the largest `amount_usd` we accept, inclusive.",
     )
+    image_url: str | None = Field(
+        default=None,
+        description=(
+            "Artwork for this line, an absolute URL — the SKU's own file, or the "
+            "product's when the line has none. The same file the storefront renders. "
+            "`null` where neither is uploaded, so you can draw a placeholder instead of "
+            "a broken image."
+        ),
+    )
     updated_at: datetime = Field(
         description=(
             "When this line last changed. Poll the catalog and compare it to tell what "

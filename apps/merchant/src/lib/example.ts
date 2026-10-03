@@ -47,6 +47,7 @@ const BY_NAME: Record<string, unknown> = {
   category_name: "Пополнения",
   logo_url: "https://cdn.yupay.uz/brands/pubg-mobile.png",
   hero_image_url: "https://cdn.yupay.uz/brands/pubg-mobile-hero.jpg",
+  image_url: "https://cdn.yupay.uz/skus/pubgm-660.png",
   next_cursor: null,
   failure_reason: null,
 };

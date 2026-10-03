@@ -9935,6 +9935,18 @@
       "MerchantSkuOut": {
         "description": "One purchasable line of the wholesale price list.\n\n``sku_id`` is what ``POST /merchant/v1/orders`` takes. Every price here is\nTHIS merchant's, not the retail one. ``updated_at`` is the SKU row's own\nstamp, so a merchant polling the price list can tell what moved (spec \u00a78.4\n\u2014 there are no price webhooks).\n\n**Two shapes, and ``kind`` says which.** A fixed SKU is a denomination:\none ``price_usd``, order one of it. A unit SKU is a currency sold by the\nunit: a six-decimal ``unit_price_usd`` and a ``quantity`` on the order.\nExactly one of the two price fields is ever populated, because a machine\ncontract cannot hand a client two shapes for one quantity \u2014 and \"price\" on\na unit SKU is not one quantity but two, the per-unit rate and the total.",
         "properties": {
+          "image_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Artwork for this line, an absolute URL \u2014 the SKU's own file, or the product's when the line has none. The same file the storefront renders. `null` where neither is uploaded, so you can draw a placeholder instead of a broken image.",
+            "title": "Image Url"
+          },
           "kind": {
             "description": "Which shape this line is, and therefore what to send beside `sku_id`:\n\n- `fixed` \u2014 a denomination you buy one of. Nothing extra.\n- `unit` \u2014 a currency counted in units (Telegram Stars). Send `quantity`.\n- `amount` \u2014 a balance loaded in dollars (a Steam wallet). Send `amount_usd`.",
             "enum": [

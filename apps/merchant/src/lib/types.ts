@@ -27,6 +27,8 @@ export interface Sku {
   max_qty: number | null;
   min_amount_usd: string | null;
   max_amount_usd: string | null;
+  /** Artwork for this line. `null` where neither the SKU nor the product has one. */
+  image_url: string | null;
   updated_at: string;
 }
 

@@ -1481,6 +1481,7 @@ cursor you have to reconcile.
               "sku_code": "PUBGM_UC_60",
               "name": "60 UC",
               "price_usd": "1.06",
+              "image_url": "https://cdn.yupay.uz/skus/pubgm-60.png",
               "updated_at": "2026-09-07T08:14:22.918431Z"
             }
           ]
@@ -1505,6 +1506,10 @@ cursor you have to reconcile.
   (`"60 UC"`), else its `sku_code`. Brand and product `name`s are Russian —
   the catalog's default language. Use `slug` and `sku_code` as identifiers;
   the names are for showing to people and may be edited.
+- **`image_url`** is this line's artwork, an absolute HTTPS URL — the SKU's
+  own file, or the product's when the denomination has none (the same
+  fallback the storefront uses). `null` when neither is uploaded; never a
+  missing key, so you can draw a placeholder instead of a broken image.
 - **`updated_at`** is that SKU's own last-modified stamp. **There are no price
   webhooks:** poll this endpoint (once a minute is plenty — see the rate
   limits) and act on the SKUs whose `updated_at` moved. One caveat, so you can

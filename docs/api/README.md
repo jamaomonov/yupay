@@ -515,10 +515,11 @@ SKU, which is why it belongs in the `WHERE` clause and they do not.
 
 Brands or products left with nothing purchasable are omitted rather than
 returned empty. Each SKU carries `{sku_id, sku_code, name, price_usd,
-updated_at}`, `price_usd` being _that merchant's_ price from
-`merchants.pricing` — the one home for the formula. There are no price
-webhooks: merchants poll and watch `updated_at` (spec §8.4). Three SQL
-queries whatever the catalog's size, pinned by a test that measures two
+image_url, updated_at}`, `price_usd` being _that merchant's_ price from
+`merchants.pricing` — the one home for the formula. `image_url` is the SKU's
+own artwork, or the product's when the line has none, or `null`. There are
+no price webhooks: merchants poll and watch `updated_at` (spec §8.4). Three
+SQL queries whatever the catalog's size, pinned by a test that measures two
 catalog sizes and asserts the counts are equal — which catches a per-row
 load, not a constant extra query.
 

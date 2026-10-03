@@ -185,9 +185,21 @@ export default function BrandPage() {
                           : "border-border bg-card hover:border-border-2"
                       }`}
                     >
-                      <p className="line-clamp-2 pr-5 text-sm font-medium leading-snug">
-                        {sku.name}
-                      </p>
+                      <div className="flex items-start gap-2 pr-5">
+                        <span className="bg-card-2 border-border h-10 w-10 shrink-0 overflow-hidden rounded-md border">
+                          {sku.image_url !== null && (
+                            /* eslint-disable-next-line @next/next/no-img-element -- an
+                               operator-entered absolute URL on a host we do not
+                               control; same reason the brand logo above uses <img>. */
+                            <img
+                              src={sku.image_url}
+                              alt=""
+                              className="h-full w-full object-contain"
+                            />
+                          )}
+                        </span>
+                        <p className="line-clamp-2 text-sm font-medium leading-snug">{sku.name}</p>
+                      </div>
                       {active && (
                         <span
                           aria-label={t("selected")}
@@ -232,7 +244,18 @@ export default function BrandPage() {
             <div className="min-w-0">
               <p className="font-semibold">{t("orderSummary")}</p>
               {selected !== null && (
-                <p className="text-tx-mute mt-0.5 truncate text-sm lg:hidden">{selected.name}</p>
+                <div className="mt-0.5 flex min-w-0 items-center gap-2 lg:hidden">
+                  {selected.image_url !== null && (
+                    /* eslint-disable-next-line @next/next/no-img-element -- see the
+                       denomination tiles: operator-entered absolute URL. */
+                    <img
+                      src={selected.image_url}
+                      alt=""
+                      className="h-8 w-8 shrink-0 rounded-md object-contain"
+                    />
+                  )}
+                  <p className="text-tx-mute truncate text-sm">{selected.name}</p>
+                </div>
               )}
             </div>
             {selected !== null && (

@@ -43,4 +43,10 @@ describe("the create-order example body", () => {
     const brand = exampleOf({ type: "string" }, "brand");
     expect(brand).toBe("pubg-mobile");
   });
+
+  it("fills sku artwork with a URL rather than the words `image url`", () => {
+    expect(exampleOf({ type: "string" }, "image_url")).toBe(
+      "https://cdn.yupay.uz/skus/pubgm-660.png",
+    );
+  });
 });
