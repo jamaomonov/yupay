@@ -207,7 +207,8 @@ async def patch_card(
 
 
 async def _load_card(db: AsyncSession, card_id: str) -> P2PCard:
-    card = await db.get(P2PCard, parse_uuid(card_id)) if parse_uuid(card_id) else None
+    key = parse_uuid(card_id)
+    card = await db.get(P2PCard, key) if key else None
     if card is None:
         raise NotFoundError("card not found", code="p2p_card_not_found")
     return card

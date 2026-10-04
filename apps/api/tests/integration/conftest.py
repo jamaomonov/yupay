@@ -26,12 +26,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from testcontainers.postgres import PostgresContainer
 from yupay.core import config as cfg
 
-# Registered here so tests take them by parameter name (no F811-prone import).
-from tests.integration.cabinet_signup import (  # noqa: F401
-    admin_headers_fixture,
-    cabinet_mails_fixture,
-)
-
 
 @pytest.fixture(scope="session")
 def _pg_container() -> Iterator[PostgresContainer]:

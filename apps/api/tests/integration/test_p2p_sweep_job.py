@@ -140,20 +140,26 @@ async def test_a_failed_alert_is_retried_on_the_next_tick(
     assert await get_redis().get(_KEY) is not None
 
 
-async def test_an_alert_that_raises_frees_the_key_and_propagates(
+async def test_an_alert_that_raises_frees_the_key_and_is_logged(
     db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async def boom(message: str, *, kind: str, **_: object) -> bool:
         raise RuntimeError("telegram down")
 
+    failed: list[dict[str, object]] = []
+
+    def _error(event: str, **fields: object) -> None:
+        failed.append({"event": event, **fields})
+
     monkeypatch.setattr(p2p_sweep, "send_admin_alert", boom)
+    monkeypatch.setattr(p2p_sweep.log, "error", _error)
     await _expired_reservation(db_session)
-    with pytest.raises(RuntimeError):
-        await p2p_sweep.run_p2p_sweep()
+    await p2p_sweep.run_p2p_sweep()  # swallowed: the next tick retries
     assert await get_redis().get(_KEY) is None
+    assert failed == [{"event": "p2p_sweep.failed", "error": "RuntimeError"}]
 
 
-async def test_a_failed_tick_logs_the_class_only_and_reraises(
+async def test_a_failed_tick_logs_the_class_only_and_swallows_it(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     calls: list[tuple[str, dict[str, object]]] = []
@@ -172,6 +178,5 @@ async def test_a_failed_tick_logs_the_class_only_and_reraises(
 
     monkeypatch.setattr(p2p_sweep, "log", _Log())
     monkeypatch.setattr(p2p_sweep, "sweep", broken)
-    with pytest.raises(_BoomError):
-        await p2p_sweep.run_p2p_sweep()
+    await p2p_sweep.run_p2p_sweep()
     assert calls == [("p2p_sweep.failed", {"error": "_BoomError"})]

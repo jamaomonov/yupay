@@ -11,6 +11,13 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from httpx import ASGITransport, AsyncClient
 
+# The cabinet sign-up fixtures (``admin_headers``, ``cabinet_mails``), registered as a
+# plugin so tests take them by parameter name instead of importing them (ruff F811).
+# It has to live in this top-level conftest: pytest refuses ``pytest_plugins`` in a
+# conftest it loads lazily, which ``tests/integration/conftest.py`` is when the suite
+# runs from the repo root (CI's ``uv run pytest``).
+pytest_plugins = ["tests.integration.cabinet_signup"]
+
 
 @pytest.fixture(scope="session", autouse=True)
 def _test_env() -> Iterator[None]:

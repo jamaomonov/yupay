@@ -50,15 +50,17 @@ def silence_alert_due(last_incoming_at: datetime | None, expired_now: int, now_:
 async def run_p2p_sweep() -> None:
     """One tick: expire pending reservations, end quarantine, alert on silence.
 
-    A failure is logged by exception class only (the message could carry row
-    data) and re-raised, so APScheduler records it and the next tick retries.
+    A failure is logged as ``p2p_sweep.failed`` by exception class only and
+    swallowed. Re-raising would hand it to APScheduler, which logs it again with
+    a full traceback — and the message or frames could carry row data. Nothing
+    is lost by swallowing: the next tick 30 s later retries, and correctness
+    never depends on a tick (see the module docstring).
     """
     try:
         await _tick()
-    except Exception as exc:
+    except Exception as exc:  # noqa: BLE001 - logged by class; the next tick retries
         # Class name only, no traceback: the message or frames could carry row data.
         log.error("p2p_sweep.failed", error=type(exc).__name__)  # noqa: TRY400
-        raise
 
 
 async def _tick() -> None:

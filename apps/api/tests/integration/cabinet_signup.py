@@ -1,6 +1,6 @@
 """Merchant-cabinet sign-up and admin login, shared by the cabinet and P2P tests.
 
-The fixtures here are registered in ``conftest.py`` (``cabinet_mails``,
+The fixtures here are registered as a plugin by ``tests/conftest.py`` (``cabinet_mails``,
 ``admin_headers``) so a test asks for them by parameter name instead of
 importing them — an imported fixture shadowed by a parameter is ruff F811.
 """
