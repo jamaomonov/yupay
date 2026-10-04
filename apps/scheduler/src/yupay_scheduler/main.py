@@ -51,6 +51,7 @@ from yupay_scheduler.jobs import (
     held_order_refund,
     merchant_feed,
     nova_reconcile,
+    p2p_sweep,
     payme_timeout,
     purge_evidence,
     purge_sessions,
@@ -94,6 +95,7 @@ def build_scheduler() -> AsyncIOScheduler:
     held_order_refund.register(scheduler)
     merchant_feed.register(scheduler)
     nova_reconcile.register(scheduler)
+    p2p_sweep.register(scheduler)
     payme_timeout.register(scheduler)
     purge_evidence.register(scheduler)
     purge_sessions.register(scheduler)
