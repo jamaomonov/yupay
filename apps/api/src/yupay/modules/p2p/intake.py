@@ -9,10 +9,10 @@ row locks for a network round trip.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -85,24 +85,36 @@ async def _payable(
     """
     if p.kind != "credit" or p.amount is None or p.amount != p.amount.to_integral_value():
         return None
-    card = await db.scalar(select(P2PCard).where(P2PCard.pan_last4 == p.card_last4))
-    if card is None:
-        return None
     paid_at = p.bank_time or received_at
     reservation: P2PReservation | None = await db.scalar(
         select(P2PReservation)
+        .join(P2PCard, P2PCard.id == P2PReservation.card_id)
         .where(
-            P2PReservation.card_id == card.id,
+            P2PCard.pan_last4 == p.card_last4,
+            P2PCard.active.is_(True),
             P2PReservation.amount_uzs == int(p.amount),
             P2PReservation.status.in_(("pending", "expired")),
             P2PReservation.holds_amount.is_(True),
+            # Minute-precision bank time: a transfer cannot pay a reservation
+            # that did not exist yet, nor one whose window had closed.
+            P2PReservation.created_at < paid_at + timedelta(minutes=1),
             P2PReservation.expires_at >= paid_at,
         )
         .order_by(P2PReservation.created_at)
         .limit(1)
-        .with_for_update()
+        .with_for_update(of=P2PReservation)
     )
     return reservation
+
+
+async def _ambiguous_card(db: AsyncSession, last4: str | None) -> bool:
+    """True when more than one active card ends in ``last4`` (never auto-match)."""
+    count = await db.scalar(
+        select(func.count())
+        .select_from(P2PCard)
+        .where(P2PCard.pan_last4 == last4, P2PCard.active.is_(True))
+    )
+    return (count or 0) > 1
 
 
 async def _credit(
@@ -113,6 +125,17 @@ async def _credit(
     result: IntakeResult,
 ) -> None:
     """Match a credit to a reservation and book it, or mark it unmatched."""
+    if await _ambiguous_card(db, parsed.card_last4):
+        row.result = "unmatched"
+        result.status = "unmatched"
+        result.alerts.append(
+            (
+                "p2p_ambiguous_card",
+                f"P2P: несколько активных карт с окончанием *{parsed.card_last4} — "
+                "зачисление не выполнено автоматически",
+            )
+        )
+        return
     reservation = await _payable(db, parsed, received_at)
     if reservation is None or reservation.merchant_id is None:
         row.result = "unmatched"
@@ -152,6 +175,16 @@ async def ingest_update(
         The outcome and any alerts to send after commit.
     """
     settings = await load_settings(db)
+    connection = update.get("business_connection")
+    if isinstance(connection, dict):
+        # Connection health only: no user ids, no names.
+        rights = connection.get("rights")
+        log.info(
+            "p2p.business_connection",
+            is_enabled=connection.get("is_enabled"),
+            rights=sorted(k for k, v in rights.items() if v) if isinstance(rights, dict) else None,
+        )
+        return IntakeResult("dropped")
     msg = _humo_message(update, settings.humo_bot_user_id)
     if msg is None:
         return IntakeResult("dropped")

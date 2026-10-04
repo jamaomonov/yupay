@@ -243,3 +243,55 @@ async def test_route_with_no_secret_configured_refuses_everything(
     )
     res = await integration_client.post("/api/v1/webhooks/telegram/p2p", json={"update_id": 1})
     assert res.status_code == 401
+
+
+async def test_inactive_twin_with_the_same_last4_does_not_block_a_match(
+    db_session: AsyncSession,
+) -> None:
+    await _card(db_session, active=False)
+    _, r = await _setup(db_session)
+    res = await intake.ingest_update(
+        db_session,
+        _update(20, _credit("50.000,00", _bank(r.created_at), "1.100.000,00")),
+        received_at=r.created_at,
+    )
+    assert res.status == "matched"
+
+
+async def test_two_active_cards_with_one_last4_are_never_auto_matched(
+    db_session: AsyncSession,
+) -> None:
+    _, r = await _setup(db_session)
+    await _card(db_session)
+    res = await intake.ingest_update(
+        db_session,
+        _update(21, _credit("50.000,00", _bank(r.created_at), "1.100.000,00")),
+        received_at=r.created_at,
+    )
+    assert res.status == "unmatched"
+    assert any(kind == "p2p_ambiguous_card" for kind, _ in res.alerts)
+    await db_session.refresh(r)
+    assert r.status == "pending"
+
+
+async def test_a_transfer_older_than_the_reservation_cannot_pay_it(
+    db_session: AsyncSession,
+) -> None:
+    _, r = await _setup(db_session)
+    before = _bank(r.created_at - timedelta(minutes=3))
+    res = await intake.ingest_update(
+        db_session,
+        _update(22, _credit("50.000,00", before, "1.100.000,00")),
+        received_at=r.created_at,
+    )
+    assert res.status == "unmatched"
+
+
+async def test_a_business_connection_update_is_dropped(db_session: AsyncSession) -> None:
+    _, r = await _setup(db_session)
+    u = {
+        "update_id": 23,
+        "business_connection": {"id": "bc1", "is_enabled": True, "rights": {"can_reply": True}},
+    }
+    res = await intake.ingest_update(db_session, u, received_at=r.created_at)
+    assert res.status == "dropped"
