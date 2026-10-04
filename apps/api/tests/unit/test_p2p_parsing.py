@@ -85,3 +85,20 @@ def test_a_message_missing_one_required_line_is_unparsed(line: str) -> None:
 def test_non_ascii_digits_never_parse() -> None:
     assert parse_humo(CREDIT.replace("*3311", "*٣٣١١")).kind == "unparsed"
     assert parse_humo(CREDIT.replace("04:47", "٠٤:٤٧")).kind == "unparsed"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        pytest.param(CREDIT.replace("04.10.2026", "31.02.2026"), id="invalid-date"),
+        pytest.param(CREDIT.replace("\n💰 1.272.764,21 UZS", ""), id="no-balance-line"),
+        pytest.param(CREDIT.replace("\n💳 HUMOCARD *3311", ""), id="no-card-line"),
+        pytest.param(CREDIT.replace("\n🕓 04:47 04.10.2026", ""), id="no-time-line"),
+        pytest.param(CREDIT.replace("\n➕ 1.004,00 UZS", ""), id="no-sign-line"),
+        pytest.param(
+            CREDIT.replace("➕ 1.004,00 UZS", "➖ 1.004,00 UZS возврат???"), id="minus-with-garbage"
+        ),
+    ],
+)
+def test_a_damaged_notification_is_unparsed(text: str) -> None:
+    assert parse_humo(text).kind == "unparsed"

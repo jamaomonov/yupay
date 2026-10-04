@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, status
+from decimal import Decimal
+from typing import Annotated
+
+from fastapi import APIRouter, Query, status
 
 from yupay.core.clock import now
 from yupay.core.idempotency import normalize_idempotency_key
@@ -24,6 +27,11 @@ from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 router = APIRouter(prefix="/merchant/cabinet/p2p", tags=["merchant-cabinet"])
 
 
+def _plain(rate: Decimal) -> str:
+    """A rate as a plain decimal string: ``str()`` can print ``1.23E+4``."""
+    return format(rate, "f")
+
+
 def _grouped(pan: str) -> str:
     return " ".join(pan[i : i + 4] for i in range(0, len(pan), 4))
 
@@ -41,7 +49,7 @@ async def _out(db: Db, r: P2PReservation, *, with_card: bool) -> P2PDepositOut:
         status=r.status,
         amount_uzs=r.amount_uzs,
         amount_usd=r.amount_usd,
-        fx_rate=str(r.fx_rate),
+        fx_rate=_plain(r.fx_rate),
         created_at=r.created_at,
         expires_at=r.expires_at,
         closed_at=r.closed_at,
@@ -57,7 +65,7 @@ async def p2p_status(user: CurrentUser, db: Db) -> P2PStatusOut:
     rate: str | None = None
     if enabled:
         try:
-            rate = str(await guarded_usd_rate(db, quote="UZS"))
+            rate = _plain(await guarded_usd_rate(db, quote="UZS"))
         except RateRejected:
             rate = None
     await db.commit()  # guarded_usd_rate may have written an fx_snapshots row
@@ -124,11 +132,14 @@ async def cancel_deposit(
 
 @router.get("/deposits", response_model=P2PDepositsOut, summary="My top-ups")
 async def list_deposits(
-    user: CurrentUser, db: Db, cursor: str | None = None, limit: int = 25
+    user: CurrentUser,
+    db: Db,
+    cursor: str | None = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 25,
 ) -> P2PDepositsOut:
     """Newest first, keyset-paged; items never carry the card."""
     merchant = await merchant_of(db, user)
     rows, nxt = await reservations.list_for_merchant(
-        db, merchant_id=merchant.id, limit=max(1, min(limit, 100)), cursor=cursor
+        db, merchant_id=merchant.id, limit=limit, cursor=cursor
     )
     return P2PDepositsOut(items=[await _out(db, r, with_card=False) for r in rows], next_cursor=nxt)
