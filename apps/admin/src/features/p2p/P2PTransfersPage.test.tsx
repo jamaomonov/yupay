@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -111,4 +111,62 @@ it("shows the reservations tab", async () => {
   fireEvent.click(screen.getByRole("tab", { name: "Резервы" }));
   expect(await screen.findByText("P-9")).toBeInTheDocument();
   expect(within(screen.getByRole("table")).getByText("Оплачен")).toBeInTheDocument();
+});
+
+const incomingCalls = () =>
+  get.mock.calls.map(([p]) => p).filter((p) => /\/incoming(\?|$)/.test(p));
+
+it("applies journal filters only on apply, sending them as query params", async () => {
+  renderPage();
+  await screen.findByRole("link", { name: "Acme" });
+  const before = get.mock.calls.length;
+  fireEvent.change(screen.getByRole("combobox", { name: "Тип" }), { target: { value: "credit" } });
+  fireEvent.change(screen.getByRole("combobox", { name: "Результат" }), {
+    target: { value: "matched" },
+  });
+  fireEvent.change(screen.getByRole("textbox", { name: "Карта" }), { target: { value: "3311" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Сумма" }), { target: { value: "50001" } });
+  expect(get.mock.calls.length).toBe(before);
+  fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+  await waitFor(() => {
+    expect(incomingCalls().length).toBeGreaterThan(0);
+  });
+  const url = new URL(incomingCalls().at(-1) ?? "", "http://x");
+  expect(url.searchParams.get("card_last4")).toBe("3311");
+  expect(url.searchParams.get("kind")).toBe("credit");
+  expect(url.searchParams.get("result")).toBe("matched");
+  expect(url.searchParams.get("amount")).toBe("50001");
+});
+
+it("resets the filters", async () => {
+  renderPage();
+  await screen.findByRole("link", { name: "Acme" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Карта" }), { target: { value: "3311" } });
+  fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+  await waitFor(() => {
+    expect(incomingCalls().some((p) => p.includes("card_last4=3311"))).toBe(true);
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Сбросить" }));
+  await waitFor(() => {
+    expect(incomingCalls().at(-1)).not.toContain("card_last4");
+  });
+  expect(screen.getByRole("textbox", { name: "Карта" })).toHaveValue("");
+});
+
+it("loads more with the previous page's cursor and appends rows", async () => {
+  get.mockImplementation((path: string) => {
+    if (path.includes("cursor=c2")) {
+      return Promise.resolve({
+        items: [{ ...base, id: "i3", result: "unmatched", amount_uzs: "77777" }],
+        next_cursor: null,
+      });
+    }
+    return Promise.resolve({ items: ROWS, next_cursor: "c2" });
+  });
+  renderPage();
+  await screen.findByRole("link", { name: "Acme" });
+  fireEvent.click(screen.getByRole("button", { name: "Загрузить ещё" }));
+  expect(await screen.findByText(/77\s?777/)).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: "Acme" })).toBeInTheDocument();
+  expect(incomingCalls().at(-1)).toContain("cursor=c2");
 });

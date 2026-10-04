@@ -85,7 +85,8 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
           className="h-9 w-full rounded-md border bg-[var(--bg-surface)] px-2 text-sm"
           value={mode}
           onChange={(e) => {
-            setMode(e.target.value as P2PMode); // option values are the P2PMode literals
+            const next = MODES.find((m) => m === e.target.value);
+            if (next) setMode(next);
             setSaved(false);
           }}
         >

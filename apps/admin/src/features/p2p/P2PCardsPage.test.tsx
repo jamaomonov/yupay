@@ -138,10 +138,11 @@ it("reuses the Idempotency-Key when a failed add is retried, and drops it after 
   renderPage();
   fireEvent.click(await screen.findByRole("button", { name: "Добавить карту" }));
   const form = screen.getByRole("form");
-  const inputs = within(form).getAllByRole("textbox");
-  fireEvent.change(inputs[0]!, { target: { value: "Новая" } });
-  fireEvent.change(inputs[1]!, { target: { value: PAN } });
-  fireEvent.change(inputs[2]!, { target: { value: "A B" } });
+  const [labelInput, panInput, holderInput] = within(form).getAllByRole("textbox");
+  if (!labelInput || !panInput || !holderInput) throw new Error("card form inputs missing");
+  fireEvent.change(labelInput, { target: { value: "Новая" } });
+  fireEvent.change(panInput, { target: { value: PAN } });
+  fireEvent.change(holderInput, { target: { value: "A B" } });
   const save = () => {
     fireEvent.click(within(form).getByRole("button", { name: "Сохранить" }));
   };
@@ -160,7 +161,7 @@ it("reuses the Idempotency-Key when a failed add is retried, and drops it after 
   });
   expect(keyOf(1)).toBe(keyOf(0));
 
-  fireEvent.change(inputs[0]!, { target: { value: "Другая" } });
+  fireEvent.change(labelInput, { target: { value: "Другая" } });
   save();
   await waitFor(() => {
     expect(post).toHaveBeenCalledTimes(3);
@@ -198,4 +199,29 @@ it("shows the pinned connection id and saves the owner's Telegram id", async () 
   });
   const body = patch.mock.calls[0]?.[1] as Record<string, unknown>;
   expect(body).not.toHaveProperty("business_connection_id");
+});
+
+it("reuses the settings Idempotency-Key when a failed save is retried unedited", async () => {
+  patch.mockRejectedValue(new Error("network down"));
+  renderPage();
+  await screen.findByText("*3311");
+  fireEvent.change(screen.getByRole("combobox", { name: /Кому доступно/ }), {
+    target: { value: "all" },
+  });
+  const keyOf = (n: number) =>
+    (patch.mock.calls[n]?.[2] as Record<string, string> | undefined)?.["Idempotency-Key"];
+  const save = () => {
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+  };
+  save();
+  await waitFor(() => {
+    expect(patch).toHaveBeenCalledTimes(1);
+  });
+  await screen.findByRole("alert");
+  save();
+  await waitFor(() => {
+    expect(patch).toHaveBeenCalledTimes(2);
+  });
+  expect(keyOf(0)).toEqual(expect.any(String));
+  expect(keyOf(1)).toBe(keyOf(0));
 });

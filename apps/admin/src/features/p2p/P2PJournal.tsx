@@ -196,19 +196,13 @@ export function P2PJournal() {
           label={TX.filters.kind}
           value={draft.kind}
           options={TX.kinds}
-          onChange={(v) => {
-            set("kind")(v);
-            setFilters({ ...draft, kind: v });
-          }}
+          onChange={set("kind")}
         />
         <Select
           label={TX.filters.result}
           value={draft.result}
           options={TX.results}
-          onChange={(v) => {
-            set("result")(v);
-            setFilters({ ...draft, result: v });
-          }}
+          onChange={set("result")}
         />
         <label className="text-sm">
           <span className="mb-1 block text-xs text-[var(--text-secondary)]">
@@ -225,6 +219,16 @@ export function P2PJournal() {
         </label>
         <Button type="submit" variant="secondary">
           {TX.filters.apply}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            setDraft(EMPTY);
+            setFilters(EMPTY);
+          }}
+        >
+          {TX.filters.reset}
         </Button>
       </form>
 

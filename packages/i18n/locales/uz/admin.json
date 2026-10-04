@@ -726,7 +726,8 @@
         "amount": "Summa",
         "status": "Holat",
         "any": "Hammasi",
-        "apply": "Qo'llash"
+        "apply": "Qo'llash",
+        "reset": "Tozalash"
       },
       "kinds": {
         "credit": "Kirim",

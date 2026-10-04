@@ -726,7 +726,8 @@
         "amount": "Amount",
         "status": "Status",
         "any": "All",
-        "apply": "Apply"
+        "apply": "Apply",
+        "reset": "Reset"
       },
       "kinds": {
         "credit": "Credit",
