@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
@@ -9,7 +10,8 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 from sqlalchemy import func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from yupay.core.errors import AppError
 from yupay.modules.merchants.deposit import deposit_balance
 from yupay.modules.p2p import intake, reservations
 from yupay.modules.p2p.models import P2PIncoming, P2PReservation
@@ -422,3 +424,105 @@ async def test_the_connection_log_line_never_carries_the_user_id(
     assert calls == [
         ("p2p.business_connection", {"is_enabled": True, "rights": ["can_reply"], "owner": True})
     ]
+
+
+def _rendezvous(monkeypatch: pytest.MonkeyPatch, *targets: tuple[object, str]) -> None:
+    """Hold each patched coroutine until both racers reach it, so they truly overlap.
+
+    Without this, one racer can finish before the other starts and the test would
+    pass even with the row lock removed.
+    """
+    arrived = 0
+    both = asyncio.Event()
+
+    def wrap(fn: Any) -> Any:  # Any: wraps differently-typed coroutines alike
+        async def waiting(*args: Any, **kwargs: Any) -> Any:
+            nonlocal arrived
+            arrived += 1
+            if arrived >= 2:
+                both.set()
+            await asyncio.wait_for(both.wait(), timeout=5)
+            return await fn(*args, **kwargs)
+
+        return waiting
+
+    for owner, name in targets:
+        monkeypatch.setattr(owner, name, wrap(getattr(owner, name)))
+
+
+async def test_two_concurrent_transfers_for_one_reservation_credit_it_once(
+    db_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final review #4: the row lock, not a read, decides which transfer pays."""
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as setup:
+        m, r = await _setup(setup)
+        await setup.commit()
+        before = await deposit_balance(setup, merchant_id=m)
+    t = _bank(r.created_at)
+    _rendezvous(monkeypatch, (intake, "_payable"))
+
+    async def one(msg_id: int, balance: str) -> str:
+        async with factory() as db:
+            res = await intake.ingest_update(
+                db,
+                _update(msg_id, _credit("50.000,00", t, balance)),
+                received_at=r.created_at + timedelta(minutes=1),
+            )
+            await db.commit()
+            return res.status
+
+    got = await asyncio.gather(one(40, "1.100.000,00"), one(41, "1.150.000,00"))
+    assert sorted(got) == ["matched", "unmatched"]
+    async with factory() as check:
+        results = (await check.execute(select(P2PIncoming.result))).scalars().all()
+        assert sorted(results) == ["matched", "unmatched"]
+        row = await check.get(P2PReservation, r.id)
+        assert row is not None
+        assert row.status == "paid"
+        assert await deposit_balance(check, merchant_id=m) == before + r.amount_usd
+
+
+async def test_cancel_racing_a_credit_has_exactly_one_winner(
+    db_engine: AsyncEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Final review #4: cancel and credit both lock the row; money follows the final state."""
+    factory = async_sessionmaker(db_engine, expire_on_commit=False)
+    async with factory() as setup:
+        m, r = await _setup(setup)
+        await setup.commit()
+        before = await deposit_balance(setup, merchant_id=m)
+    _rendezvous(monkeypatch, (intake, "_payable"), (reservations, "_own"))
+
+    async def credit() -> str:
+        async with factory() as db:
+            res = await intake.ingest_update(
+                db,
+                _update(50, _credit("50.000,00", _bank(r.created_at), "1.100.000,00")),
+                received_at=r.created_at + timedelta(minutes=1),
+            )
+            await db.commit()
+            return res.status
+
+    async def cancel() -> str:
+        async with factory() as db:
+            try:
+                await reservations.cancel(db, merchant_id=m, number=r.number)
+            except AppError:
+                await db.rollback()
+                return "refused"
+            await db.commit()
+            return "cancelled"
+
+    credited, cancelled = await asyncio.gather(credit(), cancel())
+    assert (credited, cancelled) in {("matched", "refused"), ("unmatched", "cancelled")}
+    async with factory() as check:
+        row = await check.get(P2PReservation, r.id)
+        assert row is not None
+        balance = await deposit_balance(check, merchant_id=m)
+    if credited == "matched":
+        assert row.status == "paid"
+        assert balance == before + r.amount_usd
+    else:
+        assert row.status == "cancelled"
+        assert balance == before
