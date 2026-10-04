@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -358,18 +358,24 @@ async def get_rule(db: AsyncSession, sku_id: str) -> SkuSourcingRule | None:
     ).scalar_one_or_none()
 
 
-async def list_rules(db: AsyncSession, limit: int = 200) -> list[SkuSourcingRule]:
-    return list(
+async def list_rules(
+    db: AsyncSession, limit: int = 200, offset: int = 0
+) -> tuple[list[SkuSourcingRule], int]:
+    """One page of explicit rules, newest first, and the total — ~4400 since the 2026-10 import."""
+    total = int((await db.execute(select(func.count(SkuSourcingRule.sku_id)))).scalar_one() or 0)
+    rows = (
         (
             await db.execute(
                 select(SkuSourcingRule)
-                .order_by(SkuSourcingRule.updated_at.desc())
-                .limit(min(limit, 500))
+                .order_by(SkuSourcingRule.updated_at.desc(), SkuSourcingRule.sku_id)
+                .limit(min(max(limit, 1), 500))
+                .offset(max(offset, 0))
             )
         )
         .scalars()
         .all()
     )
+    return list(rows), total
 
 
 async def delete_rule(db: AsyncSession, sku_id: str) -> None:

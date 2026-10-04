@@ -72,7 +72,7 @@ from __future__ import annotations
 
 from typing import Annotated, Any, Final
 
-from fastapi import APIRouter, Depends, Path, Query, Request, status
+from fastapi import APIRouter, Depends, Path, Query, Request, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -161,7 +161,7 @@ async def read_me(merchant: AuthedMerchant, db: Db) -> MerchantProfileOut:
     response_model=MerchantCatalogOut,
     summary="The wholesale price list, priced for the calling merchant",
 )
-async def read_catalog(merchant: AuthedMerchant, db: Db) -> MerchantCatalogOut:
+async def read_catalog(merchant: AuthedMerchant, db: Db) -> Response:
     """Return every B2B-visible, priced SKU with this merchant's price.
 
     Visibility, pricing and the query shape are all
@@ -170,7 +170,9 @@ async def read_catalog(merchant: AuthedMerchant, db: Db) -> MerchantCatalogOut:
     rather than free, and there are no price webhooks, so poll this and watch
     each SKU's ``updated_at`` (spec §8.4).
     """
-    return await merchants.build_price_list(db, merchant=merchant)
+    body = await merchants.build_price_list_json(db, merchant=merchant)
+    # The cached JSON goes out as-is; ``response_model`` above stays for the schema.
+    return Response(content=body, media_type="application/json")
 
 
 @router.post(

@@ -9,7 +9,7 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
 ## Responsibilities
 
 - Own `sku_supplier_mapping` and `supplier_catalog_cache`.
-- Serve the admin CRUD over mappings and the cached supplier catalog.
+- Serve the admin CRUD over mappings (listed as a page: `limit`/`offset` + `total` — ~8600 rows since the 2026-10 import) and the cached supplier catalog.
 - **Sync a supplier's catalogue into `supplier_catalog_cache`** so the mapping
   wizard's "ID сервиса у поставщика" / "ID номинала у поставщика" fields can
   be a picker instead of an operator typing an id they'd otherwise have to

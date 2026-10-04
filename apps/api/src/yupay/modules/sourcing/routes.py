@@ -96,11 +96,12 @@ async def list_rules(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
     limit: int = 200,
+    offset: int = 0,
 ) -> SourcingRuleListOut:
-    rules = await svc.list_rules(db, limit=limit)
+    rules, total = await svc.list_rules(db, limit=limit, offset=offset)
     sku_codes = await svc.sku_codes_for(db, (r.sku_id for r in rules))
     return SourcingRuleListOut(
-        items=[_rule_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rules]
+        items=[_rule_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rules], total=total
     )
 
 

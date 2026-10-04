@@ -30,6 +30,7 @@ from typing import Literal
 
 from sqlalchemy import select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import lazyload
 
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.modules.catalog.models import Brand, Product, Sku
@@ -53,16 +54,14 @@ from yupay.modules.sourcing.service import (
     _resolve_explicit_rule,
 )
 
-#: Per-brand cap on the SKUs this endpoint returns — mirrors
-#: ``service.list_rules``'s ``min(limit, 500)``. No brand is anywhere near
-#: this in practice (~35 active SKUs is the largest today), so the cap is a
-#: backstop rather than a real pagination need: a brand beyond it gets a
-#: silently truncated list (the first ``MAX_BRAND_OVERVIEW_SKUS`` active SKUs
-#: in the query's own stable order — product sort order, then SKU sort
-#: order/code) instead of an endpoint that reads an unbounded number of rows
-#: into memory and 500s or times out the page an operator opens to fix
-#: routing.
-MAX_BRAND_OVERVIEW_SKUS = 500
+#: Per-brand cap on the SKUs this endpoint returns. A backstop rather than
+#: pagination: a brand beyond it gets a silently truncated list (the first
+#: ``MAX_BRAND_OVERVIEW_SKUS`` active SKUs in the query's own stable order)
+#: instead of an endpoint that reads an unbounded number of rows into memory.
+#: 500 was "~35 active SKUs is the largest"; the 2026-10 bulk import brought
+#: brands of 120+ rungs (Mobile Legends Exclusive: 128), so the ceiling is
+#: now well above any brand we sell.
+MAX_BRAND_OVERVIEW_SKUS = 2000
 
 
 def _cache_key(mapping: SkuSupplierMapping) -> tuple[str, str, str, str]:
@@ -199,6 +198,9 @@ async def get_brand_overview(db: AsyncSession, brand_slug: str) -> SourcingBrand
     sku_rows = (
         await db.execute(
             select(Sku, Product)
+            # The models' own eager loads would pull every SKU of every product
+            # a second time behind this; the screen reads neither collection.
+            .options(lazyload(Product.skus), lazyload(Product.brand))
             .join(Product, Product.id == Sku.product_id)
             .where(Product.brand_id == brand_id, Sku.active.is_(True))
             .order_by(Product.sort_order, Product.id, Sku.sort_order, Sku.sku_code)

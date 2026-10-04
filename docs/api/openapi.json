@@ -1979,6 +1979,28 @@
         "title": "AdminSkinTradesOut",
         "type": "object"
       },
+      "AdminSkuListOut": {
+        "description": "``GET /admin/catalog/skus``: one page and the count behind it.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminSkuOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "AdminSkuListOut",
+        "type": "object"
+      },
       "AdminSkuOut": {
         "description": "Admin-side SKU view including overrides.",
         "properties": {
@@ -19248,6 +19270,11 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
@@ -19646,6 +19673,11 @@
             },
             "title": "Items",
             "type": "array"
+          },
+          "total": {
+            "default": 0,
+            "title": "Total",
+            "type": "integer"
           }
         },
         "required": [
@@ -24465,6 +24497,62 @@
           "admin:catalog"
         ]
       },
+      "get": {
+        "operationId": "get_brand_api_v1_admin_catalog_brands__brand_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "brand_id",
+            "required": true,
+            "schema": {
+              "title": "Brand Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminBrandOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Brand",
+        "tags": [
+          "admin:catalog"
+        ]
+      },
       "patch": {
         "operationId": "update_brand_api_v1_admin_catalog_brands__brand_id__patch",
         "parameters": [
@@ -25266,6 +25354,62 @@
           "admin:catalog"
         ]
       },
+      "get": {
+        "operationId": "get_product_api_v1_admin_catalog_products__product_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "product_id",
+            "required": true,
+            "schema": {
+              "title": "Product Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminProductOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Product",
+        "tags": [
+          "admin:catalog"
+        ]
+      },
       "patch": {
         "operationId": "update_product_api_v1_admin_catalog_products__product_id__patch",
         "parameters": [
@@ -25335,8 +25479,41 @@
     },
     "/api/v1/admin/catalog/skus": {
       "get": {
+        "description": "A page of SKUs. Unpaged this was 6150 rows and 3 MB after the 2026-10 import.",
         "operationId": "list_skus_api_v1_admin_catalog_skus_get",
         "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "brand_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Brand Id"
+            }
+          },
           {
             "in": "query",
             "name": "product_id",
@@ -25351,6 +25528,29 @@
                 }
               ],
               "title": "Product Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
+              "type": "integer"
             }
           },
           {
@@ -25375,11 +25575,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/AdminSkuOut"
-                  },
-                  "title": "Response List Skus Api V1 Admin Catalog Skus Get",
-                  "type": "array"
+                  "$ref": "#/components/schemas/AdminSkuListOut"
                 }
               }
             },
@@ -25651,6 +25847,62 @@
           }
         },
         "summary": "Delete Sku",
+        "tags": [
+          "admin:catalog"
+        ]
+      },
+      "get": {
+        "operationId": "get_sku_api_v1_admin_catalog_skus__sku_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sku_id",
+            "required": true,
+            "schema": {
+              "title": "Sku Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdminSkuOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Sku",
         "tags": [
           "admin:catalog"
         ]
@@ -27670,6 +27922,17 @@
               "maximum": 500,
               "minimum": 1,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "minimum": 0,
+              "title": "Offset",
               "type": "integer"
             }
           },
@@ -33718,6 +33981,16 @@
             "schema": {
               "default": 200,
               "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "required": false,
+            "schema": {
+              "default": 0,
+              "title": "Offset",
               "type": "integer"
             }
           },

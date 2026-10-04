@@ -83,7 +83,7 @@ Python, в `service._pick_auto_mapping_slug`: маппинги грузятся 
 ## HTTP (admin only)
 
 ```
-GET    /api/v1/admin/sourcing/rules                  — все явные правила
+GET    /api/v1/admin/sourcing/rules?limit=&offset=   — страница явных правил + total (их ~4400 с 2026-10)
 GET    /api/v1/admin/sourcing/rules/{sku_id}         — Decision (что сейчас применится)
 PUT    /api/v1/admin/sourcing/rules/{sku_id}         — upsert
 DELETE /api/v1/admin/sourcing/rules/{sku_id}         — снять, SKU вернётся в `auto`

@@ -86,6 +86,7 @@ from yupay.modules.merchants.operators import list_operators
 from yupay.modules.merchants.order_status import read as read_order_status
 from yupay.modules.merchants.orders import place as place_order
 from yupay.modules.merchants.price_list import build as build_price_list
+from yupay.modules.merchants.price_list import build_json as build_price_list_json
 from yupay.modules.merchants.pricing import (
     effective_cost,
     merchant_markup_pct,
@@ -146,6 +147,7 @@ __all__ = [
     "MerchantWebhookDelivery",
     "body_digest",
     "build_price_list",
+    "build_price_list_json",
     "build_transactions_page",
     "bulk_set_markup",
     "canonical_message",

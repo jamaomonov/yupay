@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -19,6 +19,7 @@ from yupay.modules.catalog.admin_schemas import (
     AdminCategoryOut,
     AdminFaqOut,
     AdminProductOut,
+    AdminSkuListOut,
     AdminSkuOut,
     BrandCreate,
     BrandUpdate,
@@ -95,6 +96,15 @@ async def list_brands(
     _admin: Annotated[User, Depends(require_admin)],
 ) -> list[AdminBrandOut]:
     return [AdminBrandOut.model_validate(b) for b in await svc.list_all_brands(db)]
+
+
+@router.get("/brands/{brand_id}", response_model=AdminBrandOut)
+async def get_brand(
+    brand_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminBrandOut:
+    return AdminBrandOut.model_validate(await svc.get_brand(db, brand_id))
 
 
 @router.post("/brands", response_model=AdminBrandOut, status_code=status.HTTP_201_CREATED)
@@ -189,6 +199,16 @@ async def list_products(
     ]
 
 
+@router.get("/products/{product_id}", response_model=AdminProductOut)
+async def get_product(
+    product_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminProductOut:
+    row = await svc.get_product(db, product_id)
+    return AdminProductOut.model_validate(row, context=HELP_IMAGES_READ_CONTEXT)
+
+
 @router.post("/products", response_model=AdminProductOut, status_code=status.HTTP_201_CREATED)
 async def create_product(
     body: ProductCreate,
@@ -228,15 +248,21 @@ async def delete_product(
 # ---------- SKUs ----------
 
 
-@router.get("/skus", response_model=list[AdminSkuOut])
+@router.get("/skus", response_model=AdminSkuListOut)
 async def list_skus(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
+    q: str | None = None,
+    brand_id: str | None = None,
     product_id: str | None = None,
-) -> list[AdminSkuOut]:
-    return [
-        AdminSkuOut.model_validate(s) for s in await svc.list_all_skus(db, product_id=product_id)
-    ]
+    limit: Annotated[int, Query(ge=1, le=500)] = 100,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AdminSkuListOut:
+    """A page of SKUs. Unpaged this was 6150 rows and 3 MB after the 2026-10 import."""
+    rows, total = await svc.list_skus_page(
+        db, query=q, brand_id=brand_id, product_id=product_id, limit=limit, offset=offset
+    )
+    return AdminSkuListOut(items=[AdminSkuOut.model_validate(s) for s in rows], total=total)
 
 
 @router.get("/skus/search", response_model=list[SkuPickerOut])
@@ -286,6 +312,15 @@ def _sku_to_picker(sku: object) -> SkuPickerOut:
         price_usd=sku.price_usd,
         active=sku.active,
     )
+
+
+@router.get("/skus/{sku_id}", response_model=AdminSkuOut)
+async def get_sku(
+    sku_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> AdminSkuOut:
+    return AdminSkuOut.model_validate(await svc.get_sku(db, sku_id))
 
 
 @router.post("/skus", response_model=AdminSkuOut, status_code=status.HTTP_201_CREATED)

@@ -14,7 +14,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import delete as sa_delete
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -100,15 +100,33 @@ async def list_mappings(
     supplier_slug: str | None = None,
     sku_id: str | None = None,
     limit: int = 200,
-) -> list[SkuSupplierMapping]:
-    """List mappings, newest first."""
-    stmt = select(SkuSupplierMapping).order_by(SkuSupplierMapping.updated_at.desc())
+    offset: int = 0,
+) -> tuple[list[SkuSupplierMapping], int]:
+    """One page of mappings, newest first, and the count the filters match.
+
+    Paged since the 2026-10 bulk import put ~8600 rows behind this; a bare
+    ``limit`` truncated silently at 500.
+    """
+    stmt = select(SkuSupplierMapping)
     if supplier_slug is not None:
         stmt = stmt.where(SkuSupplierMapping.supplier_slug == supplier_slug)
     if sku_id is not None:
         stmt = stmt.where(SkuSupplierMapping.sku_id == sku_id)
-    stmt = stmt.limit(min(limit, 500))
-    return list((await db.execute(stmt)).scalars().all())
+    total = int(
+        (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one() or 0
+    )
+    rows = (
+        (
+            await db.execute(
+                stmt.order_by(SkuSupplierMapping.updated_at.desc(), SkuSupplierMapping.sku_id)
+                .limit(min(max(limit, 1), 500))
+                .offset(max(offset, 0))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows), total
 
 
 async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, str]:

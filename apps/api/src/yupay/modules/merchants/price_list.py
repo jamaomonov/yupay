@@ -185,27 +185,43 @@ async def invalidate() -> None:
         log.warning("merchant_price_list_invalidate_failed")
 
 
-async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
-    """The whole B2B price list, priced for one merchant — cached for a minute.
+async def build_json(db: AsyncSession, *, merchant: Merchant) -> str:
+    """The price list as the JSON the route sends — cached for a minute.
 
-    See :func:`_build` for the rules; this only adds the Redis layer. The
-    parse sits inside the guard, like ``player_check._cached``: an entry from
-    an older shape of ``MerchantCatalogOut`` falls through to a rebuild
-    rather than a 500 for as long as it lives.
+    See :func:`_build` for the rules; this only adds the Redis layer, and it
+    deals in the serialised string on purpose: the routes hand it to the
+    client as-is (a ``Response``), so a cache hit costs a Redis read and not
+    a 2.3 MB parse plus a re-serialisation through ``response_model``.
     """
     key = _cache_key(merchant)
     try:
         raw = await get_redis().get(key)
         if raw:
-            return MerchantCatalogOut.model_validate_json(raw)
+            return raw if isinstance(raw, str) else bytes(raw).decode()
     except Exception:  # noqa: BLE001 — cache is best-effort, in both directions
         log.warning("merchant_price_list_cache_read_failed")
-    out = await _build(db, merchant=merchant)
+    body = (await _build(db, merchant=merchant)).model_dump_json()
     try:
-        await get_redis().set(key, out.model_dump_json(), ex=PRICE_LIST_TTL_SECONDS)
+        await get_redis().set(key, body, ex=PRICE_LIST_TTL_SECONDS)
     except Exception:  # noqa: BLE001
         log.warning("merchant_price_list_cache_write_failed")
-    return out
+    return body
+
+
+async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
+    """The whole B2B price list, priced for one merchant, as a model.
+
+    For callers that walk the tree (the CSV export). The parse sits inside a
+    guard, like ``player_check._cached``: an entry from an older shape of
+    ``MerchantCatalogOut`` falls through to a rebuild rather than a 500.
+    """
+    raw = await build_json(db, merchant=merchant)
+    try:
+        return MerchantCatalogOut.model_validate_json(raw)
+    except ValueError:
+        log.warning("merchant_price_list_cache_stale_shape")
+        await invalidate()
+        return await _build(db, merchant=merchant)
 
 
 async def _build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:

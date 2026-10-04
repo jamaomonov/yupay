@@ -44,6 +44,8 @@ class SourcingRuleOut(BaseModel):
 
 class SourcingRuleListOut(BaseModel):
     items: list[SourcingRuleOut]
+    #: Rules in total, beyond this page.
+    total: int = 0
 
 
 class SourcingDecisionOut(BaseModel):

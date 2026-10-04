@@ -56,6 +56,8 @@ class SupplierMappingOut(BaseModel):
 
 class SupplierMappingListOut(BaseModel):
     items: list[SupplierMappingOut]
+    #: Rows the filters match, beyond this page.
+    total: int = 0
 
 
 class PricePointOut(BaseModel):

@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import lazyload, selectinload
 
 from yupay.core.clock import now
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
@@ -124,17 +124,27 @@ async def delete_category(db: AsyncSession, category_id: str) -> None:
 # ---------- brands ----------
 
 
+# The models eager-load their whole subtree (``Brand.products`` and ``.faqs``,
+# ``Product.skus`` are ``selectin``), which is right for a storefront page and
+# wrong for an admin list: reading 326 brands hydrated all 6150 SKUs (0.96 s,
+# measured 2026-10-04 after the bulk import). The admin DTOs never read those
+# collections, so the list and single-row reads switch them back to lazy.
+# A delete still cascades: the flush loads what it needs inside the greenlet.
+_BRAND_LIGHT = (selectinload(Brand.translations), lazyload(Brand.products), lazyload(Brand.faqs))
+_PRODUCT_LIGHT = (
+    selectinload(Product.translations),
+    lazyload(Product.skus),
+    lazyload(Product.brand),
+)
+
+
 async def list_all_brands(db: AsyncSession) -> list[Brand]:
-    stmt = (
-        select(Brand)
-        .options(selectinload(Brand.translations))
-        .order_by(Brand.sort_order, Brand.slug)
-    )
+    stmt = select(Brand).options(*_BRAND_LIGHT).order_by(Brand.sort_order, Brand.slug)
     return list((await db.execute(stmt)).scalars().all())
 
 
 async def get_brand(db: AsyncSession, brand_id: str) -> Brand:
-    stmt = select(Brand).options(selectinload(Brand.translations)).where(Brand.id == brand_id)
+    stmt = select(Brand).options(*_BRAND_LIGHT).where(Brand.id == brand_id)
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise NotFoundError("brand not found")
@@ -290,20 +300,14 @@ async def delete_faq(db: AsyncSession, faq_id: str) -> None:
 
 
 async def list_all_products(db: AsyncSession, *, brand_id: str | None = None) -> list[Product]:
-    stmt = (
-        select(Product)
-        .options(selectinload(Product.translations))
-        .order_by(Product.sort_order, Product.slug)
-    )
+    stmt = select(Product).options(*_PRODUCT_LIGHT).order_by(Product.sort_order, Product.slug)
     if brand_id is not None:
         stmt = stmt.where(Product.brand_id == brand_id)
     return list((await db.execute(stmt)).scalars().all())
 
 
 async def get_product(db: AsyncSession, product_id: str) -> Product:
-    stmt = (
-        select(Product).options(selectinload(Product.translations)).where(Product.id == product_id)
-    )
+    stmt = select(Product).options(*_PRODUCT_LIGHT).where(Product.id == product_id)
     row = (await db.execute(stmt)).scalar_one_or_none()
     if row is None:
         raise NotFoundError("product not found")
@@ -458,6 +462,71 @@ async def list_all_skus(db: AsyncSession, *, product_id: str | None = None) -> l
         stmt = stmt.where(Sku.product_id == product_id)
     stmt = stmt.order_by(Sku.sort_order)
     return list((await db.execute(stmt)).scalars().all())
+
+
+async def list_skus_page(
+    db: AsyncSession,
+    *,
+    query: str | None = None,
+    brand_id: str | None = None,
+    product_id: str | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[Sku], int]:
+    """One page of SKUs for the admin list, with the total behind it.
+
+    Ordered by product (sort order, slug) then SKU (sort order, code), so a
+    page holds whole products rather than a slice of every product. ``query``
+    is the picker's four-column ``ILIKE`` (:func:`search_skus_for_picker`).
+
+    Args:
+        db: Session.
+        query: Free text over code, denomination, product slug and RU name.
+        brand_id: Only this brand's SKUs.
+        product_id: Only this product's SKUs.
+        limit: Page size, 1–500.
+        offset: Rows to skip.
+
+    Returns:
+        ``(rows, total)`` — the page and the count the filters match.
+    """
+    from sqlalchemy import or_
+
+    base = select(Sku).join(Product, Product.id == Sku.product_id)
+    if brand_id is not None:
+        base = base.where(Product.brand_id == brand_id)
+    if product_id is not None:
+        base = base.where(Sku.product_id == product_id)
+    cleaned = (query or "").strip()
+    if cleaned:
+        like = f"%{cleaned}%"
+        base = base.outerjoin(
+            ProductTranslation,
+            (ProductTranslation.product_id == Product.id) & (ProductTranslation.locale == "ru"),
+        ).where(
+            or_(
+                Sku.sku_code.ilike(like),
+                Sku.denomination.ilike(like),
+                Product.slug.ilike(like),
+                ProductTranslation.name.ilike(like),
+            )
+        )
+    total = int(
+        (await db.execute(select(func.count()).select_from(base.subquery()))).scalar_one() or 0
+    )
+    rows = (
+        (
+            await db.execute(
+                base.options(selectinload(Sku.price_overrides))
+                .order_by(Product.sort_order, Product.slug, Sku.sort_order, Sku.sku_code)
+                .limit(min(max(limit, 1), 500))
+                .offset(max(offset, 0))
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return list(rows), total
 
 
 def _price_from_margin(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
@@ -624,7 +693,13 @@ async def search_skus_for_picker(
     stmt = (
         select(Sku)
         .options(
-            selectinload(Sku.product).selectinload(Product.translations),
+            # The product's own eager loads would drag every sibling SKU and the
+            # whole brand subtree in behind thirty picker rows.
+            selectinload(Sku.product).options(
+                selectinload(Product.translations),
+                lazyload(Product.skus),
+                lazyload(Product.brand),
+            ),
         )
         .join(Product, Product.id == Sku.product_id)
         .order_by(Sku.sort_order, Sku.sku_code)
@@ -854,7 +929,14 @@ async def bulk_set_uzs_prices(
     rate = snap.rate
 
     skus = list(
-        (await db.execute(select(Sku).where(Sku.active.is_(True)).where(Sku.cost_usdt.isnot(None))))
+        (
+            await db.execute(
+                select(Sku)
+                .options(lazyload(Sku.price_overrides))
+                .where(Sku.active.is_(True))
+                .where(Sku.cost_usdt.isnot(None))
+            )
+        )
         .scalars()
         .all()
     )
@@ -870,34 +952,28 @@ async def bulk_set_uzs_prices(
     )
 
     created = 0
-    updated = 0
-    for sku in skus:
-        cost = sku.cost_usdt
-        if cost is None:  # defensive — query already filtered
-            continue
-        price = (cost * rate).quantize(Decimal("1"))  # UZS: whole sums
-        stmt = (
-            pg_insert(SkuPrice)
-            .values(sku_id=sku.id, currency="UZS", price=price)
-            .on_conflict_do_update(
+    # One statement for the whole catalogue: a round trip per SKU was 6000
+    # awaited inserts in one request after the 2026-10 bulk import. ON
+    # CONFLICT DO UPDATE cannot say created from updated, so the headline is
+    # the total and ``created`` stays the nicety it always was.
+    values = [
+        {
+            "sku_id": sku.id,
+            "currency": "UZS",
+            "price": (sku.cost_usdt * rate).quantize(Decimal("1")),
+        }
+        for sku in skus
+        if sku.cost_usdt is not None  # UZS: whole sums
+    ]
+    updated = len(values)
+    if values:
+        stmt = pg_insert(SkuPrice).values(values)
+        await db.execute(
+            stmt.on_conflict_do_update(
                 index_elements=[SkuPrice.sku_id, SkuPrice.currency],
-                set_={"price": price},
+                set_={"price": stmt.excluded.price},
             )
-            .returning(SkuPrice.sku_id)
         )
-        result = await db.execute(stmt)
-        # The simplest signal we have for "created vs updated" without a
-        # second SELECT round-trip: ON CONFLICT DO UPDATE always returns
-        # a row, so we can't separate the two cheaply. We approximate by
-        # counting all of them as "updated" and reporting "created"
-        # separately from a quick post-check.
-        _ = result.scalar_one()
-        updated += 1
-
-    # Recompute "freshly created" by counting SKUs whose newest override
-    # row matches our rate to within rounding — costly but correct
-    # enough for an admin button. For the operator the headline number
-    # is updated total; created/updated split is a nicety.
     return {
         "rate": rate,
         "fx_snapshot_id": snap.id if isinstance(snap, FxSnapshot) else None,

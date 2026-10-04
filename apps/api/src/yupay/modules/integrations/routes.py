@@ -118,11 +118,14 @@ async def list_mappings(
     supplier_slug: Annotated[str | None, Query(min_length=2, max_length=32)] = None,
     sku_id: Annotated[str | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
+    offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SupplierMappingListOut:
-    rows = await svc.list_mappings(db, supplier_slug=supplier_slug, sku_id=sku_id, limit=limit)
+    rows, total = await svc.list_mappings(
+        db, supplier_slug=supplier_slug, sku_id=sku_id, limit=limit, offset=offset
+    )
     sku_codes = await svc.sku_codes_for(db, (r.sku_id for r in rows))
     return SupplierMappingListOut(
-        items=[_mapping_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rows]
+        items=[_mapping_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rows], total=total
     )
 
 

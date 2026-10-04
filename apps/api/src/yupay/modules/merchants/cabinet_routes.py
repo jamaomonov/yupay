@@ -131,13 +131,15 @@ async def summary(user: CurrentUser, db: Db, since: datetime) -> CabinetSummaryO
 
 
 @router.get("/catalog", response_model=MerchantCatalogOut, summary="The wholesale price list")
-async def catalog(user: CurrentUser, db: Db) -> MerchantCatalogOut:
+async def catalog(user: CurrentUser, db: Db) -> Response:
     """The same tree the machine API serves, priced for this merchant.
 
     One builder, so the storefront a person browses and the JSON their server
     polls can never disagree about what is sellable or what it costs.
     """
-    return await price_list.build(db, merchant=await merchant_of(db, user))
+    body = await price_list.build_json(db, merchant=await merchant_of(db, user))
+    # The cached JSON goes out as-is; ``response_model`` above stays for the schema.
+    return Response(content=body, media_type="application/json")
 
 
 #: Marks an order placed from the cabinet rather than by a reseller's server.

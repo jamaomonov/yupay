@@ -198,7 +198,10 @@ async def test_full_crud_flow(
     # The SKU endpoint isn't defined for GET-by-id — but the product DELETE cascade
     # should have removed it. Verify via the list endpoint.
     r = await integration_client.get("/api/v1/admin/catalog/skus", headers=_admin_headers)
-    assert all(s["id"] != sku_id for s in r.json())
+    assert all(s["id"] != sku_id for s in r.json()["items"])
+    assert (
+        await integration_client.get(f"/api/v1/admin/catalog/skus/{sku_id}", headers=_admin_headers)
+    ).status_code == 404
 
 
 async def test_bulk_set_uzs_prices_recomputes_overrides(
@@ -308,7 +311,7 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     # Confirm the override on SKU A is exactly cost × rate, and that
     # listing it back includes the new override row.
     r = await integration_client.get("/api/v1/admin/catalog/skus", headers=_admin_headers)
-    skus = {s["sku_code"]: s for s in r.json()}
+    skus = {s["sku_code"]: s for s in r.json()["items"]}
     overrides_a = {o["currency"]: o for o in skus["fx-a"]["price_overrides"]}
     assert "UZS" in overrides_a
     assert _Dec(overrides_a["UZS"]["price"]) == _Dec("50800")  # 4 × 12700
@@ -901,7 +904,7 @@ async def test_amount_unit_alone_with_qty_bounds_survives_variable_amount_false(
         params={"product_id": product_id},
     )
     assert r.status_code == 200, r.text
-    sku = next(s for s in r.json() if s["id"] == sku_id)
+    sku = next(s for s in r.json()["items"] if s["id"] == sku_id)
     assert sku["min_qty"] == 50
     assert sku["max_qty"] == 2500
 
@@ -947,7 +950,7 @@ async def test_update_partial_min_amount_above_max_rejected(
         params={"product_id": product_id},
     )
     assert r.status_code == 200, r.text
-    sku = next(s for s in r.json() if s["id"] == sku_id)
+    sku = next(s for s in r.json()["items"] if s["id"] == sku_id)
     assert Decimal(sku["min_amount_usd"]) == Decimal("1")
 
 
@@ -1003,7 +1006,7 @@ async def test_admin_lists_expose_b2b_read_side(
         params={"product_id": product_id},
     )
     assert r.status_code == 200, r.text
-    sku = next(s for s in r.json() if s["id"] == sku_id)
+    sku = next(s for s in r.json()["items"] if s["id"] == sku_id)
     assert sku["visible_b2b"] is True
     assert Decimal(sku["b2b_markup_pct"]) == Decimal("5.50")
 

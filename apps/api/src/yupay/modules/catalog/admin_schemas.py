@@ -553,6 +553,13 @@ class AdminBrandOut(BaseModel):
     translations: list[TranslationIn]
 
 
+class AdminSkuListOut(BaseModel):
+    """``GET /admin/catalog/skus``: one page and the count behind it."""
+
+    items: list[AdminSkuOut]
+    total: int
+
+
 class AdminProductOut(BaseModel):
     """Admin-side product view."""
 

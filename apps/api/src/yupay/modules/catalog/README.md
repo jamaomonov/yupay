@@ -92,6 +92,15 @@ from yupay.modules.catalog.api import (
 `Accept-Language` resolves the locale (`ru` default, `en`, `uz`). `?currency=` activates
 display-price resolution; unsupported codes silently fall back to USD-only.
 
+**Admin reads at the post-import size (6150 SKUs, 2026-10).** `GET /admin/catalog/skus`
+is a page — `q` (code, denomination, product slug, RU name), `brand_id`, `product_id`,
+`limit` (≤ 500) and `offset` — answered as `{items, total}`, ordered by product so a page
+holds whole products. `GET /admin/catalog/{brands,products,skus}/{id}` read one row, so an
+edit screen no longer walks the whole list. The models eager-load their subtree
+(`Brand.products`/`.faqs`, `Product.skus` are `selectin`), which is right for a storefront
+page and was 0.96 s per admin brand list; the admin reads switch those back to lazy
+(`_BRAND_LIGHT` / `_PRODUCT_LIGHT` in `admin_service.py`).
+
 ## Form schema (`required_fields`)
 
 Each `Product` carries a list of field descriptors that the storefront renders into a
