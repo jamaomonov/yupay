@@ -3,13 +3,15 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import type { Catalog, Profile } from "@/lib/types";
+import type { Catalog, P2PStatus, Profile } from "@/lib/types";
 
 import { api } from "@/lib/api";
 
 interface CabinetData {
   profile: Profile | null;
   catalog: Catalog | null;
+  /** Whether self-serve top-up is on for this reseller; `null` until asked. */
+  p2p: P2PStatus | null;
   /** Re-read the profile — the balance moves when an order is placed. */
   refreshProfile: () => void;
   /**
@@ -30,6 +32,7 @@ interface CabinetData {
 const Ctx = createContext<CabinetData>({
   profile: null,
   catalog: null,
+  p2p: null,
   refreshProfile: () => undefined,
   search: "",
   setSearch: () => undefined,
@@ -55,6 +58,7 @@ const Ctx = createContext<CabinetData>({
 export function CabinetProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [p2p, setP2p] = useState<P2PStatus | null>(null);
   const [search, setSearch] = useState("");
   const [searchPlaceholder, setSearchPlaceholder] = useState<string | null>(null);
   const pathname = usePathname();
@@ -86,6 +90,10 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
       // render an empty state for the first and a blank for the second.
       setCatalog({ brands: [] });
     });
+    // A failed read means "not offered": the support link stays.
+    void api<P2PStatus>("/p2p/status").then(setP2p, () => {
+      setP2p({ enabled: false, fx_rate: null });
+    });
   }, [refreshProfile]);
 
   return (
@@ -93,6 +101,7 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
       value={{
         profile,
         catalog,
+        p2p,
         refreshProfile,
         search,
         setSearch,

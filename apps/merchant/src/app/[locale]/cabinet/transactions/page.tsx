@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCallback, useEffect, useState } from "react";
 
-import type { Transaction, TransactionsPage } from "@/lib/types";
+import type { P2PDeposit, P2PDepositsPage, Transaction, TransactionsPage } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
@@ -16,6 +16,7 @@ import { formatMoment } from "@/lib/datetime";
 import { transactionKindLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
+import { formatSom } from "@/lib/p2p";
 
 /**
  * The deposit statement.
@@ -52,7 +53,9 @@ export default function TransactionsList() {
   const t = useTranslations("merchant.transactions");
   const tCommon = useTranslations("merchant.common");
   const { locale } = useParams<{ locale: string }>();
-  const { profile } = useCabinet();
+  const tTop = useTranslations("merchant.topUp");
+  const { profile, p2p } = useCabinet();
+  const [topUps, setTopUps] = useState<P2PDeposit[]>([]);
   const [rows, setRows] = useState<Transaction[] | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +81,16 @@ export default function TransactionsList() {
     void fetchPage(null);
   }, [fetchPage]);
 
+  const selfServe = p2p?.enabled === true;
+  useEffect(() => {
+    if (!selfServe) return;
+    void api<P2PDepositsPage>("/p2p/deposits?limit=10")
+      .then((page) => {
+        setTopUps(page.items);
+      })
+      .catch(() => undefined);
+  }, [selfServe]);
+
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -102,18 +115,47 @@ export default function TransactionsList() {
         </div>
         {/* The hint said "write to support" with nothing to click, while the
             string for the link sat unused in all three locales. */}
-        <p className="text-tx-dim max-w-md text-[12.5px] leading-relaxed">
-          {t("topUpHint")}{" "}
-          <a
-            href="https://t.me/yupay_support"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline"
+        {selfServe ? (
+          <Link
+            href={pathFor(locale, "/cabinet/top-up")}
+            className="bg-primary text-primary-foreground rounded-btn px-4 py-2 text-sm font-semibold"
           >
-            {t("requestDeposit")}
-          </a>
-        </p>
+            {tTop("title")}
+          </Link>
+        ) : (
+          <p className="text-tx-dim max-w-md text-[12.5px] leading-relaxed">
+            {t("topUpHint")}{" "}
+            <a
+              href="https://t.me/yupay_support"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              {t("requestDeposit")}
+            </a>
+          </p>
+        )}
       </section>
+
+      {topUps.length > 0 && (
+        <section className="border-border bg-card mt-5 rounded-xl border p-5">
+          <h2 className="text-tx-mute text-sm font-semibold">{tTop("history")}</h2>
+          <ul className="divide-border mt-2 divide-y">
+            {topUps.map((d) => (
+              <li
+                key={d.number}
+                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 text-sm"
+              >
+                <span className="font-mono text-xs">{d.number}</span>
+                <span className="font-mono">{formatSom(d.amount_uzs, locale)}</span>
+                <span className="font-mono">${d.amount_usd}</span>
+                <span className="text-tx-mute text-xs">{tTop(`status.${d.status}`)}</span>
+                <span className="text-tx-dim text-xs">{formatMoment(d.created_at, locale)}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {rows !== null && rows.length === 0 && (
         <EmptyState icon={ArrowLeftRight} title={t("empty")} hint={t("emptyHint")} />

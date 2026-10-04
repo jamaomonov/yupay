@@ -1,6 +1,8 @@
 "use client";
 
 import { Plus, Search } from "lucide-react";
+import Link from "next/link";
+import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useEffect, useRef } from "react";
 
@@ -8,6 +10,7 @@ import { useCabinet } from "@/components/CabinetContext";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Mark } from "@/components/Mark";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 
 /**
@@ -22,7 +25,8 @@ export function TopBar() {
   // A box that looks searchable and searches nothing is worse than no box, so
   // screens without one — Settings, Webhooks — declare no placeholder and the
   // slot collapses.
-  const { profile, search, setSearch, searchPlaceholder } = useCabinet();
+  const { profile, p2p, search, setSearch, searchPlaceholder } = useCabinet();
+  const { locale } = useParams<{ locale: string }>();
   const box = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -56,6 +60,16 @@ export function TopBar() {
 
   const balance = profile ? toCents(profile.balance_usd) : null;
   const initial = profile?.title.trim().charAt(0).toUpperCase() ?? "";
+
+  const topUpClass =
+    "bg-primary text-primary-foreground rounded-btn flex items-center gap-1 whitespace-nowrap px-2 py-1.5 text-xs font-bold sm:px-3";
+  const plus = (
+    <>
+      {/* On a phone the «+» alone: the row also carries the language now. */}
+      <Plus aria-hidden size={14} strokeWidth={3} />
+      <span className="hidden sm:inline">{t("topUp")}</span>
+    </>
+  );
 
   return (
     // Wraps below `sm`. The row holds a search box, a balance, a top-up
@@ -95,19 +109,27 @@ export function TopBar() {
           <span className="text-primary-ink font-mono text-sm font-extrabold tabular-nums">
             {balance === null ? "—" : `$${formatUsd(balance)}`}
           </span>
-          {/* New tab. It navigated the cabinet away to Telegram, so an
-              operator mid-order lost the page they were on. */}
-          <a
-            href="https://t.me/yupay_support"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label={t("topUp")}
-            className="bg-primary text-primary-foreground rounded-btn flex items-center gap-1 whitespace-nowrap px-2 py-1.5 text-xs font-bold sm:px-3"
-          >
-            {/* On a phone the «+» alone: the row also carries the language now. */}
-            <Plus aria-hidden size={14} strokeWidth={3} />
-            <span className="hidden sm:inline">{t("topUp")}</span>
-          </a>
+          {p2p?.enabled === true ? (
+            <Link
+              href={pathFor(locale, "/cabinet/top-up")}
+              aria-label={t("topUp")}
+              className={topUpClass}
+            >
+              {plus}
+            </Link>
+          ) : (
+            // New tab. It navigated the cabinet away to Telegram, so an
+            // operator mid-order lost the page they were on.
+            <a
+              href="https://t.me/yupay_support"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={t("topUp")}
+              className={topUpClass}
+            >
+              {plus}
+            </a>
+          )}
         </div>
         {/* The language stays in the bar on a phone too: the cabinet is not machine
             translated (see the cabinet layout), so this is how it becomes Uzbek. The

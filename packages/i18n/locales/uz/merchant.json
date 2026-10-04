@@ -563,5 +563,37 @@
     "reenable": "Yana yoqish",
     "logConfigLink": "Vebhuk manzili va kaliti →",
     "logEmptyHint": "Sozlamalarda manzilni koʻrsating va «Test hodisa yuborish» ni bosing."
+  },
+  "topUp": {
+    "title": "Depozitni to‘ldirish",
+    "amountLabel": "Summa (so‘m)",
+    "usdPreview": "≈ ${usd}, kurs {rate}",
+    "continue": "Davom etish",
+    "exactAmount": "Aynan shu summani o‘tkazing",
+    "card": "Karta",
+    "holder": "Qabul qiluvchi",
+    "timeLeft": "{time} qoldi",
+    "exactWarning": "Aynan {amount} so‘m o‘tkazing — ortiq ham, kam ham emas. Boshqa summa avtomatik qabul qilinmaydi.",
+    "cancel": "Bekor qilish",
+    "iPaid": "To‘ladim",
+    "waiting": "O‘tkazmani kutyapmiz…",
+    "paid": "${usd} hisobga tushdi",
+    "expired": "Vaqt tugadi. Agar pul o‘tkazgan bo‘lsangiz, chek bilan qo‘llab-quvvatlashga yozing. Raqam: {number}",
+    "support": "Qo‘llab-quvvatlashga yozish",
+    "history": "To‘ldirishlar",
+    "status": {
+      "pending": "Kutilmoqda",
+      "paid": "Hisobga tushdi",
+      "expired": "Muddati o‘tdi",
+      "cancelled": "Bekor qilindi"
+    },
+    "errOpen": "Sizda kutilayotgan to‘ldirish bor",
+    "errNoCard": "Bu summani hozir qabul qilib bo‘lmaydi — summani o‘zgartiring",
+    "errBusy": "Bir daqiqadan so‘ng urinib ko‘ring",
+    "errRate": "Kurs vaqtincha mavjud emas, keyinroq urinib ko‘ring",
+    "copy": "Nusxa olish",
+    "copied": "Nusxa olindi",
+    "unavailable": "To‘ldirish hozir mavjud emas",
+    "emptyBody": "Katalog va narxlar ochiq. Buyurtma berish uchun depozitni to‘ldiring."
   }
 }

@@ -563,5 +563,37 @@
     "reenable": "Turn it back on",
     "logConfigLink": "Webhook address and secret →",
     "logEmptyHint": "Set an address in Settings, then press «Send a test event»."
+  },
+  "topUp": {
+    "title": "Top up deposit",
+    "amountLabel": "Amount in soʻm",
+    "usdPreview": "≈ ${usd} at {rate}",
+    "continue": "Continue",
+    "exactAmount": "Transfer exactly",
+    "card": "Card",
+    "holder": "Recipient",
+    "timeLeft": "{time} left",
+    "exactWarning": "Transfer exactly {amount} soʻm — not more, not less. Any other amount will not be credited automatically.",
+    "cancel": "Cancel",
+    "iPaid": "I've paid",
+    "waiting": "Waiting for the transfer…",
+    "paid": "Credited ${usd}",
+    "expired": "Time is up. If you already transferred, message support with the receipt. Number: {number}",
+    "support": "Message support",
+    "history": "Top-ups",
+    "status": {
+      "pending": "Waiting",
+      "paid": "Credited",
+      "expired": "Expired",
+      "cancelled": "Cancelled"
+    },
+    "errOpen": "You already have a top-up waiting",
+    "errNoCard": "This amount can't be accepted right now — change the amount",
+    "errBusy": "Try again in a minute",
+    "errRate": "The rate is temporarily unavailable, try later",
+    "copy": "Copy",
+    "copied": "Copied",
+    "unavailable": "Top-up is not available right now",
+    "emptyBody": "The catalog and prices are open. Top up your deposit to place orders."
   }
 }

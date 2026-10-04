@@ -227,3 +227,36 @@ export interface Summary {
   /** `spend_usd` is a floor: the window held more orders than the API reads. */
   spend_capped: boolean;
 }
+
+/** A card's details, present on a top-up only while it is pending. */
+export interface P2PCard {
+  pan: string;
+  holder_name: string;
+  network: string;
+}
+
+export type P2PDepositStatus = "pending" | "paid" | "expired" | "cancelled";
+
+/** One top-up reservation: the exact amount to transfer and where. */
+export interface P2PDeposit {
+  number: string;
+  status: P2PDepositStatus;
+  amount_uzs: number;
+  amount_usd: string;
+  fx_rate: string;
+  created_at: string;
+  expires_at: string;
+  closed_at: string | null;
+  card: P2PCard | null;
+}
+
+export interface P2PDepositsPage {
+  items: P2PDeposit[];
+  next_cursor: string | null;
+}
+
+/** Whether the cabinet offers self-serve top-up, and the rate to preview it at. */
+export interface P2PStatus {
+  enabled: boolean;
+  fx_rate: string | null;
+}

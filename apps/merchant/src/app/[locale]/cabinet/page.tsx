@@ -25,7 +25,8 @@ export default function Dashboard() {
   const t = useTranslations("merchant.cabinet");
   const tOrders = useTranslations("merchant.orders");
   const { locale } = useParams<{ locale: string }>();
-  const { catalog, profile } = useCabinet();
+  const tTop = useTranslations("merchant.topUp");
+  const { catalog, profile, p2p } = useCabinet();
   const [recent, setRecent] = useState<OrderRow[] | null>(null);
   const [today, setToday] = useState<Summary | null>(null);
 
@@ -46,6 +47,7 @@ export default function Dashboard() {
       .catch(() => undefined);
   }, []);
 
+  const selfServe = p2p?.enabled === true;
   const balance = profile ? toCents(profile.balance_usd) : null;
 
   return (
@@ -62,29 +64,42 @@ export default function Dashboard() {
             <Wallet aria-hidden size={17} className="text-primary-ink shrink-0" />
             {t("balanceEmptyTitle")}
           </p>
-          <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">{t("balanceEmptyBody")}</p>
+          <p className="text-tx-mute mt-1.5 text-sm leading-relaxed">
+            {selfServe ? tTop("emptyBody") : t("balanceEmptyBody")}
+          </p>
           {/* The account number and what to put in the message. Without them
               the button opens a Telegram chat the operator stares at with
               nothing to say — `merchant_id` was fetched and rendered nowhere,
               so they had no way to identify themselves even if they guessed
               what to write. This is the whole of the "I registered and got
               stuck" path, and it is two lines. */}
-          <p className="text-tx-mute mt-3 text-sm leading-relaxed">{t("whatToSend")}</p>
-          {profile?.merchant_id && (
+          {!selfServe && (
+            <p className="text-tx-mute mt-3 text-sm leading-relaxed">{t("whatToSend")}</p>
+          )}
+          {!selfServe && profile?.merchant_id && (
             <p className="mt-2 flex items-center gap-2 text-sm">
               <span className="text-tx-dim">{t("accountRef")}:</span>
               <code className="font-mono text-xs">{profile.merchant_id}</code>
               <CopyButton value={profile.merchant_id} label={t("copy")} done={t("copied")} />
             </p>
           )}
-          <a
-            href="https://t.me/yupay_support"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="bg-primary text-primary-foreground rounded-btn mt-4 inline-flex px-4 py-2 text-sm font-semibold"
-          >
-            {t("requestDeposit")}
-          </a>
+          {selfServe ? (
+            <Link
+              href={pathFor(locale, "/cabinet/top-up")}
+              className="bg-primary text-primary-foreground rounded-btn mt-4 inline-flex px-4 py-2 text-sm font-semibold"
+            >
+              {tTop("title")}
+            </Link>
+          ) : (
+            <a
+              href="https://t.me/yupay_support"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-primary text-primary-foreground rounded-btn mt-4 inline-flex px-4 py-2 text-sm font-semibold"
+            >
+              {t("requestDeposit")}
+            </a>
+          )}
         </section>
       )}
 
