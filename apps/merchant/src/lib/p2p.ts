@@ -11,6 +11,18 @@ export function formatSom(amount: number, locale: string): string {
 }
 
 /**
+ * The USD rate for display: whole soʻm, half up, grouped — "11 788", not the
+ * server's "11788.0019781710". Rounded on the string so no float touches it;
+ * anything that is not a plain decimal is shown as sent.
+ */
+export function formatRate(rate: string, locale: string): string {
+  const match = /^(\d+)(?:\.(\d))?\d*$/.exec(rate);
+  if (match === null) return rate;
+  const whole = Number(match[1] ?? "0") + (Number(match[2] ?? "0") >= 5 ? 1 : 0);
+  return formatSom(whole, locale);
+}
+
+/**
  * The USD the deposit will get, rounded DOWN to cents — the server's rule, so the
  * preview never promises a cent the credit will not carry. Integer maths on
  * cents keeps floats out of the displayed money.

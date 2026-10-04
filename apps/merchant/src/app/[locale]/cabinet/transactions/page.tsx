@@ -115,7 +115,9 @@ export default function TransactionsList() {
         </div>
         {/* The hint said "write to support" with nothing to click, while the
             string for the link sat unused in all three locales. */}
-        {selfServe ? (
+        {/* Nothing until `/p2p/status` answers: the support hint used to flash
+            for a moment before the top-up button replaced it. */}
+        {p2p === null ? null : selfServe ? (
           <Link
             href={pathFor(locale, "/cabinet/top-up")}
             className="bg-primary text-primary-foreground rounded-btn px-4 py-2 text-sm font-semibold"

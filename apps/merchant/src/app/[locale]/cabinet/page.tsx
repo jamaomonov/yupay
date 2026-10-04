@@ -54,7 +54,9 @@ export default function Dashboard() {
     <div>
       <h1 className="font-display text-xl font-semibold tracking-tight">{profile?.title ?? " "}</h1>
 
-      {balance === 0n && (
+      {/* Held until `/p2p/status` answers, so the support copy never flashes
+          before the top-up button. */}
+      {balance === 0n && p2p !== null && (
         // The one thing a fresh account needs to be told, and the spec's whole
         // onboarding shape: the catalog is open, buying waits on support. Said
         // without naming the mechanism — no "deposit through support" process

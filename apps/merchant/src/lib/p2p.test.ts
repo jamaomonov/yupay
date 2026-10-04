@@ -4,6 +4,7 @@ import {
   acceptPoll,
   errorKey,
   formatClock,
+  formatRate,
   phase,
   pollDeadline,
   secondsLeft,
@@ -115,5 +116,17 @@ describe("acceptPoll", () => {
 
   it("lets a restore through when nothing is on screen", () => {
     expect(acceptPoll(null, "T1", false)).toBe(true);
+  });
+});
+
+describe("formatRate", () => {
+  it("rounds the rate to whole soʻm, half up, grouped for the locale", () => {
+    expect(formatRate("11788.0019781710", "en")).toBe("11,788");
+    expect(formatRate("11788.5", "en")).toBe("11,789");
+    expect(formatRate("12300", "en")).toBe("12,300");
+  });
+
+  it("returns the input unchanged when it is not a plain decimal", () => {
+    expect(formatRate("1.2E+4", "en")).toBe("1.2E+4");
   });
 });

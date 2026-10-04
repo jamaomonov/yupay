@@ -11,7 +11,15 @@ import { useCabinet } from "@/components/CabinetContext";
 import { PageHeading } from "@/components/PageHeading";
 import { TopUpDetails } from "@/components/TopUpDetails";
 import { api, ApiError } from "@/lib/api";
-import { acceptPoll, errorKey, phase, pollDeadline, secondsLeft, usdPreview } from "@/lib/p2p";
+import {
+  acceptPoll,
+  errorKey,
+  formatRate,
+  phase,
+  pollDeadline,
+  secondsLeft,
+  usdPreview,
+} from "@/lib/p2p";
 
 const SUPPORT = "https://t.me/yupay_support";
 const POLL_MS = 3000;
@@ -226,7 +234,7 @@ export default function TopUp() {
           />
           {preview !== null && (
             <p className="text-tx-mute mt-2 text-sm">
-              {t("usdPreview", { usd: preview, rate: p2p.fx_rate ?? "" })}
+              {t("usdPreview", { usd: preview, rate: formatRate(p2p.fx_rate ?? "", locale) })}
             </p>
           )}
           {error !== null && (
