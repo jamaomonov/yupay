@@ -50,7 +50,9 @@ Other partial indexes: one `pending` per merchant, and `(merchant_id, idempotenc
 same-key replay or a concurrent race returns the same reservation or a 409
 `p2p_reservation_open`. A same-key replay asking for a **different** amount is a 409
 `p2p_idempotency_mismatch`; "different" means the stored amount is not the requested one plus
-0…99 (a bumped amount is the same intent). Only these two indexes and the open-amount index are
+0…99 (a bumped amount is the same intent). The tolerance is one-sided, because a bump only goes
+up: asking for more than is stored is always a mismatch, while asking for up to 99 soʻm less
+(19 950 against a stored 20 000) returns the stored row. Only these two indexes and the open-amount index are
 translated; any other integrity error propagates as itself.
 
 Reservation rules:
@@ -58,8 +60,14 @@ Reservation rules:
 - The card's max and the daily room bound the amount. The +1…+99 bump is capped by the remaining
   headroom.
 - **Daily room** = `daily_limit_uzs` minus what the card is committed to: today's (Tashkent day)
-  `paid` total **plus** its currently `pending` (unexpired) holds, so concurrent holds cannot
-  together pass the limit.
+  `paid` total **plus** its currently `pending` (unexpired) holds.
+- Counting pending holds is not enough on its own: two requests could both read the same room
+  before either inserts. So a card **with** a daily limit is serialised: before its room is read,
+  `reserve` takes `pg_advisory_xact_lock` on a stable 64-bit key derived from the card id
+  (`card_choice.card_lock_key`), held until the request's transaction commits. A concurrent
+  request for that card waits, then reads the room including the first hold. Every limited
+  candidate card is locked up front in key order, so two requests can never deadlock. Cards
+  **without** a limit take no lock; the open-amount index is all they need.
 - **Card order**: eligible cards are tried most daily room first (no limit ranks first, ties keep
   the oldest card). If every bumped amount is held on one card, the next card is tried; only when
   all are exhausted is it 502 `p2p_amount_busy`.

@@ -71,6 +71,13 @@ async def _snapshot_id(db: AsyncSession, rate: Decimal) -> str | None:
 def _same_intent(prior: P2PReservation, amount_uzs: int) -> P2PReservation:
     """Return ``prior`` if a replay asks for its amount (or one it was bumped from).
 
+    One-sided on purpose: a bump only ever goes **up**, by at most ``MAX_BUMP``,
+    so only ``stored - requested`` in ``0..99`` can be the same request. Asking
+    for more than is stored (20 050 against 20 000) is a mismatch. Asking for up
+    to 99 soʻm less (19 950 against 20 000) answers with the stored row, since
+    19 950 could have been bumped to it — accepted as ruled, even though that
+    particular row may have been reserved as 20 000 outright.
+
     Raises:
         ConflictError: ``p2p_idempotency_mismatch`` when the key was used for
             another amount.
@@ -105,17 +112,23 @@ async def _expire_stale(db: AsyncSession, r: P2PReservation, now_: datetime) -> 
     await db.refresh(r)
 
 
+async def _prior(db: AsyncSession, merchant_id: str, idempotency_key: str) -> P2PReservation | None:
+    """The reservation this merchant already made under ``idempotency_key``, if any."""
+    found: P2PReservation | None = await db.scalar(
+        select(P2PReservation).where(
+            P2PReservation.merchant_id == merchant_id,
+            P2PReservation.idempotency_key == idempotency_key,
+        )
+    )
+    return found
+
+
 async def _after_race(
     db: AsyncSession, merchant_id: str, idempotency_key: str | None, amount_uzs: int
 ) -> P2PReservation | None:
     """Resolve a one-pending / idempotency collision into the winner's row or a 409."""
     if idempotency_key is not None:
-        same = await db.scalar(
-            select(P2PReservation).where(
-                P2PReservation.merchant_id == merchant_id,
-                P2PReservation.idempotency_key == idempotency_key,
-            )
-        )
+        same = await _prior(db, merchant_id, idempotency_key)
         if same is not None:
             return _same_intent(same, amount_uzs)
     pending = await db.scalar(
@@ -202,12 +215,7 @@ async def reserve(
             rate gate rejects.
     """
     if idempotency_key is not None:
-        prior = await db.scalar(
-            select(P2PReservation).where(
-                P2PReservation.merchant_id == merchant_id,
-                P2PReservation.idempotency_key == idempotency_key,
-            )
-        )
+        prior = await _prior(db, merchant_id, idempotency_key)
         if prior is not None:
             _same_intent(prior, amount_uzs)
             now_prior = now()
