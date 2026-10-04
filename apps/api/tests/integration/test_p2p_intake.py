@@ -25,6 +25,7 @@ from tests.integration.p2p_fixtures import (  # noqa: F401  (_fixed_rate is auto
 
 pytestmark = pytest.mark.asyncio
 HUMO_ID = 777000111
+OWNER_ID = 555000222
 
 
 def _update(msg_id: int, text: str, *, sender: int = HUMO_ID, **extra: Any) -> dict[str, Any]:
@@ -59,6 +60,8 @@ async def _setup(db: AsyncSession) -> tuple[str, P2PReservation]:
     await _open(db, [m])
     s = await load_settings(db)
     s.humo_bot_user_id = HUMO_ID
+    s.owner_telegram_user_id = OWNER_ID
+    s.business_connection_id = "bc1"
     r = await reservations.reserve(db, merchant_id=m, amount_uzs=50_000, idempotency_key=None)
     return m, r
 
@@ -328,11 +331,83 @@ async def test_a_transfer_older_than_the_reservation_cannot_pay_it(
     assert res.status == "unmatched"
 
 
+def _connection(conn_id: str, user_id: int, *, enabled: bool = True) -> dict[str, Any]:
+    return {
+        "update_id": 23,
+        "business_connection": {
+            "id": conn_id,
+            "user": {"id": user_id, "is_bot": False, "first_name": "x"},
+            "user_chat_id": user_id,
+            "date": 0,
+            "is_enabled": enabled,
+            "rights": {"can_reply": True},
+        },
+    }
+
+
 async def test_a_business_connection_update_is_dropped(db_session: AsyncSession) -> None:
     _, r = await _setup(db_session)
-    u = {
-        "update_id": 23,
-        "business_connection": {"id": "bc1", "is_enabled": True, "rights": {"can_reply": True}},
-    }
+    res = await intake.ingest_update(
+        db_session, _connection("bc1", OWNER_ID), received_at=r.created_at
+    )
+    assert res.status == "dropped"
+
+
+async def test_a_connection_from_a_non_owner_is_not_stored(db_session: AsyncSession) -> None:
+    """Final review #2: anyone with Premium can connect the bot to their own account."""
+    _, r = await _setup(db_session)
+    await intake.ingest_update(db_session, _connection("evil", 1234), received_at=r.created_at)
+    assert (await load_settings(db_session)).business_connection_id == "bc1"
+
+
+async def test_the_owners_connection_is_stored(db_session: AsyncSession) -> None:
+    _, r = await _setup(db_session)
+    await intake.ingest_update(db_session, _connection("bc2", OWNER_ID), received_at=r.created_at)
+    assert (await load_settings(db_session)).business_connection_id == "bc2"
+
+
+async def test_a_disable_update_clears_the_stored_connection(db_session: AsyncSession) -> None:
+    _, r = await _setup(db_session)
+    await intake.ingest_update(
+        db_session, _connection("bc1", OWNER_ID, enabled=False), received_at=r.created_at
+    )
+    assert (await load_settings(db_session)).business_connection_id is None
+
+
+async def test_a_message_from_a_foreign_connection_is_dropped(db_session: AsyncSession) -> None:
+    _, r = await _setup(db_session)
+    u = _update(24, _credit("50.000,00", _bank(r.created_at), "1.100.000,00"))
+    u["business_message"]["business_connection_id"] = "evil"
     res = await intake.ingest_update(db_session, u, received_at=r.created_at)
     assert res.status == "dropped"
+    assert await db_session.scalar(select(func.count()).select_from(P2PIncoming)) == 0
+
+
+async def test_with_no_connection_stored_everything_is_dropped(db_session: AsyncSession) -> None:
+    _, r = await _setup(db_session)
+    (await load_settings(db_session)).business_connection_id = None
+    res = await intake.ingest_update(
+        db_session,
+        _update(25, _credit("50.000,00", _bank(r.created_at), "1.100.000,00")),
+        received_at=r.created_at,
+    )
+    assert res.status == "dropped"
+    await db_session.refresh(r)
+    assert r.status == "pending"
+
+
+async def test_the_connection_log_line_never_carries_the_user_id(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, r = await _setup(db_session)
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class _Log:
+        def info(self, event: str, **fields: Any) -> None:
+            calls.append((event, fields))
+
+    monkeypatch.setattr(intake, "log", _Log())
+    await intake.ingest_update(db_session, _connection("bc2", OWNER_ID), received_at=r.created_at)
+    assert calls == [
+        ("p2p.business_connection", {"is_enabled": True, "rights": ["can_reply"], "owner": True})
+    ]

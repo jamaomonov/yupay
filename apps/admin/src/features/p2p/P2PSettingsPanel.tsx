@@ -1,4 +1,4 @@
-/** P2P switch panel: mode, merchant allowlist, HUMO bot id. */
+/** P2P switch panel: mode, merchant allowlist, HUMO bot id, owner id, connection status. */
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
@@ -12,6 +12,17 @@ import { qk } from "@/lib/queryKeys";
 
 const MODES: P2PMode[] = ["off", "allowlist", "all"];
 
+const DIGITS = /^\d+$/;
+
+/** Empty input clears the id; anything else is sent as a number. */
+function idOrNull(raw: string): number | null {
+  return raw.trim() === "" ? null : Number.parseInt(raw, 10);
+}
+
+function badId(raw: string): boolean {
+  return raw.trim() !== "" && !DIGITS.test(raw.trim());
+}
+
 function parseIds(raw: string): string[] {
   return raw
     .split(/[,\s]+/)
@@ -24,12 +35,14 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
   const [mode, setMode] = useState<P2PMode>(settings.mode);
   const [allowlist, setAllowlist] = useState(settings.allowlist_merchant_ids.join(", "));
   const [bot, setBot] = useState(settings.humo_bot_user_id?.toString() ?? "");
+  const [owner, setOwner] = useState(settings.owner_telegram_user_id?.toString() ?? "");
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
     setMode(settings.mode);
     setAllowlist(settings.allowlist_merchant_ids.join(", "));
     setBot(settings.humo_bot_user_id?.toString() ?? "");
+    setOwner(settings.owner_telegram_user_id?.toString() ?? "");
   }, [settings]);
 
   const idemKey = useRef<string | null>(null);
@@ -41,7 +54,8 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
         {
           mode,
           allowlist_merchant_ids: parseIds(allowlist),
-          humo_bot_user_id: bot.trim() === "" ? null : Number.parseInt(bot, 10),
+          humo_bot_user_id: idOrNull(bot),
+          owner_telegram_user_id: idOrNull(owner),
         },
         idemKey.current,
       );
@@ -53,7 +67,8 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
     },
   });
 
-  const botInvalid = bot.trim() !== "" && !/^\d+$/.test(bot.trim());
+  const idsInvalid = badId(bot) || badId(owner);
+  const connection = settings.business_connection_id;
   const S = T.cards.settings;
 
   return (
@@ -103,6 +118,24 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
           }}
         />
       </label>
+      <label className="mb-3 block text-sm">
+        <span className="mb-1 block text-xs text-[var(--text-secondary)]">{S.owner}</span>
+        <Input
+          inputMode="numeric"
+          value={owner}
+          onChange={(e) => {
+            setOwner(e.target.value);
+            setSaved(false);
+          }}
+        />
+      </label>
+      <p className="mb-3 text-sm">
+        <span className="text-xs text-[var(--text-secondary)]">{S.connection}: </span>
+        <span className={connection ? "text-[var(--success-fg)]" : "text-[var(--danger)]"}>
+          {connection ? S.connected : S.notConnected}
+        </span>
+        {connection ? <code className="ml-2 font-mono text-xs">{connection}</code> : null}
+      </p>
       {save.isError ? (
         <p role="alert" className="mb-2 text-sm text-[var(--danger)]">
           {p2pErrorMessage(save.error)}
@@ -113,7 +146,7 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
         onClick={() => {
           save.mutate();
         }}
-        disabled={save.isPending || botInvalid}
+        disabled={save.isPending || idsInvalid}
       >
         {save.isPending ? S.saving : S.save}
       </Button>

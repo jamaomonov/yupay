@@ -69,7 +69,7 @@ async def get_p2p_settings(db: Db) -> P2PSettingsOut:
 async def patch_p2p_settings(
     body: P2PSettingsIn, db: Db, admin: Admin, idempotency_key: IdempotencyKeyHeader = None
 ) -> P2PSettingsOut:
-    """Apply the fields present in the body; ``humo_bot_user_id: null`` clears it."""
+    """Apply the fields present in the body; ``null`` clears either Telegram id."""
     key = normalize_idempotency_key(idempotency_key)
     if (hit := await replayed(db, scope="p2p.settings", key=key, model=P2PSettingsOut)) is not None:
         return hit
@@ -91,11 +91,20 @@ async def patch_p2p_settings(
         s.allowlist_merchant_ids = ids
     if "humo_bot_user_id" in sent:
         s.humo_bot_user_id = body.humo_bot_user_id
+    if "owner_telegram_user_id" in sent:
+        s.owner_telegram_user_id = body.owner_telegram_user_id
     s.updated_by = admin.id
     s.updated_at = now()
     await db.flush()
     out = _settings_out(s)
-    log.info("p2p.settings_saved", mode=s.mode, allowlist_size=len(s.allowlist_merchant_ids))
+    # Field names only: the Telegram ids are personal data.
+    log.info(
+        "p2p.settings_saved",
+        admin_id=admin.id,
+        changed=sorted(sent),
+        mode=s.mode,
+        allowlist_size=len(s.allowlist_merchant_ids),
+    )
     await remember(db, scope="p2p.settings", key=key, body=out.model_dump(mode="json"))
     await db.commit()
     return out
@@ -211,7 +220,13 @@ async def create_card(
     await db.flush()
     await db.refresh(card)
     out = await _one_card_out(db, card)
-    log.info("p2p.card_saved", card_last4=card.pan_last4, created=True)
+    log.info(
+        "p2p.card_saved",
+        admin_id=admin.id,
+        changed=sorted(body.model_fields_set),
+        card_last4=card.pan_last4,
+        created=True,
+    )
     await remember(
         db,
         scope="p2p.card.create",
@@ -258,7 +273,13 @@ async def patch_card(
     card.updated_at = now()
     await db.flush()
     out = await _one_card_out(db, card)
-    log.info("p2p.card_saved", card_last4=card.pan_last4, created=False)
+    log.info(
+        "p2p.card_saved",
+        admin_id=admin.id,
+        changed=sorted(sent),
+        card_last4=card.pan_last4,
+        created=False,
+    )
     await remember(db, scope=scope, key=key, body=out.model_dump(mode="json"))
     await db.commit()
     return out

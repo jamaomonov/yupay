@@ -160,6 +160,11 @@ class P2PSettings(Base):
         ARRAY(UUID(as_uuid=False)), nullable=False, server_default="{}"
     )
     humo_bot_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # The owner's own Telegram id (entered by an admin) and the Business
+    # connection Telegram reported for that owner (captured by the intake).
+    # Only messages arriving through that one connection are read.
+    owner_telegram_user_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    business_connection_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     updated_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")

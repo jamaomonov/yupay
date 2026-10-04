@@ -139,6 +139,16 @@ async def test_settings_roundtrip(
     assert back["mode"] == "allowlist"
     assert back["allowlist_merchant_ids"] == [m]
     assert back["humo_bot_user_id"] == HUMO_ID
+    assert back["owner_telegram_user_id"] is None
+    assert back["business_connection_id"] is None
+    r = await integration_client.patch(
+        f"{A}/settings",
+        headers={**admin_headers, "Idempotency-Key": _key()},
+        json={"owner_telegram_user_id": 555000222, "business_connection_id": "forged"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["owner_telegram_user_id"] == 555000222
+    assert r.json()["business_connection_id"] is None  # read-only: captured by the intake
     unknown = await integration_client.patch(
         f"{A}/settings",
         headers={**admin_headers, "Idempotency-Key": _key()},
@@ -151,7 +161,8 @@ async def _matched(db: AsyncSession, n: int = 1) -> Any:
     await _card(db)
     m = await _merchant(db)
     await _open(db, [m])
-    (await load_settings(db)).humo_bot_user_id = HUMO_ID
+    s = await load_settings(db)
+    s.humo_bot_user_id, s.business_connection_id = HUMO_ID, "bc1"
     r = await reservations.reserve(db, merchant_id=m, amount_uzs=50_000, idempotency_key=None)
     res = await intake.ingest_update(
         db,
@@ -316,3 +327,43 @@ async def _extra_rows(db: AsyncSession, count: int) -> None:
             )
         )
     await db.commit()
+
+
+class _Log:
+    """Stands in for the module logger (cache_logger_on_first_use defeats capture_logs)."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+
+    def info(self, event: str, **fields: Any) -> None:
+        self.calls.append((event, fields))
+
+
+async def test_settings_and_card_saves_log_who_and_which_fields_only(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    rec = _Log()
+    monkeypatch.setattr("yupay.modules.p2p.admin_routes.log", rec)
+    await integration_client.patch(
+        f"{A}/settings",
+        headers={**admin_headers, "Idempotency-Key": _key()},
+        json={"mode": "all", "owner_telegram_user_id": 555000222},
+    )
+    card = await _create_card(integration_client, admin_headers)
+    await integration_client.patch(
+        f"{A}/cards/{card['id']}",
+        headers={**admin_headers, "Idempotency-Key": _key()},
+        json={"pan": "8600 1234 5678 9999", "active": False},
+    )
+    saved = {event: fields for event, fields in rec.calls if event == "p2p.settings_saved"}
+    assert saved["p2p.settings_saved"]["changed"] == ["mode", "owner_telegram_user_id"]
+    assert saved["p2p.settings_saved"]["admin_id"]
+    cards = [fields for event, fields in rec.calls if event == "p2p.card_saved"]
+    assert cards[0]["admin_id"] == saved["p2p.settings_saved"]["admin_id"]
+    assert cards[1]["changed"] == ["active", "pan"]
+    dumped = repr(rec.calls)
+    assert "8600123456789999" not in dumped
+    assert PAN not in dumped
+    assert "555000222" not in dumped

@@ -661,6 +661,10 @@
         },
         "allowlist": "Мерчанты из списка (id через запятую)",
         "humoBot": "Telegram id бота HUMO",
+        "owner": "Ваш Telegram id (владелец карты)",
+        "connection": "Подключение бота к Telegram Business",
+        "connected": "подключено",
+        "notConnected": "не подключено",
         "save": "Сохранить",
         "saving": "Сохраняем…",
         "saved": "Настройки сохранены."

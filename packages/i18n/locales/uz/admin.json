@@ -661,6 +661,10 @@
         },
         "allowlist": "Ro'yxatdagi merchantlar (vergul bilan id)",
         "humoBot": "HUMO bot Telegram id",
+        "owner": "Telegram id'ingiz (karta egasi)",
+        "connection": "Botning Telegram Business'ga ulanishi",
+        "connected": "ulangan",
+        "notConnected": "ulanmagan",
         "save": "Saqlash",
         "saving": "Saqlanmoqda…",
         "saved": "Sozlamalar saqlandi."

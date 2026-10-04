@@ -337,14 +337,22 @@ The SSRF row above covers the connection. This is what may travel over it.
 A reseller credits the deposit by transferring soʻm to the owner's Humo card; a Telegram
 Business bot posts the bank notification to `POST /api/v1/webhooks/telegram/p2p`.
 
-- **Forged notification.** Anyone who finds the URL could post a fake "credit". Three checks
+- **Forged notification.** Anyone who finds the URL could post a fake "credit". Four checks
   together: `X-Telegram-Bot-Api-Secret-Token` compared with `compare_digest` before the body is
-  read (an unset secret refuses everything), the sender id and the chat id must both equal the
-  HUMO bot's numeric id, and the message must have no `forward_origin`. Edited messages never
+  read (an unset secret refuses everything), the message's `business_connection_id` must equal
+  the owner's pinned connection, the sender id and the chat id must both equal the HUMO bot's
+  numeric id, and the message must have no `forward_origin`. Edited messages never
   arrive (`allowed_updates` has no edited type; the intake ignores `edited_business_message`).
   The card last4 is only a matching condition, not a forgery defence. The Business bot sees
   only the HUMO chat ("Only selected chats"), so a forged message cannot be injected by a third
   party writing to the owner.
+- **Foreign Business connection.** Anyone with Telegram Premium can connect
+  `@depositlistenerbot` to their own account, where @HUMOcardbot's messages (or their own
+  account's real HUMO chat) would pass the sender check. The connection is pinned: an admin
+  enters the owner's Telegram user id, the intake stores the id of the `business_connection`
+  that user enables (and clears it on disable), and drops every `business_message` from any
+  other connection — or all of them while nothing is pinned. The connection log line carries
+  `is_enabled`, the rights keys and an `owner` boolean, never the user id.
 - **Replay.** The journal's unique `(business_connection_id, telegram_message_id)` makes a
   re-post a no-op; the credit's idempotency key is `p2p:{reservation.id}`, so one reservation
   is credited once however many rows reach it.

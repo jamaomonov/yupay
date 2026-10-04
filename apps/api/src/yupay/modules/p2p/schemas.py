@@ -65,6 +65,10 @@ class P2PSettingsOut(BaseModel):
     mode: P2PMode
     allowlist_merchant_ids: list[str]
     humo_bot_user_id: int | None
+    owner_telegram_user_id: int | None
+    business_connection_id: str | None = Field(
+        description="Read-only: the owner's Telegram Business connection, captured on connect."
+    )
     updated_at: datetime
 
 
@@ -74,6 +78,7 @@ class P2PSettingsIn(BaseModel):
     mode: P2PMode | None = None
     allowlist_merchant_ids: list[str] | None = None
     humo_bot_user_id: int | None = None
+    owner_telegram_user_id: int | None = None
 
 
 class P2PCardAdminOut(BaseModel):

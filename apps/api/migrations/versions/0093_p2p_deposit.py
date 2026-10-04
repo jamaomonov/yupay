@@ -120,6 +120,8 @@ def upgrade() -> None:
         sa.Column("mode", sa.String(16), nullable=False, server_default="off"),
         sa.Column("allowlist_merchant_ids", pg.ARRAY(UUID), nullable=False, server_default="{}"),
         sa.Column("humo_bot_user_id", sa.BigInteger, nullable=True),
+        sa.Column("owner_telegram_user_id", sa.BigInteger, nullable=True),
+        sa.Column("business_connection_id", sa.String(128), nullable=True),
         sa.Column("updated_by", UUID, nullable=True),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=NOW),
         sa.CheckConstraint("id = 1", name="singleton"),

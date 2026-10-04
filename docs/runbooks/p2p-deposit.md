@@ -10,6 +10,12 @@ which credits the matching reservation. Decision: ADR-0094. Module:
 The bot is `@depositlistenerbot`. It works only with all three settings. The third is the one
 people miss.
 
+**Before connecting the bot**, enter **your own Telegram user id** in admin → payments → P2P
+cards → settings → "Your Telegram id (card owner)", and save. The API pins the Business
+connection that this user enables and ignores every other one, so a connection made before the
+id is saved is not pinned (disconnect and reconnect the bot). After connecting, check that the
+panel shows **"connected"** with a connection id. "not connected" means nothing is credited.
+
 1. **Business chatbot access.** Telegram → Settings → Telegram Business → Chatbots:
    `@depositlistenerbot`, access **"Only selected chats: HUMO Card"**.
 2. **Messages permissions** on, in the same screen. With only "gifts and stars" no messages are
@@ -46,7 +52,8 @@ must be saved before anything matches.
 - Before `setWebhook`, call `getUpdates` and read `business_message.from.id` of a HUMO message
   (`from.is_bot` is `true`); or
 - after `setWebhook`, read the `p2p.business_connection` log line to confirm the connection
-  (`is_enabled`, rights keys; it carries no ids), then use the first option.
+  (`is_enabled`, rights keys, `owner` true/false; it carries no ids), then use the first
+  option. `owner=false` means the saved owner id is not the account that connected.
 
 Save it in admin → payments → P2P cards → settings → HUMO bot id.
 
@@ -87,11 +94,13 @@ Each notification prints the card balance after the operation. A break means pre
 Reservations are expiring while HUMO has not been heard from for over 6 hours.
 
 1. `getWebhookInfo`: `last_error_message`, `pending_update_count`.
-2. Telegram → Settings → Telegram Business → Chatbots: the bot is still connected and still
+2. Admin P2P settings panel shows "connected". If not, reconnect the bot from the owner's
+   account (section 1).
+3. Telegram → Settings → Telegram Business → Chatbots: the bot is still connected and still
    has "Only selected chats: HUMO Card" and Messages permissions (a Business reconnect resets
    them).
-3. BotFather Bot to Bot Communication Mode is still on.
-4. Repeat section 2 if the webhook was lost.
+4. BotFather Bot to Bot Communication Mode is still on.
+5. Repeat section 2 if the webhook was lost.
 
 Telegram keeps undelivered updates up to **24 hours**. After a longer gap they are gone;
 reconcile with the bank statement.

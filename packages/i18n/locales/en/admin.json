@@ -661,6 +661,10 @@
         },
         "allowlist": "Listed merchants (ids, comma-separated)",
         "humoBot": "HUMO bot Telegram id",
+        "owner": "Your Telegram id (card owner)",
+        "connection": "Bot connection to Telegram Business",
+        "connected": "connected",
+        "notConnected": "not connected",
         "save": "Save",
         "saving": "Saving…",
         "saved": "Settings saved."

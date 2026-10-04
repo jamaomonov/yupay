@@ -138,16 +138,19 @@ integration is called that way, scrub it in the same place and add a row above.
 
 ## P2P deposit (ADR-0094)
 
-| Field                      | Stored in                          | Rule                                                                                                                              |
-| -------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Card number (PAN)          | `p2p_cards.pan_ciphertext`/`nonce` | Encrypted at rest. Returned only to the merchant with their own open reservation. Write-only in the admin (masked). Never logged. |
-| Cardholder name            | `p2p_cards.holder_name`            | Stored, shown to the reserving merchant, never logged.                                                                            |
-| Raw notification text      | `p2p_incoming.raw_text`            | Stored in the database only, admin-read-only. It holds balances and counterparties' bank descriptors. Never logged.               |
-| Source descriptor, balance | `p2p_incoming`                     | Same as raw text.                                                                                                                 |
+| Field                      | Stored in                             | Rule                                                                                                                                              |
+| -------------------------- | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Card number (PAN)          | `p2p_cards.pan_ciphertext`/`nonce`    | Encrypted at rest. Returned only to the merchant with their own open reservation. Write-only in the admin (masked). Never logged.                 |
+| Cardholder name            | `p2p_cards.holder_name`               | Stored, shown to the reserving merchant, never logged.                                                                                            |
+| Raw notification text      | `p2p_incoming.raw_text`               | Stored in the database only, admin-read-only. It holds balances and counterparties' bank descriptors. Never logged.                               |
+| Source descriptor, balance | `p2p_incoming`                        | Same as raw text.                                                                                                                                 |
+| Owner's Telegram user id   | `p2p_settings.owner_telegram_user_id` | Entered by an admin to pin the Business connection; shown in the admin settings only. Never logged (the save log names the field, not the value). |
 
 Log lines carry the reservation number, amount and card last4. The Telegram user id,
 `business_connection` identifiers and the webhook secret are never logged;
-`p2p.business_connection` records `is_enabled` and the names of granted rights only.
+`p2p.business_connection` records `is_enabled`, the names of granted rights and whether the
+connection is the owner's (`owner`, a boolean) only. `p2p.settings_saved` and `p2p.card_saved`
+record `admin_id` and the names of the changed fields, never their values.
 
 ## Right to deletion
 

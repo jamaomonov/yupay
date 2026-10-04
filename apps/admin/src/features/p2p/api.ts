@@ -24,6 +24,9 @@ export interface P2PSettings {
   mode: P2PMode;
   allowlist_merchant_ids: string[];
   humo_bot_user_id: number | null;
+  owner_telegram_user_id: number | null;
+  /** Read-only: captured by the API when the owner connects the Business bot. */
+  business_connection_id: string | null;
   updated_at: string;
 }
 
@@ -31,6 +34,7 @@ export interface P2PSettingsPatch {
   mode?: P2PMode;
   allowlist_merchant_ids?: string[];
   humo_bot_user_id?: number | null;
+  owner_telegram_user_id?: number | null;
 }
 
 export interface P2PCard {

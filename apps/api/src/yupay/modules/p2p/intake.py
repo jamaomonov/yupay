@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.merchants.deposit import credit_deposit
-from yupay.modules.p2p.models import P2PCard, P2PIncoming, P2PReservation
+from yupay.modules.p2p.models import P2PCard, P2PIncoming, P2PReservation, P2PSettings
 from yupay.modules.p2p.parsing import ParsedNotification, parse_humo
 from yupay.modules.p2p.reservations import QUARANTINE
 from yupay.modules.p2p.settings import load_settings
@@ -46,16 +46,48 @@ class IntakeResult:
     alerts: list[tuple[str, str]] = field(default_factory=list)
 
 
-def _humo_message(update: dict[str, Any], humo_id: int | None) -> dict[str, Any] | None:
-    """Return the business message only if it came from the HUMO bot, unforwarded."""
+def _humo_message(update: dict[str, Any], settings: P2PSettings) -> dict[str, Any] | None:
+    """Return the business message only if it came from the HUMO bot, unforwarded.
+
+    It must also arrive through the owner's pinned Business connection: anyone
+    with Telegram Premium can connect the bot to *their* account and feed it
+    look-alike HUMO messages. Nothing pinned (or no HUMO id) drops everything.
+    """
     msg = update.get("business_message")
-    if not isinstance(msg, dict) or humo_id is None:
+    humo_id = settings.humo_bot_user_id
+    pinned = settings.business_connection_id
+    if not isinstance(msg, dict) or humo_id is None or not pinned:
+        return None
+    if msg.get("business_connection_id") != pinned:
         return None
     sender = (msg.get("from") or {}).get("id")
     chat = (msg.get("chat") or {}).get("id")
     if sender != humo_id or chat != humo_id or msg.get("forward_origin"):
         return None
     return msg
+
+
+def _track_connection(settings: P2PSettings, connection: dict[str, Any]) -> None:
+    """Pin the owner's Business connection on enable; unpin it on disable.
+
+    Logs connection health only — never the user id, never a name.
+    """
+    user_id = (connection.get("user") or {}).get("id")
+    conn_id = connection.get("id")
+    enabled = connection.get("is_enabled") is True
+    owner = settings.owner_telegram_user_id
+    is_owner = owner is not None and user_id == owner
+    if is_owner and enabled and isinstance(conn_id, str) and conn_id:
+        settings.business_connection_id = conn_id
+    elif not enabled and conn_id is not None and conn_id == settings.business_connection_id:
+        settings.business_connection_id = None
+    rights = connection.get("rights")
+    log.info(
+        "p2p.business_connection",
+        is_enabled=connection.get("is_enabled"),
+        rights=sorted(k for k, v in rights.items() if v) if isinstance(rights, dict) else None,
+        owner=is_owner,
+    )
 
 
 async def _chain_ok(db: AsyncSession, p: ParsedNotification) -> bool | None:
@@ -179,15 +211,10 @@ async def ingest_update(
     settings = await load_settings(db)
     connection = update.get("business_connection")
     if isinstance(connection, dict):
-        # Connection health only: no user ids, no names.
-        rights = connection.get("rights")
-        log.info(
-            "p2p.business_connection",
-            is_enabled=connection.get("is_enabled"),
-            rights=sorted(k for k, v in rights.items() if v) if isinstance(rights, dict) else None,
-        )
+        _track_connection(settings, connection)
+        await db.flush()
         return IntakeResult("dropped")
-    msg = _humo_message(update, settings.humo_bot_user_id)
+    msg = _humo_message(update, settings)
     if msg is None:
         return IntakeResult("dropped")
 

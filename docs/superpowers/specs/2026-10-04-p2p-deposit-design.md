@@ -150,6 +150,9 @@ the cabinet's top-up entry points.
 
 - `mode` (`off` | `allowlist` | `all`), `allowlist_merchant_ids`;
 - `humo_bot_user_id` — the numeric Telegram id of @HUMOcardbot, captured at setup;
+- `owner_telegram_user_id` — the owner's own Telegram id, entered by an admin;
+- `business_connection_id` — the owner's Business connection, captured automatically
+  from a `business_connection` update whose user is the owner (cleared on disable);
 - `updated_by`, `updated_at`.
 
 The bot token and webhook secret are **not** stored here. They live in the environment
@@ -194,6 +197,8 @@ correctness never depends on the job running on time.
    `compare_digest` against the configured secret **before** reading or parsing the
    body. A mismatch answers 401 and logs nothing from the body.
 2. **Filter.** Accept only `business_message` where:
+   - `business_connection_id == p2p_settings.business_connection_id` (nothing pinned
+     drops everything);
    - `from.id == p2p_settings.humo_bot_user_id`;
    - it is not forwarded (no `forward_origin`);
    - the chat is that bot.
@@ -269,18 +274,24 @@ as for a manual credit.
     matched total;
   - create and edit; the full number is write-only and shown masked;
   - receive-health: last notification time, open balance-chain break.
-- **`/payments/p2p-cards` settings panel:** `mode`, allowlist, HUMO bot id.
+- **`/payments/p2p-cards` settings panel:** `mode`, allowlist, HUMO bot id, the owner's
+  own Telegram id (editable), and the pinned Business connection (read-only: "connected" /
+  "not connected" plus its id).
 - **`/payments/transfers`** has two tabs:
   - **Journal:** bank time, amount, source, card, balance after, kind, result (linked
     to merchant and reservation), with filters and a search by amount;
   - **Reservations:** number, merchant, card, soʻm, USD, status, times.
-- Admin role only. Card edits and settings changes are audit-logged. The full number is
-  never logged.
+- Admin role only. Card edits and settings changes record `updated_by` + a structured
+  log line (`admin_id` and the changed field names, no values; no admin audit table
+  exists). The full number is never logged.
 
 ## 8. Security and PII
 
-- Forgery resistance comes from four checks together:
+- Forgery resistance comes from these checks together:
   - the webhook secret header;
+  - the message's `business_connection_id` equals the owner's pinned connection
+    (captured from a `business_connection` update whose user is
+    `owner_telegram_user_id`; nothing pinned drops everything);
   - the HUMO bot's numeric id;
   - not forwarded, not edited;
   - our card's last4.

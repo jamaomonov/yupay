@@ -28,7 +28,7 @@ Docs: ADR-0094, `docs/runbooks/p2p-deposit.md`, `docs/product/flows/p2p-deposit.
 | `p2p_cards`        | Cards. Full number sealed (`pan_ciphertext`, `pan_nonce`), `pan_last4`, limits, `active`.   |
 | `p2p_reservations` | One exact amount for one merchant: status, frozen rate, `amount_usd`, `holds_amount`.       |
 | `p2p_incoming`     | The journal: every notification, `kind`, `result`, `balance_after`, `chain_ok`, `raw_text`. |
-| `p2p_settings`     | Single row: `mode` (`off` / `allowlist` / `all`), allowlist, HUMO bot id.                   |
+| `p2p_settings`     | Single row: `mode`, allowlist, HUMO bot id, owner's Telegram id, pinned connection id.      |
 
 Check-constraint names in `models.py` are bare suffixes (`status`, `kind`, ...):
 `core.db.NAMING_CONVENTION` adds the `ck_<table>_` prefix itself.
@@ -91,9 +91,15 @@ Telegram retry a no-op.
 
 Authenticity first: `X-Telegram-Bot-Api-Secret-Token` is compared with `compare_digest`
 against `p2p_webhook_secret` (env `P2P_WEBHOOK_SECRET`) before the body is read; an unset
-secret refuses everything. Only `business_message` from the HUMO bot id, in the HUMO chat and
-not forwarded, is processed. `business_connection` updates are logged as
-`p2p.business_connection` (`is_enabled` and the names of granted rights only).
+secret refuses everything. Only `business_message` from the HUMO bot id, in the HUMO chat, not
+forwarded, and arriving through the **pinned** Business connection is processed.
+
+The pin: an admin enters the owner's own Telegram id (`owner_telegram_user_id`). A
+`business_connection` update from that user with `is_enabled` stores its `id` in
+`p2p_settings.business_connection_id`; a disabled update for the stored id clears it. Updates
+from anyone else change nothing. With no connection stored (or no HUMO bot id) every message
+is dropped. The update is logged as `p2p.business_connection` with `is_enabled`, the names of
+granted rights and `owner` (bool) — never the user id.
 
 ## Alerts
 

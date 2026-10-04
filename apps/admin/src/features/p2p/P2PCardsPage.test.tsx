@@ -27,6 +27,8 @@ const SETTINGS: P2PSettings = {
   mode: "off",
   allowlist_merchant_ids: [],
   humo_bot_user_id: null,
+  owner_telegram_user_id: null,
+  business_connection_id: null,
   updated_at: "2026-10-04T10:00:00Z",
 };
 const CARD: P2PCard = {
@@ -164,4 +166,36 @@ it("reuses the Idempotency-Key when a failed add is retried, and drops it after 
     expect(post).toHaveBeenCalledTimes(3);
   });
   expect(keyOf(2)).not.toBe(keyOf(0));
+});
+
+it("shows whether the owner's Business connection is pinned", async () => {
+  renderPage();
+  expect(await screen.findByText("не подключено")).toBeInTheDocument();
+});
+
+it("shows the pinned connection id and saves the owner's Telegram id", async () => {
+  get.mockImplementation((path: string) =>
+    Promise.resolve(
+      path.endsWith("/settings")
+        ? { ...SETTINGS, owner_telegram_user_id: 555, business_connection_id: "bc-owner" }
+        : [CARD],
+    ),
+  );
+  patch.mockResolvedValue({ ...SETTINGS, owner_telegram_user_id: 777 });
+  renderPage();
+  expect(await screen.findByText(/^подключено/)).toBeInTheDocument();
+  expect(screen.getByText("bc-owner")).toBeInTheDocument();
+  const owner = screen.getByRole("textbox", { name: /владелец карты/ });
+  expect(owner).toHaveValue("555");
+  fireEvent.change(owner, { target: { value: "777" } });
+  fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+  await waitFor(() => {
+    expect(patch).toHaveBeenCalledWith(
+      "/api/v1/admin/p2p/settings",
+      expect.objectContaining({ owner_telegram_user_id: 777 }),
+      expect.anything(),
+    );
+  });
+  const body = patch.mock.calls[0]?.[1] as Record<string, unknown>;
+  expect(body).not.toHaveProperty("business_connection_id");
 });

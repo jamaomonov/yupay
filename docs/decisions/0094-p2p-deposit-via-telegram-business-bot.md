@@ -50,11 +50,20 @@ account. The question is how to read it reliably and match it to one reseller.
   2. The bot's Messages permissions are on.
   3. BotFather "Bot to Bot Communication Mode" is on. Without it, messages from another bot
      (HUMO is a bot) are not delivered through business accounts.
-- **Forgery resistance** is three checks together: the webhook secret header, the sender and
-  chat id both equal to the HUMO bot's numeric id, and no `forward_origin`. Edited messages
+- **Forgery resistance** is four checks together: the webhook secret header, the message's
+  `business_connection_id` equal to the owner's pinned connection, the sender and chat id both
+  equal to the HUMO bot's numeric id, and no `forward_origin`. Edited messages
   never arrive: `allowed_updates` has no edited type and the intake ignores
   `edited_business_message`. Our card's last4 is a matching condition, not an authentication
   control.
+- **Pinned Business connection.** Anyone with Telegram Premium can connect
+  `@depositlistenerbot` to _their own_ account and feed it look-alike HUMO messages; the HUMO
+  bot id check alone does not stop that, because the chat really is with @HUMOcardbot. An admin
+  enters the owner's own Telegram user id (`p2p_settings.owner_telegram_user_id`); when a
+  `business_connection` update arrives from that user with `is_enabled`, its id is stored in
+  `p2p_settings.business_connection_id`, and a disable update for that id clears it. Only
+  `business_message`s from the stored connection are read; with nothing stored, everything is
+  dropped (fail closed).
 - **Rate.** USD = soʻm / rate rounded **down** to cents, at the storefront's own guarded rate,
   frozen on the reservation.
 - **Fallback.** A transfer nothing matches is `unmatched` in the journal; an admin credits it
