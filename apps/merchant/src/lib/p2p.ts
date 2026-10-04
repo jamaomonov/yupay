@@ -71,3 +71,20 @@ export function errorKey(code: string | null): "errNoCard" | "errBusy" | "errRat
 export function formatClock(seconds: number): string {
   return `${String(Math.floor(seconds / 60))}:${String(seconds % 60).padStart(2, "0")}`;
 }
+
+/**
+ * Whether a poll response may replace the deposit on screen.
+ *
+ * A response is stale when a cancel (or "top up again") happened after the
+ * request left, or when it belongs to a number that is no longer the current
+ * reservation. With no deposit on screen, only a response that raced a cancel
+ * is refused: that is how a restored or just-opened top-up gets in.
+ */
+export function acceptPoll(
+  currentNumber: string | null,
+  responseNumber: string,
+  cancelled: boolean,
+): boolean {
+  if (cancelled) return false;
+  return currentNumber === null || currentNumber === responseNumber;
+}

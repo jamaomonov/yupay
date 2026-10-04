@@ -109,7 +109,18 @@ export function TopBar() {
           <span className="text-primary-ink font-mono text-sm font-extrabold tabular-nums">
             {balance === null ? "—" : `$${formatUsd(balance)}`}
           </span>
-          {p2p?.enabled === true ? (
+          {p2p === null ? (
+            // Status still loading: neutral, so the control does not appear as
+            // a support link and then swap to the top-up page.
+            <button
+              type="button"
+              disabled
+              aria-label={t("topUp")}
+              className={`${topUpClass} opacity-60`}
+            >
+              {plus}
+            </button>
+          ) : p2p.enabled ? (
             <Link
               href={pathFor(locale, "/cabinet/top-up")}
               aria-label={t("topUp")}

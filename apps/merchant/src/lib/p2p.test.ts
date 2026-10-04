@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { phase, pollDeadline, secondsLeft, usdPreview } from "./p2p";
+import {
+  acceptPoll,
+  errorKey,
+  formatClock,
+  phase,
+  pollDeadline,
+  secondsLeft,
+  usdPreview,
+} from "./p2p";
 
 describe("secondsLeft", () => {
   it("counts down and stops at zero", () => {
@@ -56,8 +64,7 @@ describe("phase", () => {
 });
 
 describe("errorKey and formatClock", () => {
-  it("maps codes and formats the clock", async () => {
-    const { errorKey, formatClock } = await import("./p2p");
+  it("maps codes and formats the clock", () => {
     expect(errorKey("p2p_no_card")).toBe("errNoCard");
     expect(errorKey("p2p_amount_busy")).toBe("errBusy");
     expect(errorKey("fx_unavailable")).toBe("errRate");
@@ -89,5 +96,24 @@ describe("pollDeadline", () => {
     expect(pollDeadline({ ...base, status: "paid" })).toBeNull();
     expect(pollDeadline({ ...base, status: "cancelled" })).toBeNull();
     expect(pollDeadline(null)).toBeNull();
+  });
+});
+
+describe("acceptPoll", () => {
+  it("accepts the current reservation", () => {
+    expect(acceptPoll("T1", "T1", false)).toBe(true);
+  });
+
+  it("refuses a response for another number", () => {
+    expect(acceptPoll("T2", "T1", false)).toBe(false);
+  });
+
+  it("refuses anything that raced a cancel", () => {
+    expect(acceptPoll("T1", "T1", true)).toBe(false);
+    expect(acceptPoll(null, "T1", true)).toBe(false);
+  });
+
+  it("lets a restore through when nothing is on screen", () => {
+    expect(acceptPoll(null, "T1", false)).toBe(true);
   });
 });

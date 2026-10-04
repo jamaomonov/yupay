@@ -11,7 +11,7 @@ import { useCabinet } from "@/components/CabinetContext";
 import { PageHeading } from "@/components/PageHeading";
 import { TopUpDetails } from "@/components/TopUpDetails";
 import { api, ApiError } from "@/lib/api";
-import { errorKey, phase, pollDeadline, secondsLeft, usdPreview } from "@/lib/p2p";
+import { acceptPoll, errorKey, phase, pollDeadline, secondsLeft, usdPreview } from "@/lib/p2p";
 
 const SUPPORT = "https://t.me/yupay_support";
 const POLL_MS = 3000;
@@ -31,9 +31,17 @@ export default function TopUp() {
   // One key per intent: kept across retries of the same amount, dropped when the
   // amount changes or the intent is done.
   const intentKey = useRef<string | null>(null);
+  // Bumped by every cancel and "top up again": a poll that left before it and
+  // lands after must not put the old reservation back on screen.
+  const epoch = useRef(0);
 
   const load = useCallback(async (number: string) => {
-    setDeposit(await api<P2PDeposit>(`/p2p/deposits/${encodeURIComponent(number)}`));
+    const started = epoch.current;
+    const fresh = await api<P2PDeposit>(`/p2p/deposits/${encodeURIComponent(number)}`);
+    const cancelled = epoch.current !== started;
+    setDeposit((prev) =>
+      acceptPoll(prev?.number ?? null, fresh.number, cancelled) ? fresh : prev,
+    );
   }, []);
 
   // Restore an open top-up after a reload.
@@ -55,6 +63,8 @@ export default function TopUp() {
 
   useEffect(() => {
     if (current !== "details") return undefined;
+    // The first frame must already read the real clock, not the one from mount.
+    setNowMs(Date.now());
     const tick = setInterval(() => {
       setNowMs(Date.now());
     }, 1000);
@@ -131,21 +141,46 @@ export default function TopUp() {
   const cancel = async () => {
     if (number === null) return;
     setBusy(true);
+    setError(null);
     try {
       await api<P2PDeposit>(`/p2p/deposits/${encodeURIComponent(number)}/cancel`, {
         method: "POST",
         idempotencyKey: crypto.randomUUID(),
       });
+      epoch.current += 1;
       intentKey.current = null;
       setDeposit(null);
       setWaiting(false);
-    } catch {
-      // Already closed on the server: show whatever it is now.
-      await load(number).catch(() => undefined);
+    } catch (caught) {
+      if (caught instanceof ApiError) {
+        // Already closed on the server: show whatever it is now.
+        await load(number).catch(() => undefined);
+      } else {
+        // Network: the reservation is still open, so keep its details up.
+        setError(t("errCancel"));
+      }
     } finally {
       setBusy(false);
     }
   };
+
+  const again = () => {
+    epoch.current += 1;
+    intentKey.current = null;
+    setDeposit(null);
+    setAmount("");
+    setError(null);
+    setWaiting(false);
+  };
+  const againButton = (
+    <button
+      type="button"
+      onClick={again}
+      className="bg-primary text-primary-foreground rounded-btn mt-4 inline-flex px-4 py-2 text-sm font-semibold"
+    >
+      {t("again")}
+    </button>
+  );
 
   const supportLink = (
     <a
@@ -215,6 +250,7 @@ export default function TopUp() {
           locale={locale}
           waiting={waiting}
           busy={busy}
+          error={error}
           onCancel={() => {
             void cancel();
           }}
@@ -224,14 +260,18 @@ export default function TopUp() {
         />
       )}
       {current === "paid" && deposit !== null && (
-        <p className="border-border bg-card mt-5 max-w-md rounded-xl border p-6 font-semibold">
-          {t("paid", { usd: deposit.amount_usd })}
-        </p>
+        <section className="border-border bg-card mt-5 max-w-md rounded-xl border p-6">
+          <p className="font-semibold">{t("paid", { usd: deposit.amount_usd })}</p>
+          {againButton}
+        </section>
       )}
       {current === "expired" && deposit !== null && (
         <section className="border-border bg-card mt-5 max-w-md rounded-xl border p-6">
           <p className="text-sm leading-relaxed">{t("expired", { number: deposit.number })}</p>
-          {supportLink}
+          <div className="flex flex-wrap gap-x-3">
+            {againButton}
+            {supportLink}
+          </div>
         </section>
       )}
     </div>

@@ -590,6 +590,8 @@
     "errOpen": "Sizda kutilayotgan to‘ldirish bor",
     "errNoCard": "Bu summani hozir qabul qilib bo‘lmaydi — summani o‘zgartiring",
     "errBusy": "Bir daqiqadan so‘ng urinib ko‘ring",
+    "errCancel": "Bekor qilib bo‘lmadi — internetni tekshirib, qayta urinib ko‘ring",
+    "again": "Yana to‘ldirish",
     "errRate": "Kurs vaqtincha mavjud emas, keyinroq urinib ko‘ring",
     "copy": "Nusxa olish",
     "copied": "Nusxa olindi",

@@ -13,6 +13,7 @@ interface TopUpDetailsProps {
   locale: string;
   waiting: boolean;
   busy: boolean;
+  error?: string | null;
   onCancel: () => void;
   onPaid: () => void;
 }
@@ -24,6 +25,7 @@ export function TopUpDetails({
   locale,
   waiting,
   busy,
+  error = null,
   onCancel,
   onPaid,
 }: TopUpDetailsProps) {
@@ -62,6 +64,11 @@ export function TopUpDetails({
         {t("exactWarning", { amount })}
       </p>
 
+      {error !== null && (
+        <p role="alert" className="mt-4 text-sm text-red-500">
+          {error}
+        </p>
+      )}
       {waiting && <p className="text-tx-mute mt-4 text-sm">{t("waiting")}</p>}
       <div className="mt-5 flex gap-3">
         <button
