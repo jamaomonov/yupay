@@ -69,10 +69,13 @@ async def run_p2p_sweep() -> None:
     if silence_alert_due(last, recently_expired or 0, t):
         redis = get_redis()
         if await redis.set(_ALERT_KEY, "1", nx=True, ex=_ALERT_TTL_SECONDS):
-            await send_admin_alert(
+            sent = await send_admin_alert(
                 "P2P: резервы истекают, а от HUMO нет уведомлений больше 6 часов — проверьте бота",
                 kind="p2p_silence",
             )
+            if not sent:
+                # Not delivered: free the hour's key so the next tick tries again.
+                await redis.delete(_ALERT_KEY)
 
 
 def register(scheduler: AsyncIOScheduler) -> None:

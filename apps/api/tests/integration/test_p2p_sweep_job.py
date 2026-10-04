@@ -120,3 +120,23 @@ async def test_no_alert_when_incoming_is_recent(
     await db_session.commit()
     await p2p_sweep.run_p2p_sweep()
     assert alerts == []
+
+
+async def test_a_failed_alert_is_retried_on_the_next_tick(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """send_admin_alert returning False must not burn the hour's de-dup key."""
+    outcomes = iter([False, True])
+    kinds: list[str] = []
+
+    async def flaky(message: str, *, kind: str, **_: object) -> bool:
+        kinds.append(kind)
+        return next(outcomes)
+
+    monkeypatch.setattr(p2p_sweep, "send_admin_alert", flaky)
+    await _expired_reservation(db_session)
+    await p2p_sweep.run_p2p_sweep()
+    assert await get_redis().get(_KEY) is None
+    await p2p_sweep.run_p2p_sweep()
+    assert kinds == ["p2p_silence", "p2p_silence"]
+    assert await get_redis().get(_KEY) is not None
