@@ -14,7 +14,6 @@ from typing import Final
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import func, select
-
 from yupay.core.clock import now
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
