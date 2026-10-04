@@ -255,12 +255,19 @@ async def list_skus(
     q: str | None = None,
     brand_id: str | None = None,
     product_id: str | None = None,
+    active: bool | None = None,
     limit: Annotated[int, Query(ge=1, le=500)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> AdminSkuListOut:
     """A page of SKUs. Unpaged this was 6150 rows and 3 MB after the 2026-10 import."""
     rows, total = await svc.list_skus_page(
-        db, query=q, brand_id=brand_id, product_id=product_id, limit=limit, offset=offset
+        db,
+        query=q,
+        brand_id=brand_id,
+        product_id=product_id,
+        active=active,
+        limit=limit,
+        offset=offset,
     )
     return AdminSkuListOut(items=[AdminSkuOut.model_validate(s) for s in rows], total=total)
 

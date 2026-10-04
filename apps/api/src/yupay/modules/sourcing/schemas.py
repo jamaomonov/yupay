@@ -28,6 +28,14 @@ class SourcingRuleOut(BaseModel):
     # resolves this separately (see ``service.sku_codes_for``) so the admin
     # UI can show the human SKU code instead of a raw UUID.
     sku_code: str
+    #: Where the SKU sits, for a list that no longer downloads the catalogue
+    #: to find out (``catalog.admin_service.sku_labels_for``). ``None`` on a
+    #: write's echo, which labels nothing.
+    denomination: str | None = None
+    product_slug: str | None = None
+    brand_id: str | None = None
+    brand_slug: str | None = None
+    brand_name: str | None = None
     mode: Mode
     supplier_slug: str | None
     updated_by: str | None

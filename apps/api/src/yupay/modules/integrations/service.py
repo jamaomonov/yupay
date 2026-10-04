@@ -129,6 +129,26 @@ async def list_mappings(
     return list(rows), total
 
 
+async def mapped_product_ids(db: AsyncSession, *, supplier_slug: str, kind: str) -> list[str]:
+    """Distinct ``external_product_id`` of a supplier's active mappings of one kind.
+
+    The supplier-catalogue screen marks games already imported; it used to
+    read the first 200 mappings to find out, which stopped being all of them.
+    """
+    rows = (
+        await db.execute(
+            select(SkuSupplierMapping.external_product_id)
+            .where(
+                SkuSupplierMapping.supplier_slug == supplier_slug,
+                SkuSupplierMapping.kind == kind,
+                SkuSupplierMapping.is_active.is_(True),
+            )
+            .distinct()
+        )
+    ).scalars()
+    return sorted(str(v) for v in rows if v)
+
+
 async def sku_codes_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, str]:
     """Batch-resolve ``sku_id -> sku_code`` for the given ids — one query, no N+1.
 

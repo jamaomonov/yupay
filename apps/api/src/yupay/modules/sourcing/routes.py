@@ -16,6 +16,7 @@ from yupay.core.idempotency import (
 )
 from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
+from yupay.modules.catalog.admin_service import sku_labels_for
 from yupay.modules.integrations.schemas import CostSyncResult
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import brand_overview as brand_overview_svc
@@ -99,10 +100,23 @@ async def list_rules(
     offset: int = 0,
 ) -> SourcingRuleListOut:
     rules, total = await svc.list_rules(db, limit=limit, offset=offset)
-    sku_codes = await svc.sku_codes_for(db, (r.sku_id for r in rules))
-    return SourcingRuleListOut(
-        items=[_rule_out(r, sku_codes.get(r.sku_id, r.sku_id)) for r in rules], total=total
-    )
+    labels = await sku_labels_for(db, (r.sku_id for r in rules))
+    items = []
+    for r in rules:
+        label = labels.get(r.sku_id)
+        out = _rule_out(r, label.sku_code if label else r.sku_id)
+        if label is not None:
+            out = out.model_copy(
+                update={
+                    "denomination": label.denomination,
+                    "product_slug": label.product_slug,
+                    "brand_id": label.brand_id,
+                    "brand_slug": label.brand_slug,
+                    "brand_name": label.brand_name,
+                }
+            )
+        items.append(out)
+    return SourcingRuleListOut(items=items, total=total)
 
 
 @admin_router.get(

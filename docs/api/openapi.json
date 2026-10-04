@@ -9172,6 +9172,23 @@
         "title": "ManualFailIn",
         "type": "object"
       },
+      "MappedProductIdsOut": {
+        "description": "``GET /admin/integrations/mappings/products``: the ids, nothing else.",
+        "properties": {
+          "items": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "MappedProductIdsOut",
+        "type": "object"
+      },
       "MeOut": {
         "description": "Response for ``GET /auth/me``.",
         "properties": {
@@ -19285,6 +19302,39 @@
       },
       "SourcingRuleOut": {
         "properties": {
+          "brand_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Id"
+          },
+          "brand_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Name"
+          },
+          "brand_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Slug"
+          },
           "cost_sync": {
             "anyOf": [
               {
@@ -19295,6 +19345,17 @@
               }
             ]
           },
+          "denomination": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denomination"
+          },
           "mode": {
             "enum": [
               "auto",
@@ -19304,6 +19365,17 @@
             ],
             "title": "Mode",
             "type": "string"
+          },
+          "product_slug": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Product Slug"
           },
           "sku_code": {
             "title": "Sku Code",
@@ -25532,6 +25604,22 @@
           },
           {
             "in": "query",
+            "name": "active",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Active"
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "required": false,
             "schema": {
@@ -27976,6 +28064,78 @@
           }
         },
         "summary": "List supplier mappings",
+        "tags": [
+          "admin:integrations"
+        ]
+      }
+    },
+    "/api/v1/admin/integrations/mappings/products": {
+      "get": {
+        "operationId": "list_mapped_product_ids_api_v1_admin_integrations_mappings_products_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "supplier_slug",
+            "required": true,
+            "schema": {
+              "maxLength": 32,
+              "minLength": 2,
+              "title": "Supplier Slug",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "default": "game",
+              "maxLength": 16,
+              "minLength": 2,
+              "title": "Kind",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MappedProductIdsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Distinct external product ids a supplier is mapped on",
         "tags": [
           "admin:integrations"
         ]

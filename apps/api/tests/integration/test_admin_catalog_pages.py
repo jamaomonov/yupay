@@ -182,3 +182,49 @@ async def test_mappings_and_rules_page_with_a_total(
     assert rules.status_code == 200, rules.text
     assert rules.json()["total"] >= 3
     assert 1 <= len(rules.json()["items"]) <= 2
+
+
+async def test_rules_carry_the_sku_label_and_mapped_products_are_listed(
+    integration_client: AsyncClient, db_session: AsyncSession, admin_headers: dict[str, str]
+) -> None:
+    brand_id, sku_ids = await _seed(db_session, products=1, skus_each=2)
+    await upsert_mapping(
+        db_session,
+        MappingUpsert(
+            sku_id=sku_ids[0],
+            supplier_slug="fzr",
+            kind="game",
+            external_product_id="pg_cat",
+            external_variant_id="10_gems",
+            quantity=1,
+            extra={},
+            is_active=True,
+            updated_by="t",
+        ),
+    )
+    await sourcing.set_rule(
+        db_session, sku_id=sku_ids[0], mode="force_supplier", supplier_slug="fzr", admin_id=ADMIN
+    )
+    await db_session.commit()
+
+    rules = await integration_client.get("/api/v1/admin/sourcing/rules", headers=admin_headers)
+    rule = next(r for r in rules.json()["items"] if r["sku_id"] == sku_ids[0])
+    assert rule["brand_id"] == brand_id
+    assert rule["brand_name"] == "Paged"
+    assert rule["denomination"] == "10 Gems"
+    assert rule["product_slug"].startswith("pg-product-0")
+
+    ids = await integration_client.get(
+        "/api/v1/admin/integrations/mappings/products",
+        headers=admin_headers,
+        params={"supplier_slug": "fzr", "kind": "game"},
+    )
+    assert ids.status_code == 200, ids.text
+    assert "pg_cat" in ids.json()["items"]
+
+    off = await integration_client.get(
+        "/api/v1/admin/catalog/skus",
+        headers=admin_headers,
+        params={"brand_id": brand_id, "active": "false"},
+    )
+    assert off.json()["total"] == 0

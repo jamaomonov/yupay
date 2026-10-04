@@ -50,6 +50,7 @@ from yupay.modules.integrations.schemas import (
     GameFieldsOut,
     GameImportIn,
     GameImportOut,
+    MappedProductIdsOut,
     PlayerCheckIn,
     PlayerCheckOut,
     PriceHistoryOut,
@@ -105,6 +106,22 @@ def _mapping_out(row: SkuSupplierMapping, sku_code: str) -> SupplierMappingOut:
     resolved ``sku_code`` (no ORM relationship to ``Sku`` to pull it from —
     see ``svc.sku_codes_for``)."""
     return SupplierMappingOut.model_validate({**row.__dict__, "sku_code": sku_code})
+
+
+@admin_router.get(
+    "/mappings/products",
+    response_model=MappedProductIdsOut,
+    summary="Distinct external product ids a supplier is mapped on",
+)
+async def list_mapped_product_ids(
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+    supplier_slug: Annotated[str, Query(min_length=2, max_length=32)],
+    kind: Annotated[str, Query(min_length=2, max_length=16)] = "game",
+) -> MappedProductIdsOut:
+    return MappedProductIdsOut(
+        items=await svc.mapped_product_ids(db, supplier_slug=supplier_slug, kind=kind)
+    )
 
 
 @admin_router.get(

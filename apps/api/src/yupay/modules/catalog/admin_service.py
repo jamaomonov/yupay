@@ -6,6 +6,7 @@ admin surface auditable in one place.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
@@ -470,6 +471,7 @@ async def list_skus_page(
     query: str | None = None,
     brand_id: str | None = None,
     product_id: str | None = None,
+    active: bool | None = None,
     limit: int = 100,
     offset: int = 0,
 ) -> tuple[list[Sku], int]:
@@ -484,6 +486,7 @@ async def list_skus_page(
         query: Free text over code, denomination, product slug and RU name.
         brand_id: Only this brand's SKUs.
         product_id: Only this product's SKUs.
+        active: Only active (``True``) or only switched-off (``False``) SKUs.
         limit: Page size, 1–500.
         offset: Rows to skip.
 
@@ -497,6 +500,8 @@ async def list_skus_page(
         base = base.where(Product.brand_id == brand_id)
     if product_id is not None:
         base = base.where(Sku.product_id == product_id)
+    if active is not None:
+        base = base.where(Sku.active.is_(active))
     cleaned = (query or "").strip()
     if cleaned:
         like = f"%{cleaned}%"
@@ -723,6 +728,61 @@ async def search_skus_for_picker(
         )
     stmt = stmt.limit(min(max(limit, 1), 100))
     return list((await db.execute(stmt)).scalars().unique().all())
+
+
+@dataclass(frozen=True)
+class SkuLabel:
+    """What an admin list needs to say about a SKU it only holds the id of."""
+
+    sku_code: str
+    denomination: str | None
+    product_slug: str
+    brand_id: str
+    brand_slug: str
+    brand_name: str
+
+
+async def sku_labels_for(db: AsyncSession, sku_ids: Iterable[str]) -> dict[str, SkuLabel]:
+    """Batch-resolve ``sku_id -> SkuLabel`` — one query, no N+1.
+
+    Mappings and sourcing rules carry only ``sku_id`` (no ORM relationship to
+    ``Sku``). Their admin lists used to download the whole catalogue to label
+    a page of rows; this gives them the label for exactly the rows on it.
+    """
+    ids = list(dict.fromkeys(sku_ids))
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(
+                Sku.id,
+                Sku.sku_code,
+                Sku.denomination,
+                Product.slug.label("product_slug"),
+                Brand.id.label("brand_id"),
+                Brand.slug.label("brand_slug"),
+                BrandTranslation.name.label("brand_name"),
+            )
+            .join(Product, Product.id == Sku.product_id)
+            .join(Brand, Brand.id == Product.brand_id)
+            .outerjoin(
+                BrandTranslation,
+                (BrandTranslation.brand_id == Brand.id) & (BrandTranslation.locale == "ru"),
+            )
+            .where(Sku.id.in_(ids))
+        )
+    ).all()
+    return {
+        row.id: SkuLabel(
+            sku_code=row.sku_code,
+            denomination=row.denomination,
+            product_slug=row.product_slug,
+            brand_id=row.brand_id,
+            brand_slug=row.brand_slug,
+            brand_name=row.brand_name or row.brand_slug,
+        )
+        for row in rows
+    }
 
 
 async def get_sku(db: AsyncSession, sku_id: str) -> Sku:

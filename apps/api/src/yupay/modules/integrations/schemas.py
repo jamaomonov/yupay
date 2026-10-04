@@ -54,6 +54,12 @@ class SupplierMappingOut(BaseModel):
     updated_at: datetime
 
 
+class MappedProductIdsOut(BaseModel):
+    """``GET /admin/integrations/mappings/products``: the ids, nothing else."""
+
+    items: list[str]
+
+
 class SupplierMappingListOut(BaseModel):
     items: list[SupplierMappingOut]
     #: Rows the filters match, beyond this page.
