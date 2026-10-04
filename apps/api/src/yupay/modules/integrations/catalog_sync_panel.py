@@ -51,12 +51,14 @@ from yupay.modules.integrations.models import PANEL_STEAM_SENTINEL
 
 log = get_logger("yupay.integrations.catalog_sync.panel")
 
-#: Ceiling on the by-category denomination refresh, mirroring G2B's
-#: ``_MAPPED_FETCH_CAP`` — a data mistake must not turn one tick into
-#: hundreds of ``get_offers`` calls. NOVA is a reserve supplier (see
-#: ``fulfillment/suppliers/nova.py`` and its fzr twin); production maps a handful of SKUs to
-#: it today.
-_MAPPED_FETCH_CAP = 200
+#: Ceiling on the by-category denomination refresh — a data mistake must not
+#: turn one tick into thousands of ``get_offers`` calls. Raised from 200 for
+#: the 2026-10 bulk import, which maps ~260 FazerCards categories: the watch
+#: (``catalog_watch.watch_cached_variants``) reads this cache, so a category
+#: past the cap goes stale and its mappings read as delisted two ticks later.
+#: The walk is paced (``PanelClient.get_offers_paced``), so 600 is a few
+#: minutes, not a burst.
+_MAPPED_FETCH_CAP = 600
 
 
 def _ev(client: PanelClient, name: str) -> str:
@@ -104,7 +106,7 @@ async def _sync_category_denoms(
     the caller (``routes.sync_catalog`` promises it never does).
     """
     try:
-        body = await client.get_offers(category_id)
+        body = await client.get_offers_paced(category_id)
     except PanelError as exc:
         if exc.status == 404:
             return 0, True, None

@@ -48,7 +48,10 @@ class _RawPrice:
 
 
 async def _g2b_raw_price(  # noqa: PLR0911 -- discriminated outcome reads clearer than nested branches
-    db: AsyncSession, mapping: SkuSupplierMapping
+    db: AsyncSession,
+    mapping: SkuSupplierMapping,
+    *,
+    catalogue_cache: dict[str, list[dict[str, Any]]] | None = None,
 ) -> _RawPrice:
     """G2B's price for one mapping.
 
@@ -91,8 +94,12 @@ async def _g2b_raw_price(  # noqa: PLR0911 -- discriminated outcome reads cleare
         denom_name = (mapping.external_variant_id or "").strip()
         if not denom_name:
             return _RawPrice(amount=None, source="", reason="у маппинга не указан catalogue_name")
-        client = fulfiller._client()
-        rows = await client.games_catalogue(mapping.external_product_id)
+        cached = (catalogue_cache or {}).get(mapping.external_product_id.strip())
+        rows = (
+            cached
+            if cached is not None
+            else await fulfiller._client().games_catalogue(mapping.external_product_id)
+        )
         match = next(
             (r for r in rows if str(r.get("name") or "").strip() == denom_name),
             None,

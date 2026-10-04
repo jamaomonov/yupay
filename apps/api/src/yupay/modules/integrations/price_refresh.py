@@ -36,6 +36,7 @@ from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
     NOVA_STEAM_SENTINEL,
+    PANEL_STEAM_SENTINEL,
     SkuSupplierMapping,
 )
 from yupay.modules.notifications import api as notifications
@@ -125,6 +126,76 @@ async def _fetch_nova_offers_cache(
     return cache
 
 
+async def _fetch_fzr_offers_cache(
+    mappings: list[SkuSupplierMapping],
+) -> dict[str, dict[str, Any]]:
+    """FazerCards' twin of :func:`_fetch_nova_offers_cache`: each category once.
+
+    A separate map, never NOVA's: the two vendors share category ids for the
+    same games, and a shared cache would price one as the other (NOVA quotes
+    fzr + 2%). Paced (``get_offers_paced``) because the 2026-10 bulk import
+    maps a few hundred fzr categories — fired back to back they trip the
+    429 that FazerCards answers in prose. A category that still fails is left
+    out, and its mappings fall back to their own live call, as before.
+    """
+    from yupay.modules.integrations.catalog_sync_panel import client_or_none
+
+    client = client_or_none("fzr")
+    if client is None:
+        return {}
+    category_ids = {
+        m.external_product_id.strip()
+        for m in mappings
+        if m.supplier_slug == "fzr" and m.kind == "game"
+    } - {PANEL_STEAM_SENTINEL, ""}
+    cache: dict[str, dict[str, Any]] = {}
+    for category_id in sorted(category_ids):
+        try:
+            cache[category_id] = await client.get_offers_paced(category_id)
+        except Exception as exc:  # noqa: BLE001 -- best effort; a miss falls back to a live per-mapping call
+            log.warning(
+                "integrations.price_refresh.fzr_category_fetch_failed",
+                category_id=category_id,
+                error=str(exc)[:200],
+            )
+    return cache
+
+
+async def _fetch_g2b_catalogue_cache(
+    mappings: list[SkuSupplierMapping],
+) -> dict[str, list[dict[str, Any]]]:
+    """Each mapped G2B game's ``games_catalogue`` once, keyed by game code.
+
+    Until the 2026-10 import every G2B game mapping asked G2B for its whole
+    game's catalogue just to read one row of it — fine at 270 mappings, a few
+    thousand calls an hour after. A game that fails is left out; its
+    mappings fetch live, as before.
+    """
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
+
+    fulfiller = REGISTRY.get("g2b")
+    if not isinstance(fulfiller, G2bFulfiller) or not fulfiller.available:
+        return {}
+    codes = {
+        m.external_product_id.strip()
+        for m in mappings
+        if m.supplier_slug == "g2b" and m.kind == "game"
+    } - {""}
+    client = fulfiller._client()
+    cache: dict[str, list[dict[str, Any]]] = {}
+    for code in sorted(codes):
+        try:
+            cache[code] = await client.games_catalogue(code)
+        except Exception as exc:  # noqa: BLE001 -- best effort; a miss falls back to a live per-mapping call
+            log.warning(
+                "integrations.price_refresh.g2b_game_fetch_failed",
+                game_code=code,
+                error=str(exc)[:200],
+            )
+    return cache
+
+
 async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefreshReport:
     """Re-price every active mapping and dispatch alerts on significant moves.
 
@@ -149,9 +220,11 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
     if not mappings:
         return PriceRefreshReport()
 
-    # One fetch per NOVA category, done up front — before any per-mapping
+    # One fetch per NOVA / fzr category and per G2B game, done up front — before any per-mapping
     # transaction is even open — instead of once per mapping.
     nova_offers_cache = await _fetch_nova_offers_cache(mappings)
+    fzr_offers_cache = await _fetch_fzr_offers_cache(mappings)
+    g2b_catalogue_cache = await _fetch_g2b_catalogue_cache(mappings)
 
     checked = 0
     moved = 0
@@ -180,6 +253,8 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
                     session,
                     mapping=attached,
                     nova_offers_cache=nova_offers_cache,
+                    fzr_offers_cache=fzr_offers_cache,
+                    g2b_catalogue_cache=g2b_catalogue_cache,
                     allow_price_drop=False,
                 )
         except Exception as exc:  # noqa: BLE001

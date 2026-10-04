@@ -191,6 +191,8 @@ async def _lookup_price(
     mapping: SkuSupplierMapping,
     *,
     nova_offers_cache: dict[str, Any] | None,
+    fzr_offers_cache: dict[str, Any] | None = None,
+    g2b_catalogue_cache: dict[str, list[dict[str, Any]]] | None = None,
 ) -> Any:
     """Ask whichever supplier owns ``mapping`` what it costs right now.
 
@@ -202,15 +204,14 @@ async def _lookup_price(
     so the final ``else`` is total rather than a default.
     """
     if mapping.supplier_slug == "g2b":
-        return await _g2b_raw_price(db, mapping)
+        return await _g2b_raw_price(db, mapping, catalogue_cache=g2b_catalogue_cache)
     if mapping.supplier_slug == "gengine":
         return await _gengine_raw_price(db, mapping)
     if mapping.supplier_slug == "fzr":
-        # The offers cache is NOVA's: it is keyed by category id alone, and
+        # Its own cache, never NOVA's: it is keyed by category id alone, and
         # the two vendors' category ids are the same strings for the same
         # games, so sharing it would serve one vendor's prices as the other's.
-        # fzr fetches its own until a second cache exists.
-        return await _fzr_raw_price(db, mapping, offers_cache=None)
+        return await _fzr_raw_price(db, mapping, offers_cache=fzr_offers_cache)
     return await _nova_raw_price(db, mapping, offers_cache=nova_offers_cache)
 
 
@@ -220,6 +221,8 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     mapping: SkuSupplierMapping,
     record_history: bool = True,
     nova_offers_cache: dict[str, dict[str, Any]] | None = None,
+    fzr_offers_cache: dict[str, dict[str, Any]] | None = None,
+    g2b_catalogue_cache: dict[str, list[dict[str, Any]]] | None = None,
     allow_price_drop: bool = True,
 ) -> CostRefreshOutcome:
     """Pull the upstream price for ``mapping`` and persist it.
@@ -262,6 +265,9 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
             category (e.g. a whole brand) fetches it once instead of once
             per SKU. Ignored for ``g2b`` mappings. Building the cache is
             the caller's job — this function only reads it.
+        fzr_offers_cache: The same, for FazerCards, kept apart from NOVA's.
+        g2b_catalogue_cache: ``{game_code: games_catalogue() rows}`` for G2B
+            game mappings, built once per pass by the same caller.
         allow_price_drop: Forwarded verbatim to
             ``catalog.admin_service.set_sku_cost_usdt`` — whether a
             margin-derived price *lower* than the SKU's current price may
@@ -290,7 +296,13 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
             updated=False,
             reason=f"сбор цен не поддержан для поставщика «{mapping.supplier_slug}»",
         )
-    lookup = await _lookup_price(db, mapping, nova_offers_cache=nova_offers_cache)
+    lookup = await _lookup_price(
+        db,
+        mapping,
+        nova_offers_cache=nova_offers_cache,
+        fzr_offers_cache=fzr_offers_cache,
+        g2b_catalogue_cache=g2b_catalogue_cache,
+    )
 
     if lookup.reason is not None:
         return CostRefreshOutcome(updated=False, reason=lookup.reason, source=lookup.source or None)

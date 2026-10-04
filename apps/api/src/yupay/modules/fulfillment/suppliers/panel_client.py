@@ -46,7 +46,9 @@ contract test to make room, you are about to break the other vendor.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
+import re
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
@@ -65,6 +67,15 @@ MAX_PAGE = 100
 #: and ~580 gift cards they publish — a guard against a cursor that never
 #: terminates, not a real limit.
 _MAX_PAGES = 50
+
+#: Pause after every call of a bulk walk (a whole-catalogue sync, an hourly
+#: price pass). FazerCards rate-limits per key and answered 429 «Повторите
+#: через 45 с» to four parallel ``/topups/offers`` calls on 2026-10-04 — a
+#: walk over a few hundred categories has to be paced, not fired.
+BULK_PAUSE_SECONDS = 0.35
+
+#: Longest wait a bulk walk accepts from a 429 before its single retry.
+_MAX_RETRY_AFTER_SECONDS = 60
 
 
 class PanelError(Exception):
@@ -105,6 +116,17 @@ class PanelValidation:
     valid: bool
     player_name: str | None
     region: str | None
+
+
+def retry_after_seconds(message: str) -> float:
+    """Seconds to wait from a 429's text («Повторите через 45 с»), capped.
+
+    The panel says it in prose rather than a ``Retry-After`` header, so the
+    first number in the message is the answer; without one, half the cap.
+    """
+    found = re.search(r"(\d+)", message)
+    seconds = int(found.group(1)) if found else _MAX_RETRY_AFTER_SECONDS // 2
+    return float(min(max(seconds, 1), _MAX_RETRY_AFTER_SECONDS))
 
 
 def message_of(body: dict[str, Any], status: int, *, slug: str) -> str:
@@ -292,6 +314,24 @@ class PanelClient:
         return await self._request(
             "GET", "/api/v2/topups/offers", params={"category_id": category_id}
         )
+
+    async def get_offers_paced(self, category_id: str) -> dict[str, Any]:
+        """:meth:`get_offers` for a bulk walk: paced, with one wait-and-retry on 429.
+
+        Never for a request path — the retry can wait up to a minute. The
+        callers are the catalogue sync and the hourly price pass, which visit
+        every mapped category in turn and would otherwise lose the tail of the
+        walk to the rate limit the head of it tripped.
+        """
+        try:
+            return await self.get_offers(category_id)
+        except PanelError as exc:
+            if exc.status != 429:
+                raise
+            await asyncio.sleep(retry_after_seconds(str(exc)))
+            return await self.get_offers(category_id)
+        finally:
+            await asyncio.sleep(BULK_PAUSE_SECONDS)
 
     async def list_giftcard_cards(self, category_id: str) -> list[dict[str, Any]]:
         """Every denomination of one gift-card category, with its live stock.

@@ -57,6 +57,12 @@ _OUR_SERVER_KEYS = ("server", "server_id", "zone", "zone_id")
 _THEIR_SERVER_KEYS = frozenset({"server", "server_id", "zone", "zone_id", "region"})
 
 
+#: Identifier fields that do not end in ``_id``. FazerCards declares ``uid``
+#: on eleven live-chat categories and ``sid`` on StarMaker; until the 2026-10
+#: import mapped them, nothing could place either.
+_THEIR_BARE_IDENTIFIER_KEYS = frozenset({"account", "uid", "sid"})
+
+
 def _role_of(their_key: str) -> str:
     """``"server"``, ``"identifier"`` or ``""`` for a field we cannot place.
 
@@ -67,7 +73,7 @@ def _role_of(their_key: str) -> str:
     key = their_key.strip().lower()
     if key in _THEIR_SERVER_KEYS:
         return "server"
-    if key.endswith("_id") or key == "account":
+    if key.endswith("_id") or key in _THEIR_BARE_IDENTIFIER_KEYS:
         return "identifier"
     return ""
 

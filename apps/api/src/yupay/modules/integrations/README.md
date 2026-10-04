@@ -67,9 +67,12 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   when `service.py` passed 900 lines. The per-supplier raw-price lookups it
   dispatches into live in `cost_lookup.py` in turn, split out of
   `cost_refresh.py` when that module itself passed 495 lines — G2B reads the
-  catalog cache or calls `games_catalogue` live; NOVA calls
-  `GET /topups/offers` per category, cached per refresh run so a 19-SKU
-  brand makes one call, not nineteen; a NOVA Steam mapping is skipped, it
+  catalog cache or calls `games_catalogue` live, once per game per refresh
+  run; NOVA and FazerCards call `GET /topups/offers` per category, cached per
+  refresh run (each vendor in its own map — they share category ids) so a
+  19-SKU brand makes one call, not nineteen. FazerCards' walk is paced and
+  waits out one 429 (`PanelClient.get_offers_paced`), sized for the ~260
+  categories the 2026-10 bulk import maps; a NOVA Steam mapping is skipped, it
   has no catalogue price to look up; a NOVA **gift-card** mapping reads the
   cache instead, because its price lives in the other catalogue and the
   top-up endpoint would 404 on a perfectly real category id; G-Engine reads
