@@ -10,11 +10,13 @@ import type { P2PDeposit, P2PDepositsPage } from "@/lib/types";
 import { useCabinet } from "@/components/CabinetContext";
 import { PageHeading } from "@/components/PageHeading";
 import { TopUpDetails } from "@/components/TopUpDetails";
+import { type TopUpMethod, TopUpMethods } from "@/components/TopUpMethods";
 import { api, ApiError } from "@/lib/api";
 import {
   acceptPoll,
   errorKey,
   formatRate,
+  formatSom,
   phase,
   pollDeadline,
   secondsLeft,
@@ -30,6 +32,7 @@ export default function TopUp() {
   const { locale } = useParams<{ locale: string }>();
   const { p2p, refreshProfile } = useCabinet();
   const [deposit, setDeposit] = useState<P2PDeposit | null>(null);
+  const [method, setMethod] = useState<TopUpMethod | null>(null);
   const [amount, setAmount] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -176,6 +179,7 @@ export default function TopUp() {
     epoch.current += 1;
     intentKey.current = null;
     setDeposit(null);
+    setMethod(null);
     setAmount("");
     setError(null);
     setWaiting(false);
@@ -210,47 +214,65 @@ export default function TopUp() {
           {supportLink}
         </section>
       )}
-      {enabled && !disabled && (current === "amount" || current === "cancelled") && (
-        <form
-          className="border-border bg-card mt-5 max-w-md rounded-xl border p-6"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void submit();
-          }}
-        >
-          <label className="text-tx-dim text-xs" htmlFor="topup-amount">
-            {t("amountLabel")}
-          </label>
-          <input
-            id="topup-amount"
-            inputMode="numeric"
-            autoComplete="off"
-            value={amount}
-            onChange={(event) => {
-              setAmount(event.target.value.replace(/\D/g, ""));
-              intentKey.current = null;
+      {enabled &&
+        !disabled &&
+        (current === "amount" || current === "cancelled") &&
+        method === null && <TopUpMethods onPick={setMethod} />}
+      {enabled &&
+        !disabled &&
+        (current === "amount" || current === "cancelled") &&
+        method !== null && (
+          <form
+            className="border-border bg-card mt-5 max-w-md rounded-xl border p-6"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void submit();
             }}
-            className="border-border bg-card-2 rounded-btn mt-1.5 block w-full border px-3 py-2 font-mono text-lg"
-          />
-          {preview !== null && (
-            <p className="text-tx-mute mt-2 text-sm">
-              {t("usdPreview", { usd: preview, rate: formatRate(p2p.fx_rate ?? "", locale) })}
-            </p>
-          )}
-          {error !== null && (
-            <p role="alert" className="mt-3 text-sm text-red-500">
-              {error}
-            </p>
-          )}
-          <button
-            type="submit"
-            disabled={busy || !(value > 0)}
-            className="bg-primary text-primary-foreground rounded-btn mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
-            {t("continue")}
-          </button>
-        </form>
-      )}
+            <button
+              type="button"
+              onClick={() => {
+                setMethod(null);
+                setError(null);
+              }}
+              className="text-tx-mute mb-3 text-sm underline-offset-4 hover:underline"
+            >
+              ← {t("changeMethod")}
+            </button>
+            <label className="text-tx-dim block text-xs" htmlFor="topup-amount">
+              {t("amountLabel")}
+            </label>
+            <input
+              id="topup-amount"
+              inputMode="numeric"
+              autoComplete="off"
+              value={amount === "" ? "" : formatSom(Number(amount), locale)}
+              onChange={(event) => {
+                // Digits only, grouped on display («50 000»); state keeps bare digits.
+                setAmount(event.target.value.replace(/\D/g, "").slice(0, 10));
+                intentKey.current = null;
+              }}
+              className="border-border bg-card-2 rounded-btn mt-1.5 block w-full border px-3 py-2 font-mono text-lg"
+            />
+            {preview !== null && (
+              <p className="text-tx-mute mt-2 text-sm">
+                {t("usdPreview", { usd: preview, rate: formatRate(p2p.fx_rate ?? "", locale) })}
+              </p>
+            )}
+            {error !== null && (
+              <p role="alert" className="mt-3 text-sm text-red-500">
+                {error}
+              </p>
+            )}
+            <button
+              type="submit"
+              disabled={busy || !(value > 0)}
+              className="bg-primary text-primary-foreground rounded-btn mt-4 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              {t("continue")}
+            </button>
+          </form>
+        )}
       {current === "details" && deposit !== null && (
         <TopUpDetails
           deposit={deposit}

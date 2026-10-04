@@ -596,6 +596,10 @@
     "copy": "Copy",
     "copied": "Copied",
     "unavailable": "Top-up is not available right now",
-    "emptyBody": "The catalog and prices are open. Top up your deposit to place orders."
+    "emptyBody": "The catalog and prices are open. Top up your deposit to place orders.",
+    "methodTitle": "Payment method",
+    "methodCard": "Uzcard / Humo",
+    "methodCardHint": "Card transfer",
+    "changeMethod": "Change method"
   }
 }

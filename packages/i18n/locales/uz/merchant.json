@@ -596,6 +596,10 @@
     "copy": "Nusxa olish",
     "copied": "Nusxa olindi",
     "unavailable": "To‘ldirish hozir mavjud emas",
-    "emptyBody": "Katalog va narxlar ochiq. Buyurtma berish uchun depozitni to‘ldiring."
+    "emptyBody": "Katalog va narxlar ochiq. Buyurtma berish uchun depozitni to‘ldiring.",
+    "methodTitle": "To‘ldirish usuli",
+    "methodCard": "Uzcard / Humo",
+    "methodCardHint": "Kartadan o‘tkazma",
+    "changeMethod": "Boshqa usul"
   }
 }
