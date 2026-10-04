@@ -67,33 +67,37 @@ async def _matched_today(db: AsyncSession, card: P2PCard, now_: datetime) -> int
     return int(total or 0)
 
 
-async def _pick_card(db: AsyncSession, amount: int, now_: datetime) -> P2PCard:
+async def _pick_card(db: AsyncSession, amount: int, now_: datetime) -> tuple[P2PCard, int]:
+    """The card with the most daily room, and how far its amount may be bumped."""
     cards = (
         (
             await db.execute(
                 select(P2PCard).where(
                     P2PCard.active.is_(True),
                     P2PCard.min_amount_uzs <= amount,
-                    P2PCard.max_amount_uzs >= amount + MAX_BUMP,
+                    P2PCard.max_amount_uzs >= amount,
                 )
             )
         )
         .scalars()
         .all()
     )
-    best: tuple[int, P2PCard] | None = None
+    best: tuple[int, P2PCard, int] | None = None
     for card in cards:
         room: int | None = None
         if card.daily_limit_uzs is not None:
             room = card.daily_limit_uzs - await _matched_today(db, card, now_)
-            if room < amount + MAX_BUMP:
+            if room < amount:
                 continue
+        cap = min(MAX_BUMP, card.max_amount_uzs - amount)
+        if room is not None:
+            cap = min(cap, room - amount)
         score = room if room is not None else 10**18
         if best is None or score > best[0]:
-            best = (score, card)
+            best = (score, card, cap)
     if best is None:
         raise ConflictError("no card can take this amount", code="p2p_no_card")
-    return best[1]
+    return best[1], best[2]
 
 
 async def _snapshot_id(db: AsyncSession, rate: Decimal) -> str | None:
@@ -115,6 +119,74 @@ def _violated_open_amount(exc: IntegrityError) -> bool:
     if name:
         return str(name) == _OPEN_AMOUNT_INDEX
     return _OPEN_AMOUNT_INDEX in str(exc)
+
+
+async def _expire_stale(db: AsyncSession, r: P2PReservation, now_: datetime) -> None:
+    """Expire ``r`` only if it is still pending in the database.
+
+    A guarded UPDATE, not an ORM flush: a payment may have locked the row and
+    marked it ``paid`` after we loaded it, and a flush by primary key would
+    overwrite that. Callers that hold the row lock may use ``expire_in_place``.
+    """
+    await db.execute(
+        update(P2PReservation)
+        .where(
+            P2PReservation.id == r.id,
+            P2PReservation.status == "pending",
+            P2PReservation.expires_at <= now_,
+        )
+        .values(
+            status="expired",
+            closed_at=P2PReservation.expires_at,
+            quarantine_until=P2PReservation.expires_at + QUARANTINE,
+        )
+    )
+    await db.refresh(r)
+
+
+async def _after_race(
+    db: AsyncSession, merchant_id: str, idempotency_key: str | None
+) -> P2PReservation | None:
+    """Resolve a one-pending / idempotency collision into the winner's row or a 409."""
+    if idempotency_key is not None:
+        same = await db.scalar(
+            select(P2PReservation).where(
+                P2PReservation.merchant_id == merchant_id,
+                P2PReservation.idempotency_key == idempotency_key,
+            )
+        )
+        if same is not None:
+            return same
+    pending = await db.scalar(
+        select(P2PReservation).where(
+            P2PReservation.merchant_id == merchant_id, P2PReservation.status == "pending"
+        )
+    )
+    if pending is not None:
+        raise ConflictError(
+            "a top-up is already waiting", code="p2p_reservation_open", number=pending.number
+        )
+    return None
+
+
+async def _guard_open(
+    db: AsyncSession, merchant_id: str, idempotency_key: str | None, now_: datetime
+) -> P2PReservation | None:
+    """Refuse a second pending reservation; hand back an idempotent twin instead."""
+    open_one = await db.scalar(
+        select(P2PReservation).where(
+            P2PReservation.merchant_id == merchant_id, P2PReservation.status == "pending"
+        )
+    )
+    if open_one is not None and open_one.expires_at <= now_:
+        await _expire_stale(db, open_one, now_)
+    if open_one is None or open_one.status != "pending":
+        return None
+    if idempotency_key is not None and open_one.idempotency_key == idempotency_key:
+        return open_one  # a concurrent twin committed after the caller's lookup
+    raise ConflictError(
+        "a top-up is already waiting", code="p2p_reservation_open", number=open_one.number
+    )
 
 
 async def reserve(
@@ -140,28 +212,18 @@ async def reserve(
             return prior
     if not admits(await load_settings(db), merchant_id):
         raise NotFoundError("p2p top-up is not enabled", code="p2p_disabled")
-    open_one = await db.scalar(
-        select(P2PReservation).where(
-            P2PReservation.merchant_id == merchant_id, P2PReservation.status == "pending"
-        )
-    )
     now_ = now()
-    if open_one is not None and open_one.expires_at <= now_:
-        expire_in_place(open_one, now_)
-        await db.flush()
-        open_one = None
-    if open_one is not None:
-        raise ConflictError(
-            "a top-up is already waiting", code="p2p_reservation_open", number=open_one.number
-        )
-    card = await _pick_card(db, amount_uzs, now_)
+    twin = await _guard_open(db, merchant_id, idempotency_key, now_)
+    if twin is not None:
+        return twin
+    card, cap = await _pick_card(db, amount_uzs, now_)
     try:
         rate = await guarded_usd_rate(db, quote="UZS")
     except RateRejected as exc:
         raise UpstreamUnavailableError("rate unavailable", code="fx_unavailable") from exc
     snapshot_id = await _snapshot_id(db, rate)
 
-    for bump in range(MAX_BUMP + 1):
+    for bump in range(cap + 1):
         amount = amount_uzs + bump
         row = P2PReservation(
             id=new_id(),
@@ -186,7 +248,10 @@ async def reserve(
         except IntegrityError as exc:
             if _violated_open_amount(exc):
                 continue
-            raise  # one_pending / idem races surface; the route maps them
+            raced = await _after_race(db, merchant_id, idempotency_key)
+            if raced is None:
+                raise
+            return raced
         log.info("p2p.reserved", number=row.number, amount_uzs=amount, card_last4=card.pan_last4)
         return row
     raise UpstreamUnavailableError("every nearby amount is held", code="p2p_amount_busy")
@@ -225,8 +290,7 @@ async def read(db: AsyncSession, *, merchant_id: str, number: str) -> P2PReserva
     r = await _own(db, merchant_id, number, lock=False)
     now_ = now()
     if r.status == "pending" and r.expires_at <= now_:
-        expire_in_place(r, now_)
-        await db.flush()
+        await _expire_stale(db, r, now_)
     return r
 
 
@@ -234,6 +298,7 @@ async def list_for_merchant(
     db: AsyncSession, *, merchant_id: str, limit: int, cursor: str | None
 ) -> tuple[list[P2PReservation], str | None]:
     """Newest first, keyset on ``(created_at, id)`` (merchants.transactions shape)."""
+    limit = max(1, limit)
     stmt = select(P2PReservation).where(P2PReservation.merchant_id == merchant_id)
     if cursor:
         at, rid = transactions.decode_cursor(cursor)
