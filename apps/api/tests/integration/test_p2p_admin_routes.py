@@ -1,7 +1,5 @@
 """Admin API for P2P cards, settings, the incoming journal and reservations."""
 
-# ruff: noqa: F811
-
 from __future__ import annotations
 
 import json
@@ -19,11 +17,8 @@ from yupay.modules.p2p import intake, reservations
 from yupay.modules.p2p.models import P2PIncoming
 from yupay.modules.p2p.settings import load_settings
 
+from tests.integration.cabinet_signup import sign_init_data as _sign_init_data
 from tests.integration.p2p_fixtures import _card, _fixed_rate, _merchant, _open  # noqa: F401
-from tests.integration.test_merchant_cabinet_sections import (  # noqa: F401
-    _sign_init_data,
-    admin_headers,
-)
 from tests.integration.test_p2p_intake import HUMO_ID, _bank, _credit, _update
 
 pytestmark = pytest.mark.asyncio
@@ -346,6 +341,7 @@ async def test_settings_and_card_saves_log_who_and_which_fields_only(
 ) -> None:
     rec = _Log()
     monkeypatch.setattr("yupay.modules.p2p.admin_routes.log", rec)
+    monkeypatch.setattr("yupay.modules.p2p.admin_cards.log", rec)  # card saves moved there
     await integration_client.patch(
         f"{A}/settings",
         headers={**admin_headers, "Idempotency-Key": _key()},
