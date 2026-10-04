@@ -228,12 +228,14 @@ async def reserve(
     twin = await _guard_open(db, merchant_id, idempotency_key, amount_uzs, now_)
     if twin is not None:
         return twin
-    cards = await eligible_cards(db, amount_uzs, now_)
+    # The rate first: it may call an FX provider, and must not run inside the
+    # per-card lock window that eligible_cards opens (card_choice._lock_limited).
     try:
         rate = await guarded_usd_rate(db, quote="UZS")
     except RateRejected as exc:
         raise UpstreamUnavailableError("rate unavailable", code="fx_unavailable") from exc
     snapshot_id = await _snapshot_id(db, rate)
+    cards = await eligible_cards(db, amount_uzs, now_)
 
     for card, cap in cards:
         for bump in range(cap + 1):

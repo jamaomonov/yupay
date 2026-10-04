@@ -166,14 +166,14 @@ The bot token and webhook secret are **not** stored here. They live in the envir
 1. **Gate:** `p2p_settings.mode` admits this merchant, else 404.
 2. **One active:** the merchant has no `pending` reservation, else 409
    `p2p_reservation_open`, with the open one's number.
-3. **Card:** choose an active card where `min ≤ amount ≤ max` and today's paid total plus
+3. **Rate:** `guarded_usd_rate`, snapshot it, `amount_usd = amount_uzs / rate`, rounded **down** to cents (`ROUND_DOWN`). Rate unavailable: 502 (`UpstreamUnavailableError`; no 503 class exists), the same behaviour as checkout. Fetched **before** the card step, because it may call an FX provider and must not run while card locks are held; so `fx_unavailable` wins over `p2p_no_card`.
+4. **Card:** choose an active card where `min ≤ amount ≤ max` and today's paid total plus
    its open (pending) holds plus the amount stays within the daily limit. A card with a
    daily limit is locked (`pg_advisory_xact_lock` on its id, until commit) before that sum is
    read, so concurrent reservations cannot together pass the limit; cards without one take
    no lock. Several cards: the one with the most remaining daily room first; if all its
    bumped amounts are held, the next. None: 409 `p2p_no_card` ("try a different amount /
    later").
-4. **Rate:** `guarded_usd_rate`, snapshot it, `amount_usd = amount_uzs / rate`, rounded **down** to cents (`ROUND_DOWN`). Rate unavailable: 502 (`UpstreamUnavailableError`; no 503 class exists), the same behaviour as checkout.
 5. **Exact amount:** insert with the amount; on unique violation try +1 … +99.
 6. **Response:** number, exact amount, full card number, holder name, `expires_at`,
    `amount_usd`, rate.

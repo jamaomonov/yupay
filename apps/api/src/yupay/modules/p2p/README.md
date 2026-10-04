@@ -68,6 +68,10 @@ Reservation rules:
   request for that card waits, then reads the room including the first hold. Every limited
   candidate card is locked up front in key order, so two requests can never deadlock. Cards
   **without** a limit take no lock; the open-amount index is all they need.
+- So while any limited card is active, reservations that can use it queue briefly behind each
+  other: the lock covers only two short reads (cards, daily room) and the insert. The FX rate is
+  fetched **before** the lock, since it may call a provider; `fx_unavailable` therefore wins over
+  `p2p_no_card`.
 - **Card order**: eligible cards are tried most daily room first (no limit ranks first, ties keep
   the oldest card). If every bumped amount is held on one card, the next card is tried; only when
   all are exhausted is it 502 `p2p_amount_busy`.

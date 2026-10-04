@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Sequence
 from datetime import datetime, timedelta
 from decimal import Decimal
 
@@ -12,12 +13,14 @@ from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from yupay.core.clock import now
 from yupay.core.errors import AppError
+from yupay.modules.p2p import card_choice
 from yupay.modules.p2p import reservations as svc
 from yupay.modules.p2p.card_choice import eligible_cards
 from yupay.modules.p2p.models import P2PCard, P2PReservation
 from yupay.modules.pricing.fx_guard import RateRejected
 
 from tests.integration.p2p_fixtures import (  # noqa: F401  (_fixed_rate is autouse)
+    RATE,
     _card,
     _code,
     _fixed_rate,
@@ -219,3 +222,27 @@ async def test_concurrent_holds_cannot_together_pass_the_daily_limit(
 
     got = await asyncio.gather(one(a), one(b))
     assert sorted(got, key=str) == [20_000, "p2p_no_card"]
+
+
+async def test_the_rate_is_fetched_before_any_card_is_locked(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The FX call may go to a provider: it must not run inside the card-lock window."""
+    await _card(db_session, daily_limit_uzs=100_000)
+    m = await _merchant(db_session)
+    await _open(db_session, [m])
+    events: list[str] = []
+    real_lock = card_choice._lock_limited
+
+    async def _lock(db: AsyncSession, cards: Sequence[P2PCard]) -> None:
+        events.append("lock")
+        await real_lock(db, cards)
+
+    async def _rate(db: AsyncSession, *, quote: str, override_cache: object = None) -> Decimal:
+        events.append("rate")
+        return RATE
+
+    monkeypatch.setattr(card_choice, "_lock_limited", _lock)
+    monkeypatch.setattr(svc, "guarded_usd_rate", _rate)
+    await svc.reserve(db_session, merchant_id=m, amount_uzs=20_000, idempotency_key=None)
+    assert events == ["rate", "lock"]

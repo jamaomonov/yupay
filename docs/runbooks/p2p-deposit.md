@@ -137,6 +137,18 @@ flight would land `unmatched`.
 Settings: `off` stops new reservations (open ones live out their 5 minutes), `allowlist`
 admits listed merchants, `all` admits everyone.
 
+## 9. Sweep failing silently
+
+The 30 s sweep (scheduler job `p2p_sweep`) raises **no alert** when it fails: it logs
+`p2p_sweep.failed` with the exception class and retries on the next tick. If it keeps failing,
+overdue holds are still treated as expired by the webhook and the cabinet, but quarantined
+amounts **never release**, so cards gradually run out of free amounts (`p2p_amount_busy`).
+
+1. Loki: `{container=~"yupay-prod-scheduler.*"} |= "p2p_sweep.failed"`. One line now and then
+   is a blip; one every 30 s is the failure. The `error` field names the class.
+2. Check the scheduler container is up and not restart-looping (`make logs service=scheduler`,
+   `docker ps`); a stopped scheduler logs nothing at all, so no lines can also mean no sweep.
+
 ## Other alerts
 
 - `p2p_unparsed`: HUMO changed the notification format. Nothing is credited. The alert carries
