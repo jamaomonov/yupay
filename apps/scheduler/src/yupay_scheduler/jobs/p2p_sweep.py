@@ -89,4 +89,4 @@ def register(scheduler: AsyncIOScheduler) -> None:
     log.info("p2p_sweep.registered", interval_seconds=_INTERVAL_SECONDS)
 
 
-__all__ = ["SILENCE", "now", "register", "run_p2p_sweep", "send_admin_alert", "silence_alert_due"]
+__all__ = ["SILENCE", "register", "run_p2p_sweep", "silence_alert_due"]
