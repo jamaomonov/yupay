@@ -11523,6 +11523,173 @@
         "title": "OwnReviewOut",
         "type": "object"
       },
+      "P2PCardDetailsOut": {
+        "description": "Where to send the transfer. Present only while the top-up is pending.",
+        "properties": {
+          "holder_name": {
+            "title": "Holder Name",
+            "type": "string"
+          },
+          "network": {
+            "title": "Network",
+            "type": "string"
+          },
+          "pan": {
+            "description": "Full card number grouped in fours",
+            "title": "Pan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "pan",
+          "holder_name",
+          "network"
+        ],
+        "title": "P2PCardDetailsOut",
+        "type": "object"
+      },
+      "P2PDepositIn": {
+        "description": "Request to reserve an amount, in whole so\u02bbm.",
+        "properties": {
+          "amount_uzs": {
+            "exclusiveMinimum": 0.0,
+            "maximum": 1000000000.0,
+            "title": "Amount Uzs",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "amount_uzs"
+        ],
+        "title": "P2PDepositIn",
+        "type": "object"
+      },
+      "P2PDepositOut": {
+        "description": "One top-up reservation.",
+        "properties": {
+          "amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "amount_uzs": {
+            "title": "Amount Uzs",
+            "type": "integer"
+          },
+          "card": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/P2PCardDetailsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "fx_rate": {
+            "title": "Fx Rate",
+            "type": "string"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "status",
+          "amount_uzs",
+          "amount_usd",
+          "fx_rate",
+          "created_at",
+          "expires_at",
+          "closed_at",
+          "card"
+        ],
+        "title": "P2PDepositOut",
+        "type": "object"
+      },
+      "P2PDepositsOut": {
+        "description": "A page of top-ups, newest first; items never carry the card.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/P2PDepositOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "P2PDepositsOut",
+        "type": "object"
+      },
+      "P2PStatusOut": {
+        "description": "Whether the cabinet should offer top-up, and the rate to preview it at.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "fx_rate": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Rate"
+          }
+        },
+        "required": [
+          "enabled",
+          "fx_rate"
+        ],
+        "title": "P2PStatusOut",
+        "type": "object"
+      },
       "PaymentAdminListOut": {
         "properties": {
           "items": {
@@ -39052,6 +39219,340 @@
           }
         },
         "summary": "One order, by the id it was placed with",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/p2p/deposits": {
+      "get": {
+        "description": "Newest first, keyset-paged; items never carry the card.",
+        "operationId": "list_deposits_merchant_cabinet_p2p_deposits_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PDepositsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "My top-ups",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      },
+      "post": {
+        "description": "Hold an exact amount for five minutes; races resolve inside the service.",
+        "operationId": "create_deposit_merchant_cabinet_p2p_deposits_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P2PDepositIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PDepositOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reserve an exact amount to transfer",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/p2p/deposits/{number}": {
+      "get": {
+        "description": "Poll one top-up; a stale pending one is reported as expired.",
+        "operationId": "read_deposit_merchant_cabinet_p2p_deposits__number__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PDepositOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One top-up",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/p2p/deposits/{number}/cancel": {
+      "post": {
+        "description": "Cancel a pending top-up.\n\nThe ``Idempotency-Key`` header is accepted but unused: the operation is\nidempotent by state, so cancelling a cancelled top-up returns it unchanged.",
+        "operationId": "cancel_deposit_merchant_cabinet_p2p_deposits__number__cancel_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "number",
+            "required": true,
+            "schema": {
+              "title": "Number",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PDepositOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Cancel a waiting top-up",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
+    "/merchant/cabinet/p2p/status": {
+      "get": {
+        "description": "The switch for showing \"Top up\", plus the guarded USD\u2192UZS rate for the preview.",
+        "operationId": "p2p_status_merchant_cabinet_p2p_status_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PStatusOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Whether P2P top-up is on for me",
         "tags": [
           "merchant-cabinet"
         ]

@@ -49,6 +49,7 @@ from yupay.modules.merchants.cabinet_webhook_routes import (
 # close a cycle back through the route stack.
 from yupay.modules.merchants.machine_openapi import router as merchant_openapi_router
 from yupay.modules.merchants.machine_routes import router as merchant_machine_router
+from yupay.modules.p2p.cabinet_routes import router as p2p_cabinet_router
 
 #: Latency histogram bounds, in seconds. Dense below 250ms because most
 #: traffic is fast (a catalog read is tens of milliseconds), and reaching 10s
@@ -390,6 +391,7 @@ def create_app() -> FastAPI:
     app.include_router(merchant_cabinet_auth_router)
     app.include_router(merchant_cabinet_router)
     app.include_router(merchant_cabinet_webhook_router)
+    app.include_router(p2p_cabinet_router)
 
     # Explicit buckets. The library's per-handler default is (0.1, 0.5, 1),
     # which makes `histogram_quantile` unable to return anything above 1.0 —
