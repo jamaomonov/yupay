@@ -370,7 +370,7 @@ async def list_brands(
             lazyload(Brand.products),
             lazyload(Brand.faqs),
         )
-        .where(Brand.active.is_(True), Category.active.is_(True))
+        .where(Brand.active.is_(True), Brand.visible_retail.is_(True), Category.active.is_(True))
         .order_by(Brand.sort_order, Brand.slug)
     )
     if category_slug is not None:
@@ -403,7 +403,12 @@ async def get_brand_by_slug(
             .selectinload(Product.skus)
             .selectinload(Sku.price_overrides),
         )
-        .where(Brand.slug == slug, Brand.active.is_(True), Category.active.is_(True))
+        .where(
+            Brand.slug == slug,
+            Brand.active.is_(True),
+            Brand.visible_retail.is_(True),
+            Category.active.is_(True),
+        )
     )
     brand = (await db.execute(stmt)).scalar_one_or_none()
     if brand is None:
@@ -488,7 +493,12 @@ async def list_products(
             selectinload(Product.skus).selectinload(Sku.price_overrides),
             selectinload(Product.translations),
         )
-        .where(Product.active.is_(True), Brand.active.is_(True), Category.active.is_(True))
+        .where(
+            Product.active.is_(True),
+            Brand.active.is_(True),
+            Brand.visible_retail.is_(True),
+            Category.active.is_(True),
+        )
         .order_by(Product.sort_order, Product.slug)
     )
     if brand_slug is not None:
@@ -551,6 +561,7 @@ async def get_product_by_slug(
             Product.slug == slug,
             Product.active.is_(True),
             Brand.active.is_(True),
+            Brand.visible_retail.is_(True),
             Category.active.is_(True),
         )
     )
@@ -636,6 +647,7 @@ async def get_sku_by_id(
             Sku.active.is_(True),
             Product.active.is_(True),
             Brand.active.is_(True),
+            Brand.visible_retail.is_(True),
             Category.active.is_(True),
         )
     )

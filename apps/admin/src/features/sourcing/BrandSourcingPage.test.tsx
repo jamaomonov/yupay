@@ -44,6 +44,7 @@ const BRANDS = [
     active: true,
     maintenance: false,
     visible_b2b: true,
+    visible_retail: true,
     translations: [{ locale: "ru", name: "Mobile Legends" }],
   },
 ];

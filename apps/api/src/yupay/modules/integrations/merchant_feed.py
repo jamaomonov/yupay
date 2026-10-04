@@ -154,7 +154,12 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
             select(Sku, Product, Brand)
             .join(Product, Product.id == Sku.product_id)
             .join(Brand, Brand.id == Product.brand_id)
-            .where(Sku.active.is_(True), Product.active.is_(True), Brand.active.is_(True))
+            .where(
+                Sku.active.is_(True),
+                Product.active.is_(True),
+                Brand.active.is_(True),
+                Brand.visible_retail.is_(True),
+            )
             .options(selectinload(Sku.price_overrides))
             .order_by(Sku.sku_code)
         )

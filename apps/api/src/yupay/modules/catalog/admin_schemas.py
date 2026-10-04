@@ -225,6 +225,8 @@ class BrandCreate(BaseModel):
     sort_order: int = 0
     active: bool = True
     maintenance: bool = False
+    # False hides the brand from the storefront while resellers keep it.
+    visible_retail: bool = True
     translations: list[TranslationIn] = Field(min_length=1)
 
     # SSRF guard: Next's image optimizer fetches these server-side (see
@@ -249,6 +251,7 @@ class BrandUpdate(BaseModel):
     sort_order: int | None = None
     active: bool | None = None
     maintenance: bool | None = None
+    visible_retail: bool | None = None
     translations: list[TranslationIn] | None = None
 
     # See BrandCreate — "" is the established "clear this field" convention
@@ -544,6 +547,9 @@ class AdminBrandOut(BaseModel):
     # — admin-only, never on the public BrandOut. Effective B2B visibility is
     # ``brand.visible_b2b AND sku.visible_b2b``.
     visible_b2b: bool
+    # Storefront visibility under ``active``; false = reseller-only when
+    # ``visible_b2b`` is on.
+    visible_retail: bool
     translations: list[TranslationIn]
 
 

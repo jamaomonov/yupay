@@ -28,6 +28,7 @@ from yupay.modules.orders.service import (
     list_orders_for_actor,
     mark_merchant_order_paid,
     sku_is_buyable,
+    sku_is_retail_visible,
 )
 
 __all__ = [
@@ -59,4 +60,5 @@ __all__ = [
     "mark_merchant_order_paid",
     "router",
     "sku_is_buyable",
+    "sku_is_retail_visible",
 ]

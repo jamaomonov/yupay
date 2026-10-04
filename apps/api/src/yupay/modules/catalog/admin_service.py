@@ -154,6 +154,7 @@ async def create_brand(db: AsyncSession, body: BrandCreate) -> Brand:
         sort_order=body.sort_order,
         active=body.active,
         maintenance=body.maintenance,
+        visible_retail=body.visible_retail,
         translations=[
             BrandTranslation(
                 locale=t.locale,
@@ -189,6 +190,7 @@ async def update_brand(db: AsyncSession, brand_id: str, body: BrandUpdate) -> Br
         "sort_order",
         "active",
         "maintenance",
+        "visible_retail",
     ):
         value = getattr(body, attr)
         if value is not None:

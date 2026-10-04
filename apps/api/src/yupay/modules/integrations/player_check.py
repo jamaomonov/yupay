@@ -445,7 +445,11 @@ async def check_player_for_brand(
     """
     row = (
         await session.execute(
-            select(Brand.id).where(Brand.slug == brand_slug, Brand.active.is_(True))
+            select(Brand.id).where(
+                Brand.slug == brand_slug,
+                Brand.active.is_(True),
+                Brand.visible_retail.is_(True),
+            )
         )
     ).one_or_none()
     if row is None:

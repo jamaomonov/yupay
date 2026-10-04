@@ -51,6 +51,9 @@ export interface Brand {
    *  the plain brand PATCH ignores it. Effective B2B visibility is
    *  `brand.visible_b2b AND sku.visible_b2b`. */
   visible_b2b: boolean;
+  /** Storefront visibility under `active`. False with `visible_b2b` on is a
+   *  reseller-only brand. */
+  visible_retail: boolean;
   translations: Translation[];
 }
 

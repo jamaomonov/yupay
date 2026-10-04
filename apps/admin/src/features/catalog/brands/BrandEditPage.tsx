@@ -41,6 +41,7 @@ const brandSchema = z.object({
   sort_order: z.coerce.number().int().default(0),
   active: z.boolean().default(true),
   maintenance: z.boolean().default(false),
+  visible_retail: z.boolean().default(true),
   translations: z.array(translationSchema).min(1),
 });
 
@@ -55,6 +56,7 @@ const EMPTY: FormValues = {
   sort_order: 0,
   active: true,
   maintenance: false,
+  visible_retail: true,
   translations: [
     {
       locale: "ru",
@@ -145,6 +147,7 @@ export function BrandEditPage() {
       sort_order: existing.sort_order,
       active: existing.active,
       maintenance: existing.maintenance,
+      visible_retail: existing.visible_retail,
       translations: LOCALES.map((locale) => {
         const t = existing.translations.find((x) => x.locale === locale);
         return {
@@ -284,6 +287,16 @@ export function BrandEditPage() {
               <span className="mt-0.5 block text-xs text-[var(--text-secondary)]">
                 Бренд остаётся в каталоге, но в мини-аппе затемняется, помечается шестерёнкой и
                 становится некликабельным — покупка временно недоступна.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" {...form.register("visible_retail")} className="mt-0.5" />
+            <span>
+              Показывать клиентам
+              <span className="mt-0.5 block text-xs text-[var(--text-secondary)]">
+                Выключено — бренда нет на сайте и в мини-аппе, купить его нельзя. Реселлерам он
+                доступен, если включён в B2B ниже.
               </span>
             </span>
           </label>

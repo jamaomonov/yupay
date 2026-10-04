@@ -204,6 +204,10 @@
           "visible_b2b": {
             "title": "Visible B2B",
             "type": "boolean"
+          },
+          "visible_retail": {
+            "title": "Visible Retail",
+            "type": "boolean"
           }
         },
         "required": [
@@ -217,6 +221,7 @@
           "active",
           "maintenance",
           "visible_b2b",
+          "visible_retail",
           "translations"
         ],
         "title": "AdminBrandOut",
@@ -2870,6 +2875,11 @@
             "minItems": 1,
             "title": "Translations",
             "type": "array"
+          },
+          "visible_retail": {
+            "default": true,
+            "title": "Visible Retail",
+            "type": "boolean"
           }
         },
         "required": [
@@ -3328,6 +3338,17 @@
               }
             ],
             "title": "Translations"
+          },
+          "visible_retail": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Visible Retail"
           }
         },
         "title": "BrandUpdate",

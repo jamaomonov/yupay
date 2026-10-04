@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, expect, it, vi } from "vitest";
 
 import { BrandEditPage } from "./BrandEditPage";
 
-import { apiGet } from "@/lib/api";
+import { apiGet, apiPatch } from "@/lib/api";
 
 vi.mock("@/lib/api", () => ({
   apiGet: vi.fn(),
@@ -18,6 +18,7 @@ vi.mock("@/lib/api", () => ({
 }));
 
 const mockedApiGet = vi.mocked(apiGet);
+const SAVE = "Сохранить";
 
 const CATEGORY = {
   id: "cat-1",
@@ -39,6 +40,7 @@ const BRAND = {
   active: true,
   maintenance: false,
   visible_b2b: false,
+  visible_retail: true,
   translations: [{ locale: "ru", name: "Roblox" }],
 };
 
@@ -76,4 +78,40 @@ it("hides the B2B card while the brand is not saved yet", async () => {
   expect(await screen.findByPlaceholderText("pubg-mobile")).toBeInTheDocument();
   // …but there is no brand row to patch B2B flags onto yet.
   expect(screen.queryByLabelText(/Бренд виден мерчантам/)).not.toBeInTheDocument();
+});
+
+it("loads a reseller-only brand with «Показывать клиентам» off and saves the flag", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/categories")) return Promise.resolve([CATEGORY]);
+    return Promise.resolve([
+      {
+        ...BRAND,
+        visible_b2b: true,
+        visible_retail: false,
+        // Every locale named, so the form validates and the save goes out.
+        translations: ["ru", "en", "uz"].map((locale) => ({ locale, name: "Roblox" })),
+      },
+    ]);
+  });
+  vi.mocked(apiPatch).mockResolvedValue(BRAND);
+  renderAt("/brands/brand-1");
+
+  const box = await screen.findByLabelText(/Показывать клиентам/);
+  await waitFor(() => {
+    expect(box).not.toBeChecked();
+  });
+  fireEvent.click(box);
+  fireEvent.click(screen.getByRole("button", { name: SAVE }));
+
+  await waitFor(() => {
+    expect(apiPatch).toHaveBeenCalled();
+  });
+  // The mock records the payload as `unknown`; this test only reads one field of it.
+  const body = vi.mocked(apiPatch).mock.calls[0]?.[1] as { visible_retail: boolean };
+  expect(body.visible_retail).toBe(true);
+});
+
+it("shows a new brand to customers by default", async () => {
+  renderAt("/brands/new");
+  expect(await screen.findByLabelText(/Показывать клиентам/)).toBeChecked();
 });

@@ -1,10 +1,10 @@
 """Integration tests for catalog B2B visibility flags (migration 0068).
 
 ``visible_b2b`` on :class:`Brand` and :class:`Sku`, plus ``b2b_markup_pct`` on
-:class:`Sku`, gate the merchant catalog independently of ``active`` (retail
-visibility) — see the comments on both models for the exact pairing rule:
-``active`` stays retail-only, ``visible_b2b`` is the merchant-catalog gate,
-and effective B2B visibility is ``brand.visible_b2b AND sku.visible_b2b``.
+:class:`Sku`, gate the merchant catalog — see the comments on both models for
+the exact pairing rule: ``active`` is the master switch for both channels
+(ADR-0095), ``visible_b2b`` is the merchant-catalog gate, and effective B2B
+visibility is ``brand.visible_b2b AND sku.visible_b2b``.
 """
 
 from __future__ import annotations

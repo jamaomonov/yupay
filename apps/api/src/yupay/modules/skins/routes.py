@@ -278,11 +278,12 @@ async def _buy_sku_id(db: AsyncSession) -> str | None:
     the admin's switch for skin purchases — off, or in maintenance, and the item pages
     stop offering the buy panel instead of letting a buyer reach «unknown or inactive
     SKU» at the pay button. The catalogue itself stays up (``cs2_skins_enabled``).
+    A brand hidden from the storefront (``visible_retail``) is off here too.
     """
     from sqlalchemy.orm import selectinload
 
     from yupay.modules.catalog.models import Product, Sku
-    from yupay.modules.orders.service import sku_is_buyable
+    from yupay.modules.orders.service import sku_is_buyable, sku_is_retail_visible
     from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
 
     sku = (
@@ -292,7 +293,9 @@ async def _buy_sku_id(db: AsyncSession) -> str | None:
             .where(Sku.sku_code == CS2_SKIN_SKU_CODE)
         )
     ).scalar_one_or_none()
-    return str(sku.id) if sku is not None and sku_is_buyable(sku) else None
+    if sku is None or not sku_is_buyable(sku) or not sku_is_retail_visible(sku):
+        return None
+    return str(sku.id)
 
 
 @router.get(

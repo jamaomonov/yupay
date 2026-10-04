@@ -66,6 +66,11 @@ policy and block legitimate below-retail corrections.
 is documented on both models; effective B2B visibility =
 `brand.visible_b2b AND sku.visible_b2b`.
 
+> **Amended by ADR-0095 (2026-10-04).** `active` turned out to gate merchant
+> orders too (`orders.sku_is_buyable`), so it never was retail-only: switching
+> it off hid a brand from resellers as well. `brands.visible_retail` now
+> exists as the storefront gate, and `active` is the master switch for both.
+
 ## Consequences
 
 - M2's order path debits the deposit through the same `post()` with the

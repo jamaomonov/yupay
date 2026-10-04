@@ -306,6 +306,19 @@ def sku_is_buyable(sku: Sku) -> bool:
     )
 
 
+def sku_is_retail_visible(sku: Sku) -> bool:
+    """Whether the storefront sells this SKU's brand (``brands.visible_retail``).
+
+    Separate from :func:`sku_is_buyable` because that rule is shared with the
+    merchant quote, and a reseller-only brand is buyable there. Refused here
+    for every non-merchant actor, so hiding the brand from the catalogue is not
+    the only thing standing between a known SKU id and a retail order.
+    Requires ``sku.product.brand`` eager-loaded.
+    """
+    product = sku.product
+    return product is not None and product.brand is not None and product.brand.visible_retail
+
+
 async def _existing_idempotent_order(
     db: AsyncSession, *, actor: Actor, idempotency_key: str
 ) -> Order | None:
@@ -710,7 +723,12 @@ async def quote_cart(db: AsyncSession, body: OrderCreate) -> CartQuote:
     """
     sku_ids = [item.sku_id for item in body.items]
     skus = await _fetch_skus_with_product(db, sku_ids)
-    missing = [sid for sid in sku_ids if sid not in skus or not sku_is_buyable(skus[sid])]
+    # A storefront quote: a reseller-only brand is as unknown here as at checkout.
+    missing = [
+        sid
+        for sid in sku_ids
+        if sid not in skus or not sku_is_buyable(skus[sid]) or not sku_is_retail_visible(skus[sid])
+    ]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
 
@@ -883,7 +901,13 @@ async def create_order(
     # still be paid for.
     sku_ids = [item.sku_id for item in body.items]
     skus = await _fetch_skus_with_product(db, sku_ids)
-    missing = [sid for sid in sku_ids if sid not in skus or not sku_is_buyable(skus[sid])]
+    missing = [
+        sid
+        for sid in sku_ids
+        if sid not in skus
+        or not sku_is_buyable(skus[sid])
+        or (actor.merchant_id is None and not sku_is_retail_visible(skus[sid]))
+    ]
     if missing:
         raise ValidationError("unknown or inactive SKU", extra={"sku_ids": missing})
     # A CS2 skin rides alone: a skin that falls through refunds its whole order to

@@ -34,6 +34,25 @@ is separate: it keeps the brand _visible_ but blocks purchases (a "maintenance"
 badge), whereas `active=False` removes it entirely. This is the staging pattern
 used to prepare a launch (e.g. Steam) before flipping it live.
 
+### Channels: `visible_retail` and `visible_b2b` (ADR-0095)
+
+`Brand.active` is the master switch for **both** channels. Under it, two
+channel gates decide who sees the brand:
+
+| `visible_retail` | `visible_b2b` | Who sees it                  |
+| ---------------- | ------------- | ---------------------------- |
+| true             | false         | customers only               |
+| true             | true          | customers + resellers        |
+| false            | true          | resellers only               |
+| false            | false         | nobody (like `active=False`) |
+
+`visible_retail=false` removes the brand from every storefront read in
+`service.py` (listings, brand page, products, SKU by id), the Merchant Center
+feed, the public player check and the skins buy panel, and retail checkout
+(`orders.create_order` for non-merchant actors, `orders.quote_cart`) refuses
+its SKUs as `unknown or inactive SKU`. The merchant quote never reads it.
+Admin: «Показывать клиентам» on the brand form.
+
 ## Public interface
 
 ```python

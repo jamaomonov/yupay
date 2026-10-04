@@ -509,9 +509,11 @@ The balance is the deposit ledger's signed posting sum, read live; there is no
 balance column to drift from it.
 
 `GET /merchant/v1/catalog` returns brands → products → SKUs where
-`brand.visible_b2b AND sku.visible_b2b` **and** the SKU is sellable. Retail
-`active` is deliberately not read — it is the storefront's switch, and the
-B2B flags (migration 0068) are the merchant catalog's. Three things make a SKU
+`brand.visible_b2b AND sku.visible_b2b` **and** the SKU is sellable. `active`
+is deliberately not read here (the order path reads it — see below), and
+neither is `brands.visible_retail` (ADR-0095), the storefront's own gate: a
+brand with it off and `visible_b2b` on is reseller-only, listed and orderable
+here while the storefront 404s it. Three things make a SKU
 unsellable, and each makes it **absent rather than cheap**:
 
 - no `cost_usdt` — `pricing.effective_cost` returns `None`, meaning "not

@@ -30,6 +30,7 @@ const BRAND: Brand = {
   active: true,
   maintenance: false,
   visible_b2b: false,
+  visible_retail: true,
   translations: [{ locale: "ru", name: "Roblox" }],
 };
 
