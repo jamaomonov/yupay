@@ -29,6 +29,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Response, status
 
+from yupay.core.errors import NotFoundError
 from yupay.core.idempotency import normalize_idempotency_key
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
@@ -47,6 +48,7 @@ from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.cabinet_schemas import (
     CabinetApiKeyCreateIn,
     CabinetApiKeyOut,
+    CabinetCatalogSummaryOut,
     CabinetIssuedKeyOut,
     CabinetOrderDetailOut,
     CabinetOrderIn,
@@ -56,6 +58,7 @@ from yupay.modules.merchants.cabinet_schemas import (
     CabinetSummaryOut,
 )
 from yupay.modules.merchants.machine_schemas import (
+    MerchantBrandOut,
     MerchantCatalogOut,
     MerchantOrderCreateIn,
     MerchantOrderOut,
@@ -139,6 +142,29 @@ async def catalog(user: CurrentUser, db: Db) -> Response:
     """
     body = await price_list.build_json(db, merchant=await merchant_of(db, user))
     # The cached JSON goes out as-is; ``response_model`` above stays for the schema.
+    return Response(content=body, media_type="application/json")
+
+
+@router.get(
+    "/catalog/summary",
+    response_model=CabinetCatalogSummaryOut,
+    summary="The catalogue grid: one card per brand",
+)
+async def catalog_summary(user: CurrentUser, db: Db) -> Response:
+    """What the grid and the sidebar need, without the 2.3 MB tree behind it."""
+    body = await price_list.summary_json(db, merchant=await merchant_of(db, user))
+    return Response(content=body, media_type="application/json")
+
+
+@router.get(
+    "/catalog/brands/{slug}",
+    response_model=MerchantBrandOut,
+    summary="One brand of the price list, with its products and SKUs",
+)
+async def catalog_brand(slug: str, user: CurrentUser, db: Db) -> Response:
+    body = await price_list.brand_json(db, merchant=await merchant_of(db, user), slug=slug)
+    if body is None:
+        raise NotFoundError("brand not found")
     return Response(content=body, media_type="application/json")
 
 

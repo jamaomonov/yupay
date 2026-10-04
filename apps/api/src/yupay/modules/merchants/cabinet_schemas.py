@@ -25,6 +25,35 @@ from yupay.modules.merchants.machine_schemas import (
 )
 from yupay.modules.merchants.models import WEBHOOK_URL_MAX
 
+
+class CabinetBrandSummaryOut(BaseModel):
+    """One card of the cabinet's catalogue grid, without the SKUs behind it.
+
+    The grid and the sidebar need a name, a logo, a section and «from $X»;
+    the full tree is 2.3 MB after the 2026-10 import, and every cabinet
+    screen used to download it. ``product_names`` is what the search box
+    matches besides the brand name.
+    """
+
+    brand_id: str
+    slug: str
+    name: str
+    category_slug: str | None
+    category_name: str | None
+    logo_url: str | None
+    #: The cheapest line, priced for this merchant, and which product it is.
+    from_usd: Decimal | None
+    from_product: str | None
+    sku_count: int
+    product_names: list[str]
+
+
+class CabinetCatalogSummaryOut(BaseModel):
+    """``GET /merchant/cabinet/catalog/summary``: every brand, one card each."""
+
+    brands: list[CabinetBrandSummaryOut]
+
+
 #: Long enough to resist a guess, short enough that a real person will use a
 #: manager rather than fight the field. Matches the storefront's floor.
 _MIN_PASSWORD = 10

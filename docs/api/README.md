@@ -526,6 +526,12 @@ rather than the reason to omit it.
 The balance is the deposit ledger's signed posting sum, read live; there is no
 balance column to drift from it.
 
+The reseller cabinet reads the same tree through `GET /merchant/cabinet/catalog`, and
+since the 2026-10 import mostly through two views cut from it: `…/catalog/summary` (one
+card per brand — name, logo, section, «from $X», SKU count, product names for the search
+box) and `…/catalog/brands/{slug}` (one brand's subtree, 404 when the reseller cannot buy
+it). Both come from the cached tree, so they can never disagree with it.
+
 `GET /merchant/v1/catalog` is served from a 60-second Redis cache
 (`merchants:price_list:*`, one entry per distinct price; dropped at once by a
 B2B flag or markup write in the admin, otherwise refreshed on expiry) and

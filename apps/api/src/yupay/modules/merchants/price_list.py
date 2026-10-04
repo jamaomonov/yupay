@@ -84,6 +84,7 @@ someone adding a fourth query.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
@@ -105,6 +106,7 @@ from yupay.modules.catalog.models import (
 from yupay.modules.catalog.service import DEFAULT_LOCALE
 from yupay.modules.catalog.unit_sku import is_unit_sku
 from yupay.modules.merchants import pricing
+from yupay.modules.merchants.cabinet_schemas import CabinetBrandSummaryOut, CabinetCatalogSummaryOut
 from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
     MerchantCatalogOut,
@@ -206,6 +208,82 @@ async def build_json(db: AsyncSession, *, merchant: Merchant) -> str:
     except Exception:  # noqa: BLE001
         log.warning("merchant_price_list_cache_write_failed")
     return body
+
+
+def summarise(tree: MerchantCatalogOut) -> CabinetCatalogSummaryOut:
+    """The grid's view of the tree: one card per brand, cheapest line first."""
+    cards: list[CabinetBrandSummaryOut] = []
+    for brand in tree.brands:
+        best: tuple[Decimal, str] | None = None
+        count = 0
+        for product in brand.products:
+            for sku in product.skus:
+                count += 1
+                price = sku.price_usd if sku.kind == "fixed" else sku.unit_price_usd
+                if price is not None and (best is None or price < best[0]):
+                    best = (price, product.name)
+        cards.append(
+            CabinetBrandSummaryOut(
+                brand_id=brand.brand_id,
+                slug=brand.slug,
+                name=brand.name,
+                category_slug=brand.category_slug,
+                category_name=brand.category_name,
+                logo_url=brand.logo_url,
+                from_usd=best[0] if best else None,
+                from_product=best[1] if best else None,
+                sku_count=count,
+                product_names=[p.name for p in brand.products],
+            )
+        )
+    return CabinetCatalogSummaryOut(brands=cards)
+
+
+async def _derived_json(
+    db: AsyncSession,
+    *,
+    merchant: Merchant,
+    suffix: str,
+    derive: Callable[[MerchantCatalogOut], str | None],
+) -> str | None:
+    """A view derived from the tree, cached beside it under the same prefix.
+
+    ``invalidate`` deletes ``merchants:price_list:*``, so a derived entry can
+    never outlive the tree it was cut from.
+    """
+    key = f"{_cache_key(merchant)}:{suffix}"
+    try:
+        raw = await get_redis().get(key)
+        if raw:
+            return raw if isinstance(raw, str) else bytes(raw).decode()
+    except Exception:  # noqa: BLE001 — cache is best-effort, in both directions
+        log.warning("merchant_price_list_cache_read_failed")
+    body = derive(await build(db, merchant=merchant))
+    if body is None:
+        return None
+    try:
+        await get_redis().set(key, body, ex=PRICE_LIST_TTL_SECONDS)
+    except Exception:  # noqa: BLE001
+        log.warning("merchant_price_list_cache_write_failed")
+    return body
+
+
+async def summary_json(db: AsyncSession, *, merchant: Merchant) -> str:
+    """The catalogue grid's cards, as JSON — ~50 KB where the tree is 2.3 MB."""
+    body = await _derived_json(
+        db, merchant=merchant, suffix="summary", derive=lambda t: summarise(t).model_dump_json()
+    )
+    return body or "{}"
+
+
+async def brand_json(db: AsyncSession, *, merchant: Merchant, slug: str) -> str | None:
+    """One brand's subtree as JSON, or ``None`` when this merchant cannot buy it."""
+    return await _derived_json(
+        db,
+        merchant=merchant,
+        suffix=f"brand:{slug}",
+        derive=lambda t: next((b.model_dump_json() for b in t.brands if b.slug == slug), None),
+    )
 
 
 async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:

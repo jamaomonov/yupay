@@ -3,13 +3,18 @@
 import { usePathname } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 
-import type { Catalog, P2PStatus, Profile } from "@/lib/types";
+import type { CatalogSummary, P2PStatus, Profile } from "@/lib/types";
 
 import { api } from "@/lib/api";
 
 interface CabinetData {
   profile: Profile | null;
-  catalog: Catalog | null;
+  /**
+   * One card per brand — not the price list. The full tree is 2.3 MB after the
+   * 2026-10 import, and every cabinet screen (orders, settings…) was downloading
+   * it for the sidebar's section list; the brand page fetches its own subtree.
+   */
+  catalog: CatalogSummary | null;
   /** Whether self-serve top-up is on for this reseller; `null` until asked. */
   p2p: P2PStatus | null;
   /** Re-read the profile — the balance moves when an order is placed. */
@@ -57,7 +62,7 @@ const Ctx = createContext<CabinetData>({
  */
 export function CabinetProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [catalog, setCatalog] = useState<Catalog | null>(null);
+  const [catalog, setCatalog] = useState<CatalogSummary | null>(null);
   const [p2p, setP2p] = useState<P2PStatus | null>(null);
   const [search, setSearch] = useState("");
   const [searchPlaceholder, setSearchPlaceholder] = useState<string | null>(null);
@@ -84,7 +89,7 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     refreshProfile();
-    void api<Catalog>("/catalog").then(setCatalog, () => {
+    void api<CatalogSummary>("/catalog/summary").then(setCatalog, () => {
       // An empty catalog, not a null one: the difference is "we asked and
       // there is nothing" versus "we have not asked yet", and the screens
       // render an empty state for the first and a blank for the second.
@@ -147,7 +152,7 @@ export interface Section {
  * navigation, and a section called "—" navigates nowhere useful. The brand
  * itself still appears under «Все».
  */
-export function sectionsOf(catalog: Catalog | null): Section[] {
+export function sectionsOf(catalog: CatalogSummary | null): Section[] {
   const seen = new Map<string, Section>();
   for (const brand of catalog?.brands ?? []) {
     if (brand.category_slug === null || brand.category_name === null) continue;

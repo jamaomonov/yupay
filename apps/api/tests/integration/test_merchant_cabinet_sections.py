@@ -800,3 +800,36 @@ async def test_every_section_refuses_a_signed_out_browser(
 
     users = (await db_session.execute(select(MerchantUser))).scalars().all()
     assert users == [], "nothing above should have created an account"
+
+
+async def test_the_catalog_summary_and_one_brand_come_from_the_same_tree(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
+) -> None:
+    """The grid reads cards, the brand page reads one subtree; both quote the tree's price."""
+    access, _ = await _signed_up(integration_client, sent, "summary@acme.example.com")
+    _seed_stars(db_session)
+    await db_session.commit()
+
+    tree = (await integration_client.get(f"{BASE}/catalog", headers=_auth(access))).json()
+    brand = tree["brands"][0]
+    sku = brand["products"][0]["skus"][0]
+
+    summary = await integration_client.get(f"{BASE}/catalog/summary", headers=_auth(access))
+    assert summary.status_code == 200, summary.text
+    card = summary.json()["brands"][0]
+    assert card["slug"] == brand["slug"]
+    assert card["sku_count"] == 1
+    assert card["from_usd"] == (
+        sku["price_usd"] if sku["kind"] == "fixed" else sku["unit_price_usd"]
+    )
+    assert card["product_names"] == [brand["products"][0]["name"]]
+    assert "products" not in card
+
+    one = await integration_client.get(
+        f"{BASE}/catalog/brands/{brand['slug']}", headers=_auth(access)
+    )
+    assert one.status_code == 200, one.text
+    assert one.json() == brand
+
+    missing = await integration_client.get(f"{BASE}/catalog/brands/nope", headers=_auth(access))
+    assert missing.status_code == 404

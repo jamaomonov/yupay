@@ -4,9 +4,7 @@ import { LayoutGrid } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { Suspense, useMemo } from "react";
-
-import type { Brand } from "@/lib/types";
+import { Suspense, useDeferredValue, useMemo } from "react";
 
 import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
@@ -43,25 +41,14 @@ function tintOf(slug: string): string {
 }
 
 /** The cheapest SKU in a brand, and the product it belongs to. */
-function cheapest(brand: Brand): { cents: bigint; product: string } | null {
-  let best: { cents: bigint; product: string } | null = null;
-  for (const product of brand.products) {
-    for (const sku of product.skus) {
-      const price = sku.kind === "fixed" ? sku.price_usd : sku.unit_price_usd;
-      if (price === null) continue;
-      const cents = toCents(price);
-      if (best === null || cents < best.cents) best = { cents, product: product.name };
-    }
-  }
-  return best;
-}
-
 function CatalogGrid() {
   const t = useTranslations("merchant.catalog");
   const tCommon = useTranslations("merchant.common");
   const { locale } = useParams<{ locale: string }>();
   const { catalog } = useCabinet();
-  const query = useSearch(t("searchPlaceholder"));
+  // Deferred: the box lives in the top bar and re-renders this whole grid per
+  // keystroke; 326 cards are cheap to filter but not to paint on every key.
+  const query = useDeferredValue(useSearch(t("searchPlaceholder")));
   const section = useSearchParams().get("section");
 
   const sectionName = useMemo(
@@ -79,7 +66,7 @@ function CatalogGrid() {
     return inSection.filter(
       (brand) =>
         brand.name.toLowerCase().includes(needle) ||
-        brand.products.some((product) => product.name.toLowerCase().includes(needle)),
+        brand.product_names.some((name) => name.toLowerCase().includes(needle)),
     );
   }, [catalog, section, query]);
 
@@ -104,7 +91,11 @@ function CatalogGrid() {
 
       <div className="mt-5 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {brands.map((brand) => {
-          const from = cheapest(brand);
+          // The cheapest line comes priced from the server; nothing to walk here.
+          const from =
+            brand.from_usd === null
+              ? null
+              : { cents: toCents(brand.from_usd), product: brand.from_product ?? "" };
           return (
             <Link
               key={brand.brand_id}
@@ -125,6 +116,8 @@ function CatalogGrid() {
                   <img
                     src={brand.logo_url}
                     alt=""
+                    loading="lazy"
+                    decoding="async"
                     className="absolute inset-0 h-full w-full object-cover"
                   />
                 )}

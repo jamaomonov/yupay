@@ -6,7 +6,7 @@ import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { PlacedOrder, Product, Sku } from "@/lib/types";
+import type { Brand, PlacedOrder, Product, Sku } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { ApiError, api } from "@/lib/api";
@@ -28,7 +28,24 @@ export default function BrandPage() {
   const tCabinet = useTranslations("merchant.cabinet");
   const locale = useLocale();
   const { locale: routeLocale, slug } = useParams<{ locale: string; slug: string }>();
-  const { catalog, profile, refreshProfile } = useCabinet();
+  const { profile, refreshProfile } = useCabinet();
+  // This brand's own subtree, fetched here: the shell only holds the grid's
+  // cards. `undefined` while loading, `null` when the reseller cannot buy it.
+  const [brand, setBrand] = useState<Brand | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    void api<Brand>(`/catalog/brands/${encodeURIComponent(slug)}`).then(
+      (loaded) => {
+        if (!cancelled) setBrand(loaded);
+      },
+      () => {
+        if (!cancelled) setBrand(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [slug]);
   const [selected, setSelected] = useState<Sku | null>(null);
   const [count, setCount] = useState("1");
   const [data, setData] = useState<Record<string, string>>({});
@@ -41,13 +58,11 @@ export default function BrandPage() {
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
 
-  const brand = catalog?.brands.find((b) => b.slug === slug) ?? null;
-
   // Steam's «any amount», Stars: one card and nothing to choose — open with it picked.
   // Once only, so closing the sheet on a phone does not bring it straight back.
   const autoPicked = useRef(false);
   useEffect(() => {
-    if (autoPicked.current || brand === null) return;
+    if (autoPicked.current || !brand) return;
     autoPicked.current = true;
     const only = soleSku(brand);
     if (only !== null) {
@@ -105,7 +120,10 @@ export default function BrandPage() {
     }
   }
 
-  if (!brand) {
+  if (brand === undefined) {
+    return null;
+  }
+  if (brand === null) {
     return (
       <div>
         <Link href={`/${routeLocale}/cabinet/catalog`} className="text-tx-mute text-sm">

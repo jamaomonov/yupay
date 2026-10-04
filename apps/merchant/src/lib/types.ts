@@ -67,6 +67,26 @@ export interface Catalog {
   brands: Brand[];
 }
 
+/** One card of the catalogue grid — what `GET /catalog/summary` returns per brand. */
+export interface BrandSummary {
+  brand_id: string;
+  slug: string;
+  name: string;
+  category_slug: string | null;
+  category_name: string | null;
+  logo_url: string | null;
+  /** The cheapest line, priced for this reseller, and which product it is. */
+  from_usd: string | null;
+  from_product: string | null;
+  sku_count: number;
+  /** What the search box matches besides the brand name. */
+  product_names: string[];
+}
+
+export interface CatalogSummary {
+  brands: BrandSummary[];
+}
+
 export interface PlacedOrder {
   merchant_order_id: string;
   order_id: string;
