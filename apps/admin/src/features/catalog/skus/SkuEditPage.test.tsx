@@ -296,20 +296,39 @@ it("shows the B2B card with the saved state on an existing SKU", async () => {
     if (path.includes("/fx/rates")) return Promise.resolve(RATES);
     if (path.includes("/catalog/products")) return Promise.resolve([PRODUCT]);
     if (path.includes("/catalog/brands")) return Promise.resolve([]);
-    return Promise.resolve([sku]);
+    // The page reads its one row — the paged list endpoint is never asked.
+    if (path === `/api/v1/admin/catalog/skus/${sku.id}`) return Promise.resolve(sku);
+    return Promise.reject(new Error(`unexpected GET ${path}`));
   });
+  renderExisting("sku-1");
+  expect(await screen.findByLabelText("Наценка B2B, %")).toHaveValue("7.00");
+  expect(screen.getByLabelText(/Виден мерчантам/)).toBeChecked();
+  // 8.00 × 1.07 = 8.56, «предварительно» — the server stays the authority.
+  expect(screen.getByText(/\$8\.56 · предварительно/)).toBeInTheDocument();
+});
+
+it("says so when the SKU does not exist instead of rendering an empty form", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/fx/rates")) return Promise.resolve(RATES);
+    if (path.includes("/catalog/products")) return Promise.resolve([PRODUCT]);
+    if (path.includes("/catalog/brands")) return Promise.resolve([]);
+    // What `api()` throws on a 404 — only `.status` is read by the page.
+    return Promise.reject(Object.assign(new Error("404 Not Found"), { status: 404 }));
+  });
+  renderExisting("sku-gone");
+  expect(await screen.findByText("SKU не найден.")).toBeInTheDocument();
+  expect(screen.queryByPlaceholderText("pubg-uc-60-tr")).not.toBeInTheDocument();
+});
+
+function renderExisting(id: string) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(
+  return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={["/skus/sku-1"]}>
+      <MemoryRouter initialEntries={[`/skus/${id}`]}>
         <Routes>
           <Route path="/skus/:id" element={<SkuEditPage />} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>,
   );
-  expect(await screen.findByLabelText("Наценка B2B, %")).toHaveValue("7.00");
-  expect(screen.getByLabelText(/Виден мерчантам/)).toBeChecked();
-  // 8.00 × 1.07 = 8.56, «предварительно» — the server stays the authority.
-  expect(screen.getByText(/\$8\.56 · предварительно/)).toBeInTheDocument();
-});
+}

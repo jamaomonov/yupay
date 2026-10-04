@@ -13,36 +13,37 @@ import { SUPPLIER_LABELS, type SupplierMapping, type SupplierMappingListOut } fr
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { ApiError, apiDelete, apiGet } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
+import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+
+/** Mappings per page. Production passed the endpoint's 200 default on
+ *  2026-09-19 and its 500 ceiling after the 2026-10 bulk import (~8600 rows),
+ *  so a one-shot list — however large — was always going to be a wrong one.
+ *  Real paging replaces the "показано первых N" note. */
+const PAGE_SIZE = 100;
 
 export function MappingsPage() {
   const [params, setParams] = useSearchParams();
   const supplier = params.get("supplier");
+  const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
   const toast = useToast();
   const qc = useQueryClient();
 
-  // The endpoint's own ceiling. Its default is 200, which production passed on
-  // 2026-09-19 (454 active mappings) — an unfiltered list silently showed 200
-  // of them, with nothing on screen to say so. Asking for the maximum buys
-  // room, not a guarantee, which is what `truncated` below is for.
-  const LIST_LIMIT = 500;
-
+  // Keyed under `qk.integrationMappings({ supplierSlug })` so the delete below
+  // invalidates every page of this supplier's list with one prefix.
   const listing = useQuery<SupplierMappingListOut>({
-    queryKey: qk.integrationMappings({ supplierSlug: supplier }),
+    queryKey: [...qk.integrationMappings({ supplierSlug: supplier }), offset],
     queryFn: () =>
       apiGet<SupplierMappingListOut>(
-        `/api/v1/admin/integrations/mappings?limit=${String(LIST_LIMIT)}` +
+        `/api/v1/admin/integrations/mappings?limit=${String(PAGE_SIZE)}&offset=${String(offset)}` +
           (supplier ? `&supplier_slug=${supplier}` : ""),
       ),
   });
-
-  // A full page means there are probably more rows we did not ask for. Saying
-  // so is the difference between a short list and a wrong one.
-  const truncated = (listing.data?.items.length ?? 0) >= LIST_LIMIT;
 
   const remove = useMutation<void, ApiError, { sku_id: string; supplier_slug: string }>({
     mutationFn: ({ sku_id, supplier_slug }) =>
@@ -177,7 +178,11 @@ export function MappingsPage() {
           label="Все"
           active={!supplier}
           onClick={() => {
+            // A new filter starts from its first page — written in the same
+            // navigation as the filter itself, not via `setOffset`, so the two
+            // cannot race each other for the URL.
             params.delete("supplier");
+            params.delete("offset");
             setParams(params, { replace: true });
           }}
         />
@@ -188,15 +193,11 @@ export function MappingsPage() {
             active={supplier === slug}
             onClick={() => {
               params.set("supplier", slug);
+              params.delete("offset");
               setParams(params, { replace: true });
             }}
           />
         ))}
-        <span className="ml-auto text-xs text-[var(--text-tertiary)]">
-          {truncated ? "Показано первых " : "Всего: "}
-          {(listing.data?.items.length ?? 0).toString()}
-          {truncated ? " — есть ещё, сузьте фильтром" : ""}
-        </span>
       </div>
 
       {listing.isError ? (
@@ -206,15 +207,23 @@ export function MappingsPage() {
           retryPending={listing.isFetching}
         />
       ) : (
-        <DataTable
-          rows={listing.data?.items ?? []}
-          columns={columns}
-          rowKey={(r) => `${r.sku_id}-${r.supplier_slug}`}
-          loading={listing.isLoading}
-          busy={listing.isFetching}
-          empty="Маппингов нет. Создайте первый, чтобы заказы на этот SKU начали идти через поставщика."
-          ariaLabel="Маппинги SKU"
-        />
+        <>
+          <DataTable
+            rows={listing.data?.items ?? []}
+            columns={columns}
+            rowKey={(r) => `${r.sku_id}-${r.supplier_slug}`}
+            loading={listing.isLoading}
+            busy={listing.isFetching}
+            empty="Маппингов нет. Создайте первый, чтобы заказы на этот SKU начали идти через поставщика."
+            ariaLabel="Маппинги SKU"
+          />
+          <Pagination
+            total={listing.data?.total ?? 0}
+            limit={PAGE_SIZE}
+            offset={offset}
+            onPageChange={setOffset}
+          />
+        </>
       )}
     </div>
   );

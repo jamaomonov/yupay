@@ -74,11 +74,13 @@ const PRODUCT: Product = {
   ],
 };
 
-function mockCatalog(): void {
+// The brands list feeds the brand <select>; the product itself is one row —
+// the page never asks the (now paged) products list for it.
+function mockCatalog(product: Product = PRODUCT): void {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/brands")) return Promise.resolve([BRAND]);
-    if (path.includes("/products")) return Promise.resolve([PRODUCT]);
-    return Promise.resolve([]);
+    if (path === `/api/v1/admin/catalog/products/${product.id}`) return Promise.resolve(product);
+    return Promise.reject(new Error(`unexpected GET ${path}`));
   });
 }
 
@@ -138,17 +140,9 @@ it("surfaces a help_images cap violation near Save instead of silently doing not
     url: `https://cdn.yupay.uz/field-help/${String(i)}.png`,
     caption: { ru: "", en: "", uz: "" },
   }));
-  mockedApiGet.mockImplementation((path: string) => {
-    if (path.includes("/brands")) return Promise.resolve([BRAND]);
-    if (path.includes("/products")) {
-      return Promise.resolve([
-        {
-          ...PRODUCT,
-          required_fields: [{ ...PRODUCT.required_fields[0]!, help_images: sevenImages }],
-        },
-      ]);
-    }
-    return Promise.resolve([]);
+  mockCatalog({
+    ...PRODUCT,
+    required_fields: [{ ...PRODUCT.required_fields[0]!, help_images: sevenImages }],
   });
 
   renderPage();
@@ -158,6 +152,17 @@ it("surfaces a help_images cap violation near Save instead of silently doing not
 
   expect(await screen.findByText(/Поле формы №1 «Где найти\?»/)).toBeInTheDocument();
   expect(mockedApiPatch).not.toHaveBeenCalled();
+});
+
+it("says so when the product does not exist instead of rendering an empty form", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/brands")) return Promise.resolve([BRAND]);
+    // What `api()` throws on a 404 — only `.status` is read by the page.
+    return Promise.reject(Object.assign(new Error("404 Not Found"), { status: 404 }));
+  });
+  renderPage();
+  expect(await screen.findByText("Продукт не найден.")).toBeInTheDocument();
+  expect(screen.queryByPlaceholderText("pubg-uc")).not.toBeInTheDocument();
 });
 
 it("shows the G2B check as enabled and lets it be turned off", async () => {

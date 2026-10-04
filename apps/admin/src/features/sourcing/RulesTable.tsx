@@ -8,7 +8,6 @@
  * is why `BrandSourcingPage` (the brand-scoped bulk screen) is a separate
  * page rather than a replacement for this table. */
 
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 import { useMemo, useState } from "react";
 
@@ -16,29 +15,28 @@ import { RulesTableFilters } from "./RulesTableFilters";
 import { RulesTableGroups } from "./RulesTableGroups";
 
 import type { SourcingMode, SourcingRuleOut } from "./types";
-import type { Brand, Product, Sku } from "@/features/catalog/types";
 
 import { Badge } from "@/components/Badge";
 import { DataTable, type Column } from "@/components/DataTable";
-import { apiGet } from "@/lib/api";
-import { qk } from "@/lib/queryKeys";
 
-function rname(obj: { translations: { locale: string; name: string }[] } | undefined): string {
-  if (!obj) return "";
-  return obj.translations.find((t) => t.locale === "ru")?.name ?? "";
-}
-
+/** A rule with its catalogue labels normalised for display and grouping.
+ *
+ *  The labels come from the rule row itself — `GET /sourcing/rules` resolves
+ *  `brand_id` / `brand_name` / `product_slug` / `denomination` server-side
+ *  (one join) — so this table no longer fetches `/catalog/skus`, `/products`
+ *  and `/brands` as bare lists to join them client-side. At ~6150 SKUs that
+ *  was three full-catalogue downloads per page view, and the SKU list is
+ *  paged now, so the join could not be rebuilt here even if we wanted to. */
 interface EnrichedRule extends SourcingRuleOut {
-  /** `null` when the SKU, product or brand behind this rule is missing from
-   *  the three catalog lists — every such rule shares that one `null` key
-   *  and lands in the same "Без бренда" group below, same as before. A real
-   *  brand id, by contrast, is only ever shared by rules that really are
-   *  the same brand — unlike `brandName`, which two differently-id'd brands
-   *  can share (the region rollout named two "Mobile Legends" and "Mobile
-   *  Legends RU" today; nothing stops a future pair from matching
-   *  exactly). Grouping on this instead of `brandName` is what keeps such a
-   *  pair in two sections instead of one merged section with one count and
-   *  one (colliding) React key. */
+  /** `null` when the SKU behind this rule no longer resolves to a brand —
+   *  every such rule shares that one `null` key and lands in the same
+   *  "Без бренда" group below. A real brand id, by contrast, is only ever
+   *  shared by rules that really are the same brand — unlike `brandName`,
+   *  which two differently-id'd brands can share (the region rollout named
+   *  two "Mobile Legends" and "Mobile Legends RU" today; nothing stops a
+   *  future pair from matching exactly). Grouping on this instead of
+   *  `brandName` is what keeps such a pair in two sections instead of one
+   *  merged section with one count and one (colliding) React key. */
   brandId: string | null;
   brandName: string;
   productSlug: string;
@@ -69,36 +67,17 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
   const [supplierFilter, setSupplierFilter] = useState("");
   const [modeFilter, setModeFilter] = useState<SourcingMode | "">("");
 
-  const skusQuery = useQuery<Sku[]>({
-    queryKey: qk.skus(),
-    queryFn: () => apiGet<Sku[]>("/api/v1/admin/catalog/skus"),
-  });
-  const productsQuery = useQuery<Product[]>({
-    queryKey: qk.products(),
-    queryFn: () => apiGet<Product[]>("/api/v1/admin/catalog/products"),
-  });
-  const brandsQuery = useQuery<Brand[]>({
-    queryKey: qk.brands(),
-    queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
-  });
-
-  const enriched = useMemo<EnrichedRule[]>(() => {
-    const skuById = new Map((skusQuery.data ?? []).map((s) => [s.id, s]));
-    const productById = new Map((productsQuery.data ?? []).map((p) => [p.id, p]));
-    const brandById = new Map((brandsQuery.data ?? []).map((b) => [b.id, b]));
-    return rules.map((rule) => {
-      const sku = skuById.get(rule.sku_id);
-      const product = sku ? productById.get(sku.product_id) : undefined;
-      const brand = product ? brandById.get(product.brand_id) : undefined;
-      return {
+  const enriched = useMemo<EnrichedRule[]>(
+    () =>
+      rules.map((rule) => ({
         ...rule,
-        brandId: brand?.id ?? null,
-        brandName: rname(brand),
-        productSlug: product?.slug ?? "",
-        denomination: sku?.denomination ?? null,
-      };
-    });
-  }, [rules, skusQuery.data, productsQuery.data, brandsQuery.data]);
+        brandId: rule.brand_id ?? null,
+        brandName: rule.brand_name ?? "",
+        productSlug: rule.product_slug ?? "",
+        denomination: rule.denomination ?? null,
+      })),
+    [rules],
+  );
 
   // Supplier filter options come from the data itself, not a static list —
   // a supplier nobody has a rule for yet has nothing to filter to, and this
@@ -131,10 +110,10 @@ export function RulesTable({ rules, loading, onDelete }: RulesTableProps) {
   //
   // Keyed on `brandId`, not `brandName`: two brands can share a display
   // name (whole-branch review #3) — grouping on the name would merge them
-  // into one section with one count and one React key. `null` (SKU/product/
-  // brand missing from the catalog lists) still collapses into a single
-  // "Без бренда" group, same as before — every such row genuinely shares
-  // nothing else to group by either.
+  // into one section with one count and one React key. `null` (the server
+  // could not resolve the rule's SKU to a brand) still collapses into a
+  // single "Без бренда" group, same as before — every such row genuinely
+  // shares nothing else to group by either.
   const groups = useMemo<{ key: string; label: string; rows: EnrichedRule[] }[]>(() => {
     const byId = new Map<string | null, { label: string; rows: EnrichedRule[] }>();
     for (const r of filtered) {

@@ -42,11 +42,12 @@ const SKU: Sku = {
 
 function renderCard(sku: Sku = SKU, cost: string = sku.cost_usdt ?? "") {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
+  render(
     <QueryClientProvider client={qc}>
       <SkuB2bCard sku={sku} cost={cost} />
     </QueryClientProvider>,
   );
+  return { qc };
 }
 
 beforeEach(() => {
@@ -99,7 +100,8 @@ it("saves both fields through the dedicated B2B endpoint with an idempotency key
     visible_b2b: false,
     b2b_markup_pct: "5.50",
   });
-  renderCard();
+  const { qc } = renderCard();
+  const invalidate = vi.spyOn(qc, "invalidateQueries");
 
   fireEvent.click(screen.getByLabelText(/Виден мерчантам/));
   fireEvent.change(screen.getByLabelText("Наценка B2B, %"), { target: { value: "5.50" } });
@@ -114,6 +116,12 @@ it("saves both fields through the dedicated B2B endpoint with an idempotency key
   expect(headers).toEqual(
     expect.objectContaining({ "Idempotency-Key": expect.any(String) as string }),
   );
+  // The SKU sits in the editor's single-row cache and on whatever page of
+  // the paged list is cached — neither key can be named from the card, their
+  // shared prefix can. A reopen then shows what the server confirmed.
+  await waitFor(() => {
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ["admin", "skus"] });
+  });
 });
 
 it("refuses to send a markup the column cannot hold", () => {

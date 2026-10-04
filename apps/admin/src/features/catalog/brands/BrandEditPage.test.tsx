@@ -58,12 +58,19 @@ function renderAt(path: string) {
   );
 }
 
-beforeEach(() => {
-  mockedApiGet.mockReset();
+// The categories list feeds the category <select>; the brand itself is one
+// row — the page never walks the (326-strong) brands list for it.
+function mockCatalog(brand: typeof BRAND = BRAND): void {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/categories")) return Promise.resolve([CATEGORY]);
-    return Promise.resolve([BRAND]);
+    if (path === `/api/v1/admin/catalog/brands/${brand.id}`) return Promise.resolve(brand);
+    return Promise.reject(new Error(`unexpected GET ${path}`));
   });
+}
+
+beforeEach(() => {
+  mockedApiGet.mockReset();
+  mockCatalog();
 });
 
 it("shows the B2B card with the brand's saved visibility on an existing brand", async () => {
@@ -81,17 +88,12 @@ it("hides the B2B card while the brand is not saved yet", async () => {
 });
 
 it("loads a reseller-only brand with «Показывать клиентам» off and saves the flag", async () => {
-  mockedApiGet.mockImplementation((path: string) => {
-    if (path.includes("/categories")) return Promise.resolve([CATEGORY]);
-    return Promise.resolve([
-      {
-        ...BRAND,
-        visible_b2b: true,
-        visible_retail: false,
-        // Every locale named, so the form validates and the save goes out.
-        translations: ["ru", "en", "uz"].map((locale) => ({ locale, name: "Roblox" })),
-      },
-    ]);
+  mockCatalog({
+    ...BRAND,
+    visible_b2b: true,
+    visible_retail: false,
+    // Every locale named, so the form validates and the save goes out.
+    translations: ["ru", "en", "uz"].map((locale) => ({ locale, name: "Roblox" })),
   });
   vi.mocked(apiPatch).mockResolvedValue(BRAND);
   renderAt("/brands/brand-1");
@@ -109,6 +111,17 @@ it("loads a reseller-only brand with «Показывать клиентам» o
   // The mock records the payload as `unknown`; this test only reads one field of it.
   const body = vi.mocked(apiPatch).mock.calls[0]?.[1] as { visible_retail: boolean };
   expect(body.visible_retail).toBe(true);
+});
+
+it("says so when the brand does not exist instead of rendering an empty form", async () => {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/categories")) return Promise.resolve([CATEGORY]);
+    // What `api()` throws on a 404 — only `.status` is read by the page.
+    return Promise.reject(Object.assign(new Error("404 Not Found"), { status: 404 }));
+  });
+  renderAt("/brands/brand-gone");
+  expect(await screen.findByText("Бренд не найден.")).toBeInTheDocument();
+  expect(screen.queryByPlaceholderText("pubg-mobile")).not.toBeInTheDocument();
 });
 
 it("shows a new brand to customers by default", async () => {

@@ -280,12 +280,16 @@ export function SkuEditPage() {
     queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
   });
 
-  // Walk the list to find the existing SKU — same pattern as ProductEditPage.
-  const skusQuery = useQuery<Sku[]>({
-    queryKey: qk.skus(),
-    queryFn: () => apiGet<Sku[]>("/api/v1/admin/catalog/skus"),
+  // Single-row read. The list endpoint is paged across ~6k SKUs now, so
+  // walking it to find one row is no longer an option — same shape as
+  // ProductEditPage / BrandEditPage.
+  const skuId = params.id ?? "";
+  const skuQuery = useQuery<Sku, ApiError>({
+    queryKey: qk.sku(skuId),
+    queryFn: () => apiGet<Sku>(`/api/v1/admin/catalog/skus/${skuId}`),
+    enabled: !isNew,
   });
-  const existing = isNew ? null : skusQuery.data?.find((s) => s.id === params.id);
+  const existing = isNew ? null : skuQuery.data;
 
   // Reused from FxPage: the USD→UZS market rate, so the operator sees what
   // the customer will actually pay per dollar under a given multiplier,
@@ -526,7 +530,7 @@ export function SkuEditPage() {
       return apiPatch<Sku>(`/api/v1/admin/catalog/skus/${params.id ?? ""}`, body);
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: qk.skus() });
+      await invalidateSku();
       navigate(backToList);
     },
   });
@@ -534,15 +538,40 @@ export function SkuEditPage() {
   const remove = useMutation<void, ApiError>({
     mutationFn: () => apiDelete(`/api/v1/admin/catalog/skus/${params.id ?? ""}`),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: qk.skus() });
+      await invalidateSku();
       navigate(backToList);
     },
   });
+
+  // The row itself plus every SKU listing, whatever its filters/paging —
+  // `["admin", "skus"]` is the shared prefix of both.
+  async function invalidateSku(): Promise<void> {
+    if (!isNew) await qc.invalidateQueries({ queryKey: qk.sku(skuId) });
+    await qc.invalidateQueries({ queryKey: ["admin", "skus"] });
+  }
 
   const denominationHint =
     selectedProduct?.kind === "voucher"
       ? "Например: «10 USD», «1 месяц», «Premium 3 мес»"
       : "Например: «60 UC», «120 UC», «660 UC», «Royale Pass»";
+
+  if (skuQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="SKU"
+          actions={
+            <Button type="button" variant="ghost" onClick={() => navigate(backToList)}>
+              К списку
+            </Button>
+          }
+        />
+        <p className="text-sm text-[var(--danger)]">
+          {skuQuery.error.status === 404 ? "SKU не найден." : extractApiMessage(skuQuery.error)}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form

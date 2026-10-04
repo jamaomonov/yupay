@@ -1,18 +1,24 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Button, Input } from "@yupay/ui";
+import { Button, Input, Select } from "@yupay/ui";
 import { Pencil, Plus, RefreshCcw, Search, Trash2 } from "lucide-react";
-import { useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import type { Brand, Product, Sku } from "../types";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
+import { StatCard } from "@/components/StatCard";
 import { Thumb } from "@/components/Thumb";
 import { useToast } from "@/components/Toast";
-import { StatCard } from "@/components/StatCard";
 import { type ApiError, apiDelete, apiPatch, apiGet, apiPost } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
+import { useDebouncedValue } from "@/lib/useDebouncedValue";
+
+/** Page size. The server orders by product then SKU, so a page holds whole
+ *  products and the grouping below never splits one across two pages. */
+const PAGE_SIZE = 100;
 
 interface GroupedProduct {
   product: Product;
@@ -20,11 +26,28 @@ interface GroupedProduct {
   skus: Sku[];
 }
 
+/** `GET /admin/catalog/skus` — paged since the catalogue passed 6000 SKUs. */
+interface SkuPageOut {
+  items: Sku[];
+  total: number;
+}
+
 interface BulkUzsPriceOut {
   rate: string;
   fx_snapshot_id: string | null;
   updated_total: number;
   skipped_without_cost: number;
+}
+
+// Stable fallbacks, so a loading query does not hand the memos below a fresh
+// `[]` on every render and recompute them for nothing.
+const NO_PRODUCTS: Product[] = [];
+const NO_BRANDS: Brand[] = [];
+const NO_SKUS: Sku[] = [];
+
+function parseOffset(raw: string | null): number {
+  const n = Number(raw ?? "0");
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
 }
 
 export function SkusListPage() {
@@ -40,16 +63,38 @@ export function SkusListPage() {
   const [params, setParams] = useSearchParams();
   const query = params.get("q") ?? "";
   const onlyInactive = params.get("inactive") === "1";
-  const patchParams = (next: Record<string, string | null>) => {
-    const merged = new URLSearchParams(params);
-    for (const [k, v] of Object.entries(next)) {
-      if (v === null || v === "") merged.delete(k);
-      else merged.set(k, v);
-    }
-    // Replace, so a search does not bury the previous page under history
-    // entries the back button then has to walk through character by character.
-    setParams(merged, { replace: true });
-  };
+  const brandId = params.get("brand") ?? "";
+  const productId = params.get("product") ?? "";
+  const offset = parseOffset(params.get("offset"));
+  const patchParams = useCallback(
+    (next: Record<string, string | null>) => {
+      setParams(
+        (prev) => {
+          const merged = new URLSearchParams(prev);
+          for (const [k, v] of Object.entries(next)) {
+            if (v === null || v === "") merged.delete(k);
+            else merged.set(k, v);
+          }
+          return merged;
+        },
+        // Replace, so a search does not bury the previous page under history
+        // entries the back button then has to walk through character by character.
+        { replace: true },
+      );
+    },
+    [setParams],
+  );
+
+  // The field is local state so typing stays instant; the URL — and with it
+  // the request — only sees the value once it has been stable for 300 ms.
+  const [draft, setDraft] = useState(query);
+  const debouncedDraft = useDebouncedValue(draft, 300);
+  useEffect(() => {
+    if (debouncedDraft === query) return;
+    // A new search means a new result set; an offset into the old one is
+    // meaningless against it.
+    patchParams({ q: debouncedDraft, offset: null });
+  }, [debouncedDraft, query, patchParams]);
 
   const productsQuery = useQuery<Product[]>({
     queryKey: qk.products(),
@@ -59,20 +104,37 @@ export function SkusListPage() {
     queryKey: qk.brands(),
     queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
   });
-  const skusQuery = useQuery<Sku[]>({
-    queryKey: qk.skus(),
-    queryFn: () => apiGet<Sku[]>("/api/v1/admin/catalog/skus"),
+  const skusQuery = useQuery<SkuPageOut>({
+    queryKey: qk.skusPage({
+      q: query || null,
+      brandId: brandId || null,
+      productId: productId || null,
+      active: onlyInactive ? false : null,
+      offset,
+    }),
+    queryFn: () => {
+      const sp = new URLSearchParams();
+      if (query) sp.set("q", query);
+      if (brandId) sp.set("brand_id", brandId);
+      if (productId) sp.set("product_id", productId);
+      if (onlyInactive) sp.set("active", "false");
+      sp.set("limit", String(PAGE_SIZE));
+      sp.set("offset", String(offset));
+      return apiGet<SkuPageOut>(`/api/v1/admin/catalog/skus?${sp.toString()}`);
+    },
   });
+
+  const invalidatePages = () => qc.invalidateQueries({ queryKey: qk.skusPages() });
 
   const toggleActive = useMutation<Sku, ApiError, { sku: Sku; next: boolean }>({
     mutationFn: async ({ sku, next }) =>
       apiPatch<Sku>(`/api/v1/admin/catalog/skus/${sku.id}`, { active: next }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.skus() }),
+    onSuccess: invalidatePages,
   });
 
   const remove = useMutation<void, ApiError, Sku>({
     mutationFn: (sku) => apiDelete(`/api/v1/admin/catalog/skus/${sku.id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: qk.skus() }),
+    onSuccess: invalidatePages,
   });
 
   const bulkSetUzs = useMutation<BulkUzsPriceOut, ApiError>({
@@ -85,96 +147,64 @@ export function SkusListPage() {
       toast.success(
         `UZS-цены пересчитаны: ${data.updated_total.toString()} SKU @ 1 USDT = ${rate} UZS. Пропущено без cost_usdt: ${data.skipped_without_cost.toString()}.`,
       );
-      void qc.invalidateQueries({ queryKey: qk.skus() });
+      void invalidatePages();
     },
     onError: () => {
       toast.error("Не удалось пересчитать UZS-цены. Проверь, что FX-провайдер отвечает.");
     },
   });
 
+  const products = productsQuery.data ?? NO_PRODUCTS;
+  const brands = brandsQuery.data ?? NO_BRANDS;
+  const items = skusQuery.data?.items ?? NO_SKUS;
+  const total = skusQuery.data?.total ?? 0;
+
+  const sortedBrands = useMemo(
+    () => [...brands].sort((a, b) => rname(a).localeCompare(rname(b))),
+    [brands],
+  );
+  const productOptions = useMemo(() => {
+    const scoped = brandId ? products.filter((p) => p.brand_id === brandId) : products;
+    return [...scoped].sort((a, b) => rname(a).localeCompare(rname(b)));
+  }, [products, brandId]);
+
   const groups = useMemo<GroupedProduct[]>(() => {
-    const brandById = new Map((brandsQuery.data ?? []).map((b) => [b.id, b]));
+    const brandById = new Map(brands.map((b) => [b.id, b]));
+    const productById = new Map(products.map((p) => [p.id, p]));
+    // Server order: product sort_order/slug, then SKU sort_order/code. A Map
+    // keeps insertion order, so the groups come out in the same sequence.
     const bucket = new Map<string, GroupedProduct>();
-    for (const product of productsQuery.data ?? []) {
-      bucket.set(product.id, {
-        product,
-        brand: brandById.get(product.brand_id),
-        skus: [],
-      });
+    for (const sku of items) {
+      let g = bucket.get(sku.product_id);
+      if (!g) {
+        const product = productById.get(sku.product_id);
+        if (!product) continue;
+        g = { product, brand: brandById.get(product.brand_id), skus: [] };
+        bucket.set(sku.product_id, g);
+      }
+      g.skus.push(sku);
     }
-    for (const sku of skusQuery.data ?? []) {
-      const g = bucket.get(sku.product_id);
-      if (g) g.skus.push(sku);
-    }
-    for (const g of bucket.values()) {
-      g.skus.sort((a, b) => {
-        if (a.sort_order !== b.sort_order) return a.sort_order - b.sort_order;
-        const aPrice = Number.parseFloat(a.price_usd);
-        const bPrice = Number.parseFloat(b.price_usd);
-        if (!Number.isNaN(aPrice) && !Number.isNaN(bPrice) && aPrice !== bPrice) {
-          return aPrice - bPrice;
-        }
-        return a.sku_code.localeCompare(b.sku_code);
-      });
-    }
-    return [...bucket.values()].sort((a, b) => {
-      // Show empty products first so they're impossible to miss.
-      if (a.skus.length === 0 && b.skus.length > 0) return -1;
-      if (b.skus.length === 0 && a.skus.length > 0) return 1;
-      const aName = rname(a.brand) + " " + rname(a.product);
-      const bName = rname(b.brand) + " " + rname(b.product);
-      return aName.localeCompare(bName);
-    });
-  }, [productsQuery.data, brandsQuery.data, skusQuery.data]);
+    // Products with no SKU at all cannot be computed from one page of 6000
+    // SKUs. Under a brand filter they can — as long as this page *is* the
+    // brand's whole unfiltered result set, so "absent from the page" really
+    // does mean "has no SKU" and not "is on page two" or "was filtered out".
+    const wholeBrand =
+      brandId !== "" && query === "" && !onlyInactive && offset === 0 && total <= PAGE_SIZE;
+    const empties: GroupedProduct[] = wholeBrand
+      ? products
+          .filter(
+            (p) =>
+              p.brand_id === brandId &&
+              (productId === "" || p.id === productId) &&
+              !bucket.has(p.id),
+          )
+          .map((p) => ({ product: p, brand: brandById.get(p.brand_id), skus: [] }))
+      : [];
+    // Empty products first so they're impossible to miss.
+    return [...empties, ...bucket.values()];
+  }, [brands, products, items, brandId, productId, query, onlyInactive, offset, total]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return groups
-      .map((g) => {
-        if (q.length === 0 && !onlyInactive) return g;
-        const matchesGroup =
-          rname(g.brand).toLowerCase().includes(q) ||
-          rname(g.product).toLowerCase().includes(q) ||
-          g.product.slug.toLowerCase().includes(q);
-        const skus = g.skus.filter((sku) => {
-          if (onlyInactive && sku.active) return false;
-          if (q.length === 0) return true;
-          if (matchesGroup) return true;
-          return (
-            sku.sku_code.toLowerCase().includes(q) ||
-            (sku.denomination ?? "").toLowerCase().includes(q) ||
-            (sku.region ?? "").toLowerCase().includes(q)
-          );
-        });
-        if (q.length > 0 && !matchesGroup && skus.length === 0) {
-          return null;
-        }
-        if (onlyInactive && skus.length === 0) return null;
-        // Even with q matching the group, hide if filter dropped everything.
-        if (skus.length === 0 && !matchesGroup && !onlyInactive) return null;
-        // Sort_order preserved by mapping
-        return { ...g, skus };
-      })
-      .filter((g): g is GroupedProduct => g !== null);
-  }, [groups, query, onlyInactive]);
-
-  const totals = useMemo(() => {
-    let totalSkus = 0;
-    let inactive = 0;
-    let emptyProducts = 0;
-    for (const g of groups) {
-      totalSkus += g.skus.length;
-      inactive += g.skus.filter((s) => !s.active).length;
-      if (g.skus.length === 0) emptyProducts++;
-    }
-    return {
-      totalSkus,
-      inactive,
-      emptyProducts,
-      products: groups.length,
-    };
-  }, [groups]);
-
+  const hasFilter = query !== "" || onlyInactive || brandId !== "" || productId !== "";
   const isLoading = productsQuery.isLoading || brandsQuery.isLoading || skusQuery.isLoading;
 
   return (
@@ -209,39 +239,61 @@ export function SkusListPage() {
         }
       />
 
-      <section className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-4">
-        <StatCard label="Продуктов" value={totals.products} />
-        <StatCard label="SKU всего" value={totals.totalSkus} accent />
-        <StatCard
-          label="Неактивные"
-          value={totals.inactive}
-          tone={totals.inactive > 0 ? "warn" : "muted"}
-        />
-        <StatCard
-          label="Без SKU"
-          value={totals.emptyProducts}
-          tone={totals.emptyProducts > 0 ? "warn" : "muted"}
-        />
+      <section className="mb-5 grid grid-cols-2 gap-3">
+        <StatCard label="Найдено SKU" value={total} accent />
+        <StatCard label="Продуктов (всего)" value={products.length} />
       </section>
 
       <section className="mb-5 flex flex-wrap items-center gap-3">
         <div className="relative min-w-64 flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--text-secondary)]" />
           <Input
-            value={query}
+            value={draft}
             onChange={(e) => {
-              patchParams({ q: e.target.value });
+              setDraft(e.target.value);
             }}
-            placeholder="Поиск по бренду, продукту, sku-code, региону…"
+            placeholder="Поиск по бренду, продукту, sku-code, номиналу…"
             className="pl-9"
           />
         </div>
+        <Select
+          aria-label="Бренд"
+          value={brandId}
+          onChange={(e) => {
+            // The product list is scoped to the brand, so a product picked
+            // under the old brand has nothing to do with the new one.
+            patchParams({ brand: e.target.value, product: null, offset: null });
+          }}
+          containerClassName="w-auto"
+        >
+          <option value="">Бренд: все</option>
+          {sortedBrands.map((b) => (
+            <option key={b.id} value={b.id}>
+              {rname(b) || b.slug}
+            </option>
+          ))}
+        </Select>
+        <Select
+          aria-label="Продукт"
+          value={productId}
+          onChange={(e) => {
+            patchParams({ product: e.target.value, offset: null });
+          }}
+          containerClassName="w-auto"
+        >
+          <option value="">Продукт: все</option>
+          {productOptions.map((p) => (
+            <option key={p.id} value={p.id}>
+              {rname(p) || p.slug}
+            </option>
+          ))}
+        </Select>
         <label className="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
           <input
             type="checkbox"
             checked={onlyInactive}
             onChange={(e) => {
-              patchParams({ inactive: e.target.checked ? "1" : null });
+              patchParams({ inactive: e.target.checked ? "1" : null, offset: null });
             }}
             className="size-4"
           />
@@ -255,18 +307,16 @@ export function SkusListPage() {
         </div>
       )}
 
-      {!isLoading && filtered.length === 0 && (
+      {!isLoading && groups.length === 0 && (
         <div className="rounded-lg border bg-[var(--bg-surface)] p-10 text-center shadow-[var(--shadow-sm)]">
           <p className="text-sm text-[var(--text-secondary)]">
-            {query.length > 0
-              ? "Ничего не нашлось по этому запросу."
-              : "SKU пока нет. Создай первый."}
+            {hasFilter ? "Ничего не нашлось по этому запросу." : "SKU пока нет. Создай первый."}
           </p>
         </div>
       )}
 
       <div className="space-y-6">
-        {filtered.map((g) => (
+        {groups.map((g) => (
           <ProductGroup
             key={g.product.id}
             group={g}
@@ -284,6 +334,17 @@ export function SkusListPage() {
           />
         ))}
       </div>
+
+      {skusQuery.data && (
+        <Pagination
+          total={total}
+          limit={PAGE_SIZE}
+          offset={offset}
+          onPageChange={(next) => {
+            patchParams({ offset: next > 0 ? String(next) : null });
+          }}
+        />
+      )}
     </div>
   );
 }

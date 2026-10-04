@@ -14,10 +14,24 @@ export interface SourcingRuleOut {
    *  buy from, so the cost becomes the new supplier's price in the same
    *  request. `null` on a listing, which re-priced nothing. */
   cost_sync: CostSyncResult | null;
+  /** Catalogue context resolved server-side (one join in the listing query)
+   *  so the rules table no longer has to pull the whole SKU / product / brand
+   *  catalogue to label a row — at ~6150 SKUs that was three bare-list
+   *  fetches per page view. Optional on the client because the PUT/DELETE
+   *  responses and older fixtures do not carry them; every one is `null`
+   *  when the SKU behind the rule has been deleted since the rule was set. */
+  denomination?: string | null;
+  product_slug?: string | null;
+  brand_id?: string | null;
+  brand_slug?: string | null;
+  brand_name?: string | null;
 }
 
 export interface SourcingRuleListOut {
   items: SourcingRuleOut[];
+  /** Rows matching the request before `limit`/`offset` — what `Pagination`
+   *  renders; ~4400 after the 2026-10 bulk import. */
+  total: number;
 }
 
 export interface SourcingDecisionOut {

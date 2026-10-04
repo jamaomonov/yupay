@@ -4,7 +4,12 @@ import { Database, Search } from "lucide-react";
 import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { capabilitiesFor, SUPPLIER_LABELS, type CatalogEntry, type SupplierMapping } from "./types";
+import {
+  capabilitiesFor,
+  SUPPLIER_LABELS,
+  type CatalogEntry,
+  type MappedProductIdsOut,
+} from "./types";
 
 import { DataTable } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
@@ -16,9 +21,6 @@ import { useDebouncedValue } from "@/lib/useDebouncedValue";
 
 interface CatalogListOut {
   items: CatalogEntry[];
-}
-interface MappingListOut {
-  items: SupplierMapping[];
 }
 
 export function SupplierCatalogPage() {
@@ -40,15 +42,24 @@ export function SupplierCatalogPage() {
       ),
   });
 
-  const mappings = useQuery<MappingListOut>({
-    queryKey: qk.integrationMappings({ supplierSlug: slug }),
+  // The whole "already imported" set in one call. This used to read the
+  // mapping list, which answers its first 200 rows — ~8600 exist after the
+  // 2026-10 bulk import, so every game past the first page showed as not yet
+  // imported. The products endpoint is the distinct ids, nothing else.
+  // Key built inline (`qk` has no entry for this endpoint yet), under the
+  // `["admin","integrations","mappings"]` prefix so a future bare-prefix
+  // invalidation would reach it. Today nothing writes mappings from this
+  // page, and the import wizard navigates away, so it refreshes on its own
+  // staleness like before.
+  const mappedProducts = useQuery<MappedProductIdsOut>({
+    queryKey: ["admin", "integrations", "mappings", "products", slug] as const,
     queryFn: () =>
-      apiGet<MappingListOut>(`/api/v1/admin/integrations/mappings?supplier_slug=${slug}`),
+      apiGet<MappedProductIdsOut>(
+        `/api/v1/admin/integrations/mappings/products?supplier_slug=${slug}&kind=game`,
+      ),
   });
 
-  const imported = new Set(
-    (mappings.data?.items ?? []).filter((m) => m.kind === "game").map((m) => m.external_product_id),
-  );
+  const imported = new Set(mappedProducts.data?.items ?? []);
 
   return (
     <div>

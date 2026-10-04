@@ -114,8 +114,14 @@ const RULES: SourcingRuleListOut = {
       updated_by: "admin-1",
       updated_at: "2026-09-10T00:00:00Z",
       cost_sync: null,
+      denomination: "100",
+      product_slug: "mobile-legends",
+      brand_id: "brand-1",
+      brand_slug: "mlbb",
+      brand_name: "Mobile Legends",
     },
   ],
+  total: 1,
 };
 
 const DECISION: SourcingDecisionOut = {
@@ -125,24 +131,26 @@ const DECISION: SourcingDecisionOut = {
   rule_present: true,
 };
 
+const isRulesList = (path: string) => path.startsWith("/api/v1/admin/sourcing/rules?");
+const isDecision = (path: string) =>
+  path.startsWith("/api/v1/admin/sourcing/rules/") && !path.includes("?");
+
 beforeEach(() => {
   mockedApiGet.mockReset();
   mockedApi.mockReset();
   mockedApiGet.mockImplementation((path: string) => {
-    if (path === "/api/v1/admin/sourcing/rules") return Promise.resolve(RULES);
-    if (path.startsWith("/api/v1/admin/sourcing/rules/")) return Promise.resolve(DECISION);
-    if (path.includes("/integrations/mappings")) return Promise.resolve({ items: [] });
-    // RulesTable (rendered below the single-SKU editor on this same page)
-    // fetches skus/products/brands as bare arrays, not `{ items: [] }`.
+    if (isRulesList(path)) return Promise.resolve(RULES);
+    if (isDecision(path)) return Promise.resolve(DECISION);
+    if (path.includes("/integrations/mappings")) return Promise.resolve({ items: [], total: 0 });
     return Promise.resolve([]);
   });
 });
 
-function renderPage() {
+function renderPage(initialEntries: string[] = ["/sourcing"]) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter>
+      <MemoryRouter initialEntries={initialEntries}>
         <SourcingPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -225,8 +233,8 @@ it("asks for the picked SKU's mappings, not the first page of everyone's", async
    * list would have missed, returned only to a query scoped by `sku_id`.
    */
   mockedApiGet.mockImplementation((path: string) => {
-    if (path === "/api/v1/admin/sourcing/rules") return Promise.resolve(RULES);
-    if (path.startsWith("/api/v1/admin/sourcing/rules/")) return Promise.resolve(DECISION);
+    if (isRulesList(path)) return Promise.resolve(RULES);
+    if (isDecision(path)) return Promise.resolve(DECISION);
     if (path.includes("/integrations/mappings")) {
       return Promise.resolve(
         path.includes(`sku_id=${TOPUP_NO_RULE.id}`)
@@ -242,8 +250,9 @@ it("asks for the picked SKU's mappings, not the first page of everyone's", async
                   quantity: 1,
                 },
               ],
+              total: 1,
             }
-          : { items: [] },
+          : { items: [], total: 0 },
       );
     }
     return Promise.resolve([]);
@@ -268,4 +277,56 @@ it("asks for the picked SKU's mappings, not the first page of everyone's", async
   await waitFor(() => {
     expect(screen.queryByText(/нет активного маппинга/i)).not.toBeInTheDocument();
   });
+});
+
+it("pages the rules list: asks for the page the URL names and renders the total", async () => {
+  // 4400 rules after the bulk import; the unpaged list silently showed 200.
+  mockedApiGet.mockImplementation((path: string) => {
+    if (isRulesList(path)) return Promise.resolve({ ...RULES, total: 4400 });
+    if (isDecision(path)) return Promise.resolve(DECISION);
+    return Promise.resolve({ items: [], total: 0 });
+  });
+
+  renderPage(["/sourcing?offset=400"]);
+
+  await screen.findByText("401–600 из 4400");
+  const asked = mockedApiGet.mock.calls.map(([p]) => p).filter(isRulesList);
+  expect(asked).toEqual(["/api/v1/admin/sourcing/rules?limit=200&offset=400"]);
+
+  fireEvent.click(screen.getByRole("button", { name: "Следующая страница" }));
+
+  await waitFor(() => {
+    const after = mockedApiGet.mock.calls.map(([p]) => p).filter(isRulesList);
+    expect(after).toContain("/api/v1/admin/sourcing/rules?limit=200&offset=600");
+  });
+  await screen.findByText("601–800 из 4400");
+});
+
+it("still reads as editing when the SKU's rule is on another page — from the decision", async () => {
+  // The listed page holds none of this SKU's rows; only the per-SKU decision
+  // says an explicit rule exists (strict + rule_present, primary names it).
+  mockedApiGet.mockImplementation((path: string) => {
+    if (isRulesList(path)) return Promise.resolve({ items: [], total: 4400 });
+    if (isDecision(path)) {
+      return Promise.resolve({
+        primary: "supplier:nova",
+        fallback: null,
+        strict: true,
+        rule_present: true,
+      } satisfies SourcingDecisionOut);
+    }
+    return Promise.resolve({ items: [], total: 0 });
+  });
+
+  renderPage();
+  fireEvent.click(screen.getByText("pick-topup-with-rule"));
+
+  await waitFor(() => {
+    const card = screen.getByText("Только поставщик").closest("button");
+    expect(card).toHaveAttribute("aria-pressed", "true");
+  });
+  expect(screen.getByText(/уже есть правило/i)).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /заменить правило/i })).toBeInTheDocument();
+  // The supplier came out of `primary`, not the "g2b" default.
+  expect(screen.getByRole("button", { name: /NOVA/i })).toHaveAttribute("aria-pressed", "true");
 });

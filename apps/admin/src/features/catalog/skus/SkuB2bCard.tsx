@@ -55,17 +55,14 @@ export function SkuB2bCard({ sku, cost }: Props) {
 
   const save = useMutation<SkuB2bOut, unknown, { markup_pct: string; visible_b2b: boolean }>({
     mutationFn: (body) => patchSkuB2b(sku.id, body, keyRef.current),
-    onSuccess: (data) => {
+    onSuccess: () => {
       toast.success(T.saved);
-      // The edit page found this SKU by walking the cached list — patch that
-      // list in place so a reopen shows what the server just confirmed.
-      qc.setQueryData<Sku[]>(qk.skus(), (old) =>
-        old?.map((s) =>
-          s.id === data.id
-            ? { ...s, visible_b2b: data.visible_b2b, b2b_markup_pct: data.b2b_markup_pct }
-            : s,
-        ),
-      );
+      // The SKU lives in two caches — the editor's single-row read
+      // (`qk.sku(id)`) and whatever page of the paged list is cached — and
+      // the list key carries its filters, so it cannot be named from here.
+      // Their shared prefix can, so both refetch and a reopen shows what
+      // the server just confirmed.
+      void qc.invalidateQueries({ queryKey: qk.skusAll() });
     },
     onError: (err) => {
       toast.error(fill(T.error, { message: extractApiMessage(err) }));

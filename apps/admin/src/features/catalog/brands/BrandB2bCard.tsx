@@ -56,6 +56,11 @@ export function BrandB2bCard({ brand }: Props) {
       qc.setQueryData<Brand[]>(qk.brands(), (old) =>
         old?.map((b) => (b.id === data.id ? { ...b, visible_b2b: data.visible_b2b } : b)),
       );
+      // The edit page reads the one-row key now, not the list — patch it too,
+      // or the checkbox (driven by the prop) only flips after a refetch.
+      qc.setQueryData<Brand>(qk.brand(data.id), (old) =>
+        old ? { ...old, visible_b2b: data.visible_b2b } : old,
+      );
     },
     onError: (err) => {
       toast.error(fill(T.error, { message: extractApiMessage(err) }));
@@ -67,8 +72,10 @@ export function BrandB2bCard({ brand }: Props) {
     onSuccess: (data) => {
       setPendingMarkup(null);
       setAffected(data.affected);
-      // Every SKU of the brand may now carry a different markup.
-      void qc.invalidateQueries({ queryKey: qk.skus() });
+      // Every SKU of the brand may now carry a different markup — in the
+      // editor's single-row cache and on whatever list page is cached, so
+      // drop everything under the shared `["admin", "skus"]` prefix.
+      void qc.invalidateQueries({ queryKey: qk.skusAll() });
     },
     onError: (err) => {
       // The confirm dialog stays open — a retry reuses the same key.

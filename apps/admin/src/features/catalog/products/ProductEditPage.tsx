@@ -13,7 +13,8 @@ import type { Brand, Product } from "../types";
 
 import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { type ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 const LOCALES = ["ru", "en", "uz"] as const;
@@ -116,11 +117,15 @@ export function ProductEditPage() {
     queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
   });
 
-  const productsQuery = useQuery<Product[]>({
-    queryKey: qk.products(),
-    queryFn: () => apiGet<Product[]>("/api/v1/admin/catalog/products"),
+  // Single-row read — the catalogue is a few hundred products now, so the
+  // edit page fetches the one it needs instead of walking the whole list.
+  const productId = params.id ?? "";
+  const productQuery = useQuery<Product, ApiError>({
+    queryKey: qk.product(productId),
+    queryFn: () => apiGet<Product>(`/api/v1/admin/catalog/products/${productId}`),
+    enabled: !isNew,
   });
-  const existing = isNew ? null : productsQuery.data?.find((p) => p.id === params.id);
+  const existing = isNew ? null : productQuery.data;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(productSchema),
@@ -169,7 +174,7 @@ export function ProductEditPage() {
       return apiPatch<Product>(`/api/v1/admin/catalog/products/${params.id ?? ""}`, payload);
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: qk.products() });
+      await invalidateProduct();
       navigate("/products");
     },
   });
@@ -177,10 +182,35 @@ export function ProductEditPage() {
   const remove = useMutation({
     mutationFn: () => apiDelete(`/api/v1/admin/catalog/products/${params.id ?? ""}`),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: qk.products() });
+      await invalidateProduct();
       navigate("/products");
     },
   });
+
+  async function invalidateProduct(): Promise<void> {
+    if (!isNew) await qc.invalidateQueries({ queryKey: qk.product(productId) });
+    await qc.invalidateQueries({ queryKey: qk.products() });
+  }
+
+  if (productQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="Продукт"
+          actions={
+            <Button type="button" variant="ghost" onClick={() => navigate("/products")}>
+              К списку
+            </Button>
+          }
+        />
+        <p className="text-sm text-[var(--danger)]">
+          {productQuery.error.status === 404
+            ? "Продукт не найден."
+            : extractApiMessage(productQuery.error)}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form

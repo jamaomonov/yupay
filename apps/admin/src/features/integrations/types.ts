@@ -44,6 +44,17 @@ export interface SupplierMapping {
 
 export interface SupplierMappingListOut {
   items: SupplierMapping[];
+  /** Rows matching the filters before `limit`/`offset` — ~8600 after the
+   *  2026-10 bulk import, so every list reader pages (`limit` ≤ 500). */
+  total: number;
+}
+
+/** `GET /integrations/mappings/products?supplier_slug=&kind=` — the distinct
+ *  `external_product_id`s of one supplier's active mappings. The whole set in
+ *  one small response, for screens that need "which games are already
+ *  mapped" without walking ~8600 mapping rows page by page. */
+export interface MappedProductIdsOut {
+  items: string[];
 }
 
 export type CatalogKind = "voucher" | "game" | "game_denom" | "voucher_denom";

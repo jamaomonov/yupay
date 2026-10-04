@@ -30,12 +30,18 @@ import type {
 import type { SkuPickerRow, SupplierMappingListOut } from "@/features/integrations/types";
 
 import { PageHeader } from "@/components/PageHeader";
+import { Pagination } from "@/components/Pagination";
 import { useToast } from "@/components/Toast";
 import { SkuPicker } from "@/features/integrations/pickers";
 import { FULFILMENT_ROUTES } from "@/features/integrations/types";
 import { type ApiError, api, apiGet } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
+import { numberCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+
+/** Rules per page. The endpoint's own default; ~4400 rules after the 2026-10
+ *  bulk import, so the unpaged list silently showed the first 200 of them. */
+const RULES_PAGE_SIZE = 200;
 
 export function SourcingPage() {
   const qc = useQueryClient();
@@ -44,10 +50,16 @@ export function SourcingPage() {
   const [sku, setSku] = useState<SkuPickerRow | null>(null);
   const [mode, setMode] = useState<SourcingMode>("auto");
   const [supplierSlug, setSupplierSlug] = useState<string>("g2b");
+  const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
 
+  // Keyed under `qk.sourcingRules()` so the mutations below keep invalidating
+  // every page with the one prefix they already use.
   const rulesQuery = useQuery<SourcingRuleListOut>({
-    queryKey: qk.sourcingRules(),
-    queryFn: () => apiGet<SourcingRuleListOut>("/api/v1/admin/sourcing/rules"),
+    queryKey: [...qk.sourcingRules(), offset],
+    queryFn: () =>
+      apiGet<SourcingRuleListOut>(
+        `/api/v1/admin/sourcing/rules?limit=${String(RULES_PAGE_SIZE)}&offset=${String(offset)}`,
+      ),
   });
 
   // Live route the backend would take for the picked SKU right now.
@@ -97,10 +109,19 @@ export function SourcingPage() {
   // PUT silently replaced it, so a replacement looked like an addition).
   // `sku_sourcing_rules`'s primary key is `sku_id`, so there is at most
   // one, and this is that one.
-  const existingRule = useMemo(() => {
+  //
+  // The rules list is paged now, so the row is only on hand when it sits on
+  // the page the operator is looking at; for every other SKU the per-SKU
+  // decision carries the same facts — `rule_present` plus a `strict` route
+  // is exactly an explicit rule, and `primary` names its mode. Prefer the
+  // row when it is here (it is the exact record); fall back to the decision
+  // otherwise, so a rule on page 12 still reads as "editing", not "creating".
+  const existingRule = useMemo<ExistingRule | null>(() => {
     if (!sku) return null;
-    return rulesQuery.data?.items.find((r) => r.sku_id === sku.id) ?? null;
-  }, [sku, rulesQuery.data]);
+    const onPage = rulesQuery.data?.items.find((r) => r.sku_id === sku.id);
+    if (onPage) return { mode: onPage.mode, supplier_slug: onPage.supplier_slug };
+    return ruleFromDecision(decisionQuery.data);
+  }, [sku, rulesQuery.data, decisionQuery.data]);
 
   // When the operator picks a SKU, prefill the form with its existing
   // rule (or reset to auto if it has none).
@@ -113,8 +134,11 @@ export function SourcingPage() {
       setMode("auto");
       setSupplierSlug("g2b");
     }
+    // Primitive deps on purpose: `existingRule` is rebuilt whenever either
+    // query refetches (window focus, an invalidation after save), and a fresh
+    // object with the same facts must not wipe an edit in progress.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sku?.id, existingRule]);
+  }, [sku?.id, existingRule?.mode, existingRule?.supplier_slug]);
 
   // `unknown`, not `SourcingRuleOut | unknown` (which collapses to
   // `unknown` anyway and eslint rightly rejects): the DELETE branch below
@@ -308,9 +332,43 @@ export function SourcingPage() {
             remove.mutate(skuId);
           }}
         />
+        <Pagination
+          total={rulesQuery.data?.total ?? 0}
+          limit={RULES_PAGE_SIZE}
+          offset={offset}
+          onPageChange={setOffset}
+        />
       </section>
     </div>
   );
+}
+
+/** The two facts the editor needs about a SKU's existing rule — enough to
+ *  pre-fill the form and word the banner/button as "replace", from either
+ *  the listed row or the per-SKU decision. */
+interface ExistingRule {
+  mode: SourcingMode;
+  supplier_slug: string | null;
+}
+
+/** Read an explicit rule back out of the per-SKU decision.
+ *
+ * Mirrors `_resolve_explicit_rule` in `sourcing/service.py`: an explicit
+ * rule always answers `strict` with `rule_present`, and `primary` is
+ * `inventory` (force_inventory), `supplier:manual` (manual) or
+ * `supplier:<slug>` (force_supplier). A non-strict decision with
+ * `rule_present` is a stray `mode="auto"` row — no override to edit, so
+ * `null`, same as no rule at all. The one reading this cannot tell apart is
+ * such a stray auto row on an unmapped top-up (auto also answers a strict
+ * `supplier:manual` there); the listed row wins whenever it is on the page,
+ * and the save still writes exactly what the operator picks. */
+function ruleFromDecision(decision: SourcingDecisionOut | undefined): ExistingRule | null {
+  if (!decision?.rule_present || !decision.strict) return null;
+  if (decision.primary === "inventory") return { mode: "force_inventory", supplier_slug: null };
+  if (decision.primary === "supplier:manual") return { mode: "manual", supplier_slug: null };
+  const slug = decision.primary.startsWith("supplier:") ? decision.primary.slice(9) : "";
+  if (!slug) return null;
+  return { mode: "force_supplier", supplier_slug: slug };
 }
 
 /** What a route switch did to the money, in one line.

@@ -19,6 +19,30 @@ export const qk = {
   skus: (filters?: { productId?: string | null }) =>
     ["admin", "skus", filters?.productId ?? null] as const,
   sku: (id: string) => ["admin", "skus", id] as const,
+  /** Prefix shared by every SKU read (`skus`, `sku`, `skusPage`) — invalidate
+   *  it after a write that may have touched SKUs you cannot name. */
+  skusAll: () => ["admin", "skus"] as const,
+  /** Prefix of every `skusPage` key — invalidate it after a SKU write so the
+   *  list refetches whatever page and filters it is showing. */
+  skusPages: () => ["admin", "skus", "page"] as const,
+  /** One page of the server-paged SKU list (`GET /admin/catalog/skus`). */
+  skusPage: (filters: {
+    q?: string | null;
+    brandId?: string | null;
+    productId?: string | null;
+    active?: boolean | null;
+    offset?: number;
+  }) =>
+    [
+      "admin",
+      "skus",
+      "page",
+      filters.q ?? null,
+      filters.brandId ?? null,
+      filters.productId ?? null,
+      filters.active ?? null,
+      filters.offset ?? 0,
+    ] as const,
 
   // inventory
   inventoryCounts: (skuId: string) => ["admin", "inventory", "counts", skuId] as const,

@@ -1,18 +1,19 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 import { SkusListPage } from "./SkusListPage";
 
 import { apiGet } from "@/lib/api";
 
 /**
- * The search lived in component state, so editing a SKU — which navigates away
- * and back — threw it away. An operator working through a filtered list retyped
- * the query after every single edit.
+ * The list is server-paged since the catalogue passed 6000 SKUs: every filter
+ * lives in the URL (so editing a SKU — which navigates away and back — keeps
+ * it, and a filtered list is a link you can send), and the request carries
+ * the filters as query params instead of the page filtering a full download.
  */
 
 vi.mock("@/lib/api", () => ({
@@ -37,6 +38,7 @@ const BRAND = {
   maintenance: false,
   translations: [{ locale: "ru", name: "Roblox" }],
 };
+const OTHER_BRAND = { ...BRAND, id: "brand-2", slug: "steam", translations: [] };
 const PRODUCT = {
   id: "prod-1",
   slug: "robux",
@@ -48,6 +50,13 @@ const PRODUCT = {
   active: true,
   required_fields: [],
   translations: [{ locale: "ru", name: "Robux" }],
+};
+/** Same brand, no SKU behind it. */
+const EMPTY_PRODUCT = {
+  ...PRODUCT,
+  id: "prod-2",
+  slug: "robux-gift-card",
+  translations: [{ locale: "ru", name: "Robux Gift Card" }],
 };
 const SKU = {
   id: "sku-1",
@@ -66,14 +75,32 @@ const SKU = {
   price_overrides: [],
 };
 
+let skuPage: { items: (typeof SKU)[]; total: number } = { items: [SKU], total: 1 };
+
 beforeEach(() => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  skuPage = { items: [SKU], total: 1 };
   mockedApiGet.mockReset();
   mockedApiGet.mockImplementation((path: string) => {
-    if (path.includes("/products")) return Promise.resolve([PRODUCT]);
-    if (path.includes("/brands")) return Promise.resolve([BRAND]);
-    return Promise.resolve([SKU]);
+    if (path.includes("/products")) return Promise.resolve([PRODUCT, EMPTY_PRODUCT]);
+    if (path.includes("/brands")) return Promise.resolve([BRAND, OTHER_BRAND]);
+    return Promise.resolve(skuPage);
   });
 });
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/** The query string of the most recent SKU-page request. */
+function lastSkuRequest(): URLSearchParams {
+  const paths = mockedApiGet.mock.calls
+    .map((c) => c[0])
+    .filter((p) => p.startsWith("/api/v1/admin/catalog/skus?"));
+  const last = paths.at(-1);
+  if (!last) throw new Error("no /skus request yet");
+  return new URLSearchParams(last.slice(last.indexOf("?") + 1));
+}
 
 /** Renders the page and exposes the current URL, which is where search lives. */
 function renderList(initial = "/skus") {
@@ -104,32 +131,140 @@ function renderList(initial = "/skus") {
   return { currentUrl: () => url };
 }
 
-it("puts the search in the URL, so leaving and coming back keeps it", async () => {
+/** A product group's heading — by role, because the product `<select>` has an
+ *  `<option>` with the same text and `findByText` would see both. */
+const findGroup = (name: string) => screen.findByRole("heading", { name });
+const queryGroup = (name: string) => screen.queryByRole("heading", { name });
+
+async function settleDebounce() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+}
+
+it("asks the server for one page, not the whole catalogue", async () => {
+  renderList();
+  await findGroup("Robux");
+  const sp = lastSkuRequest();
+  expect(sp.get("limit")).toBe("100");
+  expect(sp.get("offset")).toBe("0");
+  expect(sp.has("q")).toBe(false);
+  expect(sp.has("active")).toBe(false);
+});
+
+it("puts the search in the URL after the debounce, and sends it to the server", async () => {
   const { currentUrl } = renderList();
   const field = await screen.findByPlaceholderText(/Поиск по бренду/);
 
   fireEvent.change(field, { target: { value: "robux" } });
+  // Typed, but not yet a request: the URL still has no `q`.
+  expect(currentUrl()).toBe("/skus");
+
+  await settleDebounce();
 
   await waitFor(() => {
     expect(currentUrl()).toContain("q=robux");
   });
+  await waitFor(() => {
+    expect(lastSkuRequest().get("q")).toBe("robux");
+  });
 });
 
-it("restores the search from the URL on arrival", async () => {
+it("restores the search from the URL on arrival and requests with it", async () => {
   renderList("/skus?q=robux");
   const field = await screen.findByPlaceholderText(/Поиск по бренду/);
   expect(field).toHaveValue("robux");
+  await waitFor(() => {
+    expect(lastSkuRequest().get("q")).toBe("robux");
+  });
 });
 
-it("restores the inactive-only filter too", async () => {
+it("restores the inactive-only filter too, as active=false on the wire", async () => {
   renderList("/skus?inactive=1");
   const box = await screen.findByRole("checkbox");
   expect(box).toBeChecked();
+  await waitFor(() => {
+    expect(lastSkuRequest().get("active")).toBe("false");
+  });
+});
+
+it("sends the brand and product filters as ids", async () => {
+  renderList("/skus?brand=brand-1&product=prod-1");
+  await waitFor(() => {
+    const sp = lastSkuRequest();
+    expect(sp.get("brand_id")).toBe("brand-1");
+    expect(sp.get("product_id")).toBe("prod-1");
+  });
+  expect(await screen.findByRole("combobox", { name: "Бренд" })).toHaveValue("brand-1");
+  expect(screen.getByRole("combobox", { name: "Продукт" })).toHaveValue("prod-1");
+});
+
+it("walks pages through the URL offset", async () => {
+  skuPage = { items: [SKU], total: 250 };
+  const { currentUrl } = renderList("/skus?offset=100");
+
+  expect(await screen.findByText("101–200 из 250")).toBeInTheDocument();
+  expect(lastSkuRequest().get("offset")).toBe("100");
+
+  fireEvent.click(screen.getByRole("button", { name: "Следующая страница" }));
+  await waitFor(() => {
+    expect(currentUrl()).toContain("offset=200");
+  });
+  await waitFor(() => {
+    expect(lastSkuRequest().get("offset")).toBe("200");
+  });
+});
+
+it("goes back to the first page when a filter changes", async () => {
+  skuPage = { items: [SKU], total: 250 };
+  const { currentUrl } = renderList("/skus?offset=100");
+  const box = await screen.findByRole("checkbox");
+
+  fireEvent.click(box);
+
+  await waitFor(() => {
+    expect(currentUrl()).toContain("inactive=1");
+  });
+  expect(currentUrl()).not.toContain("offset");
+});
+
+it("drops the product filter when the brand changes, since it was scoped to the old one", async () => {
+  const { currentUrl } = renderList("/skus?brand=brand-1&product=prod-1&offset=100");
+  const brand = await screen.findByRole("combobox", { name: "Бренд" });
+
+  fireEvent.change(brand, { target: { value: "brand-2" } });
+
+  await waitFor(() => {
+    expect(currentUrl()).toContain("brand=brand-2");
+  });
+  expect(currentUrl()).not.toContain("product=");
+  expect(currentUrl()).not.toContain("offset=");
+});
+
+it("shows the found total from the server, not the page length", async () => {
+  skuPage = { items: [SKU], total: 6150 };
+  renderList();
+  await findGroup("Robux");
+  const card = screen.getByText("Найдено SKU").parentElement;
+  expect(card?.textContent).toContain("6150");
+});
+
+it("surfaces a brand's SKU-less products only when the brand is filtered", async () => {
+  renderList("/skus?brand=brand-1");
+  expect(await findGroup("Robux Gift Card")).toBeInTheDocument();
+  expect(screen.getByText(/Ни одного SKU/)).toBeInTheDocument();
+});
+
+it("cannot know which products are empty from one page of many, so says nothing", async () => {
+  renderList();
+  await findGroup("Robux");
+  expect(queryGroup("Robux Gift Card")).not.toBeInTheDocument();
+  expect(screen.queryByText(/Ни одного SKU/)).not.toBeInTheDocument();
 });
 
 it("shows the brand logo and the SKU picture beside their names", async () => {
   renderList();
-  await screen.findByText("Robux");
+  await findGroup("Robux");
   const sources = Array.from(document.querySelectorAll("img")).map((i) => i.getAttribute("src"));
   // Recognising the artwork is faster than reading the row, which is the whole
   // point — the names stay beside them either way.

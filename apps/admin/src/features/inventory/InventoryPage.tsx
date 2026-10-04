@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Select } from "@yupay/ui";
-import { useId, useMemo, useState } from "react";
+import { useId, useState } from "react";
 
 import type {
   BulkUploadOut,
@@ -9,13 +9,14 @@ import type {
   CodeState,
   SkuCountsOut,
 } from "./types";
-import type { Product, Sku } from "@/features/catalog/types";
+import type { SkuPickerRow } from "@/features/integrations/types";
 
 import { Badge } from "@/components/Badge";
 import { CopyId } from "@/components/CopyId";
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { ErrorState } from "@/components/States";
+import { SkuPicker } from "@/features/integrations/pickers";
 import { type ApiError, apiGet, apiPost } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
@@ -33,37 +34,22 @@ export function InventoryPage() {
   // label names nothing for a screen reader.
   const fieldId = useId();
   const qc = useQueryClient();
-  const [skuId, setSkuId] = useState<string>("");
+  // The picker's row, not a bare id: it carries the product kind the page
+  // needs and spares it the full catalogue — 6150 SKUs in one `<select>`
+  // was unusable long before it was slow.
+  const [selected, setSelected] = useState<SkuPickerRow | null>(null);
+  const skuId = selected?.id ?? "";
   const [state, setState] = useState<CodeState | "">("");
   const [codesText, setCodesText] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const productsQuery = useQuery<Product[]>({
-    queryKey: qk.products(),
-    queryFn: () => apiGet<Product[]>("/api/v1/admin/catalog/products"),
-  });
-  const skusQuery = useQuery<Sku[]>({
-    queryKey: qk.skus(),
-    queryFn: () => apiGet<Sku[]>("/api/v1/admin/catalog/skus"),
-  });
-  const productById = useMemo(() => {
-    const map = new Map<string, Product>();
-    for (const p of productsQuery.data ?? []) map.set(p.id, p);
-    return map;
-  }, [productsQuery.data]);
-
-  const selectedSku = useMemo(
-    () => skusQuery.data?.find((s) => s.id === skuId) ?? null,
-    [skusQuery.data, skuId],
-  );
-  const selectedProduct = selectedSku ? (productById.get(selectedSku.product_id) ?? null) : null;
   // The code warehouse only holds fixed-value voucher codes. Floating-amount
   // top-ups (e.g. `steam-wallet-usd`) are fulfilled by charging a supplier
   // API for whatever amount the customer entered — there is nothing to
   // upload, so the bulk-uploader is meaningless (and mildly dangerous —
   // pasting "codes" for a top-up SKU would just silently no-op) for them.
-  const isVoucherSku = selectedProduct?.kind === "voucher";
+  const isVoucherSku = selected?.product_kind === "voucher";
 
   const countsQuery = useQuery<SkuCountsOut>({
     queryKey: qk.inventoryCounts(skuId),
@@ -169,28 +155,9 @@ export function InventoryPage() {
           >
             SKU
           </label>
-          <Select
-            id={`${fieldId}-f0`}
-            value={skuId}
-            onChange={(e) => {
-              setSkuId(e.target.value);
-            }}
-            containerClassName="mt-1 w-full"
-          >
-            <option value="">— Выбрать —</option>
-            {skusQuery.data?.map((sku) => {
-              const product = productById.get(sku.product_id);
-              const productName =
-                product?.translations.find((t) => t.locale === "ru")?.name ??
-                product?.slug ??
-                sku.product_id.slice(0, 8);
-              return (
-                <option key={sku.id} value={sku.id}>
-                  {productName} — {sku.sku_code}
-                </option>
-              );
-            })}
-          </Select>
+          <div className="mt-1">
+            <SkuPicker id={`${fieldId}-f0`} value={selected} onChange={setSelected} />
+          </div>
         </div>
 
         {skuId && countsQuery.data && <CountsCard counts={countsQuery.data} />}
@@ -222,7 +189,7 @@ export function InventoryPage() {
         </section>
       )}
 
-      {skuId && selectedProduct && !isVoucherSku && (
+      {selected && !isVoucherSku && (
         <section className="mb-6 rounded-lg border border-dashed bg-[var(--bg-surface)] p-4 text-sm text-[var(--text-secondary)] shadow-[var(--shadow-sm)]">
           <h2 className="mb-2 text-sm font-semibold text-[var(--text-primary)]">
             Загрузка кодов недоступна

@@ -169,11 +169,13 @@ export function BrandFaqsPage() {
   const brandId = params.id ?? "";
   const [draftKeys, setDraftKeys] = useState<number[]>([]);
 
-  const brandsQuery = useQuery<Brand[]>({
-    queryKey: qk.brands(),
-    queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
+  // Only the name is needed for the header — one row, not the whole list.
+  const brandQuery = useQuery<Brand>({
+    queryKey: qk.brand(brandId),
+    queryFn: () => apiGet<Brand>(`/api/v1/admin/catalog/brands/${brandId}`),
+    enabled: Boolean(brandId),
   });
-  const brand = brandsQuery.data?.find((b) => b.id === brandId);
+  const brand = brandQuery.data;
   const brandName = brand?.translations.find((t) => t.locale === "ru")?.name ?? brand?.slug ?? "";
 
   const faqsQuery = useQuery<BrandFaq[]>({

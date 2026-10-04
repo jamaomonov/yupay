@@ -13,7 +13,8 @@ import type { Brand, Category } from "../types";
 
 import { ImageUploader } from "@/components/ImageUploader";
 import { PageHeader } from "@/components/PageHeader";
-import { apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { type ApiError, apiDelete, apiGet, apiPatch, apiPost } from "@/lib/api";
+import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
 
 const LOCALES = ["ru", "en", "uz"] as const;
@@ -110,19 +111,15 @@ export function BrandEditPage() {
     queryFn: () => apiGet<Category[]>("/api/v1/admin/catalog/categories"),
   });
 
-  const brandQuery = useQuery<Brand>({
-    queryKey: qk.brand(params.id ?? ""),
-    queryFn: () => apiGet<Brand>(`/api/v1/admin/catalog/brands`),
-    enabled: false,
+  // Single-row read; 326 brands is past the point where walking the cached
+  // list for one of them made sense.
+  const brandId = params.id ?? "";
+  const brandQuery = useQuery<Brand, ApiError>({
+    queryKey: qk.brand(brandId),
+    queryFn: () => apiGet<Brand>(`/api/v1/admin/catalog/brands/${brandId}`),
+    enabled: !isNew,
   });
-
-  // Load existing brand by walking the list (we don't have a /brands/{id} read endpoint
-  // wired up to public yet — the admin list is fine for one item).
-  const brandsQuery = useQuery<Brand[]>({
-    queryKey: qk.brands(),
-    queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
-  });
-  const existing = isNew ? null : brandsQuery.data?.find((b) => b.id === params.id);
+  const existing = isNew ? null : brandQuery.data;
 
   const form = useForm<FormValues>({
     resolver: zodResolver(brandSchema),
@@ -185,7 +182,7 @@ export function BrandEditPage() {
       return apiPatch<Brand>(`/api/v1/admin/catalog/brands/${params.id ?? ""}`, payload);
     },
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: qk.brands() });
+      await invalidateBrand();
       navigate("/brands");
     },
   });
@@ -193,10 +190,36 @@ export function BrandEditPage() {
   const remove = useMutation({
     mutationFn: () => apiDelete(`/api/v1/admin/catalog/brands/${params.id ?? ""}`),
     onSuccess: async () => {
-      await qc.invalidateQueries({ queryKey: qk.brands() });
+      await invalidateBrand();
       navigate("/brands");
     },
   });
+
+  // The row this page loaded plus the brands list the index page shows.
+  async function invalidateBrand(): Promise<void> {
+    if (!isNew) await qc.invalidateQueries({ queryKey: qk.brand(brandId) });
+    await qc.invalidateQueries({ queryKey: qk.brands() });
+  }
+
+  if (brandQuery.isError) {
+    return (
+      <div>
+        <PageHeader
+          title="Бренд"
+          actions={
+            <Button type="button" variant="ghost" onClick={() => navigate("/brands")}>
+              К списку
+            </Button>
+          }
+        />
+        <p className="text-sm text-[var(--danger)]">
+          {brandQuery.error.status === 404
+            ? "Бренд не найден."
+            : extractApiMessage(brandQuery.error)}
+        </p>
+      </div>
+    );
+  }
 
   return (
     <form
