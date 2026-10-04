@@ -197,3 +197,61 @@ async def test_each_vendor_reads_its_own_cache(monkeypatch: pytest.MonkeyPatch) 
     )
 
     assert seen == {"fzr": fzr, "g2b": g2b}
+
+
+# --- the bulk route switch shares one fetch per supplier game -------------------
+
+
+async def test_refresh_routed_cost_hands_the_shared_caches_down(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A bulk switch re-prices 100 rungs of one game with one catalogue, not 100."""
+    seen: dict[str, Any] = {}
+
+    async def _resolve(_db: Any, _sku_id: str) -> Any:
+        return Mock(primary="supplier:g2b")
+
+    sentinel = cost_refresh.CostRefreshOutcome(updated=False, reason="stub")
+
+    async def _refresh(_db: Any, *, mapping: Any, **kw: Any) -> cost_refresh.CostRefreshOutcome:
+        seen.update(kw)
+        seen["mapping"] = mapping
+        return sentinel
+
+    mapping = _mapping(supplier="g2b", product_id="pubgm")
+
+    class _Db:
+        async def execute(self, _stmt: Any) -> Any:
+            class _R:
+                def scalars(self) -> Any:
+                    return self
+
+                def all(self) -> list[Any]:
+                    return [mapping]
+
+            return _R()
+
+    monkeypatch.setattr("yupay.modules.sourcing.service.resolve_for_sku", _resolve)
+    monkeypatch.setattr(cost_refresh, "is_routed_supplier", lambda _d, _s: True)
+    monkeypatch.setattr(cost_refresh, "supports_price_collection", lambda _s: True)
+    monkeypatch.setattr(cost_refresh, "refresh_sku_cost_for_mapping", _refresh)
+    caches = cost_refresh.SupplierCaches(
+        nova_offers={"n": {}}, fzr_offers={"f": {}}, g2b_catalogue={"pubgm": []}
+    )
+
+    out = await cost_refresh.refresh_routed_cost(
+        _Db(),  # type: ignore[arg-type]
+        sku_id="sku-1",
+        caches=caches,
+    )
+
+    assert out is sentinel
+    assert seen["mapping"] is mapping
+    assert seen["g2b_catalogue_cache"] == {"pubgm": []}
+    assert seen["fzr_offers_cache"] == {"f": {}}
+    assert seen["nova_offers_cache"] == {"n": {}}
+
+
+async def test_prefetch_with_no_skus_fetches_nothing() -> None:
+    caches = await cost_refresh.prefetch_supplier_caches(None, sku_ids=[])  # type: ignore[arg-type]
+    assert caches == cost_refresh.SupplierCaches()

@@ -17,6 +17,7 @@ from yupay.core.idempotency import (
 from yupay.core.logging import get_logger
 from yupay.modules.admin.api import require_admin
 from yupay.modules.catalog.admin_service import sku_labels_for
+from yupay.modules.integrations.cost_refresh import SupplierCaches, prefetch_supplier_caches
 from yupay.modules.integrations.schemas import CostSyncResult
 from yupay.modules.inventory import service as inv_svc
 from yupay.modules.sourcing import brand_overview as brand_overview_svc
@@ -57,7 +58,9 @@ def _rule_out(
     )
 
 
-async def _reprice_after_switch(db: AsyncSession, sku_id: str) -> CostSyncResult:
+async def _reprice_after_switch(
+    db: AsyncSession, sku_id: str, *, caches: SupplierCaches | None = None
+) -> CostSyncResult:
     """Re-price a SKU onto the supplier it was just routed to.
 
     Best-effort by design: the operator's decision was the route, and it is
@@ -74,7 +77,9 @@ async def _reprice_after_switch(db: AsyncSession, sku_id: str) -> CostSyncResult
     from yupay.modules.integrations.cost_refresh import refresh_routed_cost
 
     try:
-        outcome = await refresh_routed_cost(db, sku_id=sku_id, allow_price_drop=False)
+        outcome = await refresh_routed_cost(
+            db, sku_id=sku_id, allow_price_drop=False, caches=caches
+        )
     except Exception as exc:  # noqa: BLE001 -- the route change must still stand
         log.warning("sourcing.reprice_failed", sku_id=sku_id, error=str(exc)[:200])
         return CostSyncResult(
@@ -241,9 +246,12 @@ async def bulk_upsert_rules(
     )
     # Only the SKUs whose rule actually landed: a failed write routed nothing,
     # so there is nothing to re-price and a cost move there would be a lie.
+    # Catalogue answers once per supplier game, not once per SKU: a brand's
+    # 100 rungs are one G2B game and one FazerCards category.
+    caches = await prefetch_supplier_caches(db, sku_ids=[i.sku_id for i in items if i.ok])
     for item in items:
         if item.ok:
-            item.cost_sync = await _reprice_after_switch(db, item.sku_id)
+            item.cost_sync = await _reprice_after_switch(db, item.sku_id, caches=caches)
     out = SourcingBulkRuleOut(items=items)
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))

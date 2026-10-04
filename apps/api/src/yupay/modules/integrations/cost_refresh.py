@@ -425,8 +425,55 @@ async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcom
     )
 
 
+@dataclass(frozen=True)
+class SupplierCaches:
+    """Catalogue answers fetched once for a batch of re-prices.
+
+    A bulk route switch re-prices up to 100 SKUs of one brand; without this
+    each asked its supplier for the same game's catalogue again — 100
+    identical G2B calls, or 100 FazerCards calls into their 429.
+    """
+
+    nova_offers: dict[str, dict[str, Any]] | None = None
+    fzr_offers: dict[str, dict[str, Any]] | None = None
+    g2b_catalogue: dict[str, list[dict[str, Any]]] | None = None
+
+
+async def prefetch_supplier_caches(db: AsyncSession, *, sku_ids: list[str]) -> SupplierCaches:
+    """One catalogue call per supplier game behind ``sku_ids``' active mappings."""
+    from yupay.modules.integrations.price_refresh import (
+        _fetch_fzr_offers_cache,
+        _fetch_g2b_catalogue_cache,
+        _fetch_nova_offers_cache,
+    )
+
+    if not sku_ids:
+        return SupplierCaches()
+    mappings = list(
+        (
+            await db.execute(
+                select(SkuSupplierMapping).where(
+                    SkuSupplierMapping.sku_id.in_(sku_ids),
+                    SkuSupplierMapping.is_active.is_(True),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+    return SupplierCaches(
+        nova_offers=await _fetch_nova_offers_cache(mappings),
+        fzr_offers=await _fetch_fzr_offers_cache(mappings),
+        g2b_catalogue=await _fetch_g2b_catalogue_cache(mappings),
+    )
+
+
 async def refresh_routed_cost(
-    db: AsyncSession, *, sku_id: str, allow_price_drop: bool = False
+    db: AsyncSession,
+    *,
+    sku_id: str,
+    allow_price_drop: bool = False,
+    caches: SupplierCaches | None = None,
 ) -> CostRefreshOutcome:
     """Re-price one SKU from whichever supplier it now routes to.
 
@@ -450,6 +497,9 @@ async def refresh_routed_cost(
     leaves the shelf price alone, which is the whole point of the switch; a
     dearer one raises the price off the new cost, because the alternative is
     selling below cost until the next tick.
+
+    ``caches`` lets a batch caller (the bulk rule switch) hand in catalogue
+    answers fetched once — see :func:`prefetch_supplier_caches`.
 
     Returns:
         The outcome of the refresh, or one carrying only ``reason`` when
@@ -496,6 +546,12 @@ async def refresh_routed_cost(
                 "себестоимость осталась прежней, задайте её вручную"
             ),
         )
+    shared = caches or SupplierCaches()
     return await refresh_sku_cost_for_mapping(
-        db, mapping=mapping, allow_price_drop=allow_price_drop
+        db,
+        mapping=mapping,
+        allow_price_drop=allow_price_drop,
+        nova_offers_cache=shared.nova_offers,
+        fzr_offers_cache=shared.fzr_offers,
+        g2b_catalogue_cache=shared.g2b_catalogue,
     )
