@@ -92,6 +92,7 @@ from sqlalchemy.orm import raiseload
 
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger
+from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import (
     Brand,
     BrandTranslation,
@@ -149,7 +150,65 @@ def _names(rows: Sequence[Row[tuple[str, str, str]]]) -> dict[str, str]:
     return chosen
 
 
+#: How long a built price list is served from Redis. The 2026-10 bulk import
+#: took the tree from 292 to ~6100 SKUs — 0.8 s and 2.3 MB per build — and
+#: resellers poll it a few hundred times a day. Sixty seconds is under the
+#: hourly price pass and well under what spec §8.4 asks a poller to tolerate.
+PRICE_LIST_TTL_SECONDS = 60
+_KEY_PREFIX = "merchants:price_list:"
+
+
+def _cache_key(merchant: Merchant) -> str:
+    """One entry per distinct price, not per merchant.
+
+    The only per-merchant input is ``markup_adjustment_pp`` (see
+    ``pricing.merchant_markup_pct``), so every merchant on the catalogue price
+    shares one entry and a negotiated adjustment gets its own.
+    """
+    adjustment = merchant.markup_adjustment_pp
+    return f"{_KEY_PREFIX}{adjustment if adjustment is not None else '0'}"
+
+
+async def invalidate() -> None:
+    """Drop every cached price list — after a B2B flag or markup changes.
+
+    Best effort: an unreachable Redis means the entries expire on their own
+    within :data:`PRICE_LIST_TTL_SECONDS`, which is also what a change made
+    outside the merchants module (a cost refresh, a catalogue edit) relies on.
+    """
+    try:
+        redis = get_redis()
+        keys = [key async for key in redis.scan_iter(match=f"{_KEY_PREFIX}*")]
+        if keys:
+            await redis.delete(*keys)
+    except Exception:  # noqa: BLE001 — cache is best-effort, in both directions
+        log.warning("merchant_price_list_invalidate_failed")
+
+
 async def build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
+    """The whole B2B price list, priced for one merchant — cached for a minute.
+
+    See :func:`_build` for the rules; this only adds the Redis layer. The
+    parse sits inside the guard, like ``player_check._cached``: an entry from
+    an older shape of ``MerchantCatalogOut`` falls through to a rebuild
+    rather than a 500 for as long as it lives.
+    """
+    key = _cache_key(merchant)
+    try:
+        raw = await get_redis().get(key)
+        if raw:
+            return MerchantCatalogOut.model_validate_json(raw)
+    except Exception:  # noqa: BLE001 — cache is best-effort, in both directions
+        log.warning("merchant_price_list_cache_read_failed")
+    out = await _build(db, merchant=merchant)
+    try:
+        await get_redis().set(key, out.model_dump_json(), ex=PRICE_LIST_TTL_SECONDS)
+    except Exception:  # noqa: BLE001
+        log.warning("merchant_price_list_cache_write_failed")
+    return out
+
+
+async def _build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     """The whole B2B price list, priced for one merchant.
 
     See the module docstring for the visibility rules and the query shape.

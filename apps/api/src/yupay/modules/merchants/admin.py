@@ -33,7 +33,7 @@ from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.modules.catalog.image_url_safety import validate_public_https_url
 from yupay.modules.catalog.models import Brand, Category, Product, Sku
-from yupay.modules.merchants import signing
+from yupay.modules.merchants import price_list, signing
 from yupay.modules.merchants.deposit import DEPOSIT_CURRENCY
 from yupay.modules.merchants.models import Merchant, MerchantWebhook
 from yupay.modules.merchants.service import get_merchant
@@ -128,6 +128,7 @@ async def set_sku_b2b(
         sku.visible_b2b = visible_b2b
     sku.updated_at = now()
     await db.flush()
+    await price_list.invalidate()
     return sku
 
 
@@ -155,6 +156,7 @@ async def set_brand_b2b(db: AsyncSession, *, brand_id: str, visible_b2b: bool) -
     brand.visible_b2b = visible_b2b
     brand.updated_at = now()
     await db.flush()
+    await price_list.invalidate()
     return brand
 
 
@@ -214,6 +216,7 @@ async def bulk_set_markup(
     result = await db.execute(
         update(Sku).where(Sku.id.in_(targets)).values(b2b_markup_pct=markup_pct, updated_at=now())
     )
+    await price_list.invalidate()
     return int(result.rowcount or 0)  # type: ignore[attr-defined]  # rowcount lives on CursorResult
 
 

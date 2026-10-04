@@ -526,7 +526,10 @@ rather than the reason to omit it.
 The balance is the deposit ledger's signed posting sum, read live; there is no
 balance column to drift from it.
 
-`GET /merchant/v1/catalog` returns brands → products → SKUs where
+`GET /merchant/v1/catalog` is served from a 60-second Redis cache
+(`merchants:price_list:*`, one entry per distinct price; dropped at once by a
+B2B flag or markup write in the admin, otherwise refreshed on expiry) and
+returns brands → products → SKUs where
 `brand.visible_b2b AND sku.visible_b2b` **and** the SKU is sellable. `active`
 is deliberately not read here (the order path reads it — see below), and
 neither is `brands.visible_retail` (ADR-0095), the storefront's own gate: a

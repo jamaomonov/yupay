@@ -39,6 +39,7 @@ from yupay.modules.catalog.models import (
     Sku,
 )
 from yupay.modules.gifts.checkout import STEAM_GIFT_SKU_CODE
+from yupay.modules.merchants import price_list
 from yupay.modules.merchants.models import Merchant
 from yupay.modules.merchants.pricing import merchant_price
 from yupay.modules.users.models import TelegramLink, User
@@ -984,6 +985,9 @@ async def test_the_catalog_query_count_does_not_scale_with_catalog_size(
     # minute), so the measured calls below both skip that UPDATE.
     assert (await _get(integration_client, key_id, secret, CATALOG_PATH)).status_code == 200
 
+    # The list is served from Redis for a minute; this test is about the
+    # build's query count, so the cache is dropped before each measured read.
+    await price_list.invalidate()
     sql_counter["n"] = 0
     assert (await _get(integration_client, key_id, secret, CATALOG_PATH)).status_code == 200
     with_one = sql_counter["n"]
@@ -1001,6 +1005,9 @@ async def test_the_catalog_query_count_does_not_scale_with_catalog_size(
         )
     await db_session.commit()
 
+    # The list is served from Redis for a minute; this test is about the
+    # build's query count, so the cache is dropped before each measured read.
+    await price_list.invalidate()
     sql_counter["n"] = 0
     r = await _get(integration_client, key_id, secret, CATALOG_PATH)
     with_six = sql_counter["n"]
