@@ -72,8 +72,19 @@ Rotating the token does not drop the Business connection, but verify with a smal
 2. `matched`: it credited; show the reseller the reservation number and the note
    `P2P · T…`.
 3. `unmatched`: find who paid, using the reservation list (amount, time, merchant). Credit with
-   the merchant's deposit-credit button, note `P2P · <bank time> · <amount>`.
+   the merchant's deposit-credit button, note `P2P · T… · manual` (the reservation number, so
+   a search for `T…` finds both the reservation and the manual credit; add the bank time and
+   amount after it).
 4. No row: the notification did not arrive. Go to section 7.
+
+**Hard rule — never credit a reservation's transfer by hand until all three hold:**
+
+- its `quarantine_until` has passed;
+- its status is not `paid`;
+- `getWebhookInfo` shows `pending_update_count` = 0.
+
+Otherwise Telegram can still redeliver the notification and the intake auto-credits the
+reservation after your manual credit: the reseller is paid twice.
 
 Never credit a transfer twice: look for an existing credit with the same note first. Likely
 causes of `unmatched`: wrong amount, amount with tiyin, a transfer after the 5 minutes, a
@@ -111,6 +122,11 @@ Admin → payments → P2P cards. Create with label, full number (write-only, sh
 afterwards), holder name, network, min / max and optional daily limit. Disable with the active
 flag: no new reservation uses it, and only **active** cards are matched. Two active cards with
 the same last4 are never auto-matched.
+
+**Before deactivating a card or changing its number**, wait until it has no `pending` or
+quarantined reservations (about 15 minutes after the last one opened; check the Reservations
+tab). Only active cards with the current last4 are matched, so an on-time transfer still in
+flight would land `unmatched`.
 
 Settings: `off` stops new reservations (open ones live out their 5 minutes), `allowlist`
 admits listed merchants, `all` admits everyone.

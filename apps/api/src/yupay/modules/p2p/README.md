@@ -76,7 +76,8 @@ A `credit` pays a reservation when all of these hold:
   active cards with the same last4: no auto-match and a `p2p_ambiguous_card` alert;
 - the amount has zero tiyin and equals `amount_uzs`;
 - status is `pending`, or `expired` while still in quarantine (`holds_amount`). So an on-time
-  transfer delivered late still matches;
+  transfer delivered late matches if it arrives before `expires_at` + 10 min; after the sweep
+  releases the amount it lands `unmatched` and support resolves it (runbook §5);
 - bank time `<= expires_at` and `> created_at - 1 minute`. When the bank time is missing,
   `received_at` stands in.
 

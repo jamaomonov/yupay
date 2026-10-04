@@ -82,7 +82,9 @@ site's "no top-up mentions" rule is unchanged: it concerns the public site, not 
 
 - **24-hour redelivery limit.** Telegram keeps undelivered updates for up to 24 hours, and
   the Bot API cannot read history. A longer outage loses notifications for good. Matching uses
-  the bank time, so a redelivered on-time transfer still matches inside the window.
+  the bank time, so a redelivered on-time transfer matches if it arrives while the amount is
+  still quarantined (`expires_at` + 10 min). Later it lands `unmatched` and support resolves
+  it.
 - **Balance chain as the gap detector.** For each card, previous `balance_after` ± amount must
   equal this row's `balance_after`; a break raises `p2p_chain_break`. It can raise a false
   break on out-of-order delivery. Reconcile against the bank statement before acting.

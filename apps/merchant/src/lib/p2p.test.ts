@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { phase, secondsLeft, usdPreview } from "./p2p";
+import { phase, pollDeadline, secondsLeft, usdPreview } from "./p2p";
 
 describe("secondsLeft", () => {
   it("counts down and stops at zero", () => {
@@ -63,5 +63,31 @@ describe("errorKey and formatClock", () => {
     expect(errorKey("fx_unavailable")).toBe("errRate");
     expect(errorKey("x")).toBeNull();
     expect(formatClock(305)).toBe("5:05");
+  });
+});
+
+describe("pollDeadline", () => {
+  const base = {
+    number: "T1",
+    amount_uzs: 1,
+    amount_usd: "0",
+    fx_rate: "1",
+    created_at: "2026-10-04T04:55:00Z",
+    expires_at: "2026-10-04T05:00:00Z",
+    closed_at: null,
+    card: null,
+  };
+  const quarantineEnd = Date.parse("2026-10-04T05:10:00Z");
+
+  it("keeps polling an expired top-up until its quarantine ends", () => {
+    // A late delivery of an on-time transfer still matches until expires_at + 10 min.
+    expect(pollDeadline({ ...base, status: "pending" })).toBe(quarantineEnd);
+    expect(pollDeadline({ ...base, status: "expired" })).toBe(quarantineEnd);
+  });
+
+  it("stops for paid and cancelled", () => {
+    expect(pollDeadline({ ...base, status: "paid" })).toBeNull();
+    expect(pollDeadline({ ...base, status: "cancelled" })).toBeNull();
+    expect(pollDeadline(null)).toBeNull();
   });
 });

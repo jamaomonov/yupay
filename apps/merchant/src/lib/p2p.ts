@@ -44,6 +44,21 @@ export function phase(d: P2PDeposit | null): Phase {
   }
 }
 
+/** The server's quarantine after expiry (`reservations.QUARANTINE`). */
+export const QUARANTINE_MS = 10 * 60 * 1000;
+
+/**
+ * Until when to keep polling a top-up, in epoch ms, or `null` to stop.
+ *
+ * An expired reservation still matches a late delivery of an on-time transfer
+ * while its amount is quarantined (`expires_at` + 10 min), so the expired
+ * screen keeps asking until then and can still flip to "Credited".
+ */
+export function pollDeadline(d: P2PDeposit | null): number | null {
+  if (d === null || (d.status !== "pending" && d.status !== "expired")) return null;
+  return Date.parse(d.expires_at) + QUARANTINE_MS;
+}
+
 /** The `topUp.*` message key for an API error code, or `null` for "something else". */
 export function errorKey(code: string | null): "errNoCard" | "errBusy" | "errRate" | null {
   if (code === "p2p_no_card") return "errNoCard";

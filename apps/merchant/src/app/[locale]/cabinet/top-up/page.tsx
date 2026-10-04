@@ -11,7 +11,7 @@ import { useCabinet } from "@/components/CabinetContext";
 import { PageHeading } from "@/components/PageHeading";
 import { TopUpDetails } from "@/components/TopUpDetails";
 import { api, ApiError } from "@/lib/api";
-import { errorKey, phase, secondsLeft, usdPreview } from "@/lib/p2p";
+import { errorKey, phase, pollDeadline, secondsLeft, usdPreview } from "@/lib/p2p";
 
 const SUPPORT = "https://t.me/yupay_support";
 const POLL_MS = 3000;
@@ -51,6 +51,7 @@ export default function TopUp() {
   const current = phase(deposit);
   const number = deposit?.number ?? null;
   const left = deposit === null ? 1 : secondsLeft(deposit.expires_at, nowMs);
+  const pollUntil = pollDeadline(deposit);
 
   useEffect(() => {
     if (current !== "details") return undefined;
@@ -62,16 +63,22 @@ export default function TopUp() {
     };
   }, [current]);
 
-  // Poll while pending, and once more the moment the clock reaches zero.
+  // Poll while pending and, after expiry, until the quarantine ends: a late
+  // delivery of an on-time transfer can still credit it. Once more the moment
+  // the clock reaches zero.
   useEffect(() => {
-    if (current !== "details" || number === null) return undefined;
+    if (pollUntil === null || number === null) return undefined;
     const poll = setInterval(() => {
+      if (Date.now() >= pollUntil) {
+        clearInterval(poll);
+        return;
+      }
       void load(number).catch(() => undefined);
     }, POLL_MS);
     return () => {
       clearInterval(poll);
     };
-  }, [current, number, load]);
+  }, [pollUntil, number, load]);
   useEffect(() => {
     if (current === "details" && number !== null && left === 0)
       void load(number).catch(() => undefined);

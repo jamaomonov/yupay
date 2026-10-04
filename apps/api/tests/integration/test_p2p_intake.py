@@ -184,18 +184,29 @@ async def test_bank_time_after_expiry_is_not_credited(db_session: AsyncSession) 
     assert res.status == "unmatched"
 
 
-async def test_late_delivery_of_an_on_time_transfer_still_matches(
-    db_session: AsyncSession,
+@pytest.mark.parametrize(
+    ("sweep_after", "status"),
+    [(timedelta(minutes=2), "matched"), (timedelta(minutes=11), "unmatched")],
+    ids=["inside-quarantine", "after-quarantine"],
+)
+async def test_late_delivery_of_an_on_time_transfer_matches_only_inside_quarantine(
+    db_session: AsyncSession, sweep_after: timedelta, status: str
 ) -> None:
-    """Review Focus 2: the sweep expired it, the bank time says it was on time."""
+    """Final review #3: a redelivery matches while the amount is still held.
+
+    The sweep expired the reservation and the bank time says the transfer was
+    on time. Delivered while quarantined (``expires_at + 10 min``) it matches;
+    once the sweep has released the amount it lands ``unmatched`` and support
+    resolves it.
+    """
     _, r = await _setup(db_session)
-    await reservations.sweep(db_session, now_=r.expires_at + timedelta(minutes=2))
+    await reservations.sweep(db_session, now_=r.expires_at + sweep_after)
     res = await intake.ingest_update(
         db_session,
         _update(7, _credit("50.000,00", _bank(r.created_at), "1.100.000,00")),
-        received_at=r.expires_at + timedelta(hours=3),
+        received_at=r.expires_at + max(sweep_after, timedelta(minutes=5)),
     )
-    assert res.status == "matched"
+    assert res.status == status
 
 
 async def test_cancelled_is_never_credited(db_session: AsyncSession) -> None:

@@ -46,12 +46,12 @@ sequenceDiagram
 
 ## Outcomes
 
-| Outcome   | What happens                                                                               |
-| --------- | ------------------------------------------------------------------------------------------ |
-| Paid      | Deposit credited with note `P2P · T…`; the reservation shows the USD amount.               |
-| Expired   | The reseller writes to support with the receipt and the reservation number.                |
-| Cancelled | Back to the amount step. A transfer made anyway is unmatched; support credits it by hand.  |
-| Unmatched | Wrong amount, amount with tiyin, or a late transfer. An admin credits it from the journal. |
+| Outcome   | What happens                                                                                                                                                                                                   |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Paid      | Deposit credited with note `P2P · T…`; the reservation shows the USD amount.                                                                                                                                   |
+| Expired   | The reseller writes to support with the receipt and the reservation number. The screen keeps checking until `expires_at` + 10 min, so a late notification of an on-time transfer still flips it to "Credited". |
+| Cancelled | Back to the amount step. A transfer made anyway is unmatched; support credits it by hand.                                                                                                                      |
+| Unmatched | Wrong amount, amount with tiyin, or a late transfer. An admin credits it from the journal.                                                                                                                     |
 
 ## Availability
 

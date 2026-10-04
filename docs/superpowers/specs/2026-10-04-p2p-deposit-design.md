@@ -307,19 +307,19 @@ as for a manual credit.
 
 ## 9. Edge cases
 
-| Case                                            | Behaviour                                                                                                     |
-| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| Two transfers of the same amount close together | The first matches; the second is `unmatched`. No double credit: one key per reservation, one row per message. |
-| Transfer arrives at minute 6                    | `unmatched`. Quarantine stops the amount from reaching another reservation for 10 more minutes.               |
-| Wrong amount (50 000 for 50 001)                | `unmatched`; support credits by hand from the receipt.                                                        |
-| Amount with tiyin                               | Never matches automatically.                                                                                  |
-| Reseller cancels after transferring             | `cancelled` + quarantine; the transfer is `unmatched`; support resolves it.                                   |
-| HUMO changes its format                         | `unparsed` + alert; nothing credited.                                                                         |
-| Webhook down < 24 h                             | Telegram redelivers. Matching uses `bank_time`, so a transfer made inside the window still matches.           |
-| Webhook down > 24 h                             | Messages are lost. The balance chain breaks and alerts; ops reconcile from the bank statement.                |
-| Rate unavailable                                | 502 on reserve.                                                                                               |
-| All +99 amounts taken                           | 502 "try again in a minute".                                                                                  |
-| P2P switched off                                | No new reservations. Open ones live out their 5 minutes and still match.                                      |
+| Case                                            | Behaviour                                                                                                                                                                                                    |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Two transfers of the same amount close together | The first matches; the second is `unmatched`. No double credit: one key per reservation, one row per message.                                                                                                |
+| Transfer arrives at minute 6                    | `unmatched`. Quarantine stops the amount from reaching another reservation for 10 more minutes.                                                                                                              |
+| Wrong amount (50 000 for 50 001)                | `unmatched`; support credits by hand from the receipt.                                                                                                                                                       |
+| Amount with tiyin                               | Never matches automatically.                                                                                                                                                                                 |
+| Reseller cancels after transferring             | `cancelled` + quarantine; the transfer is `unmatched`; support resolves it.                                                                                                                                  |
+| HUMO changes its format                         | `unparsed` + alert; nothing credited.                                                                                                                                                                        |
+| Webhook down < 24 h                             | Telegram redelivers. Matching uses `bank_time`; an on-time transfer matches if it arrives while the amount is still quarantined (`expires_at` + 10 min). Later it lands `unmatched` and support resolves it. |
+| Webhook down > 24 h                             | Messages are lost. The balance chain breaks and alerts; ops reconcile from the bank statement.                                                                                                               |
+| Rate unavailable                                | 502 on reserve.                                                                                                                                                                                              |
+| All +99 amounts taken                           | 502 "try again in a minute".                                                                                                                                                                                 |
+| P2P switched off                                | No new reservations. Open ones live out their 5 minutes and still match.                                                                                                                                     |
 
 ## 10. Testing
 
