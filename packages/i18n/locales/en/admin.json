@@ -643,7 +643,8 @@
       "p2p_pan_invalid": "The card number is invalid. Check the digits.",
       "p2p_bad_id": "The identifier is invalid.",
       "p2p_amount_invalid": "The amount must be a number.",
-      "p2p_card_not_found": "Card not found."
+      "p2p_card_not_found": "Card not found.",
+      "p2p_incoming_not_found": "Entry not found."
     },
     "cards": {
       "title": "P2P cards",
@@ -720,7 +721,8 @@
         "result": "Result",
         "amount": "Amount",
         "status": "Status",
-        "any": "All"
+        "any": "All",
+        "apply": "Apply"
       },
       "kinds": {
         "credit": "Credit",
@@ -765,6 +767,7 @@
           "cancelled": "Cancelled"
         }
       }
-    }
+    },
+    "loading": "Loading…"
   }
 }

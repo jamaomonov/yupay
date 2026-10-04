@@ -117,7 +117,7 @@ export function P2PCardsPage() {
         />
       ) : null}
 
-      {cards.isLoading ? <Spinner label="Загрузка…" /> : null}
+      {cards.isLoading ? <Spinner label={T.loading} /> : null}
       {cards.isError ? (
         <ErrorState
           description={p2pErrorMessage(cards.error)}

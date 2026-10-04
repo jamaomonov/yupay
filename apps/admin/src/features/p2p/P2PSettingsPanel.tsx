@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { saveSettings, T, p2pErrorMessage, type P2PMode, type P2PSettings } from "./api";
 
@@ -32,14 +32,22 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
     setBot(settings.humo_bot_user_id?.toString() ?? "");
   }, [settings]);
 
+  const idemKey = useRef<string | null>(null);
+
   const save = useMutation<P2PSettings, ApiError>({
-    mutationFn: () =>
-      saveSettings({
-        mode,
-        allowlist_merchant_ids: parseIds(allowlist),
-        humo_bot_user_id: bot.trim() === "" ? null : Number.parseInt(bot, 10),
-      }),
+    mutationFn: () => {
+      idemKey.current ??= crypto.randomUUID();
+      return saveSettings(
+        {
+          mode,
+          allowlist_merchant_ids: parseIds(allowlist),
+          humo_bot_user_id: bot.trim() === "" ? null : Number.parseInt(bot, 10),
+        },
+        idemKey.current,
+      );
+    },
     onSuccess: (next) => {
+      idemKey.current = null;
       qc.setQueryData(qk.p2pSettings(), next);
       setSaved(true);
     },
@@ -49,7 +57,12 @@ export function P2PSettingsPanel({ settings }: { settings: P2PSettings }) {
   const S = T.cards.settings;
 
   return (
-    <article className="mb-6 max-w-xl rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
+    <article
+      onChange={() => {
+        idemKey.current = null;
+      }}
+      className="mb-6 max-w-xl rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]"
+    >
       <h2 className="mb-3 font-medium">{S.title}</h2>
       <label className="mb-3 block text-sm">
         <span className="mb-1 block text-xs text-[var(--text-secondary)]">{S.mode}</span>

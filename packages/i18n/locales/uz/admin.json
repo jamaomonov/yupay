@@ -643,7 +643,8 @@
       "p2p_pan_invalid": "Karta raqami noto'g'ri. Raqamlarni tekshiring.",
       "p2p_bad_id": "Identifikator noto'g'ri.",
       "p2p_amount_invalid": "Summa raqam bo'lishi kerak.",
-      "p2p_card_not_found": "Karta topilmadi."
+      "p2p_card_not_found": "Karta topilmadi.",
+      "p2p_incoming_not_found": "Yozuv topilmadi."
     },
     "cards": {
       "title": "P2P kartalar",
@@ -720,7 +721,8 @@
         "result": "Natija",
         "amount": "Summa",
         "status": "Holat",
-        "any": "Hammasi"
+        "any": "Hammasi",
+        "apply": "Qo'llash"
       },
       "kinds": {
         "credit": "Kirim",
@@ -765,6 +767,7 @@
           "cancelled": "Bekor qilingan"
         }
       }
-    }
+    },
+    "loading": "Yuklanmoqda…"
   }
 }

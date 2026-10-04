@@ -137,7 +137,7 @@ function DetailPanel({ id, onClose }: { id: string; onClose: () => void }) {
           {TX.detail.close}
         </Button>
       </div>
-      {q.isLoading ? <Spinner label="Загрузка…" /> : null}
+      {q.isLoading ? <Spinner label={T.loading} /> : null}
       {q.isError ? (
         <p role="alert" className="text-sm text-[var(--danger)]">
           {TX.detail.loadError}
@@ -224,7 +224,7 @@ export function P2PJournal() {
           />
         </label>
         <Button type="submit" variant="secondary">
-          OK
+          {TX.filters.apply}
         </Button>
       </form>
 

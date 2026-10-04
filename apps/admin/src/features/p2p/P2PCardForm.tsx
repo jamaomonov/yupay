@@ -2,7 +2,7 @@
 
 import { useMutation } from "@tanstack/react-query";
 import { Button, Input } from "@yupay/ui";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   createCard,
@@ -36,6 +36,10 @@ export function P2PCardForm({ card, onDone, onCancel }: Props) {
   const [daily, setDaily] = useState(card?.daily_limit_uzs?.toString() ?? "");
   const [active, setActive] = useState(card?.active ?? true);
 
+  // One key per logical save: reused when the same request is retried (a lost
+  // response must not create a second card), dropped on any edit or success.
+  const idemKey = useRef<string | null>(null);
+
   const save = useMutation<P2PCard, ApiError>({
     mutationFn: () => {
       const body: P2PCardInput = {
@@ -49,9 +53,13 @@ export function P2PCardForm({ card, onDone, onCancel }: Props) {
         // The number goes out only when a new one was typed.
         ...(pan.trim() !== "" ? { pan: pan.trim() } : {}),
       };
-      return card ? patchCard(card.id, body) : createCard(body);
+      idemKey.current ??= crypto.randomUUID();
+      return card ? patchCard(card.id, body, idemKey.current) : createCard(body, idemKey.current);
     },
-    onSuccess: onDone,
+    onSuccess: () => {
+      idemKey.current = null;
+      onDone();
+    },
   });
 
   const ints = [min, max].every((v) => /^\d+$/.test(v)) && (daily === "" || /^\d+$/.test(daily));
@@ -60,6 +68,9 @@ export function P2PCardForm({ card, onDone, onCancel }: Props) {
 
   return (
     <form
+      onChange={() => {
+        idemKey.current = null;
+      }}
       aria-label={card ? F.editTitle.replace("{label}", card.label) : F.addTitle}
       className="mb-6 max-w-3xl rounded-lg border bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]"
       onSubmit={(e) => {

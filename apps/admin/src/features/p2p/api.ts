@@ -120,16 +120,17 @@ function qs(params: Record<string, string | null | undefined>): string {
   return s ? `?${s}` : "";
 }
 
-const key = () => ({ "Idempotency-Key": crypto.randomUUID() });
+const idem = (key: string) => ({ "Idempotency-Key": key });
 
 export const fetchSettings = () => apiGet<P2PSettings>(`${BASE}/settings`);
-export const saveSettings = (body: P2PSettingsPatch) =>
-  apiPatch<P2PSettings>(`${BASE}/settings`, body, key());
+export const saveSettings = (body: P2PSettingsPatch, key: string) =>
+  apiPatch<P2PSettings>(`${BASE}/settings`, body, idem(key));
 
 export const fetchCards = () => apiGet<P2PCard[]>(`${BASE}/cards`);
-export const createCard = (body: P2PCardInput) => apiPost<P2PCard>(`${BASE}/cards`, body, key());
-export const patchCard = (id: string, body: Partial<P2PCardInput>) =>
-  apiPatch<P2PCard>(`${BASE}/cards/${id}`, body, key());
+export const createCard = (body: P2PCardInput, key: string) =>
+  apiPost<P2PCard>(`${BASE}/cards`, body, idem(key));
+export const patchCard = (id: string, body: Partial<P2PCardInput>, key: string) =>
+  apiPatch<P2PCard>(`${BASE}/cards/${id}`, body, idem(key));
 
 export const fetchIncoming = (f: JournalFilters, cursor: string | null) =>
   apiGet<Page<P2PIncoming>>(`${BASE}/incoming${qs({ ...f, cursor })}`);

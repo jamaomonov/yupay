@@ -83,7 +83,7 @@ it("saves settings with an Idempotency-Key header", async () => {
     expect(patch).toHaveBeenCalledWith(
       "/api/v1/admin/p2p/settings",
       expect.objectContaining({ mode: "all" }),
-      expect.objectContaining({ "Idempotency-Key": expect.any(String) }),
+      expect.objectContaining({ "Idempotency-Key": expect.any(String) as string }),
     );
   });
 });
@@ -104,4 +104,64 @@ it("edits a card without sending the number unless a new one is typed", async ()
   >;
   expect(body).toMatchObject({ label: "Запасная" });
   expect(body).not.toHaveProperty("pan");
+});
+
+const PAN = "9860123456783311";
+
+it("sends a typed number once, then never shows it again", async () => {
+  patch.mockResolvedValue(CARD);
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "Изменить" }));
+  fireEvent.change(screen.getByPlaceholderText("•••• 3311"), { target: { value: PAN } });
+  fireEvent.click(within(screen.getByRole("form")).getByRole("button", { name: "Сохранить" }));
+  await waitFor(() => {
+    expect(patch).toHaveBeenCalled();
+  });
+  const body = patch.mock.calls.find(([p]) => p.includes("/cards/"))?.[1] as Record<
+    string,
+    unknown
+  >;
+  expect(body).toHaveProperty("pan", PAN);
+  await waitFor(() => {
+    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+  });
+  expect(document.body.textContent).not.toContain(PAN);
+  // Reopening the form: the number field starts empty again.
+  fireEvent.click(await screen.findByRole("button", { name: "Изменить" }));
+  expect(screen.getByPlaceholderText("•••• 3311")).toHaveValue("");
+});
+
+it("reuses the Idempotency-Key when a failed add is retried, and drops it after an edit", async () => {
+  post.mockRejectedValue(new Error("network down"));
+  renderPage();
+  fireEvent.click(await screen.findByRole("button", { name: "Добавить карту" }));
+  const form = screen.getByRole("form");
+  const inputs = within(form).getAllByRole("textbox");
+  fireEvent.change(inputs[0]!, { target: { value: "Новая" } });
+  fireEvent.change(inputs[1]!, { target: { value: PAN } });
+  fireEvent.change(inputs[2]!, { target: { value: "A B" } });
+  const save = () => {
+    fireEvent.click(within(form).getByRole("button", { name: "Сохранить" }));
+  };
+  const keyOf = (n: number) =>
+    (post.mock.calls[n]?.[2] as Record<string, string> | undefined)?.["Idempotency-Key"];
+
+  save();
+  await waitFor(() => {
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+  expect(keyOf(0)).toEqual(expect.any(String));
+  await screen.findByRole("alert");
+  save();
+  await waitFor(() => {
+    expect(post).toHaveBeenCalledTimes(2);
+  });
+  expect(keyOf(1)).toBe(keyOf(0));
+
+  fireEvent.change(inputs[0]!, { target: { value: "Другая" } });
+  save();
+  await waitFor(() => {
+    expect(post).toHaveBeenCalledTimes(3);
+  });
+  expect(keyOf(2)).not.toBe(keyOf(0));
 });
