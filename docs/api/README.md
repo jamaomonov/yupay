@@ -22,8 +22,8 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 - Errors are RFC 7807 `problem+json` with stable `type` URIs — with the
   exceptions listed under "Validation errors" at the end of this file.
 - All write endpoints accept an `Idempotency-Key` header (>=16 chars). Enforced today on
-  `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund`, and
-  every `/admin/blog` mutation —
+  `POST /orders`, `POST /payments/intents`, `POST /admin/payments/{id}/refund`,
+  `POST /admin/payments/{id}/refund-to-wallet`, and every `/admin/blog` mutation —
   **missing/short key → 422**; a repeated key replays the original result.
 - Money is `{ "amount": "12345.678", "currency": "USD" }` — strings to preserve precision.
 
@@ -162,6 +162,18 @@ returned in any reviews response body and never logged.
 `GET /skins/seo/slugs?offset=&limit=` (≤ 5000, no auth, 404 while the flag is off): the
 slugs of every item the catalogue shows, alphabetical, and `total` — the web sitemap reads it
 hourly. Postgres only.
+
+## Admin refund to the customer's balance
+
+`POST /admin/payments/{id}/refund-to-wallet` (body `{reason?}`, `Idempotency-Key`
+required) refunds a `succeeded` payment **in full** onto the customer's `user_wallet`
+in the payment's currency — no acquirer call, booked as `payment.refund_to_wallet`
+(a wallet-paid payment is reversed onto the wallet instead). It shares
+`refund:<payment.id>` with every refund path, so a payment is refunded once, and
+`refunded_to_wallet` makes a later acquirer cancel of it refuse. `409` for a guest
+order (`guest_order` — no balance), a balance top-up (`topup`), an in-flight skin
+(`skin_trade_in_flight`) or a payment not in `succeeded`. Admin order page:
+«Возврат на баланс» beside «Возврат».
 
 ## CS2 skins admin
 

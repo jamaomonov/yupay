@@ -15976,6 +15976,26 @@
         "title": "RefundIn",
         "type": "object"
       },
+      "RefundToWalletIn": {
+        "additionalProperties": false,
+        "description": "Body of admin's ``POST /admin/payments/{id}/refund-to-wallet``. Always in full.",
+        "properties": {
+          "reason": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "title": "RefundToWalletIn",
+        "type": "object"
+      },
       "RegisterIn": {
         "description": "Body of ``POST /auth/register``.",
         "properties": {
@@ -31543,6 +31563,90 @@
           }
         },
         "summary": "Admin-initiated refund (full or partial)",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/{payment_id}/refund-to-wallet": {
+      "post": {
+        "operationId": "admin_refund_payment_to_wallet_api_v1_admin_payments__payment_id__refund_to_wallet_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "payment_id",
+            "required": true,
+            "schema": {
+              "title": "Payment Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefundToWalletIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaymentAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Admin refund of a payment to the customer's YuPay balance (full)",
         "tags": [
           "admin:payments"
         ]

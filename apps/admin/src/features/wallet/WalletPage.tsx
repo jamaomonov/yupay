@@ -119,8 +119,9 @@ function LookupTab() {
     // changes, not loop when the operator clicks lookup manually.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+  // The spendable balance is what an operator credits nearly every time.
   const [adjustKind, setAdjustKind] =
-    useState<(typeof ADJUST_KINDS)[number]["value"]>("user_cashback");
+    useState<(typeof ADJUST_KINDS)[number]["value"]>("user_wallet");
   // Default UZS — primary market — so the most common ops case is
   // one click instead of two. Operators creating goodwill credits for
   // EU / RU users still pick from the same dropdown.

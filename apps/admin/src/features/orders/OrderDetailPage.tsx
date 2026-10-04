@@ -17,6 +17,7 @@ import {
   PackageCheck,
   RefreshCw,
   Truck,
+  Wallet,
 } from "lucide-react";
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
@@ -188,6 +189,30 @@ export function OrderDetailPage() {
       ),
     onSuccess: () => {
       toast.success("Возврат оформлен");
+      void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
+      void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
+      void qc.invalidateQueries({ queryKey: qk.order(orderId) });
+    },
+    onError: (err) => {
+      toast.error(extractApiMessage(err));
+    },
+  });
+
+  // Full refund onto the customer's YuPay balance — no acquirer call, so it is
+  // instant and costs no fee. Signed-in customers only: a guest has no balance.
+  const refundToWallet = useMutation<
+    PaymentAdminOut,
+    ApiError,
+    { id: string; reason: string; key: string }
+  >({
+    mutationFn: ({ id, reason, key }) =>
+      apiPost<PaymentAdminOut>(
+        `/api/v1/admin/payments/${id}/refund-to-wallet`,
+        { reason },
+        { "Idempotency-Key": key },
+      ),
+    onSuccess: () => {
+      toast.success("Деньги возвращены на баланс");
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
@@ -412,7 +437,20 @@ export function OrderDetailPage() {
             orderId={order.id}
             failed={paymentsQuery.isError}
             onRetryLoad={() => void paymentsQuery.refetch()}
-            refunding={refund.isPending}
+            refunding={refund.isPending || refundToWallet.isPending}
+            canRefundToWallet={order.user_id !== null && order.purpose !== "wallet_topup"}
+            onRefundToWallet={(p) => {
+              const reason = window.prompt(
+                `Вернуть ${formatMoney(p.amount, p.currency)} на баланс клиента. Причина:`,
+                "",
+              );
+              if (reason === null) return;
+              refundToWallet.mutate({
+                id: p.id,
+                reason: reason.trim(),
+                key: `admin-refund-wallet-${crypto.randomUUID()}`,
+              });
+            }}
             settling={settle.isPending}
             onSettle={(p) => {
               // One key per opened dialog — a double-click on confirm must not
@@ -882,6 +920,8 @@ function PaymentsCard({
   orderId,
   onRefund,
   refunding,
+  canRefundToWallet,
+  onRefundToWallet,
   onSettle,
   settling,
   failed,
@@ -891,6 +931,9 @@ function PaymentsCard({
   orderId: string;
   onRefund: (payment: PaymentAdminOut) => void;
   refunding: boolean;
+  /** A signed-in customer's order (not a deposit): there is a balance to refund to. */
+  canRefundToWallet: boolean;
+  onRefundToWallet: (payment: PaymentAdminOut) => void;
   onSettle: (payment: PaymentAdminOut) => void;
   settling: boolean;
   /** The payments query failed — "no payments" would be a lie mid-support-call. */
@@ -937,18 +980,35 @@ function PaymentsCard({
                   </p>
                 )}
                 {canRefund && (
-                  <Button
-                    type="button"
-                    variant="danger"
-                    size="sm"
-                    onClick={() => {
-                      onRefund(p);
-                    }}
-                    disabled={refunding}
-                    className="mt-2"
-                  >
-                    Возврат
-                  </Button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        onRefund(p);
+                      }}
+                      disabled={refunding}
+                    >
+                      Возврат
+                    </Button>
+                    {/* Full only, and only from a clean «Успешно»: a partial card
+                        refund already used the payment's one refund. */}
+                    {canRefundToWallet && p.status === "succeeded" && (
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => {
+                          onRefundToWallet(p);
+                        }}
+                        disabled={refunding}
+                      >
+                        <Wallet className="size-3.5" />
+                        Возврат на баланс
+                      </Button>
+                    )}
+                  </div>
                 )}
                 {/* The acquirer charged but never called back — the order would
                     otherwise sit unpaid until it expires. */}

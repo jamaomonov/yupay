@@ -39,6 +39,7 @@ from yupay.modules.payments.schemas import (
     ProvidersOut,
     ProviderStatusOut,
     RefundIn,
+    RefundToWalletIn,
     SetProviderStateIn,
     SettleIn,
     SimulateWebhookIn,
@@ -385,6 +386,29 @@ async def admin_refund_payment(
         payment_id=payment_id,
         admin_id=admin.id,
         amount=body.amount,
+        reason=body.reason,
+        idempotency_key=key,
+    )
+    return PaymentAdminOut.model_validate(payment)
+
+
+@admin_router.post(
+    "/{payment_id}/refund-to-wallet",
+    response_model=PaymentAdminOut,
+    summary="Admin refund of a payment to the customer's YuPay balance (full)",
+)
+async def admin_refund_payment_to_wallet(
+    payment_id: str,
+    body: RefundToWalletIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> PaymentAdminOut:
+    key = _require_idempotency_key(idempotency_key)
+    payment = await svc.refund_admin_to_wallet(
+        db,
+        payment_id=payment_id,
+        admin_id=admin.id,
         reason=body.reason,
         idempotency_key=key,
     )

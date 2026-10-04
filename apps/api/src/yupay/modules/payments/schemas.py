@@ -107,6 +107,14 @@ class RefundIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class RefundToWalletIn(BaseModel):
+    """Body of admin's ``POST /admin/payments/{id}/refund-to-wallet``. Always in full."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    reason: str | None = Field(default=None, max_length=500)
+
+
 class SettleIn(BaseModel):
     """Body of admin's ``POST /admin/payments/{id}/settle``.
 
@@ -267,6 +275,7 @@ __all__ = [
     "ProvidersOut",
     "RecentPaymentOut",
     "RefundIn",
+    "RefundToWalletIn",
     "SetProviderStateIn",
     "SimulateWebhookIn",
     "SuccessRateOut",

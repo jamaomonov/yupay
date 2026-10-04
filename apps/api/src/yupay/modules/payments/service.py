@@ -1326,6 +1326,86 @@ async def refund_order_to_wallet(
     return True
 
 
+async def refund_admin_to_wallet(
+    db: AsyncSession,
+    *,
+    payment_id: str,
+    admin_id: str,
+    reason: str | None = None,
+    idempotency_key: str | None = None,
+) -> Payment:
+    """Admin refund of one payment to the customer's YuPay balance, in full.
+
+    The order page's «Возврат на баланс»: the same booking as
+    :func:`refund_order_to_wallet` (no acquirer call; a wallet-paid payment is
+    reversed onto the wallet, any other becomes a balance top-up funded by
+    provider clearing), with :func:`refund_admin`'s guards — one refund per
+    payment, the ``Idempotency-Key`` replay, and the in-flight skin refusal.
+    :func:`refunded_to_wallet` then makes an acquirer's later cancel of the
+    same payment refuse, so the money cannot also go back to the card.
+
+    Raises:
+        NotFoundError: No such payment.
+        ConflictError: The payment is not ``succeeded``, a skin on the order is
+            still in flight, the order is a guest's (no balance), or the order
+            is itself a balance top-up.
+    """
+    payment = (
+        await db.execute(select(Payment).where(Payment.id == payment_id).with_for_update())
+    ).scalar_one_or_none()
+    if payment is None:
+        raise NotFoundError("payment not found")
+    last_refund = (payment.extra_metadata or {}).get("last_refund") or {}
+    if idempotency_key is not None and last_refund.get("idempotency_key") == idempotency_key:
+        return payment
+    if payment.status != "succeeded":
+        raise ConflictError(
+            "payment can't be refunded in its current state", extra={"status": payment.status}
+        )
+    from yupay.modules.skins.refund_guard import skin_trade_in_flight
+
+    if await skin_trade_in_flight(db, payment.order_id):
+        raise ConflictError(
+            "a CS2 skin on this order is still being bought or sent; "
+            "wait until it is received or fails",
+            reason="skin_trade_in_flight",
+        )
+    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+    if order.user_id is None:
+        raise ConflictError("a guest order has no balance to refund to", reason="guest_order")
+    if order.purpose == "wallet_topup":
+        # Refunding a deposit onto the balance it already funded is a no-op that
+        # would still book a second credit; a deposit goes back through «Возврат».
+        raise ConflictError("a balance top-up can't be refunded to the balance", reason="topup")
+    meta: dict[str, Any] = {
+        "refund_amount": str(payment.amount),
+        "reason": reason or "",
+        "admin_id": admin_id,
+        "refunded_to": "wallet",
+    }
+    if idempotency_key is not None:
+        meta["idempotency_key"] = idempotency_key
+    payment.extra_metadata = {**(payment.extra_metadata or {}), "last_refund": meta}
+    _record_attempt(db, payment_id=payment.id, kind="refund", status="ok", payload=meta)
+    await _apply_refund_reversal(
+        db,
+        payment=payment,
+        amount=payment.amount,
+        actor=f"admin:{admin_id}",
+        external_ref=reason,
+        to_wallet=True,
+    )
+    await db.flush()
+    log.info(
+        "payments.refund_to_wallet.ok",
+        payment_id=payment.id,
+        order_id=payment.order_id,
+        amount=str(payment.amount),
+        admin=True,
+    )
+    return payment
+
+
 async def settle_provider_payment(
     db: AsyncSession, *, payment: Payment, external_event_id: str
 ) -> None:

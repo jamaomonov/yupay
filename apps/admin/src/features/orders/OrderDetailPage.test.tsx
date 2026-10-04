@@ -478,3 +478,51 @@ it("shows a skin line's trade and a way to it on the trades screen", async () =>
     expect.stringContaining("/skins/trades?q="),
   );
 });
+
+const PAID_PAYMENT = {
+  id: "01a10773-0000-7000-8000-000000000001",
+  order_id: ORDER_ID,
+  provider: "uzum",
+  status: "succeeded",
+  amount: "31257",
+  currency: "UZS",
+  external_id: null,
+  intent_url: null,
+  created_at: "2026-10-04T20:07:00Z",
+  updated_at: "2026-10-04T20:07:00Z",
+};
+
+function mockWithPayment(order: OrderAdminOut): void {
+  mockedApiGet.mockImplementation((path: string) => {
+    if (path.includes("/fulfillment/tasks")) return Promise.resolve({ items: [], total: 0 });
+    if (path.includes("/payments")) return Promise.resolve({ items: [PAID_PAYMENT], total: 1 });
+    if (path.includes("/deliveries")) return Promise.resolve({ items: [], total: 0 });
+    return Promise.resolve(order);
+  });
+}
+
+it("refunds a signed-in customer's payment to their balance", async () => {
+  mockWithPayment(makeOrder({ user_id: "user-1", guest_email: null, events: [] }));
+  vi.spyOn(window, "prompt").mockReturnValue("нет в наличии");
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: /Возврат на баланс/ }));
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledWith(
+      `/api/v1/admin/payments/${PAID_PAYMENT.id}/refund-to-wallet`,
+      { reason: "нет в наличии" },
+      expect.objectContaining({
+        "Idempotency-Key": expect.stringMatching(/^admin-refund-wallet-/),
+      }),
+    );
+  });
+});
+
+it("offers no balance refund on a guest order — there is no balance", async () => {
+  mockWithPayment(makeOrder({ events: [] }));
+  renderPage();
+
+  expect(await screen.findByRole("button", { name: "Возврат" })).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Возврат на баланс/ })).not.toBeInTheDocument();
+});
