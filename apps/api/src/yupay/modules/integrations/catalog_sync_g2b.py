@@ -21,6 +21,8 @@ shared :class:`CatalogSyncReport`.
 
 from __future__ import annotations
 
+from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.logging import get_logger
@@ -36,8 +38,14 @@ log = get_logger("yupay.integrations.catalog_sync.g2b")
 _PRODUCT_PAGE_LIMIT = 200
 
 #: Ceiling on the by-id refresh, so a data mistake cannot turn one tick into
-#: thousands of supplier calls. Production maps eight voucher products.
+#: thousands of supplier calls. Past it the sweep walks the whole product list
+#: in pages instead (:func:`_walk_all_products`): the 2026-10 voucher import
+#: maps ~1200 G2B products, which is 1200 ``GET /products/{id}`` an hour by id
+#: and ~64 page calls as a walk.
 _MAPPED_FETCH_CAP = 200
+
+#: Upper bound on the page walk — G2B's list is ~12 800 rows at 200 a page.
+_MAX_PRODUCT_PAGES = 120
 
 
 async def _refresh_mapped_vouchers(db: AsyncSession) -> tuple[int, int, str | None]:
@@ -63,14 +71,7 @@ async def _refresh_mapped_vouchers(db: AsyncSession) -> tuple[int, int, str | No
 
     product_ids = await svc.mapped_external_product_ids(db, supplier_slug="g2b", kind="voucher")
     if len(product_ids) > _MAPPED_FETCH_CAP:
-        # Loud rather than silently truncated: a cap that trims without saying
-        # so reads as "everything is current" when it is not.
-        log.warning(
-            "integrations.g2b.sync.mapped_cap_hit",
-            wanted=len(product_ids),
-            cap=_MAPPED_FETCH_CAP,
-        )
-        product_ids = product_ids[:_MAPPED_FETCH_CAP]
+        return await _walk_all_products(db, fulfiller._client(), wanted=set(product_ids))
 
     client = fulfiller._client()
     refreshed = 0
@@ -106,6 +107,55 @@ async def _refresh_mapped_vouchers(db: AsyncSession) -> tuple[int, int, str | No
         refreshed += 1
 
     error = f"{failures} mapped voucher(s) failed to refresh" if failures else None
+    return refreshed, missing, error
+
+
+async def _walk_all_products(
+    db: AsyncSession, client: Any, *, wanted: set[str]
+) -> tuple[int, int, str | None]:
+    """Refresh every cached voucher row by walking the product list in pages.
+
+    Cheaper than by id once hundreds of products are mapped, and it refreshes
+    the picker's rows for free. A mapped id the walk never meets counts as
+    missing, like a 404 on the by-id path; a page that fails stops the walk
+    and is reported, with everything before it already written.
+    """
+    seen: set[str] = set()
+    refreshed = 0
+    error: str | None = None
+    for page in range(1, _MAX_PRODUCT_PAGES + 1):
+        try:
+            items = await client.fetch_products(page=page, limit=_PRODUCT_PAGE_LIMIT)
+        except Exception as exc:  # noqa: BLE001 -- best-effort, the rows so far stand
+            error = f"product walk failed on page {page}: {exc!s}"[:200]
+            log.warning("integrations.g2b.sync.walk_failed", page=page, error=str(exc)[:200])
+            break
+        if not items:
+            break
+        before = len(seen)
+        for item in items:
+            external_id = str(item.get("id") or item.get("product_id") or "").strip()
+            if not external_id:
+                continue
+            seen.add(external_id)
+            title = str(item.get("title") or item.get("name") or external_id)[:255]
+            await svc.upsert_catalog_entry(
+                db,
+                supplier_slug="g2b",
+                kind="voucher",
+                external_id=external_id,
+                title=title,
+                raw=item,
+            )
+            if external_id in wanted:
+                refreshed += 1
+        # G2B ignores ``page`` today (every page is the same 1200 rows, read
+        # 2026-10-05), so a page that adds nothing new is the end of the list.
+        if len(items) < _PRODUCT_PAGE_LIMIT or len(seen) == before:
+            break
+    missing = 0 if error else len(wanted - seen)
+    if missing:
+        log.warning("integrations.g2b.sync.mapped_products_gone", count=missing)
     return refreshed, missing, error
 
 

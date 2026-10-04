@@ -45,7 +45,7 @@ from __future__ import annotations
 import html
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -170,13 +170,18 @@ async def refresh_voucher_stock(
                 _Mapping(str(supplier), str(product_id), variant_id)
             )
         routes = await _routes_for(session, [s for s, m in by_sku.items() if len(m) > 1])
+        g2b_cached = await _g2b_cached_stock(
+            session, [m.product_id for ms in by_sku.values() for m in ms if m.supplier == "g2b"]
+        )
 
     #: G-Engine answers with every denomination of a product at once, and NOVA
     #: with every card of a category, so one response serves all the SKUs
     #: behind that id. Keyed by supplier as well as id: the two namespaces are
     #: unrelated and a bare `roblox_global` could otherwise collide with a
     #: G-Engine product id.
-    denominations: dict[str, dict[str, Any] | None] = {}
+    denominations: dict[str, dict[str, Any] | None] = {
+        f"g2b:{product_id}": {"stock": stock} for product_id, stock in g2b_cached.items()
+    }
 
     checked = updated = out = errors = 0
     for sku_id, mappings in by_sku.items():
@@ -320,10 +325,45 @@ async def _stock_for(
         return await _panel_stock(
             client, supplier=supplier, category_id=product_id, card_id=variant_id, cache=cache
         )
+    cached = cache.get(f"g2b:{product_id}")
+    if cached is not None:
+        # The hourly catalogue sync walked the product list minutes ago (see
+        # ``catalog_sync_g2b._walk_all_products``); ~1200 mapped vouchers by
+        # id would be ~1200 calls for numbers already on the table.
+        return normalise_stock(cached.get("stock"))
     product = await client.fetch_product(product_id)
     # Withdrawn upstream is not "unknown" — it is zero. Leaving it NULL would
     # keep selling a product G2B no longer lists.
     return 0 if product is None else normalise_stock(product.get("stock"))
+
+
+#: How old a cached G2B row may be before the sweep asks live instead.
+_G2B_CACHE_FRESH_FOR = timedelta(hours=2)
+
+
+async def _g2b_cached_stock(session: Any, product_ids: list[str]) -> dict[str, Any]:
+    """``product_id -> raw stock`` for every G2B row the sync refreshed recently."""
+    from yupay.modules.integrations.models import SupplierCatalogCache
+
+    ids = list(dict.fromkeys(product_ids))
+    if not ids:
+        return {}
+    cutoff = datetime.now(UTC) - _G2B_CACHE_FRESH_FOR
+    try:
+        rows = (
+            await session.execute(
+                select(SupplierCatalogCache.external_id, SupplierCatalogCache.raw).where(
+                    SupplierCatalogCache.supplier_slug == "g2b",
+                    SupplierCatalogCache.kind == "voucher",
+                    SupplierCatalogCache.external_id.in_(ids),
+                    SupplierCatalogCache.fetched_at >= cutoff,
+                )
+            )
+        ).all()
+        return {str(row.external_id): (row.raw or {}).get("stock") for row in rows}
+    except Exception:  # noqa: BLE001 -- the cache is a shortcut; the live call still works
+        log.warning("stock_refresh.g2b_cache_unreadable")
+        return {}
 
 
 def _g2b_client() -> Any | None:

@@ -54,6 +54,11 @@ class _Session:
         return None
 
     async def execute(self, stmt: Any) -> _Result:
+        # The sweep now reads G2B's cached stock first; these tests pin the
+        # live path, so the cache answers empty and every count comes from the
+        # fake client.
+        if "supplier_catalog_cache" in str(stmt):
+            return _Result([])
         if not self._state["targets_read"]:
             self._state["targets_read"] = True
             return _Result(self._state["targets"])
@@ -505,3 +510,14 @@ async def test_a_route_that_cannot_be_resolved_falls_back_to_asking_both(
 
     assert sku.supplier_stock == 9
     assert report.errors == 0
+
+
+async def test_a_fresh_cached_g2b_row_spares_the_live_call() -> None:
+    """~1200 mapped vouchers by id would be ~1200 calls an hour for numbers the sync just wrote."""
+    client = _Client({"107": {"stock": 3}})
+    cache: dict[str, dict[str, Any] | None] = {"g2b:107": {"stock": 12}}
+
+    assert await mod._stock_for("g2b", client, product_id="107", variant_id=None, cache=cache) == 12
+    assert client.asked == []
+    assert await mod._stock_for("g2b", client, product_id="108", variant_id=None, cache=cache) == 0
+    assert client.asked == ["108"]
