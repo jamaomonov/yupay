@@ -289,8 +289,12 @@ fraudulent order after the fact.
 The browser half, ADR-0076. A reseller registers themselves, confirms their
 address, accepts the offer, browses the wholesale price list, places orders and
 **issues and revokes their own API keys**. The admin steps above did not go
-away — they are the fallback, and step 2 (crediting the deposit) is still the
-one thing that is not self-serve, by design.
+away — they are the fallback. Step 2 (crediting the deposit) is self-serve
+through P2P when the admin setting admits the merchant (`allowlist` / `all`): the
+reseller reserves an exact soʻm amount in the cabinet, transfers it to the Humo
+card, and the deposit is credited automatically — see
+[p2p-deposit.md](./p2p-deposit.md) and ADR-0094. With P2P `off` for a merchant,
+or for an unmatched transfer, an admin still credits by hand.
 
 ### It needs three settings before it works at all
 

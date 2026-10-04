@@ -132,7 +132,7 @@ the cabinet's top-up entry points.
 - **Amount uniqueness is enforced by the database**, not by a read-then-write: a column
   `holds_amount` (bool) is true while `pending` or in quarantine. A partial unique
   index on `(card_id, amount_uzs) WHERE holds_amount` makes a racing reservation fail
-  on insert. The service retries with the next amount, up to +99; past that it answers 503. A periodic job clears `holds_amount` once quarantine ends.
+  on insert. The service retries with the next amount, up to +99; past that it answers 502 `p2p_amount_busy`. A periodic job clears `holds_amount` once quarantine ends.
 
 **`p2p_incoming`** (the journal)
 
@@ -166,8 +166,7 @@ The bot token and webhook secret are **not** stored here. They live in the envir
 3. **Card:** choose an active card where `min ≤ amount ≤ max` and today's matched total
    plus the amount stays within the daily limit. Several cards: the one with the most
    remaining daily room. None: 409 `p2p_no_card` ("try a different amount / later").
-4. **Rate:** `guarded_usd_rate`, snapshot it, `amount_usd = round_half_up(amount_uzs /
-rate, 2)`. Rate unavailable: 503, the same behaviour as checkout.
+4. **Rate:** `guarded_usd_rate`, snapshot it, `amount_usd = amount_uzs / rate`, rounded **down** to cents (`ROUND_DOWN`). Rate unavailable: 502 (`UpstreamUnavailableError`; no 503 class exists), the same behaviour as checkout.
 5. **Exact amount:** insert with the amount; on unique violation try +1 … +99.
 6. **Response:** number, exact amount, full card number, holder name, `expires_at`,
    `amount_usd`, rate.
@@ -306,8 +305,8 @@ as for a manual credit.
 | HUMO changes its format                         | `unparsed` + alert; nothing credited.                                                                         |
 | Webhook down < 24 h                             | Telegram redelivers. Matching uses `bank_time`, so a transfer made inside the window still matches.           |
 | Webhook down > 24 h                             | Messages are lost. The balance chain breaks and alerts; ops reconcile from the bank statement.                |
-| Rate unavailable                                | 503 on reserve.                                                                                               |
-| All +99 amounts taken                           | 503 "try again in a minute".                                                                                  |
+| Rate unavailable                                | 502 on reserve.                                                                                               |
+| All +99 amounts taken                           | 502 "try again in a minute".                                                                                  |
 | P2P switched off                                | No new reservations. Open ones live out their 5 minutes and still match.                                      |
 
 ## 10. Testing
@@ -323,7 +322,7 @@ as for a manual credit.
   - match → deposit credited by exactly `amount_usd`, `balance.credited` enqueued;
   - late (`bank_time ≥ expires_at`) → unmatched.
 - Balance-chain alert; silence alert.
-- Cabinet API (409 / 503 / 404 when off) and admin API, with query-count assertions on
+- Cabinet API (409 / 502 / 404 when off) and admin API, with query-count assertions on
   the lists.
 - **Web:** Vitest for the top-up screen states.
 - **E2E:** reserve → simulated webhook → balance up.

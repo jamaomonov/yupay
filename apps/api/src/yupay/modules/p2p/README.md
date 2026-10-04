@@ -1,0 +1,109 @@
+# p2p
+
+Resellers top up the USD deposit by transferring an exact soʻm amount to the owner's Humo
+card. A Telegram Business bot reads the @HUMOcardbot notification and posts it to the API.
+
+Docs: ADR-0094, `docs/runbooks/p2p-deposit.md`, `docs/product/flows/p2p-deposit.md`,
+`docs/architecture/sequence-diagrams/p2p-deposit.mmd`.
+
+## Responsibilities
+
+- **Reserve** (`reservations.py`): hold an exact amount on a card for 5 minutes, bump +1…+99
+  when taken, quarantine closed amounts for 10 minutes, cancel, expire, list.
+- **Parse** (`parsing.py`): pure reading of a HUMO notification. Anything unrecognised is
+  `unparsed` as a whole.
+- **Intake** (`intake.py`): journal one update and credit the reservation it pays through
+  `merchants.deposit.credit_deposit`. Alerts are returned and sent by the caller after commit.
+- **Routes**: `cabinet_routes.py` (`/merchant/cabinet/p2p/...`), `admin_routes.py`
+  (`/api/v1/admin/p2p/...`), and the webhook `api/webhooks/telegram_p2p.py`
+  (`POST /api/v1/webhooks/telegram/p2p`).
+- **Sweep**: `apps/scheduler/.../jobs/p2p_sweep.py`, every 30 s. Correctness does not depend on
+  it: the webhook and the cabinet read treat an overdue `pending` as expired.
+
+## Tables
+
+| Table              | Purpose                                                                                     |
+| ------------------ | ------------------------------------------------------------------------------------------- |
+| `p2p_cards`        | Cards. Full number sealed (`pan_ciphertext`, `pan_nonce`), `pan_last4`, limits, `active`.   |
+| `p2p_reservations` | One exact amount for one merchant: status, frozen rate, `amount_usd`, `holds_amount`.       |
+| `p2p_incoming`     | The journal: every notification, `kind`, `result`, `balance_after`, `chain_ok`, `raw_text`. |
+| `p2p_settings`     | Single row: `mode` (`off` / `allowlist` / `all`), allowlist, HUMO bot id.                   |
+
+Check-constraint names in `models.py` are bare suffixes (`status`, `kind`, ...):
+`core.db.NAMING_CONVENTION` adds the `ck_<table>_` prefix itself.
+
+## The uniqueness rule
+
+`uq_p2p_reservations_open_amount` is a partial unique index on `(card_id, amount_uzs)` where
+`holds_amount`. `holds_amount` is true while a reservation is `pending` or in quarantine, so two
+open reservations on one card can never share an amount. The database enforces it; two racing
+inserts for 50 000 give one winner and a bump to 50 001 for the other.
+
+Other partial indexes: one `pending` per merchant, and `(merchant_id, idempotency_key)`. A
+same-key replay or a concurrent race returns the same reservation or a 409
+`p2p_reservation_open`.
+
+Reservation rules:
+
+- The card's max and the daily room bound the amount. The +1…+99 bump is capped by the remaining
+  headroom.
+- A stale pending is expired by a guarded `UPDATE ... WHERE status = 'pending'`, so a
+  concurrently paid row is never overwritten.
+- USD = soʻm / rate, rounded **down** to cents (`ROUND_DOWN`), rate frozen on the reservation.
+
+## Errors
+
+| Case                         | Answer                                             |
+| ---------------------------- | -------------------------------------------------- |
+| P2P not enabled for merchant | 404 `p2p_disabled`                                 |
+| Reservation already open     | 409 `p2p_reservation_open`                         |
+| No card takes this amount    | 409 `p2p_no_card`                                  |
+| All +99 amounts held         | 502 `p2p_amount_busy` (`UpstreamUnavailableError`) |
+| Rate unavailable             | 502 `fx_unavailable` (`UpstreamUnavailableError`)  |
+
+No 503 class exists in `core.errors`; the upstream-unavailable class answers 502.
+
+## Matching rule
+
+A `credit` pays a reservation when all of these hold:
+
+- the card is an **active** card with that last4, and exactly one such card exists. Two or more
+  active cards with the same last4: no auto-match and a `p2p_ambiguous_card` alert;
+- the amount has zero tiyin and equals `amount_uzs`;
+- status is `pending`, or `expired` while still in quarantine (`holds_amount`). So an on-time
+  transfer delivered late still matches;
+- bank time `<= expires_at` and `> created_at - 1 minute`. When the bank time is missing,
+  `received_at` stands in.
+
+**Bank time has minute precision** (`HH:MM`), so a transfer up to 59 s after expiry can still
+match. That leniency is accepted.
+
+The reservation is locked `FOR UPDATE`, credited with key `p2p:{reservation.id}` and note
+`P2P · {number}`. The journal's unique `(business_connection_id, telegram_message_id)` makes a
+Telegram retry a no-op.
+
+## Webhook
+
+Authenticity first: `X-Telegram-Bot-Api-Secret-Token` is compared with `compare_digest`
+against `p2p_webhook_secret` (env `P2P_WEBHOOK_SECRET`) before the body is read; an unset
+secret refuses everything. Only `business_message` from the HUMO bot id, in the HUMO chat and
+not forwarded, is processed. `business_connection` updates are logged as
+`p2p.business_connection` (`is_enabled` and the names of granted rights only).
+
+## Alerts
+
+| Kind                 | When                                                                |
+| -------------------- | ------------------------------------------------------------------- |
+| `p2p_unparsed`       | A message from HUMO the parser could not read (message id only).    |
+| `p2p_chain_break`    | Previous balance ± amount differs from this balance.                |
+| `p2p_ambiguous_card` | Two or more active cards share the notification's last4.            |
+| `p2p_silence`        | Reservations expiring and no HUMO notification for 6 h (scheduler). |
+
+Known caveat: the chain check compares with the latest row by bank time, so out-of-order
+delivery can raise a false `p2p_chain_break`.
+
+## Never logged
+
+Card numbers, holder names, raw notification text, Telegram user ids, and the webhook secret.
+Log lines carry the reservation number, amount and card last4 only. The full card number is
+returned only to the merchant holding the open reservation, and is write-only in the admin.

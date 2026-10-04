@@ -97,6 +97,26 @@ other endpoint. Guests never connect (`useOrderSocket` mounts only for a logged-
 | Uzum     | `/webhooks/payments/uzum`     | HMAC over body                                                     |
 | Crypto   | `/webhooks/payments/crypto`   | HMAC over body                                                     |
 
+### Telegram P2P (`POST /webhooks/telegram/p2p`)
+
+Not a payment provider: Telegram posts the owner's @HUMOcardbot notifications (via a
+Business bot) and the matching reseller reservation is credited.
+
+- **Auth:** `X-Telegram-Bot-Api-Secret-Token` equals `P2P_WEBHOOK_SECRET`, compared with
+  `compare_digest` before the body is read. A mismatch, or an unset secret, answers 401.
+- **Body:** at most 64 KiB (413 above). Anything not a matching `business_message` is dropped
+  with 200 so Telegram does not retry it.
+- **Idempotency:** no `Idempotency-Key` (Telegram is the caller). The journal's unique
+  `(business_connection_id, message_id)` makes a retry a no-op, and the credit's key is
+  `p2p:{reservation.id}`.
+- **Rate limit:** the default coarse per-IP tier applies (the route is not on the
+  self-authenticating exemption list).
+
+Cabinet routes: `/merchant/cabinet/p2p/{status,deposits}`; admin routes:
+`/api/v1/admin/p2p/{settings,cards,incoming,reservations}`. Errors:
+409 `p2p_reservation_open` / `p2p_no_card`, 404 `p2p_disabled`, 502 `p2p_amount_busy` /
+`fx_unavailable`.
+
 Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gateways/<provider>.py`
 (docstring on the gateway class).
 

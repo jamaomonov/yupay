@@ -332,6 +332,41 @@ The SSRF row above covers the connection. This is what may travel over it.
 - **Post-delivery rollback.** Steam's 7-day protection lets a trade be reverted; the hourly
   watch alerts ops and records it on the task.
 
+## P2P deposit top-up (ADR-0094, 2026-10-04)
+
+A reseller credits the deposit by transferring soʻm to the owner's Humo card; a Telegram
+Business bot posts the bank notification to `POST /api/v1/webhooks/telegram/p2p`.
+
+- **Forged notification.** Anyone who finds the URL could post a fake "credit". Four checks
+  together: `X-Telegram-Bot-Api-Secret-Token` compared with `compare_digest` before the body is
+  read (an unset secret refuses everything), the sender and chat must be the HUMO bot's numeric
+  id, the message must not be forwarded, and the card last4 must be ours. The Business bot sees
+  only the HUMO chat ("Only selected chats"), so a forged message cannot be injected by a third
+  party writing to the owner.
+- **Replay.** The journal's unique `(business_connection_id, telegram_message_id)` makes a
+  re-post a no-op; the credit's idempotency key is `p2p:{reservation.id}`, so one reservation
+  is credited once however many rows reach it.
+- **Race on the amount.** Two resellers reserving the same amount on one card is prevented by a
+  partial unique index (`holds_amount`), not by a read-then-write. Quarantine (10 min) keeps a
+  closed amount from reaching someone else's reservation when a late transfer arrives. A
+  concurrently paid row is never overwritten by expiry (guarded `UPDATE`).
+- **Lost updates.** Telegram keeps undelivered updates for 24 hours and offers no history. A
+  longer outage loses notifications; the balance chain (`p2p_chain_break`) and the silence
+  alert (`p2p_silence`) detect it, and ops reconcile from the bank statement. Residual risk:
+  a missed credit is not credited until someone notices; a false chain break is possible on
+  out-of-order delivery.
+- **Format change.** An unreadable notification is `unparsed` as a whole, credits nothing, and
+  raises `p2p_unparsed`.
+- **Minute precision.** The bank time has no seconds; the expiry edge has up to 59 s of leniency.
+  The amount still has to match exactly, so this cannot pay a different reseller's reservation.
+- **PAN at rest.** The full card number is encrypted (`core.crypto`, `pan_ciphertext` +
+  `pan_nonce`), returned only to the merchant holding the open reservation, write-only in the
+  admin, and never logged or put in a URL.
+- **Bot token exposure.** The spike token was exposed in chat and must be revoked before
+  production. The production token and the webhook secret live only in sops.
+- **Personal-card risk.** High P2P turnover on a personal card can make the bank restrict it;
+  accepted by the owner.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

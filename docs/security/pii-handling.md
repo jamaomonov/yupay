@@ -136,6 +136,19 @@ A credential that appears in a **URL** rather than a header is the shape to watc
 here: it slips past field-name blocklists, because there is no field name. If a new
 integration is called that way, scrub it in the same place and add a row above.
 
+## P2P deposit (ADR-0094)
+
+| Field                      | Stored in                          | Rule                                                                                                                              |
+| -------------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| Card number (PAN)          | `p2p_cards.pan_ciphertext`/`nonce` | Encrypted at rest. Returned only to the merchant with their own open reservation. Write-only in the admin (masked). Never logged. |
+| Cardholder name            | `p2p_cards.holder_name`            | Stored, shown to the reserving merchant, never logged.                                                                            |
+| Raw notification text      | `p2p_incoming.raw_text`            | Stored in the database only, admin-read-only. It holds balances and counterparties' bank descriptors. Never logged.               |
+| Source descriptor, balance | `p2p_incoming`                     | Same as raw text.                                                                                                                 |
+
+Log lines carry the reservation number, amount and card last4. The Telegram user id,
+`business_connection` identifiers and the webhook secret are never logged;
+`p2p.business_connection` records `is_enabled` and the names of granted rights only.
+
 ## Right to deletion
 
 Implemented as a tombstone:

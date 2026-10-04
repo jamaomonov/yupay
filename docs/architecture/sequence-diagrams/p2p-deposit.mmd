@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    actor R as Reseller
+    participant Cab as Cabinet (apps/merchant)
+    participant API as p2p.cabinet_routes
+    participant Svc as p2p.reservations
+    participant Bank as Humo / @HUMOcardbot
+    participant TG as Telegram Business bot
+    participant WH as POST /webhooks/telegram/p2p
+    participant In as p2p.intake
+    participant Dep as merchants.deposit.credit_deposit
+    participant DB as Postgres
+
+    R->>Cab: amount in som
+    Cab->>API: POST /merchant/cabinet/p2p/deposits + Idempotency-Key
+    API->>Svc: reserve(merchant, amount)
+    Svc->>DB: INSERT reservation (unique open amount per card, bump +1..+99)
+    API-->>Cab: number, exact amount, card, expires_at (5 min), amount_usd
+    R->>Bank: transfers the exact amount
+    Bank->>TG: credit notification (via the owner's Telegram)
+    TG->>WH: business_message + X-Telegram-Bot-Api-Secret-Token
+    WH->>WH: compare_digest(secret) before reading the body
+    WH->>In: ingest_update(update)
+    In->>In: sender and chat are the HUMO bot, not forwarded
+    In->>DB: INSERT journal row (unique connection + message id)
+    In->>DB: lock reservation FOR UPDATE (amount, last4, bank time in window)
+    In->>Dep: credit amount_usd, key p2p:{reservation.id}
+    In->>DB: reservation paid, journal matched
+    WH-->>TG: 200
+    loop every 3 s
+        Cab->>API: GET /merchant/cabinet/p2p/deposits/{number}
+        API-->>Cab: status
+    end
+    Cab-->>R: Credited
