@@ -337,10 +337,12 @@ The SSRF row above covers the connection. This is what may travel over it.
 A reseller credits the deposit by transferring soʻm to the owner's Humo card; a Telegram
 Business bot posts the bank notification to `POST /api/v1/webhooks/telegram/p2p`.
 
-- **Forged notification.** Anyone who finds the URL could post a fake "credit". Four checks
+- **Forged notification.** Anyone who finds the URL could post a fake "credit". Three checks
   together: `X-Telegram-Bot-Api-Secret-Token` compared with `compare_digest` before the body is
-  read (an unset secret refuses everything), the sender and chat must be the HUMO bot's numeric
-  id, the message must not be forwarded, and the card last4 must be ours. The Business bot sees
+  read (an unset secret refuses everything), the sender id and the chat id must both equal the
+  HUMO bot's numeric id, and the message must have no `forward_origin`. Edited messages never
+  arrive (`allowed_updates` has no edited type; the intake ignores `edited_business_message`).
+  The card last4 is only a matching condition, not a forgery defence. The Business bot sees
   only the HUMO chat ("Only selected chats"), so a forged message cannot be injected by a third
   party writing to the owner.
 - **Replay.** The journal's unique `(business_connection_id, telegram_message_id)` makes a

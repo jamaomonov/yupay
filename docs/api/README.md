@@ -109,8 +109,8 @@ Business bot) and the matching reseller reservation is credited.
 - **Idempotency:** no `Idempotency-Key` (Telegram is the caller). The journal's unique
   `(business_connection_id, message_id)` makes a retry a no-op, and the credit's key is
   `p2p:{reservation.id}`.
-- **Rate limit:** the default coarse per-IP tier applies (the route is not on the
-  self-authenticating exemption list).
+- **Rate limit:** exempt from the per-IP tier, like the other self-authenticating
+  callbacks (`bootstrap._exempt_self_authenticating_routes`); the secret header is the control.
 
 Cabinet routes: `/merchant/cabinet/p2p/{status,deposits}`; admin routes:
 `/api/v1/admin/p2p/{settings,cards,incoming,reservations}`. Errors:

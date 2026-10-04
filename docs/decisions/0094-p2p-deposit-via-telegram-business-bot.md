@@ -50,8 +50,11 @@ account. The question is how to read it reliably and match it to one reseller.
   2. The bot's Messages permissions are on.
   3. BotFather "Bot to Bot Communication Mode" is on. Without it, messages from another bot
      (HUMO is a bot) are not delivered through business accounts.
-- **Forgery resistance** is four checks together: the webhook secret header, the HUMO bot's
-  numeric id, not forwarded and not edited, and our card's last4.
+- **Forgery resistance** is three checks together: the webhook secret header, the sender and
+  chat id both equal to the HUMO bot's numeric id, and no `forward_origin`. Edited messages
+  never arrive: `allowed_updates` has no edited type and the intake ignores
+  `edited_business_message`. Our card's last4 is a matching condition, not an authentication
+  control.
 - **Rate.** USD = soʻm / rate rounded **down** to cents, at the storefront's own guarded rate,
   frozen on the reservation.
 - **Fallback.** A transfer nothing matches is `unmatched` in the journal; an admin credits it
