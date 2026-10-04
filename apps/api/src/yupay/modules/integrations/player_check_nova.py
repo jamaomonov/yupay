@@ -23,6 +23,14 @@ The cost is that a customer who mistypes during a G2B outage is told "could not
 check" instead of "wrong id" — which is what they are told today. The gain, a
 confirmed nickname while G2B is down, is kept in full.
 
+**FazerCards first, NOVA second.** NOVA resells FazerCards — the same panel,
+the same five validate categories (``GET /api/v2/topups/validate-id``, read
+2026-10-04). So fzr is asked first and NOVA only when fzr could not be asked
+at all (switched off, no key, its circuit open). An fzr that *answered* —
+even ``error`` — is not second-guessed by its own reseller: that would add a
+second 4s wait for the same answer. Each vendor has its own circuit, cache
+namespace and kill switch.
+
 **Their validate ids are not their top-up ids** (``mobile_legends`` validates,
 ``mobile_legends_ru`` sells) and their validate field key for a server is
 ``zone_id``, while the order endpoint wants ``server_id``. Both are easy to
@@ -32,18 +40,19 @@ cross and neither fails loudly.
 from __future__ import annotations
 
 import contextlib
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from yupay.core.config import get_settings
 from yupay.core.logging import get_logger, hash_short
 from yupay.core.redis import get_redis
-from yupay.modules.fulfillment.suppliers.nova_client import NovaError
+from yupay.modules.fulfillment.suppliers.panel_client import PanelError
 from yupay.modules.integrations.breaker import SupplierBreaker
 from yupay.modules.integrations.schemas import PlayerCheckOut
 
 if TYPE_CHECKING:
-    from yupay.modules.fulfillment.suppliers.nova_client import NovaValidation
+    from yupay.modules.fulfillment.suppliers.panel_client import PanelClient, PanelValidation
 
 logger = get_logger("yupay.integrations.player_check_nova")
 
@@ -92,7 +101,7 @@ NOVA_VALIDATE: dict[str, NovaValidateTarget] = {
 }
 
 
-def _breaker() -> SupplierBreaker:
+def _breaker(slug: str = "nova") -> SupplierBreaker:
     """The circuit guarding NOVA's advisory calls.
 
     Separate from G2B's: this path is reached *because* G2B is unwell, so one
@@ -101,7 +110,7 @@ def _breaker() -> SupplierBreaker:
     answering the same kind of advisory question.
     """
     return SupplierBreaker(
-        "nova:player_check",
+        f"{slug}:player_check",
         threshold=_BREAKER_THRESHOLD,
         cooldown_seconds=_BREAKER_COOLDOWN_SECONDS,
     )
@@ -130,7 +139,7 @@ def _counts_against_supplier(exc: BaseException) -> bool:
     limit — this whole module exists because the primary hit one. Everything
     else — 400, 404, 409, 422 — is about what we sent.
     """
-    if isinstance(exc, NovaError):
+    if isinstance(exc, PanelError):
         return exc.status >= 500 or exc.status in (401, 403, 429)
     return True
 
@@ -154,13 +163,15 @@ def _redacted(text: str, *ours: str | None) -> str:
     return text
 
 
-def _cache_key(category_id: str, player_id: str, server_id: str | None) -> str:
+def _cache_key(
+    category_id: str, player_id: str, server_id: str | None, *, vendor: str = "nova"
+) -> str:
     """Redis key for a cached NOVA verdict.
 
     Its own namespace, so a NOVA answer can never be served as a G2B one, and
     the id is hashed for the same PII reason (§9) as the primary's key.
     """
-    return f"playercheck:nova:{category_id}:{server_id or '-'}:{hash_short(player_id)}"
+    return f"playercheck:{vendor}:{category_id}:{server_id or '-'}:{hash_short(player_id)}"
 
 
 def _steam_cache_key(steam_login: str) -> str:
@@ -168,19 +179,49 @@ def _steam_cache_key(steam_login: str) -> str:
     return f"playercheck:nova:steam:{hash_short(steam_login)}"
 
 
-def _resolve_target(brand_slug: str | None) -> NovaValidateTarget | None:
-    """The validate target for a brand, or ``None`` when the fallback must not
-    run at all — the kill switch is off, or the brand is outside
-    :data:`NOVA_VALIDATE`. Split out of :func:`fallback_for_brand` only to
-    keep that function's early returns under the linter's ceiling; the two
-    checks are one decision, not two.
-    """
-    if not get_settings().nova_player_check_enabled:
-        return None
-    return NOVA_VALIDATE.get(brand_slug or "")
+def _nova_client() -> PanelClient | None:
+    from yupay.modules.integrations.routes import _nova_fulfiller_or_none
+
+    fulfiller = _nova_fulfiller_or_none()
+    return fulfiller._client() if fulfiller is not None else None
 
 
-def _verdict(answer: NovaValidation, target: NovaValidateTarget) -> PlayerCheckOut:
+def _fzr_client() -> PanelClient | None:
+    from yupay.modules.integrations.catalog_sync_panel import client_or_none
+
+    return client_or_none("fzr")
+
+
+@dataclass(frozen=True)
+class _Vendor:
+    """One panel vendor the fallback may ask, with its own switch and budget."""
+
+    slug: str
+    enabled: Callable[[Any], bool]
+    timeout: Callable[[Any], float]
+    client: Callable[[], PanelClient | None]
+
+
+#: Asked in order; the next one only when the previous could not be asked.
+_VENDORS: tuple[_Vendor, ...] = (
+    _Vendor(
+        "fzr",
+        lambda s: bool(s.fzr_player_check_enabled),
+        lambda s: float(s.fzr_check_timeout_seconds),
+        _fzr_client,
+    ),
+    _Vendor(
+        "nova",
+        lambda s: bool(s.nova_player_check_enabled),
+        lambda s: float(s.nova_check_timeout_seconds),
+        _nova_client,
+    ),
+)
+
+
+def _verdict(
+    answer: PanelValidation, target: NovaValidateTarget, *, vendor: str = "nova"
+) -> PlayerCheckOut:
     """Turn one NOVA answer into an advisory verdict.
 
     A negative becomes ``error``, not ``invalid``: see the module docstring.
@@ -195,11 +236,11 @@ def _verdict(answer: NovaValidation, target: NovaValidateTarget) -> PlayerCheckO
         if target.region_word not in region:
             logger.warning(
                 "player_check_fallback_region_mismatch",
-                provider="nova",
+                provider=vendor,
                 category_id=target.category_id,
                 expected=target.region_word,
                 region=region[:32] or "(none)",
-                hint="NOVA validated the id for a different region than this brand "
+                hint="the panel validated the id for a different region than this brand "
                 "sells; answering `error` rather than confirming the wrong game",
             )
             return PlayerCheckOut(status="error")
@@ -209,7 +250,7 @@ def _verdict(answer: NovaValidation, target: NovaValidateTarget) -> PlayerCheckO
 async def fallback_for_brand(
     *, brand_slug: str | None, player_id: str, server_id: str | None
 ) -> PlayerCheckOut:
-    """Ask NOVA about a player id. Returns ``valid`` or ``error``, never ``invalid``.
+    """Ask fzr, then NOVA, about a player id. ``valid`` or ``error``, never ``invalid``.
 
     Args:
         brand_slug: Our brand. A slug absent from :data:`NOVA_VALIDATE` gets no
@@ -217,29 +258,46 @@ async def fallback_for_brand(
         player_id: Never logged, only hashed.
         server_id: The sibling server/zone value, sent as their ``zone_id``.
     """
-    from yupay.modules.integrations.player_check import _CACHE_TTL_SECONDS, _cached, _worth_caching
-    from yupay.modules.integrations.routes import _nova_fulfiller_or_none
-
-    target = _resolve_target(brand_slug)
+    target = NOVA_VALIDATE.get(brand_slug or "")
     if target is None:
         return PlayerCheckOut(status="error")
     settings = get_settings()
+    for vendor in _VENDORS:
+        if not vendor.enabled(settings):
+            continue
+        out = await _ask(vendor, target, player_id, server_id, settings)
+        if out is not None:
+            return out
+    return PlayerCheckOut(status="error")
 
-    key = _cache_key(target.category_id, player_id, server_id)
+
+async def _ask(
+    vendor: _Vendor,
+    target: NovaValidateTarget,
+    player_id: str,
+    server_id: str | None,
+    settings: Any,
+) -> PlayerCheckOut | None:
+    """One vendor's verdict, or ``None`` when it could not be asked at all."""
+    from yupay.modules.integrations.player_check import _CACHE_TTL_SECONDS, _cached, _worth_caching
+
+    key = _cache_key(target.category_id, player_id, server_id, vendor=vendor.slug)
     cached = await _cached(key)
     if cached is not None:
         return cached
 
-    fulfiller = _nova_fulfiller_or_none()
-    if fulfiller is None:
-        return PlayerCheckOut(status="error")
+    client = vendor.client()
+    if client is None:
+        return None
 
-    breaker = _breaker()
+    breaker = _breaker(vendor.slug)
     if await breaker.is_open():
         logger.info(
-            "player_check_fallback_short_circuited", provider="nova", category_id=target.category_id
+            "player_check_fallback_short_circuited",
+            provider=vendor.slug,
+            category_id=target.category_id,
         )
-        return PlayerCheckOut(status="error")
+        return None
 
     # Their validate endpoint names the server `zone_id`; their order endpoint
     # names it `server_id`. Crossing the two is silent.
@@ -248,17 +306,15 @@ async def fallback_for_brand(
         fields["zone_id"] = server_id
 
     try:
-        answer = await fulfiller._client().validate_id(
-            category_id=target.category_id,
-            fields=fields,
-            timeout=settings.nova_check_timeout_seconds,
+        answer = await client.validate_id(
+            category_id=target.category_id, fields=fields, timeout=vendor.timeout(settings)
         )
     except Exception as exc:  # noqa: BLE001 — advisory; degrade, never 500
         if _counts_against_supplier(exc):
             await breaker.record_failure()
         logger.warning(
             "player_check_failed",
-            provider="nova",
+            provider=vendor.slug,
             category_id=target.category_id,
             player_id_hash=hash_short(player_id),
             error=_redacted(str(exc), player_id, server_id)[:200],
@@ -266,13 +322,13 @@ async def fallback_for_brand(
         return PlayerCheckOut(status="error")
 
     await breaker.record_success()
-    out = _verdict(answer, target)
+    out = _verdict(answer, target, vendor=vendor.slug)
     if _worth_caching(out):
         with contextlib.suppress(Exception):  # cache is best-effort
             await get_redis().set(key, out.model_dump_json(), ex=_CACHE_TTL_SECONDS)
     logger.info(
         "player_check",
-        provider="nova",
+        provider=vendor.slug,
         category_id=target.category_id,
         player_id_hash=hash_short(player_id),
         status=out.status,

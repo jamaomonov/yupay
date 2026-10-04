@@ -298,10 +298,11 @@ yupay/
   Redis cache keyed by a hash of the link, a 60-second breaker (`skins:tradelink:breaker`)
   and its own `ip_guard` bucket (`skins-tradelink`). Since ADR-0081, the two
   ADR-0031 endpoints may make a **second** supplier call in the same request, not a second
-  endpoint: when the primary answers `error`, a NOVA fallback (`player_check_nova.py`) runs
-  before the response goes out, with its own tighter timeout
-  (`nova_check_timeout_seconds`, 4 s), its own breaker (`nova:player_check`), and its own
-  cache namespace. Be plain about the cost: on the `error` path those two endpoints now
+  endpoint: when the primary answers `error`, a panel fallback (`player_check_nova.py`) runs
+  before the response goes out — FazerCards first, NOVA only when fzr could not be asked
+  (off, no key, circuit open), so still at most one extra call — each with its own tighter
+  timeout (`fzr_check_timeout_seconds` / `nova_check_timeout_seconds`, 4 s), its own breaker
+  (`fzr:player_check` / `nova:player_check`), and its own cache namespace. Be plain about the cost: on the `error` path those two endpoints now
   make a call they did not make before, so their p95 can grow by up to that timeout — and
   because `httpx` applies a scalar timeout to connect, read, write and pool separately, a
   bad tail can exceed 4 s. A cache hit or an open breaker short-circuits it; neither is

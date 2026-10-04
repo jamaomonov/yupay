@@ -67,9 +67,12 @@ class _FakeRedis:
 class _Settings:
     """Just the two fields the fallback reads off ``get_settings()``."""
 
-    def __init__(self, *, enabled: bool = True, timeout: float = 4.0) -> None:
+    def __init__(self, *, enabled: bool = True, timeout: float = 4.0, fzr: bool = False) -> None:
         self.nova_player_check_enabled = enabled
         self.nova_check_timeout_seconds = timeout
+        # fzr is asked before NOVA; off here so the NOVA tests below see NOVA.
+        self.fzr_player_check_enabled = fzr
+        self.fzr_check_timeout_seconds = 3.0
 
 
 class _ScriptedNovaClient:
@@ -163,6 +166,11 @@ class _Env:
             return self._fulfiller
 
         monkeypatch.setattr(integration_routes, "_nova_fulfiller_or_none", _fulfiller_or_none)
+        self.fzr_client: _ScriptedNovaClient | None = None
+        monkeypatch.setattr(
+            "yupay.modules.integrations.catalog_sync_panel.client_or_none",
+            lambda slug: self.fzr_client if slug == "fzr" else None,
+        )
 
     def set_fulfiller(self, fulfiller: _FakeNovaFulfiller | None) -> None:
         self._fulfiller = fulfiller
@@ -425,3 +433,69 @@ async def test_their_error_text_never_carries_back_the_identifier(env: _Env) -> 
     assert "51234567" not in rendered
     assert "6618" not in rendered
     assert "not found" in rendered
+
+
+# ---------- FazerCards first --------------------------------------------
+
+
+async def test_fzr_is_asked_first_and_its_answer_stands(env: _Env) -> None:
+    env.settings.fzr_player_check_enabled = True
+    env.fzr_client = _ScriptedNovaClient(
+        validate_answers=[NovaValidation(valid=True, player_name="Hero", region=None)]
+    )
+    nova = _ScriptedNovaClient(validate_answers=[])
+    env.set_fulfiller(_FakeNovaFulfiller(nova))
+
+    out = await fallback_for_brand(brand_slug="pubg-mobile", player_id="51234567", server_id=None)
+
+    assert out.status == "valid"
+    assert out.name == "Hero"
+    assert env.fzr_client.validate_calls[0]["timeout"] == 3.0
+    assert nova.validate_calls == []
+    assert any(k.startswith("playercheck:fzr:") for k in env.redis.store)
+
+
+async def test_an_fzr_that_answered_error_is_not_retried_at_nova(env: _Env) -> None:
+    """NOVA resells fzr: asking it again is the same answer four seconds later."""
+    from yupay.modules.fulfillment.suppliers.fzr_client import FzrError
+
+    env.settings.fzr_player_check_enabled = True
+    env.fzr_client = _ScriptedNovaClient(raises=FzrError("could not validate", status=422))
+    nova = _ScriptedNovaClient(validate_answers=[])
+    env.set_fulfiller(_FakeNovaFulfiller(nova))
+
+    out = await fallback_for_brand(brand_slug="free-fire", player_id="51234567", server_id=None)
+
+    assert out.status == "error"
+    assert nova.validate_calls == []
+
+
+async def test_nova_answers_when_fzr_is_not_configured(env: _Env) -> None:
+    env.settings.fzr_player_check_enabled = True
+    env.fzr_client = None
+    nova = _ScriptedNovaClient(
+        validate_answers=[NovaValidation(valid=True, player_name="Hero", region=None)]
+    )
+    env.set_fulfiller(_FakeNovaFulfiller(nova))
+
+    out = await fallback_for_brand(brand_slug="pubg-mobile", player_id="51234567", server_id=None)
+
+    assert out.status == "valid"
+    assert len(nova.validate_calls) == 1
+
+
+async def test_nova_answers_while_fzrs_circuit_is_open(env: _Env) -> None:
+    env.settings.fzr_player_check_enabled = True
+    env.fzr_client = _ScriptedNovaClient(validate_answers=[])
+    for _ in range(3):
+        await pcn._breaker("fzr").record_failure()
+    nova = _ScriptedNovaClient(
+        validate_answers=[NovaValidation(valid=True, player_name="Hero", region=None)]
+    )
+    env.set_fulfiller(_FakeNovaFulfiller(nova))
+
+    out = await fallback_for_brand(brand_slug="pubg-mobile", player_id="51234567", server_id=None)
+
+    assert out.status == "valid"
+    assert env.fzr_client.validate_calls == []
+    assert len(nova.validate_calls) == 1

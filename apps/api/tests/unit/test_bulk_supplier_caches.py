@@ -70,7 +70,7 @@ async def test_a_paced_call_waits_out_one_429_and_retries(monkeypatch: pytest.Mo
     async def _sleep(seconds: float) -> None:
         slept.append(seconds)
 
-    monkeypatch.setattr(panel_client.asyncio, "sleep", _sleep)
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.panel_client.asyncio.sleep", _sleep)
     client = _RateLimited()
 
     body = await client.get_offers_paced("acecraft")
@@ -84,7 +84,7 @@ async def test_any_other_refusal_is_not_retried(monkeypatch: pytest.MonkeyPatch)
     async def _sleep(_seconds: float) -> None:
         return None
 
-    monkeypatch.setattr(panel_client.asyncio, "sleep", _sleep)
+    monkeypatch.setattr("yupay.modules.fulfillment.suppliers.panel_client.asyncio.sleep", _sleep)
 
     class _Gone(_RateLimited):
         async def get_offers(self, category_id: str) -> dict[str, Any]:
@@ -177,7 +177,9 @@ async def test_each_vendor_reads_its_own_cache(monkeypatch: pytest.MonkeyPatch) 
 
     monkeypatch.setattr(cost_refresh, "_fzr_raw_price", _fzr)
     monkeypatch.setattr(cost_refresh, "_g2b_raw_price", _g2b)
-    nova, fzr, g2b = {"x": "nova"}, {"x": "fzr"}, {"code": []}
+    nova: dict[str, Any] = {"x": "nova"}
+    fzr: dict[str, Any] = {"x": "fzr"}
+    g2b: dict[str, list[dict[str, Any]]] = {"code": []}
 
     await cost_refresh._lookup_price(
         None,  # type: ignore[arg-type]

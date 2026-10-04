@@ -802,8 +802,9 @@ class Settings(BaseSettings):
     #   adapter grades that as a configuration failure with our money intact.
     # * **it rate-limits per operation category** — 60 order creates a minute,
     #   120 status polls, 30 account reads — with ``Retry-After`` on the 429.
-    #   Our sweeps are far under those, which is why no client-side throttle
-    #   ships with this; if one becomes necessary it goes in ``panel_client``.
+    #   Catalogue reads are limited too: four parallel ``/topups/offers``
+    #   calls tripped a 429 on 2026-10-04, so the bulk walks (sync, hourly
+    #   price pass) go through ``PanelClient.get_offers_paced``.
     fzr_api_key: str = Field(default="")
     #: HMAC secret for their signed order webhook, from their reseller panel
     #: (Settings -> Webhook). Empty disables the receiver: it then rejects
@@ -813,6 +814,11 @@ class Settings(BaseSettings):
     #: immediately, so rotate here first.
     fzr_webhook_secret: str = Field(default="")
     fzr_base_url: str = Field(default="https://api.fzr.cards")
+    #: The player check's fallback asks FazerCards first, NOVA after (NOVA
+    #: resells fzr: same platform, same five validate categories). Same 4s
+    #: budget and the same kind of kill switch as NOVA's, for the same reason.
+    fzr_check_timeout_seconds: float = Field(default=4.0)
+    fzr_player_check_enabled: bool = Field(default=True)
     fzr_request_timeout_seconds: float = Field(default=20.0)
 
     # --- Steam Gifts ---
