@@ -16,11 +16,15 @@ export function formatSom(amount: number, locale: string): string {
  * cents keeps floats out of the displayed money.
  */
 export function usdPreview(amountUzs: number, rate: string | null): string | null {
-  if (!rate || !(amountUzs > 0)) return null;
-  const r = Number(rate);
-  if (!(r > 0)) return null;
-  const cents = Math.floor((amountUzs * 100) / r);
-  return `${String(Math.floor(cents / 100))}.${String(cents % 100).padStart(2, "0")}`;
+  if (!rate || !Number.isSafeInteger(amountUzs) || amountUzs <= 0) return null;
+  const match = /^(\d+)(?:\.(\d+))?$/.exec(rate);
+  if (match === null) return null;
+  const fraction = match[2] ?? "";
+  const scaled = BigInt(`${match[1] ?? "0"}${fraction}`);
+  if (scaled === 0n) return null;
+  // BigInt division floors for positives: ROUND_DOWN, with no float anywhere.
+  const cents = (BigInt(amountUzs) * 100n * 10n ** BigInt(fraction.length)) / scaled;
+  return `${String(cents / 100n)}.${String(cents % 100n).padStart(2, "0")}`;
 }
 
 export type Phase = "amount" | "details" | "paid" | "expired" | "cancelled";

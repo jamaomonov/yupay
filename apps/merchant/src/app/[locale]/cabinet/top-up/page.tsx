@@ -101,6 +101,8 @@ export default function TopUp() {
       if (!(caught instanceof ApiError)) {
         setError(t("errBusy"));
       } else if (caught.code === "p2p_reservation_open") {
+        // That intent is answered; a later submit is a new one.
+        intentKey.current = null;
         const open = caught.body.number;
         try {
           if (typeof open === "string") await load(open);
@@ -127,6 +129,7 @@ export default function TopUp() {
         method: "POST",
         idempotencyKey: crypto.randomUUID(),
       });
+      intentKey.current = null;
       setDeposit(null);
       setWaiting(false);
     } catch {

@@ -16,6 +16,23 @@ describe("usdPreview", () => {
     expect(usdPreview(50_000, null)).toBeNull();
     expect(usdPreview(0, "12300")).toBeNull();
   });
+
+  it("handles fractional and high-precision rates exactly", () => {
+    expect(usdPreview(50_000, "12345.67")).toBe("4.05");
+    // Just under 10.00: a float rate that rounds to 12300 would say "10.00".
+    expect(usdPreview(123_000, "12300")).toBe("10.00");
+    expect(usdPreview(123_000, "12300.000001")).toBe("9.99");
+  });
+
+  it("rejects bad input without Infinity or NaN", () => {
+    expect(usdPreview(50_000, "abc")).toBeNull();
+    expect(usdPreview(50_000, "0")).toBeNull();
+    expect(usdPreview(50_000, "1e3")).toBeNull();
+    expect(usdPreview(50_000, "-5")).toBeNull();
+    expect(usdPreview(Number.POSITIVE_INFINITY, "12300")).toBeNull();
+    expect(usdPreview(Number.NaN, "12300")).toBeNull();
+    expect(usdPreview(1e21, "12300")).toBeNull();
+  });
 });
 
 describe("phase", () => {
