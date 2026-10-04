@@ -1,16 +1,53 @@
 import { useQuery } from "@tanstack/react-query";
-import { Button } from "@yupay/ui";
+import { Button, Select } from "@yupay/ui";
 import { Plus } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
+
+import { type FlagFilter, filterBrands, parseFlagFilter } from "./brand-filters";
 
 import type { Brand } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
-import { Thumb } from "@/components/Thumb";
 import { Spinner } from "@/components/States";
+import { Thumb } from "@/components/Thumb";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { type SearchParamCodec, useSearchParamsState } from "@/lib/useSearchParamsState";
+
+const flagCodec: SearchParamCodec<FlagFilter> = {
+  parse: parseFlagFilter,
+  serialize: (v) => v,
+  isDefault: (v) => v === "",
+};
+
+interface FlagSelectProps {
+  label: string;
+  value: FlagFilter;
+  onChange: (next: FlagFilter) => void;
+  yes: string;
+  no: string;
+}
+
+/** «Все / да / нет» for one brand flag. */
+function FlagSelect({ label, value, onChange, yes, no }: FlagSelectProps) {
+  return (
+    <Select
+      aria-label={label}
+      value={value}
+      onChange={(e) => {
+        onChange(parseFlagFilter(e.target.value));
+      }}
+      containerClassName="w-auto"
+    >
+      <option value="">{label}: все</option>
+      <option value="yes">{yes}</option>
+      <option value="no">{no}</option>
+    </Select>
+  );
+}
+
+const mark = (on: boolean) => (on ? "✓" : "—");
 
 export function BrandsListPage() {
   const navigate = useNavigate();
@@ -18,6 +55,11 @@ export function BrandsListPage() {
     queryKey: qk.brands(),
     queryFn: () => apiGet<Brand[]>("/api/v1/admin/catalog/brands"),
   });
+  const [active, setActive] = useSearchParamsState<FlagFilter>("active", "", flagCodec);
+  const [retail, setRetail] = useSearchParamsState<FlagFilter>("retail", "", flagCodec);
+  const [b2b, setB2b] = useSearchParamsState<FlagFilter>("b2b", "", flagCodec);
+  const filtered = q.data ? filterBrands(q.data, { active, retail, b2b }) : undefined;
+  const filtering = active !== "" || retail !== "" || b2b !== "";
 
   const columns: Column<Brand>[] = [
     {
@@ -44,9 +86,11 @@ export function BrandsListPage() {
     {
       key: "active",
       header: "Статус",
-      render: (b) => (b.active ? "✓" : "—"),
+      render: (b) => mark(b.active),
       className: "w-16",
     },
+    { key: "retail", header: "Витрина", render: (b) => mark(b.visible_retail), className: "w-20" },
+    { key: "b2b", header: "Мерчанты", render: (b) => mark(b.visible_b2b), className: "w-24" },
   ];
 
   return (
@@ -61,15 +105,58 @@ export function BrandsListPage() {
           </Button>
         }
       />
+      <section className="mb-4 flex flex-wrap items-center gap-3">
+        <FlagSelect
+          label="Статус"
+          value={active}
+          onChange={setActive}
+          yes="Активные"
+          no="Неактивные"
+        />
+        <FlagSelect
+          label="Витрина"
+          value={retail}
+          onChange={setRetail}
+          yes="Видны клиентам"
+          no="Скрыты от клиентов"
+        />
+        <FlagSelect
+          label="Мерчанты"
+          value={b2b}
+          onChange={setB2b}
+          yes="Доступны мерчантам"
+          no="Недоступны мерчантам"
+        />
+        {filtering && filtered && q.data && (
+          <span className="text-sm text-[var(--text-secondary)]">
+            {filtered.length} из {q.data.length}
+          </span>
+        )}
+        {filtering && (
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setActive("");
+              setRetail("");
+              setB2b("");
+            }}
+          >
+            Сбросить
+          </Button>
+        )}
+      </section>
       {q.isLoading && <Spinner label="Загрузка…" />}
       {q.isError && <p className="text-sm text-[var(--danger)]">Ошибка загрузки.</p>}
-      {q.data && (
+      {filtered && (
         <DataTable
-          rows={q.data}
+          rows={filtered}
           columns={columns}
           rowKey={(b) => b.id}
           onRowClick={(b) => navigate(`/brands/${b.id}`)}
         />
+      )}
+      {filtering && filtered?.length === 0 && q.data?.length !== 0 && (
+        <p className="mt-4 text-sm text-[var(--text-secondary)]">Под фильтры ничего не подходит.</p>
       )}
       {q.data?.length === 0 && (
         <p className="mt-4 text-sm text-[var(--text-secondary)]">
