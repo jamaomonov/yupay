@@ -54,6 +54,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import unicodedata
 from collections import Counter, defaultdict
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -95,7 +96,7 @@ SKIP_TITLES = {"steam", "telegram", "telegram premium", "roblox gamepass"}
 
 REGIONS = {
     "indonesia": "ID", "id": "ID", "philippines": "PH", "ph": "PH", "malaysia": "MY",
-    "my": "MY", "singapore": "SG", "sg": "SG", "sgmy": "MY/SG", "my/sg": "MY/SG",
+    "my": "MY", "singapore": "SG", "sg": "SG", "sgmy": "MY/SG", "my/sg": "MY/SG", "sg/my": "MY/SG",
     "thailand": "TH", "th": "TH", "vietnam": "VN", "vn": "VN", "cambodia": "KH", "kh": "KH",
     "brazil": "BR", "br": "BR", "latam": "LATAM", "mena": "MENA", "middle east": "MENA",
     "me": "MENA", "turkey": "TR", "tr": "TR", "russia": "RU", "ru": "RU", "cis": "CIS",
@@ -213,7 +214,7 @@ NOISE = {"bonus", "x", "web", "top", "up", "global", "the"}
 
 
 def denom_key(name: str) -> tuple[Any, ...]:
-    low = name.replace(",", "").replace(" ", " ").lower()
+    low = name.replace(",", "").replace("\u00a0", " ").replace("'", "").lower()
     bare = re.sub(r"\(.*?\)", " ", low)
     first = bool(FIRST.search(low))
     plus = re.findall(r"(\d+)\s*(?:[a-z ]{0,20})?\+\s*(\d+)", bare)
@@ -226,19 +227,30 @@ def denom_key(name: str) -> tuple[Any, ...]:
             unit = canon
     unit = re.sub(r"s\b", "", unit)
     if total is None or (SPECIAL.search(low) and not re.match(r"^\s*\d", low)):
-        tagged = [w for w in re.sub(r"[^a-z0-9 ]+", " ", bare).split() if w not in NOISE]
+        # The whole name, brackets included: «Prime (1 Month)» and «Prime (3
+        # Months)» are two products, and a key that dropped the brackets kept one.
+        tagged = [w for w in re.sub(r"[^a-z0-9 ]+", " ", low).split() if w not in NOISE]
         return ("NAME", re.sub(r"s\b", "", " ".join(tagged)), first)
     return ("QTY", total, unit, first)
 
 
 def label_for(names: list[tuple[str, str]], key: tuple[Any, ...]) -> str:
-    """Our shelf name: fzr's spelling first, «base + bonus» rewritten as the total."""
-    order = {"fzr": 0, "gengine": 1, "g2b": 2}
-    name = sorted(names, key=lambda sn: order[sn[0]])[0][1].strip()
-    m = re.match(r"^\s*(\d+)\s*(?:([A-Za-z][A-Za-z .'-]*?)\s*)?\+\s*(\d+)\s*(.*)$", name)
+    """Our shelf name for a merged row.
+
+    The most descriptive spelling wins: «Handful of Gems» over G2B's «Handful
+    of», «Weekly Card» over «Weekly». A «base + bonus» spelling is rewritten as
+    the total with the split in brackets — «172 Diamonds (156 + 16)» — unless the
+    «unit» is a pack («1+1 Gift Pack»), where the total means nothing.
+    """
+    plus = re.compile(r"^\s*(\d+)\s*(?:([A-Za-z][A-Za-z .'-]*?)\s*)?\+\s*(\d+)\s*(.*)$")
+    ranked = sorted(names, key=lambda sn: (bool(plus.match(sn[1])), len(sn[1])), reverse=True)
+    name = ranked[0][1].strip()
+    m = plus.match(name)
     if m and key[0] == "QTY":
         unit = (m.group(4) or m.group(2) or "").replace("Bonus", "").strip()
-        return re.sub(r"\s+", " ", f"{key[1]} {unit} ({m.group(1)} + {m.group(3)})").strip()
+        if unit and not SPECIAL.search(unit):
+            return re.sub(r"\s+", " ", f"{key[1]} {unit} ({m.group(1)} + {m.group(3)})").strip()
+        name = sorted(names, key=lambda sn: len(sn[1]), reverse=True)[0][1].strip()
     return name
 
 
@@ -373,7 +385,8 @@ def form_for(games: list[dict[str, Any]]) -> tuple[list[dict[str, Any]] | None, 
 
 
 def _slug(s: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", s.lower().replace("&", "and").replace("'", "")).strip("-")
+    flat = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]+", "-", flat.lower().replace("&", "and").replace("'", "")).strip("-")
 
 
 def _brand_name(games: list[dict[str, Any]], region: str, variant: str) -> str:
@@ -394,7 +407,10 @@ def _brand_name(games: list[dict[str, Any]], region: str, variant: str) -> str:
     return f"{title} ({suffix})" if suffix else title
 
 
-def _rows(games: list[dict[str, Any]]) -> dict[tuple[Any, ...], dict[str, list[dict[str, Any]]]]:
+DROPPED_BARE: list[str] = []
+
+
+def _rows(games: list[dict[str, Any]]) -> dict[tuple[Any, ...], dict[str, list[dict[str, Any]]]]:  # noqa: PLR0912 -- four merge rules, read top to bottom
     rows: dict[tuple[Any, ...], dict[str, list[dict[str, Any]]]] = defaultdict(
         lambda: defaultdict(list)
     )
@@ -407,6 +423,49 @@ def _rows(games: list[dict[str, Any]]) -> dict[tuple[Any, ...], dict[str, list[d
         if len(twins) == 1:
             for s, v in rows.pop(k).items():
                 rows[twins[0]][s].extend(v)
+        elif twins:
+            # Two unit rows at that quantity («1800 UC» and «1800 WOW Coins»): a
+            # SKU called «1800» sells nothing a buyer can name.
+            DROPPED_BARE.extend(o["name"] for v in rows.pop(k).values() for o in v)
+    # G2B drops the noun («Weekly» for «Weekly Pass», «Handful of» for «Handful of
+    # Gems»): a NAME row whose words sit inside exactly one other NAME row's, from
+    # suppliers that row lacks, is that row.
+    names = [k for k in rows if k[0] == "NAME"]
+    for k in names:
+        if k not in rows:
+            continue
+        mine = set(k[1].split())
+        supers = [
+            t
+            for t in names
+            if t != k
+            and t in rows
+            and t[2] == k[2]
+            and mine < set(t[1].split())
+            and not (set(rows[t]) & set(rows[k]))
+        ]
+        if len(supers) == 1:
+            for s, v in rows.pop(k).items():
+                rows[supers[0]][s].extend(v)
+    # «SuperPass» and «Super Pass» are one word apart: NAME rows equal with the
+    # spaces taken out, from different suppliers, are one row.
+    squashed: dict[str, tuple[Any, ...]] = {}
+    for k in [k for k in list(rows) if k[0] == "NAME"]:
+        flat = (k[1].replace(" ", ""), k[2])
+        other = squashed.get(flat)  # type: ignore[arg-type]
+        if other is not None and other in rows and not (set(rows[other]) & set(rows[k])):
+            for s, v in rows.pop(k).items():
+                rows[other][s].extend(v)
+        else:
+            squashed[flat] = k  # type: ignore[index]
+    # One supplier, two offers in one row: never collapse to the cheaper one —
+    # split them by full name instead.
+    for k in [k for k in list(rows) if any(len(v) > 1 for v in rows[k].values())]:
+        sup = rows.pop(k)
+        for s, offers in sup.items():
+            for o in offers:
+                full = re.sub(r"[^a-z0-9 ]+", " ", o["name"].lower()).strip()
+                rows[("NAME", full, k[-1])][s].append(o)
     return rows
 
 
@@ -429,7 +488,14 @@ def plan(data: dict[str, Any], ours_rows: list[dict[str, Any]]) -> dict[str, Any
     by_variant = {
         (m["supplier"], m["product"], m["variant"]): r for r in ours_rows for m in r["maps"]
     }
-    out: dict[str, Any] = {"new": [], "fallbacks": [], "deferred": [], "missing": 0, "dropped": []}
+    out: dict[str, Any] = {
+        "new": [],
+        "fallbacks": [],
+        "deferred": [],
+        "missing": 0,
+        "dropped": [],
+        "no_fzr_rung": 0,
+    }
     taken = {r["brand"] for r in ours_rows}
     for ident, games in sorted(clusters.items()):
         rows = _rows(games)
@@ -444,6 +510,11 @@ def plan(data: dict[str, Any], ours_rows: list[dict[str, Any]]) -> dict[str, Any
         if form is None:
             out["deferred"].append((ident, why, where))
             continue
+        # A server *select* is FazerCards' own option list and its values are
+        # theirs («tw_hk_mo», «Amagi»); G2B and G-Engine want their own codes,
+        # which nothing here can look up. Such a brand routes to fzr whatever
+        # the price, and a rung fzr does not sell is not sold.
+        fzr_only = any(f["key"] == "server" and f["type"] == "select" for f in form)
         skus = []
         for k, sup in rows.items():
             best = {s: min(v, key=lambda o: o["cost"]) for s, v in sup.items()}
@@ -452,7 +523,10 @@ def plan(data: dict[str, Any], ours_rows: list[dict[str, Any]]) -> dict[str, Any
                 continue
             kept = {s: o for s, o in best.items() if o["cost"] <= floor * PRICE_SPREAD}
             out["dropped"] += [(ident, k, s) for s in set(best) - set(kept)]
-            primary = min(kept, key=lambda s: (kept[s]["cost"], s))
+            if fzr_only and "fzr" not in kept:
+                out["no_fzr_rung"] += 1
+                continue
+            primary = "fzr" if fzr_only else min(kept, key=lambda s: (kept[s]["cost"], s))
             skus.append({"denom": label_for([(s, o["name"]) for s, o in kept.items()], k)[:64],
                          "cost": kept[primary]["cost"], "primary": primary, "maps": kept})  # fmt: skip
         if not skus:
@@ -553,6 +627,8 @@ async def main() -> None:
         f"Номиналов поставщиков, которых нет в существующих брендах (не импортируются): {p['missing']}"
     )
     print(f"Маппингов не создано из-за разброса цены >{PRICE_SPREAD}×: {len(p['dropped'])}")
+    print(f"Номиналов без единицы (G2B «1800» при UC и WOW Coins) пропущено: {len(DROPPED_BARE)}")
+    print(f"Номиналов без fzr в брендах с выбором сервера пропущено: {p['no_fzr_rung']}")
     print(f"Отложено игр: {len(p['deferred'])}")
     for ident, why, where in p["deferred"]:
         print(f"  - {' / '.join(x for x in ident if x)}: {why}  [{', '.join(where)}]")
