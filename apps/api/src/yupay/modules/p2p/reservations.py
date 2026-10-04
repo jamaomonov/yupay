@@ -209,6 +209,9 @@ async def reserve(
             )
         )
         if prior is not None:
+            now_prior = now()
+            if prior.status == "pending" and prior.expires_at <= now_prior:
+                await _expire_stale(db, prior, now_prior)
             return prior
     if not admits(await load_settings(db), merchant_id):
         raise NotFoundError("p2p top-up is not enabled", code="p2p_disabled")

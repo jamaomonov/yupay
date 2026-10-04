@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, status
 
+from yupay.core.clock import now
 from yupay.core.idempotency import normalize_idempotency_key
 from yupay.modules.merchants.cabinet_deps import CurrentUser, Db, merchant_of
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader
@@ -29,7 +30,7 @@ def _grouped(pan: str) -> str:
 
 async def _out(db: Db, r: P2PReservation, *, with_card: bool) -> P2PDepositOut:
     card: P2PCardDetailsOut | None = None
-    if with_card and r.status == "pending":
+    if with_card and r.status == "pending" and r.expires_at > now():
         c = await db.get(P2PCard, r.card_id)
         if c is not None:
             card = P2PCardDetailsOut(

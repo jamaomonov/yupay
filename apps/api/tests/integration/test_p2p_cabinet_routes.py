@@ -6,12 +6,15 @@ from __future__ import annotations
 
 import asyncio
 import re
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.modules.p2p import cabinet_routes
+from yupay.modules.p2p.models import P2PReservation
 
 from tests.integration.p2p_fixtures import RATE, _card, _fixed_rate, _open  # noqa: F401
 from tests.integration.test_merchant_cabinet_sections import (
@@ -152,3 +155,39 @@ async def test_another_merchants_deposit_is_404(
     )
     assert r.status_code == 404, r.text
     assert r.json()["code"] == "p2p_not_found"
+
+
+async def test_replay_after_expiry_is_expired_without_card(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
+) -> None:
+    h, _ = await _enabled_cabinet(integration_client, db_session, sent, "c9@acme.example.com")
+    hh = {**h, "Idempotency-Key": "0198c3d1-4f2a-7b60-9c11-8e5d2a7f0b36"}
+    a = await integration_client.post(f"{P2P}/deposits", headers=hh, json={"amount_uzs": 50000})
+    assert a.status_code == 201, a.text
+    await db_session.execute(
+        update(P2PReservation)
+        .where(P2PReservation.number == a.json()["number"])
+        .values(expires_at=datetime.now(UTC) - timedelta(minutes=1))
+    )
+    await db_session.commit()
+    b = await integration_client.post(f"{P2P}/deposits", headers=hh, json={"amount_uzs": 50000})
+    assert b.status_code == 201, b.text
+    assert b.json()["number"] == a.json()["number"]
+    assert b.json()["status"] == "expired"
+    assert b.json()["card"] is None
+
+
+async def test_another_merchant_cannot_cancel_or_list_it(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
+) -> None:
+    h, _ = await _enabled_cabinet(integration_client, db_session, sent, "d1@acme.example.com")
+    made = await integration_client.post(f"{P2P}/deposits", headers=h, json={"amount_uzs": 50000})
+    other, _ = await _signed_up(integration_client, sent, "d2@acme.example.com")
+    c = await integration_client.post(
+        f"{P2P}/deposits/{made.json()['number']}/cancel", headers=_auth(other)
+    )
+    assert c.status_code == 404, c.text
+    listed = await integration_client.get(f"{P2P}/deposits", headers=_auth(other))
+    assert listed.json()["items"] == []
+    still = await integration_client.get(f"{P2P}/deposits/{made.json()['number']}", headers=h)
+    assert still.json()["status"] == "pending"
