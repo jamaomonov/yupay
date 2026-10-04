@@ -116,6 +116,11 @@ class _NovaClient:
             raise self._cards
         return list(self._cards)
 
+    async def list_giftcard_cards_paced(self, category_id: str) -> list[dict[str, Any]]:
+        # The bulk walk's pause and 429 retry live in the real client; the sync
+        # under test only needs the answer, so the fake does not sleep.
+        return await self.list_giftcard_cards(category_id)
+
 
 async def test_a_category_with_no_id_is_skipped_not_written(_svc: Any) -> None:
     writes = _svc(gift, _Writes())
