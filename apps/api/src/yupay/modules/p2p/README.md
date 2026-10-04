@@ -10,13 +10,15 @@ Docs: ADR-0094, `docs/runbooks/p2p-deposit.md`, `docs/product/flows/p2p-deposit.
 
 - **Reserve** (`reservations.py`): hold an exact amount on a card for 5 minutes, bump +1…+99
   when taken, quarantine closed amounts (expired, cancelled **and paid**) for 10 minutes, cancel,
-  expire, list.
+  expire, list. Which card, and how far the bump may go: `card_choice.py`.
 - **Parse** (`parsing.py`): pure reading of a HUMO notification. Anything unrecognised is
   `unparsed` as a whole.
 - **Intake** (`intake.py`): journal one update and credit the reservation it pays through
   `merchants.deposit.credit_deposit`. Alerts are returned and sent by the caller after commit.
-- **Routes**: `cabinet_routes.py` (`/merchant/cabinet/p2p/...`), `admin_routes.py`
-  (`/api/v1/admin/p2p/...`), and the webhook `api/webhooks/telegram_p2p.py`
+- **Routes**: `cabinet_routes.py` (`/merchant/cabinet/p2p/...`); the admin
+  (`/api/v1/admin/p2p/...`) is `admin_routes.py` (the router and settings), which includes
+  `admin_cards.py` (cards) and `admin_journal.py` (incoming journal and reservations), with
+  shared dependencies in `admin_deps.py`; and the webhook `api/webhooks/telegram_p2p.py`
   (`POST /api/v1/webhooks/telegram/p2p`).
 - **Sweep**: `apps/scheduler/.../jobs/p2p_sweep.py`, every 30 s. Correctness does not depend on
   it: the webhook and the cabinet read treat an overdue `pending` as expired.
@@ -46,12 +48,21 @@ inserts for 50 000 give one winner and a bump to 50 001 for the other.
 
 Other partial indexes: one `pending` per merchant, and `(merchant_id, idempotency_key)`. A
 same-key replay or a concurrent race returns the same reservation or a 409
-`p2p_reservation_open`.
+`p2p_reservation_open`. A same-key replay asking for a **different** amount is a 409
+`p2p_idempotency_mismatch`; "different" means the stored amount is not the requested one plus
+0…99 (a bumped amount is the same intent). Only these two indexes and the open-amount index are
+translated; any other integrity error propagates as itself.
 
 Reservation rules:
 
 - The card's max and the daily room bound the amount. The +1…+99 bump is capped by the remaining
   headroom.
+- **Daily room** = `daily_limit_uzs` minus what the card is committed to: today's (Tashkent day)
+  `paid` total **plus** its currently `pending` (unexpired) holds, so concurrent holds cannot
+  together pass the limit.
+- **Card order**: eligible cards are tried most daily room first (no limit ranks first, ties keep
+  the oldest card). If every bumped amount is held on one card, the next card is tried; only when
+  all are exhausted is it 502 `p2p_amount_busy`.
 - A stale pending is expired by a guarded `UPDATE ... WHERE status = 'pending'`, so a
   concurrently paid row is never overwritten.
 - USD = soʻm / rate, rounded **down** to cents (`ROUND_DOWN`), rate frozen on the reservation.
@@ -63,7 +74,8 @@ Reservation rules:
 | P2P not enabled for merchant | 404 `p2p_disabled`                                 |
 | Reservation already open     | 409 `p2p_reservation_open`                         |
 | No card takes this amount    | 409 `p2p_no_card`                                  |
-| All +99 amounts held         | 502 `p2p_amount_busy` (`UpstreamUnavailableError`) |
+| Same key, different amount   | 409 `p2p_idempotency_mismatch`                     |
+| Every bumped amount held     | 502 `p2p_amount_busy` (`UpstreamUnavailableError`) |
 | Rate unavailable             | 502 `fx_unavailable` (`UpstreamUnavailableError`)  |
 
 No 503 class exists in `core.errors`; the upstream-unavailable class answers 502.
@@ -102,6 +114,14 @@ from anyone else change nothing. With no connection stored (or no HUMO bot id) e
 is dropped. The update is logged as `p2p.business_connection` with `is_enabled`, the names of
 granted rights and `owner` (bool) — never the user id.
 
+Changing `owner_telegram_user_id` in the admin settings (to another id or to `null`) clears the
+pinned connection and logs `p2p.connection_unpinned` (no ids): the old account's connection is
+no longer trusted, and the new owner reconnects the bot. Re-saving the same id keeps the pin.
+
+A HUMO message without an integer `message_id` is dropped and logged as `p2p.malformed_update`
+(field name only). Only a violation of `uq_p2p_incoming_message` counts as a duplicate; any other
+integrity error surfaces.
+
 ## Alerts
 
 | Kind                 | When                                                                |
@@ -111,8 +131,15 @@ granted rights and `owner` (bool) — never the user id.
 | `p2p_ambiguous_card` | Two or more active cards share the notification's last4.            |
 | `p2p_silence`        | Reservations expiring and no HUMO notification for 6 h (scheduler). |
 
-Known caveat: the chain check compares with the latest row by bank time, so out-of-order
-delivery can raise a false `p2p_chain_break`.
+The chain check's predecessor is the same card's row with the greatest `telegram_message_id`
+below this one on the same Business connection (message ids are the chat's own order). Same-minute
+bank times no longer confuse it. Caveat: a message that arrives before its predecessor is compared
+with the row before _that_ one, if there is one, so out-of-order delivery can still raise a false
+`p2p_chain_break` when an earlier row exists; when none exists, the verdict is unknown (`null`).
+
+The admin card list's receive health (`last_incoming_at`, `chain_ok_last`) is keyed by **last4**,
+because that is all a notification names: two cards sharing a last4 show the same health. Only
+`matched_today_uzs` is per card.
 
 ## Never logged
 

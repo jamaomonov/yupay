@@ -37,6 +37,10 @@ FLOORS: dict[str, tuple[float, float]] = {
     # here. Floor set from the sourcing/bulk-rules/brand-overview integration
     # suites alone (96.02% measured 2026-09-18), a small margin under.
     "modules/sourcing": (95.0, 95.0),
+    # P2P deposit: credits merchant deposits from bank notifications. Measured
+    # 98.4% from the p2p suites alone (`-k p2p`, sysmon) on 2026-10-04; floor a
+    # small margin under.
+    "modules/p2p": (97.0, 95.0),
 }
 
 

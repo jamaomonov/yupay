@@ -114,8 +114,9 @@ Business bot) and the matching reseller reservation is credited.
 
 Cabinet routes: `/merchant/cabinet/p2p/{status,deposits}`; admin routes:
 `/api/v1/admin/p2p/{settings,cards,incoming,reservations}`. Errors:
-409 `p2p_reservation_open` / `p2p_no_card`, 404 `p2p_disabled`, 502 `p2p_amount_busy` /
-`fx_unavailable`.
+409 `p2p_reservation_open` / `p2p_no_card` / `p2p_idempotency_mismatch` (same
+`Idempotency-Key`, different amount), 404 `p2p_disabled`, 502 `p2p_amount_busy` /
+`fx_unavailable`; 422 `p2p_amount_invalid` for a bad admin journal `amount` filter.
 
 Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gateways/<provider>.py`
 (docstring on the gateway class).

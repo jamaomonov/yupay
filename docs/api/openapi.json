@@ -30447,23 +30447,6 @@
           },
           {
             "in": "query",
-            "name": "amount",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "maxLength": 20,
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Amount"
-            }
-          },
-          {
-            "in": "query",
             "name": "cursor",
             "required": false,
             "schema": {
@@ -30488,6 +30471,25 @@
               "minimum": 1,
               "title": "Limit",
               "type": "integer"
+            }
+          },
+          {
+            "description": "Exact so\u02bbm amount, at most 2 decimals, e.g. 50000.00",
+            "in": "query",
+            "name": "amount",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Exact so\u02bbm amount, at most 2 decimals, e.g. 50000.00",
+              "title": "Amount"
             }
           },
           {
@@ -40722,6 +40724,8 @@
             "required": false,
             "schema": {
               "default": 25,
+              "maximum": 100,
+              "minimum": 1,
               "title": "Limit",
               "type": "integer"
             }

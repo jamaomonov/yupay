@@ -16,6 +16,10 @@ connection that this user enables and ignores every other one, so a connection m
 id is saved is not pinned (disconnect and reconnect the bot). After connecting, check that the
 panel shows **"connected"** with a connection id. "not connected" means nothing is credited.
 
+**Changing the owner id** (or clearing it) unpins the current connection at once
+(`p2p.connection_unpinned` in the log) and nothing is credited until the new owner disconnects
+and reconnects the bot from their own account. Re-saving the same id changes nothing.
+
 1. **Business chatbot access.** Telegram → Settings → Telegram Business → Chatbots:
    `@depositlistenerbot`, access **"Only selected chats: HUMO Card"**.
 2. **Messages permissions** on, in the same screen. With only "gifts and stars" no messages are
@@ -97,8 +101,10 @@ Each notification prints the card balance after the operation. A break means pre
 
 1. Compare the card's bank statement with the journal for that window.
 2. Missing credit with a reservation of that amount: credit by hand (section 5).
-3. Out-of-order delivery gives a **false** break; the journal rows are all present and the
-   balances are consistent once sorted by bank time. No action.
+3. Out-of-order delivery can give a **false** break (the chain follows Telegram message ids, so
+   a later message that arrives first is compared with the one before the missing one); the
+   journal rows are all present and the balances are consistent once sorted by message id. No
+   action.
 
 ## 7. `p2p_silence` alert
 
