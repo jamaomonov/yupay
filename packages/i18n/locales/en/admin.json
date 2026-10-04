@@ -633,5 +633,138 @@
       "orders": "{n} order(s)",
       "trades": "Recent trades"
     }
+  },
+  "p2p": {
+    "navCards": "P2P cards",
+    "navTransfers": "Incoming transfers",
+    "errors": {
+      "p2p_unknown_merchant": "The list contains a merchant that does not exist. Check the ids.",
+      "p2p_bounds": "The maximum amount cannot be below the minimum.",
+      "p2p_pan_invalid": "The card number is invalid. Check the digits.",
+      "p2p_bad_id": "The identifier is invalid.",
+      "p2p_amount_invalid": "The amount must be a number.",
+      "p2p_card_not_found": "Card not found."
+    },
+    "cards": {
+      "title": "P2P cards",
+      "description": "Cards for deposit top-ups by transfer, and the mode switches.",
+      "loadError": "Could not load the data.",
+      "empty": "No cards yet.",
+      "settings": {
+        "title": "Mode",
+        "mode": "Available to",
+        "modes": {
+          "off": "Off",
+          "allowlist": "Listed merchants only",
+          "all": "Everyone"
+        },
+        "allowlist": "Listed merchants (ids, comma-separated)",
+        "humoBot": "HUMO bot Telegram id",
+        "save": "Save",
+        "saving": "Saving…",
+        "saved": "Settings saved."
+      },
+      "table": {
+        "label": "Label",
+        "last4": "Number",
+        "holder": "Holder",
+        "network": "Network",
+        "active": "Active",
+        "min": "Min, UZS",
+        "max": "Max, UZS",
+        "daily": "Daily limit, UZS",
+        "today": "Today, UZS",
+        "health": "Receiving",
+        "edit": "Edit"
+      },
+      "health": {
+        "never": "no notifications",
+        "chainBroken": "balance chain broken"
+      },
+      "yes": "Yes",
+      "no": "No",
+      "noLimit": "no limit",
+      "form": {
+        "addTitle": "New card",
+        "editTitle": "Card {label}",
+        "add": "Add card",
+        "label": "Label",
+        "pan": "Card number",
+        "panHint": "The number is not shown after saving. Type a new one only to replace it.",
+        "holder": "Holder",
+        "network": "Network",
+        "min": "Min amount, UZS",
+        "max": "Max amount, UZS",
+        "daily": "Daily limit, UZS (empty for none)",
+        "active": "Active",
+        "save": "Save",
+        "saving": "Saving…",
+        "cancel": "Cancel",
+        "saved": "Card saved."
+      }
+    },
+    "transfers": {
+      "title": "Incoming transfers",
+      "description": "The journal of transfers to P2P cards, and top-up reservations.",
+      "tabs": {
+        "aria": "Section",
+        "journal": "Journal",
+        "reservations": "Reservations"
+      },
+      "loadError": "Could not load the data.",
+      "empty": "Nothing found.",
+      "loadMore": "Load more",
+      "filters": {
+        "card": "Card",
+        "kind": "Kind",
+        "result": "Result",
+        "amount": "Amount",
+        "status": "Status",
+        "any": "All"
+      },
+      "kinds": {
+        "credit": "Credit",
+        "debit": "Debit",
+        "unparsed": "Unparsed"
+      },
+      "results": {
+        "matched": "Matched",
+        "unmatched": "Unmatched",
+        "ignored": "Ignored"
+      },
+      "journal": {
+        "bankTime": "Bank time",
+        "amount": "Amount, UZS",
+        "source": "Source",
+        "card": "Card",
+        "balance": "Balance after",
+        "kind": "Kind",
+        "result": "Result",
+        "chainBroken": "balance chain broken"
+      },
+      "detail": {
+        "title": "Notification",
+        "close": "Close",
+        "raw": "Notification text",
+        "loadError": "Could not load the notification."
+      },
+      "reservations": {
+        "number": "Number",
+        "merchant": "Merchant",
+        "card": "Card",
+        "uzs": "UZS",
+        "usd": "USD",
+        "status": "Status",
+        "created": "Created",
+        "expires": "Expires",
+        "closed": "Closed",
+        "statuses": {
+          "pending": "Pending",
+          "paid": "Paid",
+          "expired": "Expired",
+          "cancelled": "Cancelled"
+        }
+      }
+    }
   }
 }

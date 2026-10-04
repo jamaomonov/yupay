@@ -633,5 +633,138 @@
       "orders": "{n} ta buyurtma",
       "trades": "So'nggi almashuvlar"
     }
+  },
+  "p2p": {
+    "navCards": "P2P kartalar",
+    "navTransfers": "Kelib tushganlar",
+    "errors": {
+      "p2p_unknown_merchant": "Ro'yxatda mavjud bo'lmagan merchant bor. Identifikatorlarni tekshiring.",
+      "p2p_bounds": "Maksimal summa minimaldan kichik bo'lishi mumkin emas.",
+      "p2p_pan_invalid": "Karta raqami noto'g'ri. Raqamlarni tekshiring.",
+      "p2p_bad_id": "Identifikator noto'g'ri.",
+      "p2p_amount_invalid": "Summa raqam bo'lishi kerak.",
+      "p2p_card_not_found": "Karta topilmadi."
+    },
+    "cards": {
+      "title": "P2P kartalar",
+      "description": "Depozitni o'tkazma orqali to'ldirish kartalari va rejim sozlamalari.",
+      "loadError": "Ma'lumotlarni yuklab bo'lmadi.",
+      "empty": "Hozircha kartalar yo'q.",
+      "settings": {
+        "title": "Rejim",
+        "mode": "Kimga ochiq",
+        "modes": {
+          "off": "O'chiq",
+          "allowlist": "Faqat ro'yxatdagilar",
+          "all": "Hammaga"
+        },
+        "allowlist": "Ro'yxatdagi merchantlar (vergul bilan id)",
+        "humoBot": "HUMO bot Telegram id",
+        "save": "Saqlash",
+        "saving": "Saqlanmoqda…",
+        "saved": "Sozlamalar saqlandi."
+      },
+      "table": {
+        "label": "Nomi",
+        "last4": "Raqam",
+        "holder": "Egasi",
+        "network": "Tarmoq",
+        "active": "Faol",
+        "min": "Min, so'm",
+        "max": "Maks, so'm",
+        "daily": "Kunlik limit, so'm",
+        "today": "Bugun, so'm",
+        "health": "Qabul",
+        "edit": "Tahrirlash"
+      },
+      "health": {
+        "never": "bildirishnoma yo'q",
+        "chainBroken": "balans zanjiri uzilgan"
+      },
+      "yes": "Ha",
+      "no": "Yo'q",
+      "noLimit": "limitsiz",
+      "form": {
+        "addTitle": "Yangi karta",
+        "editTitle": "Karta {label}",
+        "add": "Karta qo'shish",
+        "label": "Nomi",
+        "pan": "Karta raqami",
+        "panHint": "Raqam saqlangandan keyin ko'rsatilmaydi. Almashtirish uchungina yangisini kiriting.",
+        "holder": "Egasi",
+        "network": "Tarmoq",
+        "min": "Min summa, so'm",
+        "max": "Maks summa, so'm",
+        "daily": "Kunlik limit, so'm (bo'sh — limitsiz)",
+        "active": "Faol",
+        "save": "Saqlash",
+        "saving": "Saqlanmoqda…",
+        "cancel": "Bekor qilish",
+        "saved": "Karta saqlandi."
+      }
+    },
+    "transfers": {
+      "title": "Kelib tushganlar",
+      "description": "P2P kartalarga o'tkazmalar jurnali va to'ldirish zaxiralari.",
+      "tabs": {
+        "aria": "Bo'lim",
+        "journal": "Jurnal",
+        "reservations": "Zaxiralar"
+      },
+      "loadError": "Ma'lumotlarni yuklab bo'lmadi.",
+      "empty": "Hech narsa topilmadi.",
+      "loadMore": "Yana yuklash",
+      "filters": {
+        "card": "Karta",
+        "kind": "Turi",
+        "result": "Natija",
+        "amount": "Summa",
+        "status": "Holat",
+        "any": "Hammasi"
+      },
+      "kinds": {
+        "credit": "Kirim",
+        "debit": "Chiqim",
+        "unparsed": "O'qilmagan"
+      },
+      "results": {
+        "matched": "Mos keldi",
+        "unmatched": "Mos kelmadi",
+        "ignored": "O'tkazib yuborildi"
+      },
+      "journal": {
+        "bankTime": "Bank vaqti",
+        "amount": "Summa, so'm",
+        "source": "Manba",
+        "card": "Karta",
+        "balance": "Keyingi balans",
+        "kind": "Turi",
+        "result": "Natija",
+        "chainBroken": "balans zanjiri uzilgan"
+      },
+      "detail": {
+        "title": "Bildirishnoma",
+        "close": "Yopish",
+        "raw": "Bildirishnoma matni",
+        "loadError": "Bildirishnomani yuklab bo'lmadi."
+      },
+      "reservations": {
+        "number": "Raqam",
+        "merchant": "Merchant",
+        "card": "Karta",
+        "uzs": "So'm",
+        "usd": "USD",
+        "status": "Holat",
+        "created": "Yaratilgan",
+        "expires": "Tugaydi",
+        "closed": "Yopilgan",
+        "statuses": {
+          "pending": "Kutilmoqda",
+          "paid": "To'langan",
+          "expired": "Muddati o'tgan",
+          "cancelled": "Bekor qilingan"
+        }
+      }
+    }
   }
 }

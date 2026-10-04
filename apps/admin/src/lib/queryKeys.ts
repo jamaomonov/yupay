@@ -202,6 +202,13 @@ export const qk = {
     ["admin", "merchants", merchantId, "deliveries", cursor] as const,
   merchantUsers: (merchantId: string) => ["admin", "merchants", merchantId, "users"] as const,
 
+  // p2p deposit
+  p2pSettings: () => ["admin", "p2p", "settings"] as const,
+  p2pCards: () => ["admin", "p2p", "cards"] as const,
+  p2pIncoming: (filters: object) => ["admin", "p2p", "incoming", filters] as const,
+  p2pIncomingDetail: (id: string) => ["admin", "p2p", "incoming", "detail", id] as const,
+  p2pReservations: (status: string) => ["admin", "p2p", "reservations", status] as const,
+
   // promo
   promoCodes: () => ["admin", "promo"] as const,
 

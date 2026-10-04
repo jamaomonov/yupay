@@ -41,6 +41,8 @@ import { MerchantDetail } from "@/features/merchants/MerchantDetail";
 import { MerchantsPage } from "@/features/merchants/MerchantsPage";
 import { OrderDetailPage } from "@/features/orders/OrderDetailPage";
 import { OrdersListPage } from "@/features/orders/OrdersListPage";
+import { P2PCardsPage } from "@/features/p2p/P2PCardsPage";
+import { P2PTransfersPage } from "@/features/p2p/P2PTransfersPage";
 import { PaymentsPage } from "@/features/payments/PaymentsPage";
 import { ProvidersPage } from "@/features/payments/providers/ProvidersPage";
 import { TriagePage } from "@/features/payments-triage/TriagePage";
@@ -92,6 +94,8 @@ export const router = createBrowserRouter([
           { path: "/payments", element: <PaymentsPage /> },
           { path: "/payments/triage", element: <TriagePage /> },
           { path: "/payments/providers", element: <ProvidersPage /> },
+          { path: "/payments/p2p-cards", element: <P2PCardsPage /> },
+          { path: "/payments/transfers", element: <P2PTransfersPage /> },
           { path: "/webhooks", element: <WebhooksPage /> },
           { path: "/fulfillment", element: <InboxPage /> },
           {

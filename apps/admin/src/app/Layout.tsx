@@ -100,6 +100,8 @@ const NAV_GROUPS: NavGroup[] = [
       { to: "/payments", label: "Платежи", icon: CreditCard, end: true },
       { to: "/payments/triage", label: "Триаж платежей", icon: AlertTriangle },
       { to: "/payments/providers", label: "Провайдеры оплаты", icon: Power },
+      { to: "/payments/p2p-cards", label: adminRu.p2p.navCards, icon: CreditCard },
+      { to: "/payments/transfers", label: adminRu.p2p.navTransfers, icon: Coins },
       { to: "/webhooks", label: "Webhooks", icon: Radio },
       { to: "/fulfillment", label: "Fulfilment Inbox", icon: Truck },
       { to: "/skins/trades", label: adminRu.skins.navTrades, icon: Crosshair },
