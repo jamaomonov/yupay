@@ -24,6 +24,7 @@ import { collectClientHints } from "@/lib/client-hints";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
 import { isOptimizable } from "@/lib/image";
+import { saveOrderAccess } from "@/lib/order-access";
 import {
   methodVisibility,
   providerStatusMap,
@@ -32,8 +33,6 @@ import {
   type ProvidersOut,
 } from "@/lib/payment-providers";
 import { withAutoOpen } from "@/lib/payment-return";
-import { usePreferBalance } from "@/lib/prefer-balance";
-import { prefillFromQuery } from "@/lib/purchase-prefill";
 import {
   blocksCheckout,
   checkBlocker,
@@ -42,6 +41,8 @@ import {
   runPlayerCheck,
   type PlayerCheckVerdict,
 } from "@/lib/player-check-state";
+import { usePreferBalance } from "@/lib/prefer-balance";
+import { prefillFromQuery } from "@/lib/purchase-prefill";
 import { formatUzs, pathFor } from "@/lib/seo";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import {
@@ -1597,7 +1598,13 @@ export function PurchasePanel({
         }
         throw new ApiError(ord.status, "/orders", type);
       }
-      const order = (await ord.json()) as { id: string; discount_charged?: string };
+      const order = (await ord.json()) as {
+        id: string;
+        discount_charged?: string;
+        access_token?: string | null;
+      };
+      // A guest's own way to the codes, independent of the mailbox (ADR-0096).
+      if (!isLoggedIn && order.access_token) saveOrderAccess(order.id, order.access_token);
       // Authoritative. A code the server refused leaves this at zero, and
       // saying so beats silently charging more than the button promised.
       if (promo && Number(order.discount_charged ?? 0) === 0) {

@@ -130,6 +130,12 @@ auth:emailverify:{jti}` (same pattern as `auth:pwreset:{jti}`), so a leaked or
   email but grants access only to orders whose `guest_email` matches (the
   backend re-hashes `X-Guest-Email` against the token). Knowing an unguessable
   order id **and** its email remains the capability — no escalation added.
+- **Guest code access also goes to the creating browser (ADR-0096):** `POST
+/orders` returns the order's `guest_order` token to a guest caller, and the web
+  keeps it in `localStorage`. Only the holder of that order's `Idempotency-Key`
+  ever receives it; no read returns it. Residual risk: a 7-day bearer for one
+  order's codes in browser storage — the same browser already holds the guest
+  order history.
 - **Payment `return_url` open-redirect hardening:** the acquirer return URL
   defaults to the storefront (`web_base_url`) and any client-supplied
   `return_url` is validated same-origin (scheme+host) as `web_base_url`, so it

@@ -232,6 +232,18 @@ class OrderOut(BaseModel):
     purpose: str = "catalog"
 
 
+class OrderCreatedOut(OrderOut):
+    """Response of ``POST /orders``: the order, plus the guest's own code access.
+
+    ``access_token`` is an order-scoped ``guest_order`` token (ADR-0042, amended
+    by ADR-0096), set only on a guest order and only in this response — never on
+    a read. The browser that placed the order keeps it, so a buyer who mistyped
+    their email still sees the codes they paid for on that device.
+    """
+
+    access_token: str | None = None
+
+
 class OrderListOut(BaseModel):
     """Response for list endpoints."""
 
@@ -341,6 +353,7 @@ __all__ = [
     "OrderAdminListOut",
     "OrderAdminOut",
     "OrderCreate",
+    "OrderCreatedOut",
     "OrderEventOut",
     "OrderItemAdminOut",
     "OrderItemDisplay",

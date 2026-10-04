@@ -5,7 +5,7 @@ import { Gift, KeyRound, MessageCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { ArtifactReceipt } from "./ArtifactReceipt";
 import { GuestReviewPanel } from "./GuestReviewPanel";
@@ -26,6 +26,7 @@ import { useAuth } from "@/lib/auth";
 import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
+import { getOrderAccess } from "@/lib/order-access";
 import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/orders-types";
 import { orderPollInterval } from "@/lib/poll";
 import { getMyReviews } from "@/lib/reviews";
@@ -127,7 +128,18 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // Delivered codes are gated behind an order-scoped magic-link token (?access=)
   // carried by the delivered email — the freely-mintable email token above only
   // unlocks order status, never the codes. Logged-in owners use their Bearer.
-  const access = useSearchParams().get("access");
+  const linkAccess = useSearchParams().get("access");
+  // The browser that placed the order keeps its own token (ADR-0096), so a
+  // bounced email does not lock the buyer out. Read after mount: storage does
+  // not exist during the server render. `storageRead` keeps the «request a link»
+  // block from flashing before the stored token is found.
+  const [storedAccess, setStoredAccess] = useState<string | null>(null);
+  const [storageRead, setStorageRead] = useState(false);
+  useEffect(() => {
+    setStoredAccess(getOrderAccess(orderId));
+    setStorageRead(true);
+  }, [orderId]);
+  const access = linkAccess ?? storedAccess;
   const deliveryAuth =
     isGuest && access && normalizedEmail
       ? {
@@ -176,7 +188,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
       return requestCodeAccess(orderId, normalizedEmail);
     },
   });
-  const needsAccessLink = isGuest && status === "delivered" && !deliveryAuth;
+  const needsAccessLink = isGuest && status === "delivered" && !deliveryAuth && storageRead;
 
   // The order page live-updates (WS + polling), so a guest can be sitting on it
   // the moment fulfilment completes. Bring the "get your codes" action into

@@ -28,6 +28,7 @@ from yupay.modules.admin.api import require_admin
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.dev_login import DEV_ADMIN_ID
 from yupay.modules.auth.ip_guard import guard_ip
+from yupay.modules.auth.jwt import mint_guest_order
 from yupay.modules.auth.jwt import verify as verify_jwt
 from yupay.modules.evidence.service import capture_for_order, ip_country_from
 from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
@@ -40,6 +41,7 @@ from yupay.modules.orders.schemas import (
     OrderAdminListOut,
     OrderAdminOut,
     OrderCreate,
+    OrderCreatedOut,
     OrderFailIn,
     OrderListOut,
     OrderOut,
@@ -296,7 +298,7 @@ async def _enforce_precharge_veto(
 
 @router.post(
     "",
-    response_model=OrderOut,
+    response_model=OrderCreatedOut,
     status_code=status.HTTP_201_CREATED,
     summary="Create an order (idempotent)",
 )
@@ -306,7 +308,7 @@ async def create_order_route(
     db: Annotated[AsyncSession, Depends(db_session)],
     idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
     surface: Annotated[str | None, Header(alias=SURFACE_HEADER)] = None,
-) -> OrderOut:
+) -> OrderCreatedOut:
     """Create a new order on behalf of the authenticated user or guest."""
     # Its own bucket, because the global limiter is a coarse flood-stopper
     # sized for public reads (600/minute) — loose enough that order creation
@@ -337,7 +339,33 @@ async def create_order_route(
         request=request,
         hints=body.client_hints,
     )
-    return _to_order_out(order)
+    out = _to_order_out(order)
+    return OrderCreatedOut(**out.model_dump(), access_token=_guest_code_access(order))
+
+
+def _guest_code_access(order: Order) -> str | None:
+    """The ``guest_order`` token for the browser that placed a guest order.
+
+    Same token the delivered email carries (ADR-0042), handed to the creator
+    directly so the codes do not depend on the mailbox alone: a mistyped address
+    bounces, and the buyer was left with a paid order and no way to see it
+    (01A102A2, 2026-10-03). Only the caller holding this order's
+    Idempotency-Key ever gets it — a replay of the same key returns the same
+    order — so it grants nothing that placing the order did not.
+
+    Returns:
+        The token, or ``None`` for an account or merchant order, or when the
+        email pepper is unset (dev).
+    """
+    from yupay.core.config import get_settings
+    from yupay.modules.auth.security import email_hash
+
+    pepper = get_settings().auth_email_pepper
+    if order.user_id is not None or order.merchant_id is not None:
+        return None
+    if not order.guest_email or not pepper:
+        return None
+    return mint_guest_order(order_id=order.id, email_hash=email_hash(order.guest_email, pepper))
 
 
 @router.get("/{order_id}", response_model=OrderOut)

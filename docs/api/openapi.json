@@ -10895,6 +10895,171 @@
         "title": "OrderCreate",
         "type": "object"
       },
+      "OrderCreatedOut": {
+        "description": "Response of ``POST /orders``: the order, plus the guest's own code access.\n\n``access_token`` is an order-scoped ``guest_order`` token (ADR-0042, amended\nby ADR-0096), set only on a guest order and only in this response \u2014 never on\na read. The browser that placed the order keeps it, so a buyer who mistyped\ntheir email still sees the codes they paid for on that device.",
+        "properties": {
+          "access_token": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access Token"
+          },
+          "cancelled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelled At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "delivered_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Delivered At"
+          },
+          "discount_charged": {
+            "default": "0",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Discount Charged",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "fulfilled_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fulfilled At"
+          },
+          "fx_snapshot_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fx Snapshot Id"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/OrderItemOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "paid_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Paid At"
+          },
+          "payment_provider": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Payment Provider"
+          },
+          "purpose": {
+            "default": "catalog",
+            "title": "Purpose",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending_payment",
+              "paid",
+              "fulfilling",
+              "fulfilled",
+              "delivered",
+              "failed",
+              "cancelled",
+              "expired",
+              "refunded",
+              "partially_refunded"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total_charged": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Charged",
+            "type": "string"
+          },
+          "total_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Total Usd",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "status",
+          "currency",
+          "total_usd",
+          "total_charged",
+          "fx_snapshot_id",
+          "expires_at",
+          "created_at",
+          "paid_at",
+          "fulfilled_at",
+          "delivered_at",
+          "cancelled_at",
+          "items"
+        ],
+        "title": "OrderCreatedOut",
+        "type": "object"
+      },
       "OrderEvidenceOut": {
         "description": "Admin-only view of one order's capture. Never returned on public routes.",
         "properties": {
@@ -37603,7 +37768,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/OrderOut"
+                  "$ref": "#/components/schemas/OrderCreatedOut"
                 }
               }
             },

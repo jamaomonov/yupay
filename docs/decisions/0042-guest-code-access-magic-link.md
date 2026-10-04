@@ -1,6 +1,6 @@
 # 0042. Order-scoped magic-link token for guest code access
 
-- **Status**: Accepted
+- **Status**: Accepted (amended by ADR-0096: the creating browser also gets the token)
 - **Date**: 2026-08-05
 - **Deciders**: @jamaomonov
 - **Tags**: backend | frontend | security

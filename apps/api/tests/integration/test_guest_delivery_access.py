@@ -347,3 +347,67 @@ async def test_admin_resend_delivery_email_goes_to_the_order_address(
     detail = await integration_client.get(f"/api/v1/admin/orders/{order_id}", headers=admin_h)
     assert "admin.delivery_email_resent" in [e["kind"] for e in detail.json()["events"]]
     get_settings.cache_clear()
+
+
+async def test_order_create_hands_the_guest_its_own_code_access(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """The browser that placed a guest order can read its codes without the email.
+
+    01A102A2: the buyer mistyped the address, every mail bounced, and the codes
+    they paid for were unreachable. ``POST /orders`` now returns the same
+    order-scoped token the email carries (ADR-0096).
+    """
+    from sqlalchemy import select, update
+
+    seeded = await _seed_delivered_guest_order(db_session)
+    sku_id = (
+        await db_session.execute(select(OrderItem.sku_id).where(OrderItem.order_id == seeded))
+    ).scalar_one()
+    minted = await integration_client.post("/api/v1/auth/guest", json={"email": GUEST_EMAIL})
+    headers = {
+        "Authorization": f"Guest {minted.json()['access_token']}",
+        "Idempotency-Key": f"gda-create-{new_id()}",
+    }
+    body = {
+        "currency": "USD",
+        "guest_email": GUEST_EMAIL,
+        "items": [{"sku_id": sku_id, "qty": 1, "fulfillment_data": {}}],
+    }
+    created = await integration_client.post("/api/v1/orders", headers=headers, json=body)
+    assert created.status_code == 201, created.text
+    order_id = created.json()["id"]
+    access = created.json()["access_token"]
+    assert access
+
+    # A replay of the same key is the same caller: same order, still a token.
+    replay = await integration_client.post("/api/v1/orders", headers=headers, json=body)
+    assert replay.json()["id"] == order_id
+    assert replay.json()["access_token"]
+
+    # Never on a read: the order page cannot leak it to an email-only guest.
+    read = await integration_client.get(
+        f"/api/v1/orders/{order_id}", headers=_guest_headers(minted.json()["access_token"])
+    )
+    assert "access_token" not in read.json()
+
+    item_id = (
+        await db_session.execute(select(OrderItem.id).where(OrderItem.order_id == order_id))
+    ).scalar_one()
+    await db_session.execute(update(Order).where(Order.id == order_id).values(status="delivered"))
+    db_session.add(
+        Delivery(
+            id=new_id(),
+            order_item_id=item_id,
+            channel="in_app",
+            artifact_kind="voucher_code",
+            artifact={"code": "OWN-CODE"},
+        )
+    )
+    await db_session.commit()
+
+    r = await integration_client.get(
+        f"/api/v1/orders/{order_id}/deliveries", headers=_guest_headers(access)
+    )
+    assert r.status_code == 200, r.text
+    assert "OWN-CODE" in [d.get("artifact", {}).get("code") for d in r.json()["items"]]

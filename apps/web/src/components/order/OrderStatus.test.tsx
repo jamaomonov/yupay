@@ -439,3 +439,39 @@ it("shows a skin as being bought before the worker has written its trade", async
 
   expect(await screen.findByText("Buying")).toBeInTheDocument();
 });
+
+/**
+ * 01A102A2: a guest mistyped their email, every mail bounced, and the page could
+ * only offer to send another one. The browser that placed the order now keeps
+ * the order-scoped token `POST /orders` returned (ADR-0096) and opens the codes
+ * with it — no link needed on that device.
+ */
+it("shows a guest the codes with the token this browser kept at checkout", async () => {
+  window.localStorage.setItem(
+    "yupay.web.order_access",
+    JSON.stringify({ "01a00487-0000-0000-0000-000000000000": "order-tok" }),
+  );
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.endsWith("/deliveries")) {
+      return Promise.resolve({
+        items: [
+          {
+            id: "d3",
+            order_item_id: "item-1",
+            channel: "in_app",
+            artifact_kind: "voucher_code",
+            artifact: { kind: "voucher_code", code: "KEPT-CODE-1" },
+            delivered_at: "2026-08-15T13:27:00Z",
+          },
+        ],
+      });
+    }
+    return Promise.resolve(makeOrder("voucher"));
+  });
+
+  wrap(<OrderStatus orderId="01a00487-0000-0000-0000-000000000000" email="buyer@example.com" />);
+
+  expect(await screen.findByText("KEPT-CODE-1")).toBeInTheDocument();
+  expect(screen.queryByText("Codes are ready")).not.toBeInTheDocument();
+  window.localStorage.clear();
+});

@@ -280,6 +280,12 @@ per-IP `guard_ip` throttled) and never mails the caller's input, so it cannot
 exfiltrate codes to an attacker-controlled address. See
 `docs/decisions/0042-guest-code-access-magic-link.md`.
 
+`POST /orders` also returns that token, as `access_token` on a **guest** order's
+create response (`OrderCreatedOut`; `null` for an account or merchant order, and
+never on any read). The web keeps it in `localStorage` (`yupay.web.order_access`)
+so the browser that placed the order opens the codes even when the email bounces.
+See `docs/decisions/0096-guest-code-access-at-checkout.md`.
+
 ## Sourcing rules — bulk admin endpoint
 
 `PUT /admin/sourcing/rules:bulk` (`{sku_ids, mode, supplier_slug}`, admin-only) switches up
