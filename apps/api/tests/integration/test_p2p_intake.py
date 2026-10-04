@@ -77,11 +77,52 @@ async def test_exact_amount_credits_the_deposit(db_session: AsyncSession) -> Non
     assert res.reservation_number == r.number
     await db_session.refresh(r)
     assert r.status == "paid"
-    assert r.holds_amount is False
-    assert r.quarantine_until is None
+    assert r.holds_amount is True
+    assert r.quarantine_until == r.created_at + timedelta(minutes=11)
     assert r.closed_at is not None
     assert r.incoming_id is not None
     assert await deposit_balance(db_session, merchant_id=m) == before + r.amount_usd
+
+
+async def test_a_paid_amount_stays_quarantined_so_a_repeat_transfer_credits_nobody(
+    db_session: AsyncSession,
+) -> None:
+    """Final review #1: a payer's accidental second transfer must not pay reseller B."""
+    m, r1 = await _setup(db_session)
+    paid_at = r1.created_at + timedelta(minutes=1)
+    first = await intake.ingest_update(
+        db_session,
+        _update(30, _credit("50.000,00", _bank(r1.created_at), "1.100.000,00")),
+        received_at=paid_at,
+    )
+    assert first.status == "matched"
+
+    b = await _merchant(db_session)
+    await _open(db_session, [m, b])
+    r2 = await reservations.reserve(
+        db_session, merchant_id=b, amount_uzs=50_000, idempotency_key=None
+    )
+    assert r2.amount_uzs == 50_001
+    b_before = await deposit_balance(db_session, merchant_id=b)
+
+    again = await intake.ingest_update(
+        db_session,
+        _update(31, _credit("50.000,00", _bank(r2.created_at), "1.150.000,00")),
+        received_at=r2.created_at,
+    )
+    assert again.status == "unmatched"
+    assert await deposit_balance(db_session, merchant_id=b) == b_before
+
+    swept = await reservations.sweep(db_session, now_=paid_at + timedelta(minutes=10))
+    assert swept.released >= 1
+    await db_session.refresh(r1)
+    assert r1.holds_amount is False
+    c = await _merchant(db_session)
+    await _open(db_session, [m, b, c])
+    r3 = await reservations.reserve(
+        db_session, merchant_id=c, amount_uzs=50_000, idempotency_key=None
+    )
+    assert r3.amount_uzs == 50_000
 
 
 async def test_the_same_message_twice_credits_once(db_session: AsyncSession) -> None:

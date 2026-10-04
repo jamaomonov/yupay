@@ -43,7 +43,7 @@ account. The question is how to read it reliably and match it to one reseller.
 - **Matching.** The reseller enters an amount; we reserve that exact whole-soʻm amount on a
   card for 5 minutes (+1…+99 if taken). The amount is the only key that ties a notification
   to a reseller. A partial unique index makes "one open amount per card" a database rule. An
-  expired or cancelled amount stays in quarantine for 10 minutes.
+  expired, cancelled or paid amount stays in quarantine for 10 minutes.
 - **Spike (2026-10-04).** It works only with three settings; the third is the one people miss:
   1. Business chatbot access is "Only selected chats: HUMO Card". The bot cannot see any other
      chat of the owner.

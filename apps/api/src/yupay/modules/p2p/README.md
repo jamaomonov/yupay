@@ -9,7 +9,8 @@ Docs: ADR-0094, `docs/runbooks/p2p-deposit.md`, `docs/product/flows/p2p-deposit.
 ## Responsibilities
 
 - **Reserve** (`reservations.py`): hold an exact amount on a card for 5 minutes, bump +1…+99
-  when taken, quarantine closed amounts for 10 minutes, cancel, expire, list.
+  when taken, quarantine closed amounts (expired, cancelled **and paid**) for 10 minutes, cancel,
+  expire, list.
 - **Parse** (`parsing.py`): pure reading of a HUMO notification. Anything unrecognised is
   `unparsed` as a whole.
 - **Intake** (`intake.py`): journal one update and credit the reservation it pays through
@@ -36,7 +37,11 @@ Check-constraint names in `models.py` are bare suffixes (`status`, `kind`, ...):
 
 `uq_p2p_reservations_open_amount` is a partial unique index on `(card_id, amount_uzs)` where
 `holds_amount`. `holds_amount` is true while a reservation is `pending` or in quarantine, so two
-open reservations on one card can never share an amount. The database enforces it; two racing
+open reservations on one card can never share an amount. A **paid** reservation keeps holding its
+amount for the same 10 minutes (`quarantine_until = received_at + 10 min`): if the payer
+accidentally transfers it a second time, that transfer lands `unmatched` instead of paying the
+next reseller who reserved the same sum. The sweep releases `expired`, `cancelled` and `paid`
+rows once `quarantine_until` has passed. The database enforces it; two racing
 inserts for 50 000 give one winner and a bump to 50 001 for the other.
 
 Other partial indexes: one `pending` per merchant, and `(merchant_id, idempotency_key)`. A

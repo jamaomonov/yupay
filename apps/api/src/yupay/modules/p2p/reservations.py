@@ -328,7 +328,11 @@ async def list_for_merchant(
 
 
 async def sweep(db: AsyncSession, *, now_: datetime) -> SweepResult:
-    """Expire overdue pending rows, then release amounts whose quarantine ended."""
+    """Expire overdue pending rows, then release amounts whose quarantine ended.
+
+    ``paid`` rows are released too: they hold their amount for the same
+    quarantine so a repeat transfer of it lands unmatched.
+    """
     expired = await db.execute(
         update(P2PReservation)
         .where(P2PReservation.status == "pending", P2PReservation.expires_at <= now_)
@@ -342,7 +346,7 @@ async def sweep(db: AsyncSession, *, now_: datetime) -> SweepResult:
         update(P2PReservation)
         .where(
             P2PReservation.holds_amount.is_(True),
-            P2PReservation.status.in_(("expired", "cancelled")),
+            P2PReservation.status.in_(("expired", "cancelled", "paid")),
             P2PReservation.quarantine_until <= now_,
         )
         .values(holds_amount=False)

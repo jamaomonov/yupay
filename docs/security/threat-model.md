@@ -350,7 +350,9 @@ Business bot posts the bank notification to `POST /api/v1/webhooks/telegram/p2p`
   is credited once however many rows reach it.
 - **Race on the amount.** Two resellers reserving the same amount on one card is prevented by a
   partial unique index (`holds_amount`), not by a read-then-write. Quarantine (10 min) keeps a
-  closed amount from reaching someone else's reservation when a late transfer arrives. A
+  closed amount from reaching someone else's reservation when a late transfer arrives. A **paid**
+  reservation is quarantined too: without it, a payer's accidental second transfer of the same
+  sum would pay the next reseller who reserved it, who would be credited without paying. A
   concurrently paid row is never overwritten by expiry (guarded `UPDATE`).
 - **Lost updates.** Telegram keeps undelivered updates for 24 hours and offers no history. A
   longer outage loses notifications; the balance chain (`p2p_chain_break`) and the silence

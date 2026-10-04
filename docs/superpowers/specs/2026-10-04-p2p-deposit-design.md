@@ -79,7 +79,7 @@ works.
 | #   | Decision                                                                                                                                                                                                                                   |
 | --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | D1  | Reservation lifetime is **strictly 5 minutes**. A transfer arriving later is never credited automatically.                                                                                                                                 |
-| D2  | After a reservation expires or is cancelled, its amount stays in **quarantine for 10 minutes** on that card. It is not handed out again, so a late transfer cannot land on someone else's reservation.                                     |
+| D2  | After a reservation expires, is cancelled or is paid, its amount stays in **quarantine for 10 minutes** on that card. It is not handed out again, so a late or repeated transfer cannot land on someone else's reservation.                |
 | D3  | The reseller can **cancel** a pending reservation. Cancellation also starts the 10-minute quarantine.                                                                                                                                      |
 | D4  | USD↔UZS uses **our rate at reservation time** — the same rate the storefront charges with (`pricing.fx_guard.guarded_usd_rate`; the admin `/fx` override wins). It is frozen on the reservation as an `fx_snapshots` row.                  |
 | D5  | **Cards live in a table**: one card (\*3311) at launch, more can be added in the admin without a schema change. Amount uniqueness is per card.                                                                                             |
@@ -126,7 +126,7 @@ the cabinet's top-up entry points.
 - `fx_snapshot_id`, `amount_usd` — the deposit credit, 2 dp, at the frozen rate;
 - `status` (`pending` | `paid` | `expired` | `cancelled`);
 - `created_at`, `expires_at` (= created + 5 min), `closed_at`;
-- `quarantine_until` — set on expiry or cancel: closed + 10 min;
+- `quarantine_until` — set on expiry, cancel or payment: closed + 10 min;
 - `incoming_id` — the transfer that paid it;
 - `idempotency_key` — the reseller's key, scoped by merchant.
 - **Amount uniqueness is enforced by the database**, not by a read-then-write: a column
@@ -181,7 +181,7 @@ Other routes:
 **Expiry:** a scheduler job every 30 s:
 
 - `pending` past `expires_at` → `expired` (and sets `quarantine_until`);
-- clears `holds_amount` where `quarantine_until < now`.
+- clears `holds_amount` on `expired`, `cancelled` and `paid` rows where `quarantine_until <= now`.
 
 The webhook also treats a `pending` reservation past `expires_at` as expired (D1), so
 correctness never depends on the job running on time.
@@ -211,10 +211,11 @@ correctness never depends on the job running on time.
       answer 200 and stop;
    2. for a `credit` whose `card_last4` matches an active card, whose amount has zero
       tiyin, and which has a `pending` reservation with that exact amount and
-      `expires_at > bank_time` (falling back to `received_at` if the bank time is
+      `expires_at >= bank_time` (falling back to `received_at` if the bank time is
       missing): lock the reservation `FOR UPDATE`, then
       `credit_deposit(merchant_id, amount_usd, actor="p2p", idempotency_key=f"p2p:{reservation.id}", note=f"P2P · {number}")`,
-      set the reservation to `paid` with `incoming_id`, and mark the journal row
+      set the reservation to `paid` with `incoming_id` (its amount stays held until
+      `quarantine_until = received_at + 10 min`, D2), and mark the journal row
       `matched`;
    3. otherwise mark the row `unmatched` (`credit`) or `ignored` (`debit` / `unparsed`).
 5. Answer 200. Telegram retries anything else.

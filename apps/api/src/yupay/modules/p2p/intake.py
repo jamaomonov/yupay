@@ -21,6 +21,7 @@ from yupay.core.logging import get_logger
 from yupay.modules.merchants.deposit import credit_deposit
 from yupay.modules.p2p.models import P2PCard, P2PIncoming, P2PReservation
 from yupay.modules.p2p.parsing import ParsedNotification, parse_humo
+from yupay.modules.p2p.reservations import QUARANTINE
 from yupay.modules.p2p.settings import load_settings
 
 log = get_logger("yupay.p2p.intake")
@@ -151,10 +152,11 @@ async def _credit(
         order_id=None,
         note=f"P2P · {reservation.number}",
     )
+    # The amount stays held for the quarantine: a payer's accidental second
+    # transfer must land unmatched, not pay whoever reserves the same sum next.
     reservation.status = "paid"
-    reservation.holds_amount = False
     reservation.closed_at = received_at
-    reservation.quarantine_until = None
+    reservation.quarantine_until = received_at + QUARANTINE
     reservation.incoming_id = row.id
     row.result, row.reservation_id = "matched", reservation.id
     result.status, result.reservation_number = "matched", reservation.number
