@@ -46,6 +46,7 @@ from yupay.modules.merchants.catalog_b2b_routes import (
 )
 from yupay.modules.orders.api import admin_router as orders_admin_router
 from yupay.modules.orders.api import router as orders_router
+from yupay.modules.p2p.admin_routes import router as p2p_admin_router
 from yupay.modules.payme.api import router as payme_router
 from yupay.modules.payments.api import admin_router as payments_admin_router
 from yupay.modules.payments.api import admin_webhook_router as payments_admin_webhook_router
@@ -87,6 +88,7 @@ router.include_router(fx_router)
 router.include_router(fx_admin_router)
 router.include_router(gifts_router)
 router.include_router(gifts_admin_router)
+router.include_router(p2p_admin_router)
 # Before skins_router: its GET /skins/{slug} would swallow /skins/tradelink.
 router.include_router(skins_tradelink_router)
 router.include_router(skins_seo_router)

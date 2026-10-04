@@ -11523,6 +11523,165 @@
         "title": "OwnReviewOut",
         "type": "object"
       },
+      "P2PCardAdminOut": {
+        "description": "A card as the admin sees it. The full number is never part of it.",
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "chain_ok_last": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chain Ok Last"
+          },
+          "daily_limit_uzs": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit Uzs"
+          },
+          "holder_name": {
+            "title": "Holder Name",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "last_incoming_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Incoming At"
+          },
+          "matched_today_uzs": {
+            "title": "Matched Today Uzs",
+            "type": "integer"
+          },
+          "max_amount_uzs": {
+            "title": "Max Amount Uzs",
+            "type": "integer"
+          },
+          "min_amount_uzs": {
+            "title": "Min Amount Uzs",
+            "type": "integer"
+          },
+          "network": {
+            "title": "Network",
+            "type": "string"
+          },
+          "pan_last4": {
+            "title": "Pan Last4",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "pan_last4",
+          "holder_name",
+          "network",
+          "active",
+          "min_amount_uzs",
+          "max_amount_uzs",
+          "daily_limit_uzs",
+          "matched_today_uzs",
+          "last_incoming_at",
+          "chain_ok_last"
+        ],
+        "title": "P2PCardAdminOut",
+        "type": "object"
+      },
+      "P2PCardCreateIn": {
+        "description": "A new card. ``pan`` is write-only.",
+        "properties": {
+          "active": {
+            "default": true,
+            "title": "Active",
+            "type": "boolean"
+          },
+          "daily_limit_uzs": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit Uzs"
+          },
+          "holder_name": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Holder Name",
+            "type": "string"
+          },
+          "label": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Label",
+            "type": "string"
+          },
+          "max_amount_uzs": {
+            "default": 10000000,
+            "exclusiveMinimum": 0.0,
+            "title": "Max Amount Uzs",
+            "type": "integer"
+          },
+          "min_amount_uzs": {
+            "default": 10000,
+            "exclusiveMinimum": 0.0,
+            "title": "Min Amount Uzs",
+            "type": "integer"
+          },
+          "network": {
+            "enum": [
+              "humo",
+              "uzcard"
+            ],
+            "title": "Network",
+            "type": "string"
+          },
+          "pan": {
+            "maxLength": 32,
+            "minLength": 16,
+            "title": "Pan",
+            "type": "string"
+          }
+        },
+        "required": [
+          "label",
+          "pan",
+          "holder_name",
+          "network"
+        ],
+        "title": "P2PCardCreateIn",
+        "type": "object"
+      },
       "P2PCardDetailsOut": {
         "description": "Where to send the transfer. Present only while the top-up is pending.",
         "properties": {
@@ -11546,6 +11705,114 @@
           "network"
         ],
         "title": "P2PCardDetailsOut",
+        "type": "object"
+      },
+      "P2PCardPatchIn": {
+        "description": "Partial card update; ``pan`` re-seals the number.",
+        "properties": {
+          "active": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Active"
+          },
+          "daily_limit_uzs": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Daily Limit Uzs"
+          },
+          "holder_name": {
+            "anyOf": [
+              {
+                "maxLength": 128,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Holder Name"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "max_amount_uzs": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount Uzs"
+          },
+          "min_amount_uzs": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Amount Uzs"
+          },
+          "network": {
+            "anyOf": [
+              {
+                "enum": [
+                  "humo",
+                  "uzcard"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Network"
+          },
+          "pan": {
+            "anyOf": [
+              {
+                "maxLength": 32,
+                "minLength": 16,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pan"
+          }
+        },
+        "title": "P2PCardPatchIn",
         "type": "object"
       },
       "P2PDepositIn": {
@@ -11662,6 +11929,520 @@
           "next_cursor"
         ],
         "title": "P2PDepositsOut",
+        "type": "object"
+      },
+      "P2PIncomingDetailOut": {
+        "description": "A journal row with the notification text, which is PII.",
+        "properties": {
+          "amount_uzs": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Uzs"
+          },
+          "balance_after": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance After"
+          },
+          "bank_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Time"
+          },
+          "card_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card Last4"
+          },
+          "chain_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chain Ok"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "raw_text": {
+            "title": "Raw Text",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/P2PIncomingReservationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
+          }
+        },
+        "required": [
+          "id",
+          "received_at",
+          "bank_time",
+          "kind",
+          "amount_uzs",
+          "source_text",
+          "card_last4",
+          "balance_after",
+          "chain_ok",
+          "result",
+          "raw_text"
+        ],
+        "title": "P2PIncomingDetailOut",
+        "type": "object"
+      },
+      "P2PIncomingOut": {
+        "description": "One journal row. The raw notification text is only on the detail.",
+        "properties": {
+          "amount_uzs": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount Uzs"
+          },
+          "balance_after": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Balance After"
+          },
+          "bank_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bank Time"
+          },
+          "card_last4": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Card Last4"
+          },
+          "chain_ok": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Chain Ok"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "received_at": {
+            "format": "date-time",
+            "title": "Received At",
+            "type": "string"
+          },
+          "reservation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/P2PIncomingReservationOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "result": {
+            "title": "Result",
+            "type": "string"
+          },
+          "source_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Text"
+          }
+        },
+        "required": [
+          "id",
+          "received_at",
+          "bank_time",
+          "kind",
+          "amount_uzs",
+          "source_text",
+          "card_last4",
+          "balance_after",
+          "chain_ok",
+          "result"
+        ],
+        "title": "P2PIncomingOut",
+        "type": "object"
+      },
+      "P2PIncomingPageOut": {
+        "description": "A page of the journal, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/P2PIncomingOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "P2PIncomingPageOut",
+        "type": "object"
+      },
+      "P2PIncomingReservationOut": {
+        "description": "The reservation a transfer was credited to.",
+        "properties": {
+          "amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id"
+          },
+          "merchant_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Title"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "merchant_id",
+          "merchant_title",
+          "amount_usd"
+        ],
+        "title": "P2PIncomingReservationOut",
+        "type": "object"
+      },
+      "P2PReservationAdminOut": {
+        "description": "One reservation as support sees it.",
+        "properties": {
+          "amount_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "amount_uzs": {
+            "title": "Amount Uzs",
+            "type": "integer"
+          },
+          "card_last4": {
+            "title": "Card Last4",
+            "type": "string"
+          },
+          "closed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Closed At"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "merchant_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Id"
+          },
+          "merchant_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Merchant Title"
+          },
+          "number": {
+            "title": "Number",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "number",
+          "merchant_id",
+          "merchant_title",
+          "card_last4",
+          "amount_uzs",
+          "amount_usd",
+          "status",
+          "created_at",
+          "expires_at",
+          "closed_at"
+        ],
+        "title": "P2PReservationAdminOut",
+        "type": "object"
+      },
+      "P2PReservationPageOut": {
+        "description": "A page of reservations, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/P2PReservationAdminOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "P2PReservationPageOut",
+        "type": "object"
+      },
+      "P2PSettingsIn": {
+        "description": "Partial update of the switch row; absent fields are left alone.",
+        "properties": {
+          "allowlist_merchant_ids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Allowlist Merchant Ids"
+          },
+          "humo_bot_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humo Bot User Id"
+          },
+          "mode": {
+            "anyOf": [
+              {
+                "enum": [
+                  "off",
+                  "allowlist",
+                  "all"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mode"
+          }
+        },
+        "title": "P2PSettingsIn",
+        "type": "object"
+      },
+      "P2PSettingsOut": {
+        "description": "The P2P switch row.",
+        "properties": {
+          "allowlist_merchant_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Allowlist Merchant Ids",
+            "type": "array"
+          },
+          "humo_bot_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Humo Bot User Id"
+          },
+          "mode": {
+            "enum": [
+              "off",
+              "allowlist",
+              "all"
+            ],
+            "title": "Mode",
+            "type": "string"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mode",
+          "allowlist_merchant_ids",
+          "humo_bot_user_id",
+          "updated_at"
+        ],
+        "title": "P2PSettingsOut",
         "type": "object"
       },
       "P2PStatusOut": {
@@ -29355,6 +30136,660 @@
         "summary": "Admin Resend Delivery Email",
         "tags": [
           "admin:orders"
+        ]
+      }
+    },
+    "/api/v1/admin/p2p/cards": {
+      "get": {
+        "description": "Every card with today's matched total and its receive health.",
+        "operationId": "list_cards_api_v1_admin_p2p_cards_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/P2PCardAdminOut"
+                  },
+                  "title": "Response List Cards Api V1 Admin P2P Cards Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "P2P cards",
+        "tags": [
+          "admin:p2p"
+        ]
+      },
+      "post": {
+        "description": "Seal the number and store the card. The number is never returned.",
+        "operationId": "create_card_api_v1_admin_p2p_cards_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P2PCardCreateIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PCardAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Add a P2P card",
+        "tags": [
+          "admin:p2p"
+        ]
+      }
+    },
+    "/api/v1/admin/p2p/cards/{card_id}": {
+      "patch": {
+        "description": "Apply the fields present; ``pan`` re-seals the number and updates the last four.",
+        "operationId": "patch_card_api_v1_admin_p2p_cards__card_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "card_id",
+            "required": true,
+            "schema": {
+              "title": "Card Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P2PCardPatchIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PCardAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Edit a P2P card",
+        "tags": [
+          "admin:p2p"
+        ]
+      }
+    },
+    "/api/v1/admin/p2p/incoming": {
+      "get": {
+        "description": "Newest first. Notification text is deliberately absent; see the detail route.",
+        "operationId": "list_incoming_api_v1_admin_p2p_incoming_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "card_last4",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 4,
+                  "minLength": 4,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Card Last4"
+            }
+          },
+          {
+            "in": "query",
+            "name": "kind",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(credit|debit|unparsed)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Kind"
+            }
+          },
+          {
+            "in": "query",
+            "name": "result",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(matched|unmatched|ignored)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Result"
+            }
+          },
+          {
+            "in": "query",
+            "name": "amount",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 20,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Amount"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PIncomingPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Incoming transfer journal",
+        "tags": [
+          "admin:p2p"
+        ]
+      }
+    },
+    "/api/v1/admin/p2p/incoming/{incoming_id}": {
+      "get": {
+        "description": "The only route that returns ``raw_text`` (PII: balances and counterparties).",
+        "operationId": "get_incoming_api_v1_admin_p2p_incoming__incoming_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "incoming_id",
+            "required": true,
+            "schema": {
+              "title": "Incoming Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PIncomingDetailOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "One journal row with its raw notification text",
+        "tags": [
+          "admin:p2p"
+        ]
+      }
+    },
+    "/api/v1/admin/p2p/reservations": {
+      "get": {
+        "description": "Newest first, with the merchant's title from a single join.",
+        "operationId": "list_reservations_api_v1_admin_p2p_reservations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(pending|paid|expired|cancelled)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            }
+          },
+          {
+            "in": "query",
+            "name": "merchant_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merchant Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "maximum": 100,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PReservationPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "P2P top-up reservations",
+        "tags": [
+          "admin:p2p"
+        ]
+      }
+    },
+    "/api/v1/admin/p2p/settings": {
+      "get": {
+        "description": "Current mode, allowlist and the HUMO bot's Telegram id.",
+        "operationId": "get_p2p_settings_api_v1_admin_p2p_settings_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "P2P switches",
+        "tags": [
+          "admin:p2p"
+        ]
+      },
+      "patch": {
+        "description": "Apply the fields present in the body; ``humo_bot_user_id: null`` clears it.",
+        "operationId": "patch_p2p_settings_api_v1_admin_p2p_settings_patch",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/P2PSettingsIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/P2PSettingsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Change P2P switches",
+        "tags": [
+          "admin:p2p"
         ]
       }
     },
