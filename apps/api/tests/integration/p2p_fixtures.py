@@ -32,16 +32,17 @@ def _code(exc: AppError) -> object:
 
 async def _card(db: AsyncSession, **over: object) -> P2PCard:
     ct, nonce = seal_pan("9860350146023311")
-    card = P2PCard(
-        id=new_id(),
-        label="Humo main",
-        pan_ciphertext=ct,
-        pan_nonce=nonce,
-        pan_last4="3311",
-        holder_name="OMONOV J",
-        network="humo",
+    fields: dict[str, object] = {
+        "id": new_id(),
+        "label": "Humo main",
+        "pan_ciphertext": ct,
+        "pan_nonce": nonce,
+        "pan_last4": "3311",
+        "holder_name": "OMONOV J",
+        "network": "humo",
         **over,
-    )
+    }
+    card = P2PCard(**fields)
     db.add(card)
     await db.flush()
     return card

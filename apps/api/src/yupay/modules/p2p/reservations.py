@@ -11,11 +11,11 @@ through quarantine), not in a read-then-write here: two requests racing for
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time, timedelta
+from datetime import datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
 from typing import Final
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -25,9 +25,10 @@ from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.fx.models import FxSnapshot
 from yupay.modules.merchants import transactions
+from yupay.modules.p2p.card_choice import MAX_BUMP, eligible_cards
+from yupay.modules.p2p.integrity import violated_constraint
 from yupay.modules.p2p.models import P2PCard, P2PReservation
 from yupay.modules.p2p.numbers import new_reservation_number
-from yupay.modules.p2p.parsing import TASHKENT
 from yupay.modules.p2p.settings import admits, load_settings
 from yupay.modules.pricing.fx_guard import RateRejected, guarded_usd_rate
 
@@ -35,9 +36,10 @@ log = get_logger("yupay.p2p.reservations")
 
 RESERVATION_TTL: Final = timedelta(minutes=5)
 QUARANTINE: Final = timedelta(minutes=10)
-MAX_BUMP: Final = 99
 _CENT: Final = Decimal("0.01")
 _OPEN_AMOUNT_INDEX: Final = "uq_p2p_reservations_open_amount"
+# The two collisions a concurrent twin causes; anything else is a real error.
+_RACE_INDEXES: Final = ("uq_p2p_reservations_one_pending", "uq_p2p_reservations_idem")
 
 
 @dataclass(frozen=True)
@@ -55,51 +57,6 @@ def expire_in_place(r: P2PReservation, now_: datetime) -> None:  # noqa: ARG001 
     r.quarantine_until = r.expires_at + QUARANTINE
 
 
-async def _matched_today(db: AsyncSession, card: P2PCard, now_: datetime) -> int:
-    start = datetime.combine(now_.astimezone(TASHKENT).date(), time(), TASHKENT)
-    total = await db.scalar(
-        select(func.coalesce(func.sum(P2PReservation.amount_uzs), 0)).where(
-            P2PReservation.card_id == card.id,
-            P2PReservation.status == "paid",
-            P2PReservation.closed_at >= start,
-        )
-    )
-    return int(total or 0)
-
-
-async def _pick_card(db: AsyncSession, amount: int, now_: datetime) -> tuple[P2PCard, int]:
-    """The card with the most daily room, and how far its amount may be bumped."""
-    cards = (
-        (
-            await db.execute(
-                select(P2PCard).where(
-                    P2PCard.active.is_(True),
-                    P2PCard.min_amount_uzs <= amount,
-                    P2PCard.max_amount_uzs >= amount,
-                )
-            )
-        )
-        .scalars()
-        .all()
-    )
-    best: tuple[int, P2PCard, int] | None = None
-    for card in cards:
-        room: int | None = None
-        if card.daily_limit_uzs is not None:
-            room = card.daily_limit_uzs - await _matched_today(db, card, now_)
-            if room < amount:
-                continue
-        cap = min(MAX_BUMP, card.max_amount_uzs - amount)
-        if room is not None:
-            cap = min(cap, room - amount)
-        score = room if room is not None else 10**18
-        if best is None or score > best[0]:
-            best = (score, card, cap)
-    if best is None:
-        raise ConflictError("no card can take this amount", code="p2p_no_card")
-    return best[1], best[2]
-
-
 async def _snapshot_id(db: AsyncSession, rate: Decimal) -> str | None:
     """The ``fx_snapshots`` row behind the guarded rate (orders.service precedent)."""
     found: str | None = await db.scalar(
@@ -111,14 +68,18 @@ async def _snapshot_id(db: AsyncSession, rate: Decimal) -> str | None:
     return found
 
 
-def _violated_open_amount(exc: IntegrityError) -> bool:
-    """Whether the failed insert broke the open-amount index (vs. one-pending / idem)."""
-    orig = exc.orig
-    cause = getattr(orig, "__cause__", None)
-    name = getattr(cause, "constraint_name", None) or getattr(orig, "constraint_name", None)
-    if name:
-        return str(name) == _OPEN_AMOUNT_INDEX
-    return _OPEN_AMOUNT_INDEX in str(exc)
+def _same_intent(prior: P2PReservation, amount_uzs: int) -> P2PReservation:
+    """Return ``prior`` if a replay asks for its amount (or one it was bumped from).
+
+    Raises:
+        ConflictError: ``p2p_idempotency_mismatch`` when the key was used for
+            another amount.
+    """
+    if not 0 <= prior.amount_uzs - amount_uzs <= MAX_BUMP:
+        raise ConflictError(
+            "this Idempotency-Key was used for another amount", code="p2p_idempotency_mismatch"
+        )
+    return prior
 
 
 async def _expire_stale(db: AsyncSession, r: P2PReservation, now_: datetime) -> None:
@@ -145,7 +106,7 @@ async def _expire_stale(db: AsyncSession, r: P2PReservation, now_: datetime) -> 
 
 
 async def _after_race(
-    db: AsyncSession, merchant_id: str, idempotency_key: str | None
+    db: AsyncSession, merchant_id: str, idempotency_key: str | None, amount_uzs: int
 ) -> P2PReservation | None:
     """Resolve a one-pending / idempotency collision into the winner's row or a 409."""
     if idempotency_key is not None:
@@ -156,7 +117,7 @@ async def _after_race(
             )
         )
         if same is not None:
-            return same
+            return _same_intent(same, amount_uzs)
     pending = await db.scalar(
         select(P2PReservation).where(
             P2PReservation.merchant_id == merchant_id, P2PReservation.status == "pending"
@@ -170,7 +131,11 @@ async def _after_race(
 
 
 async def _guard_open(
-    db: AsyncSession, merchant_id: str, idempotency_key: str | None, now_: datetime
+    db: AsyncSession,
+    merchant_id: str,
+    idempotency_key: str | None,
+    amount_uzs: int,
+    now_: datetime,
 ) -> P2PReservation | None:
     """Refuse a second pending reservation; hand back an idempotent twin instead."""
     open_one = await db.scalar(
@@ -183,9 +148,38 @@ async def _guard_open(
     if open_one is None or open_one.status != "pending":
         return None
     if idempotency_key is not None and open_one.idempotency_key == idempotency_key:
-        return open_one  # a concurrent twin committed after the caller's lookup
+        # A concurrent twin committed after the caller's lookup.
+        return _same_intent(open_one, amount_uzs)
     raise ConflictError(
         "a top-up is already waiting", code="p2p_reservation_open", number=open_one.number
+    )
+
+
+def _new_row(
+    *,
+    card: P2PCard,
+    amount: int,
+    merchant_id: str,
+    rate: Decimal,
+    snapshot_id: str | None,
+    now_: datetime,
+    idempotency_key: str | None,
+) -> P2PReservation:
+    return P2PReservation(
+        id=new_id(),
+        number=new_reservation_number(),
+        card_id=card.id,
+        amount_uzs=amount,
+        purpose="merchant_deposit",
+        merchant_id=merchant_id,
+        fx_rate=rate,
+        fx_snapshot_id=snapshot_id,
+        amount_usd=(Decimal(amount) / rate).quantize(_CENT, rounding=ROUND_DOWN),
+        status="pending",
+        holds_amount=True,
+        created_at=now_,
+        expires_at=now_ + RESERVATION_TTL,
+        idempotency_key=idempotency_key,
     )
 
 
@@ -194,12 +188,18 @@ async def reserve(
 ) -> P2PReservation:
     """Hold an exact amount for five minutes. See the module docstring.
 
+    Cards are tried most-daily-room first; on each, the amount is bumped up to
+    the card's cap before the next card is tried.
+
     Raises:
         NotFoundError: ``p2p_disabled`` when the merchant is not admitted.
-        ConflictError: ``p2p_reservation_open`` when one is already pending, or
-            ``p2p_no_card`` when no active card's bounds or daily room fit.
-        UpstreamUnavailableError: ``p2p_amount_busy`` when +99 is exhausted, or
-            ``fx_unavailable`` when the rate gate rejects.
+        ConflictError: ``p2p_reservation_open`` when one is already pending,
+            ``p2p_idempotency_mismatch`` when the key was used for another
+            amount, or ``p2p_no_card`` when no active card's bounds or daily
+            room fit.
+        UpstreamUnavailableError: ``p2p_amount_busy`` when every amount within
+            each eligible card's bump cap is held, or ``fx_unavailable`` when the
+            rate gate rejects.
     """
     if idempotency_key is not None:
         prior = await db.scalar(
@@ -209,6 +209,7 @@ async def reserve(
             )
         )
         if prior is not None:
+            _same_intent(prior, amount_uzs)
             now_prior = now()
             if prior.status == "pending" and prior.expires_at <= now_prior:
                 await _expire_stale(db, prior, now_prior)
@@ -216,47 +217,48 @@ async def reserve(
     if not admits(await load_settings(db), merchant_id):
         raise NotFoundError("p2p top-up is not enabled", code="p2p_disabled")
     now_ = now()
-    twin = await _guard_open(db, merchant_id, idempotency_key, now_)
+    twin = await _guard_open(db, merchant_id, idempotency_key, amount_uzs, now_)
     if twin is not None:
         return twin
-    card, cap = await _pick_card(db, amount_uzs, now_)
+    cards = await eligible_cards(db, amount_uzs, now_)
     try:
         rate = await guarded_usd_rate(db, quote="UZS")
     except RateRejected as exc:
         raise UpstreamUnavailableError("rate unavailable", code="fx_unavailable") from exc
     snapshot_id = await _snapshot_id(db, rate)
 
-    for bump in range(cap + 1):
-        amount = amount_uzs + bump
-        row = P2PReservation(
-            id=new_id(),
-            number=new_reservation_number(),
-            card_id=card.id,
-            amount_uzs=amount,
-            purpose="merchant_deposit",
-            merchant_id=merchant_id,
-            fx_rate=rate,
-            fx_snapshot_id=snapshot_id,
-            amount_usd=(Decimal(amount) / rate).quantize(_CENT, rounding=ROUND_DOWN),
-            status="pending",
-            holds_amount=True,
-            created_at=now_,
-            expires_at=now_ + RESERVATION_TTL,
-            idempotency_key=idempotency_key,
-        )
-        try:
-            async with db.begin_nested():
-                db.add(row)
-                await db.flush()
-        except IntegrityError as exc:
-            if _violated_open_amount(exc):
-                continue
-            raced = await _after_race(db, merchant_id, idempotency_key)
-            if raced is None:
-                raise
-            return raced
-        log.info("p2p.reserved", number=row.number, amount_uzs=amount, card_last4=card.pan_last4)
-        return row
+    for card, cap in cards:
+        for bump in range(cap + 1):
+            row = _new_row(
+                card=card,
+                amount=amount_uzs + bump,
+                merchant_id=merchant_id,
+                rate=rate,
+                snapshot_id=snapshot_id,
+                now_=now_,
+                idempotency_key=idempotency_key,
+            )
+            try:
+                async with db.begin_nested():
+                    db.add(row)
+                    await db.flush()
+            except IntegrityError as exc:
+                hit = violated_constraint(exc, (_OPEN_AMOUNT_INDEX, *_RACE_INDEXES))
+                if hit == _OPEN_AMOUNT_INDEX:
+                    continue
+                if hit is None:
+                    raise
+                raced = await _after_race(db, merchant_id, idempotency_key, amount_uzs)
+                if raced is None:
+                    raise
+                return raced
+            log.info(
+                "p2p.reserved",
+                number=row.number,
+                amount_uzs=row.amount_uzs,
+                card_last4=card.pan_last4,
+            )
+            return row
     raise UpstreamUnavailableError("every nearby amount is held", code="p2p_amount_busy")
 
 

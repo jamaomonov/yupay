@@ -8,6 +8,7 @@ from decimal import Decimal
 
 import pytest
 from sqlalchemy import func, select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from yupay.core.clock import now
 from yupay.core.errors import AppError
@@ -260,3 +261,77 @@ async def test_list_pages_with_a_cursor(db_session: AsyncSession) -> None:
     assert {x.id for x in page1}.isdisjoint({x.id for x in page2})
     clamped, _ = await svc.list_for_merchant(db_session, merchant_id=m, limit=0, cursor=None)
     assert len(clamped) == 1
+
+
+async def test_same_key_with_a_different_amount_is_a_conflict(db_session: AsyncSession) -> None:
+    await _card(db_session)
+    m = await _merchant(db_session)
+    await _open(db_session, [m])
+    await svc.reserve(db_session, merchant_id=m, amount_uzs=20_000, idempotency_key="k")
+    with pytest.raises(AppError) as err:
+        await svc.reserve(db_session, merchant_id=m, amount_uzs=30_000, idempotency_key="k")
+    assert _code(err.value) == "p2p_idempotency_mismatch"
+    assert err.value.status_code == 409
+
+
+async def test_same_key_replay_of_a_bumped_amount_returns_it(db_session: AsyncSession) -> None:
+    """The stored 20 001 is a bump of the requested 20 000, not a different intent."""
+    await _card(db_session)
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await _open(db_session, [a, b])
+    await svc.reserve(db_session, merchant_id=a, amount_uzs=20_000, idempotency_key=None)
+    one = await svc.reserve(db_session, merchant_id=b, amount_uzs=20_000, idempotency_key="k")
+    assert one.amount_uzs == 20_001
+    two = await svc.reserve(db_session, merchant_id=b, amount_uzs=20_000, idempotency_key="k")
+    assert two.id == one.id
+
+
+async def test_daily_limit_counts_pending_holds(db_session: AsyncSession) -> None:
+    await _card(db_session, daily_limit_uzs=30_000)
+    a, b = await _merchant(db_session), await _merchant(db_session)
+    await _open(db_session, [a, b])
+    await svc.reserve(db_session, merchant_id=a, amount_uzs=20_000, idempotency_key=None)
+    with pytest.raises(AppError) as err:
+        await svc.reserve(db_session, merchant_id=b, amount_uzs=20_000, idempotency_key=None)
+    assert _code(err.value) == "p2p_no_card"
+
+
+async def test_a_card_whose_amounts_are_all_held_falls_over_to_the_next(
+    db_session: AsyncSession,
+) -> None:
+    # A is preferred (no daily limit = most room) but only 50 000..50 002 fit under its max.
+    await _card(db_session, max_amount_uzs=50_002)
+    b_card = await _card(db_session, pan_last4="4422", daily_limit_uzs=1_000_000)
+    ms = [await _merchant(db_session) for _ in range(4)]
+    await _open(db_session, ms)
+    held = [
+        await svc.reserve(db_session, merchant_id=m, amount_uzs=50_000, idempotency_key=None)
+        for m in ms[:3]
+    ]
+    assert sorted(r.amount_uzs for r in held) == [50_000, 50_001, 50_002]
+    assert b_card.id not in {r.card_id for r in held}
+
+    fourth = await svc.reserve(
+        db_session, merchant_id=ms[3], amount_uzs=50_000, idempotency_key=None
+    )
+
+    assert fourth.card_id == b_card.id
+    assert fourth.amount_uzs == 50_000
+
+
+async def test_an_unrelated_integrity_error_is_not_masked_as_an_open_reservation(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A number collision must surface, not turn into ``p2p_reservation_open``."""
+    await _card(db_session)
+    m = await _merchant(db_session)
+    await _open(db_session, [m])
+    first = await svc.reserve(db_session, merchant_id=m, amount_uzs=20_000, idempotency_key=None)
+
+    async def _no_guard(*_: object) -> None:
+        return None
+
+    monkeypatch.setattr(svc, "_guard_open", _no_guard)
+    monkeypatch.setattr(svc, "new_reservation_number", lambda: first.number)
+    with pytest.raises(IntegrityError):
+        await svc.reserve(db_session, merchant_id=m, amount_uzs=30_000, idempotency_key=None)
