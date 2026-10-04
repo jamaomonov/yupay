@@ -38170,6 +38170,52 @@
         ]
       }
     },
+    "/api/v1/webhooks/telegram/p2p": {
+      "post": {
+        "description": "Verify the secret header, journal the update, credit a matching reservation.",
+        "operationId": "receive_p2p_update_api_v1_webhooks_telegram_p2p_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Telegram-Bot-Api-Secret-Token",
+            "required": false,
+            "schema": {
+              "default": "",
+              "title": "X-Telegram-Bot-Api-Secret-Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Receive P2P Update Api V1 Webhooks Telegram P2P Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "HUMO notifications via Telegram Business",
+        "tags": [
+          "webhooks:telegram"
+        ]
+      }
+    },
     "/healthz": {
       "get": {
         "description": "Return ``{\"status\": \"ok\"}`` if the process is alive.",

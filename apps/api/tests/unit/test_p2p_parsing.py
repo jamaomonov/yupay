@@ -6,6 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 from yupay.modules.p2p.parsing import parse_humo
@@ -57,3 +58,30 @@ def test_any_formatted_amount_round_trips(whole: int, tiyin: int) -> None:
     grouped = f"{whole:,}".replace(",", ".")
     text = CREDIT.replace("1.004,00", f"{grouped},{tiyin:02d}")
     assert parse_humo(text).amount == Decimal(f"{whole}.{tiyin:02d}")
+
+
+def test_a_source_line_cannot_override_the_card_or_the_time() -> None:
+    text = (
+        "🎉 Пополнение\n➕ 1.004,00 UZS\n📍 SHOP *9999 01:00 01.01.2020\n"
+        "💳 HUMOCARD *3311\n🕓 04:47 04.10.2026\n💰 1.272.764,21 UZS"
+    )
+    n = parse_humo(text)
+    assert n.card_last4 == "3311"
+    assert n.bank_time == datetime(2026, 10, 4, 4, 47, tzinfo=TASHKENT)
+
+
+@pytest.mark.parametrize("when", ["99:99 31.02.2026", "24:00 04.10.2026", "12:00 31.02.2026"])
+def test_an_impossible_time_is_unparsed(when: str) -> None:
+    assert parse_humo(CREDIT.replace("04:47 04.10.2026", when)).kind == "unparsed"
+
+
+@pytest.mark.parametrize(
+    "line", ["💰 1.272.764,21 UZS", "💳 HUMOCARD *3311", "🕓 04:47 04.10.2026"]
+)
+def test_a_message_missing_one_required_line_is_unparsed(line: str) -> None:
+    assert parse_humo(CREDIT.replace(f"\n{line}", "")).kind == "unparsed"
+
+
+def test_non_ascii_digits_never_parse() -> None:
+    assert parse_humo(CREDIT.replace("*3311", "*٣٣١١")).kind == "unparsed"
+    assert parse_humo(CREDIT.replace("04:47", "٠٤:٤٧")).kind == "unparsed"

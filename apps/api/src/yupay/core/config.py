@@ -991,6 +991,9 @@ class Settings(BaseSettings):
     # write rights. Configure both as empty in dev — alerts then no-op.
     tg_alert_bot_token: str = Field(default="")
     tg_alert_chat_id: str = Field(default="")
+    # secret_token passed to setWebhook for @depositlistenerbot; empty = webhook
+    # refuses everything.
+    p2p_webhook_secret: str = Field(default="")
     # Threshold in percent (absolute) above which a supplier-price move
     # triggers a Telegram alert. Default 5% — anything smaller is noise
     # for ops.

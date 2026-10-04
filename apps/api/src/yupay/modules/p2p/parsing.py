@@ -18,11 +18,15 @@ from pydantic import BaseModel, ConfigDict
 TASHKENT = ZoneInfo("Asia/Tashkent")
 
 _AMOUNT = r"(\d{1,3}(?:\.\d{3})*,\d{2})\s*UZS"
-_SIGNED = re.compile(rf"^\s*(➕|➖)\s*{_AMOUNT}\s*$", re.M)
-_BALANCE = re.compile(rf"^\s*💰\s*{_AMOUNT}\s*$", re.M)
-_SOURCE = re.compile(r"^\s*📍\s*(.+?)\s*$", re.M)
-_CARD = re.compile(r"\*(\d{4})\b")
-_TIME = re.compile(r"(\d{2}):(\d{2})\s+(\d{2})\.(\d{2})\.(\d{4})")
+# ASCII only: ``\d`` would also take Arabic-Indic and other Unicode digits, and each
+# pattern is anchored to its own line so a free-text source line cannot supply a
+# card or a time.
+_FLAGS = re.M | re.ASCII
+_SIGNED = re.compile(rf"^\s*(➕|➖)\s*{_AMOUNT}\s*$", _FLAGS)
+_BALANCE = re.compile(rf"^\s*💰\s*{_AMOUNT}\s*$", _FLAGS)
+_SOURCE = re.compile(r"^\s*📍\s*(.+?)\s*$", _FLAGS)
+_CARD = re.compile(r"^\s*💳[^\n]*\*(\d{4})\s*$", _FLAGS)
+_TIME = re.compile(r"^\s*🕓\s*(\d{2}):(\d{2})\s+(\d{2})\.(\d{2})\.(\d{4})\s*$", _FLAGS)
 
 
 class ParsedNotification(BaseModel):
@@ -52,7 +56,8 @@ def parse_humo(text: str) -> ParsedNotification:
         text: The message text exactly as Telegram delivered it.
 
     Returns:
-        A credit or debit with every field set, or ``unparsed``.
+        A credit or debit with every field set except ``source`` (``None`` when
+        the message has no ``📍`` line), or ``unparsed``.
     """
     signed = _SIGNED.search(text or "")
     balance = _BALANCE.search(text or "")

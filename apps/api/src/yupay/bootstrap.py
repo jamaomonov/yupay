@@ -137,6 +137,7 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
     """
     from yupay.api.webhooks.fzr import receive_fzr_webhook
     from yupay.api.webhooks.g2b import receive_g2b_webhook
+    from yupay.api.webhooks.telegram_p2p import receive_p2p_update
     from yupay.modules.click.routes import click_complete, click_prepare
     from yupay.modules.payme.routes import payme_merchant
     from yupay.modules.uzum.routes import (
@@ -153,6 +154,8 @@ def _exempt_self_authenticating_routes(limiter: Limiter) -> None:
         # own caller. A 429 here would count toward FazerCards' 50-failure
         # auto-disable and cost us the feature, not just one event.
         receive_fzr_webhook,
+        # Telegram retries non-2xx; it authenticates with the secret header.
+        receive_p2p_update,
         payme_merchant,
         uzum_check,
         uzum_create,
