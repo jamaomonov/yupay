@@ -79,10 +79,12 @@ async def patch_p2p_settings(
         s.mode = body.mode
     if body.allowlist_merchant_ids is not None:
         ids = list(dict.fromkeys(body.allowlist_merchant_ids))
+        bad = [i for i in ids if _uuid(i) is None]
+        ids = [i for i in ids if _uuid(i) is not None]
         known = set(
             (await db.execute(select(Merchant.id).where(Merchant.id.in_(ids)))).scalars().all()
         )
-        if unknown := [i for i in ids if i not in known]:
+        if unknown := bad + [i for i in ids if i not in known]:
             raise ValidationError(
                 "unknown merchant in allowlist", code="p2p_unknown_merchant", merchant_ids=unknown
             )
@@ -397,7 +399,9 @@ async def list_reservations(
     if status_:
         stmt = stmt.where(P2PReservation.status == status_)
     if merchant_id:
-        stmt = stmt.where(P2PReservation.merchant_id == merchant_id)
+        if (mid := _uuid(merchant_id)) is None:
+            raise ValidationError("merchant_id must be a uuid", code="p2p_bad_id")
+        stmt = stmt.where(P2PReservation.merchant_id == mid)
     if cursor:
         at, rid = transactions.decode_cursor(cursor)
         stmt = stmt.where(

@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import json
+import time
 from collections.abc import AsyncIterator
 from datetime import timedelta
 from typing import Any
@@ -18,7 +20,10 @@ from yupay.modules.p2p.models import P2PIncoming
 from yupay.modules.p2p.settings import load_settings
 
 from tests.integration.p2p_fixtures import _card, _fixed_rate, _merchant, _open  # noqa: F401
-from tests.integration.test_merchant_cabinet_sections import admin_headers  # noqa: F401
+from tests.integration.test_merchant_cabinet_sections import (  # noqa: F401
+    _sign_init_data,
+    admin_headers,
+)
 from tests.integration.test_p2p_intake import HUMO_ID, _bank, _credit, _update
 
 pytestmark = pytest.mark.asyncio
@@ -229,8 +234,33 @@ async def test_reservations_list_and_card_stats(
 
 
 async def test_non_admin_is_forbidden(integration_client: AsyncClient) -> None:
-    r = await integration_client.get(f"{A}/cards")
-    assert r.status_code in (401, 403)
+    user_json = json.dumps({"id": 93, "first_name": "Plain"}, separators=(",", ":"))
+    init_data = _sign_init_data({"user": user_json, "auth_date": str(int(time.time()))})
+    login = await integration_client.post(
+        "/api/v1/auth/telegram/webapp", json={"init_data": init_data}
+    )
+    assert login.status_code == 200, login.text
+    h = {"Authorization": f"Bearer {login.json()['access_token']}"}
+    assert (await integration_client.get(f"{A}/cards", headers=h)).status_code == 403
+    r = await integration_client.patch(
+        f"{A}/settings", headers={**h, "Idempotency-Key": _key()}, json={"mode": "all"}
+    )
+    assert r.status_code == 403
+
+
+async def test_malformed_ids_are_422_not_500(
+    integration_client: AsyncClient, admin_headers: dict[str, str]
+) -> None:
+    r = await integration_client.get(f"{A}/reservations?merchant_id=nope", headers=admin_headers)
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "p2p_bad_id"
+    r = await integration_client.patch(
+        f"{A}/settings",
+        headers={**admin_headers, "Idempotency-Key": _key()},
+        json={"allowlist_merchant_ids": ["nope"]},
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "p2p_unknown_merchant"
 
 
 @pytest.fixture
