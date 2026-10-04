@@ -12395,6 +12395,17 @@
               }
             ],
             "title": "Mode"
+          },
+          "owner_telegram_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Telegram User Id"
           }
         },
         "title": "P2PSettingsIn",
@@ -12409,6 +12420,18 @@
             },
             "title": "Allowlist Merchant Ids",
             "type": "array"
+          },
+          "business_connection_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Read-only: the owner's Telegram Business connection, captured on connect.",
+            "title": "Business Connection Id"
           },
           "humo_bot_user_id": {
             "anyOf": [
@@ -12430,6 +12453,17 @@
             "title": "Mode",
             "type": "string"
           },
+          "owner_telegram_user_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Owner Telegram User Id"
+          },
           "updated_at": {
             "format": "date-time",
             "title": "Updated At",
@@ -12440,6 +12474,8 @@
           "mode",
           "allowlist_merchant_ids",
           "humo_bot_user_id",
+          "owner_telegram_user_id",
+          "business_connection_id",
           "updated_at"
         ],
         "title": "P2PSettingsOut",
@@ -30719,7 +30755,7 @@
         ]
       },
       "patch": {
-        "description": "Apply the fields present in the body; ``humo_bot_user_id: null`` clears it.",
+        "description": "Apply the fields present in the body; ``null`` clears either Telegram id.",
         "operationId": "patch_p2p_settings_api_v1_admin_p2p_settings_patch",
         "parameters": [
           {
