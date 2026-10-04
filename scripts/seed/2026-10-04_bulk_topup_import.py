@@ -59,6 +59,7 @@ from collections import Counter, defaultdict
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
+import yupay.main  # noqa: F401 -- registers every model; a bare session cannot map Order
 from sqlalchemy import select, text
 from yupay.core.db import get_session_factory
 from yupay.modules.catalog import admin_schemas as cs

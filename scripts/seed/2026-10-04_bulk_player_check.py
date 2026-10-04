@@ -32,6 +32,7 @@ import asyncio
 import os
 from typing import Any
 
+import yupay.main  # noqa: F401 -- registers every model; a bare session cannot map Product
 from sqlalchemy import text
 from sqlalchemy.orm.attributes import flag_modified
 from yupay.core.db import get_session_factory
