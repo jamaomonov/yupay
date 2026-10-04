@@ -260,6 +260,13 @@ class GEngineFulfiller(Fulfiller):
                 "no G-Engine parameters could be built from fulfillment_data",
                 money_outcome=_NOTHING_LEFT_OUR_BALANCE,
             )
+        if "Region" in params:
+            # Three services (Genshin, Honkai: Star Rail, Zenless Zone Zero)
+            # call the zone ``Server``; the rest call it ``Region``. One name
+            # is wrong for the other, and G-Engine refuses an unknown param.
+            name = await _server_param_name(db, service_id=service_id)
+            if name != "Region":
+                params[name] = params.pop("Region")
 
         if denomination_id is None:
             # An `unfixed` service (Telegram Stars, and anything else priced by
@@ -614,6 +621,36 @@ async def _mapping_for(db: AsyncSession, *, sku_id: str) -> Any:
             "no active g-engine mapping for this SKU", money_outcome=_NOTHING_LEFT_OUR_BALANCE
         )
     return row
+
+
+async def _server_param_name(db: AsyncSession, *, service_id: int) -> str:
+    """``"Server"`` or ``"Region"`` — what this service calls the zone parameter.
+
+    Read off the catalogue row the hourly sync keeps for the service (its raw
+    body carries ``params``): a network call per order would be the wrong
+    price for one word. No row, or neither name declared, means ``"Region"``,
+    which is what every order sent before this existed.
+    """
+    from sqlalchemy import select
+
+    from yupay.modules.integrations.models import SupplierCatalogCache
+
+    row = (
+        await db.execute(
+            select(SupplierCatalogCache).where(
+                SupplierCatalogCache.supplier_slug == "gengine",
+                SupplierCatalogCache.kind == "game",
+                SupplierCatalogCache.external_id == str(service_id),
+            )
+        )
+    ).scalar_one_or_none()
+    raw = getattr(row, "raw", None) or {}
+    declared = {
+        str(p.get("param_key"))
+        for p in (raw.get("params") or [] if isinstance(raw, dict) else [])
+        if isinstance(p, dict)
+    }
+    return "Server" if "Server" in declared and "Region" not in declared else "Region"
 
 
 def _int_or_fail(raw: str | None, *, field: str) -> int:

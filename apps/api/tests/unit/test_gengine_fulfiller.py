@@ -1100,3 +1100,48 @@ async def test_a_money_denominated_line_of_nothing_is_refused() -> None:
 
     with pytest.raises(FulfillerError, match="resolves to nothing"):
         await _quantity_for(_FakeDb(Sku()), item=Item(), mapping=Mapping())  # type: ignore[arg-type]
+
+
+# ---- the zone parameter's name ---------------------------------------------
+
+
+class _CachedService:
+    def __init__(self, *params: str) -> None:
+        self.raw = {"id": 11, "params": [{"param_key": p} for p in params]}
+
+
+@pytest.mark.parametrize(
+    ("row", "expected"),
+    [
+        (_CachedService("Account", "Server"), "Server"),
+        (_CachedService("Account", "Region"), "Region"),
+        (_CachedService("Account"), "Region"),
+        (None, "Region"),
+    ],
+)
+async def test_the_zone_is_named_the_way_the_service_declares_it(row: Any, expected: str) -> None:
+    """Genshin, HSR and ZZZ say ``Server``; the rest, and an unsynced cache, ``Region``."""
+    from yupay.modules.fulfillment.suppliers.gengine import _server_param_name
+
+    assert await _server_param_name(_FakeDb(row), service_id=11) == expected  # type: ignore[arg-type]
+
+
+async def test_a_server_service_gets_server_not_region(monkeypatch: pytest.MonkeyPatch) -> None:
+    import yupay.modules.fulfillment.suppliers.gengine as mod
+
+    async def _name(_db: Any, *, service_id: int) -> str:
+        return "Server"
+
+    monkeypatch.setattr(mod, "_server_param_name", _name)
+
+    class Mapping:
+        kind = "game"
+        external_product_id = "11"
+        external_variant_id = "77"
+        quantity = 1
+
+    sent = await _sent_params(
+        monkeypatch, mapping=Mapping(), data={"player_id": "801234567", "server": "Europe"}
+    )
+
+    assert sent["params"] == {"Account": "801234567", "Server": "Europe"}
