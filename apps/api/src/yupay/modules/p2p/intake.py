@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.merchants.deposit import credit_deposit
+from yupay.modules.p2p.integrity import violated_constraint
 from yupay.modules.p2p.models import P2PCard, P2PIncoming, P2PReservation, P2PSettings
 from yupay.modules.p2p.parsing import ParsedNotification, parse_humo
 from yupay.modules.p2p.reservations import QUARANTINE
@@ -27,6 +28,7 @@ from yupay.modules.p2p.settings import load_settings
 log = get_logger("yupay.p2p.intake")
 
 Status = Literal["dropped", "duplicate", "matched", "unmatched", "ignored"]
+_MESSAGE_KEY = "uq_p2p_incoming_message"
 
 
 @dataclass
@@ -90,14 +92,28 @@ def _track_connection(settings: P2PSettings, connection: dict[str, Any]) -> None
     )
 
 
-async def _chain_ok(db: AsyncSession, p: ParsedNotification) -> bool | None:
-    """Whether the previous balance plus this movement equals this balance."""
+async def _chain_ok(
+    db: AsyncSession, p: ParsedNotification, connection_id: str, message_id: int
+) -> bool | None:
+    """Whether the previous balance plus this movement equals this balance.
+
+    The predecessor is the same card's row with the greatest Telegram message
+    id below this one on the same Business connection. Message ids are the
+    chat's own order, so same-minute bank times and out-of-order delivery do
+    not pick the wrong row; a message that arrives before its predecessor has
+    no predecessor yet and is not judged (``None``).
+    """
     if p.kind not in ("credit", "debit") or p.balance_after is None or p.amount is None:
         return None
     prev = await db.scalar(
         select(P2PIncoming)
-        .where(P2PIncoming.card_last4 == p.card_last4, P2PIncoming.balance_after.is_not(None))
-        .order_by(P2PIncoming.bank_time.desc(), P2PIncoming.received_at.desc())
+        .where(
+            P2PIncoming.card_last4 == p.card_last4,
+            P2PIncoming.business_connection_id == connection_id,
+            P2PIncoming.telegram_message_id < message_id,
+            P2PIncoming.balance_after.is_not(None),
+        )
+        .order_by(P2PIncoming.telegram_message_id.desc())
         .limit(1)
     )
     if prev is None or prev.balance_after is None:
@@ -217,13 +233,18 @@ async def ingest_update(
     msg = _humo_message(update, settings)
     if msg is None:
         return IntakeResult("dropped")
+    message_id = msg.get("message_id")
+    if not isinstance(message_id, int) or isinstance(message_id, bool):
+        # Field name only: the message text is PII and the id is absent or junk.
+        log.warning("p2p.malformed_update", field="message_id")
+        return IntakeResult("dropped")
 
     text = str(msg.get("text") or "")
     parsed = parse_humo(text)
     row = P2PIncoming(
         id=new_id(),
         business_connection_id=str(msg.get("business_connection_id") or ""),
-        telegram_message_id=int(msg["message_id"]),
+        telegram_message_id=message_id,
         kind=parsed.kind,
         amount_uzs=parsed.amount,
         source_text=(parsed.source or "")[:128] or None,
@@ -234,12 +255,14 @@ async def ingest_update(
         result="ignored",
         received_at=received_at,
     )
-    row.chain_ok = await _chain_ok(db, parsed)
+    row.chain_ok = await _chain_ok(db, parsed, row.business_connection_id, message_id)
     try:
         async with db.begin_nested():
             db.add(row)
             await db.flush()
-    except IntegrityError:
+    except IntegrityError as exc:
+        if violated_constraint(exc, (_MESSAGE_KEY,)) is None:
+            raise
         return IntakeResult("duplicate")
 
     result = IntakeResult("ignored")

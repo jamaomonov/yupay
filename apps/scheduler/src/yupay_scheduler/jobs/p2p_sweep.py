@@ -48,7 +48,20 @@ def silence_alert_due(last_incoming_at: datetime | None, expired_now: int, now_:
 
 
 async def run_p2p_sweep() -> None:
-    """One tick: expire pending reservations, end quarantine, alert on silence."""
+    """One tick: expire pending reservations, end quarantine, alert on silence.
+
+    A failure is logged by exception class only (the message could carry row
+    data) and re-raised, so APScheduler records it and the next tick retries.
+    """
+    try:
+        await _tick()
+    except Exception as exc:
+        # Class name only, no traceback: the message or frames could carry row data.
+        log.error("p2p_sweep.failed", error=type(exc).__name__)  # noqa: TRY400
+        raise
+
+
+async def _tick() -> None:
     t = now()
     async with get_session_factory()() as db:
         result = await sweep(db, now_=t)
@@ -66,15 +79,25 @@ async def run_p2p_sweep() -> None:
     if result.expired or result.released:
         log.info("p2p_sweep.tick", expired=result.expired, released=result.released)
     if silence_alert_due(last, recently_expired or 0, t):
-        redis = get_redis()
-        if await redis.set(_ALERT_KEY, "1", nx=True, ex=_ALERT_TTL_SECONDS):
-            sent = await send_admin_alert(
-                "P2P: резервы истекают, а от HUMO нет уведомлений больше 6 часов — проверьте бота",
-                kind="p2p_silence",
-            )
-            if not sent:
-                # Not delivered: free the hour's key so the next tick tries again.
-                await redis.delete(_ALERT_KEY)
+        await _alert_silence()
+
+
+async def _alert_silence() -> None:
+    """Send the silence alert at most once an hour; an undelivered one frees the hour."""
+    redis = get_redis()
+    if not await redis.set(_ALERT_KEY, "1", nx=True, ex=_ALERT_TTL_SECONDS):
+        return
+    try:
+        sent = await send_admin_alert(
+            "P2P: резервы истекают, а от HUMO нет уведомлений больше 6 часов — проверьте бота",
+            kind="p2p_silence",
+        )
+    except Exception:
+        # Not delivered either way: free the hour's key so the next tick tries again.
+        await redis.delete(_ALERT_KEY)
+        raise
+    if not sent:
+        await redis.delete(_ALERT_KEY)
 
 
 def register(scheduler: AsyncIOScheduler) -> None:
