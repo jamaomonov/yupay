@@ -1,6 +1,7 @@
 """Pure function tests for the P2P silence alert rule."""
 
 from datetime import timedelta
+
 from yupay.core.clock import now
 from yupay_scheduler.jobs.p2p_sweep import silence_alert_due
 

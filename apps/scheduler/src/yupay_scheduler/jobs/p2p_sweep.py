@@ -20,13 +20,14 @@ from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
 from yupay.core.redis import get_redis
 from yupay.modules.notifications.alerts import send_admin_alert
-from yupay.modules.p2p.models import P2PIncoming
+from yupay.modules.p2p.models import P2PIncoming, P2PReservation
 from yupay.modules.p2p.reservations import sweep
 
 log = get_logger("yupay.scheduler.p2p_sweep")
 _JOB_ID: Final = "p2p_sweep"
 _INTERVAL_SECONDS: Final = 30
 SILENCE: Final = timedelta(hours=6)
+_EXPIRED_LOOKBACK: Final = timedelta(minutes=2)
 _ALERT_KEY: Final = "p2p:silence-alert"
 _ALERT_TTL_SECONDS: Final = 3600
 
@@ -53,10 +54,19 @@ async def run_p2p_sweep() -> None:
     async with get_session_factory()() as db:
         result = await sweep(db, now_=t)
         last = await db.scalar(select(func.max(P2PIncoming.received_at)))
+        # Count recently-expired rows (those expired in the last 2 minutes) to catch
+        # both this tick's expirations and those from the cabinet's read() in-place path.
+        recently_expired = await db.scalar(
+            select(func.count(P2PReservation.id)).where(
+                P2PReservation.status == "expired",
+                P2PReservation.closed_at > t - _EXPIRED_LOOKBACK,
+                P2PReservation.closed_at <= t,
+            )
+        )
         await db.commit()
     if result.expired or result.released:
         log.info("p2p_sweep.tick", expired=result.expired, released=result.released)
-    if silence_alert_due(last, result.expired, t):
+    if silence_alert_due(last, recently_expired or 0, t):
         redis = get_redis()
         if await redis.set(_ALERT_KEY, "1", nx=True, ex=_ALERT_TTL_SECONDS):
             await send_admin_alert(
@@ -79,4 +89,4 @@ def register(scheduler: AsyncIOScheduler) -> None:
     log.info("p2p_sweep.registered", interval_seconds=_INTERVAL_SECONDS)
 
 
-__all__ = ["SILENCE", "register", "run_p2p_sweep", "silence_alert_due"]
+__all__ = ["SILENCE", "now", "register", "run_p2p_sweep", "send_admin_alert", "silence_alert_due"]
