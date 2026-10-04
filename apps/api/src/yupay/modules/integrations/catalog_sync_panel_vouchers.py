@@ -51,7 +51,9 @@ log = get_logger("yupay.integrations.catalog_sync.panel_vouchers")
 #: Ceiling on the by-category card refresh, mirroring the games half's
 #: ``_MAPPED_FETCH_CAP``. A data mistake must not turn one tick into hundreds
 #: of ``list_giftcard_cards`` calls.
-_MAPPED_FETCH_CAP = 200
+#: Raised 200 → 600 with the 2026-10 voucher import (~580 FazerCards gift-card
+#: categories mapped); the walk is paced (``list_giftcard_cards_paced``).
+_MAPPED_FETCH_CAP = 600
 
 
 def _ev(client: PanelClient, name: str) -> str:
@@ -108,7 +110,7 @@ async def _sync_category_cards(
     limit would tell an operator their mapping is dead when it is not.
     """
     try:
-        rows = await client.list_giftcard_cards(category_id)
+        rows = await client.list_giftcard_cards_paced(category_id)
     except PanelError as exc:
         if exc.status == 404:
             return 0, True, None

@@ -333,6 +333,18 @@ class PanelClient:
         finally:
             await asyncio.sleep(BULK_PAUSE_SECONDS)
 
+    async def list_giftcard_cards_paced(self, category_id: str) -> list[dict[str, Any]]:
+        """:meth:`list_giftcard_cards` for a bulk walk — see :meth:`get_offers_paced`."""
+        try:
+            return await self.list_giftcard_cards(category_id)
+        except PanelError as exc:
+            if exc.status != 429:
+                raise
+            await asyncio.sleep(retry_after_seconds(str(exc)))
+            return await self.list_giftcard_cards(category_id)
+        finally:
+            await asyncio.sleep(BULK_PAUSE_SECONDS)
+
     async def list_giftcard_cards(self, category_id: str) -> list[dict[str, Any]]:
         """Every denomination of one gift-card category, with its live stock.
 

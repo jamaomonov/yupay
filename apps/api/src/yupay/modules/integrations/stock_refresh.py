@@ -173,6 +173,15 @@ async def refresh_voucher_stock(
         g2b_cached = await _g2b_cached_stock(
             session, [m.product_id for ms in by_sku.values() for m in ms if m.supplier == "g2b"]
         )
+        panel_cached = await _panel_cached_cards(
+            session,
+            [
+                (m.supplier, m.product_id)
+                for ms in by_sku.values()
+                for m in ms
+                if m.supplier in ("nova", "fzr")
+            ],
+        )
 
     #: G-Engine answers with every denomination of a product at once, and NOVA
     #: with every card of a category, so one response serves all the SKUs
@@ -182,6 +191,7 @@ async def refresh_voucher_stock(
     denominations: dict[str, dict[str, Any] | None] = {
         f"g2b:{product_id}": {"stock": stock} for product_id, stock in g2b_cached.items()
     }
+    denominations.update(panel_cached)
 
     checked = updated = out = errors = 0
     for sku_id, mappings in by_sku.items():
@@ -364,6 +374,51 @@ async def _g2b_cached_stock(session: Any, product_ids: list[str]) -> dict[str, A
     except Exception:  # noqa: BLE001 -- the cache is a shortcut; the live call still works
         log.warning("stock_refresh.g2b_cache_unreadable")
         return {}
+
+
+async def _panel_cached_cards(
+    session: Any, keys: list[tuple[str, str]]
+) -> dict[str, dict[str, Any] | None]:
+    """``"<slug>:<category>" -> {card_id: row}`` for categories the sync wrote recently.
+
+    The same shortcut as the G2B one: ~580 FazerCards categories mapped by the
+    2026-10 import would be ~580 ``list_giftcard_cards`` calls an hour for
+    rows the catalogue sync wrote minutes earlier. A category with no fresh
+    rows is left out and asked live, as before.
+    """
+    from yupay.modules.integrations.models import SupplierCatalogCache
+
+    wanted = set(keys)
+    if not wanted:
+        return {}
+    cutoff = datetime.now(UTC) - _G2B_CACHE_FRESH_FOR
+    out: dict[str, dict[str, Any] | None] = {}
+    try:
+        rows = (
+            await session.execute(
+                select(
+                    SupplierCatalogCache.supplier_slug,
+                    SupplierCatalogCache.parent_external_id,
+                    SupplierCatalogCache.external_id,
+                    SupplierCatalogCache.raw,
+                ).where(
+                    SupplierCatalogCache.supplier_slug.in_({s for s, _ in wanted}),
+                    SupplierCatalogCache.kind == "voucher_denom",
+                    SupplierCatalogCache.parent_external_id.in_({c for _, c in wanted}),
+                    SupplierCatalogCache.fetched_at >= cutoff,
+                )
+            )
+        ).all()
+    except Exception:  # noqa: BLE001 -- the cache is a shortcut; the live call still works
+        log.warning("stock_refresh.panel_cache_unreadable")
+        return {}
+    for row in rows:
+        if (str(row.supplier_slug), str(row.parent_external_id)) not in wanted:
+            continue
+        bucket = out.setdefault(f"{row.supplier_slug}:{row.parent_external_id}", {})
+        if bucket is not None:
+            bucket[str(row.external_id)] = row.raw or {}
+    return out
 
 
 def _g2b_client() -> Any | None:
