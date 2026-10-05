@@ -115,6 +115,11 @@ x-app-env: &app-env
   # USD-equivalent threshold for the proactive "supplier wallet running
   # out" warning the scheduler dispatches every tick. 0 disables it.
   SUPPLIER_LOW_BALANCE_THRESHOLD: ${SUPPLIER_LOW_BALANCE_THRESHOLD:-50}
+  # P2P card-transfer intake (ADR-0094) and the storefront method on top of
+  # it (ADR-0097). Empty leaves the ``p2p`` gateway ``available=false``, so
+  # «Перевод на карту» never shows at checkout; set any value in .env to see
+  # the flow locally (the dev DB also needs a card and a pinned connection).
+  P2P_WEBHOOK_SECRET: ${P2P_WEBHOOK_SECRET:-}
   # --- media storage (Cloudflare R2, S3-compatible) ---
   # Brand/product/SKU images are presigned for direct browser upload. Without
   # these the admin "upload image" call 500s (R2 credentials not configured).
