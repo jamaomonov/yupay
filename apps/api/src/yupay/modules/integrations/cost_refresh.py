@@ -215,6 +215,35 @@ async def _lookup_price(
     return await _nova_raw_price(db, mapping, offers_cache=nova_offers_cache)
 
 
+async def quote_mapping(
+    db: AsyncSession, mapping: SkuSupplierMapping
+) -> tuple[Decimal | None, str | None]:
+    """What ``mapping``'s supplier charges right now — read-only.
+
+    The same lookup :func:`refresh_sku_cost_for_mapping` runs, without any of
+    its writes: no history row, no ``Sku.cost_usdt``. For a screen that asks
+    "who is cheapest for this one line" (the fulfilment inbox's supplier
+    switch) and must not move a price by asking.
+
+    Returns:
+        ``(cost_usdt, None)`` on a usable price, ``(None, reason)`` otherwise.
+        Never raises.
+    """
+    if not supports_price_collection(mapping.supplier_slug):
+        return None, "цены этого поставщика не собираются"
+    try:
+        lookup = await _lookup_price(db, mapping, nova_offers_cache=None)
+    except Exception as exc:  # noqa: BLE001 -- a quote is advisory; a fault is a reason, not a 500
+        return None, str(exc)[:120]
+    if lookup.reason is not None:
+        return None, lookup.reason
+    try:
+        cost = Decimal(str(lookup.amount))
+    except (InvalidOperation, ValueError):
+        return None, "непарсимая цена"
+    return (cost, None) if cost > 0 else (None, "цена ≤ 0")
+
+
 async def refresh_sku_cost_for_mapping(  # noqa: PLR0911 -- discriminated outcome reads clearer than nested branches
     db: AsyncSession,
     *,

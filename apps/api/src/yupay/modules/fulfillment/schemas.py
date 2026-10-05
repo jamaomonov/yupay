@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -231,3 +232,27 @@ __all__ = [
     "ManualFailIn",
     "TaskStatus",
 ]
+
+
+class ReassignOptionOut(BaseModel):
+    """One supplier the task's SKU is mapped to, with what it charges now."""
+
+    supplier: str
+    #: The supplier's live price for this SKU, in USDT; ``None`` with a
+    #: ``cost_reason`` when it could not be quoted.
+    cost_usdt: Decimal | None
+    cost_reason: str | None
+    #: Units the supplier reports in stock (``None``: untracked / unknown).
+    stock: int | None
+    #: A reserve supplier (ADR-0081) — routed only by hand.
+    reserve: bool
+
+
+class ReassignOptionsOut(BaseModel):
+    """Body of ``GET /admin/fulfillment/tasks/{id}/reassign-options``."""
+
+    sku_id: str
+    sku_code: str
+    #: What the customer paid per unit, to read each option's margin against.
+    price_usd: Decimal
+    options: list[ReassignOptionOut]

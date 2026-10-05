@@ -446,6 +446,7 @@ GET  /api/v1/admin/fulfillment/tasks               — admin
 GET  /api/v1/admin/fulfillment/tasks/{id}          — admin detail + attempts
 POST /api/v1/admin/fulfillment/tasks/{id}/retry    — admin перезапуск failed
 POST /api/v1/admin/fulfillment/tasks/{id}/cancel   — admin отмена pending/failed
+GET  /api/v1/admin/fulfillment/tasks/{id}/reassign-options — admin: куда можно перевести (только с маппингом) + живая цена
 POST /api/v1/admin/fulfillment/tasks/{id}/reassign — admin: перевести failed/pending на другого поставщика и запустить
 POST /api/v1/admin/fulfillment/tasks/{id}/complete — manual: создать Delivery, завершить
 POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить как failed с причиной
@@ -465,6 +466,19 @@ POST /api/v1/admin/fulfillment/tasks/{id}/fail     — manual: отметить 
 `integrations.models`). Переключение пишется в лог попыток как `route_switch`
 с `from` / `reason=admin_reassign` / `admin_id` — тем же ключом, что и складской
 фолбэк, так что задача, сменившая руки, читается одинаково, кто бы её ни двигал.
+
+### Куда переводить и почём (`/reassign-options`)
+
+Инбокс не предлагает «всех внешних поставщиков» — большинство из них не имеет
+маппинга на конкретный SKU, и выбор такого заканчивался 409. `GET
+/tasks/{id}/reassign-options` (`reassign_options.py`) отдаёт ровно тех, кого
+примет `reassign_task`: активный, не снятый watchdog'ом маппинг на SKU строки,
+поставщик из реестра, не склад, не ручная очередь и не текущий. Каждого
+спрашивает о цене **только на чтение** (`cost_refresh.quote_mapping` — тот же
+lookup, что часовой пересчёт, без записи истории и `Sku.cost_usdt`), добавляет
+наличие из кэша каталога и отметку «резерв», сортирует от дешёвого. Не смогли
+спросить — поставщик остаётся в списке с `cost_reason`, а не исчезает. Админка
+показывает цену и маржу против цены продажи строки, дешёвый выбран по умолчанию.
 
 ## Ручная выдача (`supplier="manual"`)
 

@@ -46,6 +46,16 @@ function makeFailed(over: Partial<TaskAdminOut> = {}): TaskAdminOut {
 function renderTab(tasks: TaskAdminOut[]) {
   mockedApiGet.mockImplementation((path: string) => {
     if (path.includes("/attempts")) return Promise.resolve({ items: [], total: 0 });
+    if (path.includes("/reassign-options")) {
+      return Promise.resolve({
+        sku_id: "s1",
+        sku_code: "x",
+        price_usd: "1.00",
+        options: [
+          { supplier: "g2b", cost_usdt: "0.90", cost_reason: null, stock: null, reserve: false },
+        ],
+      });
+    }
     return Promise.resolve({ items: tasks, total: tasks.length });
   });
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -72,7 +82,7 @@ it("offers the supplier switch on the tab the failure is reported on", async () 
   // The panel's own control, not merely a link somewhere else. The row
   // action is named differently from the panel's confirm button on purpose:
   // two buttons reading "Сменить поставщика" on one screen is a coin toss.
-  await screen.findByLabelText("Новый поставщик");
+  await screen.findByRole("radiogroup", { name: "Новый поставщик" });
 });
 
 it("moves the task onto the chosen supplier", async () => {
@@ -80,7 +90,7 @@ it("moves the task onto the chosen supplier", async () => {
   renderTab([makeFailed()]);
 
   fireEvent.click(await screen.findByRole("button", { name: "Другой поставщик" }));
-  await screen.findByLabelText("Новый поставщик");
+  await screen.findByRole("radiogroup", { name: "Новый поставщик" });
   fireEvent.click(screen.getByRole("button", { name: "Сменить поставщика" }));
 
   await waitFor(() => {

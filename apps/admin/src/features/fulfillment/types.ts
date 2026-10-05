@@ -72,3 +72,20 @@ export interface DeliveryOut {
 export interface DeliveryListOut {
   items: DeliveryOut[];
 }
+
+/** One supplier a task can move onto, with what it charges now. */
+export interface ReassignOptionOut {
+  supplier: string;
+  cost_usdt: string | null;
+  cost_reason: string | null;
+  stock: number | null;
+  reserve: boolean;
+}
+
+/** `GET /admin/fulfillment/tasks/{id}/reassign-options`. */
+export interface ReassignOptionsOut {
+  sku_id: string;
+  sku_code: string;
+  price_usd: string;
+  options: ReassignOptionOut[];
+}

@@ -16097,6 +16097,95 @@
         "title": "RatesOut",
         "type": "object"
       },
+      "ReassignOptionOut": {
+        "description": "One supplier the task's SKU is mapped to, with what it charges now.",
+        "properties": {
+          "cost_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Reason"
+          },
+          "cost_usdt": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usdt"
+          },
+          "reserve": {
+            "title": "Reserve",
+            "type": "boolean"
+          },
+          "stock": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stock"
+          },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          }
+        },
+        "required": [
+          "supplier",
+          "cost_usdt",
+          "cost_reason",
+          "stock",
+          "reserve"
+        ],
+        "title": "ReassignOptionOut",
+        "type": "object"
+      },
+      "ReassignOptionsOut": {
+        "description": "Body of ``GET /admin/fulfillment/tasks/{id}/reassign-options``.",
+        "properties": {
+          "options": {
+            "items": {
+              "$ref": "#/components/schemas/ReassignOptionOut"
+            },
+            "title": "Options",
+            "type": "array"
+          },
+          "price_usd": {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Price Usd",
+            "type": "string"
+          },
+          "sku_code": {
+            "title": "Sku Code",
+            "type": "string"
+          },
+          "sku_id": {
+            "title": "Sku Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "sku_id",
+          "sku_code",
+          "price_usd",
+          "options"
+        ],
+        "title": "ReassignOptionsOut",
+        "type": "object"
+      },
       "ReassignTaskIn": {
         "additionalProperties": false,
         "description": "Body of ``POST /admin/fulfillment/tasks/{id}/reassign``.",
@@ -27327,6 +27416,65 @@
           }
         },
         "summary": "Move a failed / pending task to another supplier and run it there \u2014 for when the routed supplier errored or our balance with it ran dry",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
+    "/api/v1/admin/fulfillment/tasks/{task_id}/reassign-options": {
+      "get": {
+        "description": "Only the suppliers mapped for the line's SKU, cheapest first.\n\nCalls the suppliers' price lookups from the handler \u2014 an operator-\ntriggered admin read off the order/payment path, the same carve-out as\nthe admin catalogue reads (AGENTS.md \u00a710), bounded by the SKU's own\nmappings (rarely more than three).",
+        "operationId": "admin_reassign_options_api_v1_admin_fulfillment_tasks__task_id__reassign_options_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReassignOptionsOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Suppliers this task can move onto, each with its live price",
         "tags": [
           "admin:fulfillment"
         ]

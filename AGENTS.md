@@ -352,7 +352,10 @@ yupay/
   shape in its own docstring — `POST`, operator-triggered from the mapping wizard, off the
   order/payment/fulfilment path — and the same shape covers three pre-existing siblings
   never added to that list either: `POST /{supplier}/sync-catalog`, `POST /g2b/import`, and
-  the live `GET /g2b/games/{code}/catalogue` and `/fields`.
+  the live `GET /g2b/games/{code}/catalogue` and `/fields`. The same shape covers
+  `GET /admin/fulfillment/tasks/{id}/reassign-options` (2026-10-05): opened by an
+  operator on one failed task, it quotes that line's mapped suppliers read-only
+  (`cost_refresh.quote_mapping`) — rarely more than three calls, and nothing is written.
 - Cache reads in Redis with explicit TTLs; tag-based invalidation. **Every cache key is
   documented in `docs/architecture/cache-keys.md`.**
 - DB indices are added in the same migration as the query that needs them.

@@ -25,6 +25,7 @@ from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.security import email_hash
 from yupay.modules.fulfillment import service as svc
 from yupay.modules.fulfillment.models import Delivery, FulfillmentTask
+from yupay.modules.fulfillment.reassign_options import reassign_options
 from yupay.modules.fulfillment.schemas import (
     AttemptAdminListOut,
     AttemptAdminOut,
@@ -39,6 +40,7 @@ from yupay.modules.fulfillment.schemas import (
     FulfillmentTaskOut,
     ManualCompleteIn,
     ManualFailIn,
+    ReassignOptionsOut,
     ReassignTaskIn,
 )
 from yupay.modules.notifications.service import resend_guest_delivery_email
@@ -352,6 +354,26 @@ async def admin_cancel_task(
     if key is not None:
         await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
     return out
+
+
+@admin_router.get(
+    "/tasks/{task_id}/reassign-options",
+    response_model=ReassignOptionsOut,
+    summary="Suppliers this task can move onto, each with its live price",
+)
+async def admin_reassign_options(
+    task_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> ReassignOptionsOut:
+    """Only the suppliers mapped for the line's SKU, cheapest first.
+
+    Calls the suppliers' price lookups from the handler — an operator-
+    triggered admin read off the order/payment path, the same carve-out as
+    the admin catalogue reads (AGENTS.md §10), bounded by the SKU's own
+    mappings (rarely more than three).
+    """
+    return ReassignOptionsOut.model_validate(await reassign_options(db, task_id=task_id))
 
 
 @admin_router.post(
