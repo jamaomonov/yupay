@@ -202,6 +202,7 @@ function CheckablePlayerField({
   check,
   onCheckResult,
   siblingHint,
+  autoCheck,
   t,
 }: {
   brandSlug: string;
@@ -211,6 +212,12 @@ function CheckablePlayerField({
   pattern?: string | null | undefined;
   required: boolean;
   serverId: string | null;
+  /** Press «Проверить» once by itself, as soon as the field can be checked.
+   *  Set for a value that arrived with the page (the home page's hand-off):
+   *  the customer typed it already and pressing the button again was the
+   *  one step the hand-off still left them. Never re-fires — a retyped id
+   *  is checked by hand, as always. */
+  autoCheck: boolean;
   /** The sibling server field's own label (e.g. "ID сервера"), present only
    *  when `check.server_field` names one — doubles as "server is required
    *  for this check" and as the text for the "fill it in first" hint below. */
@@ -315,6 +322,17 @@ function CheckablePlayerField({
       setAsking((current) => (current === asked ? null : current));
     }
   }
+  // The hand-off's one automatic press. A ref, not state: it must survive
+  // the re-render the press itself causes, and must never fire twice.
+  const autoFired = useRef(false);
+  useEffect(() => {
+    if (!autoCheck || autoFired.current || blocker !== null || check !== null) return;
+    autoFired.current = true;
+    void onCheck();
+    // `onCheck` is a closure over this render's `value`/`serverId`; the
+    // dependencies that matter are the ones that decide whether it may fire.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoCheck, blocker, check]);
   function edit(): void {
     // Explicitly drops the verdict rather than leaning on the id changing:
     // the customer is about to retype, and until they do the id is unchanged,
@@ -1052,13 +1070,29 @@ export function PurchasePanel({
   // A hand-off from a link (the home page's Steam form): seeds the fields and
   // amount it names, once, on arrival. Read from `window` rather than
   // `useSearchParams`, which would opt this ISR page into dynamic rendering.
+  // The fields it seeded are checked by themselves (`autoCheck`), and the
+  // page lands on the order form rather than at its top: the customer has
+  // already filled the form once, on the home page, and the only thing left
+  // for them here is to pay.
+  const [handedOff, setHandedOff] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
     const seed = prefillFromQuery(
       new URLSearchParams(window.location.search),
       products[0]?.required_fields ?? [],
     );
-    if (Object.keys(seed.fields).length > 0) setForm((s) => ({ ...seed.fields, ...s }));
+    const keys = Object.keys(seed.fields);
+    if (keys.length > 0) {
+      setForm((s) => ({ ...seed.fields, ...s }));
+      setHandedOff(new Set(keys));
+    }
     if (seed.amount !== null) setAmountInput((v) => (v === "" ? (seed.amount ?? "") : v));
+    if (keys.length > 0 || seed.amount !== null) {
+      // After the frame that paints the seeded form, so the browser's own
+      // scroll restoration (which runs at navigation) does not undo it.
+      requestAnimationFrame(() => {
+        asideRef.current?.scrollIntoView({ block: "start" });
+      });
+    }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps -- once, on arrival
   const [methodId, setMethodId] = useState<string>(METHODS[0]?.id ?? "click");
   // Admin-controlled provider availability (`GET /payments/providers`). `null`
@@ -1210,8 +1244,14 @@ export function PurchasePanel({
   };
 
   // Typed amount is per-SKU — clear it on a selection switch so a leftover
-  // "10" from a previous variable-amount SKU never bleeds into the next.
+  // "10" from a previous variable-amount SKU never bleeds into the next. On a
+  // *switch* only: this effect is declared after the hand-off one above and
+  // so ran after it on mount, wiping the amount the home page had just
+  // seeded — the customer typed $10 twice and nobody could say why.
+  const amountSkuId = useRef(skuId);
   useEffect(() => {
+    if (amountSkuId.current === skuId) return;
+    amountSkuId.current = skuId;
     setAmountInput("");
   }, [skuId]);
 
@@ -1958,6 +1998,7 @@ export function PurchasePanel({
                         setCheckResults((prev) => ({ ...prev, [f.key]: verdict }));
                       }}
                       siblingHint={siblingHint}
+                      autoCheck={handedOff.has(f.key)}
                       t={t}
                     />
                   ) : (

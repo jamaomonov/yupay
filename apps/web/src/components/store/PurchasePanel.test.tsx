@@ -1498,3 +1498,68 @@ it("points a not-found id at the other region when the brand has one", async () 
     expect.stringContaining("/store/mobile-legends-ru"),
   );
 });
+
+it("a hand-off from the home page fills the amount, checks the login itself and lands on the form", async () => {
+  // The home page's Steam form sends `?steam_login=…&amount=…`. The amount
+  // used to arrive and then be wiped by the per-SKU reset on mount, the
+  // login sat unchecked behind «Проверить», and the page opened at its top —
+  // three things the customer had to redo after already filling the form once.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const check = vi
+    .spyOn(playerCheck, "checkPlayer")
+    .mockResolvedValue({ status: "valid", name: "Neo" });
+  const scroll = vi.fn();
+  Element.prototype.scrollIntoView = scroll;
+  window.history.replaceState({}, "", "/ru/store/steam?steam_login=neo_1&amount=10");
+  try {
+    const base = makeProduct();
+    const steam: ProductDetail = {
+      ...base,
+      required_fields: [
+        {
+          key: "steam_login",
+          label: { ru: "Логин Steam" },
+          type: "text",
+          required: true,
+          pattern: "^[A-Za-z0-9_-]{3,64}$",
+          check: { server_field: null },
+        },
+      ],
+      skus: [
+        {
+          ...base.skus[0]!,
+          variable_amount: true,
+          amount_unit: null,
+          units_per_usd: null,
+          min_amount_usd: "1",
+          max_amount_usd: "300",
+        },
+      ],
+    };
+    renderPanel(<PurchasePanel products={[steam]} locale="ru" />);
+
+    expect(screen.getByLabelText("amountOwn")).toHaveValue("10");
+    expect(await screen.findByText(/Neo/)).toBeInTheDocument();
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(check.mock.calls[0]?.[1]).toMatchObject({ playerId: "neo_1" });
+    await waitFor(() => {
+      expect(scroll).toHaveBeenCalled();
+    });
+  } finally {
+    window.history.replaceState({}, "", "/");
+  }
+});
+
+it("does not check by itself when nothing was handed off", async () => {
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const check = vi
+    .spyOn(playerCheck, "checkPlayer")
+    .mockResolvedValue({ status: "valid", name: "Neo" });
+  renderPanel(
+    <PurchasePanel products={[{ ...makeProduct(), required_fields: MLBB_FIELDS }]} locale="ru" />,
+  );
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Click" })).not.toBeDisabled();
+  });
+  expect(check).not.toHaveBeenCalled();
+});

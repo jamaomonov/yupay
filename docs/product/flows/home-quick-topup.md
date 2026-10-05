@@ -25,7 +25,11 @@ page; nothing is charged on the home page.
 - **Hand-off:** `/store/steam?steam_login=…&amount=…` or
   `/store/telegram-stars?username=…&amount=…`. `PurchasePanel` reads it once on arrival
   (`prefillFromQuery`): only the product's own fields, only values their pattern accepts,
-  never over what the buyer already typed. The recipient is checked and the order paid
+  never over what the buyer already typed. A seeded recipient is checked by itself
+  (`autoCheck`, one press, never again), the seeded amount survives the per-SKU reset
+  that used to wipe it on mount, and the page lands on the order form instead of its
+  top (2026-10-05 — the buyer had been retyping the amount and pressing «Проверить»
+  after already filling the form once). The order is then paid
   there, as for any buyer.
 
 ```mermaid
@@ -38,8 +42,9 @@ sequenceDiagram
     H-->>B: price in soʻm (SKU rate × amount)
     B->>H: «Пополнить» / «Купить Stars»
     H->>S: ?<field>=…&amount=…
-    S->>S: prefillFromQuery → fields + amount
-    B->>S: check the recipient, then pay
+    S->>S: prefillFromQuery → fields + amount, scroll to the form
+    S->>A: player check (automatic, once)
+    B->>S: pay
     S->>A: player check, order, payment (unchanged)
 ```
 
