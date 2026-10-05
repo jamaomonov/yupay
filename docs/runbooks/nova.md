@@ -826,7 +826,7 @@ section it was created eight seconds past our 20 s timeout
 (`nova_request_timeout_seconds`). That is why the search runs on every poll
 rather than once at create time.
 
-**After `ADOPT_WINDOW_MINUTES` (30) with nothing found**, the task fails with
+**After `ADOPT_WINDOW_MINUTES` (30) with nothing found**, the task fails (since 2026-10-05 it really lands in `failed` and the inbox — before that the give-up was a raise the poller only logged, and the task stayed `in_progress`) with
 a message pointing here. By then a landed create would be findable, so its
 absence is evidence the create never happened — evidence, not proof, which is
 why the money outcome stays `UNKNOWN` rather than `RETURNED`. A wrong

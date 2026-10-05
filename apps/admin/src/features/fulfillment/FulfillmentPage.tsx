@@ -125,6 +125,23 @@ export function FulfillmentPage() {
     },
   });
 
+  // «Отменить» is terminal, and it used to be a dead end: a task cancelled
+  // by mistake — or to stop one supplier before choosing another — left a
+  // paid order nothing could deliver. Reopening lands it in failed, where
+  // Retry and «Сменить поставщика» apply again; nothing runs by itself.
+  const reopenMutation = useMutation<TaskAdminOut, ApiError, string>({
+    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${id}/reopen`, {}),
+    onSuccess: () => {
+      toast.success("Задача переоткрыта — теперь её можно повторить или перевести.");
+      void qc.invalidateQueries({
+        queryKey: ["admin", "fulfillment"],
+      });
+    },
+    onError: (err) => {
+      toast.error(formatApiError(err));
+    },
+  });
+
   // Resolved from the page in hand rather than refetched: the row is already
   // loaded, and a selection can only point at something on this page.
   const selectedTask = (tasksQuery.data?.items ?? []).find((t) => t.id === expanded) ?? null;
@@ -209,6 +226,17 @@ export function FulfillmentPage() {
               }}
             >
               Cancel
+            </Button>
+          )}
+          {t.status === "cancelled" && (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                reopenMutation.mutate(t.id);
+              }}
+            >
+              Переоткрыть
             </Button>
           )}
         </div>

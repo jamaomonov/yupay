@@ -544,10 +544,20 @@ class NovaFulfiller(Fulfiller):
                 error=None,
                 money_outcome=None,
             )
-        raise FulfillerError(
-            "nova create was lost and no matching order appeared in "
-            f"{ADOPT_WINDOW_MINUTES} minutes — check NOVA's panel before retrying "
-            "(docs/runbooks/nova.md)",
+        # A *status*, not a raise: the reconciler fails the task on a failed
+        # status — ``failed``, inbox, money recorded — but only logs a raise
+        # and polls again. Raised, this left a task ``in_progress`` for ever
+        # with an alert every six hours and no Retry button (prod,
+        # 2026-10-05); the gifts adapter had it right.
+        return FulfillStatus(
+            outcome="failed",
+            artifact_kind=None,
+            artifact=None,
+            error=(
+                "nova create was lost and no matching order appeared in "
+                f"{ADOPT_WINDOW_MINUTES} minutes — check NOVA's panel before retrying "
+                "(docs/runbooks/nova.md)"
+            ),
             money_outcome=_MAY_HAVE_SPENT,
         )
 

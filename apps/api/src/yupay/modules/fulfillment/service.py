@@ -2210,6 +2210,66 @@ async def cancel_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     return task
 
 
+async def reopen_task(db: AsyncSession, *, task_id: str, admin_id: str) -> FulfillmentTask:
+    """Admin-triggered reopening of a ``cancelled`` task, as ``failed``.
+
+    «Отменить» is terminal — ``retry_task``, ``reassign_task`` and
+    ``complete_manual_task`` all refuse a cancelled task, and
+    ``start_for_order`` sees the existing row and plans nothing new — so an
+    operator who cancelled by mistake, or cancelled to stop one supplier and
+    then wanted another, had an order the customer paid for and no button
+    that could deliver it (prod, 2026-10-05: a lost fzr create, cancelled
+    instead of failed, fixed by hand in the database).
+
+    Reopens into ``failed``, never ``pending``: the task then sits in the
+    inbox where Retry / Reassign / manual completion apply, and nothing runs
+    until the operator says which. Refused unless the order is still
+    ``paid`` or ``fulfilling`` — a refunded or cancelled order has nothing
+    left to deliver against — and, for a merchant order, unless the deposit
+    is still debited (same guard as a retry).
+
+    Args:
+        db: Session; the row is locked for the state check.
+        task_id: The cancelled task.
+        admin_id: Who reopened it, for the attempt log.
+
+    Returns:
+        The task, now ``failed``.
+
+    Raises:
+        ConflictError: the task is not ``cancelled``, or the order is no
+            longer deliverable.
+    """
+    task = await _load_task(db, task_id, for_update=True)
+    if task.status != "cancelled":
+        raise ConflictError(
+            "only a cancelled task can be reopened",
+            extra={"status": task.status},
+        )
+    order = (await db.execute(select(Order).where(Order.id == task.order_id))).scalar_one()
+    if order.status not in ("paid", "fulfilling"):
+        raise ConflictError(
+            "the order is no longer deliverable",
+            extra={"order_status": order.status},
+        )
+    await _refuse_a_settled_merchant_order(db, task=task)
+
+    task.status = "failed"
+    task.failed_at = now()
+    task.cancelled_at = None
+    task.last_error = "reopened by admin after cancel"
+    task.updated_at = now()
+    await _record_attempt(
+        db,
+        task=task,
+        kind="reopen",
+        status="ok",
+        payload={"supplier": task.supplier, "admin_id": admin_id},
+    )
+    await db.flush()
+    return task
+
+
 async def cancel_open_tasks_for_order(
     db: AsyncSession, *, order_id: str, reason: str
 ) -> list[FulfillmentTask]:

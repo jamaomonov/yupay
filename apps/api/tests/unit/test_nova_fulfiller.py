@@ -412,14 +412,17 @@ async def test_an_id_less_task_gives_up_once_the_window_closes(
         created_at=datetime.now(UTC) - timedelta(minutes=ADOPT_WINDOW_MINUTES + 1),
     )
 
-    with pytest.raises(FulfillerError) as excinfo:
-        await _fulfiller(_FakeClient(), monkeypatch).check_status(
-            db=cast(Any, _NoLineDB()),
-            task=task,  # type: ignore[arg-type]
-        )
+    status = await _fulfiller(_FakeClient(), monkeypatch).check_status(
+        db=cast(Any, _NoLineDB()),
+        task=task,  # type: ignore[arg-type]
+    )
 
-    assert excinfo.value.money_outcome is MoneyOutcome.UNKNOWN
-    assert "nova.md" in str(excinfo.value)
+    # A failed *status*, not a raise: the reconciler fails the task on the
+    # former and only logs the latter, which left a task in_progress for ever.
+    assert status.outcome == "failed"
+    assert status.money_outcome is MoneyOutcome.UNKNOWN
+    assert status.error is not None
+    assert "nova.md" in status.error
 
 
 class _LineDB:

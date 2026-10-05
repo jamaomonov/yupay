@@ -27492,6 +27492,80 @@
         ]
       }
     },
+    "/api/v1/admin/fulfillment/tasks/{task_id}/reopen": {
+      "post": {
+        "operationId": "admin_reopen_task_api_v1_admin_fulfillment_tasks__task_id__reopen_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "task_id",
+            "required": true,
+            "schema": {
+              "title": "Task Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FulfillmentTaskOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Reopen a cancelled task as failed \u2014 back into the inbox, where Retry, Reassign and manual completion apply; nothing runs until one is pressed",
+        "tags": [
+          "admin:fulfillment"
+        ]
+      }
+    },
     "/api/v1/admin/fulfillment/tasks/{task_id}/retry": {
       "post": {
         "operationId": "admin_retry_task_api_v1_admin_fulfillment_tasks__task_id__retry_post",

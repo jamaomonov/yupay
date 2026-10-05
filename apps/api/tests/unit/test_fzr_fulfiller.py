@@ -569,14 +569,18 @@ async def test_an_id_less_task_past_the_window_fails_undecided_on_the_money(
         return None
 
     monkeypatch.setattr(mod, "_adopt_key_for", _no_key)
-    with pytest.raises(FulfillerError) as exc:
-        await _fulfiller(_FakeClient(), monkeypatch).check_status(
-            db=None,  # type: ignore[arg-type]
-            task=_task(external_order_id=None, created_at=datetime.now(UTC) - timedelta(hours=2)),
-        )
+    status = await _fulfiller(_FakeClient(), monkeypatch).check_status(
+        db=None,  # type: ignore[arg-type]
+        task=_task(external_order_id=None, created_at=datetime.now(UTC) - timedelta(hours=2)),
+    )
 
-    assert exc.value.money_outcome is MoneyOutcome.UNKNOWN
-    assert "docs/runbooks/fzr.md" in str(exc.value)
+    # A failed *status*, not a raise: the reconciler fails the task on the
+    # former (inbox, Retry, money recorded) and only logs the latter — which
+    # left a prod task in_progress for ever on 2026-10-05.
+    assert status.outcome == "failed"
+    assert status.money_outcome is MoneyOutcome.UNKNOWN
+    assert status.error is not None
+    assert "docs/runbooks/fzr.md" in status.error
 
 
 async def test_an_id_less_task_adopts_the_order_it_paid_for(

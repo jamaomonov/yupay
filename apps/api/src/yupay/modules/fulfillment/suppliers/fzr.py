@@ -443,10 +443,20 @@ class FzrFulfiller(Fulfiller):
                 error=None,
                 money_outcome=None,
             )
-        raise FulfillerError(
-            "fzr create was lost and no matching order appeared in "
-            f"{ADOPT_WINDOW_MINUTES} minutes — check their panel before retrying "
-            "(docs/runbooks/fzr.md)",
+        # A *status*, not a raise: the reconciler fails the task on a failed
+        # status — ``failed``, inbox, money recorded — but only logs a raise
+        # and polls again. Raised, this left a task ``in_progress`` for ever
+        # with an alert every six hours and no Retry button (prod,
+        # 2026-10-05); the gifts adapter had it right.
+        return FulfillStatus(
+            outcome="failed",
+            artifact_kind=None,
+            artifact=None,
+            error=(
+                "fzr create was lost and no matching order appeared in "
+                f"{ADOPT_WINDOW_MINUTES} minutes — check their panel before retrying "
+                "(docs/runbooks/fzr.md)"
+            ),
             money_outcome=_MAY_HAVE_SPENT,
         )
 

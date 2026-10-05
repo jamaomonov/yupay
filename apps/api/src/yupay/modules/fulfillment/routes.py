@@ -377,6 +377,34 @@ async def admin_reassign_options(
 
 
 @admin_router.post(
+    "/tasks/{task_id}/reopen",
+    response_model=FulfillmentTaskOut,
+    status_code=status.HTTP_200_OK,
+    summary=(
+        "Reopen a cancelled task as failed — back into the inbox, where Retry, "
+        "Reassign and manual completion apply; nothing runs until one is pressed"
+    ),
+)
+async def admin_reopen_task(
+    task_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+    idempotency_key: Annotated[str | None, Header(alias=IDEMPOTENCY_HEADER)] = None,
+) -> FulfillmentTaskOut:
+    key = normalize_idempotency_key(idempotency_key)
+    scope = "fulfillment.reopen_task"
+    if key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=key)
+        if cached is not None:
+            return FulfillmentTaskOut.model_validate(cached.body)
+    task = await svc.reopen_task(db, task_id=task_id, admin_id=admin.id)
+    out = FulfillmentTaskOut.model_validate(task)
+    if key is not None:
+        await save_replay(db, scope=scope, idempotency_key=key, body=out.model_dump(mode="json"))
+    return out
+
+
+@admin_router.post(
     "/tasks/{task_id}/reassign",
     response_model=FulfillmentTaskOut,
     status_code=status.HTTP_200_OK,
