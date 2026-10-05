@@ -8,6 +8,7 @@ import { Fragment, useEffect, useState } from "react";
 
 import type { OrderDetail } from "@/lib/types";
 
+import { BrandMark } from "@/components/BrandMark";
 import { CopyButton } from "@/components/CopyButton";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
@@ -58,10 +59,13 @@ export default function OrderDetailPage() {
 
       {order !== null && (
         <>
-          <h1 className="mt-4 break-words text-2xl font-semibold tracking-tight">
-            {/* «Заказ», singular — this screen is one order, not the list. */}
-            {orderTitle(order, t("colOrder"))}
-          </h1>
+          <div className="mt-4 flex items-center gap-3">
+            <BrandMark name={order.brand_name} logoUrl={order.brand_logo_url} />
+            <h1 className="min-w-0 break-words text-2xl font-semibold tracking-tight">
+              {/* «Заказ», singular — this screen is one order, not the list. */}
+              {orderTitle(order, t("colOrder"))}
+            </h1>
+          </div>
           {!order.merchant_order_id.startsWith("manual-") && (
             <p className="text-tx-dim mt-1 text-xs">
               {t("idLabel")}: {order.merchant_order_id}

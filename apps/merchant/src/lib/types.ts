@@ -113,6 +113,8 @@ export interface OrderRow {
   sku_name: string | null;
   /** The brand's name, localized. `null` under the same condition as `sku_name`. */
   brand_name: string | null;
+  /** The brand's logo for the mark beside the name; `null` where none is uploaded. */
+  brand_logo_url: string | null;
   price_usd: string;
   refunded_usd: string;
   created_at: string;
@@ -156,6 +158,7 @@ export interface OrderDetail {
   sku_name: string | null;
   /** See `OrderRow.brand_name`. */
   brand_name: string | null;
+  brand_logo_url: string | null;
   price_usd: string;
   refunded_usd: string;
   created_at: string;
@@ -178,6 +181,9 @@ export interface Transaction {
   /** The operator's note on a manual credit or debit; `null` on everything
    *  the system posts by itself. */
   description: string | null;
+  /** «Brand · denomination» of the order this row paid for; `null` without an order. */
+  order_title: string | null;
+  brand_logo_url: string | null;
   created_at: string;
 }
 

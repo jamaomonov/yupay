@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 
 import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
+import { BrandMark } from "@/components/BrandMark";
 import { useCabinet } from "@/components/CabinetContext";
 import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
@@ -174,28 +175,31 @@ export default function Dashboard() {
                     locale,
                     `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
                   )}
-                  className="hover:bg-card-2 -mx-2 block rounded-lg px-2 py-1.5"
+                  className="hover:bg-card-2 -mx-2 flex items-start gap-3 rounded-lg px-2 py-1.5"
                 >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <span className="min-w-0 truncate font-medium">
-                      {orderTitle(row, tOrders("colOrder"))}
-                    </span>
-                    <span className="shrink-0 font-mono text-xs">
-                      ${formatUsd(toCents(row.price_usd))}
-                    </span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-xs">
-                    <span
-                      className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(row.status)}`}
-                    >
-                      {orderStatusLabel(row.status, tOrders)}
-                    </span>
-                    <span className="text-tx-dim truncate">
-                      {formatMoment(row.created_at, locale)}
-                      {row.merchant_order_id.startsWith("manual-")
-                        ? ""
-                        : ` · ${row.merchant_order_id}`}
-                    </span>
+                  <BrandMark name={row.brand_name} logoUrl={row.brand_logo_url} size="sm" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-baseline justify-between gap-3">
+                      <span className="min-w-0 truncate font-medium">
+                        {orderTitle(row, tOrders("colOrder"))}
+                      </span>
+                      <span className="shrink-0 font-mono text-xs">
+                        ${formatUsd(toCents(row.price_usd))}
+                      </span>
+                    </div>
+                    <div className="mt-1 flex items-center gap-2 text-xs">
+                      <span
+                        className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${orderStatusTone(row.status)}`}
+                      >
+                        {orderStatusLabel(row.status, tOrders)}
+                      </span>
+                      <span className="text-tx-dim truncate">
+                        {formatMoment(row.created_at, locale)}
+                        {row.merchant_order_id.startsWith("manual-")
+                          ? ""
+                          : ` · ${row.merchant_order_id}`}
+                      </span>
+                    </div>
                   </div>
                 </Link>
               </li>

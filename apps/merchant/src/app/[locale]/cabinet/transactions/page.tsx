@@ -8,6 +8,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import type { P2PDeposit, P2PDepositsPage, Transaction, TransactionsPage } from "@/lib/types";
 
+import { BrandMark } from "@/components/BrandMark";
 import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/ListSkeleton";
@@ -48,6 +49,42 @@ function runningBalance(balance: string | null, rows: Transaction[], index: numb
     cents -= toCents(row.amount_usd);
   }
   return cents;
+}
+
+/**
+ * What a ledger row paid for: the order's brand mark and title, linked.
+ *
+ * A cabinet order's id is `manual-<digest>` — our mint, not the reseller's
+ * reference — so printing it here read as a column of hashes. The title says
+ * what the money bought; the id is shown only when it is the reseller's own.
+ */
+function OrderCell({ row, locale }: { row: Transaction; locale: string }) {
+  if (row.merchant_order_id === null) {
+    return row.description === null ? (
+      <span className="text-tx-dim">—</span>
+    ) : (
+      <span className="text-tx-mute">{row.description}</span>
+    );
+  }
+  const own = !row.merchant_order_id.startsWith("manual-");
+  return (
+    <Link
+      href={pathFor(locale, `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`)}
+      className="group flex min-w-0 items-center gap-2.5"
+    >
+      <BrandMark name={row.order_title} logoUrl={row.brand_logo_url ?? null} size="sm" />
+      <span className="min-w-0">
+        <span className="block truncate underline-offset-4 group-hover:underline">
+          {row.order_title ?? row.merchant_order_id}
+        </span>
+        {own && row.order_title !== null && (
+          <span className="text-tx-dim block truncate font-mono text-[11px]">
+            {row.merchant_order_id}
+          </span>
+        )}
+      </span>
+    </Link>
+  );
 }
 
 export default function TransactionsList() {
@@ -186,21 +223,9 @@ export default function TransactionsList() {
                     >
                       {transactionKindLabel(row.kind, t)}
                     </span>
-                    <p className="mt-1.5 truncate text-sm">
-                      {row.merchant_order_id === null ? (
-                        <span className="text-tx-mute">{row.description ?? "—"}</span>
-                      ) : (
-                        <Link
-                          href={pathFor(
-                            locale,
-                            `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
-                          )}
-                          className="underline-offset-4 hover:underline"
-                        >
-                          {row.merchant_order_id}
-                        </Link>
-                      )}
-                    </p>
+                    <div className="mt-1.5 text-sm">
+                      <OrderCell row={row} locale={locale} />
+                    </div>
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={`font-mono text-sm font-semibold ${credit ? "text-blue" : ""}`}>
@@ -257,23 +282,7 @@ export default function TransactionsList() {
                           could only ask about by writing to us. The operator
                           already wrote the reason down; it just never left
                           the admin panel. */}
-                      {row.merchant_order_id === null ? (
-                        row.description === null ? (
-                          <span className="text-tx-dim">—</span>
-                        ) : (
-                          <span className="text-tx-mute">{row.description}</span>
-                        )
-                      ) : (
-                        <Link
-                          href={pathFor(
-                            locale,
-                            `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
-                          )}
-                          className="underline-offset-4 hover:underline"
-                        >
-                          {row.merchant_order_id}
-                        </Link>
-                      )}
+                      <OrderCell row={row} locale={locale} />
                     </td>
                     <td
                       className={`whitespace-nowrap px-4 py-3 text-right font-mono ${

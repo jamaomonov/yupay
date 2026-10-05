@@ -4549,6 +4549,17 @@
       "CabinetOrderDetailOut": {
         "description": "``GET /merchant/cabinet/orders/{merchant_order_id}`` \u2014 one order in full.\n\nCarries exactly what ``order_status.read`` returns for the machine API's\ntwin endpoint \u2014 the cabinet and a reseller's own polling still describe\none order the same way \u2014 plus the product identity a screen needs to\ntitle itself with: ``sku_code``, ``sku_name`` and ``brand_name``. Kept as\nits own model rather than growing ``MerchantOrderStatusOut``: that one is\na **frozen third-party contract** (``machine_schemas`` module docstring),\nand a field this browser wants is not a field a reseller's server should\nhave to parse and never see filled in.",
         "properties": {
+          "brand_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Logo Url"
+          },
           "brand_name": {
             "anyOf": [
               {
@@ -4751,6 +4762,17 @@
       "CabinetOrderRowOut": {
         "description": "One line of the Orders list.\n\nMoney comes from the ledger, not from the order line: two of the three SKU\nshapes put a per-unit rate or a face value there and the money elsewhere,\nso a list built off the line would show $0.016537 against an order that\ncost $16.54.",
         "properties": {
+          "brand_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Logo Url"
+          },
           "brand_name": {
             "anyOf": [
               {
@@ -5131,6 +5153,130 @@
           "expires_in"
         ],
         "title": "CabinetTokensOut",
+        "type": "object"
+      },
+      "CabinetTransactionOut": {
+        "description": "A ledger row as the cabinet shows it: the machine row plus what the order was.\n\nA cabinet order's ``merchant_order_id`` is ``manual-<digest>`` \u2014 our mint,\nnot a reseller's reference \u2014 so a statement that printed it beside every\ndebit read as a column of hashes. ``order_title`` (\u00abPUBG Mobile \u00b7 60 UC\u00bb)\nand the brand's mark say what the money bought instead; the id stays in\nthe row for the integrations that do key on it.",
+        "properties": {
+          "amount_usd": {
+            "description": "**Signed**: positive credited the deposit, negative spent it. The column adds up to the balance `GET /merchant/v1/me` reports.",
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "title": "Amount Usd",
+            "type": "string"
+          },
+          "brand_logo_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Brand Logo Url"
+          },
+          "created_at": {
+            "description": "When it was posted, ISO 8601 UTC.",
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why we moved the money, when a person moved it by hand \u2014 the note the operator wrote on a manual credit or debit. `null` on everything the system posts by itself, which is every order charge and every refund: those explain themselves through `order_id`.",
+            "title": "Description"
+          },
+          "kind": {
+            "description": "- `merchant_deposit_credit` \u2014 we credited your deposit.\n- `merchant_deposit_debit` \u2014 we took money back off it. Rare, and `description` says why.\n- `merchant_order_charge` \u2014 an order spent it.\n- `merchant_order_refund` \u2014 we returned a failed order's charge.\n\nMore may be added. Treat an unknown kind as \"some movement\" and trust `amount_usd`.",
+            "title": "Kind",
+            "type": "string"
+          },
+          "merchant_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The same order's id in **your** system, so a statement line reconciles against your books without a second lookup.",
+            "title": "Merchant Order Id"
+          },
+          "order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The order this movement belongs to, if any. Present on credits too \u2014 a settlement booked against a failed order is a credit that names it. `null` means an ordinary prepayment.",
+            "title": "Order Id"
+          },
+          "order_title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Title"
+          },
+          "transaction_id": {
+            "description": "Our id for this ledger entry.",
+            "title": "Transaction Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transaction_id",
+          "kind",
+          "amount_usd",
+          "order_id",
+          "merchant_order_id",
+          "created_at"
+        ],
+        "title": "CabinetTransactionOut",
+        "type": "object"
+      },
+      "CabinetTransactionsOut": {
+        "description": "Body of ``GET /merchant/cabinet/transactions`` \u2014 one page, newest first.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/CabinetTransactionOut"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "CabinetTransactionsOut",
         "type": "object"
       },
       "CabinetWebhookOut": {
@@ -42199,6 +42345,7 @@
     },
     "/merchant/cabinet/transactions": {
       "get": {
+        "description": "The machine ledger page, with each order-bound row told what it bought.\n\nOne extra query per page (``cabinet_orders.order_titles``), never one per\nrow \u2014 the same lookup the orders list already makes.",
         "operationId": "list_transactions_merchant_cabinet_transactions_get",
         "parameters": [
           {
@@ -42249,7 +42396,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/MerchantTransactionsOut"
+                  "$ref": "#/components/schemas/CabinetTransactionsOut"
                 }
               }
             },

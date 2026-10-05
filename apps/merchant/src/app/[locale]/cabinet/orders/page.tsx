@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
+import { BrandMark } from "@/components/BrandMark";
 import { useSearch } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/ListSkeleton";
@@ -161,7 +162,8 @@ export default function OrdersList() {
                   className="block px-4 py-3.5"
                 >
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    <BrandMark name={row.brand_name} logoUrl={row.brand_logo_url} size="sm" />
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-semibold leading-snug">
                         {orderTitle(row, t("colOrder"))}
                       </p>
@@ -221,23 +223,28 @@ export default function OrdersList() {
                 return (
                   <tr key={row.order_id} className="border-border border-b last:border-0">
                     <td className="px-4 py-3">
-                      <Link
-                        href={pathFor(
-                          locale,
-                          `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
-                        )}
-                        className="font-semibold underline-offset-4 hover:underline"
-                      >
-                        {orderTitle(row, t("colOrder"))}
-                      </Link>
-                      {row.recipient && (
-                        <p className="text-tx-mute mt-0.5 break-all font-mono text-xs">
-                          {row.recipient}
-                        </p>
-                      )}
-                      {!row.merchant_order_id.startsWith("manual-") && (
-                        <p className="text-tx-dim mt-0.5 text-xs">{row.merchant_order_id}</p>
-                      )}
+                      <div className="flex items-start gap-3">
+                        <BrandMark name={row.brand_name} logoUrl={row.brand_logo_url} size="sm" />
+                        <div className="min-w-0">
+                          <Link
+                            href={pathFor(
+                              locale,
+                              `/cabinet/orders/${encodeURIComponent(row.merchant_order_id)}`,
+                            )}
+                            className="font-semibold underline-offset-4 hover:underline"
+                          >
+                            {orderTitle(row, t("colOrder"))}
+                          </Link>
+                          {row.recipient && (
+                            <p className="text-tx-mute mt-0.5 break-all font-mono text-xs">
+                              {row.recipient}
+                            </p>
+                          )}
+                          {!row.merchant_order_id.startsWith("manual-") && (
+                            <p className="text-tx-dim mt-0.5 text-xs">{row.merchant_order_id}</p>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="text-tx-dim px-4 py-3 font-mono text-xs">{row.sku_code}</td>
                     <td className="px-4 py-3">

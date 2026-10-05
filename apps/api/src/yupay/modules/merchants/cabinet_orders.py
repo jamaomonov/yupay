@@ -142,7 +142,9 @@ async def build(
 
     items = []
     for order in page:
-        sku_code, sku_name, brand_name = labels.get(order.id, ("", None, None))
+        sku_code, sku_name, brand_name, brand_logo_url = labels.get(
+            order.id, ("", None, None, None)
+        )
         items.append(
             CabinetOrderRowOut(
                 merchant_order_id=order.idempotency_key or "",
@@ -151,6 +153,7 @@ async def build(
                 sku_code=sku_code,
                 sku_name=sku_name,
                 brand_name=brand_name,
+                brand_logo_url=brand_logo_url,
                 # The ledger, not the line: two of the three SKU shapes put a
                 # rate or a face value on the line and the money somewhere
                 # else. Same authority ``_out`` and ``order_status`` read.
@@ -196,7 +199,9 @@ async def read_detail(
     """
     status = await order_status.read(db, merchant=merchant, merchant_order_id=merchant_order_id)
     labels = await _sku_labels(db, [status.order_id], DEFAULT_LOCALE)
-    sku_code, sku_name, brand_name = labels.get(status.order_id, ("", None, None))
+    sku_code, sku_name, brand_name, brand_logo_url = labels.get(
+        status.order_id, ("", None, None, None)
+    )
     fields = (await recipient.recipients_for_orders(db, [status.order_id])).get(status.order_id, [])
     return CabinetOrderDetailOut(
         merchant_order_id=status.merchant_order_id,
@@ -206,6 +211,7 @@ async def read_detail(
         sku_code=sku_code,
         sku_name=sku_name,
         brand_name=brand_name,
+        brand_logo_url=brand_logo_url,
         price_usd=status.price_usd,
         refunded_usd=status.refunded_usd,
         created_at=status.created_at,
@@ -220,8 +226,12 @@ async def read_detail(
 
 async def _sku_labels(
     db: AsyncSession, order_ids: list[str], locale: str
-) -> dict[str, tuple[str, str | None, str | None]]:
-    """A human handle per order, in one query: ``(sku_code, sku_name, brand_name)``.
+) -> dict[str, tuple[str, str | None, str | None, str | None]]:
+    """A human handle per order, in one query: ``(sku_code, sku_name, brand_name, brand_logo_url)``.
+
+    ``brand_logo_url`` rides along so a list of orders can show the brand's
+    mark beside its name — a glance tells a reseller which game a row is
+    before the words do.
 
     Explicit rather than walking ``OrderItem.sku``, which is ``lazy="raise"``
     on purpose — the repo's answer to N+1 is to make the accidental version
@@ -252,7 +262,7 @@ async def _sku_labels(
         locale: Preferred locale for ``brand_name``.
 
     Returns:
-        ``order_id -> (sku_code, sku_name, brand_name)``.
+        ``order_id -> (sku_code, sku_name, brand_name, brand_logo_url)``.
     """
     if not order_ids:
         return {}
@@ -265,6 +275,7 @@ async def _sku_labels(
                 Sku.sku_code,
                 Sku.denomination,
                 func.coalesce(wanted.name, fallback.name),
+                Brand.logo_url,
             )
             .join(Sku, Sku.id == OrderItem.sku_id)
             .join(Product, Product.id == Sku.product_id)
@@ -278,9 +289,26 @@ async def _sku_labels(
         )
     ).all()
     return {
-        order_id: (sku_code, denomination, brand_name)
-        for order_id, sku_code, denomination, brand_name in rows
+        order_id: (sku_code, denomination, brand_name, logo_url)
+        for order_id, sku_code, denomination, brand_name, logo_url in rows
     }
 
 
-__all__ = ["DEFAULT_LOCALE", "FILTERS", "build", "read_detail"]
+async def order_titles(
+    db: AsyncSession, order_ids: list[str]
+) -> dict[str, tuple[str | None, str | None]]:
+    """«Brand · denomination» and the brand's logo per order, for a ledger row.
+
+    The same one-query lookup the lists use; the title is composed the way
+    the cabinet's ``orderTitle`` composes it, so a statement row and the
+    order it links to read the same.
+    """
+    labels = await _sku_labels(db, order_ids, DEFAULT_LOCALE)
+    out: dict[str, tuple[str | None, str | None]] = {}
+    for order_id, (sku_code, sku_name, brand_name, logo) in labels.items():
+        parts = [p for p in (brand_name, sku_name) if p]
+        out[order_id] = (" · ".join(parts) if parts else sku_code or None, logo)
+    return out
+
+
+__all__ = ["DEFAULT_LOCALE", "FILTERS", "build", "order_titles", "read_detail"]

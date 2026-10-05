@@ -58,6 +58,8 @@ from yupay.modules.merchants.cabinet_schemas import (
     CabinetProfileOut,
     CabinetProfilePatchIn,
     CabinetSummaryOut,
+    CabinetTransactionOut,
+    CabinetTransactionsOut,
 )
 from yupay.modules.merchants.machine_schemas import (
     MerchantBrandOut,
@@ -66,7 +68,6 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantOrderOut,
     MerchantPlayerCheckIn,
     MerchantPlayerCheckOut,
-    MerchantTransactionsOut,
 )
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader
 
@@ -322,16 +323,31 @@ async def read_order(merchant_order_id: str, user: CurrentUser, db: Db) -> Cabin
 
 @router.get(
     "/transactions",
-    response_model=MerchantTransactionsOut,
+    response_model=CabinetTransactionsOut,
     summary="The deposit ledger",
 )
 async def list_transactions(
     user: CurrentUser, db: Db, cursor: str | None = None, limit: int = 50
-) -> MerchantTransactionsOut:
+) -> CabinetTransactionsOut:
+    """The machine ledger page, with each order-bound row told what it bought.
+
+    One extra query per page (``cabinet_orders.order_titles``), never one per
+    row — the same lookup the orders list already makes.
+    """
     merchant = await merchant_of(db, user)
-    return await transactions.build(
+    page = await transactions.build(
         db, merchant_id=merchant.id, limit=max(1, min(limit, 200)), cursor=cursor
     )
+    titles = await cabinet_orders.order_titles(
+        db, [row.order_id for row in page.items if row.order_id is not None]
+    )
+    items = []
+    for row in page.items:
+        title, logo = titles.get(row.order_id or "", (None, None))
+        items.append(
+            CabinetTransactionOut(**row.model_dump(), order_title=title, brand_logo_url=logo)
+        )
+    return CabinetTransactionsOut(items=items, next_cursor=page.next_cursor)
 
 
 def _csv(body: tuple[str, str]) -> Response:

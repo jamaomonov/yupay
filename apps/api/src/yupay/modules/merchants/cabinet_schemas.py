@@ -19,6 +19,7 @@ from yupay.modules.merchants.allowlist import MAX_ENTRIES, normalize_allowlist
 from yupay.modules.merchants.machine_schemas import (
     MerchantDeliveryOut,
     MerchantOrderEventOut,
+    MerchantTransactionOut,
     UsdAmount,
     UsdBalance,
     UsdPrice,
@@ -268,6 +269,9 @@ class CabinetOrderRowOut(BaseModel):
     #: The brand's name, localised (see :func:`cabinet_orders._sku_labels`).
     #: ``None`` under the same condition as ``sku_name``.
     brand_name: str | None
+    #: The brand's logo, an absolute URL, for the mark beside the name in a
+    #: list; ``None`` where none is uploaded or under ``sku_name``'s condition.
+    brand_logo_url: str | None = None
     price_usd: UsdAmount
     refunded_usd: UsdAmount
     created_at: datetime
@@ -307,6 +311,8 @@ class CabinetOrderDetailOut(BaseModel):
     sku_name: str | None
     #: See :attr:`CabinetOrderRowOut.brand_name`.
     brand_name: str | None
+    #: See :attr:`CabinetOrderRowOut.brand_logo_url`.
+    brand_logo_url: str | None = None
     price_usd: UsdPrice
     refunded_usd: UsdAmount
     created_at: datetime
@@ -479,3 +485,27 @@ __all__ = [
     "CabinetWebhookSecretOut",
     "CabinetWebhookSetIn",
 ]
+
+
+class CabinetTransactionOut(MerchantTransactionOut):
+    """A ledger row as the cabinet shows it: the machine row plus what the order was.
+
+    A cabinet order's ``merchant_order_id`` is ``manual-<digest>`` — our mint,
+    not a reseller's reference — so a statement that printed it beside every
+    debit read as a column of hashes. ``order_title`` («PUBG Mobile · 60 UC»)
+    and the brand's mark say what the money bought instead; the id stays in
+    the row for the integrations that do key on it.
+    """
+
+    #: «Brand · denomination» of the order this row moved money for; ``None``
+    #: for a movement with no order (a top-up, an operator adjustment).
+    order_title: str | None = None
+    #: See :attr:`CabinetOrderRowOut.brand_logo_url`.
+    brand_logo_url: str | None = None
+
+
+class CabinetTransactionsOut(BaseModel):
+    """Body of ``GET /merchant/cabinet/transactions`` — one page, newest first."""
+
+    items: list[CabinetTransactionOut]
+    next_cursor: str | None
