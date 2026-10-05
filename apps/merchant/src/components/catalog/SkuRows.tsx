@@ -29,7 +29,8 @@ export function SkuRows({
     <div className="space-y-6">
       {brand.products.map((item) => (
         <section key={item.product_id}>
-          {(brand.products.length > 1 || item.name.toLowerCase() !== brand.name.toLowerCase()) && (
+          {/* One product: its name is already the subtitle under the brand. */}
+          {brand.products.length > 1 && (
             <h2 className="text-tx-mute text-sm font-medium">{item.name}</h2>
           )}
           {/* One line per denomination — name, then price at the right

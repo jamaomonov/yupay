@@ -108,14 +108,14 @@ function Card({ brand, locale }: { brand: BrandSummary; locale: string }) {
           // colour and the grid stays scannable by eye.
           <span
             aria-hidden
-            className="font-display text-foreground/30 absolute inset-0 flex items-center justify-center text-5xl font-semibold"
+            className="font-display text-foreground/30 absolute inset-0 flex items-center justify-center text-3xl font-semibold sm:text-5xl"
           >
             {brand.name.trim().charAt(0).toUpperCase()}
           </span>
         )}
       </div>
-      <div className="px-3 pb-3 pt-2.5">
-        <p className="truncate text-[13.5px] font-bold">{brand.name}</p>
+      <div className="px-2.5 pb-2.5 pt-2 sm:px-3 sm:pb-3 sm:pt-2.5">
+        <p className="truncate text-[12.5px] font-bold sm:text-[13.5px]">{brand.name}</p>
         {/* Price first, and only the product name truncates: the price is
             the reason a reseller opens this screen. */}
         <p className="text-tx-dim mt-0.5 flex min-w-0 items-baseline gap-1.5 text-[11.5px]">
@@ -126,7 +126,7 @@ function Card({ brand, locale }: { brand: BrandSummary; locale: string }) {
               <span className="text-primary-ink shrink-0 font-mono">
                 {t("from", { price: `$${formatUsd(from.cents)}` })}
               </span>
-              <span className="min-w-0 truncate">
+              <span className="hidden min-w-0 truncate sm:inline">
                 {product ?? t("skuCount", { count: brand.sku_count })}
               </span>
             </>
@@ -235,7 +235,7 @@ function CatalogGrid() {
       {catalog === null && (
         <div
           aria-busy
-          className="mt-5 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+          className="mt-5 grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3.5 lg:grid-cols-5 xl:grid-cols-6"
         >
           {Array.from({ length: 10 }, (_, i) => (
             <div key={i} className="border-border bg-card animate-pulse rounded-xl border">
@@ -253,7 +253,7 @@ function CatalogGrid() {
         <EmptyState icon={LayoutGrid} title={t("empty")} />
       )}
 
-      <div className="mt-5 grid grid-cols-2 gap-3.5 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <div className="mt-5 grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3.5 lg:grid-cols-5 xl:grid-cols-6">
         {brands.slice(0, shown).map((brand) => (
           <Card key={brand.brand_id} brand={brand} locale={locale} />
         ))}

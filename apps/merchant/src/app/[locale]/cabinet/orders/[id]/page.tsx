@@ -12,7 +12,13 @@ import { BrandMark } from "@/components/BrandMark";
 import { CopyButton } from "@/components/CopyButton";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
-import { failureLabel, orderStatusLabel, orderTitle } from "@/lib/labels";
+import {
+  artifactLabel,
+  failureLabel,
+  orderStatusLabel,
+  orderStatusTone,
+  orderTitle,
+} from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
 import { formatUsd, toCents } from "@/lib/money";
 import { recipientLines, visibleArtifactLines } from "@/lib/recipient";
@@ -66,6 +72,11 @@ export default function OrderDetailPage() {
               {orderTitle(order, t("colOrder"))}
             </h1>
           </div>
+          <span
+            className={`ml-12 mt-1 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${orderStatusTone(order.status)}`}
+          >
+            {orderStatusLabel(order.status, t)}
+          </span>
           {!order.merchant_order_id.startsWith("manual-") && (
             <p className="text-tx-dim mt-1 text-xs">
               {t("idLabel")}: {order.merchant_order_id}
@@ -89,10 +100,6 @@ export default function OrderDetailPage() {
 
           <section className="border-border bg-card mt-6 rounded-xl border p-6">
             <dl className="grid gap-x-8 gap-y-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-tx-mute text-sm">{t("colStatus")}</dt>
-                <dd className="mt-0.5 font-medium">{orderStatusLabel(order.status, t)}</dd>
-              </div>
               <div>
                 <dt className="text-tx-mute text-sm">{t("colPrice")}</dt>
                 <dd className="mt-0.5 font-mono font-medium">
@@ -154,7 +161,9 @@ export default function OrderDetailPage() {
               <dl className="mt-4 grid grid-cols-[auto_1fr_auto] items-baseline gap-x-3 gap-y-3">
                 {delivered.map(({ key, value }) => (
                   <Fragment key={key}>
-                    <dt className="text-tx-dim whitespace-nowrap font-mono text-xs">{key}</dt>
+                    <dt className="text-tx-mute whitespace-nowrap text-sm">
+                      {artifactLabel(key, t)}
+                    </dt>
                     <dd className="min-w-0 break-all font-mono text-sm">{value}</dd>
                     <CopyButton value={value} label={t("copy")} done={t("copied")} />
                   </Fragment>

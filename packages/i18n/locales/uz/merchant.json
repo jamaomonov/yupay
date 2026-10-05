@@ -467,7 +467,18 @@
     "statSuccessHint": "tugaganlaridan",
     "statSpend": "bugun sarflandi",
     "openOrder": "Buyurtmani ochish",
-    "emptyHint": "Birinchisini katalogdan rasmiylashtiring — yoki API orqali yuboring."
+    "emptyHint": "Birinchisini katalogdan rasmiylashtiring — yoki API orqali yuboring.",
+    "artifactCode": "Kod",
+    "artifactPin": "PIN",
+    "artifactSerial": "Seriya raqami",
+    "artifactLink": "Havola",
+    "artifactReference": "Yetkazib beruvchidagi raqam",
+    "artifactSteamLogin": "Steam login",
+    "artifactPlayerId": "Oʻyinchi ID",
+    "artifactServer": "Server",
+    "artifactUsername": "Qabul qiluvchi",
+    "artifactAmount": "Summa, $",
+    "artifactStars": "Yulduzlar"
   },
   "transactions": {
     "title": "Tranzaksiyalar",

@@ -19,10 +19,10 @@ const ORDER_STATUS: Record<string, string> = {
   refunded: "statusRefunded",
 };
 
-/** The seven a merchant can filter by, in the order they happen. */
+/** What a merchant can filter by, in the order they happen. Not
+ *  `pending_payment` or `paid`: a merchant order is paid from the deposit as
+ *  it is placed, so those two chips only ever filtered to an empty list. */
 export const ORDER_FILTERS = [
-  "pending_payment",
-  "paid",
   "fulfilling",
   "delivered",
   "failed",
@@ -50,7 +50,32 @@ const TRANSACTION_KIND: Record<string, string> = {
   merchant_order_refund: "kindOrderRefund",
 };
 
+/** Delivery artifact keys → a key under `merchant.orders` (`artifact*`). */
+const ARTIFACT_KEY: Record<string, string> = {
+  code: "artifactCode",
+  codes: "artifactCode",
+  pin: "artifactPin",
+  serial: "artifactSerial",
+  link: "artifactLink",
+  url: "artifactLink",
+  supplier_reference: "artifactReference",
+  steam_login: "artifactSteamLogin",
+  player_id: "artifactPlayerId",
+  server: "artifactServer",
+  username: "artifactUsername",
+  amount_usd: "artifactAmount",
+  stars: "artifactStars",
+};
+
 type Translate = (key: string) => string;
+
+/** `codes[1]` → «Код 2»; an unknown key shows as itself. */
+export function artifactLabel(key: string, t: Translate): string {
+  const match = /^(.*)\[(\d+)\]$/.exec(key);
+  const base = match?.[1] ?? key;
+  const label = lookup(ARTIFACT_KEY, base, t);
+  return match?.[2] === undefined ? label : `${label} ${String(Number(match[2]) + 1)}`;
+}
 
 function lookup(map: Record<string, string>, code: string, t: Translate): string {
   const key = map[code];
@@ -65,7 +90,11 @@ export function failureLabel(reason: string, t: Translate): string {
   return lookup(FAILURE_REASON, reason, t);
 }
 
-export function transactionKindLabel(kind: string, t: Translate): string {
+export function transactionKindLabel(kind: string, t: Translate, orderBound = false): string {
+  // A support credit that names an order is that order's money coming back,
+  // not a top-up — «Пополнение депозита» beside «Free Fire · Weekly Lite»
+  // read as if the reseller had paid twice.
+  if (kind === "merchant_deposit_credit" && orderBound) return t("kindOrderRefund");
   return lookup(TRANSACTION_KIND, kind, t);
 }
 

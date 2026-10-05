@@ -143,7 +143,7 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
     // `translate="no"`: see the cabinet layout — a translated page stops updating.
     <div className="flex min-h-dvh" translate="no">
       <SkipLink />
-      <aside className="border-border bg-card hidden w-[216px] shrink-0 flex-col border-r px-3 py-4 md:flex">
+      <aside className="border-border bg-card hidden w-[240px] shrink-0 flex-col border-r px-3 py-4 md:flex">
         <Link
           href={pathFor(locale, "/cabinet")}
           className="flex items-center gap-2.5 px-2.5 pb-4 pt-1"

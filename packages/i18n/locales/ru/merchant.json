@@ -467,7 +467,18 @@
     "statSuccessHint": "из завершённых",
     "statSpend": "потрачено сегодня",
     "openOrder": "Открыть заказ",
-    "emptyHint": "Первый заказ можно оформить из каталога — или отправить его по API."
+    "emptyHint": "Первый заказ можно оформить из каталога — или отправить его по API.",
+    "artifactCode": "Код",
+    "artifactPin": "PIN",
+    "artifactSerial": "Серийный номер",
+    "artifactLink": "Ссылка",
+    "artifactReference": "Номер у поставщика",
+    "artifactSteamLogin": "Логин Steam",
+    "artifactPlayerId": "ID игрока",
+    "artifactServer": "Сервер",
+    "artifactUsername": "Получатель",
+    "artifactAmount": "Сумма, $",
+    "artifactStars": "Звёзды"
   },
   "transactions": {
     "title": "Транзакции",

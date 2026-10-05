@@ -146,6 +146,7 @@ export function ApiKeysCard() {
             }}
             className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm sm:w-56"
           />
+          <p className="text-tx-dim mt-1.5 text-xs sm:w-56">{t("labelHint")}</p>
         </div>
         <div className="w-full sm:w-auto">
           <label htmlFor="key-ips" className="text-tx-mute mb-1.5 block text-sm">
@@ -158,8 +159,11 @@ export function ApiKeysCard() {
             onChange={(event) => {
               setAllowlist(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 font-mono text-xs sm:w-56"
+            className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 font-mono text-xs sm:w-72"
           />
+          <p className="text-tx-dim mt-1.5 text-xs leading-relaxed sm:w-72">
+            {t("ipAllowlistHint")}
+          </p>
         </div>
         <button
           type="submit"
@@ -168,10 +172,6 @@ export function ApiKeysCard() {
         >
           {t("createKey")}
         </button>
-        <p className="text-tx-dim w-full text-xs">{t("labelHint")}</p>
-        <p className="text-tx-dim w-full max-w-lg text-xs leading-relaxed">
-          {t("ipAllowlistHint")}
-        </p>
       </form>
 
       {keys !== null && keys.length === 0 && (

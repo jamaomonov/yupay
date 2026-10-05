@@ -115,9 +115,11 @@ export default function OrdersList() {
         </button>
       </div>
 
-      <TodayStats today={today} />
+      <div className="mt-5">
+        <TodayStats today={today} />
+      </div>
 
-      <div className="mt-5 flex flex-wrap gap-2">
+      <div className="-mx-4 mt-5 flex gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:px-0">
         {CHIPS.map((chip) => {
           const active = chip === status;
           return (
@@ -128,7 +130,7 @@ export default function OrdersList() {
               onClick={() => {
                 setStatus(chip);
               }}
-              className={`rounded-btn border px-3 py-1.5 text-xs ${
+              className={`rounded-btn shrink-0 border px-3 py-1.5 text-xs ${
                 active
                   ? "border-primary bg-primary text-primary-foreground font-semibold"
                   : "border-border text-tx-mute"

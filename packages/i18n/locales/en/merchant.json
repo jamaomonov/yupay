@@ -467,7 +467,18 @@
     "statSuccessHint": "of the ones that finished",
     "statSpend": "spent today",
     "openOrder": "Open the order",
-    "emptyHint": "Place the first one from the catalog — or send it over the API."
+    "emptyHint": "Place the first one from the catalog — or send it over the API.",
+    "artifactCode": "Code",
+    "artifactPin": "PIN",
+    "artifactSerial": "Serial number",
+    "artifactLink": "Link",
+    "artifactReference": "Supplier reference",
+    "artifactSteamLogin": "Steam login",
+    "artifactPlayerId": "Player ID",
+    "artifactServer": "Server",
+    "artifactUsername": "Recipient",
+    "artifactAmount": "Amount, $",
+    "artifactStars": "Stars"
   },
   "transactions": {
     "title": "Transactions",

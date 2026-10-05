@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Brand, Field, PlacedOrder, PlayerCheck, Product, Sku } from "@/lib/types";
 
+import { BrandMark } from "@/components/BrandMark";
 import { useCabinet } from "@/components/CabinetContext";
 import { SkuRows } from "@/components/catalog/SkuRows";
 import { ApiError, api } from "@/lib/api";
@@ -265,14 +266,7 @@ export default function BrandPage() {
       </nav>
 
       <div className="mt-3 flex items-center gap-3.5">
-        <div className="bg-card-2 border-border h-13 w-13 shrink-0 overflow-hidden rounded-xl border">
-          {brand.logo_url !== null && (
-            /* eslint-disable-next-line @next/next/no-img-element -- see the
-               catalog grid: an operator-entered absolute URL on a host we do
-               not control. */
-            <img src={brand.logo_url} alt="" className="h-full w-full object-cover" />
-          )}
-        </div>
+        <BrandMark name={brand.name} logoUrl={brand.logo_url} size="lg" />
         <div className="min-w-0">
           <h1 className="font-display truncate text-xl font-semibold tracking-tight">
             {brand.name}

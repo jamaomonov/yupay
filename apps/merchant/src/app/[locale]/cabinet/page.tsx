@@ -137,13 +137,7 @@ export default function Dashboard() {
                   href={pathFor(locale, `/cabinet/catalog/${brand.slug}`)}
                   className="group flex flex-col items-center gap-1.5 text-center"
                 >
-                  <span className="bg-card-2 border-border group-hover:border-border-2 block h-12 w-12 overflow-hidden rounded-xl border transition">
-                    {brand.logo_url !== null && (
-                      /* eslint-disable-next-line @next/next/no-img-element -- an
-                         operator-entered absolute URL, as in the catalog grid. */
-                      <img src={brand.logo_url} alt="" className="h-full w-full object-cover" />
-                    )}
-                  </span>
+                  <BrandMark name={brand.name} logoUrl={brand.logo_url} size="lg" />
                   <span className="text-tx-mute line-clamp-2 w-full text-[11px] leading-tight">
                     {brand.name}
                   </span>

@@ -221,7 +221,7 @@ export default function TransactionsList() {
                         credit ? "text-primary-ink bg-primary/10" : "text-tx-mute bg-tx-mute/10"
                       }`}
                     >
-                      {transactionKindLabel(row.kind, t)}
+                      {transactionKindLabel(row.kind, t, row.order_id !== null)}
                     </span>
                     <div className="mt-1.5 text-sm">
                       <OrderCell row={row} locale={locale} />
@@ -272,7 +272,7 @@ export default function TransactionsList() {
                           credit ? "text-primary-ink bg-primary/10" : "text-tx-mute bg-tx-mute/10"
                         }`}
                       >
-                        {transactionKindLabel(row.kind, t)}
+                        {transactionKindLabel(row.kind, t, row.order_id !== null)}
                       </span>
                     </td>
                     <td className="px-4 py-3">

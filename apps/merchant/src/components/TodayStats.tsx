@@ -64,14 +64,16 @@ function Stat({
     // markup pairs the term with its value. The hint sits inside the `dd`:
     // a loose `<p>` is not allowed in a `dl` group at all.
     <div className="border-border bg-card flex flex-col-reverse rounded-xl border px-4 py-4 sm:px-5">
-      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">{label}</dt>
+      {/* Number, then its name, then the fine print — the hint used to sit
+          between the number and its label and read as part of the label. */}
+      <dt className="text-tx-dim mt-1 text-xs sm:text-[12.5px]">
+        {label}
+        {hint !== undefined && <span className="text-tx-dim/70 block text-[11px]">{hint}</span>}
+      </dt>
       <dd
         className={`font-mono text-xl font-extrabold sm:text-2xl ${accent ? "text-primary-ink" : ""}`}
       >
         {value}
-        {hint !== undefined && (
-          <span className="text-tx-dim mt-0.5 block font-sans text-[11px] font-normal">{hint}</span>
-        )}
       </dd>
     </div>
   );

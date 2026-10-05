@@ -12,14 +12,19 @@ export function BrandMark({
 }: {
   name: string | null;
   logoUrl: string | null;
-  /** `sm` for a dense row, `md` for a title. */
-  size?: "sm" | "md";
+  /** `sm` for a dense row, `md` for a title, `lg` for a tile or a page header. */
+  size?: "sm" | "md" | "lg";
 }) {
-  const box = size === "sm" ? "h-7 w-7 text-xs" : "h-9 w-9 text-sm";
+  const box =
+    size === "sm"
+      ? "h-7 w-7 rounded-lg text-xs"
+      : size === "md"
+        ? "h-9 w-9 rounded-lg text-sm"
+        : "h-12 w-12 rounded-xl text-lg";
   return (
     <span
       aria-hidden
-      className={`bg-card-2 border-border text-tx-dim flex shrink-0 items-center justify-center overflow-hidden rounded-lg border font-semibold ${box}`}
+      className={`bg-card-2 border-border text-tx-dim flex shrink-0 items-center justify-center overflow-hidden border font-semibold ${box}`}
     >
       {logoUrl !== null ? (
         /* eslint-disable-next-line @next/next/no-img-element -- an
