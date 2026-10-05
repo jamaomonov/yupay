@@ -129,6 +129,18 @@ export interface PaymentOut {
   currency: string;
   intent_url: string | null;
   external_id: string | null;
+  /** Where to send a card transfer, for a pending `p2p` payment (ADR-0097). */
+  p2p?: P2PPaymentDetails | null;
+}
+
+/** Mirrors the API's `P2PPaymentDetailsOut`: the owner's card and the exact amount. */
+export interface P2PPaymentDetails {
+  reservation_number: string;
+  pan: string;
+  holder_name: string;
+  network: string;
+  amount_uzs: number;
+  expires_at: string;
 }
 
 /** An acquirer's admin-controlled availability state. */

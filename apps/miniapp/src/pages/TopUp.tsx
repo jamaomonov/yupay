@@ -869,6 +869,12 @@ export default function TopUp() {
           activePkg ? { id: activePkg.id, label: activePkg.label } : undefined,
         );
       }
+      if (result.payment.provider === "p2p") {
+        // No acquirer to open: the order page shows the card and the exact
+        // amount (`P2PTransferCard`) and polls itself to paid.
+        setLocation(`/order/${result.order.id}`);
+        return;
+      }
       if (result.payment.intent_url && result.payment.provider !== "mock") {
         toast({
           title: t("topup.redirecting"),
@@ -1521,7 +1527,7 @@ export default function TopUp() {
                           !available && "opacity-60 grayscale",
                         )}
                       >
-                        <img src={m.icon} alt={m.name} className="h-full w-full object-cover" />
+                        <img src={m.icon} alt="" className="h-full w-full object-cover" />
                       </span>
                       <span
                         className={cn(
@@ -1533,7 +1539,7 @@ export default function TopUp() {
                               : "text-white/35",
                         )}
                       >
-                        {m.name}
+                        {m.nameKey ? t(m.nameKey) : m.name}
                       </span>
                     </button>
                   );

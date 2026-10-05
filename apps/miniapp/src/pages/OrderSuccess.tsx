@@ -22,6 +22,7 @@ import { ActionButton } from "@/components/order/ActionButton";
 import { DeliveredExtras } from "@/components/order/DeliveredExtras";
 import { ErrorView } from "@/components/order/ErrorView";
 import { ItemCard } from "@/components/order/ItemCard";
+import { P2PTransferCard } from "@/components/order/P2PTransferCard";
 import { AWAITING_DELIVERY, PROCESSING, TERMINAL_FAIL } from "@/components/order/order-helpers";
 import { SkeletonView } from "@/components/order/SkeletonView";
 import { StatusCard, stageFor } from "@/components/order/StatusCard";
@@ -238,6 +239,14 @@ export default function OrderSuccess() {
       </section>
 
       <Summary order={order} />
+
+      {/* A card transfer has no acquirer to open: the instructions are the
+          payment (ADR-0097). Gone the moment the order walks past pending. */}
+      {order.status === "pending_payment" && paymentQuery.data?.p2p && (
+        <div className="pt-2">
+          <P2PTransferCard details={paymentQuery.data.p2p} />
+        </div>
+      )}
 
       <div
         className={`px-4 pt-2 ${

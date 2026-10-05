@@ -14,6 +14,7 @@
 import type { MessageKey } from "@/lib/i18n";
 
 import clickIcon from "@/assets/payments/click.png";
+import humoIcon from "@/assets/payments/humo.png";
 import paymeIcon from "@/assets/payments/payme.png";
 import usdtIcon from "@/assets/payments/usdt.png";
 import uzumIcon from "@/assets/payments/uzum.png";
@@ -21,8 +22,10 @@ import uzumIcon from "@/assets/payments/uzum.png";
 export interface PaymentMethod {
   /** UI id (also the selected-method key on both pages). */
   id: string;
-  /** Brand display name (not translated). */
+  /** Brand display name (not translated) — or, when `nameKey` is set, a
+   *  translated label resolved at render (a method with no brand to name). */
   name: string;
+  nameKey?: MessageKey;
   /** Catalog key for the short subtitle / hint, resolved at render. */
   subKey: MessageKey;
   /** Backend provider slug in ``payments.gateways`` REGISTRY. */
@@ -61,6 +64,17 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
     icon: uzumIcon,
   },
   {
+    // A transfer to the owner's Humo card, matched by exact amount (ADR-0097).
+    // No acquirer: the order page shows the card and the amount with a clock.
+    id: "p2p",
+    name: "P2P",
+    nameKey: "payment.p2p.name",
+    subKey: "payment.p2p.sub",
+    provider: "p2p",
+    currency: "UZS",
+    icon: humoIcon,
+  },
+  {
     id: "usdt",
     name: "USDT",
     subKey: "payment.usdt.sub",
@@ -69,6 +83,16 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
     icon: usdtIcon,
   },
 ];
+
+/**
+ * What a wallet top-up may be paid with: every acquirer except the card
+ * transfer. A P2P hold is shown on the *order* page (``P2PTransferCard``);
+ * the wallet funding screen has no such block, so offering it there would
+ * leave the customer with a pending top-up and nowhere to read the card.
+ */
+export const WALLET_TOPUP_METHODS: PaymentMethod[] = PAYMENT_METHODS.filter(
+  (m) => m.provider !== "p2p",
+);
 
 /** method id → backend provider slug. */
 export const PROVIDER_BY_METHOD: Record<string, string> = Object.fromEntries(

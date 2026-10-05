@@ -67,7 +67,9 @@ export function P2PTransferCard({
       </div>
 
       <Field label={`${t("p2pCard")} · ${details.network.toUpperCase()}`} value={details.pan}>
-        <span className="font-mono text-xl tracking-[0.08em]">{details.pan}</span>
+        <span className="whitespace-nowrap font-mono text-base tracking-[0.06em] sm:text-xl">
+          {details.pan}
+        </span>
       </Field>
 
       <div>
@@ -112,7 +114,7 @@ function Field({
     <div>
       <p className="text-tx-dim text-xs">{label}</p>
       <div className="mt-1 flex items-center justify-between gap-3">
-        <div className="min-w-0 break-all">{children}</div>
+        <div className="min-w-0">{children}</div>
         <button
           type="button"
           aria-label={`${t("p2pCopy")}: ${label}`}

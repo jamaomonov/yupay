@@ -14,7 +14,7 @@ import {
   selectActiveMethodId,
   useAvailableProviders,
 } from "@/lib/orders";
-import { PAYMENT_METHODS, PROVIDER_BY_METHOD } from "@/lib/payment-methods";
+import { PROVIDER_BY_METHOD, WALLET_TOPUP_METHODS } from "@/lib/payment-methods";
 import { openExternalLink } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
 import { createWalletTopUp, formatBalance, topUpAttemptKey } from "@/lib/wallet";
@@ -34,7 +34,7 @@ const QUICK_AMOUNTS: Record<string, number[]> = {
 
 /** Default method — kicks in on first mount so the input has an
  *  unambiguous currency before the user has touched the list. */
-const DEFAULT_METHOD_ID = PAYMENT_METHODS[0]?.id ?? "click";
+const DEFAULT_METHOD_ID = WALLET_TOPUP_METHODS[0]?.id ?? "click";
 
 /** Mirrors `wallet.topup_limits._LIMITS` on the API — the server is still the
  *  authority, this only spares the customer a round trip to be told no. Only
@@ -70,7 +70,7 @@ export default function WalletTopUp() {
   }, [providersQuery.data]);
 
   // Once live status lands, make sure the selection reflects it: the
-  // hardcoded default (`PAYMENT_METHODS[0]`) may itself be under maintenance
+  // hardcoded default (`WALLET_TOPUP_METHODS[0]`) may itself be under maintenance
   // or admin-disabled. Reselect the first active method, or clear the
   // selection entirely when none are — `canSubmit` below then keeps the
   // submit button disabled rather than ever leaving a non-active method
@@ -78,11 +78,12 @@ export default function WalletTopUp() {
   useEffect(() => {
     if (!providerStatusBySlug) return;
     setMethod(
-      (current) => selectActiveMethodId(PAYMENT_METHODS, current, providerStatusBySlug) ?? "",
+      (current) => selectActiveMethodId(WALLET_TOPUP_METHODS, current, providerStatusBySlug) ?? "",
     );
   }, [providerStatusBySlug]);
 
-  const selectedMethod = PAYMENT_METHODS.find((m) => m.id === method) ?? PAYMENT_METHODS[0]!;
+  const selectedMethod =
+    WALLET_TOPUP_METHODS.find((m) => m.id === method) ?? WALLET_TOPUP_METHODS[0]!;
   const currency = selectedMethod.currency;
   const quickAmounts = QUICK_AMOUNTS[currency] ?? QUICK_AMOUNTS.USD!;
 
@@ -94,7 +95,7 @@ export default function WalletTopUp() {
   // Switching methods between different currencies (UZS → USDT) would leave a
   // stale amount in the wrong context. Clearing on currency change avoids the
   // "пополнить на 50 000 USDT" confusion.
-  const onMethodChange = (next: (typeof PAYMENT_METHODS)[number]) => {
+  const onMethodChange = (next: (typeof WALLET_TOPUP_METHODS)[number]) => {
     if (methodVisibility(next.provider, providerStatusBySlug) !== "active") return;
     if (next.currency !== currency) {
       setAmount("");
@@ -217,7 +218,7 @@ export default function WalletTopUp() {
           {t("walletTopUp.method")}
         </h2>
         <ul className="space-y-2">
-          {PAYMENT_METHODS.map((m) => {
+          {WALLET_TOPUP_METHODS.map((m) => {
             // Absent from the providers response → admin-disabled, not
             // offered at all — distinct from `maintenance`, which is still
             // rendered but locked out (non-clickable) below.

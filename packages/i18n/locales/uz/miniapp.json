@@ -602,5 +602,18 @@
   "cs2.how.protect.title": "7 kunlik himoya",
   "cs2.how.protect.body": "Skin darhol sizniki. Bir hafta Steam almashuvni himoya qiladi — skinni hozircha sotib yoki berib bo'lmaydi.",
   "cs2.how.refund.title": "Bo'lmadimi?",
-  "cs2.how.refund.body": "Pul darhol YuPay balansingizga qaytadi."
+  "cs2.how.refund.body": "Pul darhol YuPay balansingizga qaytadi.",
+  "payment.p2p.name": "Kartaga oʻtkazma",
+  "payment.p2p.sub": "Humo · karta raqami boʻyicha",
+  "success.p2p.title": "Kartaga oʻtkazing",
+  "success.p2p.note": "Bank ilovasi orqali istalgan kartadan aynan shu summani oʻtkazing. Oʻtkazma kelishi bilan buyurtma avtomatik toʻlanadi, odatda bir daqiqa ichida.",
+  "success.p2p.card": "Karta",
+  "success.p2p.holder": "Oluvchi",
+  "success.p2p.amount": "Oʻtkazma summasi",
+  "success.p2p.exact": "aynan, soʻmigacha",
+  "success.p2p.left": "Qolgan vaqt",
+  "success.p2p.copy": "Nusxalash",
+  "success.p2p.copied": "Nusxalandi",
+  "success.p2p.expired": "Oʻtkazma uchun vaqt tugadi. Buyurtmani qaytadan rasmiylashtiring.",
+  "success.p2p.waiting": "Oʻtkazmani kutmoqdamiz…"
 }

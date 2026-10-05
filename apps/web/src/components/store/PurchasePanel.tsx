@@ -120,7 +120,7 @@ const METHODS: Method[] = [
     name: "P2P",
     nameKey: "methodP2p",
     provider: "p2p",
-    icon: "/payment/humo.png",
+    icon: "/payment/humo-mark.png",
     w: 160,
     h: 160,
   },
@@ -2121,7 +2121,10 @@ export function PurchasePanel({
                 </Link>
               )}
 
-              <div className="grid grid-cols-3 gap-2">
+              {/* One row, always: equal columns however many methods the admin
+                  has switched on, so there is never an empty slot beside the
+                  last tile. Labels wrap to two lines when it gets tight. */}
+              <div className="grid auto-cols-fr grid-flow-col gap-2">
                 {METHODS.map((m) => {
                   // Absent from the providers response → admin-disabled, not
                   // offered at all. `maintenance` still renders, but greyed
@@ -2184,7 +2187,7 @@ export function PurchasePanel({
                         />
                       </span>
                       <span
-                        className={`text-[13px] font-semibold ${
+                        className={`text-center text-[12px] font-semibold leading-tight ${
                           disabled ? "text-tx-dim" : "text-foreground"
                         }`}
                       >

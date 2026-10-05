@@ -109,7 +109,7 @@ export function PaymentMethodGrid({
                 active ? "text-white" : "text-white/50",
               )}
             >
-              {m.name}
+              {m.nameKey ? t(m.nameKey) : m.name}
             </span>
           </button>
         );

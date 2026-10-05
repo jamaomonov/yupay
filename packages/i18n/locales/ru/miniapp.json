@@ -602,5 +602,18 @@
   "cs2.how.protect.title": "7 дней защиты",
   "cs2.how.protect.body": "Скин сразу ваш. Неделю Steam защищает обмен — продать или передать скин пока нельзя.",
   "cs2.how.refund.title": "Не получилось?",
-  "cs2.how.refund.body": "Деньги сразу вернутся на баланс YuPay."
+  "cs2.how.refund.body": "Деньги сразу вернутся на баланс YuPay.",
+  "payment.p2p.name": "Перевод на карту",
+  "payment.p2p.sub": "Humo · по номеру карты",
+  "success.p2p.title": "Переведите на карту",
+  "success.p2p.note": "Переведите ровно эту сумму с любой карты через приложение банка. Как только перевод придёт, заказ оплатится сам, обычно в течение минуты.",
+  "success.p2p.card": "Карта",
+  "success.p2p.holder": "Получатель",
+  "success.p2p.amount": "Сумма перевода",
+  "success.p2p.exact": "ровно, до сума",
+  "success.p2p.left": "Осталось времени",
+  "success.p2p.copy": "Скопировать",
+  "success.p2p.copied": "Скопировано",
+  "success.p2p.expired": "Время на перевод вышло. Оформите заказ заново.",
+  "success.p2p.waiting": "Ждём перевод…"
 }
