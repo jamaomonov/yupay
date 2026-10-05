@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { DeliveriesPage, WebhookDelivery } from "@/lib/types";
 
 import { EmptyState } from "@/components/EmptyState";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { PageHeading } from "@/components/PageHeading";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
@@ -75,6 +76,8 @@ export default function WebhookLog() {
           {t("logConfigLink")}
         </Link>
       </p>
+
+      {rows === null && <ListSkeleton className="mt-5" />}
 
       {rows !== null && rows.length === 0 && (
         <EmptyState icon={Webhook} title={t("logEmpty")} hint={t("logEmptyHint")} />

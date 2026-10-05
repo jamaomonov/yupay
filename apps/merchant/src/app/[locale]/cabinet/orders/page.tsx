@@ -10,6 +10,7 @@ import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 
 import { useSearch } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { PageHeading } from "@/components/PageHeading";
 import { TodayStats } from "@/components/TodayStats";
 import { api, downloadFile } from "@/lib/api";
@@ -137,6 +138,8 @@ export default function OrdersList() {
           );
         })}
       </div>
+
+      {rows === null && <ListSkeleton className="mt-6" />}
 
       {rows !== null && rows.length === 0 && (
         <EmptyState icon={Package} title={t("empty")} hint={t("emptyHint")} />

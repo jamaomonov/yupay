@@ -103,7 +103,10 @@ export function ApiKeysCard() {
       )}
 
       <form
-        className="mt-5 flex flex-wrap items-end gap-3"
+        // `items-start`, not `items-end`: the IP box is two rows tall and the
+        // name box one, so bottom-aligning them put the two labels at
+        // different heights. Tops line up; the button drops by one label.
+        className="mt-5 flex flex-wrap items-start gap-3"
         onSubmit={(event) => {
           event.preventDefault();
           setBusy(true);
@@ -161,7 +164,7 @@ export function ApiKeysCard() {
         <button
           type="submit"
           disabled={busy}
-          className="bg-primary text-primary-foreground rounded-btn px-4 py-2.5 text-sm font-semibold disabled:opacity-60"
+          className="bg-primary text-primary-foreground rounded-btn px-4 py-2.5 text-sm font-semibold disabled:opacity-60 sm:mt-[1.8rem]"
         >
           {t("createKey")}
         </button>

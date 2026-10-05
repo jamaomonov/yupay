@@ -10,6 +10,7 @@ import type { P2PDeposit, P2PDepositsPage, Transaction, TransactionsPage } from 
 
 import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { PageHeading } from "@/components/PageHeading";
 import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
@@ -158,6 +159,8 @@ export default function TransactionsList() {
           </ul>
         </section>
       )}
+
+      {rows === null && <ListSkeleton className="mt-6" />}
 
       {rows !== null && rows.length === 0 && (
         <EmptyState icon={ArrowLeftRight} title={t("empty")} hint={t("emptyHint")} />

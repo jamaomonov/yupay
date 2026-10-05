@@ -11,6 +11,7 @@ import type { OrderRow, OrdersPage, Summary } from "@/lib/types";
 import { useCabinet } from "@/components/CabinetContext";
 import { CopyButton } from "@/components/CopyButton";
 import { EmptyState } from "@/components/EmptyState";
+import { ListSkeleton } from "@/components/ListSkeleton";
 import { TodayStats } from "@/components/TodayStats";
 import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
@@ -158,6 +159,7 @@ export default function Dashboard() {
             <Package aria-hidden size={15} className="text-tx-dim shrink-0" />
             {t("recentOrders")}
           </Link>
+          {recent === null && <ListSkeleton rows={3} className="mt-3 border-0 bg-transparent" />}
           {recent !== null && recent.length === 0 && (
             <EmptyState icon={Package} title={t("noOrders")} />
           )}
