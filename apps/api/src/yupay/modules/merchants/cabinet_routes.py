@@ -27,12 +27,14 @@ from __future__ import annotations
 import hashlib
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 
 from yupay.core.errors import NotFoundError
 from yupay.core.idempotency import normalize_idempotency_key
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
+from yupay.modules.auth.ip_guard import guard_ip
+from yupay.modules.merchants import api as merchants_api
 from yupay.modules.merchants import (
     cabinet_export,
     cabinet_notify,
@@ -62,6 +64,8 @@ from yupay.modules.merchants.machine_schemas import (
     MerchantCatalogOut,
     MerchantOrderCreateIn,
     MerchantOrderOut,
+    MerchantPlayerCheckIn,
+    MerchantPlayerCheckOut,
     MerchantTransactionsOut,
 )
 from yupay.modules.merchants.route_replay import IdempotencyKeyHeader
@@ -238,6 +242,36 @@ async def place_order(
             expected_price=body.expected_price,
             fulfillment_data=dict(body.fulfillment_data),
         ),
+    )
+
+
+@router.post(
+    "/validate/player",
+    response_model=MerchantPlayerCheckOut,
+    summary="Check a player id from the catalog page before ordering",
+)
+async def validate_player(
+    body: MerchantPlayerCheckIn, user: CurrentUser, db: Db, request: Request
+) -> MerchantPlayerCheckOut:
+    """The machine API's ``POST /merchant/v1/validate/player``, for the person
+    at the catalog page.
+
+    Same check, same four honest verdicts (``valid`` / ``invalid`` / ``error``
+    / ``unsupported``) and the same reason it is a keyless ``POST`` (AGENTS.md
+    §9): it writes nothing, and the identifier — a reseller's end customer's —
+    must not land in a URL and so in the edge access log. An operator typing
+    an id by hand mistypes it as often as an integration passes one through,
+    and a wrong id on a top-up is money gone, which is why the button exists.
+
+    Both of the machine route's counters apply here too — one per source
+    address, one per merchant — because the quota being rationed is the
+    supplier's and it does not care which of our surfaces spent it.
+    """
+    merchant = await merchant_of(db, user)
+    await guard_ip(request, bucket=merchants_api.VALIDATE_RATE_BUCKET)
+    await merchants_api.charge_validate_quota(merchant.id)
+    return await merchants_api.check_player_for_brand(
+        db, brand=body.brand, player_id=body.player_id, server_id=body.server_id
     )
 
 

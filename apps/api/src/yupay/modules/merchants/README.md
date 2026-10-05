@@ -2060,6 +2060,11 @@ and you check it once regardless of which of the brand's SKUs you go on to
 buy. Optional: no order consults it, and skipping it costs you nothing but the
 chance to catch a typo before the code is gone.
 
+The cabinet mounts the same check as `POST /merchant/cabinet/validate/player`
+(session-authenticated, same body and verdicts, same two counters) behind the
+«Проверить» button beside the player-id field on a brand page — an operator
+typing an id by hand mistypes it as often as an integration passes one through.
+
 ```json
 POST /merchant/v1/validate/player
 {

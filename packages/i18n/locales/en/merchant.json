@@ -266,7 +266,18 @@
     "priceBefore": "Balance now",
     "selected": "selected",
     "whatsNext": "The result shows up here and in Orders — usually within 1–2 minutes.",
-    "perDollar": "per $1"
+    "perDollar": "per $1",
+    "pickOne": "Pick a denomination on the left — the total appears here.",
+    "checkId": "Check",
+    "checking": "Checking…",
+    "idValid": "ID found",
+    "idInvalid": "ID not found — check it again",
+    "idError": "Could not check. You can still order without it.",
+    "fieldInvalid": "Wrong format",
+    "countRange": "{min} to {max}",
+    "sectionAll": "All",
+    "showMore": "Show more",
+    "skuCount": "{count, plural, one {# item} other {# items}}"
   },
   "docs": {
     "title": "Documentation",

@@ -1,12 +1,12 @@
 "use client";
 
-import { ArrowLeft, Check, X } from "lucide-react";
+import { ArrowLeft, Check, Minus, Plus, X } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Brand, PlacedOrder, Product, Sku } from "@/lib/types";
+import type { Brand, Field, PlacedOrder, PlayerCheck, Product, Sku } from "@/lib/types";
 
 import { useCabinet } from "@/components/CabinetContext";
 import { ApiError, api } from "@/lib/api";
@@ -20,6 +20,57 @@ function countLabel(sku: Sku): "none" | "quantity" | "amount" {
   if (sku.kind === "unit") return "quantity";
   if (sku.kind === "amount") return "amount";
   return "none";
+}
+
+/**
+ * Does the value satisfy the field's own pattern? A pattern the browser cannot
+ * compile (they are written for Python) counts as satisfied: the server still
+ * checks, and a form that refuses everything is worse than one that lets a
+ * typo through to a clear error.
+ */
+function matches(field: Field, value: string): boolean {
+  if (field.pattern === null || value === "") return true;
+  try {
+    return new RegExp(field.pattern).test(value);
+  } catch {
+    return true;
+  }
+}
+
+/** The field a player check verifies — the first required text that is not a server. */
+function idFieldOf(product: Product | null): Field | null {
+  return (
+    product?.required_fields.find(
+      (f) => f.required && f.type === "text" && !/server|zone|region/i.test(f.key),
+    ) ?? null
+  );
+}
+
+function serverFieldOf(product: Product | null): Field | null {
+  return product?.required_fields.find((f) => /server|zone|region/i.test(f.key)) ?? null;
+}
+
+function Skeleton() {
+  return (
+    <div aria-busy className="animate-pulse">
+      <div className="bg-card-2 h-3 w-40 rounded" />
+      <div className="mt-4 flex items-center gap-3.5">
+        <div className="bg-card-2 h-13 w-13 rounded-xl" />
+        <div className="space-y-2">
+          <div className="bg-card-2 h-5 w-48 rounded" />
+          <div className="bg-card-2 h-3 w-32 rounded" />
+        </div>
+      </div>
+      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          {Array.from({ length: 8 }, (_, i) => (
+            <div key={i} className="bg-card border-border h-12 rounded-lg border" />
+          ))}
+        </div>
+        <div className="bg-card border-border hidden h-40 rounded-xl border lg:block" />
+      </div>
+    </div>
+  );
 }
 
 export default function BrandPage() {
@@ -49,6 +100,7 @@ export default function BrandPage() {
   const [selected, setSelected] = useState<Sku | null>(null);
   const [count, setCount] = useState("1");
   const [data, setData] = useState<Record<string, string>>({});
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
   const [busy, setBusy] = useState(false);
   const [placed, setPlaced] = useState<PlacedOrder | null>(null);
   // Minted once per intent and held, never per request: a fresh key on every
@@ -57,6 +109,11 @@ export default function BrandPage() {
   // after a timeout could charge twice.
   const [idempotencyKey] = useState(() => crypto.randomUUID());
   const [error, setError] = useState<string | null>(null);
+  // The player check: `null` not asked, `"busy"` in flight, else the verdict.
+  // `unsupported` hides the button for the rest of the visit — nothing on
+  // this brand can be checked, and a button that always says so is noise.
+  const [check, setCheck] = useState<PlayerCheck | "busy" | null>(null);
+  const [checkable, setCheckable] = useState(true);
 
   // Steam's «any amount», Stars: one card and nothing to choose — open with it picked.
   // Once only, so closing the sheet on a phone does not bring it straight back.
@@ -74,6 +131,9 @@ export default function BrandPage() {
     brand?.products.find((p) => p.skus.some((s) => s.sku_id === selected?.sku_id)) ??
     brand?.products[0] ??
     null;
+  const fields = product?.required_fields ?? [];
+  const idField = idFieldOf(product);
+  const serverField = serverFieldOf(product);
 
   const total = useMemo(() => {
     if (!selected) return null;
@@ -86,6 +146,48 @@ export default function BrandPage() {
   const balance = profile ? toCents(profile.balance_usd) : null;
   const after = balance !== null && total !== null ? balance - total : null;
   const affordable = after !== null && after >= 0n;
+  const formOk = fields.every((field) => {
+    const value = data[field.key] ?? "";
+    return (!field.required || value.trim() !== "") && matches(field, value);
+  });
+
+  function pick(sku: Sku) {
+    setSelected(sku);
+    setPlaced(null);
+    setError(null);
+    setCount(sku.kind === "unit" ? String(sku.min_qty ?? 1) : "1");
+  }
+
+  function bump(delta: number) {
+    if (!selected) return;
+    const min = selected.min_qty ?? 1;
+    const max = selected.max_qty ?? Number.MAX_SAFE_INTEGER;
+    const current = Number.parseInt(count, 10);
+    const next = Math.min(max, Math.max(min, (Number.isNaN(current) ? min : current) + delta));
+    setCount(String(next));
+  }
+
+  async function verify() {
+    if (!brand || !idField) return;
+    const playerId = (data[idField.key] ?? "").trim();
+    if (playerId === "") return;
+    const serverId = serverField ? (data[serverField.key] ?? "").trim() : "";
+    setCheck("busy");
+    try {
+      const verdict = await api<PlayerCheck>("/validate/player", {
+        method: "POST",
+        body: {
+          brand: brand.slug,
+          player_id: playerId,
+          ...(serverId !== "" ? { server_id: serverId } : {}),
+        },
+      });
+      setCheck(verdict);
+      if (verdict.status === "unsupported") setCheckable(false);
+    } catch {
+      setCheck({ status: "error", name: null });
+    }
+  }
 
   async function order() {
     if (!selected || total === null) return;
@@ -110,18 +212,19 @@ export default function BrandPage() {
       // that could then disagree.
       refreshProfile();
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.code === "insufficient_deposit"
-          ? t("notEnough")
-          : t("orderFailed"),
-      );
+      // The server's own sentence where it wrote one (a refused id, a
+      // withdrawn SKU): «Не удалось создать заказ» told a reseller nothing
+      // about what to change.
+      if (err instanceof ApiError && err.code === "insufficient_deposit") setError(t("notEnough"));
+      else if (err instanceof ApiError && !err.message.startsWith("HTTP ")) setError(err.message);
+      else setError(t("orderFailed"));
     } finally {
       setBusy(false);
     }
   }
 
   if (brand === undefined) {
-    return null;
+    return <Skeleton />;
   }
   if (brand === null) {
     return (
@@ -132,6 +235,14 @@ export default function BrandPage() {
       </div>
     );
   }
+
+  // The import named most products after their brand; saying the name twice
+  // under the heading told a reseller nothing, where the count of lines does.
+  const skuTotal = brand.products.reduce((n, p) => n + p.skus.length, 0);
+  const ownNames = brand.products
+    .map((p) => p.name)
+    .filter((name) => name.toLowerCase() !== brand.name.toLowerCase());
+  const shape = selected ? countLabel(selected) : "none";
 
   return (
     <div>
@@ -166,7 +277,7 @@ export default function BrandPage() {
             {brand.name}
           </h1>
           <p className="text-tx-dim mt-0.5 truncate text-xs">
-            {brand.products.map((item) => item.name).join(" · ")}
+            {ownNames.length > 0 ? ownNames.join(" · ") : t("skuCount", { count: skuTotal })}
           </p>
         </div>
       </div>
@@ -179,10 +290,14 @@ export default function BrandPage() {
         <div className="space-y-6">
           {brand.products.map((item) => (
             <section key={item.product_id}>
-              <h2 className="text-tx-mute text-sm font-medium">{item.name}</h2>
-              {/* Two columns from the smallest phone up: one column made PUBG's
-                  28 denominations a 4700px scroll, and the form under it. */}
-              <div className="mt-3 grid grid-cols-2 gap-2 2xl:grid-cols-3">
+              {(brand.products.length > 1 ||
+                item.name.toLowerCase() !== brand.name.toLowerCase()) && (
+                <h2 className="text-tx-mute text-sm font-medium">{item.name}</h2>
+              )}
+              {/* One line per denomination — name, then price at the right
+                  edge, the way a price list reads. The tall tiles with an
+                  empty picture box on every gift card were half air. */}
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {item.skus.map((sku) => {
                   const price = sku.kind === "fixed" ? sku.price_usd : sku.unit_price_usd;
                   const active = selected?.sku_id === sku.sku_id;
@@ -191,54 +306,46 @@ export default function BrandPage() {
                       key={sku.sku_id}
                       type="button"
                       onClick={() => {
-                        setSelected(sku);
-                        setPlaced(null);
-                        setError(null);
-                        setCount(sku.kind === "unit" ? String(sku.min_qty ?? 1) : "1");
+                        pick(sku);
                       }}
                       aria-pressed={active}
-                      className={`relative flex min-h-[4.5rem] flex-col justify-between rounded-lg border p-3 text-left transition ${
+                      className={`flex min-h-12 items-center gap-3 rounded-lg border px-3 py-2 text-left transition ${
                         active
                           ? "border-primary bg-card-2"
                           : "border-border bg-card hover:border-border-2"
                       }`}
                     >
-                      <div className="flex items-start gap-2 pr-5">
-                        <span className="bg-card-2 border-border h-10 w-10 shrink-0 overflow-hidden rounded-md border">
-                          {sku.image_url !== null && (
-                            /* eslint-disable-next-line @next/next/no-img-element -- an
-                               operator-entered absolute URL on a host we do not
-                               control; same reason the brand logo above uses <img>. */
-                            <img
-                              src={sku.image_url}
-                              alt=""
-                              className="h-full w-full object-contain"
-                            />
-                          )}
-                        </span>
-                        <p className="line-clamp-2 text-sm font-medium leading-snug">{sku.name}</p>
-                      </div>
-                      {active && (
-                        <span
-                          aria-label={t("selected")}
-                          className="bg-primary text-primary-foreground absolute right-2 top-2 flex h-5 w-5 items-center justify-center rounded-full"
-                        >
-                          <Check size={12} strokeWidth={3} />
+                      {sku.image_url !== null && (
+                        <span className="bg-card-2 border-border h-9 w-9 shrink-0 overflow-hidden rounded-md border">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- an
+                              operator-entered absolute URL on a host we do not
+                              control; same reason the brand logo above uses <img>. */}
+                          <img
+                            src={sku.image_url}
+                            alt=""
+                            className="h-full w-full object-contain"
+                          />
                         </span>
                       )}
-                      <p className="mt-1.5 flex flex-wrap items-baseline gap-x-2 font-mono text-sm">
-                        <span>{price ? `$${formatPrice(price)}` : "—"}</span>
+                      <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                        {sku.name}
+                      </span>
+                      <span className="flex shrink-0 items-baseline gap-1 font-mono text-sm">
+                        {price ? `$${formatPrice(price)}` : "—"}
                         {sku.kind === "amount" && price && (
                           <span className="text-tx-dim font-sans text-[11px]">
                             {t("perDollar")}
                           </span>
                         )}
-                        {sku.retail_price_usd && (
-                          <span className="text-tx-dim text-xs line-through">
-                            ${formatPrice(sku.retail_price_usd)}
-                          </span>
-                        )}
-                      </p>
+                      </span>
+                      {active && (
+                        <span
+                          aria-label={t("selected")}
+                          className="bg-primary text-primary-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-full"
+                        >
+                          <Check size={12} strokeWidth={3} />
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -262,10 +369,10 @@ export default function BrandPage() {
             <div className="min-w-0">
               <p className="font-semibold">{t("orderSummary")}</p>
               {selected !== null && (
-                <div className="mt-0.5 flex min-w-0 items-center gap-2 lg:hidden">
+                <div className="mt-0.5 flex min-w-0 items-center gap-2">
                   {selected.image_url !== null && (
                     /* eslint-disable-next-line @next/next/no-img-element -- see the
-                       denomination tiles: operator-entered absolute URL. */
+                       denomination rows: operator-entered absolute URL. */
                     <img
                       src={selected.image_url}
                       alt=""
@@ -292,40 +399,144 @@ export default function BrandPage() {
             )}
           </div>
           {selected === null ? (
-            <p className="text-tx-dim mt-3 text-sm">—</p>
+            <p className="text-tx-dim mt-3 text-sm leading-relaxed">{t("pickOne")}</p>
           ) : (
             <div className="mt-3 lg:mt-4">
-              {countLabel(selected) !== "none" && (
+              {shape === "quantity" && (
+                <div className="mb-3">
+                  <span className="text-tx-mute mb-1.5 block text-sm">{t("quantity")}</span>
+                  <div className="flex items-stretch gap-2">
+                    <button
+                      type="button"
+                      aria-label="−"
+                      onClick={() => {
+                        bump(-1);
+                      }}
+                      className="border-border bg-card-2 rounded-btn flex w-11 shrink-0 items-center justify-center border"
+                    >
+                      <Minus size={15} />
+                    </button>
+                    <input
+                      value={count}
+                      inputMode="numeric"
+                      onChange={(event) => {
+                        setCount(event.target.value.replace(/[^\d]/g, ""));
+                      }}
+                      onBlur={() => {
+                        bump(0);
+                      }}
+                      className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-center font-mono text-sm"
+                    />
+                    <button
+                      type="button"
+                      aria-label="+"
+                      onClick={() => {
+                        bump(1);
+                      }}
+                      className="border-border bg-card-2 rounded-btn flex w-11 shrink-0 items-center justify-center border"
+                    >
+                      <Plus size={15} />
+                    </button>
+                  </div>
+                  {(selected.min_qty !== null || selected.max_qty !== null) && (
+                    <p className="text-tx-dim mt-1.5 text-[11.5px]">
+                      {t("countRange", {
+                        min: selected.min_qty ?? 1,
+                        max: selected.max_qty ?? "∞",
+                      })}
+                    </p>
+                  )}
+                </div>
+              )}
+              {shape === "amount" && (
                 <label className="mb-3 block">
-                  <span className="text-tx-mute mb-1.5 block text-sm">
-                    {countLabel(selected) === "quantity" ? t("quantity") : t("amountUsd")}
-                  </span>
+                  <span className="text-tx-mute mb-1.5 block text-sm">{t("amountUsd")}</span>
                   <input
                     value={count}
                     inputMode="decimal"
                     onChange={(event) => {
                       setCount(event.target.value);
                     }}
-                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-sm"
+                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 font-mono text-sm"
                   />
+                  {(selected.min_amount_usd !== null || selected.max_amount_usd !== null) && (
+                    <span className="text-tx-dim mt-1.5 block text-[11.5px]">
+                      {t("countRange", {
+                        min: `$${formatPrice(selected.min_amount_usd ?? "0")}`,
+                        max: selected.max_amount_usd
+                          ? `$${formatPrice(selected.max_amount_usd)}`
+                          : "∞",
+                      })}
+                    </span>
+                  )}
                 </label>
               )}
 
-              {(product?.required_fields ?? []).map((field) => (
-                <label key={field.key} className="mb-3 block">
-                  <span className="text-tx-mute mb-1.5 block text-sm">
-                    {field.label[locale] ?? field.label.ru ?? field.key}
-                  </span>
-                  <input
-                    value={data[field.key] ?? ""}
-                    placeholder={field.placeholder[locale] ?? ""}
-                    onChange={(event) => {
-                      setData((current) => ({ ...current, [field.key]: event.target.value }));
-                    }}
-                    className="border-border bg-card-2 rounded-btn w-full border px-3 py-2 text-sm"
-                  />
-                </label>
-              ))}
+              {fields.map((field) => {
+                const value = data[field.key] ?? "";
+                const bad = touched[field.key] === true && !matches(field, value);
+                const isId = idField?.key === field.key;
+                return (
+                  <label key={field.key} className="mb-3 block">
+                    <span className="text-tx-mute mb-1.5 block text-sm">
+                      {field.label[locale] ?? field.label.ru ?? field.key}
+                    </span>
+                    <div className="flex gap-2">
+                      <input
+                        value={value}
+                        placeholder={field.placeholder[locale] ?? ""}
+                        aria-invalid={bad}
+                        onChange={(event) => {
+                          setData((current) => ({ ...current, [field.key]: event.target.value }));
+                          if (isId || serverField?.key === field.key) setCheck(null);
+                        }}
+                        onBlur={() => {
+                          setTouched((current) => ({ ...current, [field.key]: true }));
+                        }}
+                        className={`rounded-btn bg-card-2 w-full border px-3 py-2 text-sm ${
+                          bad ? "border-danger" : "border-border"
+                        }`}
+                      />
+                      {isId && checkable && (
+                        <button
+                          type="button"
+                          disabled={check === "busy" || value.trim() === "" || bad}
+                          onClick={() => {
+                            void verify();
+                          }}
+                          className="border-border rounded-btn shrink-0 border px-3 text-xs font-semibold disabled:opacity-50"
+                        >
+                          {check === "busy" ? t("checking") : t("checkId")}
+                        </button>
+                      )}
+                    </div>
+                    {bad && (
+                      <span className="text-danger mt-1 block text-xs">{t("fieldInvalid")}</span>
+                    )}
+                    {isId &&
+                      check !== null &&
+                      check !== "busy" &&
+                      check.status !== "unsupported" && (
+                        <span
+                          role="status"
+                          className={`mt-1 block text-xs ${
+                            check.status === "valid"
+                              ? "text-primary-ink"
+                              : check.status === "invalid"
+                                ? "text-danger"
+                                : "text-tx-dim"
+                          }`}
+                        >
+                          {check.status === "valid"
+                            ? `✓ ${t("idValid")}${check.name ? ` · ${check.name}` : ""}`
+                            : check.status === "invalid"
+                              ? t("idInvalid")
+                              : t("idError")}
+                        </span>
+                      )}
+                  </label>
+                );
+              })}
 
               <dl className="border-border mt-4 space-y-1.5 border-t pt-4 text-sm">
                 <div className="flex justify-between">
@@ -369,8 +580,9 @@ export default function BrandPage() {
 
               <button
                 type="button"
-                disabled={busy || placed !== null || total === null || !affordable}
+                disabled={busy || placed !== null || total === null || !affordable || !formOk}
                 onClick={() => {
+                  setTouched(Object.fromEntries(fields.map((f) => [f.key, true])));
                   void order();
                 }}
                 className="bg-primary text-primary-foreground rounded-btn mt-4 w-full py-2.5 text-sm font-semibold disabled:opacity-50"
@@ -387,9 +599,7 @@ export default function BrandPage() {
                 // set from an API error, and the request can never be sent
                 // because the button above is disabled. So a fresh account —
                 // every account, on day one — saw a greyed button and a red
-                // negative number, and had to infer the rest. The dashboard
-                // card that explains it is two screens away and does not
-                // follow you here.
+                // negative number, and had to infer the rest.
                 <p className="text-danger mt-3 text-[12px] leading-relaxed">
                   {t("notEnough")}{" "}
                   <a

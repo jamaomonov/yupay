@@ -87,6 +87,12 @@ export interface CatalogSummary {
   brands: BrandSummary[];
 }
 
+/** `POST /validate/player` — an advisory verdict; `error` says nothing about the id. */
+export interface PlayerCheck {
+  status: "valid" | "invalid" | "error" | "unsupported";
+  name: string | null;
+}
+
 export interface PlacedOrder {
   merchant_order_id: string;
   order_id: string;

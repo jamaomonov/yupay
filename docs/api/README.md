@@ -909,6 +909,13 @@ limit was never the control protecting it.
 
 ### `POST /merchant/v1/validate/player` — the truthful player check
 
+The reseller cabinet has the same check as `POST /merchant/cabinet/validate/player`
+(2026-10-05): a cabinet session instead of a signature, the same body and the same
+four verdicts, the same two rate counters (per address, per merchant — the quota
+is the supplier's, whichever surface spends it), and keyless for the same reason —
+a `POST` that writes nothing, so the end customer's id never lands in a URL. It
+is what the «Проверить» button next to the player-id field on the catalog page calls.
+
 Spec §9.1's sixth row, and the only endpoint here that calls a supplier while
 the caller waits. It exposes `integrations.player_check` — the storefront's own
 G2B nickname lookup and Waxpeer Steam-login check, with their circuit breaker

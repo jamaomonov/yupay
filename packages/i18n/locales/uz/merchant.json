@@ -266,7 +266,18 @@
     "priceBefore": "Hozirgi balans",
     "selected": "tanlandi",
     "whatsNext": "Natija shu yerda va «Buyurtmalar»da paydo boʻladi — odatda 1–2 daqiqada.",
-    "perDollar": "$1 uchun"
+    "perDollar": "$1 uchun",
+    "pickOne": "Chapdan nominalni tanlang — yakun shu yerda chiqadi.",
+    "checkId": "Tekshirish",
+    "checking": "Tekshirilmoqda…",
+    "idValid": "ID topildi",
+    "idInvalid": "ID topilmadi — qayta tekshiring",
+    "idError": "Tekshirib boʻlmadi. Tekshiruvsiz ham buyurtma berish mumkin.",
+    "fieldInvalid": "Notoʻgʻri format",
+    "countRange": "{min} dan {max} gacha",
+    "sectionAll": "Hammasi",
+    "showMore": "Yana koʻrsatish",
+    "skuCount": "{count, plural, one {# ta pozitsiya} other {# ta pozitsiya}}"
   },
   "docs": {
     "title": "Hujjatlar",

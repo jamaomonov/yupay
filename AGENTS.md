@@ -240,12 +240,14 @@ yupay/
   `Idempotency-Key` header and persist results keyed by it. The rule protects writes from
   replay, so it does not reach a `POST` that writes nothing: advisory lookups are `POST`
   only to keep an identifier out of the URL — and therefore out of the edge access log,
-  which records the full query string — not because they mutate anything. Four such
+  which records the full query string — not because they mutate anything. Five such
   endpoints exist today: `POST /catalog/brands/{slug}/check-player`,
   `POST /gifts/steam-profile`, `POST /merchant/v1/validate/player` (the same
   player check, exposed to a reseller — the identifier it carries is their end
-  customer's) and `POST /skins/tradelink/check` (a trade link's token is a credential).
-  If you add a fifth, say in its docstring why it is keyless.
+  customer's), `POST /skins/tradelink/check` (a trade link's token is a credential)
+  and `POST /merchant/cabinet/validate/player` (the reseller player check again,
+  behind a cabinet session instead of a signature — the «Проверить» button on the
+  catalog page). If you add a sixth, say in its docstring why it is keyless.
   The one **mutation** exempt from the header is `POST /merchant/v1/orders`, which is
   idempotent on the caller's own `merchant_order_id` instead (spec §9.3): that id is
   minted per _intent_ by the reseller's system rather than per attempt by ours, is what
@@ -307,8 +309,12 @@ yupay/
   because `httpx` applies a scalar timeout to connect, read, write and pool separately, a
   bad tail can exceed 4 s. A cache hit or an open breaker short-circuits it; neither is
   guaranteed. What the fallback can never do is raise a verdict the primary refused. No new
-  endpoint exists, which is why this is a sentence and not a fifth list entry. If you add a fifth
-  endpoint, it needs an ADR entry saying why it clears those conditions and a line here. A
+  endpoint exists, which is why this is a sentence and not a fifth list entry. The sixth
+  route is `POST /merchant/cabinet/validate/player` (2026-10-05): not a sixth _lookup_ —
+  it is the ADR-0031 reseller check mounted a second time behind a cabinet session for
+  the «Проверить» button, same breaker, cache, timeouts and both rate counters — but a
+  route that calls a supplier from its handler belongs on this list by name. If you add
+  another endpoint, it needs an ADR entry saying why it clears those conditions and a line here. A
   rule that does not name its exceptions stops being read as a rule: this one was silently
   deviated from three times before the list existed.
 - **The Steam Gifts catalogue reads are a second carve-out**, and a weaker one — they are

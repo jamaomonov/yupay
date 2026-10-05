@@ -42320,6 +42320,66 @@
         ]
       }
     },
+    "/merchant/cabinet/validate/player": {
+      "post": {
+        "description": "The machine API's ``POST /merchant/v1/validate/player``, for the person\nat the catalog page.\n\nSame check, same four honest verdicts (``valid`` / ``invalid`` / ``error``\n/ ``unsupported``) and the same reason it is a keyless ``POST`` (AGENTS.md\n\u00a79): it writes nothing, and the identifier \u2014 a reseller's end customer's \u2014\nmust not land in a URL and so in the edge access log. An operator typing\nan id by hand mistypes it as often as an integration passes one through,\nand a wrong id on a top-up is money gone, which is why the button exists.\n\nBoth of the machine route's counters apply here too \u2014 one per source\naddress, one per merchant \u2014 because the quota being rationed is the\nsupplier's and it does not care which of our surfaces spent it.",
+        "operationId": "validate_player_merchant_cabinet_validate_player_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MerchantPlayerCheckIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MerchantPlayerCheckOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Check a player id from the catalog page before ordering",
+        "tags": [
+          "merchant-cabinet"
+        ]
+      }
+    },
     "/merchant/cabinet/webhook": {
       "delete": {
         "description": "A timestamp, never a DELETE: the log stays readable and turning it back\non is a ``PUT`` with the URL, not a re-onboarding with a new secret.",
