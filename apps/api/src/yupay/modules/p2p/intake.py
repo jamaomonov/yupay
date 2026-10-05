@@ -166,6 +166,37 @@ async def _ambiguous_card(db: AsyncSession, last4: str | None) -> bool:
     return (count or 0) > 1
 
 
+async def _settle_order(db: AsyncSession, reservation: P2PReservation, *, incoming_id: str) -> bool:
+    """Mark the storefront payment behind an order reservation succeeded (ADR-0097).
+
+    The payment row is the one ``payments.service.create_intent`` wrote with
+    ``external_id = "p2p:<number>"``. Settling goes through
+    ``settle_provider_payment`` — the same chokepoint Payme's
+    ``PerformTransaction`` uses — so a transfer flips the order to ``paid``,
+    starts fulfilment and, for an order that already expired, takes the
+    late-payment path rather than a second one of its own.
+
+    Returns:
+        Whether a payment was found and settled. ``False`` means the
+        reservation exists but no payment references it — a state nothing
+        writes today, reported rather than guessed around.
+    """
+    from yupay.modules.payments.models import Payment
+    from yupay.modules.payments.service import settle_provider_payment
+
+    payment = await db.scalar(
+        select(Payment).where(
+            Payment.provider == "p2p", Payment.external_id == f"p2p:{reservation.number}"
+        )
+    )
+    if payment is None:
+        log.warning("p2p.order_payment_missing", number=reservation.number)
+        return False
+    await settle_provider_payment(db, payment=payment, external_event_id=f"p2p:{incoming_id}")
+    log.info("p2p.order_paid", number=reservation.number, order_id=payment.order_id)
+    return True
+
+
 async def _credit(
     db: AsyncSession,
     row: P2PIncoming,
@@ -186,20 +217,38 @@ async def _credit(
         )
         return
     reservation = await _payable(db, parsed, received_at)
-    if reservation is None or reservation.merchant_id is None:
+    if reservation is None:
         row.result = "unmatched"
         result.status = "unmatched"
         log.info("p2p.unmatched", amount=str(parsed.amount), card_last4=parsed.card_last4)
         return
-    await credit_deposit(
-        db,
-        merchant_id=reservation.merchant_id,
-        amount=reservation.amount_usd,
-        actor="p2p",
-        idempotency_key=f"p2p:{reservation.id}",
-        order_id=None,
-        note=f"P2P · {reservation.number}",
-    )
+    if reservation.purpose == "order":
+        if not await _settle_order(db, reservation, incoming_id=row.id):
+            row.result = "unmatched"
+            result.status = "unmatched"
+            result.alerts.append(
+                (
+                    "p2p_order_payment_missing",
+                    f"P2P: перевод совпал с резервацией {reservation.number} заказа, "
+                    "но платежа под неё нет — зачисление не выполнено",
+                )
+            )
+            return
+    elif reservation.merchant_id is not None:
+        await credit_deposit(
+            db,
+            merchant_id=reservation.merchant_id,
+            amount=reservation.amount_usd,
+            actor="p2p",
+            idempotency_key=f"p2p:{reservation.id}",
+            order_id=None,
+            note=f"P2P · {reservation.number}",
+        )
+    else:
+        row.result = "unmatched"
+        result.status = "unmatched"
+        log.info("p2p.unmatched", amount=str(parsed.amount), card_last4=parsed.card_last4)
+        return
     # The amount stays held for the quarantine: a payer's accidental second
     # transfer must land unmatched, not pay whoever reserves the same sum next.
     reservation.status = "paid"

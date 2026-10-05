@@ -44,6 +44,9 @@ LOGICAL_PROVIDERS: dict[str, LogicalProvider] = {
     "paynet": LogicalProvider("Paynet", ["paynet"]),
     "crypto": LogicalProvider("USDT (crypto)", ["crypto"]),
     "wallet": LogicalProvider("Кошелёк", ["wallet"]),
+    # Card transfer settled by the Telegram P2P intake (ADR-0097). This state
+    # is the storefront's switch; the P2P settings ``mode`` gates the cabinet.
+    "p2p": LogicalProvider("Перевод на карту", ["p2p"]),
 }
 
 SLUG_TO_LOGICAL: dict[str, str] = {

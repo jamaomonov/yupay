@@ -61,7 +61,8 @@ class P2PCard(Base):
 
 
 class P2PReservation(Base):
-    """An exact amount held on a card for one reseller for five minutes."""
+    """An exact amount held on a card: for one reseller for five minutes, or for
+    one storefront order until that order expires (ADR-0097)."""
 
     __tablename__ = "p2p_reservations"
 
@@ -74,6 +75,12 @@ class P2PReservation(Base):
     purpose: Mapped[str] = mapped_column(String(24), nullable=False)
     merchant_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), ForeignKey("merchants.id"), nullable=True
+    )
+    # A storefront order this reservation is the payment intent of
+    # (``purpose='order'``, ADR-0097). Exactly one of ``merchant_id`` /
+    # ``order_id`` is set, by ``purpose``.
+    order_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("orders.id"), nullable=True
     )
     fx_rate: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
     fx_snapshot_id: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
@@ -91,7 +98,7 @@ class P2PReservation(Base):
 
     __table_args__ = (
         CheckConstraint("status IN ('pending','paid','expired','cancelled')", name="status"),
-        CheckConstraint("purpose IN ('merchant_deposit')", name="purpose"),
+        CheckConstraint("purpose IN ('merchant_deposit','order')", name="purpose"),
         CheckConstraint("amount_uzs > 0", name="amount"),
         # The rule the whole design rests on: one open amount per card.
         Index(
@@ -106,6 +113,12 @@ class P2PReservation(Base):
             "merchant_id",
             unique=True,
             postgresql_where=text("status = 'pending'"),
+        ),
+        Index(
+            "uq_p2p_reservations_one_pending_order",
+            "order_id",
+            unique=True,
+            postgresql_where=text("status = 'pending' AND order_id IS NOT NULL"),
         ),
         Index(
             "uq_p2p_reservations_idem",

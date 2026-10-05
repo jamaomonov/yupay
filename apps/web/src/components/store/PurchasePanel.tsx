@@ -62,7 +62,9 @@ const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").re
 
 interface Method {
   id: string;
+  /** The brand name, shown as is — or, when `nameKey` is set, a translated label. */
   name: string;
+  nameKey?: string;
   provider: string;
   icon: string;
   w: number;
@@ -111,6 +113,17 @@ const METHODS: Method[] = [
     h: 160,
   },
   { id: "uzum", name: "Uzum", provider: "uzum", icon: "/payment/uzum-mark.png", w: 160, h: 160 },
+  // A transfer to the owner's card, matched by exact amount (ADR-0097). No
+  // acquirer: the order page shows the card and the amount with a clock.
+  {
+    id: "p2p",
+    name: "P2P",
+    nameKey: "methodP2p",
+    provider: "p2p",
+    icon: "/payment/humo.png",
+    w: 160,
+    h: 160,
+  },
 ];
 
 /** A fixed-price SKU's display price. Never call this for a variable-amount
@@ -1703,7 +1716,15 @@ export function PurchasePanel({
         trackHref,
         paidFromBalance: payingFromBalance,
       });
-      if (intent.intent_url && provider !== "mock") {
+      if (provider === "p2p") {
+        // No acquirer to open: the order page shows the card and the exact
+        // amount (`OrderPayNow` → `P2PTransferCard`) and polls itself to paid.
+        try {
+          router.push(trackHref);
+        } catch {
+          // The confirmation screen above is the fallback, links and all.
+        }
+      } else if (intent.intent_url && provider !== "mock") {
         // Real acquirer → the ORDER PAGE, flagged to open the acquirer from
         // there. Assigning the acquirer URL here left the tab on the product
         // page: a phone opens the bank app instead of navigating, none of our
@@ -2110,6 +2131,7 @@ export function PurchasePanel({
                   const disabled = visibility === "maintenance";
                   const active = !disabled && m.id === methodId;
                   const statusId = `pay-method-status-${m.id}`;
+                  const name = m.nameKey ? t(m.nameKey) : m.name;
                   return (
                     <button
                       key={m.id}
@@ -2117,7 +2139,7 @@ export function PurchasePanel({
                       // Kept as the bare provider name: the status rides
                       // `aria-describedby` instead, so the accessible name of a
                       // tile doesn't change when an acquirer goes down.
-                      aria-label={m.name}
+                      aria-label={name}
                       aria-pressed={active}
                       aria-describedby={disabled ? statusId : undefined}
                       title={disabled ? t("paymentMaintenance") : undefined}
@@ -2166,7 +2188,7 @@ export function PurchasePanel({
                           disabled ? "text-tx-dim" : "text-foreground"
                         }`}
                       >
-                        {m.name}
+                        {name}
                       </span>
                     </button>
                   );

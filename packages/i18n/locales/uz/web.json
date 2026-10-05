@@ -368,7 +368,8 @@
     "howToMetaTitleVoucher": "{name} ni O'zbekistonda so'mga qanday sotib olish — YuPay",
     "howToMetaDescriptionVoucher": "Qadamma-qadam: {name} ni O'zbekistonda so'mga qanday sotib olish, kodni olish va faollashtirish.",
     "breadcrumbHowToVoucher": "Qanday sotib olish",
-    "guideCtaButtonVoucher": "{name} sotib olish"
+    "guideCtaButtonVoucher": "{name} sotib olish",
+    "methodP2p": "Kartaga oʻtkazma"
   },
   "gifts": {
     "meta": {
@@ -793,7 +794,18 @@
     "openingBank": "Bank ilovasi ochilmoqda…",
     "walletTopUpTitle": "Hamyonni toʻldirish",
     "walletTopUpBody": "Bank toʻlovni tasdiqlagach balans yangilanadi.",
-    "walletTopUpCta": "Hamyonga"
+    "walletTopUpCta": "Hamyonga",
+    "p2pTitle": "Kartaga oʻtkazing",
+    "p2pNote": "Bank ilovasi orqali istalgan kartadan aynan shu summani oʻtkazing. Oʻtkazma kelishi bilan buyurtma avtomatik toʻlanadi, odatda bir daqiqa ichida.",
+    "p2pCard": "Karta",
+    "p2pHolder": "Oluvchi",
+    "p2pAmount": "Oʻtkazma summasi",
+    "p2pExact": "aynan, soʻmigacha",
+    "p2pLeft": "Qolgan vaqt",
+    "p2pCopy": "Nusxalash",
+    "p2pCopied": "Nusxalandi",
+    "p2pExpired": "Oʻtkazma uchun vaqt tugadi. Buyurtmani qaytadan rasmiylashtiring.",
+    "p2pWaiting": "Oʻtkazmani kutmoqdamiz…"
   },
   "brandReviews": {
     "title": "Sharhlar",

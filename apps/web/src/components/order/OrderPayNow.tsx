@@ -8,6 +8,8 @@ import { useEffect, useRef, useState } from "react";
 
 import type { PaymentOut } from "@/lib/orders-types";
 
+import { P2PTransferCard } from "./P2PTransferCard";
+
 import { buttonStyles } from "@/lib/button";
 import { ApiError, apiFetch } from "@/lib/client";
 import {
@@ -51,6 +53,8 @@ export interface OrderPayNowProps {
   /** The guest's email from the `?email=` link; `undefined` when signed in. */
   email: string | undefined;
   auth: GuestAuth | undefined;
+  /** For the soʻm amount on a card-transfer payment (ADR-0097). */
+  locale?: string;
 }
 
 /**
@@ -65,7 +69,13 @@ export interface OrderPayNowProps {
  * product they were about to buy. See `lib/payment-return.ts` for why the flag
  * is one-shot and how it is stopped from firing twice.
  */
-export function OrderPayNow({ orderId, awaitingPayment, email, auth }: OrderPayNowProps) {
+export function OrderPayNow({
+  orderId,
+  awaitingPayment,
+  email,
+  auth,
+  locale = "ru",
+}: OrderPayNowProps) {
   const t = useTranslations("web.orders");
   const router = useRouter();
   const pathname = usePathname();
@@ -146,6 +156,14 @@ export function OrderPayNow({ orderId, awaitingPayment, email, auth }: OrderPayN
     }
     if (first && inTime) openAcquirer(payUrl);
   }, [autoOpen, payUrl, orderId, pathname, params, router]);
+
+  // A card transfer has no acquirer to open: the instructions are the
+  // payment. Shown only while the order is still waiting, on the same
+  // 30 s re-read, so a hold that expired and was re-made is picked up.
+  const p2p = awaitingPayment ? (payment.data?.p2p ?? null) : null;
+  if (p2p !== null) {
+    return <P2PTransferCard details={p2p} locale={locale} />;
+  }
 
   if (payUrl !== null) {
     return (

@@ -12737,6 +12737,46 @@
         "title": "P2PIncomingReservationOut",
         "type": "object"
       },
+      "P2PPaymentDetailsOut": {
+        "description": "Where and how much to transfer for a pending ``p2p`` payment (ADR-0097).\n\nPresent only while the reservation is pending and unexpired; ``None`` on\nevery other provider and once the window closes. ``pan`` is the owner's\nown card, grouped in fours, shown to the payer because a transfer cannot\nbe made without it.",
+        "properties": {
+          "amount_uzs": {
+            "title": "Amount Uzs",
+            "type": "integer"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "holder_name": {
+            "title": "Holder Name",
+            "type": "string"
+          },
+          "network": {
+            "title": "Network",
+            "type": "string"
+          },
+          "pan": {
+            "title": "Pan",
+            "type": "string"
+          },
+          "reservation_number": {
+            "title": "Reservation Number",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reservation_number",
+          "pan",
+          "holder_name",
+          "network",
+          "amount_uzs",
+          "expires_at"
+        ],
+        "title": "P2PPaymentDetailsOut",
+        "type": "object"
+      },
       "P2PReservationAdminOut": {
         "description": "One reservation as support sees it.",
         "properties": {
@@ -13102,6 +13142,16 @@
             "title": "Order Purpose",
             "type": "string"
           },
+          "p2p": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/P2PPaymentDetailsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "provider": {
             "title": "Provider",
             "type": "string"
@@ -13284,6 +13334,16 @@
           "order_id": {
             "title": "Order Id",
             "type": "string"
+          },
+          "p2p": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/P2PPaymentDetailsOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "provider": {
             "title": "Provider",

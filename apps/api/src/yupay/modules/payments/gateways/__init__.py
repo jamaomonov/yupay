@@ -25,6 +25,7 @@ from yupay.modules.payments.gateways.base import (
 from yupay.modules.payments.gateways.click import ClickGateway
 from yupay.modules.payments.gateways.mock import MockGateway
 from yupay.modules.payments.gateways.octo import OctoGateway
+from yupay.modules.payments.gateways.p2p import P2PGateway
 from yupay.modules.payments.gateways.payme import PaymeGateway
 from yupay.modules.payments.gateways.paynet import PaynetGateway
 from yupay.modules.payments.gateways.uzum import UzumGateway
@@ -57,6 +58,10 @@ REGISTRY: dict[str, PaymentGateway] = {
     # through this registry's generic webhook route. See
     # yupay.modules.uzum.service.
     "uzum": UzumGateway(),
+    # Card transfer to the owner's Humo card, matched by exact amount and
+    # settled by the Telegram P2P intake (modules/p2p). No redirect, no
+    # webhook of its own, manual refunds. ADR-0097.
+    "p2p": P2PGateway(),
     # --- Russian acquirers ---
     "yookassa": StubGateway(
         provider="yookassa",

@@ -327,3 +327,53 @@ it("keeps a guest's access: the email rides the query string and the Guest token
     },
   );
 });
+
+it("shows the card-transfer instructions instead of a pay button for a p2p payment", async () => {
+  // ADR-0097: a card transfer has no acquirer to open. The instructions are
+  // the payment, and they come off the same `by-order` read.
+  mockApiFetch.mockResolvedValue(
+    payment({
+      provider: "p2p",
+      intent_url: null,
+      external_id: "p2p:A1B2C3",
+      p2p: {
+        reservation_number: "A1B2C3",
+        pan: "9860 3501 4602 3311",
+        holder_name: "OMONOV J",
+        network: "humo",
+        amount_uzs: 45_001,
+        expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+      },
+    }),
+  );
+
+  wrap(panel({ locale: "ru" }));
+
+  expect(await screen.findByText("9860 3501 4602 3311")).toBeInTheDocument();
+  expect(screen.getByText("OMONOV J")).toBeInTheDocument();
+  expect(screen.queryByRole("link", { name: "payNow" })).not.toBeInTheDocument();
+});
+
+it("drops the transfer instructions once the order is no longer awaiting payment", async () => {
+  mockApiFetch.mockResolvedValue(
+    payment({
+      provider: "p2p",
+      intent_url: null,
+      p2p: {
+        reservation_number: "A1B2C3",
+        pan: "9860 3501 4602 3311",
+        holder_name: "OMONOV J",
+        network: "humo",
+        amount_uzs: 45_000,
+        expires_at: new Date(Date.now() + 9 * 60_000).toISOString(),
+      },
+    }),
+  );
+
+  const { container } = wrap(panel({ awaitingPayment: false }));
+
+  await waitFor(() => {
+    expect(container).toBeEmptyDOMElement();
+  });
+  expect(screen.queryByText("9860 3501 4602 3311")).not.toBeInTheDocument();
+});

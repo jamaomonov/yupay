@@ -29,6 +29,23 @@ class PaymentIntentIn(BaseModel):
     return_url: str | None = Field(default=None, max_length=2048)
 
 
+class P2PPaymentDetailsOut(BaseModel):
+    """Where and how much to transfer for a pending ``p2p`` payment (ADR-0097).
+
+    Present only while the reservation is pending and unexpired; ``None`` on
+    every other provider and once the window closes. ``pan`` is the owner's
+    own card, grouped in fours, shown to the payer because a transfer cannot
+    be made without it.
+    """
+
+    reservation_number: str
+    pan: str
+    holder_name: str
+    network: str
+    amount_uzs: int
+    expires_at: datetime
+
+
 class PaymentOut(BaseModel):
     """A payment as the customer / admin sees it."""
 
@@ -45,6 +62,8 @@ class PaymentOut(BaseModel):
     created_at: datetime
     succeeded_at: datetime | None
     failed_at: datetime | None
+    # Filled by the routes for a pending ``p2p`` payment (``payments.p2p_details``).
+    p2p: P2PPaymentDetailsOut | None = None
 
 
 class PaymentAttemptOut(BaseModel):

@@ -368,7 +368,8 @@
     "howToMetaTitleVoucher": "Как купить {name} в Узбекистане за сумы — YuPay",
     "howToMetaDescriptionVoucher": "Пошаговая инструкция: как купить {name} в Узбекистане за сумы, получить код и активировать его.",
     "breadcrumbHowToVoucher": "Как купить",
-    "guideCtaButtonVoucher": "Купить {name}"
+    "guideCtaButtonVoucher": "Купить {name}",
+    "methodP2p": "Перевод на карту"
   },
   "gifts": {
     "meta": {
@@ -793,7 +794,18 @@
     "openingBank": "Открываем приложение банка…",
     "walletTopUpTitle": "Пополнение кошелька",
     "walletTopUpBody": "Баланс обновится, когда банк подтвердит платёж.",
-    "walletTopUpCta": "К кошельку"
+    "walletTopUpCta": "К кошельку",
+    "p2pTitle": "Переведите на карту",
+    "p2pNote": "Переведите ровно эту сумму с любой карты через приложение банка. Как только перевод придёт, заказ оплатится сам, обычно в течение минуты.",
+    "p2pCard": "Карта",
+    "p2pHolder": "Получатель",
+    "p2pAmount": "Сумма перевода",
+    "p2pExact": "ровно, до сума",
+    "p2pLeft": "Осталось времени",
+    "p2pCopy": "Скопировать",
+    "p2pCopied": "Скопировано",
+    "p2pExpired": "Время на перевод вышло. Оформите заказ заново.",
+    "p2pWaiting": "Ждём перевод…"
   },
   "brandReviews": {
     "title": "Отзывы",

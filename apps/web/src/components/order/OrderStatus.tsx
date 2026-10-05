@@ -305,6 +305,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
         <OrderPayNow
           orderId={order.data.id}
           awaitingPayment={status === "pending_payment"}
+          locale={locale}
           // Only a guest sends the email: a signed-in buyer is identified by
           // their Bearer, and `isGuest` is already false for them even on a
           // `?email=` link.

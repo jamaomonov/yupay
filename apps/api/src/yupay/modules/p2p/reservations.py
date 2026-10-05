@@ -10,6 +10,7 @@ through quarantine), not in a read-then-write here: two requests racing for
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import ROUND_DOWN, Decimal
@@ -172,28 +173,122 @@ def _new_row(
     *,
     card: P2PCard,
     amount: int,
-    merchant_id: str,
+    merchant_id: str | None,
     rate: Decimal,
     snapshot_id: str | None,
     now_: datetime,
     idempotency_key: str | None,
+    purpose: str = "merchant_deposit",
+    order_id: str | None = None,
+    expires_at: datetime | None = None,
 ) -> P2PReservation:
     return P2PReservation(
         id=new_id(),
         number=new_reservation_number(),
         card_id=card.id,
         amount_uzs=amount,
-        purpose="merchant_deposit",
+        purpose=purpose,
         merchant_id=merchant_id,
+        order_id=order_id,
         fx_rate=rate,
         fx_snapshot_id=snapshot_id,
         amount_usd=(Decimal(amount) / rate).quantize(_CENT, rounding=ROUND_DOWN),
         status="pending",
         holds_amount=True,
         created_at=now_,
-        expires_at=now_ + RESERVATION_TTL,
+        expires_at=expires_at if expires_at is not None else now_ + RESERVATION_TTL,
         idempotency_key=idempotency_key,
     )
+
+
+async def _hold_amount(
+    db: AsyncSession,
+    *,
+    amount_uzs: int,
+    now_: datetime,
+    build: Callable[[P2PCard, int], P2PReservation],
+) -> P2PReservation | None:
+    """Try every eligible card, bumping the amount up to the card's cap, until
+    an insert lands. ``None`` when every nearby amount is held. An
+    ``IntegrityError`` other than the open-amount index propagates."""
+    for card, cap in await eligible_cards(db, amount_uzs, now_):
+        for bump in range(cap + 1):
+            row = build(card, amount_uzs + bump)
+            try:
+                async with db.begin_nested():
+                    db.add(row)
+                    await db.flush()
+            except IntegrityError as exc:
+                if violated_constraint(exc, (_OPEN_AMOUNT_INDEX,)) == _OPEN_AMOUNT_INDEX:
+                    continue
+                raise
+            log.info(
+                "p2p.reserved",
+                number=row.number,
+                amount_uzs=row.amount_uzs,
+                card_last4=card.pan_last4,
+                purpose=row.purpose,
+            )
+            return row
+    return None
+
+
+async def reserve_for_order(
+    db: AsyncSession, *, order_id: str, amount_uzs: int, expires_at: datetime
+) -> P2PReservation:
+    """Hold an exact amount for a storefront order until ``expires_at`` (ADR-0097).
+
+    The order-side twin of :func:`reserve`: no merchant, no admission mode (the
+    payment provider's admin state gates the storefront instead), and the hold
+    lives exactly as long as the order's payment window rather than five
+    minutes. The amount may be bumped by up to the card's cap when the exact
+    total is held by someone else — the customer is told the bumped figure and
+    the order is paid by whatever they transfer that matches.
+
+    Idempotent per order: a pending, unexpired reservation for ``order_id`` is
+    returned as is, so a retried intent shows the same card and amount.
+
+    Raises:
+        ConflictError: ``p2p_no_card`` when no active card's bounds or daily
+            room fit the amount.
+        UpstreamUnavailableError: ``p2p_amount_busy`` when every nearby amount
+            is held, or ``fx_unavailable`` when the rate gate rejects.
+    """
+    now_ = now()
+    open_one = await db.scalar(
+        select(P2PReservation).where(
+            P2PReservation.order_id == order_id, P2PReservation.status == "pending"
+        )
+    )
+    if open_one is not None:
+        if open_one.expires_at > now_:
+            return open_one
+        await _expire_stale(db, open_one, now_)
+    try:
+        rate = await guarded_usd_rate(db, quote="UZS")
+    except RateRejected as exc:
+        raise UpstreamUnavailableError("rate unavailable", code="fx_unavailable") from exc
+    snapshot_id = await _snapshot_id(db, rate)
+    row = await _hold_amount(
+        db,
+        amount_uzs=amount_uzs,
+        now_=now_,
+        build=lambda card, amount: _new_row(
+            card=card,
+            amount=amount,
+            merchant_id=None,
+            rate=rate,
+            snapshot_id=snapshot_id,
+            now_=now_,
+            idempotency_key=None,
+            purpose="order",
+            order_id=order_id,
+            expires_at=expires_at,
+        ),
+    )
+    if row is None:
+        raise UpstreamUnavailableError("every nearby amount is held", code="p2p_amount_busy")
+    return row
 
 
 async def reserve(
@@ -379,5 +474,6 @@ __all__ = [
     "list_for_merchant",
     "read",
     "reserve",
+    "reserve_for_order",
     "sweep",
 ]

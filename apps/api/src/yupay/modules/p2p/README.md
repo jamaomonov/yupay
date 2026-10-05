@@ -158,3 +158,19 @@ because that is all a notification names: two cards sharing a last4 show the sam
 Card numbers, holder names, raw notification text, Telegram user ids, and the webhook secret.
 Log lines carry the reservation number, amount and card last4 only. The full card number is
 returned only to the merchant holding the open reservation, and is write-only in the admin.
+
+## Storefront order payments (ADR-0097)
+
+The same reservation pays a storefront order. `reservations.reserve_for_order` writes a row
+with `purpose='order'`, `order_id` set and `merchant_id` NULL, held until **the order's own
+`expires_at`** rather than five minutes, with no admission mode consulted — the payments
+provider state (`LOGICAL_PROVIDERS["p2p"]`) is the storefront's switch. One pending
+reservation per order (`uq_p2p_reservations_one_pending_order`). The amount bumps like a
+deposit's when the exact total is held.
+
+The intake's `_credit` branches on `purpose`: an order reservation finds the `p2p` payment by
+`external_id = "p2p:<number>"` and calls `payments.service.settle_provider_payment`, the
+chokepoint every acquirer uses; a reservation with no payment behind it lands `unmatched` with
+a `p2p_order_payment_missing` alert. The reservation is marked `paid` and quarantined exactly
+as a deposit's. The card number reaches the payer through `payments.p2p_details`, opened on
+read, never stored on the payment.

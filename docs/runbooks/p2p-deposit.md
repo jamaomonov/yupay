@@ -149,6 +149,31 @@ amounts **never release**, so cards gradually run out of free amounts (`p2p_amou
 2. Check the scheduler container is up and not restart-looping (`make logs service=scheduler`,
    `docker ps`); a stopped scheduler logs nothing at all, so no lines can also mean no sweep.
 
+## 10. Storefront payments («Перевод на карту», ADR-0097)
+
+The same card and the same bot pay storefront orders. The switch is **admin → payments →
+providers → «Перевод на карту»**: `active` offers it at checkout, `maintenance` shows it greyed
+out, `disabled` hides it. The P2P settings `mode` does not apply to the storefront. The method
+also needs an active card and a pinned Business connection; without either, checkout answers
+«перевод на карту сейчас недоступен» and the buyer picks another method.
+
+**What the buyer sees.** After «Оплатить» the order page shows the card number, the holder,
+the exact amount (possibly a few soʻm above the price when the exact total was held by
+someone else) and a countdown to the order's expiry. The matching notification pays the order
+within the usual minute; the page polls itself to `paid`.
+
+**"They transferred but the order is not paid."** Same reading as §5: the journal row is
+`matched` to a reservation whose `purpose` is `order` and the order is `paid`, or it is
+`unmatched`. For an unmatched one with the right amount, find the order (the amount and the
+time), and settle its pending `p2p` payment with the admin **settle** button — that is the
+same chokepoint the intake uses. Never credit a deposit for an order transfer.
+
+**Refunds are manual.** The admin refund button refuses `p2p`. Transfer the amount back from the
+banking app, then record it with the admin refund-to-wallet or cancel path the order allows.
+
+**Late transfers.** One that arrives after the order expired pays it late, like a late acquirer
+callback: the order takes the paid-after-expiry path (`docs/runbooks/paid-after-expiry.md`).
+
 ## Other alerts
 
 - `p2p_unparsed`: HUMO changed the notification format. Nothing is credited. The alert carries

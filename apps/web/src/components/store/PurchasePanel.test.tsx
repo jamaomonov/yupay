@@ -1605,3 +1605,58 @@ it("the Stars hand-off fills the star count and checks the username itself", asy
     window.history.replaceState({}, "", "/");
   }
 });
+
+it("offers «Перевод на карту» when the API lists p2p, and lands the buyer on the order page", async () => {
+  // ADR-0097. The tile reads its name from the catalogue of translations
+  // rather than a brand, and paying with it opens no acquirer: the order
+  // page shows the card and the amount, so that is where the buyer goes.
+  vi.spyOn(globalThis, "fetch").mockImplementation(
+    (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes("/payments/providers")) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              providers: [...ALL_PROVIDERS_ACTIVE, { slug: "p2p", status: "active" }],
+            }),
+            { status: 200 },
+          ),
+        );
+      }
+      if (url.includes("/auth/guest")) {
+        return Promise.resolve(
+          new Response(JSON.stringify({ access_token: "guest-token" }), { status: 200 }),
+        );
+      }
+      if (url.includes("/api/v1/orders") && init?.method === "POST") {
+        return Promise.resolve(new Response(JSON.stringify({ id: "order-p2p" }), { status: 200 }));
+      }
+      if (url.includes("/payments/intents")) {
+        return Promise.resolve(new Response(JSON.stringify({ intent_url: null }), { status: 200 }));
+      }
+      return Promise.resolve(new Response("{}", { status: 200 }));
+    },
+  );
+
+  renderPanel(<PurchasePanel products={[makeStarsUnitProduct()]} locale="ru" />);
+  const tile = await screen.findByRole("button", { name: "methodP2p" });
+  fireEvent.click(tile);
+  expect(tile).toHaveAttribute("aria-pressed", "true");
+
+  fireEvent.click(screen.getByRole("button", { name: /^50 Stars\b/ }));
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "buyer@example.com" },
+  });
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: /^pay ·/i })).not.toBeDisabled();
+  });
+  fireEvent.click(screen.getByRole("button", { name: /^pay ·/i }));
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+
+  await waitFor(() => {
+    expect(pushMock).toHaveBeenCalled();
+  });
+  const href = String(pushMock.mock.calls[0]?.[0]);
+  expect(href).toContain("/orders/order-p2p");
+  expect(href).not.toContain("autoopen");
+});

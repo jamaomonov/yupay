@@ -25,6 +25,7 @@ from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
 from yupay.modules.payments import provider_admin, provider_analytics, provider_state
 from yupay.modules.payments import service as svc
+from yupay.modules.payments.p2p_details import payment_out
 from yupay.modules.payments.provider_state import SLUG_TO_LOGICAL
 from yupay.modules.payments.schemas import (
     AdminProviderDetailOut,
@@ -155,7 +156,7 @@ async def create_intent_route(
         return_url=body.return_url,
         idempotency_key=key,
     )
-    return PaymentOut.model_validate(payment)
+    return await payment_out(db, payment)
 
 
 @router.get(
@@ -176,7 +177,7 @@ async def get_active_payment_route(
     payment = await svc.get_active_payment(db, order_id)
     if payment is None:
         raise HTTPException(status_code=404, detail="no active payment for this order")
-    return PaymentOut.model_validate(payment)
+    return await payment_out(db, payment)
 
 
 @router.get(
@@ -192,7 +193,7 @@ async def get_payment_route(
     actor = await _resolve_actor(request, db)
     payment = await svc.get_payment(db, payment_id)
     await _ensure_actor_owns_order(db, actor=actor, order_id=payment.order_id)
-    return PaymentOut.model_validate(payment)
+    return await payment_out(db, payment)
 
 
 # ---------- webhooks ----------
