@@ -118,4 +118,16 @@ Existing drafts stay where they are.
 - **No alert on repeated failures.** A Bunzy outage shows up as log lines and
   nothing else. Nothing is lost — the next pass retries — but nobody is told.
 - **One locale per article.** They write in one language; the import fills
-  that locale only. `en`/`uz` translations stay a manual job.
+  that locale only. `en`/`uz` translations stay a manual job. The batch shape
+  that job has settled into: one content module per post under
+  `scripts/seed/bunzy_2026_10_05/` (review notes, the fixed Russian body as
+  Markdown, English, Uzbek, FAQs, brand, cover), rendered by
+  `scripts/seed/build_bunzy_2026_10_05.py` through the API's own
+  `markdown_to_html` + `sanitize_body` into one SQL per post, applied with
+  `psql`, status left `draft`. Covers are 1600×900 JPEGs from an HTML
+  template (logo top-left, Click/Payme/Uzum marks bottom-left, the subject on
+  the right) screenshotted with Playwright and put into R2 under
+  `blog_image/<yyyy>/<mm>/` with `storage.service._build_key`, the same key
+  layout the admin uploader produces. A duplicate Bunzy article is
+  **archived**, not deleted — deleting cascades the ledger row and the next
+  pass re-imports it (`2026-10-05_blog_archive_steam_duplicate.sql`).
