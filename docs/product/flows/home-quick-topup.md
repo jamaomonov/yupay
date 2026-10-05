@@ -29,7 +29,8 @@ page; nothing is charged on the home page.
   (`autoCheck`, one press, never again), the seeded amount survives the per-SKU reset
   that used to wipe it on mount, and the page lands on the order form instead of its
   top (2026-10-05 — the buyer had been retyping the amount and pressing «Проверить»
-  after already filling the form once). The order is then paid
+  after already filling the form once). The same hand-off serves Stars: the seeded
+  count lights the matching preset tile, the username is checked by itself. The order is then paid
   there, as for any buyer.
 
 ```mermaid

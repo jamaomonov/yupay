@@ -1563,3 +1563,45 @@ it("does not check by itself when nothing was handed off", async () => {
   });
   expect(check).not.toHaveBeenCalled();
 });
+
+it("the Stars hand-off fills the star count and checks the username itself", async () => {
+  // Same hand-off from the home page's second form: `?username=…&amount=…`
+  // onto the unit SKU. The tiles are presets of the same count, so a seeded
+  // 100 lights the 100-star tile and nothing else — the count, not a pack,
+  // is what was handed off.
+  mockProvidersResponse(ALL_PROVIDERS_ACTIVE);
+  const check = vi
+    .spyOn(playerCheck, "checkPlayer")
+    .mockResolvedValue({ status: "valid", name: "Neo" });
+  Element.prototype.scrollIntoView = vi.fn();
+  window.history.replaceState({}, "", "/ru/store/telegram-stars?username=neo_user&amount=100");
+  try {
+    const stars: ProductDetail = {
+      ...makeStarsUnitProduct(),
+      required_fields: [
+        {
+          key: "username",
+          label: { ru: "Username" },
+          type: "text",
+          required: true,
+          pattern: "^@?[A-Za-z][A-Za-z0-9_]{4,31}$",
+          check: { server_field: null },
+        },
+      ],
+    };
+    renderPanel(<PurchasePanel products={[stars]} locale="ru" />);
+
+    expect(screen.getByLabelText("amountUnitLabel")).toHaveValue("100");
+    expect(await screen.findByText(/Neo/)).toBeInTheDocument();
+    expect(check).toHaveBeenCalledTimes(1);
+    expect(check.mock.calls[0]?.[1]).toMatchObject({ playerId: "neo_user" });
+    const litTiles = screen
+      .getAllByRole("button", { pressed: true })
+      .filter((b) => (b.textContent ?? "").includes("Stars"));
+    for (const tile of litTiles) {
+      expect(tile).toHaveTextContent(/100/);
+    }
+  } finally {
+    window.history.replaceState({}, "", "/");
+  }
+});
