@@ -20,6 +20,11 @@ def test_click_family_is_uzs() -> None:
     assert currency_for_provider("uzum") == "UZS"
 
 
+def test_card_transfer_funds_a_wallet_in_uzs() -> None:
+    # ADR-0097: the P2P hold settles a deposit like any acquirer would.
+    assert currency_for_provider("p2p") == "UZS"
+
+
 def test_crypto_is_usdt() -> None:
     assert currency_for_provider("crypto") == "USDT"
 
@@ -91,6 +96,6 @@ def test_an_unreadable_surface_header_still_buys_through_the_default_merchant() 
 
 
 def test_single_merchant_acquirers_are_not_surface_bound() -> None:
-    for provider in ("payme", "uzum", "octo", "mock"):
+    for provider in ("payme", "uzum", "octo", "p2p", "mock"):
         assert_provider_matches_surface(provider, "web")
         assert_provider_matches_surface(provider, "miniapp")

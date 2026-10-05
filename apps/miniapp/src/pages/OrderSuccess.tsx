@@ -170,6 +170,7 @@ export default function OrderSuccess() {
       <WalletFundingStatus
         order={order}
         payUrl={payUrl}
+        p2p={paymentQuery.data?.p2p ?? null}
         onWallet={() => {
           setLocation("/wallet");
         }}

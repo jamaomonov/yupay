@@ -27,6 +27,11 @@ sequenceDiagram
     A-->>W: status paid / delivered
 ```
 
+The mini app runs the same flow on `/order/:id`, and both surfaces offer the method on the
+balance top-up page as well: a deposit is an order with `purpose = wallet_topup`, so the
+funding status screen shows the same card block until the transfer arrives and the wallet is
+credited.
+
 What can go wrong and what the buyer sees:
 
 - The exact total is held by another payer → the amount shown is bumped by a few soʻm; the

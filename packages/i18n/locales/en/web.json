@@ -892,6 +892,7 @@
     "topUpBadAmount": "Check the amount — it is outside the allowed range",
     "topUpProviderDown": "That payment method is unavailable right now, pick another",
     "methodNoneAvailable": "No payment methods are available right now",
+    "methodP2p": "Card transfer",
     "promoTitle": "Promo code",
     "promoPlaceholder": "Enter code",
     "promoApply": "Apply",

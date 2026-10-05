@@ -47,7 +47,10 @@ would touch every gateway and webhook.
 `Idempotency-Key` required):
 
 1. Reject `wallet`. Currency is derived from the provider, never from the
-   client. Amount is quantized and clamped (UZS 10 000–5 000 000 whole so'm;
+   client. Since 2026-10-06 the card transfer `p2p` (ADR-0097) is on the
+   provider table too: it is not an acquirer, but it settles the deposit order
+   through the same `settle_provider_payment`, so the wallet top-up pages of
+   both surfaces offer it and show the card while the deposit is pending. Amount is quantized and clamped (UZS 10 000–5 000 000 whole so'm;
    USDT 5–500 at 0.01).
 2. Insert `orders` with `purpose='wallet_topup'`, `items=[]`,
    `total_charged=amount`, `total_usd=0`, `currency` = provider currency.

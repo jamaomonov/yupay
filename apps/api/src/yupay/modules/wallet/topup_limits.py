@@ -18,6 +18,9 @@ PROVIDER_CURRENCY: dict[str, str] = {
     "uzum": "UZS",
     "octo": "UZS",
     "paynet": "UZS",
+    # A card transfer matched by exact amount (ADR-0097). Not an acquirer, but it
+    # settles a deposit the same way: `settle_provider_payment` on the order.
+    "p2p": "UZS",
     "crypto": "USDT",
     "mock": "UZS",
 }

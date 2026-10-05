@@ -70,7 +70,8 @@ order, a `PaymentGateway` for it, a place on the storefront to show the card and
 - **Storefront (web first).** «Перевод на карту» beside the acquirers; after the intent the
   buyer lands on the order page, where the pay-now block shows the card, the holder, the exact
   amount with copy buttons and a countdown, and the order polls itself to `paid`. The mini app
-  is a later step.
+  followed on 2026-10-06, and so did the wallet top-up pages of both surfaces (a deposit is an
+  order with `purpose = wallet_topup`; its status screen renders the same card block).
 
 ### Positive consequences
 

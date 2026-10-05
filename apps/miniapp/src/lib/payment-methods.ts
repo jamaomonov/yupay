@@ -85,14 +85,12 @@ export const PAYMENT_METHODS: PaymentMethod[] = [
 ];
 
 /**
- * What a wallet top-up may be paid with: every acquirer except the card
- * transfer. A P2P hold is shown on the *order* page (``P2PTransferCard``);
- * the wallet funding screen has no such block, so offering it there would
- * leave the customer with a pending top-up and nowhere to read the card.
+ * What a wallet top-up may be paid with. Every method, the card transfer
+ * included: the wallet funding screen renders the same ``P2PTransferCard`` as
+ * the order page while the deposit is pending, so the customer has somewhere
+ * to read the card. ``click_miniapp`` is already this surface's own Click.
  */
-export const WALLET_TOPUP_METHODS: PaymentMethod[] = PAYMENT_METHODS.filter(
-  (m) => m.provider !== "p2p",
-);
+export const WALLET_TOPUP_METHODS: PaymentMethod[] = PAYMENT_METHODS;
 
 /** method id → backend provider slug. */
 export const PROVIDER_BY_METHOD: Record<string, string> = Object.fromEntries(

@@ -892,6 +892,7 @@
     "topUpBadAmount": "Summani tekshiring — u ruxsat etilgan chegaradan tashqarida",
     "topUpProviderDown": "Bu toʻlov usuli hozir mavjud emas, boshqasini tanlang",
     "methodNoneAvailable": "Hozircha mavjud toʻlov usullari yoʻq",
+    "methodP2p": "Kartaga oʻtkazma",
     "promoTitle": "Promokod",
     "promoPlaceholder": "Kodni kiriting",
     "promoApply": "Qoʻllash",

@@ -4,8 +4,9 @@ import { CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { useEffect } from "react";
 
 import { TERMINAL_FAIL } from "./order-helpers";
+import { P2PTransferCard } from "./P2PTransferCard";
 
-import type { OrderOut } from "@/lib/orders";
+import type { OrderOut, P2PPaymentDetails } from "@/lib/orders";
 
 import { useT } from "@/lib/i18n";
 import { openExternalLink } from "@/lib/telegram";
@@ -18,11 +19,14 @@ import { formatBalance } from "@/lib/wallet";
 export function WalletFundingStatus({
   order,
   payUrl,
+  p2p = null,
   onWallet,
   onHome,
 }: {
   order: OrderOut;
   payUrl: string | null;
+  /** Card-transfer details of the pending payment (ADR-0097); the card is the pay button. */
+  p2p?: P2PPaymentDetails | null;
   onWallet: () => void;
   onHome: () => void;
 }) {
@@ -61,6 +65,11 @@ export function WalletFundingStatus({
         <p className="mt-2 text-2xl font-bold tabular-nums text-white">{amountLabel}</p>
         <p className="mt-1 text-sm text-white/50">{t("walletTopUp.disclaimerAfter")}</p>
       </div>
+      {order.status === "pending_payment" && p2p ? (
+        <div className="-mx-4">
+          <P2PTransferCard details={p2p} />
+        </div>
+      ) : null}
       {order.status === "pending_payment" && payUrl ? (
         <button
           type="button"

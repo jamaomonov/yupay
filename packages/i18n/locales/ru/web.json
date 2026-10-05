@@ -892,6 +892,7 @@
     "topUpBadAmount": "Проверьте сумму — она вне допустимых границ",
     "topUpProviderDown": "Способ оплаты сейчас недоступен, выберите другой",
     "methodNoneAvailable": "Сейчас нет доступных способов оплаты",
+    "methodP2p": "Перевод на карту",
     "promoTitle": "Промокод",
     "promoPlaceholder": "Введите код",
     "promoApply": "Применить",

@@ -162,6 +162,12 @@ the exact amount (possibly a few soʻm above the price when the exact total was 
 someone else) and a countdown to the order's expiry. The matching notification pays the order
 within the usual minute; the page polls itself to `paid`.
 
+**Wallet top-ups too.** The balance top-up pages (web `/account/wallet/top-up`, mini app
+`/wallet/topup`) offer the same method; a deposit is an order with `purpose = wallet_topup`,
+so the same reservation, the same card block and the same settlement apply, and the balance
+is credited when the order pays. The one thing the method cannot pay for is a wallet-funded
+order, which the API already refuses for every provider.
+
 **"They transferred but the order is not paid."** Same reading as §5: the journal row is
 `matched` to a reservation whose `purpose` is `order` and the order is `paid`, or it is
 `unmatched`. For an unmatched one with the right amount, find the order (the amount and the
