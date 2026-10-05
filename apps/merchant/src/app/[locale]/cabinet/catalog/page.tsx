@@ -49,16 +49,16 @@ function tintOf(slug: string): string {
 }
 
 /**
- * A brand's picture, fitted by what it is.
+ * A brand's picture: the game's app icon, square, filling a square.
  *
- * The retail brands carry 4:3 key art and look right cropped to the card;
- * the 850 imported ones carry a square icon, which cropped to 4:3 lost its
- * top and bottom — the Steam logo was a white blob. Decided per image once it
- * has loaded, from its own proportions: wide art fills the card, a square or
- * tall icon sits whole on it with room around.
+ * Every logo we hold is a square icon or close to it (the import's covers and
+ * the retail brands' key art alike), so the card's picture area is square and
+ * the icon fills it edge to edge — the way an app store or fzr's panel shows
+ * a game. The earlier 4:3 area either cropped the icon or floated it in a
+ * dark field with air around; neither looked like a game tile.
  */
 function Logo({ src }: { src: string }) {
-  const [fit, setFit] = useState<"cover" | "contain" | null>(null);
+  const [loaded, setLoaded] = useState(false);
   return (
     /* eslint-disable-next-line @next/next/no-img-element -- the URL is an
        operator-entered absolute one on a host we do not control, so
@@ -69,13 +69,12 @@ function Logo({ src }: { src: string }) {
       alt=""
       loading="lazy"
       decoding="async"
-      onLoad={(event) => {
-        const { naturalWidth, naturalHeight } = event.currentTarget;
-        setFit(naturalWidth > naturalHeight * 1.15 ? "cover" : "contain");
+      onLoad={() => {
+        setLoaded(true);
       }}
-      className={`absolute inset-0 h-full w-full transition-opacity duration-200 ${
-        fit === null ? "opacity-0" : "opacity-100"
-      } ${fit === "contain" ? "object-contain p-6" : "object-cover"}`}
+      className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-200 ${
+        loaded ? "opacity-100" : "opacity-0"
+      }`}
     />
   );
 }
@@ -98,11 +97,22 @@ function Card({ brand, locale }: { brand: BrandSummary; locale: string }) {
       className="border-border bg-card hover:border-border-2 overflow-hidden rounded-xl border transition"
     >
       <div
-        className={`bg-card-2 relative aspect-[4/3] bg-gradient-to-tr to-transparent ${tintOf(
+        className={`bg-card-2 relative aspect-square bg-gradient-to-tr to-transparent ${tintOf(
           brand.slug,
         )}`}
       >
-        {brand.logo_url !== null && <Logo src={brand.logo_url} />}
+        {brand.logo_url !== null ? (
+          <Logo src={brand.logo_url} />
+        ) : (
+          // No artwork yet: the brand's initial, so a tile is never a bare
+          // colour and the grid stays scannable by eye.
+          <span
+            aria-hidden
+            className="font-display text-foreground/30 absolute inset-0 flex items-center justify-center text-5xl font-semibold"
+          >
+            {brand.name.trim().charAt(0).toUpperCase()}
+          </span>
+        )}
       </div>
       <div className="px-3 pb-3 pt-2.5">
         <p className="truncate text-[13.5px] font-bold">{brand.name}</p>
@@ -229,7 +239,7 @@ function CatalogGrid() {
         >
           {Array.from({ length: 10 }, (_, i) => (
             <div key={i} className="border-border bg-card animate-pulse rounded-xl border">
-              <div className="bg-card-2 aspect-[4/3]" />
+              <div className="bg-card-2 aspect-square" />
               <div className="space-y-2 px-3 pb-3 pt-2.5">
                 <div className="bg-card-2 h-3.5 w-2/3 rounded" />
                 <div className="bg-card-2 h-3 w-1/2 rounded" />
