@@ -15,7 +15,11 @@ from sqlalchemy.orm import InstrumentedAttribute
 from yupay.core.clock import now
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.orders.models import Order, OrderItem
-from yupay.modules.orders.revenue import margin_usd_expr, order_charged_usd_subq
+from yupay.modules.orders.revenue import (
+    fixed_cost_basis_expr,
+    margin_usd_expr,
+    order_charged_usd_subq,
+)
 from yupay.modules.orders.scope import IS_SALE
 from yupay.modules.stats._time import LOCAL_TZ, local_day
 from yupay.modules.stats.analytics._common import _PAID_LIKE
@@ -138,38 +142,43 @@ def _margin_parts() -> tuple[Any, Any, Any]:
     arithmetic rather than two copies of it — a calendar whose days do not add
     up to the number above them is worse than no calendar.
 
-    Fixed SKUs with a known cost contribute price and cost; variable-amount
-    (Steam) ones are priced off a multiplier, so the markup is the margin;
-    fixed ones with no known cost contribute only to the unknown-unit count,
-    because an unknown cost must never read as a 100% margin.
+    Fixed SKUs are valued against the same cost the per-order margin uses
+    (``orders.revenue.fixed_cost_basis_expr``): frozen on the line, else the
+    price history at order time, else the live SKU. Reading the live SKU alone
+    here, as this did until 2026-10-05, re-valued every past sale each time a
+    supplier moved and let this tab disagree with the orders report under it.
+    Variable-amount (Steam) ones are priced off the multiplier frozen on the
+    line; their cost is what the supplier said it took when that was recorded,
+    and face value otherwise. Fixed ones with no known cost contribute only to
+    the unknown-unit count, because an unknown cost must never read as a 100%
+    margin.
     """
+    is_fixed = Sku.variable_amount.is_(False)
+    is_variable = Sku.variable_amount.is_(True)
+    cost_basis = fixed_cost_basis_expr()
+    multiplier = func.coalesce(OrderItem.rate_multiplier, Sku.rate_multiplier)
+    variable_cost = func.coalesce(OrderItem.cost_usdt, OrderItem.unit_price_usd)
     return (
         func.coalesce(
             func.sum(OrderItem.qty * OrderItem.unit_price_usd).filter(
-                Sku.variable_amount.is_(False), Sku.cost_usdt.isnot(None)
+                is_fixed, cost_basis.isnot(None)
             ),
             0,
         )
         + func.coalesce(
-            func.sum(OrderItem.qty * OrderItem.unit_price_usd * Sku.rate_multiplier).filter(
-                Sku.variable_amount.is_(True)
-            ),
+            func.sum(OrderItem.qty * OrderItem.unit_price_usd * multiplier).filter(is_variable),
             0,
         ),
         func.coalesce(
-            func.sum(OrderItem.qty * Sku.cost_usdt).filter(
-                Sku.variable_amount.is_(False), Sku.cost_usdt.isnot(None)
-            ),
+            func.sum(OrderItem.qty * cost_basis).filter(is_fixed, cost_basis.isnot(None)),
             0,
         )
         + func.coalesce(
-            func.sum(OrderItem.qty * OrderItem.unit_price_usd).filter(
-                Sku.variable_amount.is_(True)
-            ),
+            func.sum(OrderItem.qty * variable_cost).filter(is_variable),
             0,
         ),
         func.coalesce(
-            func.sum(OrderItem.qty).filter(Sku.variable_amount.is_(False), Sku.cost_usdt.is_(None)),
+            func.sum(OrderItem.qty).filter(is_fixed, cost_basis.is_(None)),
             0,
         ),
     )

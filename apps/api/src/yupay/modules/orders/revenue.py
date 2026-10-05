@@ -112,6 +112,27 @@ def _cost_when_ordered() -> ScalarSelect[Any]:
     )
 
 
+def fixed_cost_basis_expr() -> ColumnElement[Any]:
+    """The cost a **fixed** line is valued against, for use in aggregates.
+
+    The same three-step precedence :func:`margin_usd_expr` applies (ADR-0053):
+    the cost frozen on the line at checkout — or re-frozen by a route switch
+    (``fulfillment.cost_resnapshot``) — then the cost ``supplier_price_history``
+    says was in force when the order was created, then the live SKU. Exported
+    so the business tab's known-revenue / known-cost split uses the same cost
+    as the per-order margin instead of the live SKU alone, which re-valued
+    every past sale each time a supplier moved and disagreed with the margin
+    column beside it.
+
+    ``COALESCE`` stops at the first non-null argument, so the correlated
+    history lookup only runs for lines with no frozen cost. The query must
+    have ``Order`` and ``Sku`` joined: the history lookup is keyed on
+    ``Order.created_at`` and the last fallback reads ``Sku.cost_usdt``.
+    ``NULL`` means "unknown", which callers count rather than value at zero.
+    """
+    return func.coalesce(OrderItem.cost_usdt, _cost_when_ordered(), Sku.cost_usdt)
+
+
 def margin_usd_expr() -> Case[Any]:
     """Per-order-item margin in USD, for use inside ``func.sum(...)``.
 
@@ -251,6 +272,7 @@ def order_charged_usd(order: Order) -> Decimal | None:
 
 __all__ = [
     "charged_usd_expr",
+    "fixed_cost_basis_expr",
     "margin_usd_expr",
     "order_charged_usd",
     "order_charged_usd_subq",

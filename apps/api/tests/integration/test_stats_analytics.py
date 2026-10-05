@@ -70,7 +70,13 @@ async def _seed_catalog(db: AsyncSession) -> tuple[str, str]:
 
 
 async def _paid_order(
-    db: AsyncSession, *, sku_id: str, qty: int, unit: str, paid_ago_days: int
+    db: AsyncSession,
+    *,
+    sku_id: str,
+    qty: int,
+    unit: str,
+    paid_ago_days: int,
+    frozen_cost: str | None = None,
 ) -> None:
     moment = now() - timedelta(days=paid_ago_days)
     order = Order(
@@ -95,9 +101,27 @@ async def _paid_order(
             sku_id=sku_id,
             qty=qty,
             unit_price_usd=Decimal(unit),
+            cost_usdt=None if frozen_cost is None else Decimal(frozen_cost),
         )
     )
     await db.flush()
+
+
+async def test_business_margin_uses_the_cost_frozen_on_the_line(db_session: AsyncSession) -> None:
+    """The SKU costs 0.60 today; the line was bought at 0.50 (frozen at checkout
+    or re-frozen by a route switch). The tab must value the sale at 0.50, like
+    the orders report does, not re-price it at today's supplier."""
+    sku_with, _sku_no = await _seed_catalog(db_session)
+    await _paid_order(
+        db_session, sku_id=sku_with, qty=2, unit="1.00", paid_ago_days=1, frozen_cost="0.50"
+    )
+
+    out = await svc.build_business_analytics(db_session, r=AnalyticsRange.D30)
+
+    assert out.summary.gross_margin_usd == Decimal("1.00")  # 2 × (1.00 − 0.50)
+    assert out.summary.margin_unknown_units == 0
+    brands = {b.slug: b for b in out.top_brands}
+    assert brands["pubg"].margin_usd == Decimal("1.00")
 
 
 async def test_business_summary_and_margin_approx(db_session: AsyncSession) -> None:

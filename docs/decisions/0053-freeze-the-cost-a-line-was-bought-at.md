@@ -85,3 +85,20 @@ trend line.
   relevance, never in count.
 - A cost column now sits one careless schema edit away from the buyer. Pinned
   by test rather than by convention.
+
+## Follow-ups (2026-10-05)
+
+- **A route switch re-freezes the cost.** The value frozen at checkout is the
+  routed supplier's. When a task is moved — an admin reassign, or the
+  inventory→supplier fallback — the line is bought from someone else at their
+  price, so `fulfillment/cost_resnapshot.py` re-quotes it from the new supplier
+  (the reassign screen's read-only lookup), falls back to that supplier's
+  newest `supplier_price_history` row, and otherwise keeps the old cost with
+  the reason written into the `route_switch` attempt payload. Variable-amount
+  lines are not touched: theirs is written on delivery from the actual charge.
+- **The business tab reads the same cost.** `stats/analytics/business.py`
+  valued fixed lines against the live `Sku.cost_usdt`, the very thing this ADR
+  stopped the orders report from doing, so the two disagreed and the tab
+  re-valued past sales on every price move. It now uses
+  `orders.revenue.fixed_cost_basis_expr` — frozen → history → live — and the
+  multiplier frozen on the line for Steam.
