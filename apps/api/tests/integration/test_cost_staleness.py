@@ -72,6 +72,33 @@ async def test_find_stale_picks_old_and_never_but_not_fresh_unmapped_or_pinned(
     await db_session.commit()
     await _stamp(db_session, pinned, hours_ago=99)
 
+    # Forced to the manual queue the other way round — ``force_supplier`` with
+    # slug ``manual`` — which is how the first prod tick produced a false hit.
+    forced_manual = await _seed_sku(
+        db_session, "fmanual", cost_usdt="1.00", price_usd="1.13", margin_percent="13"
+    )
+    await _map(db_session, forced_manual, "g2b")
+    db_session.add(
+        SkuSourcingRule(
+            sku_id=forced_manual, mode="force_supplier", supplier_slug="manual", updated_by="test"
+        )
+    )
+    await db_session.commit()
+    await _stamp(db_session, forced_manual, hours_ago=99)
+
+    # Forced to a price-collecting supplier: that one must answer, so stale counts.
+    forced_g2b = await _seed_sku(
+        db_session, "fg2b", cost_usdt="1.00", price_usd="1.13", margin_percent="13"
+    )
+    await _map(db_session, forced_g2b, "g2b")
+    db_session.add(
+        SkuSourcingRule(
+            sku_id=forced_g2b, mode="force_supplier", supplier_slug="g2b", updated_by="test"
+        )
+    )
+    await db_session.commit()
+    await _stamp(db_session, forced_g2b, hours_ago=50)
+
     # No cost: unpriced, not stale.
     nocost = await _seed_sku(
         db_session, "nocost", cost_usdt=None, price_usd="1.13", margin_percent=None
@@ -80,10 +107,10 @@ async def test_find_stale_picks_old_and_never_but_not_fresh_unmapped_or_pinned(
 
     stale = await cost_staleness.find_stale(db_session, max_age=timedelta(hours=6))
 
-    assert stale.total == 2
-    assert [r.sku_code for r in stale.rows] == ["sk-never", "sk-old"]  # never first
+    assert stale.total == 3
+    assert [r.sku_code for r in stale.rows] == ["sk-never", "sk-fg2b", "sk-old"]  # oldest first
     assert stale.rows[0].suppliers in ("fzr,nova", "nova,fzr")
-    assert stale.by_supplier == {"g2b": 1, "fzr": 1, "nova": 1}
+    assert stale.by_supplier == {"g2b": 2, "fzr": 1, "nova": 1}
 
 
 async def test_format_alert_names_total_suppliers_and_rows(db_session: AsyncSession) -> None:

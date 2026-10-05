@@ -11,8 +11,8 @@ answer" looked exactly like "no move because stable".
 A SKU is stale when it is active, fixed-price, has a cost, has an active
 mapping to a supplier whose prices are collected (``PRICE_COLLECTION_SUPPORTED_
 SUPPLIERS``), is not pinned to the warehouse or the manual queue by a sourcing
-rule, and ``cost_synced_at`` is older than ``settings.cost_stale_after_hours``
-or NULL. The mapping test is deliberately coarse — resolving the route in SQL
+rule (nor forced to a supplier without a price feed), and ``cost_synced_at``
+is older than ``settings.cost_stale_after_hours`` or NULL. The mapping test is deliberately coarse — resolving the route in SQL
 is not possible, and a SKU pinned to inventory with a live mapping would
 otherwise alert forever, so those two rule modes are excluded by name.
 
@@ -26,7 +26,7 @@ import html
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.clock import now
@@ -89,9 +89,23 @@ async def find_stale(db: AsyncSession, *, max_age: timedelta, top: int = _TOP) -
         )
         .exists()
     )
+    # Pinned somewhere no price feed exists: the warehouse, the manual queue
+    # (either as ``mode="manual"`` or as ``force_supplier`` with slug
+    # ``manual`` — the first prod tick alerted on exactly that), or forced to
+    # a supplier whose prices are not collected.
     pinned = exists(
         select(SkuSourcingRule.sku_id).where(
-            SkuSourcingRule.sku_id == Sku.id, SkuSourcingRule.mode.in_(_UNROUTED_MODES)
+            SkuSourcingRule.sku_id == Sku.id,
+            or_(
+                SkuSourcingRule.mode.in_(_UNROUTED_MODES),
+                and_(
+                    SkuSourcingRule.mode == "force_supplier",
+                    or_(
+                        SkuSourcingRule.supplier_slug.is_(None),
+                        SkuSourcingRule.supplier_slug.notin_(PRICE_COLLECTION_SUPPORTED_SUPPLIERS),
+                    ),
+                ),
+            ),
         )
     )
     suppliers = (
