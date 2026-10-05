@@ -31,6 +31,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
+from yupay.modules.integrations import margin_drift
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
@@ -278,6 +279,10 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
     # mapping moved this tick — supplier could be sub-threshold even
     # when prices are stable.
     await _maybe_warn_low_balance()
+    # Once a day: which SKUs have drifted off their target margin. The
+    # refresh above only ever raises a price, so without this a cheaper
+    # supplier widens the margin forever and nobody is told.
+    await margin_drift.maybe_send_digest()
 
     log.info(
         "integrations.price_refresh.done",

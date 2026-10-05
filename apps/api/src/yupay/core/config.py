@@ -1006,6 +1006,11 @@ class Settings(BaseSettings):
     price_alert_threshold_pct: float = Field(default=5.0)
     # How often the scheduler re-prices every active mapping.
     price_refresh_interval_minutes: int = Field(default=60)
+    # Once a day the refresh lists SKUs whose actual retail margin sits more
+    # than this many percentage points ABOVE the target (the refresh never
+    # lowers a price, so widened margins otherwise go unnoticed), and every
+    # SKU more than 1 pp below it. 0 disables the digest.
+    margin_drift_alert_pp: float = Field(default=5.0)
     # Send an ops alert when the supplier's USDT wallet falls below this
     # value (USD-equivalent). Set to 0 to disable.
     supplier_low_balance_threshold: float = Field(

@@ -63,6 +63,10 @@ def _env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("TG_ALERT_BOT_TOKEN", ALERT_BOT_TOKEN)
     monkeypatch.setenv("TG_ALERT_CHAT_ID", ALERT_CHAT_ID)
     monkeypatch.setenv("PRICE_ALERT_THRESHOLD_PCT", "5")
+    # This file pins the price_change alert's text as the last Telegram call;
+    # the daily margin-drift digest rides the same bot and has its own tests
+    # (test_margin_drift.py), so it stays off here.
+    monkeypatch.setenv("MARGIN_DRIFT_ALERT_PP", "0")
     cfg.get_settings.cache_clear()
     yield
     cfg.get_settings.cache_clear()

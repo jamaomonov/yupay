@@ -124,6 +124,12 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   supplier game (ADR-0079); a brand whose active g2b/game mappings span two
   codes answers `error` and logs `player_check_brand_spans_games`.
 - **Import** a G2B game into the catalog (Brand + Product + SKUs + mappings).
+- **Margin-drift digest** (`margin_drift.py`, once a day from the hourly refresh).
+  The refresh only ever _raises_ `price_usd` (`allow_price_drop=False`): a cheaper
+  supplier widens the margin and the shelf price stays, by decision. The digest is
+  the missing other half — it lists SKUs more than `margin_drift_alert_pp` (5) pp
+  **above** target and every SKU more than 1 pp **below** it to the admin chat, and
+  changes nothing. Runbook: [`margin-drift.md`](../../../../../../docs/runbooks/margin-drift.md).
 
 ## Public interface
 
