@@ -35,6 +35,7 @@ from yupay.core.config import Settings, get_settings
 from yupay.core.errors import AppError, ConflictError, NotFoundError, ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
+from yupay.modules.fulfillment.cost_resnapshot import resnapshot_line_cost
 from yupay.modules.fulfillment.models import (
     Delivery,
     FulfillmentAttempt,
@@ -810,12 +811,15 @@ async def process_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
             return task
         # Switch the route to the supplier fallback for the rest of this attempt.
         task.supplier = _supplier_slug(decision.fallback)
+        # The line's frozen cost is the routed supplier's; it is now being
+        # bought from someone else, at their price (``cost_resnapshot``).
+        cost_note = await resnapshot_line_cost(db, item=item, supplier=task.supplier)
         await _record_attempt(
             db,
             task=task,
             kind="fulfill",
             status="ok",
-            payload={"route_switch": task.supplier, "reason": "inventory_no_stock"},
+            payload={"route_switch": task.supplier, "reason": "inventory_no_stock", **cost_note},
         )
 
     # ---- supplier route ----
@@ -1956,10 +1960,11 @@ async def reassign_task(
     # for the registry, and a top-level import here would close that loop.
     from yupay.modules.integrations.models import MAPPING_REQUIRED_SUPPLIERS, SkuSupplierMapping
 
+    item = (
+        await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+    ).scalar_one()
     if slug in MAPPING_REQUIRED_SUPPLIERS:
-        sku_id = (
-            await db.execute(select(OrderItem.sku_id).where(OrderItem.id == task.order_item_id))
-        ).scalar_one()
+        sku_id = item.sku_id
         mapped = (
             await db.execute(
                 select(SkuSupplierMapping.supplier_slug).where(
@@ -1986,6 +1991,9 @@ async def reassign_task(
     # ``money_outcome`` stays, for the reason ``retry_task`` gives.
     task.failed_at = None
     task.updated_at = now()
+    # The operator just chose this supplier by its price; the line's margin is
+    # now reported against that price, not the first supplier's.
+    cost_note = await resnapshot_line_cost(db, item=item, supplier=slug)
     await _record_attempt(
         db,
         task=task,
@@ -1996,6 +2004,7 @@ async def reassign_task(
             "from": previous,
             "reason": "admin_reassign",
             "admin_id": admin_id,
+            **cost_note,
         },
     )
     await db.flush()
