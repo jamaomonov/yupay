@@ -194,6 +194,7 @@ async def refresh_voucher_stock(
     denominations.update(panel_cached)
 
     checked = updated = out = errors = 0
+    emptied: list[tuple[str, str, str]] = []
     for sku_id, mappings in by_sku.items():
         checked += 1
         asked = _mappings_to_ask(mappings, routes.get(sku_id))
@@ -234,11 +235,13 @@ async def refresh_voucher_stock(
         if was_in_stock and not now_in_stock:
             out += 1
             first = asked[0]
-            await _alert_out_of_stock(
-                sku_code=sku_code,
-                external_id=first.variant_id or first.product_id,
-                supplier=first.supplier,
-            )
+            emptied.append((sku_code, str(first.variant_id or first.product_id), first.supplier))
+
+    # One message per sweep, not one per line: a supplier restocking and
+    # un-stocking a hundred denominations at once used to be a hundred
+    # messages (2026-10-05).
+    if emptied:
+        await _alert_out_of_stock(emptied)
 
     log.info(
         "stock_refresh.done", checked=checked, updated=updated, out_of_stock=out, errors=errors
@@ -523,16 +526,32 @@ async def _panel_stock(
     return 0 if row is None else normalise_stock(row.get("stock"))
 
 
-async def _alert_out_of_stock(*, sku_code: str, external_id: str, supplier: str = "g2b") -> None:
-    """Tell the operator a line just emptied.
+_OOS_TOP = 15
+
+
+async def _alert_out_of_stock(emptied: list[tuple[str, str, str]]) -> None:
+    """Tell the operator which lines just emptied — one message per sweep.
 
     Only on the transition. A SKU that has been out for a week is a known state,
     and a channel that repeats itself hourly stops being read.
+
+    Args:
+        emptied: ``(sku_code, external_id, supplier)`` per line that went from
+            in stock to out during this sweep.
     """
-    text = (
-        "<b>Ваучер закончился</b>\n"
-        f"SKU: <code>{html.escape(sku_code)}</code>\n"
-        f"{html.escape(supplier)}: <code>{html.escape(str(external_id))}</code>\n"
-        "Позиция скрыта с витрины до появления кодов у поставщика."
+    lines = [
+        f"• <code>{html.escape(code)}</code> — {html.escape(supplier)}: "
+        f"<code>{html.escape(ext)}</code>"
+        for code, ext, supplier in emptied[:_OOS_TOP]
+    ]
+    rest = len(emptied) - len(lines)
+    if rest > 0:
+        lines.append(f"… и ещё {rest}")
+    text = "\n".join(
+        [
+            f"<b>Ваучеры закончились: {len(emptied)}</b>",
+            *lines,
+            "Позиции скрыты с витрины до появления кодов у поставщика.",
+        ]
     )
     await notifications.send_admin_alert(text, kind="voucher_out_of_stock")

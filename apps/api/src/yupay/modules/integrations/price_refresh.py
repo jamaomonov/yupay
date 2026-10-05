@@ -28,9 +28,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any, Final, Protocol, runtime_checkable
 
+from sqlalchemy import select
+
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
+from yupay.modules.catalog.models import Sku
 from yupay.modules.integrations import cost_staleness, margin_drift
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.models import (
@@ -231,9 +234,11 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
     moved = 0
     alerts = 0
     errors = 0
+    moves: list[_Move] = []
 
     for mapping in mappings:
         checked += 1
+        sku_code = ""
         try:
             async with factory() as session, session.begin():
                 # Re-read the row; never `merge` the snapshot. The snapshot is
@@ -250,6 +255,9 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
                     # Deleted or switched off since the snapshot: an operator
                     # decision taken mid-pass, which this pass must not undo.
                     continue
+                sku_code = (
+                    await session.execute(select(Sku.sku_code).where(Sku.id == attached.sku_id))
+                ).scalar_one_or_none() or ""
                 outcome = await svc.refresh_sku_cost_for_mapping(
                     session,
                     mapping=attached,
@@ -271,9 +279,15 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
             continue
         moved += 1
         if await _should_alert(outcome.old_cost, outcome.new_cost, threshold):
-            text = _format_alert(mapping=mapping, outcome=outcome)
-            if await notifications.send_admin_alert(text, kind="price_change"):
-                alerts += 1
+            moves.append(_Move(mapping=mapping, sku_code=sku_code, outcome=outcome))
+
+    # One message per tick, not one per mapping: with 15 000 mappings the
+    # per-move message turned the alert chat into a feed nobody read
+    # (2026-10-05). Counts first, the biggest moves, the rest as a number.
+    if moves:
+        text = _format_digest(moves, threshold=threshold)
+        if await notifications.send_admin_alert(text, kind="price_change"):
+            alerts += 1
 
     # Proactive low-balance warning. Independent of whether any
     # mapping moved this tick — supplier could be sub-threshold even
@@ -417,72 +431,79 @@ async def _should_alert(
     return float(delta_pct) >= threshold_pct
 
 
-def _format_alert(*, mapping: object, outcome: object) -> str:
-    """Build the HTML body sent to the ops Telegram channel.
+@dataclass(frozen=True)
+class _Move:
+    """One cost move worth telling ops about, kept until the tick's digest."""
 
-    Kept here (rather than in the alerts module) because the content is
-    integration-specific. Strings are short and bullet-y on purpose —
-    Telegram renders large blocks poorly on mobile.
-    """
-    sku_id = getattr(mapping, "sku_id", "?")
-    # supplier/ext_id/variant are supplier- or admin-entered free text (mapping
-    # fields) — escape before splicing into a parse_mode:HTML message.
-    supplier = html.escape(str(getattr(mapping, "supplier_slug", "?")))
-    kind = getattr(mapping, "kind", "?")
-    ext_id = html.escape(str(getattr(mapping, "external_product_id", "?")))
-    variant = getattr(mapping, "external_variant_id", None)
+    mapping: SkuSupplierMapping
+    sku_code: str
+    outcome: Any
+
+
+def _delta_pct(outcome: Any) -> Decimal | None:
     old = getattr(outcome, "old_cost", None)
     new = getattr(outcome, "new_cost", None)
+    if old is None or new is None or Decimal(str(old)) == 0:
+        return None
+    return (Decimal(str(new)) - Decimal(str(old))) / Decimal(str(old)) * Decimal("100")
 
-    # Explicit direction in words, not just a sign an operator can miss
-    # skimming on a phone: "cost moved 3.6%" alone doesn't say whether that
-    # was a saving or a squeeze.
-    delta_line = ""
-    if old is not None and new is not None and old not in (0, Decimal("0")):
-        delta = (Decimal(str(new)) - Decimal(str(old))) / Decimal(str(old)) * Decimal("100")
-        if delta > 0:
-            sign, direction = "+", "выросла"
-        elif delta < 0:
-            sign, direction = "", "снизилась"
-        else:
-            sign, direction = "", "не изменилась"
-        delta_line = f"\n<i>Себестоимость {direction}: {sign}{delta:.2f}%</i>"
 
-    variant_line = f" · <code>{html.escape(str(variant))}</code>" if variant else ""
-    old_str = f"${old}" if old is not None else "—"
-
+def _move_line(move: _Move) -> str:
+    """One digest line. The words are the ones the old per-move message used,
+    because an operator skimming a phone reads «выросла» faster than a sign."""
+    m, o = move.mapping, move.outcome
+    label = html.escape(move.sku_code or str(getattr(m, "sku_id", "?")))
+    supplier = html.escape(str(getattr(m, "supplier_slug", "?")))
+    old = getattr(o, "old_cost", None)
+    new = getattr(o, "new_cost", None)
+    delta = _delta_pct(o)
+    if delta is None:
+        cost = f"себестоимость впервые: <b>${new}</b>"
+    else:
+        direction = "выросла" if delta > 0 else "снизилась" if delta < 0 else "не изменилась"
+        sign = "+" if delta > 0 else ""
+        cost = f"${old} → <b>${new}</b>, себестоимость {direction} {sign}{delta:.1f}%"
     # Present when the SKU had a saved margin *and* the re-derived price was
-    # actually written — see CostRefreshOutcome / set_sku_cost_usdt. A SKU
-    # with no margin on file gets no price line, same as it got no price
-    # change. A margin that *would* have lowered the price, refused by
-    # allow_price_drop=False, gets its own line instead — otherwise it reads
-    # identically to "no margin at all", and an operator can't tell a
-    # deliberate save from an unrelated SKU.
-    old_price = getattr(outcome, "old_price", None)
-    new_price = getattr(outcome, "new_price", None)
-    margin = getattr(outcome, "margin_percent", None)
-    price_drop_blocked = bool(getattr(outcome, "price_drop_blocked", False))
-    price_line = ""
+    # actually written — see CostRefreshOutcome / set_sku_cost_usdt. A margin
+    # that *would* have lowered the price, refused by allow_price_drop=False,
+    # gets its own words — otherwise it reads like "no margin at all".
+    old_price = getattr(o, "old_price", None)
+    new_price = getattr(o, "new_price", None)
+    margin = getattr(o, "margin_percent", None)
     if new_price is not None:
-        price_line = f"\nЦена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
-    elif price_drop_blocked:
-        # Reachable only on a cost *drop* — `set_sku_cost_usdt` no longer sets
-        # the flag on a rise, precisely so this sentence cannot appear under a
-        # line saying the cost went up.
-        price_line = (
-            "\nЦена USD: <b>не снижена</b> — при автоматической синхронизации "
-            "цена не опускается, себестоимость обновлена, наценка выросла"
-        )
+        price = f"; Цена USD: ${old_price} → <b>${new_price}</b> (наценка {margin}% сохранена)"
+    elif bool(getattr(o, "price_drop_blocked", False)):
+        price = "; Цена USD: <b>не снижена</b>, наценка выросла"
+    else:
+        price = ""
+    return f"• <code>{label}</code> ({supplier}) — {cost}{price}"
 
-    return (
-        f"<b>💰 Цена поставщика изменилась</b>\n"
-        f"Поставщик: <code>{supplier}</code> · <code>{kind}</code>\n"
-        f"Продукт: <code>{ext_id}</code>{variant_line}\n"
-        f"SKU: <code>{sku_id}</code>\n"
-        f"Было: {old_str} → Стало: <b>${new}</b>"
-        f"{delta_line}"
-        f"{price_line}"
-    )
+
+_DIGEST_TOP = 10
+
+
+def _format_digest(moves: list[_Move], *, threshold: float) -> str:
+    """The tick's price moves as one HTML message: counts, the biggest, the rest
+    as a number. Kept here (rather than in the alerts module) because the
+    content is integration-specific."""
+    ups = [m for m in moves if (_delta_pct(m.outcome) or Decimal(0)) > 0]
+    downs = [m for m in moves if (_delta_pct(m.outcome) or Decimal(0)) < 0]
+    fresh = [m for m in moves if _delta_pct(m.outcome) is None]
+    head = [f"<b>💰 Себестоимость: {len(moves)} изменений больше {threshold:g}% за этот час</b>"]
+    parts = []
+    if ups:
+        parts.append(f"выросла — {len(ups)}")
+    if downs:
+        parts.append(f"снизилась — {len(downs)}")
+    if fresh:
+        parts.append(f"впервые — {len(fresh)}")
+    head.append(", ".join(parts))
+    ordered = sorted(moves, key=lambda m: abs(_delta_pct(m.outcome) or Decimal(0)), reverse=True)
+    lines = [_move_line(m) for m in ordered[:_DIGEST_TOP]]
+    rest = len(moves) - len(lines)
+    if rest > 0:
+        lines.append(f"… и ещё {rest}. Полный список — Интеграции → Сорсинг.")
+    return "\n".join(head + lines)
 
 
 __all__ = ["PriceRefreshReport", "refresh_all_mappings"]

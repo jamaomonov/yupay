@@ -124,6 +124,14 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   supplier game (ADR-0079); a brand whose active g2b/game mappings span two
   codes answers `error` and logs `player_check_brand_spans_games`.
 - **Import** a G2B game into the catalog (Brand + Product + SKUs + mappings).
+- **Alerts are digests, not feeds** (2026-10-05). The hourly refresh sends at most
+  one `price_change` message per tick — counts by direction, the ten biggest moves
+  over `price_alert_threshold_pct`, «и ещё N» — and the voucher stock sweep at most
+  one `voucher_out_of_stock` message per sweep listing every line that just emptied.
+  With 15 000 mappings the per-mapping messages had turned the alert chat into a
+  feed nobody read. The other kinds (`fulfillment_error`, `order_stuck`,
+  `supplier_balance_low`, `cost_stale`, `margin_drift`) are already one-per-event or
+  deduped.
 - **Margin-drift digest** (`margin_drift.py`, once a day from the hourly refresh).
   The refresh only ever _raises_ `price_usd` (`allow_price_drop=False`): a cheaper
   supplier widens the margin and the shelf price stays, by decision. The digest is

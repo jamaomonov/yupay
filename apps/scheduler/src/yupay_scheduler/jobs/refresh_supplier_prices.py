@@ -5,9 +5,9 @@ mapping is processed in its own transaction inside
 ``integrations.price_refresh.refresh_all_mappings`` — a single supplier
 hiccup never blocks the rest of the queue.
 
-Telegram alerts on cost moves bigger than
-``PRICE_ALERT_THRESHOLD_PCT`` go out through the dedicated admin bot
-(``notifications.send_admin_alert``). The scheduler doesn't have to
+Cost moves bigger than ``PRICE_ALERT_THRESHOLD_PCT`` go to the admin bot
+(``notifications.send_admin_alert``) as **one digest per tick** — counts,
+the ten biggest moves, the rest as a number — never one message per mapping. The scheduler doesn't have to
 care which bot — that's hidden behind ``notifications.api``.
 """
 
