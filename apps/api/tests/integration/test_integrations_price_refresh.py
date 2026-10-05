@@ -67,6 +67,7 @@ def _env(monkeypatch: pytest.MonkeyPatch):
     # the daily margin-drift digest rides the same bot and has its own tests
     # (test_margin_drift.py), so it stays off here.
     monkeypatch.setenv("MARGIN_DRIFT_ALERT_PP", "0")
+    monkeypatch.setenv("COST_STALE_AFTER_HOURS", "0")
     cfg.get_settings.cache_clear()
     yield
     cfg.get_settings.cache_clear()

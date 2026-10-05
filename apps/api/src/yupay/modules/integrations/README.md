@@ -130,6 +130,12 @@ health probes, and supplier-cost refresh. Supplier adapter code itself lives in
   the missing other half — it lists SKUs more than `margin_drift_alert_pp` (5) pp
   **above** target and every SKU more than 1 pp **below** it to the admin chat, and
   changes nothing. Runbook: [`margin-drift.md`](../../../../../../docs/runbooks/margin-drift.md).
+- **Cost-staleness alert** (`cost_staleness.py`, every 6 h while it lasts).
+  `set_sku_cost_usdt` stamps `Sku.cost_synced_at` on every write, moved or not; a
+  SKU with a live price-collecting mapping whose stamp is older than
+  `cost_stale_after_hours` (6) — or never set — means the routed supplier has
+  stopped answering and every derived price is running on an old purchase price.
+  Runbook: [`cost-staleness.md`](../../../../../../docs/runbooks/cost-staleness.md).
 
 ## Public interface
 

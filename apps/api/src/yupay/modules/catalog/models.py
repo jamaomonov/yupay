@@ -304,6 +304,13 @@ class Sku(Base):
     # UZS-price calculation (cost × current_fx_rate) and per-SKU
     # margin reporting. Nullable: legacy SKUs predate the column.
     cost_usdt: Mapped[Decimal | None] = mapped_column(Numeric(20, 6), nullable=True)
+    # When ``cost_usdt`` was last written by someone who knew the price: the
+    # hourly refresh from the routed supplier, or an admin typing one in.
+    # Stamped by ``admin_service.set_sku_cost_usdt`` on every write, moved or
+    # not — "the supplier answered" is the fact, not "the number changed".
+    # ``integrations.cost_staleness`` alerts when it falls behind. NULL means
+    # no cost was ever written; it is not the same as stale.
+    cost_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Variable-amount SKUs (Steam wallet): the customer picks the amount, so
     # ``price_usd`` is not the price — it is computed at checkout from the
     # amount, the guarded FX rate and ``rate_multiplier``. The bounds are the

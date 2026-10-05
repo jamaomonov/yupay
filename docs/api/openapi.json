@@ -2013,6 +2013,18 @@
             "title": "B2B Markup Pct",
             "type": "string"
           },
+          "cost_synced_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Synced At"
+          },
           "cost_usdt": {
             "anyOf": [
               {

@@ -7,6 +7,7 @@ admin side don't ripple into client code.
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -589,6 +590,9 @@ class AdminSkuOut(BaseModel):
     region: str | None
     price_usd: Decimal
     cost_usdt: Decimal | None
+    # When cost_usdt was last written from a live price (or by hand). NULL
+    # for a SKU that never had one. Admin-only, like the cost itself.
+    cost_synced_at: datetime | None = None
     margin_percent: Decimal | None
     # Admin-only: never add these to the public SkuOut in schemas.py.
     # rate_multiplier especially — it's the margin (for variable-amount

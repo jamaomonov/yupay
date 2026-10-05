@@ -31,7 +31,7 @@ from typing import Any, Final, Protocol, runtime_checkable
 from yupay.core.config import get_settings
 from yupay.core.db import get_session_factory
 from yupay.core.logging import get_logger
-from yupay.modules.integrations import margin_drift
+from yupay.modules.integrations import cost_staleness, margin_drift
 from yupay.modules.integrations import service as svc
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
@@ -283,6 +283,10 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
     # refresh above only ever raises a price, so without this a cheaper
     # supplier widens the margin forever and nobody is told.
     await margin_drift.maybe_send_digest()
+    # And which SKUs no supplier has priced lately: a quiet supplier leaves
+    # an old cost under every derived price, and "no move" alone cannot tell
+    # stable from silent.
+    await cost_staleness.maybe_alert()
 
     log.info(
         "integrations.price_refresh.done",

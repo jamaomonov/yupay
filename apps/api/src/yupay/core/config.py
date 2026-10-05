@@ -1011,6 +1011,10 @@ class Settings(BaseSettings):
     # lowers a price, so widened margins otherwise go unnoticed), and every
     # SKU more than 1 pp below it. 0 disables the digest.
     margin_drift_alert_pp: float = Field(default=5.0)
+    # A SKU whose cost the routed supplier has not confirmed for this many
+    # hours is "stale": the refresh runs hourly, so 6 means five misses in a
+    # row. Alerted every 6 h while it lasts. 0 disables.
+    cost_stale_after_hours: int = Field(default=6)
     # Send an ops alert when the supplier's USDT wallet falls below this
     # value (USD-equivalent). Set to 0 to disable.
     supplier_low_balance_threshold: float = Field(

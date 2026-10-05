@@ -657,6 +657,9 @@ async def set_sku_cost_usdt(
         raise NotFoundError("sku not found")
     previous_cost = sku.cost_usdt
     sku.cost_usdt = new_cost
+    # Moved or not: a supplier that answered with the same price still
+    # answered, and that is what the staleness alert measures.
+    sku.cost_synced_at = now()
 
     previous_price: Decimal | None = None
     new_price: Decimal | None = None
