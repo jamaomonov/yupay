@@ -1,45 +1,69 @@
-"""The supplier price-move alert's escaping, and the low-balance probe.
+"""The price-move digest's escaping, and the low-balance probe.
 
-``_format_alert`` splices supplier/mapping fields (``supplier_slug``,
-``external_product_id``, ``external_variant_id``) into a ``parse_mode:HTML``
+``_move_line`` splices supplier/mapping fields (``supplier_slug``, the SKU
+code, or ``sku_id`` when no code is known) into a ``parse_mode:HTML``
 Telegram message sent by ``notifications.send_admin_alert``. These are
-admin/supplier-entered mapping fields, not constants, so a value containing
-HTML must come out escaped.
+admin/supplier-entered fields, not constants, so a value containing HTML
+must come out escaped.
 """
 
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 
 from yupay.modules.fulfillment.suppliers import REGISTRY
 from yupay.modules.integrations.price_refresh import (
     _WALLET_SUPPLIERS,
     _dollar_balance,
-    _format_alert,
+    _format_digest,
+    _Move,
+    _move_line,
 )
 
 
 class _Mapping:
-    sku_id = "sku-1"
+    sku_id = '"><img src=x onerror=alert(1)>'
     supplier_slug = "<script>alert(1)</script>"
     kind = "game"
-    external_product_id = '"><img src=x onerror=alert(1)>'
-    external_variant_id = "<b>60 UC</b>"
+    external_product_id = "x"
+    external_variant_id = None
 
 
 class _Outcome:
     old_cost = Decimal("1.00")
     new_cost = Decimal("1.50")
+    old_price = None
+    new_price = None
+    margin_percent = None
+    price_drop_blocked = False
 
 
-def test_format_alert_escapes_html_in_mapping_fields() -> None:
-    text = _format_alert(mapping=_Mapping(), outcome=_Outcome())
+def _move(sku_code: str) -> Any:
+    return _Move(mapping=_Mapping(), sku_code=sku_code, outcome=_Outcome())  # type: ignore[arg-type]
+
+
+def test_move_line_escapes_html_in_mapping_fields() -> None:
+    text = _move_line(_move("<b>60 UC</b>"))
 
     assert "<script>" not in text
-    assert "<img" not in text
+    assert "<b>60 UC</b>" not in text
     assert "&lt;script&gt;" in text
     assert "&lt;b&gt;60 UC&lt;/b&gt;" in text
+
+
+def test_move_line_falls_back_to_the_sku_id_escaped() -> None:
+    text = _move_line(_move(""))
+
+    assert "<img" not in text
     assert "&quot;&gt;&lt;img src=x onerror=alert(1)&gt;" in text
+
+
+def test_digest_escapes_too() -> None:
+    text = _format_digest([_move("<b>60 UC</b>")], threshold=5.0)
+
+    assert "<b>60 UC</b>" not in text
+    assert "1 изменений" in text
 
 
 # ---------- the low-balance probe ----------
