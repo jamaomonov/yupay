@@ -260,3 +260,123 @@ async def test_the_matching_transfer_pays_the_order(db_session: AsyncSession) ->
     assert held.status == "paid"
     # Paid: the instructions are gone from the payment.
     assert (await payment_out(db_session, paid)).p2p is None
+
+
+async def test_an_expired_hold_is_remade_on_the_next_intent(db_session: AsyncSession) -> None:
+    """A pending hold whose window closed does not come back as the open one:
+    it is expired in place and the order gets a fresh hold."""
+    await _card(db_session)
+    await _connected(db_session)
+    order_id = await _order(db_session)
+    stale = await reservations.reserve_for_order(
+        db_session,
+        order_id=order_id,
+        amount_uzs=TOTAL,
+        expires_at=datetime.now(UTC) - timedelta(seconds=1),
+    )
+    await db_session.commit()
+    stale_id = stale.id
+
+    fresh = await reservations.reserve_for_order(
+        db_session,
+        order_id=order_id,
+        amount_uzs=TOTAL,
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    await db_session.commit()
+    fresh_id = fresh.id
+
+    assert fresh_id != stale_id
+    db_session.expire_all()
+    old = await db_session.get(P2PReservation, stale_id)
+    assert old is not None
+    assert old.status == "expired"
+
+
+async def test_a_rate_outage_refuses_the_hold(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No USD figure for the row → no hold, and the error names the rate."""
+    from yupay.core.errors import UpstreamUnavailableError
+    from yupay.modules.pricing.fx_guard import RateRejected
+
+    async def _rejected(*_a: object, **_k: object) -> Decimal:
+        raise RateRejected("stale")
+
+    monkeypatch.setattr(reservations, "guarded_usd_rate", _rejected)
+    await _card(db_session)
+    order_id = await _order(db_session)
+
+    with pytest.raises(UpstreamUnavailableError) as exc:
+        await reservations.reserve_for_order(
+            db_session,
+            order_id=order_id,
+            amount_uzs=TOTAL,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    assert exc.value.extra["code"] == "fx_unavailable"
+
+
+async def test_no_eligible_card_means_a_busy_amount(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When no card can take the amount at any bump, the hold is refused
+    with the code the gateway turns into «занят — попробуйте позже»."""
+    from yupay.core.errors import UpstreamUnavailableError
+
+    async def _none(*_a: object, **_k: object) -> list[tuple[object, int]]:
+        return []
+
+    monkeypatch.setattr(reservations, "eligible_cards", _none)
+    await _card(db_session)
+    order_id = await _order(db_session)
+
+    with pytest.raises(UpstreamUnavailableError) as exc:
+        await reservations.reserve_for_order(
+            db_session,
+            order_id=order_id,
+            amount_uzs=TOTAL,
+            expires_at=datetime.now(UTC) + timedelta(minutes=10),
+        )
+    assert exc.value.extra["code"] == "p2p_amount_busy"
+
+
+async def test_a_hold_without_a_payment_leaves_the_transfer_unmatched(
+    db_session: AsyncSession,
+) -> None:
+    """An order hold with no ``p2p`` payment behind it (the intent never
+    committed) must not swallow the money: the transfer lands unmatched
+    with an alert, and the hold stays open for the operator to read."""
+    await _card(db_session)
+    await _connected(db_session)
+    order_id = await _order(db_session)
+    reservation = await reservations.reserve_for_order(
+        db_session,
+        order_id=order_id,
+        amount_uzs=TOTAL,
+        expires_at=datetime.now(UTC) + timedelta(minutes=10),
+    )
+    await db_session.commit()
+    number, created_at, reservation_id = (
+        reservation.number,
+        reservation.created_at,
+        reservation.id,
+    )
+
+    res = await intake.ingest_update(
+        db_session,
+        _update(51, _credit("21.113,00", _bank(created_at), "1.100.000,00")),
+        received_at=created_at + timedelta(minutes=1),
+    )
+    await db_session.commit()
+
+    assert res.status == "unmatched"
+    assert [kind for kind, _ in res.alerts] == ["p2p_order_payment_missing"]
+    assert number in res.alerts[0][1]
+    db_session.expire_all()
+    held = await db_session.get(P2PReservation, reservation_id)
+    assert held is not None
+    assert held.status == "pending"
+    order = await db_session.get(Order, order_id)
+    assert order is not None
+    assert order.status == "pending_payment"
