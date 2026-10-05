@@ -25,6 +25,7 @@ from yupay.modules.catalog.models import (
     Product,
     ProductTranslation,
     Sku,
+    SkuPrice,
 )
 
 pytestmark = pytest.mark.asyncio
@@ -275,12 +276,15 @@ async def test_no_margin_untouched_by_a_drop_regardless_of_the_flag(
         assert sku.price_usd == Decimal("12.00")
 
 
-async def test_refuses_a_margin_that_would_zero_out_the_price(db_session: AsyncSession) -> None:
+async def test_a_margin_that_would_zero_out_the_price_lands_on_one_cent(
+    db_session: AsyncSession,
+) -> None:
     """-99.99% is a legal margin (ck_skus_margin_percent_above_minus_100 only
-    forbids <= -100), but on a $13 cost it rounds to a $0.00 price, which
-    ck_skus_price_positive forbids. The write must skip price entirely (cost
-    still updates) rather than crash the whole refresh tick on an
-    IntegrityError."""
+    forbids <= -100); on a $13 cost it comes to $0.0013. Half-up made that
+    $0.00, which ck_skus_price_positive forbids, so the write used to skip the
+    price. Rounding up (2026-10-05) makes it $0.01 — the smallest sellable
+    price — and the ``candidate > 0`` guard stays as a belt for a rounding
+    that can no longer reach zero on a positive cost."""
     sku_id = await _seed_sku(
         db_session, "zeroed", cost_usdt="10.00", price_usd="12.00", margin_percent="-99.99"
     )
@@ -288,10 +292,25 @@ async def test_refuses_a_margin_that_would_zero_out_the_price(db_session: AsyncS
     result = await catalog_svc.set_sku_cost_usdt(db_session, sku_id=sku_id, new_cost=Decimal("13"))
     await db_session.commit()
 
-    assert result.new_price is None
+    assert result.new_price == Decimal("0.01")
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("13")
-    assert sku.price_usd == Decimal("12.00")
+    assert sku.price_usd == Decimal("0.01")
+
+
+async def test_a_sub_dime_sku_keeps_its_margin_by_rounding_up(db_session: AsyncSession) -> None:
+    """Amazon EG on prod: cost $0.0192 at 13% is $0.0217. Half-up sold it at
+    $0.02 — a 4% margin; up sells it at $0.03."""
+    sku_id = await _seed_sku(
+        db_session, "subdime", cost_usdt="0.0190", price_usd="0.02", margin_percent="13"
+    )
+
+    result = await catalog_svc.set_sku_cost_usdt(
+        db_session, sku_id=sku_id, new_cost=Decimal("0.0192"), allow_price_drop=False
+    )
+    await db_session.commit()
+
+    assert result.new_price == Decimal("0.03")
 
 
 async def test_a_rise_parked_under_the_price_is_not_reported_as_a_blocked_drop(
@@ -345,3 +364,30 @@ async def test_a_first_ever_cost_is_not_a_blocked_drop(db_session: AsyncSession)
     assert result.price_drop_blocked is False
     sku = (await db_session.execute(select(Sku).where(Sku.id == sku_id))).scalar_one()
     assert sku.cost_usdt == Decimal("0.79")
+
+
+async def test_a_currency_override_moves_with_the_margin_derived_price(
+    db_session: AsyncSession,
+) -> None:
+    """A UZS override is charged as-is at checkout, with no rate and no markup.
+    Left at 12 000 while the SKU went from $12.00 to $15.60 it would sell under
+    the margin; it keeps its ratio to the USD price instead."""
+    sku_id = await _seed_sku(
+        db_session, "override", cost_usdt="10.00", price_usd="12.00", margin_percent="20"
+    )
+    db_session.add(SkuPrice(sku_id=sku_id, currency="UZS", price=Decimal("152400")))
+    db_session.add(SkuPrice(sku_id=sku_id, currency="RUB", price=Decimal("1000.00")))
+    await db_session.commit()
+
+    result = await catalog_svc.set_sku_cost_usdt(db_session, sku_id=sku_id, new_cost=Decimal("13"))
+    await db_session.commit()
+    assert result.new_price == Decimal("15.60")
+
+    rows = {
+        o.currency: o.price
+        for o in (
+            await db_session.execute(select(SkuPrice).where(SkuPrice.sku_id == sku_id))
+        ).scalars()
+    }
+    assert rows["UZS"] == Decimal("198120")  # 152 400 × 15.60 / 12.00, whole soʻm
+    assert rows["RUB"] == Decimal("1300.00")

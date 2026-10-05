@@ -643,7 +643,7 @@ class BulkUzsPriceOut(BaseModel):
     rate: Decimal
     fx_snapshot_id: str | None
     updated_total: int
-    skipped_without_cost: int
+    skipped_variable_amount: int
 
 
 __all__ = [

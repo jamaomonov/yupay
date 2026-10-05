@@ -365,12 +365,12 @@ async def bulk_set_uzs_prices(
     db: Annotated[AsyncSession, Depends(db_session)],
     _admin: Annotated[User, Depends(require_admin)],
 ) -> BulkUzsPriceOut:
-    """Recompute UZS SkuPrice overrides for every active SKU.
+    """Recompute UZS SkuPrice overrides for every active fixed-price SKU.
 
     Uses the same FX service that orders use at checkout (so the rate
-    here matches the rate customers will see today). SKUs whose
-    ``cost_usdt`` is null are skipped — they remain at whatever UZS
-    override they had, or fall back to live FX in catalog reads.
+    here matches the rate customers will see today) and writes the
+    **selling** price, ``price_usd × rate``. Variable-amount SKUs are
+    skipped — they have no override path.
     """
     fx = build_default_service()
     result = await svc.bulk_set_uzs_prices(db, fx_service=fx)
@@ -378,5 +378,5 @@ async def bulk_set_uzs_prices(
         rate=result["rate"],
         fx_snapshot_id=result["fx_snapshot_id"],
         updated_total=result["updated_total"],
-        skipped_without_cost=result["skipped_without_cost"],
+        skipped_variable_amount=result["skipped_variable_amount"],
     )

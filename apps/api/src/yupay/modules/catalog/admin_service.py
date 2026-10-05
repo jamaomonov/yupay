@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import func, select
@@ -535,7 +535,14 @@ async def list_skus_page(
 
 
 def _price_from_margin(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
-    """price = cost × (1 + margin / 100), rounded to cents (half-up).
+    """price = cost × (1 + margin / 100), rounded **up** to the cent.
+
+    Up, not half-up, since 2026-10-05: on a $0.0192 SKU (Amazon EG, the
+    smallest gift-card rungs) 13% came to $0.0217, half-up made it $0.02 and
+    the shelf margin 4%; 29 active SKUs on prod sat under their target this
+    way, all sub-dime. Rounding up costs at most one cent on any SKU and
+    guarantees the margin is at least the one asked for. The B2B price has
+    always been a ceiling (``merchants.pricing.merchant_unit_price``).
 
     Duplicated from (rather than imported off) ``integrations.service.
     _sell_price`` — that module already imports from ``catalog`` for the
@@ -543,8 +550,28 @@ def _price_from_margin(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
     both call sites round the same way on purpose.
     """
     return (cost_usdt * (Decimal(1) + margin_percent / Decimal(100))).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
+        Decimal("0.01"), rounding=ROUND_CEILING
     )
+
+
+def _scale_overrides(sku: Sku, *, previous_price: Decimal, new_price: Decimal) -> None:
+    """Move every per-currency ``SkuPrice`` override with the USD price.
+
+    An override *is* the price in its currency: checkout charges it as-is and
+    no rate participates (``orders.service._charge_total``). Left alone while
+    ``price_usd`` follows a cost rise, it quietly becomes a price below the
+    margin — the one way the hourly refresh could sell under target without
+    anyone changing a number. So the override keeps its ratio to the USD price
+    instead: a UZS row at 12 000 for a $12.00 SKU reads 15 600 once the SKU is
+    $15.60. Whole units for UZS, cents for everything else — what the bulk
+    writer and the payment rails accept.
+    """
+    if previous_price <= 0:
+        return
+    ratio = new_price / previous_price
+    for override in sku.price_overrides:
+        unit = Decimal("1") if override.currency.upper() == "UZS" else Decimal("0.01")
+        override.price = (override.price * ratio).quantize(unit, rounding=ROUND_HALF_UP)
 
 
 @dataclass(frozen=True)
@@ -621,7 +648,11 @@ async def set_sku_cost_usdt(
             "cost_usdt must be positive",
             extra={"sku_id": sku_id, "value": str(new_cost)},
         )
-    sku = (await db.execute(select(Sku).where(Sku.id == sku_id))).scalar_one_or_none()
+    sku = (
+        await db.execute(
+            select(Sku).options(selectinload(Sku.price_overrides)).where(Sku.id == sku_id)
+        )
+    ).scalar_one_or_none()
     if sku is None:
         raise NotFoundError("sku not found")
     previous_cost = sku.cost_usdt
@@ -639,6 +670,7 @@ async def set_sku_cost_usdt(
                 sku.price_usd = candidate
                 new_price = candidate
                 margin = sku.margin_percent
+                _scale_overrides(sku, previous_price=previous_price, new_price=candidate)
             elif previous_cost is not None and new_cost < previous_cost:
                 # "Blocked" means a *cost drop* whose price cut we declined —
                 # and the discriminator is the cost's direction, not the
@@ -964,22 +996,32 @@ async def bulk_set_uzs_prices(
     *,
     fx_service: Any,
 ) -> dict[str, Any]:
-    """Recompute the UZS ``SkuPrice`` override for every active SKU.
+    """Recompute the UZS ``SkuPrice`` override for every active fixed-price SKU.
 
     Picks the current USDT→UZS rate via the shared ``FxService`` (so the
     snapshot table accumulates an audit trail of the rate the operator
-    saw) and writes ``cost_usdt × rate`` into ``sku_prices``. SKUs
-    without ``cost_usdt`` are skipped — we don't want to guess a price
-    for an unknown wholesale figure.
+    saw) and writes ``price_usd × rate`` — the **selling** price in soʻm —
+    into ``sku_prices``. Until 2026-10-05 this wrote ``cost_usdt × rate``,
+    the purchase price: every SKU it touched would have sold in UZS at zero
+    margin, because checkout charges an override as-is with no rate and no
+    markup applied on top (``orders.service._charge_total``). Nobody had
+    pressed the button on prod (zero UZS rows), which is the only reason it
+    was a bug and not a loss.
+
+    Variable-amount (Steam) SKUs are skipped: they have no override path at
+    all — catalog and checkout price them off the guarded rate and the
+    multiplier — so a row here would be dead weight at best.
 
     The write is an UPSERT on (sku_id, currency='UZS'), so the helper is
     idempotent: calling it twice with the same rate is a no-op; calling
-    it with a new rate just overwrites the override.
+    it with a new rate just overwrites the override. Later cost moves keep
+    the override in step with ``price_usd`` (``_scale_overrides``), so a row
+    written here cannot silently fall under the margin.
 
     Returns a small dict with the rate used and counters: how many SKUs
-    were updated, how many got created fresh, how many were skipped
-    because cost_usdt is null. The admin UI shows these to the operator
-    so a clearly-wrong rate doesn't silently fan out across the catalog.
+    were written and how many variable-amount ones were skipped. The admin
+    UI shows these to the operator so a clearly-wrong rate doesn't silently
+    fan out across the catalog.
     """
     from sqlalchemy.dialects.postgresql import insert as pg_insert
 
@@ -988,42 +1030,33 @@ async def bulk_set_uzs_prices(
     snap = await fx_service.snapshot(db, base="USDT", quote="UZS")
     rate = snap.rate
 
-    skus = list(
-        (
-            await db.execute(
-                select(Sku)
-                .options(lazyload(Sku.price_overrides))
-                .where(Sku.active.is_(True))
-                .where(Sku.cost_usdt.isnot(None))
-            )
+    rows = (
+        await db.execute(
+            select(Sku.id, Sku.price_usd)
+            .where(Sku.active.is_(True))
+            .where(Sku.variable_amount.is_(False))
         )
-        .scalars()
-        .all()
-    )
+    ).all()
     skipped = int(
         (
             await db.execute(
                 select(func.count(Sku.id))
                 .where(Sku.active.is_(True))
-                .where(Sku.cost_usdt.is_(None))
+                .where(Sku.variable_amount.is_(True))
             )
         ).scalar_one()
         or 0
     )
 
-    created = 0
     # One statement for the whole catalogue: a round trip per SKU was 6000
-    # awaited inserts in one request after the 2026-10 bulk import. ON
-    # CONFLICT DO UPDATE cannot say created from updated, so the headline is
-    # the total and ``created`` stays the nicety it always was.
+    # awaited inserts in one request after the 2026-10 bulk import.
     values = [
         {
-            "sku_id": sku.id,
+            "sku_id": sku_id,
             "currency": "UZS",
-            "price": (sku.cost_usdt * rate).quantize(Decimal("1")),
+            "price": (price_usd * rate).quantize(Decimal("1")),  # UZS: whole sums
         }
-        for sku in skus
-        if sku.cost_usdt is not None  # UZS: whole sums
+        for sku_id, price_usd in rows
     ]
     updated = len(values)
     if values:
@@ -1038,8 +1071,7 @@ async def bulk_set_uzs_prices(
         "rate": rate,
         "fx_snapshot_id": snap.id if isinstance(snap, FxSnapshot) else None,
         "updated_total": updated,
-        "skipped_without_cost": skipped,
-        "created": created,
+        "skipped_variable_amount": skipped,
     }
 
 

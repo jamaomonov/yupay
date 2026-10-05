@@ -3917,8 +3917,8 @@
             "title": "Rate",
             "type": "string"
           },
-          "skipped_without_cost": {
-            "title": "Skipped Without Cost",
+          "skipped_variable_amount": {
+            "title": "Skipped Variable Amount",
             "type": "integer"
           },
           "updated_total": {
@@ -3930,7 +3930,7 @@
           "rate",
           "fx_snapshot_id",
           "updated_total",
-          "skipped_without_cost"
+          "skipped_variable_amount"
         ],
         "title": "BulkUzsPriceOut",
         "type": "object"
@@ -26095,7 +26095,7 @@
     },
     "/api/v1/admin/catalog/skus/bulk-set-uzs-prices": {
       "post": {
-        "description": "Recompute UZS SkuPrice overrides for every active SKU.\n\nUses the same FX service that orders use at checkout (so the rate\nhere matches the rate customers will see today). SKUs whose\n``cost_usdt`` is null are skipped \u2014 they remain at whatever UZS\noverride they had, or fall back to live FX in catalog reads.",
+        "description": "Recompute UZS SkuPrice overrides for every active fixed-price SKU.\n\nUses the same FX service that orders use at checkout (so the rate\nhere matches the rate customers will see today) and writes the\n**selling** price, ``price_usd \u00d7 rate``. Variable-amount SKUs are\nskipped \u2014 they have no override path.",
         "operationId": "bulk_set_uzs_prices_api_v1_admin_catalog_skus_bulk_set_uzs_prices_post",
         "parameters": [
           {

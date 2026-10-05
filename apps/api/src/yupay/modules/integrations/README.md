@@ -147,7 +147,7 @@ denomination, and one `sku_supplier_mapping` per SKU. See
   the whole thing back — no half-built Brand can survive a partial import.
 - **Backend-computed price, per-row override.** Per denomination:
   `price_usd = price_usd_override if set else round(cost_usdt × (1 + margin_percent/100), 2)`
-  (`ROUND_HALF_UP`), where `cost_usdt` is the G2B denomination's `amount`. A
+  (`ROUND_CEILING` — up to the cent, so a sub-dime SKU never lands under its margin), where `cost_usdt` is the G2B denomination's `amount`. A
   non-positive computed price is a `422`.
 - **Structural idempotency on `sku_code`.** `Sku.sku_code` is globally unique;
   re-importing a denomination whose `sku_code` already exists is **skipped** and

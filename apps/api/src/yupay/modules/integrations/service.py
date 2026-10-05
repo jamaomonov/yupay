@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass
-from decimal import ROUND_HALF_UP, Decimal
+from decimal import ROUND_CEILING, Decimal
 from typing import TYPE_CHECKING, Any, Literal
 
 from sqlalchemy import delete as sa_delete
@@ -280,9 +280,13 @@ def _sanitize_image_url(url: str | None) -> str | None:
 
 
 def _sell_price(cost_usdt: Decimal, margin_percent: Decimal) -> Decimal:
-    """price = cost * (1 + margin/100), rounded to cents (half-up)."""
+    """price = cost * (1 + margin/100), rounded **up** to the cent.
+
+    The twin of ``catalog.admin_service._price_from_margin``, which says why
+    up: half-up left sub-dime SKUs under their margin.
+    """
     return (cost_usdt * (Decimal(1) + margin_percent / Decimal(100))).quantize(
-        Decimal("0.01"), rounding=ROUND_HALF_UP
+        Decimal("0.01"), rounding=ROUND_CEILING
     )
 
 

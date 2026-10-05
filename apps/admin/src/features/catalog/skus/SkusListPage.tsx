@@ -36,7 +36,7 @@ interface BulkUzsPriceOut {
   rate: string;
   fx_snapshot_id: string | null;
   updated_total: number;
-  skipped_without_cost: number;
+  skipped_variable_amount: number;
 }
 
 // Stable fallbacks, so a loading query does not hand the memos below a fresh
@@ -145,7 +145,7 @@ export function SkusListPage() {
         maximumFractionDigits: 2,
       });
       toast.success(
-        `UZS-цены пересчитаны: ${data.updated_total.toString()} SKU @ 1 USDT = ${rate} UZS. Пропущено без cost_usdt: ${data.skipped_without_cost.toString()}.`,
+        `UZS-цены пересчитаны: ${data.updated_total.toString()} SKU @ 1 USDT = ${rate} UZS. Пропущено Steam-позиций с произвольной суммой: ${data.skipped_variable_amount.toString()}.`,
       );
       void invalidatePages();
     },
@@ -219,14 +219,14 @@ export function SkusListPage() {
               onClick={() => {
                 if (
                   confirm(
-                    "Пересчитать UZS-цены всех активных SKU из cost_usdt × текущий курс? Старые UZS-override'ы будут перезаписаны.",
+                    "Зафиксировать UZS-цены всех активных SKU как price_usd × текущий курс? Старые UZS-override'ы будут перезаписаны; дальше они двигаются вместе с ценой в USD.",
                   )
                 ) {
                   bulkSetUzs.mutate();
                 }
               }}
               disabled={bulkSetUzs.isPending}
-              title="UZS price = cost_usdt × текущий курс USDT→UZS"
+              title="UZS price = price_usd (цена продажи) × текущий курс USDT→UZS"
             >
               <RefreshCcw className={`size-4 ${bulkSetUzs.isPending ? "animate-spin" : ""}`} />
               {bulkSetUzs.isPending ? "Считаем…" : "Обновить UZS-цены"}

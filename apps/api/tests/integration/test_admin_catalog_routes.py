@@ -210,8 +210,10 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Operator clicks "recompute UZS" and overrides are written for every
-    SKU with a known cost_usdt, using the same FX service that the
-    storefront uses at checkout."""
+    active fixed-price SKU as the **selling** price × rate, using the same FX
+    service that the storefront uses at checkout. Regression: this wrote
+    ``cost_usdt × rate`` — the purchase price — which checkout would have
+    charged as-is, at zero margin."""
     from decimal import Decimal as _Dec
 
     import fakeredis.aioredis
@@ -274,7 +276,7 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     )
     pid = r.json()["id"]
 
-    # SKU A — has cost_usdt, should get a UZS override.
+    # SKU A — has cost_usdt; the override must still come from price_usd.
     r_a = await integration_client.post(
         "/api/v1/admin/catalog/skus",
         headers=_admin_headers,
@@ -289,7 +291,7 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     sku_a = r_a.json()
     assert _Dec(sku_a["cost_usdt"]) == _Dec("4")
 
-    # SKU B — no cost_usdt, should be skipped.
+    # SKU B — no cost_usdt; a selling price is all the override needs.
     r_b = await integration_client.post(
         "/api/v1/admin/catalog/skus",
         headers=_admin_headers,
@@ -304,19 +306,18 @@ async def test_bulk_set_uzs_prices_recomputes_overrides(
     )
     assert r.status_code == 200, r.text
     body = r.json()
-    assert body["updated_total"] == 1
-    assert body["skipped_without_cost"] == 1
+    assert body["updated_total"] == 2
+    assert body["skipped_variable_amount"] == 0
     assert _Dec(body["rate"]) == _Dec("12700.0")
 
-    # Confirm the override on SKU A is exactly cost × rate, and that
-    # listing it back includes the new override row.
+    # Confirm the override is exactly price × rate — never cost × rate — and
+    # that listing it back includes the new override row.
     r = await integration_client.get("/api/v1/admin/catalog/skus", headers=_admin_headers)
     skus = {s["sku_code"]: s for s in r.json()["items"]}
     overrides_a = {o["currency"]: o for o in skus["fx-a"]["price_overrides"]}
-    assert "UZS" in overrides_a
-    assert _Dec(overrides_a["UZS"]["price"]) == _Dec("50800")  # 4 × 12700
+    assert _Dec(overrides_a["UZS"]["price"]) == _Dec("63500")  # 5.00 × 12700, not 4 × 12700
     overrides_b = {o["currency"]: o for o in skus["fx-b"]["price_overrides"]}
-    assert "UZS" not in overrides_b
+    assert _Dec(overrides_b["UZS"]["price"]) == _Dec("127000")  # 10.00 × 12700
 
 
 async def test_patch_brand_highlights_persist_and_round_trip(
