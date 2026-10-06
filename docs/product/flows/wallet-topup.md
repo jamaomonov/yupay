@@ -40,6 +40,15 @@ Both storefronts run the same endpoints; only the entry points differ.
 | Balance   | wallet tab                   | chip in the header (desktop), account menu, mobile nav |
 | Top-up    | `/wallet/top-up`             | `/account/wallet/top-up`                               |
 | Acquirers | `click_miniapp`, Payme, Uzum | `click`, Payme, Uzum                                   |
+| Also      | card transfer `p2p`          | card transfer `p2p`                                    |
+
+After the intent both surfaces land on the order page, which for a deposit is
+one status card with four phases — waiting (the pay-now block: the card to
+transfer to, or the acquirer link), crediting (paid, ledger entry on its way),
+credited, failed — and the credited phase refetches the wallet so the balance
+in the header moves at the same moment. Until 2026-10-06 the web card said
+«Баланс обновится, когда банк подтвердит платёж» whatever the status, which
+read as "still waiting" on a deposit that had already landed.
 
 Click bills through a per-surface merchant service, so the web must send
 `click` and the mini app `click_miniapp`. `X-Yupay-Surface` is what records

@@ -63,7 +63,13 @@ export function WalletFundingStatus({
               : t("walletTopUp.waiting")}
         </h1>
         <p className="mt-2 text-2xl font-bold tabular-nums text-white">{amountLabel}</p>
-        <p className="mt-1 text-sm text-white/50">{t("walletTopUp.disclaimerAfter")}</p>
+        <p className="mt-1 text-sm text-white/50">
+          {delivered
+            ? t("walletTopUp.creditedBody")
+            : failed
+              ? t("walletTopUp.failedBody")
+              : t("walletTopUp.waitingBody")}
+        </p>
       </div>
       {order.status === "pending_payment" && p2p ? (
         <div className="-mx-4">

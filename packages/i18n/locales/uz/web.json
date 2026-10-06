@@ -793,7 +793,6 @@
     "payLoadError": "Toʻlovni yuklab boʻlmadi.",
     "openingBank": "Bank ilovasi ochilmoqda…",
     "walletTopUpTitle": "Hamyonni toʻldirish",
-    "walletTopUpBody": "Bank toʻlovni tasdiqlagach balans yangilanadi.",
     "walletTopUpCta": "Hamyonga",
     "p2pTitle": "Kartaga oʻtkazing",
     "p2pNote": "Bank ilovasi orqali istalgan kartadan aynan shu summani oʻtkazing. Oʻtkazma kelishi bilan buyurtma avtomatik toʻlanadi, odatda bir daqiqa ichida.",
@@ -805,7 +804,26 @@
     "p2pCopy": "Nusxalash",
     "p2pCopied": "Nusxalandi",
     "p2pExpired": "Oʻtkazma uchun vaqt tugadi. Buyurtmani qaytadan rasmiylashtiring.",
-    "p2pWaiting": "Oʻtkazmani kutmoqdamiz…"
+    "p2pWaiting": "Oʻtkazmani kutmoqdamiz…",
+    "walletTopUp": {
+      "waiting": {
+        "title": "Toʻlovni kutmoqdamiz",
+        "body": "Toʻlov tasdiqlanishi bilan balans yangilanadi."
+      },
+      "crediting": {
+        "title": "Balansga oʻtkazmoqdamiz",
+        "body": "Toʻlov oʻtdi — pul bir necha soniyada balansda paydo boʻladi."
+      },
+      "credited": {
+        "title": "Balans toʻldirildi",
+        "body": "Pul allaqachon balansda — xaridlar uchun toʻlash mumkin."
+      },
+      "failed": {
+        "title": "Toʻldirish amalga oshmadi",
+        "body": "Pul yechilmadi. Yana urinib koʻring yoki boshqa usulni tanlang."
+      },
+      "retry": "Qayta urinish"
+    }
   },
   "brandReviews": {
     "title": "Sharhlar",

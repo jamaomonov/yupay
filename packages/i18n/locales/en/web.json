@@ -793,7 +793,6 @@
     "payLoadError": "Couldn't load the payment.",
     "openingBank": "Opening your bank app…",
     "walletTopUpTitle": "Wallet top-up",
-    "walletTopUpBody": "The balance updates once the bank confirms the payment.",
     "walletTopUpCta": "To the wallet",
     "p2pTitle": "Transfer to the card",
     "p2pNote": "Transfer exactly this amount from any card in your banking app. As soon as it arrives the order is paid automatically, usually within a minute.",
@@ -805,7 +804,26 @@
     "p2pCopy": "Copy",
     "p2pCopied": "Copied",
     "p2pExpired": "The transfer window has closed. Place the order again.",
-    "p2pWaiting": "Waiting for the transfer…"
+    "p2pWaiting": "Waiting for the transfer…",
+    "walletTopUp": {
+      "waiting": {
+        "title": "Waiting for payment",
+        "body": "The balance updates as soon as the payment is confirmed."
+      },
+      "crediting": {
+        "title": "Crediting the balance",
+        "body": "Payment received — the money shows up on your balance in a few seconds."
+      },
+      "credited": {
+        "title": "Balance topped up",
+        "body": "The money is on your balance — you can pay for purchases now."
+      },
+      "failed": {
+        "title": "Top-up failed",
+        "body": "Nothing was charged. Try again or pick another method."
+      },
+      "retry": "Try again"
+    }
   },
   "brandReviews": {
     "title": "Reviews",

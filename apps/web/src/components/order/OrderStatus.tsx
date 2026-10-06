@@ -18,6 +18,7 @@ import { OrderStatusSkeleton } from "./OrderStatusSkeleton";
 import { OrderSummary } from "./OrderSummary";
 import { SkinTradeCard } from "./SkinTradeCard";
 import { StatusBlock } from "./StatusBlock";
+import { WalletFundingCard } from "./WalletFundingCard";
 
 import type { OrderOut } from "@/lib/orders-types";
 
@@ -30,7 +31,7 @@ import { getOrderAccess } from "@/lib/order-access";
 import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/orders-types";
 import { orderPollInterval } from "@/lib/poll";
 import { getMyReviews } from "@/lib/reviews";
-import { formatUzs, pathFor } from "@/lib/seo";
+import { pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
 
 /**
@@ -241,33 +242,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // the grounds that the storefront had no wallet; it has one now, and the
   // top-up flow lands here for acquirers that return without a hosted page.
   if (order.data.purpose === "wallet_topup") {
-    return (
-      <div className="border-border bg-surface-1 rounded-2xl border p-6 text-center">
-        <p className="text-foreground text-base font-semibold">{t("walletTopUpTitle")}</p>
-        <p className="font-display mt-2 text-2xl font-bold tabular-nums">
-          {formatUzs(locale, Math.round(Number(order.data.total_charged)))}
-        </p>
-        <p className="text-tx-mute mt-2 text-sm">{t("walletTopUpBody")}</p>
-        {/* A deposit still waiting on its payment: the card to transfer to
-            (ADR-0097) or the way back to the acquirer. A deposit is always
-            made signed in, so there is no guest email to send. */}
-        <div className="mt-5 text-left">
-          <OrderPayNow
-            orderId={order.data.id}
-            awaitingPayment={status === "pending_payment"}
-            locale={locale}
-            email={undefined}
-            auth={undefined}
-          />
-        </div>
-        <Link
-          href={pathFor(locale, "/account/wallet")}
-          className={buttonStyles({ size: "md", className: "mt-5" })}
-        >
-          {t("walletTopUpCta")}
-        </Link>
-      </div>
-    );
+    return <WalletFundingCard order={order.data} locale={locale} />;
   }
 
   const brandSlug = order.data.items[0]?.display?.brand_slug ?? null;
