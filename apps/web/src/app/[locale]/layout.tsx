@@ -9,6 +9,7 @@ import type { Metadata } from "next";
 
 import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
+import { GoogleTagManager } from "@/components/GoogleTagManager";
 import { Header } from "@/components/Header";
 import { JsonLd } from "@/components/JsonLd";
 import { CatchUpReviewModal } from "@/components/order/CatchUpReviewModal";
@@ -166,9 +167,14 @@ export default async function LocaleLayout({
           with the document. Production only, matching <YandexMetrika />, so dev
           does not open a connection to a counter it never reports to. */}
       {process.env.NODE_ENV === "production" && (
-        <link rel="preconnect" href="https://mc.yandex.ru" crossOrigin="anonymous" />
+        <>
+          <link rel="preconnect" href="https://mc.yandex.ru" crossOrigin="anonymous" />
+          <link rel="preconnect" href="https://www.googletagmanager.com" crossOrigin="anonymous" />
+        </>
       )}
       <body className="bg-bg text-foreground min-h-screen font-sans antialiased">
+        {/* First in <body>, where Google asks for the noscript iframe. */}
+        <GoogleTagManager />
         <JsonLd data={organizationLd} />
         <JsonLd data={websiteLd} />
         <YandexMetrika />

@@ -59,11 +59,16 @@ http://yupay.uz, http://www.yupay.uz {
 		# (connect-src needs both the https:// and wss:// origins — a https
 		# source does not cover the ws scheme), and webvisor's frame
 		# (frame-src); its tracking pixels ride the existing ``img-src https:``.
-		# Google tag / GA4 was removed from the storefront, so
-		# googletagmanager.com and the google-analytics.com origins came out of
-		# here with it: a standing permission for a script we no longer load is
-		# an injection target we gain nothing by keeping.
-		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://accounts.google.com; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru https://accounts.google.com; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+		# Google Tag Manager (GTM-5B7J6XCB, back since 2026-10-06 after the GA4
+		# gtag was dropped as unread): gtm.js (script-src) and the noscript
+		# iframe (frame-src) from www.googletagmanager.com, plus what the
+		# container's own tags need — GA4 collection (*.google-analytics.com,
+		# *.analytics.google.com in connect-src) and Google Ads conversions
+		# (googleadservices.com, googleads.g.doubleclick.net, www.google.com,
+		# td.doubleclick.net). Pixels ride ``img-src https:``. A tag that needs
+		# another origin fails closed here and shows up as a CSP report in the
+		# console; add it to this list, not 'unsafe' anything.
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://www.googleadservices.com https://googleads.g.doubleclick.net; style-src 'self' 'unsafe-inline' https://telegram.org https://*.telegram.org https://accounts.google.com; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.yupay.uz wss://api.yupay.uz https://mc.yandex.ru wss://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://*.google-analytics.com https://*.analytics.google.com https://www.google.com https://googleads.g.doubleclick.net; frame-src https://telegram.org https://*.telegram.org https://mc.yandex.ru https://accounts.google.com https://www.googletagmanager.com https://td.doubleclick.net; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
 	}
 	# Force the canonical apex so SEO does not split between yupay.uz / www.
 	@redirectWww host www.yupay.uz
