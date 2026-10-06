@@ -59,11 +59,26 @@ jobs:
             # then silently not deploy. For a branch input, hard-reset the local
             # branch to its remote ref; a sha/tag input has no origin/<x> and
             # falls through to a (detached) checkout.
+            # The build tags images ``sha-<7 hex>`` (docker/metadata-action
+            # ``type=sha,format=short``), which is not a git ref: ``git
+            # checkout sha-405a666`` fails, and until 2026-10-06 the fallback
+            # was ``git checkout --force main`` — the LOCAL branch again, so
+            # every sha-tagged deploy left the checkout where it was (it sat on
+            # a 15 September commit for three weeks while images moved on).
+            # Strip the prefix and the short sha resolves to its commit.
+            case "$IMAGE_TAG_INPUT" in
+              sha-*) CHECKOUT_REF="${IMAGE_TAG_INPUT#sha-}" ;;
+              *) CHECKOUT_REF="$IMAGE_TAG_INPUT" ;;
+            esac
             if git rev-parse -q --verify "origin/$IMAGE_TAG_INPUT" >/dev/null; then
               git checkout -B "$IMAGE_TAG_INPUT" "origin/$IMAGE_TAG_INPUT"
+            elif git rev-parse -q --verify "${CHECKOUT_REF}^{commit}" >/dev/null; then
+              git checkout --force "$CHECKOUT_REF"
             else
-              git checkout --force "$IMAGE_TAG_INPUT" || git checkout --force main
+              echo "::warning::$IMAGE_TAG_INPUT is not a ref or commit; deploying configs from origin/main"
+              git checkout -B main origin/main
             fi
+            echo "checkout at $(git rev-parse --short HEAD): $(git log -1 --format=%s)"
             export IMAGE_TAG="$IMAGE_TAG_INPUT"
 
             # The shared edge proxy owns :80/:443 for every stack on this box
