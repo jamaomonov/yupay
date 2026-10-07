@@ -229,3 +229,98 @@ it("keeps the balance selected when the provider list lands afterwards", async (
 
   expect(tile).toHaveAttribute("aria-pressed", "true");
 });
+
+/**
+ * 2026-10-07: a customer 846 soʻm short produced 60 unpaid orders in four
+ * minutes. The tile said "ready" (the client's total and the ledger's
+ * disagreed), the intent came back 409, the panel said "couldn't create the
+ * order" and made a new order on every tap. The refusal must name the
+ * shortfall, flip the tile to short with the ledger's own number, and a retry
+ * must pay the order that already exists.
+ */
+it("a 409 shortfall from the ledger names the gap and never creates a second order", async () => {
+  const calls: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockImplementation((url: string, init?: RequestInit) => {
+      const u = String(url);
+      if (init?.method === "POST") calls.push(u.replace(/^.*\/api\/v1/, ""));
+      if (u.includes("/wallet")) {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () =>
+            Promise.resolve({
+              balances: [
+                { account_id: "acc-1", kind: "user_wallet", currency: "UZS", balance: "2000000" },
+              ],
+            }),
+        });
+      }
+      if (u.endsWith("/orders")) {
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({ id: "ord-1", discount_charged: "0" }),
+        });
+      }
+      if (u.includes("/payments/intents")) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: () =>
+            Promise.resolve({
+              detail:
+                "payment provider rejected the request: insufficient wallet balance: have 2000000.000000 UZS, need 2000846.000000 UZS",
+            }),
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ providers: [{ slug: "click", status: "active" }] }),
+      });
+    }),
+  );
+  renderPanel();
+
+  const tile = await screen.findByRole("button", { name: /payFromBalance/ });
+  await waitFor(() => {
+    expect(tile).toHaveAttribute("aria-pressed", "true");
+  });
+  fireEvent.change(screen.getByPlaceholderText("emailPlaceholder"), {
+    target: { value: "a@b.c" },
+  });
+  const payButton = screen.getByRole("button", { name: /^pay ·/i });
+  await waitFor(() => {
+    expect(payButton).not.toBeDisabled();
+  });
+
+  fireEvent.click(payButton);
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+  await waitFor(() => {
+    expect(screen.getByText(/balanceShort/)).toBeInTheDocument();
+  });
+  // The ledger's number, not the client's: 2 000 846 − 2 000 000.
+  expect(screen.getByText(/balanceShort/).textContent).toContain(formatUzs("ru", 846));
+  expect(screen.getByRole("link", { name: "balanceTopUp" })).toHaveAttribute(
+    "href",
+    expect.stringContaining("/account/wallet/top-up"),
+  );
+  // The tile now says short, with the ledger's shortfall, and cannot be tapped.
+  await waitFor(() => {
+    expect(tile).toBeDisabled();
+  });
+  expect(tile).toHaveTextContent("payFromBalanceShort");
+  expect(calls.filter((c) => c === "/orders")).toHaveLength(1);
+
+  // A second attempt — pick a card, pay again — must pay the order that
+  // already exists, not create a sibling.
+  fireEvent.click(screen.getByRole("button", { name: /Click/ }));
+  fireEvent.click(payButton);
+  fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
+  await waitFor(() => {
+    expect(calls.filter((c) => c.startsWith("/payments/intents"))).toHaveLength(2);
+  });
+  expect(calls.filter((c) => c === "/orders")).toHaveLength(1);
+});

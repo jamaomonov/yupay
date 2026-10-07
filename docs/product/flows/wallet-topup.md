@@ -95,6 +95,26 @@ balance and a card. The storefront therefore refuses the tile before
 submitting — showing the shortfall — rather than letting the gateway answer
 409 after the order row exists.
 
+**When the ledger disagrees with the tile** (2026-10-07). The tile judges on
+the client's total and the cached balance; the ledger judges on the order's
+own amount, which can be a few soʻm higher (FX rounding at order time) or the
+balance can have moved. One customer 846 soʻm short saw a "ready" tile, got
+409 on every tap, read "couldn't create the order" and left 60 unpaid orders in
+four minutes. Web now (`lib/intent-failure.ts`, `PurchasePanel`):
+
+- parses the 409's `have`/`need` and says **how much is missing** with a link
+  to the top-up page (`store.balanceShort`, `store.balanceTopUp`);
+- flips the tile to _short_ using the ledger's `need`, so the next tap goes to
+  a card;
+- **keeps the created order for nine minutes** (`PENDING_ORDER_REUSE_MS`,
+  under the server's ten-minute expiry) and pays _it_ on the retry — the same
+  cart (SKU, fields, email, promo) never gets a sibling order from this panel;
+- every other intent refusal says "payment didn't start" rather than "order
+  not created" (`store.payErrorIntent`).
+
+Server-side dedupe of unpaid sibling orders was considered and declined
+(owner, 2026-10-07).
+
 **The default method.** When the balance covers the order, «Баланс» is selected
 by default in every checkout — web (`PurchasePanel`, Steam Gifts, CS2 skins) and
 mini app (`TopUp`, `GiftGame`, `SkinPayStep`) — through `usePreferBalance`

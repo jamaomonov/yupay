@@ -24,6 +24,7 @@ import { collectClientHints } from "@/lib/client-hints";
 import { mintGuestToken } from "@/lib/guest";
 import { saveGuestOrder } from "@/lib/guest-orders";
 import { isOptimizable } from "@/lib/image";
+import { IntentRefused, PENDING_ORDER_REUSE_MS, parseIntentFailure } from "@/lib/intent-failure";
 import { saveOrderAccess } from "@/lib/order-access";
 import {
   methodVisibility,
@@ -1114,6 +1115,22 @@ export function PurchasePanel({
   const [providerStatus, setProviderStatus] = useState<Map<string, ProviderStatus> | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The ledger's own answer for this cart when it refused a balance payment:
+  // its `need` can differ from the total the button showed (the rate moved,
+  // a promo the server did not honour). Keeps the balance tile "short" with
+  // the real shortfall until the cart changes, instead of letting the buyer
+  // retry a payment the server will refuse again.
+  const [serverNeed, setServerNeed] = useState<{ cartKey: string; need: number } | null>(null);
+  const [shortfallLink, setShortfallLink] = useState(false);
+  // An order this panel created whose payment never started. A retry pays it
+  // again instead of creating a sibling: one customer 846 soʻm short produced
+  // 60 unpaid orders in four minutes (2026-10-07).
+  const pendingOrderRef = useRef<{
+    cartKey: string;
+    orderId: string;
+    accessToken: string | null;
+    createdAt: number;
+  } | null>(null);
   const [done, setDone] = useState<{
     orderId: string;
     intentUrl: string | null;
@@ -1407,13 +1424,19 @@ export function PurchasePanel({
     enabled: user !== null,
     staleTime: 30_000,
   });
+  // What the buyer is about to order, as one string: the pending order and the
+  // ledger's refusal are both tied to exactly this cart.
+  const cartKey = JSON.stringify({ orderItem, email, promo: promo?.code ?? null });
   const walletState = walletTile({
     // `isLoading` matters: the access token is memory-only, so a cold load
     // re-mints it and `user` is null for a beat. Treating that as "guest" told
     // signed-in customers to sign in, and opened a login modal if they tapped.
     isLoggedIn: user !== null || authLoading,
     balance: spendableBalance(walletQuery.data?.balances ?? null, WALLET_CURRENCY),
-    total: orderTotalUzs,
+    total:
+      serverNeed !== null && serverNeed.cartKey === cartKey
+        ? Math.max(orderTotalUzs ?? 0, serverNeed.need)
+        : orderTotalUzs,
   });
   const payingFromBalance = methodId === WALLET_METHOD_ID;
   // A balance that covers the order is the default method until the buyer picks one.
@@ -1571,6 +1594,7 @@ export function PurchasePanel({
     if (!selSku || !canPay) return;
     setLoading(true);
     setError(null);
+    setShortfallLink(false);
     try {
       // The early return above (`!canPay`) guarantees `selectedMethodActive`,
       // which in turn guarantees `selectedProvider !== undefined` — but that's
@@ -1622,46 +1646,69 @@ export function PurchasePanel({
         ...(promo ? { affiliate_code: promo.code } : {}),
       };
 
-      const ord = await fetch(`${API}/api/v1/orders`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Accept-Language": locale,
-          "Idempotency-Key": crypto.randomUUID(),
-          // This is the call that writes `orders.source`. Without it the row
-          // records `unknown`, which is what every web order did while the
-          // mini app — which sends the header — recorded `miniapp`.
-          "X-Yupay-Surface": SURFACE,
-          ...auth,
-        },
-        body: JSON.stringify(orderBody),
-      });
-      if (!ord.ok) {
-        // Mirrors what `apiFetch` does internally (this call is a raw
-        // `fetch`, not `apiFetch`) so the RFC 7807 `type` reaches the catch
-        // block below the same way it does everywhere else in the app.
-        let type: string | undefined;
-        try {
-          const body: unknown = await ord.json();
-          if (body && typeof body === "object" && "type" in body && typeof body.type === "string") {
-            type = body.type;
+      let order: { id: string; discount_charged?: string; access_token?: string | null };
+      const reusable = pendingOrderRef.current;
+      if (
+        reusable !== null &&
+        reusable.cartKey === cartKey &&
+        Date.now() - reusable.createdAt < PENDING_ORDER_REUSE_MS
+      ) {
+        // The last attempt created this order and its payment did not start;
+        // pay it rather than leave another unpaid sibling behind.
+        order = { id: reusable.orderId, access_token: reusable.accessToken };
+      } else {
+        const ord = await fetch(`${API}/api/v1/orders`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept-Language": locale,
+            "Idempotency-Key": crypto.randomUUID(),
+            // This is the call that writes `orders.source`. Without it the row
+            // records `unknown`, which is what every web order did while the
+            // mini app — which sends the header — recorded `miniapp`.
+            "X-Yupay-Surface": SURFACE,
+            ...auth,
+          },
+          body: JSON.stringify(orderBody),
+        });
+        if (!ord.ok) {
+          // Mirrors what `apiFetch` does internally (this call is a raw
+          // `fetch`, not `apiFetch`) so the RFC 7807 `type` reaches the catch
+          // block below the same way it does everywhere else in the app.
+          let type: string | undefined;
+          try {
+            const body: unknown = await ord.json();
+            if (
+              body &&
+              typeof body === "object" &&
+              "type" in body &&
+              typeof body.type === "string"
+            ) {
+              type = body.type;
+            }
+          } catch {
+            /* non-JSON or empty error body — leave `type` undefined */
           }
-        } catch {
-          /* non-JSON or empty error body — leave `type` undefined */
+          throw new ApiError(ord.status, "/orders", type);
         }
-        throw new ApiError(ord.status, "/orders", type);
-      }
-      const order = (await ord.json()) as {
-        id: string;
-        discount_charged?: string;
-        access_token?: string | null;
-      };
-      // A guest's own way to the codes, independent of the mailbox (ADR-0096).
-      if (!isLoggedIn && order.access_token) saveOrderAccess(order.id, order.access_token);
-      // Authoritative. A code the server refused leaves this at zero, and
-      // saying so beats silently charging more than the button promised.
-      if (promo && Number(order.discount_charged ?? 0) === 0) {
-        setPromoDropped(true);
+        order = (await ord.json()) as {
+          id: string;
+          discount_charged?: string;
+          access_token?: string | null;
+        };
+        // A guest's own way to the codes, independent of the mailbox (ADR-0096).
+        if (!isLoggedIn && order.access_token) saveOrderAccess(order.id, order.access_token);
+        // Authoritative. A code the server refused leaves this at zero, and
+        // saying so beats silently charging more than the button promised.
+        if (promo && Number(order.discount_charged ?? 0) === 0) {
+          setPromoDropped(true);
+        }
+        pendingOrderRef.current = {
+          cartKey,
+          orderId: order.id,
+          accessToken: order.access_token ?? null,
+          createdAt: Date.now(),
+        };
       }
 
       const intentsUrl = isLoggedIn
@@ -1687,7 +1734,32 @@ export function PurchasePanel({
         },
         body: JSON.stringify({ order_id: order.id, provider, return_url: returnUrl }),
       });
-      if (!intentRes.ok) throw new Error("intent");
+      if (!intentRes.ok) {
+        let body: unknown = null;
+        try {
+          body = await intentRes.json();
+        } catch {
+          /* non-JSON or empty error body */
+        }
+        const failure = parseIntentFailure(intentRes.status, body);
+        if (failure.kind === "insufficient_balance") {
+          const need = failure.need ?? orderTotalUzs ?? 0;
+          const missing =
+            failure.have !== null && failure.need !== null
+              ? failure.need - failure.have
+              : walletState.state === "short"
+                ? walletState.missing
+                : 0;
+          setServerNeed({ cartKey, need });
+          setShortfallLink(true);
+          throw new IntentRefused(
+            t("balanceShort", { missing: formatUzs(locale, Math.ceil(missing)) }),
+          );
+        }
+        throw new IntentRefused(t("payErrorIntent"));
+      }
+      // Paid, or handed to the acquirer: nothing left to reuse.
+      pendingOrderRef.current = null;
       const intent = (await intentRes.json()) as { intent_url: string | null };
 
       if (!isLoggedIn) {
@@ -1745,9 +1817,11 @@ export function PurchasePanel({
       // account before the order is even created — say so specifically
       // rather than the generic "couldn't create the order".
       setError(
-        err instanceof ApiError && err.type?.endsWith("/payment-unavailable-abroad")
-          ? t("errAbroad")
-          : t("payError"),
+        err instanceof IntentRefused
+          ? err.message
+          : err instanceof ApiError && err.type?.endsWith("/payment-unavailable-abroad")
+            ? t("errAbroad")
+            : t("payError"),
       );
     } finally {
       // Whatever happened, the balance we hold may no longer be the one the
@@ -2284,6 +2358,16 @@ export function PurchasePanel({
                     </>
                   );
                 })()}
+              </p>
+            )}
+            {error && shortfallLink && (
+              <p className="mt-2 text-center text-[13px]">
+                <Link
+                  href={pathFor(locale, "/account/wallet/top-up")}
+                  className="text-primary underline underline-offset-2"
+                >
+                  {t("balanceTopUp")}
+                </Link>
               </p>
             )}
 
