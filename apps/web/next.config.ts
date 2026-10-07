@@ -5,6 +5,21 @@ import type { NextConfig } from "next";
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const nextConfig: NextConfig = {
+  // iOS Safari requests these two paths on every visit regardless of the
+  // <link rel="apple-touch-icon"> we publish. Neither file exists, and a path
+  // with a dot bypasses the i18n middleware, so they fell into the `[locale]`
+  // route as the locale `apple-touch-icon.png` — a 500 per visit. Point them
+  // at the icon the app router already serves from `app/apple-icon.png`.
+  async redirects() {
+    return [
+      { source: "/apple-touch-icon.png", destination: "/apple-icon.png", permanent: true },
+      {
+        source: "/apple-touch-icon-precomposed.png",
+        destination: "/apple-icon.png",
+        permanent: true,
+      },
+    ];
+  },
   reactStrictMode: true,
   typedRoutes: true,
   // Lint runs separately via `make lint` / CI. Don't gate Docker builds on ESLint —

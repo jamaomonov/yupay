@@ -7,6 +7,7 @@ import type { FeaturedReview } from "@/lib/reviews";
 import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { isOptimizable } from "@/lib/image";
 import { getFeaturedReviews } from "@/lib/reviews";
+import { intlLocale } from "@/lib/seo";
 
 /** Below this many there is nothing to scroll: the cards sit in a plain row. */
 const MARQUEE_MIN = 6;
@@ -138,7 +139,10 @@ export async function TrustReviews({ locale }: { locale: string }) {
   const items = data?.items ?? [];
   const stats = data?.stats ?? null;
   const rating = stats && stats.count > 0 ? stats.avg : null;
-  const fmt = new Intl.NumberFormat(locale, { minimumFractionDigits: 1, maximumFractionDigits: 2 });
+  const fmt = new Intl.NumberFormat(intlLocale(locale), {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 2,
+  });
 
   const card = (r: FeaturedReview, copy: boolean) => (
     <div key={`${r.id}${copy ? "-copy" : ""}`} aria-hidden={copy || undefined} className="flex">

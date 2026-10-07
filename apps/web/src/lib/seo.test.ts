@@ -1,6 +1,6 @@
 import { describe, expect, it, test } from "vitest";
 
-import { alternates, blogAlternates, formatUzs, truncate } from "./seo";
+import { alternates, blogAlternates, formatUzs, intlLocale, truncate } from "./seo";
 
 test("truncate leaves short strings untouched", () => {
   expect(truncate("Короткое описание")).toBe("Короткое описание");
@@ -84,5 +84,27 @@ describe("the Markdown alternate", () => {
 
   it("is absent on a page with no Markdown view", () => {
     expect(alternates("ru", "/store/steam-gifts/3454300").types).toBeUndefined();
+  });
+});
+
+/**
+ * The `[locale]` segment is user input: iOS asks every site for
+ * `/apple-touch-icon.png`, the middleware skips dotted paths, and the home
+ * page rendered with that string as its locale — `Intl` threw on it and the
+ * route answered 500 (production, 2026-10-07). Formatters go through one
+ * mapping that always yields a well-formed tag.
+ */
+describe("intlLocale", () => {
+  it("maps the three storefront locales to their regional tags", () => {
+    expect(intlLocale("ru")).toBe("ru-RU");
+    expect(intlLocale("uz")).toBe("uz-UZ");
+    expect(intlLocale("en")).toBe("en-US");
+  });
+
+  it("never hands Intl a string it would throw on", () => {
+    for (const junk of ["apple-touch-icon.png", "", "ru_RU", "wp-login.php"]) {
+      expect(() => new Intl.NumberFormat(intlLocale(junk)).format(1)).not.toThrow();
+      expect(formatUzs(junk, 5)).toContain("5");
+    }
   });
 });

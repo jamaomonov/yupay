@@ -1,9 +1,9 @@
 import { LOCALES } from "@yupay/i18n";
-
-import { markdownUrl } from "@/lib/markdown-paths";
 import { uzsWord } from "@yupay/utils";
 
 import type { Metadata } from "next";
+
+import { markdownUrl } from "@/lib/markdown-paths";
 
 /**
  * SEO helpers shared across routes. Canonical host is the .uz domain (a strong
@@ -175,8 +175,22 @@ export { uzsWord };
 
 /** Format a som amount for display in the active locale. Marketing/display
  * only — real pricing comes from the catalog API in minor units later. */
+/**
+ * The BCP 47 tag `Intl` gets for a storefront locale. Never the raw route
+ * segment: `Intl.NumberFormat` throws `RangeError: Incorrect locale
+ * information provided` on anything that is not a well-formed tag, and the
+ * `[locale]` segment is user input — iOS asking for `/apple-touch-icon.png`
+ * reached the home page as locale `apple-touch-icon.png` and every price on
+ * it crashed (seen on production 2026-10-07). Unknown locales fall back to
+ * English rather than throwing.
+ */
+export function intlLocale(locale: string): "ru-RU" | "uz-UZ" | "en-US" {
+  return locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
+}
+
 export function formatUzs(locale: string, amount: number): string {
-  const intlLocale = locale === "ru" ? "ru-RU" : locale === "uz" ? "uz-UZ" : "en-US";
-  const number = new Intl.NumberFormat(intlLocale, { maximumFractionDigits: 0 }).format(amount);
+  const number = new Intl.NumberFormat(intlLocale(locale), { maximumFractionDigits: 0 }).format(
+    amount,
+  );
   return `${number} ${uzsWord(locale)}`;
 }

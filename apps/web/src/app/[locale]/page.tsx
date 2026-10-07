@@ -1,3 +1,5 @@
+import { notFound } from "next/navigation";
+import { hasLocale } from "next-intl";
 import { setRequestLocale } from "next-intl/server";
 
 import { AppShowcase } from "@/components/sections/AppShowcase";
@@ -7,9 +9,17 @@ import { CtaBand } from "@/components/sections/CtaBand";
 import { Hero } from "@/components/sections/Hero";
 import { SteamZeroCommission } from "@/components/sections/SteamZeroCommission";
 import { TrustReviews } from "@/components/sections/TrustReviews";
+import { routing } from "@/i18n/routing";
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
+  // The layout already 404s an unknown segment, but a page renders in parallel
+  // with its layout, so by the time the layout's `notFound()` lands this page
+  // has already asked `Intl` to format prices in the locale
+  // `apple-touch-icon.png` (every iOS visit requests that path; the middleware
+  // skips dotted paths and the file does not exist) and thrown a 500 of its
+  // own. Decide here, before any section runs.
+  if (!hasLocale(routing.locales, locale)) notFound();
   setRequestLocale(locale);
 
   return (
