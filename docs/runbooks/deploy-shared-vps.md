@@ -1,8 +1,10 @@
 # Runbook — deploying onto the shared VPS (edge proxy cutover)
 
-**Applies to:** `152.228.137.175`, which hosts both YuPay and an unrelated stack,
-`streamers-parser`. See [ADR-0030](../decisions/0030-shared-edge-proxy-on-a-co-hosted-vps.md)
-for why the topology looks like this.
+**Applies to:** `152.228.137.175`, which hosts YuPay and two unrelated stacks,
+`streamers-parser` and (since 2026-10-08) `yt-parser` at `yt.ksgm.io`. See
+[ADR-0030](../decisions/0030-shared-edge-proxy-on-a-co-hosted-vps.md) for why the topology
+looks like this. The diagram below shows the first two; `yt-parser-web` hangs off the same
+`yupay-edge` network the same way.
 
 ## Topology
 
@@ -124,6 +126,30 @@ docker compose -f /home/ubuntu/opt/streamers-parser/docker-compose.prod.yml up -
 The edge starts fine even when a stack is down — Caddy resolves upstreams lazily, so an absent
 stack is a 502 on its own hostnames and nothing more.
 
+## Adding a hostname for another stack (no restart)
+
+`edge-caddy` bind-mounts the **single file** `/home/ubuntu/opt/yupay/infra/edge/Caddyfile`
+(the repo checkout). A bind mount follows the inode, so a write that creates a new file —
+`git checkout`, most editors' atomic save — leaves the container reading the old content until
+`up -d --force-recreate`. Write in place instead, then reload gracefully:
+
+```bash
+# from the repo, after committing the new site block locally
+ssh ubuntu@152.228.137.175 'cat > /home/ubuntu/opt/yupay/infra/edge/Caddyfile' < infra/edge/Caddyfile
+ssh ubuntu@152.228.137.175 '
+  sudo docker exec edge-caddy grep -n "<hostname>" /etc/caddy/Caddyfile   # the container sees it
+  sudo docker exec edge-caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+  sudo docker exec edge-caddy caddy reload   --config /etc/caddy/Caddyfile --adapter caddyfile
+  curl -sk -o /dev/null -w "%{http_code}\n" --resolve <hostname>:443:127.0.0.1 https://<hostname>/'
+```
+
+Because the server file now equals the committed one, the next deploy's `git checkout` does
+not touch it and the inode stays. The new stack's proxy must be on `yupay-edge` under a unique
+alias (`yt-parser-web`, `streamers-caddy`), listening on plain `:80`. A Cloudflare-proxied
+hostname copies the ksgm.io shape (`tls internal`, both schemes, CF SSL mode **Full**); a
+DNS-only hostname copies the YuPay block (Let's Encrypt, X-Forwarded-For rewrite). Rollback is
+the same three commands with the block removed.
+
 ## Verification
 
 ```bash
@@ -163,6 +189,7 @@ stack's Caddy.
 | `address already in use` on the edge       | A stack still publishes `:80`/`:443`. Check `docker ps --format '{{.Names}} {{.Ports}}'`                                                                    |
 | 502 on every yupay hostname                | The YuPay stack is down, or its `yupay-caddy` alias is not on `yupay-edge`                                                                                  |
 | 502 on `marketing.kolikosoft.com` only     | The `streamers-caddy` alias is missing — step 4 was not applied                                                                                             |
+| 502 on `yt.ksgm.io` only                   | The `yt-parser` stack (`/home/ubuntu/opt/yt-parser`) is down or `yt-parser-web` left `yupay-edge`                                                           |
 | Certificate errors after a redeploy        | `edge_caddy-data` was pruned; re-issue and mind the LE rate limit                                                                                           |
 | Rate limits triggering for unrelated users | `trusted_proxies` missing — every request looks like it comes from the edge                                                                                 |
 | Telegram calls time out                    | An IPv6 workaround crept back in. This host has **no** global IPv6 and reaches Telegram over IPv4 — see [telegram-connectivity](./telegram-connectivity.md) |

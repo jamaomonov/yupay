@@ -1,8 +1,8 @@
 # Shared edge proxy — the single owner of :80 / :443 on the VPS.
 #
-# The box hosts two independent compose stacks (YuPay and streamers-parser).
-# Only one process can bind the privileged ports, so neither stack's own Caddy
-# does: this one accepts every inbound request, terminates TLS, and forwards
+# The box hosts three independent compose stacks (YuPay, streamers-parser and
+# yt-parser). Only one process can bind the privileged ports, so no stack's own
+# Caddy does: this one accepts every inbound request, terminates TLS, and forwards
 # cleartext HTTP to the stack that owns the hostname over the ``yupay-edge``
 # docker network. Each stack keeps its own routing/CSP/auth rules in its own
 # Caddyfile — this file only decides which stack a hostname belongs to.
@@ -98,4 +98,16 @@ http://marketing-grafana.kolikosoft.com, https://marketing-grafana.kolikosoft.co
 	# real client IP with a Cloudflare edge address. The inbound chain is the
 	# trustworthy one.
 	reverse_proxy streamers-caddy:80
+}
+
+# ---------- yt-parser ----------
+# CS2 market bloggers parser (github.com/kolikosoft/yt-parser), its own compose
+# stack in /home/ubuntu/opt/yt-parser (added 2026-10-08). ``yt-parser-web`` is
+# that stack's Caddy: SPA + ``/api`` proxy on plain :80, joined to ``yupay-edge``.
+# Cloudflare-proxied exactly like ksgm.io above — tls internal, both schemes,
+# CF SSL mode "Full" (not Flexible, not Full-strict) — and, as there, the
+# inbound X-Forwarded-For chain is kept because the peer is Cloudflare.
+http://yt.ksgm.io, https://yt.ksgm.io {
+	tls internal
+	reverse_proxy yt-parser-web:80
 }
