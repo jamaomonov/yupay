@@ -873,6 +873,9 @@ class Settings(BaseSettings):
     csmarket_api_key: str = Field(default="")
     csmarket_base_url: str = Field(default="https://api.csmarket.uz/api/v1/public")
     csmarket_request_timeout_seconds: float = Field(default=20.0)
+    # Process-wide budget of offer reads a minute, under the key's ``read_per_min``
+    # (60 by default, raised per key by csmarket) — the feed pages and order polls share it.
+    csmarket_offers_per_minute: int = Field(default=40)
     bymykel_base_url: str = Field(
         default="https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en"
     )

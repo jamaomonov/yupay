@@ -51,6 +51,8 @@ class Listing:
     stickers: list[dict[str, Any]]
     inspect_url: str | None
     delivery: str | None
+    #: csmarket's opaque offer id (ADR-0098); ``listing_id`` is then a hash of it.
+    offer_id: str | None = None
 
 
 def _sticker(raw: dict[str, Any]) -> dict[str, Any] | None:

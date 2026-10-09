@@ -27,9 +27,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.config import get_settings
 from yupay.core.errors import UnauthorizedError, ValidationError
-from yupay.core.redis import get_redis
-from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
-from yupay.modules.skins.listings import Listing, listings_for, waxpeer_name_of
+from yupay.modules.skins.listings import Listing, waxpeer_name_of
+from yupay.modules.skins.listings_source import read_listings
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.pricing import quote
 from yupay.modules.skins.settings import enabled_categories, load_rules
@@ -46,21 +45,8 @@ def is_skin_sku(sku: object) -> bool:
 
 
 async def live_listings(item: SkinItem) -> list[Listing]:
-    """The item's current auto listings (cached, budgeted, degradable)."""
-    settings = get_settings()
-    client = WaxpeerClient(
-        api_key=settings.waxpeer_api_key,
-        base_url=settings.waxpeer_base_url,
-        timeout_seconds=settings.cs2_skins_listings_timeout_seconds,
-    )
-    rows, _degraded = await listings_for(
-        item,
-        client=client,
-        redis=get_redis(),
-        budget_per_minute=settings.cs2_skins_listings_bucket_per_minute
-        if settings.waxpeer_api_key
-        else 0,
-    )
+    """The item's current offers from the configured source (cached, budgeted, degradable)."""
+    rows, _degraded = await read_listings(item)
     return rows
 
 
@@ -172,6 +158,16 @@ async def price_skin_line(
             "float_value": chosen.float_value,
         }
     )
+    if chosen.offer_id is not None:
+        # csmarket (ADR-0098): the real offer and item ids the purchase needs; the numeric
+        # ``listing_id`` above is only the storefront's handle for this offer.
+        data.update(
+            {
+                "supplier": "csmarket",
+                "offer_id": chosen.offer_id,
+                "source_item_id": item.source_item_id,
+            }
+        )
     await save_trade_link(db, user_id=user_id, url=link.url, steam_id=link.steam_id)
     return expected, data
 

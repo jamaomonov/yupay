@@ -23,11 +23,10 @@ from yupay.core.config import get_settings
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.redis import get_redis
 from yupay.modules.auth.ip_guard import guard_ip
-from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
 from yupay.modules.fx.factory import build_default_service
 from yupay.modules.fx.service import FxService, FxUnavailableError
 from yupay.modules.skins.images import steam_image
-from yupay.modules.skins.listings import listings_for
+from yupay.modules.skins.listings_source import read_listings
 from yupay.modules.skins.models import SkinItem
 from yupay.modules.skins.pricing import PricingRules, quote, to_uzs
 from yupay.modules.skins.schemas import (
@@ -312,19 +311,7 @@ async def get_listings(
     item = await get_item(db, slug, categories=enabled_categories(settings))
     rules = await load_rules(db)
     rate = await _uzs_rate(_fx())
-    client = WaxpeerClient(
-        api_key=settings.waxpeer_api_key,
-        base_url=settings.waxpeer_base_url,
-        timeout_seconds=settings.cs2_skins_listings_timeout_seconds,
-    )
-    rows, degraded = await listings_for(
-        item,
-        client=client,
-        redis=get_redis(),
-        budget_per_minute=settings.cs2_skins_listings_bucket_per_minute
-        if settings.waxpeer_api_key
-        else 0,
-    )
+    rows, degraded = await read_listings(item)
     items = []
     for row in rows:
         usd = quote(

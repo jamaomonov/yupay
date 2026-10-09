@@ -148,7 +148,11 @@ class OrderItemDisplay(BaseModel):
 #: field list entirely; this key can't be kept off the *list* the same way
 #: because it lives inside a free-form JSONB column, so it's redacted at
 #: serialization time instead.
-_CUSTOMER_HIDDEN_FULFILLMENT_KEYS = frozenset({"supplier_price_usd", "expected_units"})
+#: A csmarket skin line (ADR-0098) also carries who we buy from and that supplier's own
+#: offer and item ids — sourcing internals, not the customer's business.
+_CUSTOMER_HIDDEN_FULFILLMENT_KEYS = frozenset(
+    {"supplier_price_usd", "expected_units", "supplier", "offer_id", "source_item_id"}
+)
 
 
 class OrderItemOut(BaseModel):

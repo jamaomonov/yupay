@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.core.ids import new_id
@@ -257,3 +257,47 @@ async def test_switching_skins_off_in_the_admin_hides_buying(
     await db_session.commit()
     body = (await integration_client.get(f"/api/v1/skins/{SLUG}")).json()
     assert body["buy_sku_id"] is None
+
+
+async def test_a_csmarket_offer_records_its_ids_and_hides_them(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sku: Sku,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ADR-0098: the numeric listing id is the page's handle; the line keeps csmarket's ids."""
+    from yupay.modules.skins.listings_csmarket import listing_id_for
+
+    await db_session.execute(
+        update(SkinItem).where(SkinItem.slug == SLUG).values(source_item_id="csm-ak")
+    )
+    await db_session.commit()
+    offer_id = "rBGDFCIOesyZ9-DMdmHEEJA8jPyS5w6v"
+    listing_id = listing_id_for(offer_id)
+    live = [Listing(listing_id, 27867, 0.25, 1, [], None, "instant", offer_id)]
+
+    async def fake(_item: object) -> list[Listing]:
+        return live
+
+    monkeypatch.setattr("yupay.modules.skins.checkout.live_listings", fake)
+    token = await _login_user(integration_client, tg_id=930_090)
+    r = await _order(
+        integration_client,
+        token,
+        _body(sku.id, amount=_price(27867), listing_id=listing_id),
+        "skin-csm",
+    )
+    assert r.status_code == 201, r.text
+    shown = r.json()["items"][0]["fulfillment_data"]
+    assert not {"supplier", "offer_id", "source_item_id", "expected_units"} & set(shown)
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == r.json()["id"]))
+    ).scalar_one()
+    data = item.fulfillment_data
+    assert (data["supplier"], data["offer_id"], data["source_item_id"]) == (
+        "csmarket",
+        offer_id,
+        "csm-ak",
+    )
+    assert data["listing_id"] == listing_id
+    assert data["expected_units"] == 27867
