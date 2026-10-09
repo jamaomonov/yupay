@@ -24,7 +24,13 @@ export interface OrderItemOut {
 }
 
 export type SkinTradeState = "buying" | "offer_sent" | "accepted" | "released" | "failed";
-export type SkinTradeReason = "not_accepted" | "sold_out" | "try_later" | "support" | "other";
+export type SkinTradeReason =
+  | "not_accepted"
+  | "sold_out"
+  | "try_later"
+  | "tradelink"
+  | "support"
+  | "other";
 export type SkinRefundedTo = "wallet" | "card";
 
 export interface SkinSellerOut {

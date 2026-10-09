@@ -1074,6 +1074,7 @@
       "support": "Xaridni tekshiryapmiz — qo'llab-quvvatlashga yozing",
       "contactSupport": "Qo'llab-quvvatlashga yozish",
       "tryLater": "Skinni sotib ololmadik — pul YuPay balansingizda. Bir necha daqiqadan so'ng qayta urinib ko'ring",
+      "tradelinkRejected": "Market trade-havolangizni qabul qilmadi — pul YuPay balansida. Steam'da yangi trade-havola yarating va qaytadan urinib ko'ring",
       "refundedCard": "Almashuv amalga oshmadi — pul kartangizga qaytarildi",
       "refundToast": "Skinni sotib ololmadik — pul YuPay balansingizga qaytdi"
     },

@@ -141,3 +141,19 @@ async def test_spent_budget_falls_back_without_calling(redis: fakeredis.aioredis
     rows, degraded = await _read(client, redis, budget=0)
     assert (rows, degraded) == ([], True)
     assert client.calls == []
+
+
+async def test_a_lot_reported_sold_is_hidden_until_csmarket_catches_up(
+    redis: fakeredis.aioredis.FakeRedis,
+) -> None:
+    from yupay.modules.skins.listings_csmarket import forget
+
+    client = _Client()
+    await _read(client, redis)
+    await forget(redis, "ak-47-redline-field-tested", "cheap")
+    # csmarket's own list still names the sold lot for a while; we never show it again.
+    rows, _ = await _read(client, redis)
+    assert [r.offer_id for r in rows] == ["dear"]
+    assert len(client.calls) == 2  # the cache was dropped, so the list was read afresh
+    cached, _ = await _read(client, redis)
+    assert [r.offer_id for r in cached] == ["dear"]

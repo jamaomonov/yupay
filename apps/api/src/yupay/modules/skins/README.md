@@ -30,7 +30,9 @@ no-ops while `cs2_skins_sync_enabled` is off.
 (`listings_csmarket.py`, through `listings_source.read_listings`), the trade-link check asks
 csmarket, and checkout binds the line to csmarket (`supplier`, `offer_id`,
 `source_item_id` in `fulfillment_data`, hidden from the customer). The storefront's numeric
-`listing_id` is then a 52-bit hash of csmarket's opaque `offer_id`. Runbook:
+`listing_id` is then a 52-bit hash of csmarket's opaque `offer_id`. Before an order exists, `offer_check.precheck_order` asks csmarket whether the
+picked lot is still for sale: sold → `listing_gone` with the next lot, cheaper → the lower
+price, dearer → the buyer confirms. Runbook:
 `docs/runbooks/skins-purchase.md` → «Buying through csmarket».
 
 ## Storefront

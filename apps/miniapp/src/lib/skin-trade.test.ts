@@ -49,10 +49,17 @@ describe("skinTradeView", () => {
     const failed = { ...base, state: "failed" as const };
     expect(
       skinTradeView({ ...failed, reason_code: "not_accepted", refunded_to: "wallet" }),
-    ).toEqual({ kind: "refunded", tryLater: false });
+    ).toEqual({ kind: "refunded", tryLater: false, tradelink: false });
     expect(skinTradeView({ ...failed, reason_code: "try_later", refunded_to: "wallet" })).toEqual({
       kind: "refunded",
       tryLater: true,
+      tradelink: false,
+    });
+    // The market refused the buyer's link: say so, or they retry with the same link.
+    expect(skinTradeView({ ...failed, reason_code: "tradelink", refunded_to: "wallet" })).toEqual({
+      kind: "refunded",
+      tryLater: false,
+      tradelink: true,
     });
     expect(skinTradeView({ ...failed, reason_code: "sold_out", refunded_to: "card" })).toEqual({
       kind: "refundedCard",

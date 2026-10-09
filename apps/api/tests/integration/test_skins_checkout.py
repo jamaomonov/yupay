@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core import config as cfg
 from yupay.core.ids import new_id
@@ -301,3 +301,172 @@ async def test_a_csmarket_offer_records_its_ids_and_hides_them(
     )
     assert data["listing_id"] == listing_id
     assert data["expected_units"] == 27867
+
+
+# ---------- the lot check before payment (ADR-0098, 2026-10-10) ----------
+
+CSM_A = "offer-a-cheapest"
+CSM_B = "offer-b-next"
+
+
+async def _csmarket_item(db: AsyncSession) -> None:
+    await db.execute(update(SkinItem).where(SkinItem.slug == SLUG).values(source_item_id="csm-ak"))
+    await db.commit()
+
+
+def _csm_listings(monkeypatch: pytest.MonkeyPatch) -> tuple[int, int]:
+    from yupay.modules.skins.listings_csmarket import listing_id_for
+
+    a, b = listing_id_for(CSM_A), listing_id_for(CSM_B)
+    live = [
+        Listing(a, 27867, 0.25, 1, [], None, "instant", CSM_A),
+        Listing(b, 29000, 0.16, 2, [], None, "instant", CSM_B),
+    ]
+
+    async def fake(_item: object) -> list[Listing]:
+        return live
+
+    monkeypatch.setattr("yupay.modules.skins.checkout.live_listings", fake)
+    return a, b
+
+
+def _verdict(monkeypatch: pytest.MonkeyPatch, status: str, price_units: int | None) -> None:
+    from yupay.modules.skins.offer_check import OfferVerdict
+
+    monkeypatch.setattr(
+        "yupay.modules.skins.checkout.verdict_for",
+        lambda _slug, _listing: OfferVerdict(status=status, price_units=price_units),  # type: ignore[arg-type] # a literal from the parametrised test
+    )
+
+
+async def test_a_lot_sold_since_the_list_offers_the_next_one(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sku: Sku,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _csmarket_item(db_session)
+    a, b = _csm_listings(monkeypatch)
+    _verdict(monkeypatch, "gone", None)
+    token = await _login_user(integration_client, tg_id=930_101)
+    r = await _order(
+        integration_client, token, _body(sku.id, amount=_price(27867), listing_id=a), "skin-gone"
+    )
+    assert r.status_code == 422, r.text
+    extra = r.json()["extra"]
+    assert extra["reason"] == "listing_gone"
+    assert extra["next_offer"]["listing_id"] == b  # never the sold lot again
+
+
+async def test_a_lot_that_got_cheaper_is_sold_at_the_lower_price(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sku: Sku,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _csmarket_item(db_session)
+    a, _ = _csm_listings(monkeypatch)
+    _verdict(monkeypatch, "available", 20000)
+    token = await _login_user(integration_client, tg_id=930_102)
+    r = await _order(
+        integration_client, token, _body(sku.id, amount=_price(27867), listing_id=a), "skin-down"
+    )
+    assert r.status_code == 201, r.text
+    assert Decimal(r.json()["items"][0]["unit_price_usd"]) == _price(20000)
+    item = (
+        await db_session.execute(select(OrderItem).where(OrderItem.order_id == r.json()["id"]))
+    ).scalar_one()
+    assert item.fulfillment_data["expected_units"] == 20000
+
+
+async def test_a_lot_that_got_dearer_asks_the_buyer_again(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sku: Sku,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    await _csmarket_item(db_session)
+    a, _ = _csm_listings(monkeypatch)
+    _verdict(monkeypatch, "available", 40000)
+    token = await _login_user(integration_client, tg_id=930_103)
+    r = await _order(
+        integration_client, token, _body(sku.id, amount=_price(27867), listing_id=a), "skin-up"
+    )
+    assert r.status_code == 422, r.text
+    assert Decimal(r.json()["extra"]["expected_amount_usd"]) == _price(40000)
+
+
+@pytest.mark.parametrize("status", ["unconfirmed", None])
+async def test_an_unanswered_check_sells_at_the_list_price(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sku: Sku,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str | None,
+) -> None:
+    await _csmarket_item(db_session)
+    a, _ = _csm_listings(monkeypatch)
+    if status is None:
+        monkeypatch.setattr("yupay.modules.skins.checkout.verdict_for", lambda *_: None)
+    else:
+        _verdict(monkeypatch, status, 40000)
+    token = await _login_user(integration_client, tg_id=930_104 if status else 930_105)
+    r = await _order(
+        integration_client,
+        token,
+        _body(sku.id, amount=_price(27867), listing_id=a),
+        f"skin-unc-{status}",
+    )
+    assert r.status_code == 201, r.text
+    assert Decimal(r.json()["items"][0]["unit_price_usd"]) == _price(27867)
+
+
+async def test_the_order_route_asks_csmarket_before_the_order_exists(
+    integration_client: AsyncClient,
+    db_session: AsyncSession,
+    sku: Sku,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """End to end: the route's pre-check reaches checkout, and a sold lot leaves no order
+    and no cached copy of itself behind."""
+    from yupay.core.redis import get_redis
+    from yupay.modules.fulfillment.suppliers.csmarket_client import Offer
+    from yupay.modules.orders.models import Order
+    from yupay.modules.skins import listings_source, offer_check
+    from yupay.modules.skins.listings_csmarket import cache_key, listing_id_for
+
+    monkeypatch.setenv("CS2_SKINS_SOURCE", "csmarket")
+    monkeypatch.setenv("CSMARKET_API_KEY", "csm_test")
+    cfg.get_settings.cache_clear()
+    await _csmarket_item(db_session)
+    checked: list[tuple[str, str]] = []
+
+    class _Csm:
+        configured = True
+
+        async def offers(self, item_id: str, *, timeout: float | None = None) -> list[Offer]:
+            return [
+                Offer(CSM_A, 27867, 0.25, 1, [], "instant"),
+                Offer(CSM_B, 29000, 0.16, 2, [], "instant"),
+            ]
+
+        async def check_offer(self, item_id: str, offer_id: str) -> tuple[str, int | None]:
+            checked.append((item_id, offer_id))
+            return "gone", None
+
+    monkeypatch.setattr(offer_check, "csmarket_client", _Csm)
+    monkeypatch.setattr(listings_source, "csmarket_client", _Csm)
+    await get_redis().delete(cache_key(SLUG), f"{cache_key(SLUG)}:stale")
+
+    token = await _login_user(integration_client, tg_id=930_106)
+    r = await _order(
+        integration_client,
+        token,
+        _body(sku.id, amount=_price(27867), listing_id=listing_id_for(CSM_A)),
+        "skin-route-gone",
+    )
+    assert r.status_code == 422, r.text
+    assert r.json()["extra"]["reason"] == "listing_gone"
+    assert checked == [("csm-ak", CSM_A)]
+    count = await db_session.scalar(select(func.count(Order.id)))
+    assert count == 0

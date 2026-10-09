@@ -415,3 +415,44 @@ async def test_unexpected_shapes_raise_bad_shape(path: str, body: object) -> Non
     with pytest.raises(CsmarketError) as caught:
         await calls[path]()
     assert caught.value.code == "bad_shape"
+
+
+# ---------- the lot check before payment (csmarket v1.2) ----------
+
+
+@pytest.mark.parametrize(
+    ("body", "expected"),
+    [
+        ({"offer_id": "o", "status": "available", "price_usd": "4.100"}, ("available", 4100)),
+        ({"offer_id": "o", "status": "gone", "price_usd": None}, ("gone", None)),
+        ({"offer_id": "o", "status": "unconfirmed", "price_usd": "4.000"}, ("unconfirmed", 4000)),
+        ({"offer_id": "o", "status": "weird"}, ("unconfirmed", None)),
+        ({"offer_id": "o", "status": "available", "price_usd": "x"}, ("available", None)),
+    ],
+)
+@respx.mock
+async def test_check_offer_reads_the_lot(body: dict[str, object], expected: object) -> None:
+    route = respx.get(f"{BASE}/catalog/i1/offers/o").mock(
+        return_value=httpx.Response(200, json=body)
+    )
+    assert await _client().check_offer("i1", "o") == expected
+    assert route.calls.last.request.headers["Authorization"] == f"Bearer {TOKEN}"
+
+
+@respx.mock
+async def test_check_offer_404_is_gone_and_failures_are_unconfirmed() -> None:
+    respx.get(f"{BASE}/catalog/i1/offers/x").mock(
+        return_value=httpx.Response(404, json={"status": 404, "code": "offer_not_found"})
+    )
+    assert await _client().check_offer("i1", "x") == ("gone", None)
+    for answer in (
+        httpx.Response(401, json={"status": 401, "code": "unauthorized"}),
+        httpx.Response(429, json={"status": 429, "code": "rate_limited"}),
+        httpx.Response(503, text="down"),
+        httpx.ReadTimeout("slow"),
+    ):
+        respx.get(f"{BASE}/catalog/i1/offers/y").mock(
+            side_effect=answer if isinstance(answer, Exception) else None,
+            return_value=None if isinstance(answer, Exception) else answer,
+        )
+        assert await _client().check_offer("i1", "y") == ("unconfirmed", None)

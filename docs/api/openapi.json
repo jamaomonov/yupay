@@ -1754,6 +1754,7 @@
                   "not_accepted",
                   "sold_out",
                   "try_later",
+                  "tradelink",
                   "support",
                   "other"
                 ],
@@ -18278,6 +18279,7 @@
                   "not_accepted",
                   "sold_out",
                   "try_later",
+                  "tradelink",
                   "support",
                   "other"
                 ],

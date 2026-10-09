@@ -98,7 +98,13 @@ export function SkinTradeCard({ trade }: { trade: SkinTradeOut }) {
       {view.kind === "refunded" && (
         <div className="space-y-2">
           <p className="text-[13px] text-white">
-            {t(view.tryLater ? "cs2.trade.tryLater" : "cs2.trade.refunded")}
+            {t(
+              view.tryLater
+                ? "cs2.trade.tryLater"
+                : view.tradelink
+                  ? "cs2.trade.tradelinkRejected"
+                  : "cs2.trade.refunded",
+            )}
           </p>
           <Link
             href="/wallet"

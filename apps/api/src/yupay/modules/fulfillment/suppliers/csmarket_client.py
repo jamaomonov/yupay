@@ -41,6 +41,7 @@ _UNITS_PER_USD = Decimal(1000)
 
 CsmOrderStatus = Literal["buying", "trade_sent", "delivered", "refunded", "unknown"]
 TradelinkVerdict = Literal["ok", "bad", "unavailable"]
+OfferStatus = Literal["available", "gone", "unconfirmed"]
 
 
 class CsmarketError(Exception):
@@ -501,6 +502,41 @@ class CsmarketClient:
         """
         return parse_order((await self._request("GET", f"/orders/{order_id}")).json())
 
+    async def check_offer(
+        self, item_id: str, offer_id: str, *, timeout: float = 6.0
+    ) -> tuple[OfferStatus, int | None]:
+        """``GET /catalog/{item_id}/offers/{offer_id}`` — is this lot still for sale?
+
+        A live look at the market (csmarket v1.2), uncached, up to ~5 s. Returns
+        ``(status, price_units)``: ``available`` with the live price on our tariff,
+        ``gone`` with ``None``, ``unconfirmed`` with the last known price or ``None``.
+
+        Never raises. A 404 (``offer_not_found`` / ``item_not_found``) is ``gone``: our ids
+        come from csmarket's own list, so a lot it no longer knows has left. Every other
+        failure — 401/403, 429, 5xx, a timeout, an odd body — is ``unconfirmed``: the
+        purchase checks the lot again, so not knowing must never block a sale.
+        """
+        try:
+            resp = await self._request(
+                "GET", f"/catalog/{item_id}/offers/{offer_id}", timeout=timeout
+            )
+            body = resp.json()
+        except CsmarketError as exc:
+            return ("gone", None) if exc.status == 404 else ("unconfirmed", None)
+        except (CsmarketUnavailableError, ValueError):
+            return "unconfirmed", None
+        status = body.get("status") if isinstance(body, dict) else None
+        if status not in ("available", "gone", "unconfirmed"):
+            return "unconfirmed", None
+        if status == "gone":
+            return "gone", None
+        raw = body.get("price_usd")
+        try:
+            price = usd_to_units(raw) if raw is not None else None
+        except ValueError:
+            price = None
+        return status, price
+
     async def check_tradelink(
         self, trade_link: str, *, timeout: float | None = None
     ) -> tuple[TradelinkVerdict, str | None]:
@@ -532,6 +568,7 @@ __all__ = [
     "FeedItem",
     "FeedPage",
     "Offer",
+    "OfferStatus",
     "TradelinkVerdict",
     "parse_order",
     "units_to_usd",

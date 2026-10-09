@@ -7,9 +7,12 @@ The csmarket twin of ``waxpeer_skins``. Rules:
   ``created=False``), so **every** uncertainty is settled by sending the same purchase
   again — never by a timer and never by a second purchase. A lost answer (transport
   error, 5xx) parks the task ``buy_unconfirmed``; the status sweep re-sends.
-* The chosen offer gone or dearer (``offer_gone`` / ``price_above_max``) → one more try
-  without ``offer_id`` under the same cap: csmarket then buys the cheapest offer of the
-  same item not dearer than what the buyer paid for. Refused again → ``RETURNED``.
+* **The lot the buyer chose, or nothing** (owner, 2026-10-10; csmarket's ADR-0013). A buyer
+  picks a lot by its float and stickers, so another lot of the same name is a different
+  thing. ``offer_gone`` / ``price_above_max`` → ``RETURNED`` with ``sold_out`` at once; a
+  line with no ``offer_id`` is never bought "any lot" — it is returned too. The checkout
+  asks csmarket about the lot before payment (``skins.offer_check``), so this refusal is
+  left for a lot sold in the minutes the buyer spent paying.
 * ``402 insufficient_balance`` → the buyer is refunded at once and ops alerted, exactly
   like a Waxpeer low balance on a skin (owner, 2026-09-29).
 * Any other 4xx refusal: csmarket bought nothing → ``RETURNED`` with its code.
@@ -62,8 +65,6 @@ SKIN_KIND = "skin"
 LOW_BALANCE_ERROR = "supplier_low_balance"
 #: Steam's trade protection after acceptance, when csmarket gives no ``release_at``.
 _PROTECTION = timedelta(days=7)
-#: A refusal of the chosen offer that a same-item purchase under the same cap may cure.
-_RETRY_WITHOUT_OFFER = frozenset({"offer_gone", "price_above_max"})
 #: csmarket refund reasons where nothing was ever sent to the buyer.
 _NEVER_SENT = frozenset({"sold_out", "price_moved"})
 
@@ -241,36 +242,29 @@ async def buy(  # noqa: PLR0911 -- one return per outcome reads as the table abo
         # A line checkout did not price for csmarket: nothing can be bought for it.
         return _result("failed", None, error="not_a_csmarket_line", money=MoneyOutcome.RETURNED)
 
-    offer_id: str | None = str(data.get("offer_id") or "") or None
-    for attempt in range(2):
-        try:
-            order, created = await client.create_order(
-                item_id=item_id,
-                offer_id=offer_id,
-                max_price_units=cap,
-                trade_link=link.url,
-                client_order_id=key,
-            )
-        except CsmarketRateLimitedError:
-            return _result("in_progress", key, buy_pending=True)
-        except CsmarketUnavailableError:
-            # It may have landed: the sweep sends the same purchase again (409 → the order).
-            return _result(
-                "in_progress", key, buy_unconfirmed_at=now().isoformat(), buy_pending=True
-            )
-        except CsmarketError as exc:
-            if exc.code in _RETRY_WITHOUT_OFFER and attempt == 0 and offer_id is not None:
-                log.info("skins.buy.offer_refused", order_item_id=row.order_item_id, code=exc.code)
-                offer_id = None
-                continue
-            return await _refused(db, row, exc, cap)
-        if not created:
-            log.info("skins.buy.adopted", order_item_id=row.order_item_id)
-        return await _settle(db, row, order, key)
-    # The loop always returns: the second refusal goes to ``_refused`` above.
-    return await _refused(  # pragma: no cover
-        db, row, CsmarketError("refused", status=409, code="offer_gone"), cap
-    )
+    offer_id = str(data.get("offer_id") or "")
+    if not offer_id:
+        # Without the chosen lot csmarket would buy "the cheapest under the cap" — a lot
+        # the buyer never saw. Never: the line ends and the money goes back.
+        return _result("failed", None, error="not_a_csmarket_line", money=MoneyOutcome.RETURNED)
+    try:
+        order, created = await client.create_order(
+            item_id=item_id,
+            offer_id=offer_id,
+            max_price_units=cap,
+            trade_link=link.url,
+            client_order_id=key,
+        )
+    except CsmarketRateLimitedError:
+        return _result("in_progress", key, buy_pending=True)
+    except CsmarketUnavailableError:
+        # It may have landed: the sweep sends the same purchase again (409 → the order).
+        return _result("in_progress", key, buy_unconfirmed_at=now().isoformat(), buy_pending=True)
+    except CsmarketError as exc:
+        return await _refused(db, row, exc, cap)
+    if not created:
+        log.info("skins.buy.adopted", order_item_id=row.order_item_id)
+    return await _settle(db, row, order, key)
 
 
 async def _refused(db: AsyncSession, row: SkinTrade, exc: CsmarketError, cap: int) -> FulfillResult:

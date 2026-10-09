@@ -580,6 +580,7 @@
   "cs2.trade.released": "Received",
   "cs2.trade.refunded": "The trade did not happen — the money is back on your balance",
   "cs2.trade.tryLater": "We could not buy the skin — the money is on your YuPay balance. Please try again in a few minutes",
+  "cs2.trade.tradelinkRejected": "The market did not accept your trade link — the money is on your YuPay balance. Create a new trade link in Steam and try again",
   "cs2.trade.refundedCard": "The trade did not happen — the money went back to your card",
   "cs2.trade.refundToast": "We could not buy the skin — the money is back on your YuPay balance",
   "cs2.trade.toWallet": "Open balance",

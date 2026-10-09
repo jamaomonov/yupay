@@ -342,6 +342,14 @@ yupay/
   a day, and an hourly sync would make purchase prices four times staler than the 900 s
   detail cache does now. The trade turns the other way the moment the ~4400 per-game SEO
   pages are wanted, because nothing else can price them.
+- **`POST /orders` asks csmarket about a CS2 skin lot** (ADR-0098, 2026-10-10): for a skin
+  line priced against a csmarket offer, the route calls `GET /catalog/{item}/offers/{offer}`
+  before the order exists (`skins.offer_check`). It is on the order path on purpose — the
+  point is to refuse a sold lot before the buyer pays — and bounded like the advisory lookups:
+  one call per skin line (orders carry one), a 6 s timeout, run **before** the route reads
+  anything else and after the check ends its own read transaction, so no pool connection
+  waits on csmarket. Any failure answers "unconfirmed" and the sale proceeds at the list
+  price; the purchase checks the lot again.
 - **The CS2 skins listings read is a third carve-out** (ADR-0093): `GET /skins/{slug}/listings`
   calls Waxpeer's search-by-name from its handler on a cache miss. Same shape as the gifts
   reads — a catalogue read, off the order/payment/fulfilment path, Redis-cached (90 s fresh,

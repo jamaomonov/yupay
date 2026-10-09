@@ -106,7 +106,13 @@ export function SkinTradeCard({ trade, locale }: { trade: SkinTradeOut; locale: 
       {trade.state === "failed" && trade.refunded_to === "wallet" && (
         <div className="space-y-2">
           <p className="text-[14px]">
-            {t(trade.reason_code === "try_later" ? "tryLater" : "refunded")}
+            {t(
+              trade.reason_code === "try_later"
+                ? "tryLater"
+                : trade.reason_code === "tradelink"
+                  ? "tradelinkRejected"
+                  : "refunded",
+            )}
           </p>
           <Link
             href={pathFor(locale, "/account/wallet")}

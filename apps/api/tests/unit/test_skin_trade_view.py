@@ -108,3 +108,14 @@ def test_a_refund_is_reported_where_it_went() -> None:
         refunded_to="card",
     )
     assert out.refunded_to == "card"
+
+
+def test_a_refused_trade_link_has_its_own_reason() -> None:
+    """2026-10-09: LIS-SKINS refused one buyer's link four times; the generic «вернули»
+    sent them back with the same link each time."""
+    from yupay.modules.skins.trade_view import skin_trade_out
+
+    for reason in ("invalid_trade_link", "invalid_tradelink", "trade_hold"):
+        row = SkinTrade(status=6, reason=reason, seller={})
+        out = skin_trade_out(row, fulfillment_state="failed", refunded_to="wallet")
+        assert out.reason_code == "tradelink"

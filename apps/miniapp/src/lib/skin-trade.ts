@@ -11,7 +11,7 @@ export type SkinTradeView =
   | { kind: "buying" }
   | { kind: "offer"; offerUrl: string | null; seller: string | null; acceptBy: string | null }
   | { kind: "received"; protectedUntil: string | null }
-  | { kind: "refunded"; tryLater: boolean }
+  | { kind: "refunded"; tryLater: boolean; tradelink: boolean }
   | { kind: "refundedCard" }
   | { kind: "support" };
 
@@ -32,7 +32,11 @@ export function skinTradeView(trade: SkinTradeOut): SkinTradeView {
       return { kind: "received", protectedUntil: null };
     case "failed":
       if (trade.refunded_to === "wallet") {
-        return { kind: "refunded", tryLater: trade.reason_code === "try_later" };
+        return {
+          kind: "refunded",
+          tryLater: trade.reason_code === "try_later",
+          tradelink: trade.reason_code === "tradelink",
+        };
       }
       return trade.refunded_to === "card" ? { kind: "refundedCard" } : { kind: "support" };
     default: {

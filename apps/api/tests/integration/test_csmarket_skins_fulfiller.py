@@ -169,27 +169,32 @@ async def test_buys_the_chosen_offer_under_the_paid_cap(db_session: AsyncSession
     assert (row.status, row.bought_units) == (0, 27000)
 
 
-async def test_a_gone_offer_retries_once_without_it_under_the_same_cap(
-    db_session: AsyncSession,
+@pytest.mark.parametrize("code", ["offer_gone", "price_above_max"])
+async def test_a_sold_or_dearer_lot_is_never_swapped_for_another(
+    db_session: AsyncSession, code: str
 ) -> None:
-    item = await _item(db_session, "csm-gone")
-    client = _Client(refuse=["offer_gone"])
+    """Owner 2026-10-10 / csmarket ADR-0013: the buyer chose this lot by its float and
+    stickers, so a refusal returns the money — one attempt, the same offer, no substitute."""
+    item = await _item(db_session, f"csm-{code}")
+    client = _Client(refuse=[code])
     result = await _buy(db_session, item, client)
-    assert result.outcome == "in_progress"
-    assert [s["offer_id"] for s in client.sent] == [OFFER, None]
-    assert {s["cap"] for s in client.sent} == {27867}
-    assert {s["key"] for s in client.sent} == {KEY}
-
-
-async def test_refused_twice_is_sold_out_and_returned(db_session: AsyncSession) -> None:
-    item = await _item(db_session, "csm-sold")
-    result = await _buy(db_session, item, _Client(refuse=["offer_gone", "price_above_max"]))
     assert (result.outcome, result.error, result.money_outcome) == (
         "failed",
         "sold_out",
         MoneyOutcome.RETURNED,
     )
+    assert [s["offer_id"] for s in client.sent] == [OFFER]
     assert (await _row(db_session)).reason == "sold_out"
+
+
+async def test_a_line_without_the_chosen_lot_is_returned_not_bought(
+    db_session: AsyncSession,
+) -> None:
+    item = await _item(db_session, "csm-nooffer-line", offer_id=None)
+    client = _Client()
+    result = await _buy(db_session, item, client)
+    assert (result.outcome, result.money_outcome) == ("failed", MoneyOutcome.RETURNED)
+    assert client.sent == []
 
 
 async def test_no_balance_returns_the_money_and_says_why(db_session: AsyncSession) -> None:

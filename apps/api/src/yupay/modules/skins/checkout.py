@@ -30,6 +30,7 @@ from yupay.core.errors import UnauthorizedError, ValidationError
 from yupay.modules.skins.listings import Listing, waxpeer_name_of
 from yupay.modules.skins.listings_source import read_listings
 from yupay.modules.skins.models import SkinItem
+from yupay.modules.skins.offer_check import verdict_for
 from yupay.modules.skins.pricing import quote
 from yupay.modules.skins.settings import enabled_categories, load_rules
 from yupay.modules.skins.tradelink import parse_tradelink, save_trade_link
@@ -122,22 +123,38 @@ async def price_skin_line(
             steam_price_units=item.steam_price_units,
         ).price_usd
 
-    live = await live_listings(item)
-    chosen = next((row for row in live if row.listing_id == listing_id), None)
-    if chosen is None:
-        cheapest = min(live, key=lambda row: row.price_units, default=None)
+    def gone(rest: list[Listing]) -> ValidationError:
+        cheapest = min(rest, key=lambda row: row.price_units, default=None)
         extra: dict[str, Any] = {"reason": "listing_gone"}
         if cheapest is not None:
             extra["next_offer"] = {
                 "listing_id": cheapest.listing_id,
                 "price_usd": str(price_of(cheapest.price_units)),
             }
-        raise ValidationError("this offer has just been sold", extra=extra)
+        return ValidationError("this offer has just been sold", extra=extra)
 
-    expected = price_of(chosen.price_units)
+    live = await live_listings(item)
+    chosen = next((row for row in live if row.listing_id == listing_id), None)
+    if chosen is None:
+        raise gone(live)
+
+    units = chosen.price_units
+    if chosen.offer_id is not None:
+        # csmarket (ADR-0098): the order route asked the market about this lot before the
+        # order existed (``skins.offer_check``). Sold → the next lot, never a paid refund.
+        verdict = verdict_for(item.slug, listing_id)
+        if verdict is not None and verdict.status == "gone":
+            raise gone([row for row in live if row.listing_id != listing_id])
+        if verdict is not None and verdict.status == "available" and verdict.price_units:
+            units = verdict.price_units
+
+    expected = price_of(units)
     if line_amount_usd is None:
         raise ValidationError("amount is required for this product")
-    if abs(line_amount_usd - expected) > expected * _PRICE_TOLERANCE:
+    # Only a price that went *up* past the tolerance stops the sale. A lot that got
+    # cheaper is billed at the new, lower price: asking the buyer to confirm paying less
+    # is a step that loses sales and protects nobody.
+    if expected - line_amount_usd > line_amount_usd * _PRICE_TOLERANCE:
         raise ValidationError(
             "the price of this skin has changed — refresh and try again",
             extra={"expected_amount_usd": str(expected)},
@@ -154,7 +171,7 @@ async def price_skin_line(
             # Waxpeer's own spelling (a Doppler's phase sits before the wear): what a
             # substitute is searched under if this listing is gone by purchase time.
             "waxpeer_name": waxpeer_name_of(item),
-            "expected_units": chosen.price_units,
+            "expected_units": units,
             "float_value": chosen.float_value,
         }
     )

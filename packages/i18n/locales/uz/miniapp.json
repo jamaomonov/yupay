@@ -580,6 +580,7 @@
   "cs2.trade.released": "Olindi",
   "cs2.trade.refunded": "Almashuv amalga oshmadi — pul balansga qaytdi",
   "cs2.trade.tryLater": "Skinni sotib ololmadik — pul YuPay balansingizda. Bir necha daqiqadan so'ng qayta urinib ko'ring",
+  "cs2.trade.tradelinkRejected": "Market trade-havolangizni qabul qilmadi — pul YuPay balansida. Steam'da yangi trade-havola yarating va qaytadan urinib ko'ring",
   "cs2.trade.refundedCard": "Almashuv amalga oshmadi — pul kartangizga qaytarildi",
   "cs2.trade.refundToast": "Skinni sotib ololmadik — pul YuPay balansingizga qaytdi",
   "cs2.trade.toWallet": "Balansni ochish",

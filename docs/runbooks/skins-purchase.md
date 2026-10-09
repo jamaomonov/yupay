@@ -57,6 +57,12 @@ kept for the Steam cap), a rollback after delivery (a csmarket trade stays `deli
 protection watch and the nightly audit are Waxpeer-only), and individual offers in the
 feed (no snapshot fallback on the item page — the stale cache or nothing).
 
+**«Этот лот уже купили» before payment** is the lot check working (`skins.offer_check`, log
+event `skins.offer_check` with `status`): the buyer is offered the next lot and pays nothing.
+A sold lot stays hidden for six minutes (`skins:csm:gone:{slug}`). A refund for `sold_out`
+_after_ payment now means the lot sold in the minutes the buyer spent paying — csmarket's
+`POST /orders` refused it (`offer_gone`); no other lot is ever bought instead.
+
 **A csmarket order looks stuck in `buying`**: our fast sweep re-sends the purchase under the
 same id until csmarket answers, so a lost answer heals by itself. If it stays, read it on
 csmarket's side by our `project_id` (their `client_order_id`); the outcome is decided only

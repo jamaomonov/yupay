@@ -47,6 +47,7 @@ from yupay.modules.orders.schemas import (
     OrderOut,
 )
 from yupay.modules.orders.service import Actor, build_item_display, succeeded_provider_for
+from yupay.modules.skins import offer_check as skins_offer_check
 from yupay.modules.skins.models import SkinTrade
 from yupay.modules.skins.order_display import skin_images, skin_line_name
 from yupay.modules.skins.trade_view import SkinRefundedTo, skin_trade_out
@@ -321,15 +322,19 @@ async def create_order_route(
             f"Idempotency-Key header is required (>={_MIN_IDEMPOTENCY_KEY_LEN} chars)",
             extra={"header": IDEMPOTENCY_HEADER},
         )
-    actor = await _resolve_actor(request, body, db)
-    await _enforce_precharge_veto(request, body, db, actor)
-    order = await svc.create_order(
-        db,
-        body,
-        actor=actor,
-        idempotency_key=idempotency_key,
-        source=svc.normalise_source(surface),
-    )
+    # First, before anything else reads the database: a CS2 skin lot is checked with its
+    # supplier here, so a sold lot is caught before payment rather than refunded after it.
+    # The check ends its own read before the network call (``skins.offer_check``).
+    async with skins_offer_check.precheck_order(db, body):
+        actor = await _resolve_actor(request, body, db)
+        await _enforce_precharge_veto(request, body, db, actor)
+        order = await svc.create_order(
+            db,
+            body,
+            actor=actor,
+            idempotency_key=idempotency_key,
+            source=svc.normalise_source(surface),
+        )
     # After the order exists, so the capture can never be the reason a sale
     # fails; idempotent, so a retried Idempotency-Key keeps the original
     # context rather than overwriting it with the retry's. See ADR-0044.

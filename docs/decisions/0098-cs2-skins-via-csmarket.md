@@ -57,10 +57,20 @@ Shape of the integration:
 - **Purchase.** `POST /orders` with `client_order_id` = our fulfilment idempotency key,
   `offer_id`, `max_price_usd` = the cost we priced against, the buyer's trade link. A
   repeat with the same key answers 409 with the existing order, so a lost answer is
-  settled by asking again, never by a second buy. `offer_gone` / `price_above_max` retry
-  once without `offer_id` under the same cap (csmarket then buys the cheapest offer not
-  dearer); otherwise the line is returned. `402 insufficient_balance` is handled like
-  Waxpeer's low balance: refund to the buyer's balance and an ops alert.
+  settled by asking again, never by a second buy. **No substitute lot** (amended
+  2026-10-10, csmarket's ADR-0013): a buyer picks a lot by float and stickers, so
+  `offer_gone` / `price_above_max` return the money at once, and a line without an
+  `offer_id` is never bought. `402 insufficient_balance` is handled like Waxpeer's low
+  balance: refund to the buyer's balance and an ops alert.
+- **Lot check before payment** (amended 2026-10-10). The offers list trails the market by
+  minutes (csmarket rebuilds LIS-SKINS lots from a five-minute export), and the cheapest
+  lots of a popular skin sell inside that window: one buyer paid and was refunded four times
+  in an evening. `POST /orders` now asks csmarket's
+  `GET /catalog/{item}/offers/{offer}` (`skins.offer_check`) before the order exists — at
+  the top of the route, after ending its one read, so no pool connection waits on it. Sold →
+  `listing_gone` with the next lot, and the sold lot is hidden from the list for six
+  minutes; cheaper → billed at the new price; dearer past 2 % → the buyer confirms the new
+  price; no answer → the list price (the purchase checks again).
 - **Status.** `GET /orders/{order_id}`: `buying` in progress, `trade_sent` offer out,
   `delivered` succeeded, `refunded` returned with csmarket's reason. A rollback after
   delivery is not reported by csmarket (it stays `delivered`), so the Waxpeer-only

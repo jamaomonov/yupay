@@ -28,7 +28,7 @@ from pydantic import BaseModel
 from yupay.modules.skins.models import SkinTrade
 
 SkinTradeState = Literal["buying", "offer_sent", "accepted", "released", "failed"]
-SkinTradeReason = Literal["not_accepted", "sold_out", "try_later", "support", "other"]
+SkinTradeReason = Literal["not_accepted", "sold_out", "try_later", "tradelink", "support", "other"]
 SkinRefundedTo = Literal["wallet", "card"]
 
 
@@ -63,12 +63,19 @@ def _state(row: SkinTrade, fulfillment_state: str) -> SkinTradeState:
     return "buying"
 
 
+_TRADELINK_REASONS = frozenset({"invalid_trade_link", "invalid_tradelink", "trade_hold"})
+
+
 def _reason(row: SkinTrade) -> SkinTradeReason:
     # ``support`` is a purchase we could not confirm — a human settles it.
     if row.reason in ("buy_unconfirmed", "ambiguous_trade"):
         return "support"
     if row.reason == "supplier_low_balance":
         return "try_later"
+    # The market refused the buyer's trade link (LIS-SKINS ``invalid_trade_url``, a trade
+    # hold): every retry with the same link fails the same way, so the page says so.
+    if row.reason in _TRADELINK_REASONS:
+        return "tradelink"
     if row.status is None:
         return "sold_out"
     if row.reason and "accept" in row.reason.lower():

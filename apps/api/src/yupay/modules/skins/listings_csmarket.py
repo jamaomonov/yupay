@@ -18,9 +18,10 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+from collections.abc import Awaitable
 from dataclasses import asdict
 from datetime import UTC, datetime
-from typing import Protocol
+from typing import Any, Protocol, cast
 
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
@@ -37,8 +38,10 @@ from yupay.modules.skins.models import SkinItem
 
 log = get_logger("yupay.skins.listings_csmarket")
 
-#: csmarket caches offers for 60 s itself; asking more often buys nothing.
-FRESH_TTL = 60
+#: Short: the lots that sell fastest are the cheapest, which are the ones shown first. csmarket
+#: caches its list for 60 s itself, so this mostly bounds how long *we* keep a lot we were
+#: told is gone (see :func:`forget`) — and a sold lot is evicted at once anyway.
+FRESH_TTL = 30
 STALE_TTL = 3600
 BREAKER_TTL = 120
 _BUDGET_TTL = 120
@@ -73,6 +76,43 @@ def to_listing(offer: Offer) -> Listing:
     )
 
 
+def cache_key(slug: str) -> str:
+    """Redis key of one item's cached csmarket offers (the stale twin adds ``:stale``)."""
+    return f"skins:listings:csm:{slug}"
+
+
+#: How long a lot reported sold stays hidden from the list. csmarket's own list is cached for
+#: 60 s and a LIS-SKINS lot can linger in it until the next five-minute export.
+GONE_TTL = 360
+
+
+def _gone_key(slug: str) -> str:
+    return f"skins:csm:gone:{slug}"
+
+
+async def forget(redis: Redis, slug: str, offer_id: str | None = None) -> None:
+    """Drop an item's cached offers after a lot turned out sold, and hide that lot.
+
+    Without it the page keeps offering the sold lot — from our cache, and again from
+    csmarket's own list until it catches up — and the buyer walks into the same refusal.
+    """
+    with contextlib.suppress(RedisError):
+        await redis.delete(cache_key(slug), f"{cache_key(slug)}:stale")
+        if offer_id:
+            # redis-py types set commands as "awaitable or value"; on the asyncio client
+            # they are always awaitable.
+            await cast("Awaitable[int]", redis.sadd(_gone_key(slug), offer_id))
+            await redis.expire(_gone_key(slug), GONE_TTL)
+
+
+async def _without_gone(redis: Redis, slug: str, rows: list[Listing]) -> list[Listing]:
+    gone: set[str] = set()
+    with contextlib.suppress(RedisError):
+        members = await cast("Awaitable[set[Any]]", redis.smembers(_gone_key(slug)))
+        gone = {str(x) for x in members}
+    return [r for r in rows if r.offer_id not in gone] if gone else rows
+
+
 async def _budget_ok(redis: Redis, limit: int) -> bool:
     if limit <= 0:
         return False
@@ -93,11 +133,13 @@ async def csmarket_listings_for(
     timeout_seconds: float,
 ) -> tuple[list[Listing], bool]:
     """``(listings, degraded)`` for one item, cheapest first."""
-    key = f"skins:listings:csm:{item.slug}"
+    key = cache_key(item.slug)
     with contextlib.suppress(RedisError):
         cached = await redis.get(key)
         if cached is not None:
-            return [Listing(**e) for e in json.loads(cached)], False
+            return await _without_gone(
+                redis, item.slug, [Listing(**e) for e in json.loads(cached)]
+            ), False
 
     if not item.source_item_id or not client.configured:
         return [], True
@@ -128,8 +170,12 @@ async def csmarket_listings_for(
                 "skins.listings.unexpected", source="csmarket", slug=item.slug, error=str(exc)[:120]
             )
         else:
-            rows = sorted(
-                (to_listing(o) for o in offers), key=lambda r: (r.price_units, r.listing_id)
+            rows = await _without_gone(
+                redis,
+                item.slug,
+                sorted(
+                    (to_listing(o) for o in offers), key=lambda r: (r.price_units, r.listing_id)
+                ),
             )
             payload = json.dumps([asdict(r) for r in rows])
             with contextlib.suppress(RedisError):
@@ -140,7 +186,9 @@ async def csmarket_listings_for(
     with contextlib.suppress(RedisError):
         stale = await redis.get(f"{key}:stale")
         if stale is not None:
-            return [Listing(**e) for e in json.loads(stale)], True
+            return await _without_gone(
+                redis, item.slug, [Listing(**e) for e in json.loads(stale)]
+            ), True
     return [], True
 
 
@@ -149,7 +197,9 @@ __all__ = [
     "FRESH_TTL",
     "STALE_TTL",
     "OfferClient",
+    "cache_key",
     "csmarket_listings_for",
+    "forget",
     "listing_id_for",
     "to_listing",
 ]
