@@ -144,8 +144,17 @@ def _help(app: str, where: dict[str, str]) -> dict[str, str]:
     }
 
 
+#: Bigo lets a user pick a custom ID with letters (`Lexus0011`); fixed on prod by
+#: ``2026-10-09_bigo_alphanumeric_id.sql``, which also carries Bigo's help text.
+_DIGITS = "^[0-9]{5,20}$"
+_BIGO_ID = "^[A-Za-z0-9._-]{3,32}$"
+
+
 def _fields(
-    label: str, help_text: dict[str, str], check: dict[str, Any] | None = None
+    label: str,
+    help_text: dict[str, str],
+    check: dict[str, Any] | None = None,
+    pattern: str = _DIGITS,
 ) -> list[dict[str, Any]]:
     return [
         {
@@ -154,7 +163,7 @@ def _fields(
             "check": check,
             "label": {"ru": label, "en": label, "uz": label},
             "required": True,
-            "pattern": "^[0-9]{5,20}$",
+            "pattern": pattern,
             "placeholder": {"ru": "123456789", "en": "123456789", "uz": "123456789"},
             "help_text": help_text,
         },
@@ -248,6 +257,7 @@ BRANDS: list[dict[str, Any]] = [
             _help("Bigo Live", _UNDER_NAME),
             # G2B's `bigo` validator is real — probed 2026-09-25, see ADR-0031.
             check={"provider": "g2b", "server_field": None},
+            pattern=_BIGO_ID,
         ),
         "rungs": BIGO,
     },
