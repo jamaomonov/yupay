@@ -7,6 +7,7 @@ import { Providers } from "./Providers";
 
 import type { Metadata } from "next";
 
+import { RefClickBeacon } from "@/components/affiliate/RefClickBeacon";
 import { LoginModal } from "@/components/auth/LoginModal";
 import { Footer } from "@/components/Footer";
 import { GoogleTagManager } from "@/components/GoogleTagManager";
@@ -191,6 +192,7 @@ export default async function LocaleLayout({
             <OrderDeliveredModal />
             <CatchUpReviewModal />
             <SupportFab />
+            <RefClickBeacon />
           </Providers>
         </NextIntlClientProvider>
       </body>

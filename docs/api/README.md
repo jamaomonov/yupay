@@ -121,6 +121,15 @@ Cabinet routes: `/merchant/cabinet/p2p/{status,deposits}`; admin routes:
 Each webhook is documented in detail in `apps/api/src/yupay/modules/payments/gateways/<provider>.py`
 (docstring on the gateway class).
 
+## Partner-link visits — `POST /affiliate/clicks`
+
+The storefront's beacon for a page opened with `?ref=CODE`: body `{code, visitor_id, path}`,
+always `204` (an unknown or inactive code records nothing and says nothing). No
+`Idempotency-Key`: idempotent on the visitor id per code per day
+(`uq_affiliate_clicks_visit`), see AGENTS.md §9. Throttled by `ip_guard` bucket
+`affiliate-click` (300 a minute per address). `GET /affiliate/stats` and the admin partner
+detail now carry `clicks` and `visitors` per window.
+
 ## Reviews
 
 Public: `GET /reviews/brands/{slug}` (published reviews + aggregate, keyset

@@ -217,6 +217,10 @@ class Settings(BaseSettings):
             # Sized for the crowd behind one mobile-carrier address, not for one
             # attacker — see auth_ip_guard_subject_max for the other axis.
             "check_player": 200,
+            # A partner link posted in a channel is opened by a crowd within a
+            # minute, many of them behind one carrier address. A refused beacon
+            # only loses a count, never a sale, but it should not lose the burst.
+            "affiliate-click": 300,
             # A campaign promo code is handed to a crowd on purpose, and one
             # user can only redeem it once (uq_promo_redemptions_code_user), so
             # this bucket guards throughput, not a secret.

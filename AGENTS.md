@@ -253,9 +253,11 @@ yupay/
   minted per _intent_ by the reseller's system rather than per attempt by ours, is what
   a replayed request necessarily carries, and resolves races in
   `uq_orders_idem_merchant`. Accepting a second, weaker key beside it would give
-  integrators two ways to be idempotent and one of them wrong. Any future exemption
-  needs the same shape — a caller-owned key with a DB uniqueness constraint behind it —
-  and a line here.
+  integrators two ways to be idempotent and one of them wrong. The second is
+  `POST /affiliate/clicks`, the storefront's beacon for a partner link: idempotent on the
+  browser's own visitor id per code per day, `uq_affiliate_clicks_visit`, so a replay is a
+  no-op by construction. Any future exemption needs the same shape — a caller-owned key with
+  a DB uniqueness constraint behind it — and a line here.
 - All money values stored as `Decimal` (Python) / `string` (TS) in **minor units** (tiyin /
   cents), never floats.
 - Auth tokens: short-lived access (15 min EdDSA JWT), rotating refresh (30 days), revocable

@@ -280,6 +280,8 @@ function StatsCard({
         <thead>
           <tr className="text-muted text-left text-xs">
             <th className="py-1 font-normal">Окно</th>
+            <th className="py-1 font-normal">Переходы</th>
+            <th className="py-1 font-normal">Посетители</th>
             <th className="py-1 font-normal">Заработано</th>
             <th className="py-1 font-normal">Заказы</th>
             <th className="py-1 font-normal">Активации</th>
@@ -289,6 +291,8 @@ function StatsCard({
           {rows.map((r) => (
             <tr key={r.label} className="border-default border-t">
               <td className="py-1.5">{r.label}</td>
+              <td className="py-1.5">{r.s.clicks}</td>
+              <td className="py-1.5">{r.s.visitors}</td>
               <td className="py-1.5">{fmtMoney(r.s.earned)} сум</td>
               <td className="py-1.5">{r.s.orders}</td>
               <td className="py-1.5">{r.s.activations}</td>

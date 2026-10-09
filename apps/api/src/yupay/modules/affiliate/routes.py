@@ -21,7 +21,7 @@ from yupay.core.errors import NotFoundError, UnauthorizedError, ValidationError
 from yupay.core.idempotency import IDEMPOTENCY_HEADER, MIN_IDEMPOTENCY_KEY_LENGTH
 from yupay.modules.admin.api import require_admin
 from yupay.modules.affiliate import admin as affiliate_admin
-from yupay.modules.affiliate import panel, partners, payouts
+from yupay.modules.affiliate import clicks, panel, partners, payouts
 from yupay.modules.affiliate.deps import current_partner
 from yupay.modules.affiliate.discount import (
     ResolvedDiscount,
@@ -42,6 +42,7 @@ from yupay.modules.affiliate.schemas import (
     ApplicationIn,
     ApplicationOut,
     BalanceOut,
+    ClickIn,
     CodeOut,
     CommissionListOut,
     CommissionOut,
@@ -123,6 +124,31 @@ async def preview(
         total_after=quote.total_charged - discount,
         discount=discount,
     )
+
+
+@router.post(
+    "/clicks",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Count a visit to a partner link",
+)
+async def click(
+    body: ClickIn,
+    request: Request,
+    db: Annotated[AsyncSession, Depends(db_session)],
+) -> Response:
+    """The storefront's beacon for a page opened with ``?ref=CODE``.
+
+    Always 204 — a code that does not count records nothing and says nothing, or this
+    would be a free code-guessing oracle. Throttled per address on its own bucket.
+
+    No ``Idempotency-Key`` (AGENTS.md §9 exemption): the write is idempotent on the
+    caller's own visitor id, ``UNIQUE(code_id, visitor_hash, day)`` in the database —
+    the same shape as ``merchant_order_id``. A replay of the same visit is a no-op.
+    """
+    await guard_ip(request, bucket="affiliate-click")
+    if await clicks.record_click(db, code=body.code, visitor_id=body.visitor_id, path=body.path):
+        await db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

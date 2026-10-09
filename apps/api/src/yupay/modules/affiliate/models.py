@@ -14,13 +14,14 @@ retried pass is free.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     CHAR,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -264,3 +265,44 @@ __all__ = [
     "AffiliatePayout",
     "AffiliateSession",
 ]
+
+
+class AffiliateClick(Base):
+    """One visitor landing on one partner link on one day.
+
+    ``UNIQUE(code_id, visitor_hash, day)`` is the whole of the counter's
+    idempotency: the storefront beacon may fire twice, a page may be reloaded,
+    a request may be replayed — the second insert is a no-op. A row is a
+    *visitor-day*, so "clicks" counts at most one per person per day and
+    "visitors" is the distinct ``visitor_hash`` over a window.
+
+    ``visitor_hash`` is a SHA-256 of a random id the storefront keeps in local
+    storage — no IP, no user agent, nothing that names a person (AGENTS.md §9).
+    The beacon runs in the browser, so crawlers, which request the link without
+    running JavaScript, never reach this table.
+
+    Clicks are analytics, not money: deleting a code takes its clicks with it.
+    """
+
+    __tablename__ = "affiliate_clicks"
+    __table_args__ = (
+        UniqueConstraint("code_id", "visitor_hash", "day", name="uq_affiliate_clicks_visit"),
+        Index("ix_affiliate_clicks_partner_day", "partner_id", "day"),
+    )
+
+    id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
+    code_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("affiliate_codes.id", ondelete="CASCADE"), nullable=False
+    )
+    partner_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("affiliate_partners.id", ondelete="CASCADE"), nullable=False
+    )
+    visitor_hash: Mapped[str] = mapped_column(CHAR(64), nullable=False)
+    day: Mapped[date] = mapped_column(Date, nullable=False)
+    #: The page the link opened, path only (no query string — it may carry anything).
+    landing_path: Mapped[str] = mapped_column(
+        String(255), nullable=False, server_default=text("'/'")
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
+    )

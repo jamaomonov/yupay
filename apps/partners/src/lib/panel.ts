@@ -17,6 +17,9 @@ export interface Stats {
   earned: string;
   orders: number;
   activations: number;
+  /** Visitor-days on the partner's links in the window, and distinct visitors. */
+  clicks: number;
+  visitors: number;
 }
 
 export interface Code {

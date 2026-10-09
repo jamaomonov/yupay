@@ -137,6 +137,9 @@ class StatsOut(BaseModel):
     earned: Decimal
     orders: int
     activations: int
+    #: Visitor-days on the partner's links in the window, and distinct visitors.
+    clicks: int = 0
+    visitors: int = 0
 
 
 class BalanceOut(BaseModel):
@@ -263,6 +266,8 @@ class AdminPartnerStatsOut(BaseModel):
     earned: Decimal
     orders: int
     activations: int
+    clicks: int = 0
+    visitors: int = 0
 
 
 class AdminPartnerDetailOut(BaseModel):
@@ -362,3 +367,14 @@ __all__ = [
     "TokensOut",
     "UpdateCodeIn",
 ]
+
+
+class ClickIn(BaseModel):
+    """A storefront page opened with ``?ref=CODE``."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    code: str = Field(min_length=1, max_length=64)
+    #: The storefront's random visitor id (stored only as a hash).
+    visitor_id: str = Field(min_length=16, max_length=64, pattern=r"^[A-Za-z0-9-]+$")
+    path: str | None = Field(default=None, max_length=512)

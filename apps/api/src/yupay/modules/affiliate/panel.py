@@ -30,6 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.modules.affiliate.models import (
     AffiliateAttribution,
+    AffiliateClick,
     AffiliateCode,
     AffiliateCommission,
 )
@@ -50,6 +51,9 @@ class StatsRow(TypedDict):
     period: StatsPeriod
     since: datetime
     earned: Decimal
+    #: Visitor-days on the partner's links (``affiliate.clicks``) and distinct visitors.
+    clicks: int
+    visitors: int
     orders: int
     activations: int
 
@@ -155,12 +159,26 @@ async def stats(db: AsyncSession, *, partner_id: str, period: StatsPeriod) -> St
         )
     )
 
+    clicks, visitors = (
+        await db.execute(
+            select(
+                func.count(AffiliateClick.id),
+                func.count(func.distinct(AffiliateClick.visitor_hash)),
+            ).where(
+                AffiliateClick.partner_id == partner_id,
+                AffiliateClick.day >= since.date(),
+            )
+        )
+    ).one()
+
     return StatsRow(
         period=period,
         since=since,
         earned=Decimal(earned),
         orders=int(orders),
         activations=int(activations or 0),
+        clicks=int(clicks),
+        visitors=int(visitors),
     )
 
 

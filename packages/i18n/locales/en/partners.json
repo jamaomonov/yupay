@@ -104,6 +104,8 @@
     "reserved": "In an open request",
     "earned": "Earned",
     "activations": "Code activations",
+    "clicks": "Link visits",
+    "visitors": "Unique visitors",
     "orders": "Orders",
     "periodDay": "last 24 hours",
     "periodWeek": "last 7 days",

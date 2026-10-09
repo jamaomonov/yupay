@@ -99,6 +99,26 @@ here. They never reach a log line, and `PayoutOut` masks to the last four —
 a full PAN in a JSON response is a PAN in a browser cache, a proxy log and a
 screenshot.
 
+## Link visits are counted from the browser (2026-10-09)
+
+The partner panel hands out `yupay.uz/?ref=CODE`. Visits to it are counted by the
+storefront's `RefClickBeacon` (`apps/web/src/lib/ref-click.ts`), which posts
+`POST /affiliate/clicks` once per code per day from a browser. `affiliate_clicks` holds one
+row per `(code, visitor, day)` — `UNIQUE`, so a reload or a replay is a no-op — and
+`panel.stats` reports `clicks` (visitor-days) and `visitors` (distinct visitors) for each
+window, to the partner and to the admin alike.
+
+- **Browser, not proxy.** Crawlers fetch the link but run no JavaScript; on one link
+  Googlebot was 13 of 31 hits in the proxy log. The beacon never sees them.
+- **No PII.** The visitor is a random id in local storage, stored as its SHA-256. No IP,
+  no user agent.
+- **Silent on unknown codes.** The endpoint is public and always answers 204, or it would
+  be a code-guessing oracle. Its `ip_guard` bucket `affiliate-click` is sized for a crowd
+  behind one carrier address (300 a minute).
+- **Counting only.** The link does not yet carry the code to checkout: a visitor who buys
+  is attributed only if they type the code. Applying it from the link is a separate
+  decision (it gives the visitor the code's discount).
+
 ## Statistics are rolling windows, not calendar periods
 
 `month` is the last 30 days. This project has no display-timezone convention,

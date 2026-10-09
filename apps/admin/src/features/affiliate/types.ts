@@ -22,6 +22,9 @@ export interface PartnerStatsOut {
   earned: string;
   orders: number;
   activations: number;
+  /** Visitor-days on the partner's links, and distinct visitors (`affiliate.clicks`). */
+  clicks: number;
+  visitors: number;
 }
 
 /** Everything the admin partner page shows in one response. */

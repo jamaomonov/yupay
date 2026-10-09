@@ -565,6 +565,11 @@
             "title": "Activations",
             "type": "integer"
           },
+          "clicks": {
+            "default": 0,
+            "title": "Clicks",
+            "type": "integer"
+          },
           "earned": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Earned",
@@ -582,6 +587,11 @@
             "format": "date-time",
             "title": "Since",
             "type": "string"
+          },
+          "visitors": {
+            "default": 0,
+            "title": "Visitors",
+            "type": "integer"
           }
         },
         "required": [
@@ -5953,6 +5963,43 @@
           "claimed"
         ],
         "title": "ClaimOut",
+        "type": "object"
+      },
+      "ClickIn": {
+        "additionalProperties": false,
+        "description": "A storefront page opened with ``?ref=CODE``.",
+        "properties": {
+          "code": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Code",
+            "type": "string"
+          },
+          "path": {
+            "anyOf": [
+              {
+                "maxLength": 512,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Path"
+          },
+          "visitor_id": {
+            "maxLength": 64,
+            "minLength": 16,
+            "pattern": "^[A-Za-z0-9-]+$",
+            "title": "Visitor Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "visitor_id"
+        ],
+        "title": "ClickIn",
         "type": "object"
       },
       "ClientHints": {
@@ -19853,6 +19900,11 @@
             "title": "Activations",
             "type": "integer"
           },
+          "clicks": {
+            "default": 0,
+            "title": "Clicks",
+            "type": "integer"
+          },
           "earned": {
             "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
             "title": "Earned",
@@ -19870,6 +19922,11 @@
             "format": "date-time",
             "title": "Since",
             "type": "string"
+          },
+          "visitors": {
+            "default": 0,
+            "title": "Visitors",
+            "type": "integer"
           }
         },
         "required": [
@@ -36231,6 +36288,41 @@
           }
         },
         "summary": "Available, held and reserved",
+        "tags": [
+          "affiliate"
+        ]
+      }
+    },
+    "/api/v1/affiliate/clicks": {
+      "post": {
+        "description": "The storefront's beacon for a page opened with ``?ref=CODE``.\n\nAlways 204 \u2014 a code that does not count records nothing and says nothing, or this\nwould be a free code-guessing oracle. Throttled per address on its own bucket.\n\nNo ``Idempotency-Key`` (AGENTS.md \u00a79 exemption): the write is idempotent on the\ncaller's own visitor id, ``UNIQUE(code_id, visitor_hash, day)`` in the database \u2014\nthe same shape as ``merchant_order_id``. A replay of the same visit is a no-op.",
+        "operationId": "click_api_v1_affiliate_clicks_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClickIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Count a visit to a partner link",
         "tags": [
           "affiliate"
         ]

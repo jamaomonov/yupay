@@ -52,6 +52,8 @@ function detail(partnerStatus: string, codes: unknown[]) {
       earned: "12000",
       orders: 3,
       activations: 5,
+      clicks: 41,
+      visitors: 27,
     },
     stats_year: {
       period: "year",
@@ -59,6 +61,8 @@ function detail(partnerStatus: string, codes: unknown[]) {
       earned: "12000",
       orders: 3,
       activations: 5,
+      clicks: 412,
+      visitors: 233,
     },
     balance: { available: "12000", held: "0", reserved: "0" },
   };
@@ -178,4 +182,15 @@ it("deleting a code asks first, then DELETEs", async () => {
     expect(mockedApiDelete).toHaveBeenCalledWith("/api/v1/admin/affiliate/codes/c-1");
   });
   confirmSpy.mockRestore();
+});
+
+it("shows the link visits and unique visitors per window", async () => {
+  mockedApiGet.mockResolvedValue(detail("active", [ACTIVE_CODE]));
+  renderPage();
+
+  expect(await screen.findByRole("columnheader", { name: "Переходы" })).toBeInTheDocument();
+  expect(screen.getByRole("columnheader", { name: "Посетители" })).toBeInTheDocument();
+  for (const n of ["41", "27", "412", "233"]) {
+    expect(screen.getByRole("cell", { name: n })).toBeInTheDocument();
+  }
 });

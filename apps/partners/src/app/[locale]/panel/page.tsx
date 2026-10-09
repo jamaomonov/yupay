@@ -70,6 +70,14 @@ export default function OverviewPage() {
               </p>
               <dl className="text-tx-dim mt-4 space-y-1.5 text-[12px]">
                 <div className="flex justify-between gap-2">
+                  <dt>{t("clicks")}</dt>
+                  <dd className="font-mono">{q.data?.clicks ?? 0}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt>{t("visitors")}</dt>
+                  <dd className="font-mono">{q.data?.visitors ?? 0}</dd>
+                </div>
+                <div className="flex justify-between gap-2">
                   <dt>{t("orders")}</dt>
                   <dd className="font-mono">{q.data?.orders ?? 0}</dd>
                 </div>
