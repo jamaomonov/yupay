@@ -24,6 +24,15 @@ storefront browses. Buying one offer is `checkout.py` (pricing the order line) p
 Every public route 404s while `cs2_skins_enabled` is off; both jobs are
 no-ops while `cs2_skins_sync_enabled` is off.
 
+**Source switch (ADR-0098).** `cs2_skins_source` is `waxpeer` or `csmarket`. With
+`csmarket` the five-minute job reads the csmarket feed (`prices_csmarket.py`, writing
+`skin_items.source_item_id`), the item page and checkout read csmarket offers
+(`listings_csmarket.py`, through `listings_source.read_listings`), the trade-link check asks
+csmarket, and checkout binds the line to csmarket (`supplier`, `offer_id`,
+`source_item_id` in `fulfillment_data`, hidden from the customer). The storefront's numeric
+`listing_id` is then a 52-bit hash of csmarket's opaque `offer_id`. Runbook:
+`docs/runbooks/skins-purchase.md` → «Buying through csmarket».
+
 ## Storefront
 
 Web pages (plan `docs/superpowers/plans/2026-09-28-cs2-skins-storefront.md`):

@@ -298,7 +298,9 @@ yupay/
   `GetTradeHoldDurations` for a CS2 buyer's trade link — advisory (an outage answers
   `unavailable` and never blocks checkout), off the order path, 4 s timeouts, a 10-minute
   Redis cache keyed by a hash of the link, a 60-second breaker (`skins:tradelink:breaker`)
-  and its own `ip_guard` bucket (`skins-tradelink`). Since ADR-0081, the two
+  and its own `ip_guard` bucket (`skins-tradelink`). With `CS2_SKINS_SOURCE=csmarket`
+  (ADR-0098) the first call goes to csmarket's `POST /tradelink/check` instead — the same
+  timeout, cache and breaker, still one upstream call before Steam. Since ADR-0081, the two
   ADR-0031 endpoints may make a **second** supplier call in the same request, not a second
   endpoint: when the primary answers `error`, a panel fallback (`player_check_nova.py`) runs
   before the response goes out — FazerCards first, NOVA only when fzr could not be asked
@@ -345,8 +347,13 @@ yupay/
   budget under Waxpeer's 20/min search limit (`cs2_skins_listings_bucket_per_minute`) and a
   2-minute breaker, and it **degrades instead of failing** — an exhausted budget, an open
   breaker or a 429 answers from the five-minute snapshot's cheapest listings with
-  `degraded: true`. It also carries its own `ip_guard` bucket (`skins-listings`). Every other
-  `/skins/*` read is Postgres and Redis only (`skins/service.py`).
+  `degraded: true`. It also carries its own `ip_guard` bucket (`skins-listings`). With
+  `CS2_SKINS_SOURCE=csmarket` (ADR-0098) the same route reads csmarket's
+  `GET /catalog/{id}/offers` instead (`skins/listings_csmarket.py`): 60 s fresh / 1 h stale,
+  a 2-minute breaker, a per-minute budget under the key's read limit
+  (`csmarket_offers_per_minute`); the feed names no offers, so the degraded answer is the
+  stale copy or nothing. Every other `/skins/*` read is Postgres and Redis only
+  (`skins/service.py`).
 - **Admin catalogue-sync calls are a carve-out, not a fifth line in the list above**:
   `POST /{supplier}/games/{game_id}/sync-denominations` already argues the deviation-free
   shape in its own docstring — `POST`, operator-triggered from the mapping wizard, off the

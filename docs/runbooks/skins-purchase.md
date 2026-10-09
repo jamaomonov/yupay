@@ -1,6 +1,6 @@
 # Runbook: CS2 skin purchases
 
-Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
+Code: `fulfillment/suppliers/waxpeer_skins.py` (or `csmarket_skins.py`, below), `fulfillment/skin_sweeps.py`,
 `payments.service.refund_order_to_wallet`, scheduler jobs `skins_trades_reconcile` (5 s) and
 `skins_protection_watch` (hourly). Spec §8.1 has the Waxpeer status model.
 
@@ -12,6 +12,55 @@ Code: `fulfillment/suppliers/waxpeer_skins.py`, `fulfillment/skin_sweeps.py`,
 4. The buy panel (web and mini app) appears on an item page once the seed is applied — the
    item API then names `buy_sku_id` — and `CS2_SKINS_ENABLED` is on. Without the seed the
    pages stay browse-only and no customer can create a skin order.
+
+## Buying through csmarket (ADR-0098)
+
+Skins can be bought through the owner's csmarket.uz public API instead of Waxpeer. One env
+switch, `CS2_SKINS_SOURCE=csmarket`, moves the five-minute catalogue job, the item page's live
+offers, the trade-link check and **new** orders; a paid order keeps the supplier on its
+`skin_trades.supplier` row, so switching never strands a trade. Code:
+`fulfillment/suppliers/csmarket_client.py`, `csmarket_skins.py`, `skins/prices_csmarket.py`,
+`skins/listings_csmarket.py`.
+
+**Before switching on**
+
+1. The csmarket key (`csm_…`, one bearer token, issued in the csmarket profile) is set as
+   `CSMARKET_API_KEY` in `secrets/api.env` on prod (api, worker and scheduler all read it).
+2. On csmarket's side the key has tariff **`cost`** and the **USD wallet** on. Check:
+
+   ```bash
+   docker exec yupay-prod-api-1 python - <<'PY'
+   import asyncio
+   from yupay.core.config import get_settings
+   from yupay.modules.skins.listings_source import csmarket_client
+   print(asyncio.run(csmarket_client().me()))
+   PY
+   ```
+
+   `pricing_profile='cost'`, `usd_wallet_enabled=True`, a positive `balance_units`
+   (1000 = $1). Ask csmarket to raise `read_per_min` to 600 for this key; the default 60 is
+   shared by the feed (16 pages a pass), item pages and order polls.
+
+3. Fund the csmarket **USD wallet** (an admin transfer on csmarket's side). A purchase with
+   too little there refunds the buyer at once and alerts, like a Waxpeer low balance.
+4. `CS2_SKINS_SOURCE=csmarket`, restart **api, worker and scheduler** with the deployed
+   `IMAGE_TAG` (the worker buys; the scheduler syncs and follows trades).
+   The next catalogue tick (≤ 5 min) writes `skin_items.source_item_id`; until then item
+   pages show no live offers. Expect ~1 500 Waxpeer-only items to go inactive.
+5. Buy one cheap skin to your own trade link and watch it reach `delivered`.
+
+**Switching back**: `CS2_SKINS_SOURCE=waxpeer`, restart api, worker and scheduler. Open csmarket
+trades keep being followed by the fast sweep until they finish.
+
+**What csmarket does not give us**: a Steam price in the feed (the last Waxpeer value is
+kept for the Steam cap), a rollback after delivery (a csmarket trade stays `delivered`; the
+protection watch and the nightly audit are Waxpeer-only), and individual offers in the
+feed (no snapshot fallback on the item page — the stale cache or nothing).
+
+**A csmarket order looks stuck in `buying`**: our fast sweep re-sends the purchase under the
+same id until csmarket answers, so a lost answer heals by itself. If it stays, read it on
+csmarket's side by our `project_id` (their `client_order_id`); the outcome is decided only
+by what csmarket reports — never refund it by hand while csmarket shows it in progress.
 
 ## Switching purchases off
 

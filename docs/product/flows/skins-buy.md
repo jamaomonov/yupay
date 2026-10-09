@@ -22,6 +22,12 @@ sequenceDiagram
     end
 ```
 
+The supplier is Waxpeer or, with `CS2_SKINS_SOURCE=csmarket` (ADR-0098), the owner's
+csmarket.uz, which buys from Skinslink and LIS-SKINS. The customer sees no difference: the
+same offers screen, the same trade offer from a seller, the same order states. With
+csmarket, a sold offer is replaced by the cheapest same-item offer no dearer, chosen by
+csmarket; csmarket reports no rollback after acceptance.
+
 Rules the customer meets:
 
 - **Sign-in is required.** A failed purchase refunds to the YuPay balance, which a guest
