@@ -32,6 +32,15 @@ they cannot collide — not with each other, and not with anything else on the b
 - **The upstreams are network aliases, not service names.** Both stacks name their proxy
   service `caddy`; on the shared network that name is ambiguous. YuPay registers the alias
   `yupay-caddy`, `streamers-parser` registers `streamers-caddy`.
+- **No stack may bring a generic service name onto `yupay-edge`.** Compose registers every
+  service's name as a DNS alias on every network it joins, and YuPay's Caddy resolves its
+  upstreams (`web`, `api`, `admin` …) on `yupay-edge` as well as its own network. On
+  2026-10-08 the `yt-parser` stack joined the edge with a service called `web`; from 15:15 UTC
+  to 05:45 UTC next day `yupay.uz` answered 502 because `web` resolved to `yt-parser-web`.
+  Hot fix: `docker network disconnect yupay-edge yt-parser-web && docker network connect
+--alias yt-parser-web yupay-edge yt-parser-web`. It returns on that stack's next `up -d`
+  until its service is renamed (`web` → `yt-parser-web`). Check after any neighbour joins:
+  `docker exec yupay-prod-caddy-1 getent hosts web` must answer a `yupay-prod_default` address.
 - **YuPay's Caddy runs with `auto_https off`.** It cannot solve ACME challenges — it does not
   own `:80`. Certificates are the edge's job.
 - **Certificates live in the `edge_caddy-data` volume.** Deleting it means re-issuing every
@@ -188,6 +197,7 @@ stack's Caddy.
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `address already in use` on the edge       | A stack still publishes `:80`/`:443`. Check `docker ps --format '{{.Names}} {{.Ports}}'`                                                                    |
 | 502 on every yupay hostname                | The YuPay stack is down, or its `yupay-caddy` alias is not on `yupay-edge`                                                                                  |
+| 502 on `yupay.uz` only, API fine           | A neighbour's container answers to `web` on `yupay-edge` — see the alias invariant above                                                                    |
 | 502 on `marketing.kolikosoft.com` only     | The `streamers-caddy` alias is missing — step 4 was not applied                                                                                             |
 | 502 on `yt.ksgm.io` only                   | The `yt-parser` stack (`/home/ubuntu/opt/yt-parser`) is down or `yt-parser-web` left `yupay-edge`                                                           |
 | Certificate errors after a redeploy        | `edge_caddy-data` was pruned; re-issue and mind the LE rate limit                                                                                           |
