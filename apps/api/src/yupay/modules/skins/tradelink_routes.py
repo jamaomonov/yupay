@@ -31,6 +31,10 @@ from yupay.core.redis import get_redis
 from yupay.modules.auth.deps import current_user
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.auth.steam import trade_hold_days
+from yupay.modules.fulfillment.suppliers.csmarket_client import (
+    CsmarketClient,
+    CsmarketUnavailableError,
+)
 from yupay.modules.fulfillment.suppliers.waxpeer_client import WaxpeerClient
 from yupay.modules.skins.models import SkinTradeLink
 from yupay.modules.skins.tradelink import (
@@ -85,8 +89,37 @@ class _SteamHold:
         return await trade_hold_days(steam_id, token, api_key=key)
 
 
+class _CsmarketLink:
+    """csmarket's ``/tradelink/check`` as a :class:`TradelinkChecker` (ADR-0098).
+
+    csmarket runs Waxpeer's check and Steam's hold check behind one call. ``ok`` reads as
+    "fine"; ``bad`` becomes the reason text ``_reason_for`` understands; ``unavailable``
+    raises, so the caller's breaker opens exactly as on a Waxpeer outage.
+    """
+
+    async def check_tradelink(self, url: str) -> str | None:
+        settings = get_settings()
+        client = CsmarketClient(
+            api_key=settings.csmarket_api_key,
+            base_url=settings.csmarket_base_url,
+            timeout_seconds=_TIMEOUT,
+        )
+        verdict, reason = await client.check_tradelink(url, timeout=_TIMEOUT)
+        if verdict == "ok":
+            return None
+        if verdict == "unavailable":
+            raise CsmarketUnavailableError("csmarket could not check the trade link")
+        return {
+            "private_inventory": "private",
+            "trade_ban": "trade ban",
+            "hold": "hold",
+        }.get(reason or "", "invalid")
+
+
 def _checkers() -> tuple[TradelinkChecker, HoldChecker]:
     settings = get_settings()
+    if settings.cs2_skins_source == "csmarket":
+        return _CsmarketLink(), _SteamHold()
     waxpeer = WaxpeerClient(
         api_key=settings.waxpeer_api_key,
         base_url=settings.waxpeer_base_url,

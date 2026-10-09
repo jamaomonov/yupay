@@ -103,6 +103,8 @@ def _reason_for(info: str) -> TradeLinkReason:
         return "private"
     if "ban" in text:
         return "trade_ban"
+    if "hold" in text:
+        return "hold"
     return "invalid"
 
 
