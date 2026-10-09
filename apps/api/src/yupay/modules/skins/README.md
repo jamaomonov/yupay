@@ -78,7 +78,9 @@ lower-case («Купить ножи КС2», agents in the accusative), and the 
 
 Images: rows keep ByMykel's Steam URL; the API rewrites the host to
 `cs2_skins_image_host` on the way out (the Akamai host did not open from Uzbekistan,
-2026-09-28) and the web asks for `/256fx256f` on cards, `/512fx384f` on the item page.
+2026-09-28) and the web asks for `/256fx256f` on cards, `/512fx384f` on the item page. A sticker or charm icon by its game path (`/apps/730/icons/…`,
+as LIS-SKINS names them) goes to the `cdn.` twin of that host instead: `community.*` redirects
+those paths to the Steam home page.
 
 ## Public interface
 
