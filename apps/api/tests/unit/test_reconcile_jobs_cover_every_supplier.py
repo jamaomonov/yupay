@@ -68,3 +68,14 @@ def test_no_reconcile_job_can_stack_on_a_slow_tick(_scheduler: AsyncIOScheduler)
         assert job is not None, slug
         assert job.max_instances == 1, slug
         assert job.coalesce is True, slug
+
+
+def test_skin_only_suppliers_are_watched_by_the_skins_sweep(
+    _scheduler: AsyncIOScheduler,
+) -> None:
+    """csmarket buys skins only (ADR-0098): its tasks are the fast skins sweep's, not a
+    per-supplier reconcile job's. If it ever leaves that sweep's list, nothing polls it."""
+    from yupay.modules.fulfillment.skin_sweeps import SKIN_SUPPLIERS
+
+    assert "csmarket" in SKIN_SUPPLIERS
+    assert "fulfillment.skins_trades_reconcile" in {job.id for job in _scheduler.get_jobs()}

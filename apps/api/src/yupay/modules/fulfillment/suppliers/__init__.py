@@ -21,6 +21,7 @@ from yupay.modules.fulfillment.suppliers.base import (
     FulfillStatus,
     MoneyOutcome,
 )
+from yupay.modules.fulfillment.suppliers.csmarket_skins import CsmarketFulfiller
 from yupay.modules.fulfillment.suppliers.fzr import FzrFulfiller
 from yupay.modules.fulfillment.suppliers.g2b import G2bFulfiller
 from yupay.modules.fulfillment.suppliers.gengine import GEngineFulfiller
@@ -56,6 +57,10 @@ REGISTRY: dict[str, Fulfiller] = {
     # (RESERVE_SUPPLIERS). Same hot-reload rule -- `available` reads the key
     # per call. Note its catalogue access expires with the subscription.
     "fzr": FzrFulfiller(),
+    # CS2 skins through the owner's csmarket public API (ADR-0098). Never chosen by
+    # sourcing: a skin line priced against a csmarket offer is routed here by the line
+    # itself (``fulfillment.service``). `available` reads the key per call.
+    "csmarket": CsmarketFulfiller(),
     "steam": StubFulfiller(
         supplier="steam",
         todo_message="Steam supplier not integrated yet; see ADR-0013.",

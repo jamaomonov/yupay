@@ -51,6 +51,10 @@ log = get_logger("yupay.fulfillment.skin_sweeps")
 
 BUYING_RECHECK_SECONDS = 5
 SENT_RECHECK_SECONDS = 10
+CSM_BUYING_RECHECK_SECONDS = 15
+CSM_SENT_RECHECK_SECONDS = 30
+#: Suppliers whose skin tasks the fast sweep follows (ADR-0098).
+SKIN_SUPPLIERS = ("waxpeer", "csmarket")
 _BATCH = 100
 
 
@@ -72,7 +76,7 @@ async def due_skin_task_ids(db: AsyncSession, *, limit: int = 500) -> list[str]:
     rows = await db.execute(
         select(FulfillmentTask.id)
         .where(
-            FulfillmentTask.supplier == "waxpeer",
+            FulfillmentTask.supplier.in_(SKIN_SUPPLIERS),
             FulfillmentTask.status == "in_progress",
             skin_task_filter(),  # type: ignore[arg-type] # a SQL boolean expression
             or_(
@@ -87,11 +91,21 @@ async def due_skin_task_ids(db: AsyncSession, *, limit: int = 500) -> list[str]:
 
 
 async def skin_recheck_seconds(db: AsyncSession, *, task_id: str) -> int:
-    """5 s while Waxpeer is buying, 10 s once the offer is out."""
-    status = (
-        await db.execute(select(SkinTrade.status).where(SkinTrade.task_id == task_id))
-    ).scalar_one_or_none()
-    return SENT_RECHECK_SECONDS if status is not None and status >= 4 else BUYING_RECHECK_SECONDS
+    """5 s while Waxpeer is buying, 10 s once the offer is out.
+
+    A csmarket trade is looked at every 15 s / 30 s instead: each look is one read
+    against the key's per-minute limit, shared with the feed and the item pages.
+    """
+    found = (
+        await db.execute(
+            select(SkinTrade.status, SkinTrade.supplier).where(SkinTrade.task_id == task_id)
+        )
+    ).first()
+    status, supplier = (found[0], found[1]) if found is not None else (None, "waxpeer")
+    sent = status is not None and status >= 4
+    if supplier == "csmarket":
+        return CSM_SENT_RECHECK_SECONDS if sent else CSM_BUYING_RECHECK_SECONDS
+    return SENT_RECHECK_SECONDS if sent else BUYING_RECHECK_SECONDS
 
 
 async def watch_protected_trades(
@@ -105,6 +119,8 @@ async def watch_protected_trades(
         (
             await db.execute(
                 select(SkinTrade).where(
+                    # Waxpeer only: csmarket reports no rollback after delivery (ADR-0098).
+                    SkinTrade.supplier == "waxpeer",
                     SkinTrade.status == 4,
                     SkinTrade.release_date.is_not(None),
                     SkinTrade.is_released.is_(False),
@@ -183,6 +199,8 @@ async def _settled_rows(db: AsyncSession, days: int) -> list[tuple[SkinTrade, st
         select(SkinTrade, OrderItem.order_id, OrderItem.fulfillment_state)
         .join(OrderItem, OrderItem.id == SkinTrade.order_item_id)
         .where(
+            # Waxpeer only: the audit reads Waxpeer's history (ADR-0098).
+            SkinTrade.supplier == "waxpeer",
             SkinTrade.created_at >= now() - timedelta(days=days),
             or_(
                 SkinTrade.status.in_((5, 6)),

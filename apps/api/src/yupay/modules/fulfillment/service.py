@@ -317,6 +317,17 @@ def _route_label(decision: Decision) -> str:
     return decision.primary.removeprefix(_SUPPLIER_PREFIX) or decision.primary
 
 
+#: Suppliers a line may name for itself (ADR-0098). A CS2 skin line is priced against one
+#: supplier's offer at checkout; routing it anywhere else would buy a different thing.
+_LINE_ROUTED_SUPPLIERS = frozenset({"csmarket"})
+
+
+def _line_route(item: OrderItem) -> str | None:
+    """The supplier the line itself names, when checkout bound it to one."""
+    named = (item.fulfillment_data or {}).get("supplier")
+    return named if named in _LINE_ROUTED_SUPPLIERS else None
+
+
 def _supplier_slug(route: str) -> str:
     return route.removeprefix(_SUPPLIER_PREFIX) if route.startswith(_SUPPLIER_PREFIX) else route
 
@@ -589,12 +600,12 @@ async def start_for_order(
         if item.id in existing:
             new_tasks.append(existing[item.id])
             continue
-        decision = await sourcing_svc.resolve_for_sku(db, item.sku_id)
         task = FulfillmentTask(
             id=new_id(),
             order_id=order.id,
             order_item_id=item.id,
-            supplier=_route_label(decision),
+            supplier=_line_route(item)
+            or _route_label(await sourcing_svc.resolve_for_sku(db, item.sku_id)),
             status="pending",
         )
         db.add(task)
@@ -939,14 +950,14 @@ async def _refund_skin_to_wallet(db: AsyncSession, *, task_id: str) -> None:
     """A retail CS2 skin task that failed with the money back refunds itself.
 
     Owner's rule (plan 3a, 2026-09-28): the customer's money lands on their YuPay
-    balance at once. Only a Waxpeer skin task, only on ``RETURNED`` — ``UNKNOWN`` and
+    balance at once. Only a skin task (Waxpeer or csmarket), only on ``RETURNED`` — ``UNKNOWN`` and
     ``SPENT`` keep today's alert-and-a-human path — and only a retail order with a
     user. Like the merchant settle below it, nothing escapes: a refund that fails is
     logged and alerted, never allowed to stall the queue; a replay is a no-op
     (``refund_order_to_wallet`` returns ``False``).
     """
     task = await db.get(FulfillmentTask, task_id)
-    if task is None or task.supplier != "waxpeer" or task.status != "failed":
+    if task is None or task.supplier not in ("waxpeer", "csmarket") or task.status != "failed":
         return
     meta = task.extra_metadata or {}
     if (
