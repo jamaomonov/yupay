@@ -67,6 +67,10 @@ x-app-env: &app-env
   WAXPEER_BASE_URL: ${WAXPEER_BASE_URL:-https://api.waxpeer.com/v1}
   WAXPEER_REQUEST_TIMEOUT_SECONDS: ${WAXPEER_REQUEST_TIMEOUT_SECONDS:-20}
   WAXPEER_FEE_RATE: ${WAXPEER_FEE_RATE:-0}
+  # csmarket public API (ADR-0098) — CS2 skins source when CS2_SKINS_SOURCE=csmarket.
+  CS2_SKINS_SOURCE: ${CS2_SKINS_SOURCE:-waxpeer}
+  CSMARKET_API_KEY: ${CSMARKET_API_KEY:-}
+  CSMARKET_BASE_URL: ${CSMARKET_BASE_URL:-https://api.csmarket.uz/api/v1/public}
   # Octo card acquirer — set in .env (or /opt/yupay/secrets/api.env in prod).
   # Empty OCTO_SHOP_ID/OCTO_SECRET leaves the gateway ``available=false`` and the
   # miniapp "Карта" method stays disabled. BASE_URL must be publicly reachable

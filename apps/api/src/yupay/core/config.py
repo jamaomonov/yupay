@@ -864,6 +864,15 @@ class Settings(BaseSettings):
     # ByMykel links did not open from Uzbekistan (2026-09-28); fastly serves
     # the same /economy/image/<hash> path. See ``skins.images``.
     cs2_skins_image_host: str = Field(default="community.fastly.steamstatic.com")
+    # Where skins are bought (ADR-0098): ``waxpeer`` (ADR-0093) or ``csmarket`` (the
+    # owner's second shop, public API on a ``cost`` key). Picks the catalogue job, the
+    # live-offer read, the trade-link check and the supplier of *new* orders; an order
+    # already placed keeps the supplier on its ``skin_trades`` row. Env, so switching
+    # back is a restart, not a deploy.
+    cs2_skins_source: Literal["waxpeer", "csmarket"] = Field(default="waxpeer")
+    csmarket_api_key: str = Field(default="")
+    csmarket_base_url: str = Field(default="https://api.csmarket.uz/api/v1/public")
+    csmarket_request_timeout_seconds: float = Field(default=20.0)
     bymykel_base_url: str = Field(
         default="https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en"
     )
