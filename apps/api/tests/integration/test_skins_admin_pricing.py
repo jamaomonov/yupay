@@ -180,7 +180,8 @@ async def test_item_patch_changes_only_the_fields_sent_and_replays(
 async def test_listings_call_uses_the_short_timeout(
     integration_client: AsyncClient, ak: SkinItem, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from yupay.modules.skins import routes
+    # The Waxpeer client is built where the source is picked (ADR-0098), not in the route.
+    from yupay.modules.skins import listings_source
 
     seen: dict[str, float] = {}
 
@@ -195,7 +196,7 @@ async def test_listings_call_uses_the_short_timeout(
 
     monkeypatch.setenv("WAXPEER_API_KEY", "k")
     cfg.get_settings.cache_clear()
-    monkeypatch.setattr(routes, "WaxpeerClient", _Spy)
+    monkeypatch.setattr(listings_source, "WaxpeerClient", _Spy)
     await integration_client.get(f"/api/v1/skins/{ak.slug}/listings")
     assert seen["timeout"] == 4.0
 
