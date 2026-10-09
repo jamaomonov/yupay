@@ -97,8 +97,33 @@ class PanelError(Exception):
         self.body = body
 
 
+#: Transport failures raised before httpx wrote a byte of the request: the TCP/TLS
+#: connection never came up, or no pooled connection was handed out. A request that
+#: failed this way cannot have reached the panel, so it cannot have bought anything.
+#: Everything else — a read or write timeout, a dropped connection mid-answer — may have
+#: landed and must be treated as "bought, answer lost".
+NEVER_SENT = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
+#: Pauses before re-sending a create that never left us (seconds); see ``panel_resend``.
+RESEND_DELAYS: tuple[float, ...] = (1.0, 3.0)
+
+
+def resend_schedule(resend_unsent: bool) -> tuple[float | None, ...]:
+    """The pause before each next attempt, ``None`` meaning "this is the last one"."""
+    return (*RESEND_DELAYS, None) if resend_unsent else (None,)
+
+
 class PanelUnavailableError(Exception):
-    """The panel could not be reached at all (network error, timeout, DNS)."""
+    """The panel could not be reached at all (network error, timeout, DNS).
+
+    Args:
+        message: A readable description of the transport failure.
+        never_sent: ``True`` when the failure happened before the request was written
+            (:data:`NEVER_SENT`), so the panel cannot have acted on it.
+    """
+
+    def __init__(self, message: str = "", *, never_sent: bool = False) -> None:
+        super().__init__(message)
+        self.never_sent = never_sent
 
 
 @dataclass(frozen=True)
@@ -218,9 +243,14 @@ class PanelClient:
         *,
         timeout: float | None = None,
         headers: dict[str, str] | None = None,
+        resend_unsent: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """One call.
+
+        ``resend_unsent`` (the creates): a failure before the request was written is sent
+        again after each :data:`RESEND_DELAYS` pause — same body, same idempotency key.
+        Any failure that may have reached them is raised at once.
 
         Raises:
             PanelUnavailableError: Nothing was decided upstream. Subclasses
@@ -229,13 +259,28 @@ class PanelClient:
                 that arrived on an HTTP 200, which is why the status code
                 alone never decides whether a call worked.
         """
-        try:
-            async with self._session(timeout=timeout) as client:
-                resp = await client.request(method, path, headers=headers, **kwargs)
-        except httpx.HTTPError as exc:
-            # Network-level: nothing was decided upstream, which is a different
-            # fact from a refusal and is graded differently by the caller.
-            raise self.unavailable_cls(transport_error_text(exc)) from exc
+        for delay in resend_schedule(resend_unsent):
+            try:
+                async with self._session(timeout=timeout) as client:
+                    resp = await client.request(method, path, headers=headers, **kwargs)
+                break
+            except httpx.HTTPError as exc:
+                # Network-level: nothing was decided upstream, which is a different
+                # fact from a refusal and is graded differently by the caller.
+                never_sent = isinstance(exc, NEVER_SENT)
+                if never_sent and delay is not None:
+                    self._log.warning(
+                        "panel.request_resent",
+                        supplier=self.slug,
+                        path=path,
+                        error=transport_error_text(exc),
+                        after_seconds=delay,
+                    )
+                    await asyncio.sleep(delay)
+                    continue
+                raise self.unavailable_cls(
+                    transport_error_text(exc), never_sent=never_sent
+                ) from exc
 
         text = resp.text[:500]
         self._log.info(f"{self.slug}.request", method=method, path=path, status=resp.status_code)
@@ -387,6 +432,7 @@ class PanelClient:
             "/api/v2/topups/order",
             json={"category_id": category_id, "offer_id": offer_id, "fields": fields},
             headers=self._idem(idempotency_key),
+            resend_unsent=True,
         )
         return order_with_debit(body)
 
@@ -426,6 +472,7 @@ class PanelClient:
             "/api/v2/giftcards/order",
             json={"category_id": category_id, "card_id": card_id, "quantity": quantity},
             headers=self._idem(idempotency_key),
+            resend_unsent=True,
         )
         return order_with_debit(body)
 
@@ -453,6 +500,7 @@ class PanelClient:
             "/api/v2/steam-topup/order",
             json={"steamLogin": steam_login, "currency": "USD", "amount": f"{amount}"},
             headers=self._idem(idempotency_key),
+            resend_unsent=True,
         )
         return order_with_debit(body)
 
@@ -523,10 +571,13 @@ class PanelClient:
 
 __all__ = [
     "MAX_PAGE",
+    "NEVER_SENT",
+    "RESEND_DELAYS",
     "PanelClient",
     "PanelError",
     "PanelUnavailableError",
     "PanelValidation",
     "message_of",
     "order_with_debit",
+    "resend_schedule",
 ]

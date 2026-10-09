@@ -75,6 +75,11 @@ from yupay.modules.fulfillment.suppliers.panel_grading import (
     shortfall_side,
     without_our_inputs,
 )
+from yupay.modules.fulfillment.suppliers.panel_resend import (
+    not_sent_result,
+    resend_from_status,
+    should_resend,
+)
 from yupay.modules.integrations.models import FZR_STEAM_SENTINEL
 
 if TYPE_CHECKING:
@@ -121,6 +126,12 @@ def _parked_for_adoption(exc: Exception) -> FulfillResult:
         extra_metadata={"supplier": SUPPLIER, "fzr_create_unresolved": str(exc)[:200]},
         money_outcome=None,
     )
+
+
+def _parked_or_not_sent(exc: FzrUnavailableError) -> FulfillResult:
+    """A create that never left us is re-sent by the status poll; one that may have
+    landed is parked for adoption (``panel_resend``)."""
+    return not_sent_result(SUPPLIER, exc) if exc.never_sent else _parked_for_adoption(exc)
 
 
 def _refusal(exc: FzrError, *, fields: dict[str, str] | None = None) -> FulfillerError:
@@ -281,7 +292,7 @@ class FzrFulfiller(Fulfiller):
             # The create is the call that spends, so a lost response is the one
             # moment we must not declare anything. Park id-less and let the
             # poller find the order.
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _GRADE.finish(obj)
 
@@ -355,7 +366,7 @@ class FzrFulfiller(Fulfiller):
                 return await self._low_balance(exc, item, str(exc))
             raise _refusal(exc) from exc
         except FzrUnavailableError as exc:
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _GRADE.finish(obj)
 
@@ -393,7 +404,7 @@ class FzrFulfiller(Fulfiller):
             # their refusal travels into ``task.last_error``.
             raise _refusal(exc, fields={"steamLogin": steam_login}) from exc
         except FzrUnavailableError as exc:
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _GRADE.finish(obj)
 
@@ -479,6 +490,9 @@ class FzrFulfiller(Fulfiller):
             # The create never got far enough to give us an id. Go looking
             # before deciding anything: they charge on create, so the order
             # may well exist.
+            if should_resend(task.extra_metadata or {}, slug=SUPPLIER):
+                # Every create so far failed before sending: send it again, same key.
+                return await resend_from_status(self, db, task, slug=SUPPLIER)
             return await self._adopt_or_wait(db, task)
 
         try:

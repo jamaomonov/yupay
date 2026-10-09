@@ -912,3 +912,112 @@ async def test_the_client_is_built_from_settings_so_a_rotated_key_needs_no_resta
     assert client.slug == "fzr"
     assert client._base_url == "https://api.fzr.cards"
     assert client._timeout == 7.0
+
+
+# ---------- a create that never left us (panel_resend) ----------
+
+
+async def test_a_never_sent_create_is_marked_for_re_sending_not_adoption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = _FakeClient(raises=FzrUnavailableError("ConnectError", never_sent=True))
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id is None
+    assert result.money_outcome is None
+    assert result.extra_metadata["fzr_create_not_sent"] == "ConnectError"
+    assert "fzr_create_unresolved" not in result.extra_metadata
+
+
+class _GetDb:
+    """``db.get`` for the order line and the order, nothing else."""
+
+    async def get(self, model: Any, key: str) -> Any:
+        return _item() if model.__name__ == "OrderItem" else SimpleNamespace(id=key)
+
+
+def _resend_task(**over: Any) -> Any:
+    return _task(
+        id="task-77",
+        order_id="ord-row-1",
+        external_order_id=None,
+        extra_metadata={"fzr_create_not_sent": "ConnectError"},
+        **over,
+    )
+
+
+async def test_the_status_poll_sends_a_never_sent_create_again_with_the_task_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yupay.modules.fulfillment.suppliers.fzr as mod
+
+    async def _stub(_db: Any, *, sku_id: str) -> Any:
+        return _mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _stub)
+    client = _FakeClient(order={"id": "ord-9100", "kind": "topup", "status": "processing"})
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=_GetDb(),  # type: ignore[arg-type]
+        task=_resend_task(),
+    )
+
+    assert status.outcome == "in_progress"
+    assert status.extra_metadata["fzr_order_id"] == "ord-9100"
+    assert [c["idempotency_key"] for c in client.calls] == ["task-77"]
+
+
+async def test_once_a_create_may_have_landed_the_poll_only_ever_adopts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yupay.modules.fulfillment.suppliers.fzr as mod
+
+    async def _no_key(_db: Any, _task: Any) -> Any:
+        return None
+
+    monkeypatch.setattr(mod, "_adopt_key_for", _no_key)
+    client = _FakeClient()
+    task = _resend_task()
+    task.extra_metadata["fzr_create_unresolved"] = "ReadTimeout"
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=_GetDb(),  # type: ignore[arg-type]
+        task=task,
+    )
+
+    assert status.outcome == "in_progress"
+    assert client.calls == []  # adoption searched; nothing was bought again
+
+
+async def test_a_create_never_sent_for_the_whole_window_fails_with_nothing_spent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import timedelta
+
+    client = _FakeClient()
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=_GetDb(),  # type: ignore[arg-type]
+        task=_resend_task(created_at=datetime.now(UTC) - timedelta(minutes=31)),
+    )
+
+    assert status.outcome == "failed"
+    assert status.money_outcome is MoneyOutcome.RETURNED
+    assert client.calls == []
+
+
+async def test_a_refusal_on_the_re_send_is_a_failed_status_not_a_raise(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import yupay.modules.fulfillment.suppliers.fzr as mod
+
+    async def _stub(_db: Any, *, sku_id: str) -> Any:
+        return _mapping()
+
+    monkeypatch.setattr(mod, "_mapping_for", _stub)
+    client = _FakeClient(raises=FzrError("Invalid player id", status=422))
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=_GetDb(),  # type: ignore[arg-type]
+        task=_resend_task(),
+    )
+
+    assert status.outcome == "failed"
+    assert status.money_outcome is not None

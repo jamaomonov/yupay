@@ -1429,3 +1429,54 @@ async def test_a_task_whose_line_is_gone_cannot_be_searched_for(
     )
 
     assert status.outcome == "in_progress"
+
+
+async def test_a_never_sent_create_is_marked_for_re_sending_not_adoption(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """panel_resend: a ConnectError never reached NOVA, so it is not parked for adoption."""
+    client = _FakeClient(raises=NovaUnavailableError("ConnectError", never_sent=True))
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id is None
+    assert result.extra_metadata["nova_create_not_sent"] == "ConnectError"
+    assert "nova_create_unresolved" not in result.extra_metadata
+
+
+async def test_the_status_poll_sends_a_never_sent_create_again_with_the_task_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC, datetime
+
+    import yupay.modules.fulfillment.suppliers.nova as mod
+
+    async def _stub(_db: Any, *, sku_id: str) -> Any:
+        return _mapping()
+
+    async def _not_fragment(_db: Any, _task: Any) -> bool:
+        return False
+
+    class _GetDb:
+        async def get(self, model: Any, key: str) -> Any:
+            return _item() if model.__name__ == "OrderItem" else SimpleNamespace(id=key)
+
+    monkeypatch.setattr(mod, "_mapping_for", _stub)
+    monkeypatch.setattr(mod, "_is_fragment_task", _not_fragment)
+    client = _FakeClient(order={"id": "ord-77", "kind": "topup", "status": "processing"})
+    task = SimpleNamespace(
+        id="task-77",
+        order_id="o-1",
+        order_item_id="oi-1",
+        external_order_id=None,
+        extra_metadata={"nova_create_not_sent": "ConnectError"},
+        created_at=datetime.now(UTC),
+    )
+    status = await _fulfiller(client, monkeypatch).check_status(
+        db=_GetDb(),  # type: ignore[arg-type]
+        task=task,  # type: ignore[arg-type]
+    )
+
+    assert status.outcome == "in_progress"
+    assert status.extra_metadata["nova_order_id"] == "ord-77"
+    assert [c["idempotency_key"] for c in client.calls] == ["task-77"]

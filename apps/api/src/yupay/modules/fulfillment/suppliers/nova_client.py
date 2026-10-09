@@ -33,6 +33,7 @@ service on 2026-09-17 — the last two by placing a real order:
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, ClassVar
 
 import httpx
@@ -41,11 +42,13 @@ from yupay.core.logging import get_logger
 from yupay.modules.fulfillment.suppliers.base import transport_error_text
 from yupay.modules.fulfillment.suppliers.panel_client import (
     MAX_PAGE,
+    NEVER_SENT,
     PanelClient,
     PanelError,
     PanelUnavailableError,
     PanelValidation,
     message_of,
+    resend_schedule,
 )
 
 log = get_logger("yupay.fulfillment.nova")
@@ -102,14 +105,24 @@ class NovaClient(PanelClient):
         *,
         timeout: float | None = None,
         headers: dict[str, str] | None = None,
+        resend_unsent: bool = False,
         **kwargs: Any,
     ) -> dict[str, Any]:
-        """One Fragment call. Same errors as ``_request``, no envelope."""
-        try:
-            async with self._session(timeout=timeout) as client:
-                resp = await client.request(method, path, headers=headers, **kwargs)
-        except httpx.HTTPError as exc:
-            raise NovaUnavailableError(transport_error_text(exc)) from exc
+        """One Fragment call. Same errors and re-send rule as ``_request``, no envelope."""
+        for delay in resend_schedule(resend_unsent):
+            try:
+                async with self._session(timeout=timeout) as client:
+                    resp = await client.request(method, path, headers=headers, **kwargs)
+                break
+            except httpx.HTTPError as exc:
+                never_sent = isinstance(exc, NEVER_SENT)
+                if never_sent and delay is not None:
+                    log.warning("nova.fragment_request_resent", path=path, after_seconds=delay)
+                    await asyncio.sleep(delay)
+                    continue
+                raise NovaUnavailableError(
+                    transport_error_text(exc), never_sent=never_sent
+                ) from exc
 
         text = resp.text[:500]
         log.info("nova.fragment_request", method=method, path=path, status=resp.status_code)
@@ -172,6 +185,7 @@ class NovaClient(PanelClient):
             "/fragment-api/api/v1/fragment/stars",
             json={"username": username, "stars_amount": int(stars_amount)},
             headers={"Idempotency-Key": idempotency_key[:128]},
+            resend_unsent=True,
         )
 
     async def create_fragment_premium_order(
@@ -183,6 +197,7 @@ class NovaClient(PanelClient):
             "/fragment-api/api/v1/fragment/premium",
             json={"username": username, "months": int(months)},
             headers={"Idempotency-Key": idempotency_key[:128]},
+            resend_unsent=True,
         )
 
     async def get_fragment_order(self, order_id: str) -> dict[str, Any]:

@@ -124,10 +124,17 @@ What that buys:
   a retried task reuses its key and gets its own order back. On NOVA the same
   press needs a fresh nonce or it 409s for ever — which is the whole reason
   that set exists.
-- A lost create could, in principle, be recovered by re-sending it rather than
-  by adoption. We do not: `panel_adopt` is built, tested and vendor-neutral,
-  and a second create from a status check would be a stranger thing to reason
-  about than a search.
+- A lost create that **may have reached them** (read timeout, connection
+  dropped mid-answer, 5xx) is recovered by adoption, never by re-sending:
+  `panel_adopt` is built, tested and vendor-neutral.
+- A create that **never left us** (`ConnectError`, `ConnectTimeout`,
+  `PoolTimeout` — raised before httpx writes a byte) is sent again with the
+  same key (`panel_resend`, since 2026-10-09): twice more at once, 1 s and 3 s
+  apart, then from every status poll for 30 minutes; past that the task fails
+  `RETURNED` — nothing ever reached them. The moment one attempt may have
+  landed, the task carries `fzr_create_unresolved` and only adoption runs.
+  Before this, a single `ConnectError` on a Likee order sat 30 minutes in
+  adoption and then needed a human, though fzr had never seen it.
 
 A 409 is still graded undecided. That branch now means "the vendor is behaving
 unlike itself", which is precisely when caution earns its keep.

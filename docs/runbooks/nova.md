@@ -254,6 +254,16 @@ ignore it: `premium/quote` priced a username that does not exist and echoed it
 back. So a typo reaches the supplier. G2B's `checkPlayerId` does answer for
 Telegram, and wiring it up is separate work.
 
+### A create that never left us is sent again
+
+`ConnectError`, `ConnectTimeout` and `PoolTimeout` happen before httpx writes a
+byte, so NOVA cannot have seen the request. Such a create is sent again with the
+same key (`panel_resend`, 2026-10-09): twice at once, then from each status poll
+for 30 minutes, then the task fails `RETURNED`. Reusing the key is safe: a key
+NOVA never saw is not burned, and if it somehow was, NOVA answers 409, which is
+graded undecided — never a second purchase. Any failure that may have reached
+NOVA (`nova_create_unresolved`) still goes to adoption only.
+
 ### Retrying a NOVA task
 
 NOVA burns an `Idempotency-Key` the moment it sees one and answers a reuse

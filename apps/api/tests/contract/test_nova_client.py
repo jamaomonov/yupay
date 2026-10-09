@@ -411,3 +411,31 @@ async def test_an_order_without_a_debit_gains_no_charge_key() -> None:
         idempotency_key="k",
     )
     assert "chargedUsd" not in order
+
+
+@respx.mock
+async def test_a_fragment_create_that_never_connected_is_sent_again(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The Fragment path has its own request wrapper; it re-sends like ``_request``."""
+    from types import SimpleNamespace
+
+    import yupay.modules.fulfillment.suppliers.nova_client as nova
+
+    slept: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    monkeypatch.setattr(nova, "asyncio", SimpleNamespace(sleep=_sleep))
+    route = respx.post(f"{BASE}/fragment-api/api/v1/fragment/stars").mock(
+        side_effect=[httpx.ConnectError("refused"), httpx.Response(200, json={"id": "fr-1"})]
+    )
+    order = await _client().create_fragment_stars_order(
+        username="someone", stars_amount=50, idempotency_key="task-9"
+    )
+
+    assert order["id"] == "fr-1"
+    assert route.call_count == 2
+    assert {c.request.headers["Idempotency-Key"] for c in route.calls} == {"task-9"}
+    assert slept == [1.0]

@@ -65,6 +65,11 @@ from yupay.modules.fulfillment.suppliers.panel_fields import (
     field_specs,
     legacy_fields,
 )
+from yupay.modules.fulfillment.suppliers.panel_resend import (
+    not_sent_result,
+    resend_from_status,
+    should_resend,
+)
 from yupay.modules.integrations.models import (
     NOVA_FRAGMENT_PREMIUM,
     NOVA_FRAGMENT_STARS,
@@ -128,6 +133,12 @@ def _parked_for_adoption(exc: Exception) -> FulfillResult:
         extra_metadata={"supplier": "nova", "nova_create_unresolved": str(exc)[:200]},
         money_outcome=None,
     )
+
+
+def _parked_or_not_sent(exc: NovaUnavailableError) -> FulfillResult:
+    """A create that never left us is re-sent by the status poll; one that may have
+    landed is parked for adoption (``panel_resend``)."""
+    return not_sent_result("nova", exc) if exc.never_sent else _parked_for_adoption(exc)
 
 
 class NovaFulfiller(Fulfiller):
@@ -283,7 +294,7 @@ class NovaFulfiller(Fulfiller):
             # the poller find the order: on 2026-09-23 NOVA created it eight
             # seconds *after* our timeout, which a one-shot lookup here would
             # have missed. See ``panel_adopt``.
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _finish(obj)
 
@@ -372,7 +383,7 @@ class NovaFulfiller(Fulfiller):
                 )
             raise FulfillerError(str(exc), money_outcome=_refusal_money(exc)) from exc
         except NovaUnavailableError as exc:
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _finish(obj)
 
@@ -411,7 +422,7 @@ class NovaFulfiller(Fulfiller):
                 money_outcome=_refusal_money(exc),
             ) from exc
         except NovaUnavailableError as exc:
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _finish(obj)
 
@@ -488,7 +499,7 @@ class NovaFulfiller(Fulfiller):
                 money_outcome=_refusal_money(exc),
             ) from exc
         except NovaUnavailableError as exc:
-            return _parked_for_adoption(exc)
+            return _parked_or_not_sent(exc)
 
         return _finish(obj)
 
@@ -581,6 +592,9 @@ class NovaFulfiller(Fulfiller):
             # before deciding anything: NOVA charges on create, so the order
             # may well exist — on 2026-09-23 it appeared eight seconds after
             # our request timed out.
+            if should_resend(task.extra_metadata or {}, slug="nova"):
+                # Every create so far failed before sending: send it again, same key.
+                return await resend_from_status(self, db, task, slug="nova")
             return await self._adopt_or_wait(db, task)
 
         # Which of NOVA's two APIs owns this order. `/api/v2/orders/{id}` does

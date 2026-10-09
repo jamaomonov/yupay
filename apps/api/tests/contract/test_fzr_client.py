@@ -347,3 +347,88 @@ async def test_an_unreadable_envelope_is_a_refusal_not_an_empty_answer() -> None
     respx.get(f"{BASE}/api/v2/orders/ord-1").mock(return_value=httpx.Response(200, text="<html>"))
     with pytest.raises(FzrError):
         await _client().get_order("ord-1")
+
+
+# ---------- a create that never left us is sent again (panel_resend) ----------
+
+
+@pytest.fixture
+def _no_pause(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """The re-send pauses, recorded instead of slept."""
+    import yupay.modules.fulfillment.suppliers.panel_client as panel
+
+    slept: list[float] = []
+
+    async def _sleep(seconds: float) -> None:
+        slept.append(seconds)
+
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(panel, "asyncio", SimpleNamespace(sleep=_sleep))
+    return slept
+
+
+async def _create() -> dict[str, object]:
+    return await _client().create_topup_order(
+        category_id="likee",
+        offer_id="100_diamonds",
+        fields={"player_id": "Nozacham_878787"},
+        idempotency_key="task-42",
+    )
+
+
+@respx.mock
+async def test_a_create_that_never_connected_is_sent_again_with_the_same_key(
+    _no_pause: list[float],
+) -> None:
+    """2026-10-09: a ConnectError sat 30 minutes in adoption though fzr never saw it."""
+    route = respx.post(f"{BASE}/api/v2/topups/order").mock(
+        side_effect=[
+            httpx.ConnectError("refused"),
+            httpx.Response(
+                200, json={"ok": True, "order": {"id": "ord-1", "status": "processing"}}
+            ),
+        ]
+    )
+    order = await _create()
+
+    assert order["id"] == "ord-1"
+    assert route.call_count == 2
+    assert {c.request.headers["Idempotency-Key"] for c in route.calls} == {"task-42"}
+    assert _no_pause == [1.0]
+
+
+@respx.mock
+async def test_a_create_that_may_have_landed_is_never_sent_again(_no_pause: list[float]) -> None:
+    route = respx.post(f"{BASE}/api/v2/topups/order").mock(side_effect=httpx.ReadTimeout("slow"))
+    with pytest.raises(FzrUnavailableError) as excinfo:
+        await _create()
+
+    assert route.call_count == 1
+    assert excinfo.value.never_sent is False
+    assert _no_pause == []
+
+
+@respx.mock
+async def test_a_create_that_never_connects_gives_up_marked_never_sent(
+    _no_pause: list[float],
+) -> None:
+    route = respx.post(f"{BASE}/api/v2/topups/order").mock(
+        side_effect=httpx.ConnectTimeout("no route")
+    )
+    with pytest.raises(FzrUnavailableError) as excinfo:
+        await _create()
+
+    assert route.call_count == 3
+    assert excinfo.value.never_sent is True
+    assert _no_pause == [1.0, 3.0]
+
+
+@respx.mock
+async def test_a_read_is_never_re_sent(_no_pause: list[float]) -> None:
+    route = respx.get(f"{BASE}/api/v2/balance").mock(side_effect=httpx.ConnectError("refused"))
+    with pytest.raises(FzrUnavailableError) as excinfo:
+        await _client().get_balance()
+
+    assert route.call_count == 1
+    assert excinfo.value.never_sent is True
