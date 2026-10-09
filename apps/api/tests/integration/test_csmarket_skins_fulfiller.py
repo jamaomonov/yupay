@@ -24,7 +24,7 @@ from yupay.modules.fulfillment.suppliers.csmarket_client import (
     CsmTrade,
 )
 from yupay.modules.fulfillment.suppliers.csmarket_skins import buy, skin_status, trade_row
-from yupay.modules.orders.models import OrderItem
+from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.skins.models import SkinTrade
 
 from tests.integration.test_fulfillment_async import _make_paid_order
@@ -306,3 +306,68 @@ async def test_the_fast_sweep_picks_up_csmarket_tasks(db_session: AsyncSession) 
     item = await _item(db_session, "csm-due")
     task = await _task(db_session, item)
     assert task.id in await due_skin_task_ids(db_session)
+
+
+async def test_a_broken_trade_link_is_never_sent(db_session: AsyncSession) -> None:
+    item = await _item(db_session, "csm-badlink", tradelink="not a link")
+    client = _Client()
+    result = await _buy(db_session, item, client)
+    assert (result.error, result.money_outcome) == ("invalid_tradelink", MoneyOutcome.RETURNED)
+    assert client.sent == []
+
+
+async def test_rate_limited_purchase_waits_for_the_sweep(db_session: AsyncSession) -> None:
+    from yupay.modules.fulfillment.suppliers.csmarket_client import CsmarketRateLimitedError
+
+    item = await _item(db_session, "csm-429")
+    slow = _Client(create_error=CsmarketRateLimitedError("slow", retry_after=60))
+    result = await _buy(db_session, item, slow)
+    assert result.outcome == "in_progress"
+    assert result.extra_metadata["buy_pending"] is True
+
+
+async def test_an_unreachable_status_read_stays_in_progress(db_session: AsyncSession) -> None:
+    item = await _item(db_session, "csm-read-down")
+    await _buy(db_session, item, _Client())
+    task = await _task(db_session, item)
+
+    class _Down(_Client):
+        async def order(self, order_id: str) -> CsmOrder:
+            raise CsmarketUnavailableError("HTTP 502")
+
+    status = await skin_status(_Down(), db=db_session, task=task)
+    assert status.outcome == "in_progress"
+
+
+async def test_the_registered_fulfiller(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from yupay.core import config as cfg
+    from yupay.modules.fulfillment.suppliers import REGISTRY
+    from yupay.modules.fulfillment.suppliers.base import FulfillerError
+    from yupay.modules.fulfillment.suppliers.csmarket_skins import CsmarketFulfiller
+
+    assert isinstance(REGISTRY["csmarket"], CsmarketFulfiller)
+    monkeypatch.setenv("CSMARKET_API_KEY", "")
+    cfg.get_settings.cache_clear()
+    bare = CsmarketFulfiller()
+    assert bare.available is False
+    item = await _item(db_session, "csm-reg")
+    order = await db_session.get(Order, item.order_id)
+    assert order is not None
+    with pytest.raises(FulfillerError):
+        await bare.fulfill(db=db_session, order=order, item=item, idempotency_key=KEY)
+    task = await _task(db_session, item)
+    assert (await bare.check_status(db=db_session, task=task)).outcome == "in_progress"
+    await bare.cancel(db=db_session, task=task)  # a no-op that must not raise
+
+    monkeypatch.setenv("CSMARKET_API_KEY", "csm_test")
+    cfg.get_settings.cache_clear()
+    assert CsmarketFulfiller().available is True
+    assert CsmarketFulfiller()._client().configured is True
+
+    wired = CsmarketFulfiller(client=_Client(current=_order("trade_sent")))  # type: ignore[arg-type] # a fake with the same calls
+    result = await wired.fulfill(db=db_session, order=order, item=item, idempotency_key=KEY)
+    assert result.outcome == "in_progress"
+    assert (await wired.check_status(db=db_session, task=task)).outcome == "in_progress"
+    cfg.get_settings.cache_clear()

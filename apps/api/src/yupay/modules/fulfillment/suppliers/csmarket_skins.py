@@ -267,7 +267,10 @@ async def buy(  # noqa: PLR0911 -- one return per outcome reads as the table abo
         if not created:
             log.info("skins.buy.adopted", order_item_id=row.order_item_id)
         return await _settle(db, row, order, key)
-    return await _refused(db, row, CsmarketError("refused", status=409, code="offer_gone"), cap)
+    # The loop always returns: the second refusal goes to ``_refused`` above.
+    return await _refused(  # pragma: no cover
+        db, row, CsmarketError("refused", status=409, code="offer_gone"), cap
+    )
 
 
 async def _refused(db: AsyncSession, row: SkinTrade, exc: CsmarketError, cap: int) -> FulfillResult:

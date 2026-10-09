@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable, Callable
 
 import httpx
 import pytest
@@ -328,3 +329,89 @@ async def test_tradelink_check_odd_shape_raises() -> None:
     respx.post(f"{BASE}/tradelink/check").mock(return_value=httpx.Response(200, json={"x": 1}))
     with pytest.raises(CsmarketError):
         await _client().check_tradelink(LINK)
+
+
+def test_odd_values_never_parse_as_money() -> None:
+    with pytest.raises(ValueError, match="not a USD amount"):
+        usd_to_units("abc")
+
+
+@respx.mock
+async def test_an_injected_http_client_is_used_and_configured_reads_the_key() -> None:
+    respx.get(f"{BASE}/me").mock(
+        return_value=httpx.Response(
+            200, json={"balance_usd": "1.000", "usd_wallet_enabled": True, "key": {}}
+        )
+    )
+    async with httpx.AsyncClient() as http:
+        client = CsmarketClient(api_key=TOKEN, base_url=BASE, timeout_seconds=5.0, client=http)
+        assert client.configured is True
+        assert (await client.me()).balance_units == 1000
+    assert CsmarketClient(api_key="", base_url=BASE, timeout_seconds=5.0).configured is False
+
+
+@respx.mock
+async def test_odd_feed_rows_and_dates_are_tolerated() -> None:
+    respx.get(f"{BASE}/catalog").mock(
+        return_value=httpx.Response(
+            200,
+            json={
+                "items": [
+                    {
+                        "item_id": "i1",
+                        "slug": "s",
+                        "market_hash_name": "N",
+                        "price_usd": "1.000",
+                        "stock": 1,
+                        "updated_at": "not-a-date",
+                    },
+                    {"item_id": "i2", "slug": "s2", "market_hash_name": "N2", "price_usd": "x"},
+                ],
+                "next_cursor": None,
+            },
+        )
+    )
+    page = await _client().catalog_page()
+    assert page is not None
+    assert [i.item_id for i in page.items] == ["i1"]
+    assert page.items[0].updated_at is None
+
+
+@respx.mock
+async def test_odd_offers_and_stickers_are_dropped() -> None:
+    respx.get(f"{BASE}/catalog/i/offers").mock(
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"offer_id": "a", "price_usd": "nope"},
+                {"offer_id": "b", "price_usd": "1.000", "stickers": [{"slot": 1}]},
+            ],
+        )
+    )
+    offers = await _client().offers("i")
+    assert [o.offer_id for o in offers] == ["b"]
+    assert offers[0].stickers == []
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("/me", {"balance_usd": "x"}),
+        ("/catalog", {"items": "x"}),
+        ("/catalog/i/offers", {"not": "a list"}),
+        ("/orders/O", {"order_id": "O"}),
+    ],
+)
+@respx.mock
+async def test_unexpected_shapes_raise_bad_shape(path: str, body: object) -> None:
+    respx.get(f"{BASE}{path}").mock(return_value=httpx.Response(200, json=body))
+    client = _client()
+    calls: dict[str, Callable[[], Awaitable[object]]] = {
+        "/me": client.me,
+        "/catalog": client.catalog_page,
+        "/catalog/i/offers": lambda: client.offers("i"),
+        "/orders/O": lambda: client.order("O"),
+    }
+    with pytest.raises(CsmarketError) as caught:
+        await calls[path]()
+    assert caught.value.code == "bad_shape"
