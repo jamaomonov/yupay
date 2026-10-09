@@ -188,7 +188,7 @@ function FieldRow({
           <HelpImagesEditor control={control} register={register} name={`${path}.help_images`} />
 
           <Labeled label="Regex pattern">
-            <Input {...register(`${path}.pattern`)} placeholder="^[0-9]{6,15}$" />
+            <Input {...register(`${path}.pattern`)} placeholder="^[A-Za-z0-9._#-]{1,64}$" />
           </Labeled>
 
           {type === "select" && (

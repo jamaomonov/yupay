@@ -109,7 +109,7 @@ def _player_id_field(
         "label": {"ru": label_ru, "en": "Player ID", "uz": "Oʻyinchi ID"},
         "type": "text",
         "required": True,
-        "pattern": "^[0-9]{6,20}$",
+        "pattern": "^[A-Za-z0-9._#-]{1,64}$",
         "placeholder": {"ru": "12345678", "en": "12345678", "uz": "12345678"},
     }
     if check is not None:

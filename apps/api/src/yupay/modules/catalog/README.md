@@ -106,6 +106,13 @@ page and was 0.96 s per admin brand list; the admin reads switch those back to l
 Each `Product` carries a list of field descriptors that the storefront renders into a
 typed form, and that the API validates on order creation.
 
+**Keep player-ID patterns loose** (owner, 2026-10-09): `^[A-Za-z0-9._#-]{1,64}$` for a
+player id, `^[0-9]{1,10}$` for a zone/server id. A pattern miss disables «Проверить» and
+the API refuses the order with no log line, so a tight pattern silently loses sales: Bigo
+ids can carry letters (`Lexus0011`), Delta Force ids run past 25 characters. Typos are the
+player check's and the supplier's job, not the regex's. Only a platform's own rule (Telegram
+username, Steam login) or a structure the code parses (a trade link) earns a strict pattern.
+
 ```jsonc
 [
   {
@@ -113,7 +120,7 @@ typed form, and that the API validates on order creation.
     "label": { "ru": "ID игрока", "en": "Player ID", "uz": "Oʻyinchi ID" },
     "type": "text",
     "required": true,
-    "pattern": "^[0-9]{6,20}$",
+    "pattern": "^[A-Za-z0-9._#-]{1,64}$",
     "placeholder": { "ru": "12345678", "en": "12345678" },
     "help_text": { "ru": "ID игрока указан в профиле" },
     "help_images": [
@@ -155,7 +162,7 @@ account nickname before the customer pays — see
   "key": "player_id",
   "label": { "ru": "ID игрока", "en": "Player ID" },
   "type": "text",
-  "pattern": "^[0-9]{6,20}$",
+  "pattern": "^[A-Za-z0-9._#-]{1,64}$",
   "check": {
     "provider": "g2b", // which checker backs this field
     "server_field": "server", // optional: key of the sibling field supplying server_id
