@@ -83,6 +83,8 @@ class SkinItem(Base):
         DateTime(timezone=True), nullable=True
     )
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    #: csmarket's item id (ADR-0098), written by the csmarket feed sync; NULL under Waxpeer.
+    source_item_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     # ---- per-item pricing overrides (admin, ``PATCH /admin/skins/items/{slug}``) ----
     #: Percentage points added to the bracket margin for this item only.
@@ -163,6 +165,14 @@ class SkinTrade(Base):
         UUID(as_uuid=False), ForeignKey("fulfillment_tasks.id", ondelete="SET NULL"), nullable=True
     )
     project_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    #: Who the skin was bought from (ADR-0098). An order keeps its supplier when the
+    #: ``cs2_skins_source`` switch flips, so the sweep asks the right one.
+    supplier: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'waxpeer'")
+    )
+    #: csmarket's opaque offer id and its order number; NULL for Waxpeer trades.
+    offer_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    supplier_order_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     waxpeer_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     listing_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     market_hash_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -197,6 +207,7 @@ class SkinTrade(Base):
 
     __table_args__ = (
         UniqueConstraint("order_item_id", name="uq_skin_trades_order_item"),
+        CheckConstraint("supplier IN ('waxpeer', 'csmarket')", name="supplier"),
         UniqueConstraint("project_id", name="uq_skin_trades_project"),
         Index("ix_skin_trades_protection", "status", "is_released"),
         # The admin trades screen, newest first (migration 0090).

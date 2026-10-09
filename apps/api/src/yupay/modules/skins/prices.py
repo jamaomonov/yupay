@@ -142,10 +142,18 @@ async def apply_prices(
     db: AsyncSession,
     aggregates: Mapping[tuple[str, str], PriceAggregate],
     *,
-    meta: Iterable[Mapping[str, Any]],
+    meta: Iterable[Mapping[str, Any]] | None,
     at: datetime,
+    source_ids: Mapping[tuple[str, str], str] | None = None,
 ) -> ApplyResult:
-    """Write the aggregates onto ``skin_items``: changed rows, deactivations, stubs."""
+    """Write the aggregates onto ``skin_items``: changed rows, deactivations, stubs.
+
+    ``meta`` is Waxpeer's ``/v1/prices`` (Steam price, type, rarity). ``None`` — the
+    csmarket feed has none — leaves ``steam_price_units`` as the last value we had, so
+    the Steam cap keeps working. ``source_ids`` (csmarket only) is written to
+    ``source_item_id`` and folded into the change digest, so a re-listed item whose
+    price did not move still gets its new id.
+    """
     existing = (
         await db.execute(
             select(
@@ -162,14 +170,17 @@ async def apply_prices(
         ((key, slug_for(*key)) for key in aggregates if key not in by_key),
         {(name, phase): slug for _, name, phase, _, slug in existing},
     )
-    meta_by_key = _meta_by_name(meta)
+    meta_by_key = _meta_by_name(meta or ())
 
     updates: list[dict[str, Any]] = []
     stubs: list[dict[str, Any]] = []
     for key, agg in aggregates.items():
         digest = price_hash(agg)
+        source_id = source_ids.get(key) if source_ids is not None else None
+        if source_id is not None:
+            digest = hashlib.sha1(f"{digest}:{source_id}".encode()).hexdigest()  # noqa: S324 -- change detector, not security
         steam = meta_by_key.get(key, {}).get("steam_price")
-        values = {
+        values: dict[str, Any] = {
             "min_auto_units": agg.min_auto,
             "count_auto": agg.count_auto,
             "cheapest_auto": [
@@ -177,16 +188,19 @@ async def apply_prices(
             ],
             "min_all_units": agg.min_all,
             "count_all": agg.count_all,
-            # 0 is Waxpeer's "unknown", not a free item: stored as NULL so no
-            # discount is ever computed against it.
-            "steam_price_units": int(steam)
-            if isinstance(steam, int | float) and steam > 0
-            else None,
             "price_hash": digest,
             "prices_updated_at": at,
             "active": agg.count_auto > 0 and not _phase_unknown(key),
             "updated_at": at,
         }
+        if meta is not None:
+            # 0 is Waxpeer's "unknown", not a free item: stored as NULL so no
+            # discount is ever computed against it.
+            values["steam_price_units"] = (
+                int(steam) if isinstance(steam, int | float) and steam > 0 else None
+            )
+        if source_ids is not None:
+            values["source_item_id"] = source_id
         found = by_key.get(key)
         if found is None:
             name, phase = key
