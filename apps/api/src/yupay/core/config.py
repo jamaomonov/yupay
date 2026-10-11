@@ -653,6 +653,12 @@ class Settings(BaseSettings):
     #: threshold — Stars above the typical purchase go to manual release even
     #: while manual_review_threshold_usd would wave them through. 0 = off.
     risk_liquid_review_threshold_usd: Decimal = Field(default=Decimal("0"))
+    #: Rule 1 for an order made only of CS2 skins: one flat bar, no jitter, in
+    #: place of manual_review_threshold_usd, and the rolling-sum caps are lifted
+    #: to it as well. A skin goes to the buyer's own Steam account, and a $60
+    #: knife held overnight at the $40 bar was a refund risk, not a fraud stop
+    #: (owner, 2026-10-11). 0 = skins use the general rules.
+    risk_skins_review_threshold_usd: Decimal = Field(default=Decimal("200"))
     #: Rule 3: identities first seen within risk_new_buyer_age_days are capped
     #: at this many paid orders per rolling 24h; the next goes to manual
     #: release. 0 = off.

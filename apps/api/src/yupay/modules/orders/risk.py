@@ -56,6 +56,7 @@ from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.evidence.models import OrderEvidence
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.payments.models import Payment
+from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -225,6 +226,23 @@ def _amount_reason(order: Order, cfg: Settings, *, at: datetime | None = None) -
     return None
 
 
+def _skins_amount_reason(order: Order, cfg: Settings, *, at: datetime | None = None) -> str | None:
+    """Rule 1 for a skins-only order: the flat skins bar, night factor kept, no jitter."""
+    threshold = cfg.risk_skins_review_threshold_usd * _night_multiplier(at, cfg)
+    return REASON_LARGE_AMOUNT if order.total_usd >= threshold else None
+
+
+def _skins_window_cfg(cfg: Settings) -> Settings:
+    """Rolling-sum caps no lower than the skins bar: the order counts against itself."""
+    cap = cfg.risk_skins_review_threshold_usd
+    lifted = {
+        name: cap
+        for name in ("risk_sum_24h_usd", "risk_sum_7d_usd")
+        if 0 < getattr(cfg, name) < cap
+    }
+    return cfg.model_copy(update=lifted) if lifted else cfg
+
+
 def _liquid_amount_reason(
     order: Order,
     brand_slugs: frozenset[str],
@@ -313,6 +331,8 @@ class GeoContext:
     is_guest: bool
     brand_slugs: frozenset[str]
     timezone: str | None
+    #: Every line is a CS2 skin — `risk_skins_review_threshold_usd` applies.
+    skins_only: bool = False
 
 
 def _csv(value: str) -> frozenset[str]:
@@ -566,7 +586,7 @@ async def _gather(
 
             current_item_rows = (
                 await db.execute(
-                    select(OrderItem.fulfillment_data, Brand.slug)
+                    select(OrderItem.fulfillment_data, Brand.slug, Sku.sku_code)
                     .select_from(OrderItem)
                     .join(Sku, Sku.id == OrderItem.sku_id)
                     .join(Product, Product.id == Sku.product_id)
@@ -576,9 +596,12 @@ async def _gather(
             ).all()
             current_targets: set[str] = set()
             brand_slugs: set[str] = set()
-            for fulfillment_data, brand_slug in current_item_rows:
+            for fulfillment_data, brand_slug, _code in current_item_rows:
                 current_targets.update(_targets_from(fulfillment_data))
                 brand_slugs.add(brand_slug)
+            skins_only = bool(current_item_rows) and all(
+                code == CS2_SKIN_SKU_CODE for _, _, code in current_item_rows
+            )
 
             identity_predicates = []
             if current_user_id is not None:
@@ -690,6 +713,7 @@ async def _gather(
                 is_guest=order.user_id is None,
                 brand_slugs=frozenset(brand_slugs),
                 timezone=timezone,
+                skins_only=skins_only,
             )
     except Exception:
         log.exception("orders.risk.gather_failed", order_id=order.id)
@@ -726,7 +750,9 @@ async def review_reason(
     a stronger claim resting on more context than the last, so the cheapest
     and most confident check runs first. Rule 1 (amount) runs first and
     short-circuits: a single order already over threshold does not need the
-    window gather. Rules 2-5 (rolling sum, velocity, shared identity, geo)
+    window gather — unless it is under `risk_skins_review_threshold_usd`, when the
+    gather decides: an order made only of CS2 skins is held at that flat bar instead,
+    with the rolling-sum caps lifted to it. Rules 2-5 (rolling sum, velocity, shared identity, geo)
     never raise on their own — a failed ``_gather`` is logged and this
     continues into them with a neutral context (an empty recent list, a
     ``GeoContext`` that cannot fire rule 5) rather than skipping them. That is
@@ -743,9 +769,15 @@ async def review_reason(
     cfg = settings or get_settings()
     paid_at = getattr(order, "paid_at", None)
     amount = _amount_reason(order, cfg, at=paid_at)
-    if amount is not None:
+    skins_cap = cfg.risk_skins_review_threshold_usd
+    if amount is not None and (skins_cap <= 0 or order.total_usd >= skins_cap):
         return amount
     current, recent, geo = await _gather(db, order, cfg)
+    if geo.skins_only and skins_cap > 0:
+        amount = _skins_amount_reason(order, cfg, at=paid_at)
+        cfg = _skins_window_cfg(cfg)
+    if amount is not None:
+        return amount
     liquid = _liquid_amount_reason(order, geo.brand_slugs, cfg, at=paid_at)
     if liquid is not None:
         return liquid

@@ -9,6 +9,7 @@ from typing import Any, cast
 
 import pytest
 from yupay.core.config import Settings, get_settings
+from yupay.modules.orders import risk as risk_module
 from yupay.modules.orders.risk import (
     REASON_GEO_MISMATCH,
     REASON_LARGE_AMOUNT,
@@ -29,6 +30,7 @@ from yupay.modules.orders.risk import (
     _is_trusted_buyer,
     _liquid_amount_reason,
     _new_buyer_reason,
+    _skins_window_cfg,
     _targets_from,
     _veto_decision,
     _window_reason,
@@ -300,6 +302,74 @@ async def test_review_reason_returns_the_amount_reason_without_touching_the_db()
     settings = _settings("40", jitter=False)
     reason = await review_reason(cast("Any", object()), _order("202.00"), settings=settings)
     assert reason == REASON_LARGE_AMOUNT
+
+
+# ---------- CS2 skins: a flat $200 bar in place of rule 1 ----------
+
+
+def _skins_gather(
+    monkeypatch: pytest.MonkeyPatch, order: Any, *, skins_only: bool, recent: list[Any]
+) -> None:
+    async def fake(_db: Any, _order: Any, _cfg: Settings) -> Any:
+        current = _wo(0, str(order.total_usd), buyer="u1")
+        return (
+            current,
+            recent,
+            GeoContext(
+                is_guest=False, brand_slugs=frozenset({"cs2"}), timezone=None, skins_only=skins_only
+            ),
+        )
+
+    monkeypatch.setattr(risk_module, "_gather", fake)
+
+
+async def test_a_skin_under_200_is_not_held_by_the_40_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    knife = _order("63.60")
+    _skins_gather(monkeypatch, knife, skins_only=True, recent=[])
+    settings = _settings("40", jitter=False)
+    assert await review_reason(cast("Any", object()), knife, settings=settings) is None
+
+
+async def test_a_skin_at_200_is_held(monkeypatch: pytest.MonkeyPatch) -> None:
+    order = _order("150.00")
+    _skins_gather(monkeypatch, order, skins_only=True, recent=[])
+    base = _settings("40", jitter=False).model_dump()
+    base["risk_skins_review_threshold_usd"] = Decimal("150")
+    reason = await review_reason(cast("Any", object()), order, settings=Settings(**base))
+    assert reason == REASON_LARGE_AMOUNT
+
+
+async def test_a_non_skin_order_keeps_the_general_bar(monkeypatch: pytest.MonkeyPatch) -> None:
+    order = _order("63.60")
+    _skins_gather(monkeypatch, order, skins_only=False, recent=[])
+    settings = _settings("40", jitter=False)
+    assert await review_reason(cast("Any", object()), order, settings=settings) == (
+        REASON_LARGE_AMOUNT
+    )
+
+
+async def test_skins_lift_the_rolling_sum_but_not_past_the_skins_bar(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    order = _order("63.60")
+    earlier = _wo(60, "100.00", buyer="u1")
+    _skins_gather(monkeypatch, order, skins_only=True, recent=[earlier])
+    base = _cfg(sum24="25", sum7d="60").model_dump()
+    base["manual_review_threshold_usd"] = Decimal("40")
+    settings = Settings(**base)
+    assert await review_reason(cast("Any", object()), order, settings=settings) is None
+    bigger = _wo(120, "40.00", buyer="u1")
+    _skins_gather(monkeypatch, order, skins_only=True, recent=[earlier, bigger])
+    assert await review_reason(cast("Any", object()), order, settings=settings) == (
+        REASON_ROLLING_SUM
+    )
+
+
+def test_the_skins_window_cfg_leaves_higher_or_disabled_caps_alone() -> None:
+    cfg = _cfg(sum24="0", sum7d="500")
+    assert _skins_window_cfg(cfg) is cfg
 
 
 # ---------- _gather: a broken query degrades to rule 1 alone ----------

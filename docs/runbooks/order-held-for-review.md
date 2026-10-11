@@ -267,20 +267,31 @@ Every rule ships with its own switch so a false-positive storm is stoppable
 by env change and restart, not by revert and redeploy. Requires an API
 restart to take effect (`Settings` is read at process start).
 
-| Variable                      | Default                                  | Disables                                                                                                                                           |
-| ----------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `MANUAL_REVIEW_THRESHOLD_USD` | `40` (currently `12` in prod, see below) | `0`                                                                                                                                                |
-| `RISK_SUM_24H_USD`            | `25`                                     | `RISK_SUM_24H_USD=0`                                                                                                                               |
-| `RISK_SUM_7D_USD`             | `60`                                     | `RISK_SUM_7D_USD=0`                                                                                                                                |
-| `RISK_VELOCITY_24H`           | `5`                                      | `RISK_VELOCITY_24H=0`                                                                                                                              |
-| `RISK_DISTINCT_BUYERS_7D`     | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                                                                                                        |
-| `RISK_LIQUID_BRANDS`          | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                                                                                                      |
-| `RISK_HOME_TIMEZONES`         | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                                                                                                     |
-| `RISK_JITTER`                 | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                                                                                                      |
-| `RISK_DEVICE_IDENTITY`        | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true`                                                                                    |
-| `RISK_PRECHARGE_VETO`         | `true`                                   | `RISK_PRECHARGE_VETO=false`                                                                                                                        |
-| `RISK_HOME_COUNTRIES`         | `UZ`                                     | `RISK_HOME_COUNTRIES=` (empty disables the veto whenever a country is known — the timezone fallback applies only to orders with no country at all) |
-| `RISK_HOLD_AUTO_REFUND_HOURS` | `0` (ships disarmed; arm with `24`)      | `RISK_HOLD_AUTO_REFUND_HOURS=0` (already the default — an indefinite hold)                                                                         |
+| Variable                          | Default                                  | Disables                                                                                                                                           |
+| --------------------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `MANUAL_REVIEW_THRESHOLD_USD`     | `40` (currently `12` in prod, see below) | `0`                                                                                                                                                |
+| `RISK_SKINS_REVIEW_THRESHOLD_USD` | `200`                                    | `0` (skins fall back to the general rules)                                                                                                         |
+| `RISK_SUM_24H_USD`                | `25`                                     | `RISK_SUM_24H_USD=0`                                                                                                                               |
+| `RISK_SUM_7D_USD`                 | `60`                                     | `RISK_SUM_7D_USD=0`                                                                                                                                |
+| `RISK_VELOCITY_24H`               | `5`                                      | `RISK_VELOCITY_24H=0`                                                                                                                              |
+| `RISK_DISTINCT_BUYERS_7D`         | `3`                                      | `RISK_DISTINCT_BUYERS_7D=0`                                                                                                                        |
+| `RISK_LIQUID_BRANDS`              | `roblox,telegram-stars,steam`            | `RISK_LIQUID_BRANDS=` (empty)                                                                                                                      |
+| `RISK_HOME_TIMEZONES`             | `Asia/Tashkent,Asia/Samarkand`           | `RISK_HOME_TIMEZONES=` (empty)                                                                                                                     |
+| `RISK_JITTER`                     | `true`                                   | `RISK_JITTER=false` (flat threshold, no band)                                                                                                      |
+| `RISK_DEVICE_IDENTITY`            | `false`                                  | already off by default; opt in with `RISK_DEVICE_IDENTITY=true`                                                                                    |
+| `RISK_PRECHARGE_VETO`             | `true`                                   | `RISK_PRECHARGE_VETO=false`                                                                                                                        |
+| `RISK_HOME_COUNTRIES`             | `UZ`                                     | `RISK_HOME_COUNTRIES=` (empty disables the veto whenever a country is known — the timezone fallback applies only to orders with no country at all) |
+| `RISK_HOLD_AUTO_REFUND_HOURS`     | `0` (ships disarmed; arm with `24`)      | `RISK_HOLD_AUTO_REFUND_HOURS=0` (already the default — an indefinite hold)                                                                         |
+
+**CS2 skins (2026-10-11).** An order made only of CS2 skins (`sku_code = cs2-skin`) is held at
+the flat `RISK_SKINS_REVIEW_THRESHOLD_USD` instead of `MANUAL_REVIEW_THRESHOLD_USD`: no jitter
+(the night multiplier still applies), and `RISK_SUM_24H_USD` / `RISK_SUM_7D_USD` are lifted to
+at least that bar for the order, since the rolling sum counts an order against itself. The
+reason recorded is still `amount_at_or_above_threshold`, or `identity_rolling_sum_exceeded`. A
+skin goes to the buyer's own Steam account, and a $63 knife bought at night sat held until morning
+under the general bar. Rule 1 cannot know the order is skins-only without a read, so an order over
+the general bar but under the skins bar now runs the window gather before it is held; a failed
+gather counts as "not skins" and holds as before.
 
 `RISK_DEVICE_IDENTITY` ships **off**, not on with the other three window
 keys (buyer, IP, delivery target). Measured on production: this audience's
