@@ -362,13 +362,15 @@ def create_app() -> FastAPI:
     validation_handler = problem_json_validation_handler(prefixes=[merchant_machine_router.prefix])
     app.add_exception_handler(RequestValidationError, validation_handler)  # type: ignore[arg-type]
 
-    @app.get("/healthz", tags=["meta"], summary="Liveness probe")
+    # GET and HEAD: uptime monitors (UptimeRobot's default) probe with HEAD, and a 405
+    # there reads as "API down" on a healthy process (2026-10-11).
+    @app.api_route("/healthz", methods=["GET", "HEAD"], tags=["meta"], summary="Liveness probe")
     @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
     async def healthz() -> dict[str, str]:
         """Return ``{"status": "ok"}`` if the process is alive."""
         return {"status": "ok"}
 
-    @app.get("/readyz", tags=["meta"], summary="Readiness probe")
+    @app.api_route("/readyz", methods=["GET", "HEAD"], tags=["meta"], summary="Readiness probe")
     @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
     async def readyz() -> dict[str, str]:
         """Return ``{"status": "ready"}`` once all dependencies are reachable.

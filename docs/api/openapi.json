@@ -41231,7 +41231,7 @@
     "/healthz": {
       "get": {
         "description": "Return ``{\"status\": \"ok\"}`` if the process is alive.",
-        "operationId": "healthz_healthz_get",
+        "operationId": "healthz_healthz_head",
         "responses": {
           "200": {
             "content": {
@@ -41240,7 +41240,31 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Healthz Healthz Get",
+                  "title": "Response Healthz Healthz Head",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Liveness probe",
+        "tags": [
+          "meta"
+        ]
+      },
+      "head": {
+        "description": "Return ``{\"status\": \"ok\"}`` if the process is alive.",
+        "operationId": "healthz_healthz_head",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Healthz Healthz Head",
                   "type": "object"
                 }
               }
@@ -43828,7 +43852,7 @@
     "/readyz": {
       "get": {
         "description": "Return ``{\"status\": \"ready\"}`` once all dependencies are reachable.\n\nAt MVP this is a stub; later it will check DB, Redis, broker, and critical suppliers.",
-        "operationId": "readyz_readyz_get",
+        "operationId": "readyz_readyz_head",
         "responses": {
           "200": {
             "content": {
@@ -43837,7 +43861,31 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Readyz Readyz Get",
+                  "title": "Response Readyz Readyz Head",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Readiness probe",
+        "tags": [
+          "meta"
+        ]
+      },
+      "head": {
+        "description": "Return ``{\"status\": \"ready\"}`` once all dependencies are reachable.\n\nAt MVP this is a stub; later it will check DB, Redis, broker, and critical suppliers.",
+        "operationId": "readyz_readyz_head",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "title": "Response Readyz Readyz Head",
                   "type": "object"
                 }
               }
