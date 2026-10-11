@@ -143,7 +143,11 @@ async def test_set_purchase_policy_keeps_the_first_trusted_stamp(
     await set_purchase_policy(
         db_session, user.id, by_admin_id=admin.id, trusted=False, purchase_limit_usd=None
     )
-    assert (user.trusted_at, user.trusted_by, user.purchase_limit_usd) == (None, None, None)
+    cleared = await db_session.get(User, user.id)
+    assert cleared is not None
+    assert cleared.trusted_at is None
+    assert cleared.trusted_by is None
+    assert cleared.purchase_limit_usd is None
 
 
 async def test_the_admin_route_round_trip(
