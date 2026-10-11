@@ -28,6 +28,7 @@ import {
 import { ChevronRight } from "lucide-react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { PurchasePolicyCard } from "./PurchasePolicyCard";
 import {
   type CustomerOrderSummary,
   type CustomerOverviewOut,
@@ -205,6 +206,7 @@ export function CustomerPage() {
             }}
             banPending={setBan.isPending}
           />
+          <PurchasePolicyCard user={data.user} />
           <WalletBalances balances={data.wallet_balances} />
           <WalletHistory
             ledger={walletLedger.data ?? null}

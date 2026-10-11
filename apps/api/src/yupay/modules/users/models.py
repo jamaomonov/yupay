@@ -3,8 +3,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+from decimal import Decimal
 
-from sqlalchemy import BigInteger, Boolean, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import CITEXT, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -19,6 +30,9 @@ class User(Base):
     """
 
     __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("purchase_limit_usd >= 0", name="purchase_limit_usd_non_negative"),
+    )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
     email: Mapped[str | None] = mapped_column(CITEXT(), nullable=True)
@@ -68,6 +82,16 @@ class User(Base):
     # Who pressed the button. A ban cuts off a paying customer, so it should
     # never be an anonymous act. SET NULL: the record outlives the admin account.
     banned_by: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # --- Purchase policy (orders.account_policy, 2026-10-11) ---
+    # Lifetime cap on what this account may buy before orders go to review:
+    # its own orders plus guest orders under its email. NULL = no cap.
+    purchase_limit_usd: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    # Trusted accounts skip every review rule and the pre-charge veto.
+    trusted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    trusted_by: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
 

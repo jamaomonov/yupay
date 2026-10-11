@@ -35,6 +35,11 @@ export interface UserAdminOut {
   banned_at: string | null;
   ban_reason: string | null;
   banned_by: string | null;
+  /** Lifetime purchase cap in USD (decimal string); null = no cap. */
+  purchase_limit_usd: string | null;
+  /** Set = trusted: every order is delivered with no review and no limit. */
+  trusted_at: string | null;
+  trusted_by: string | null;
   telegram_link: TelegramLinkOut | null;
   steam_link: SteamLinkOut | null;
   wallet_balances: UserWalletBalanceOut[];

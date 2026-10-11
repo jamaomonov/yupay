@@ -17,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from yupay.core.clock import now
 from yupay.core.errors import NotFoundError, ValidationError
 from yupay.core.ids import new_id
+from yupay.core.logging import get_logger
 from yupay.modules.auth.telegram import TelegramUser
 from yupay.modules.users.identity_guard import safe_avatar_url, safe_display_name
 from yupay.modules.users.models import SteamLink, TelegramLink, User
@@ -26,6 +27,8 @@ from yupay.modules.wallet.balances import (
     user_wallet_totals,
     user_wallet_usd_sort_subquery,
 )
+
+log = get_logger("yupay.users.service")
 
 
 async def get_user_by_id(session: AsyncSession, user_id: str) -> User | None:
@@ -395,6 +398,38 @@ async def unban_user(session: AsyncSession, user_id: str) -> User:
     user.banned_by = None
     user.updated_at = now()
     await session.flush()
+    return user
+
+
+async def set_purchase_policy(
+    session: AsyncSession,
+    user_id: str,
+    *,
+    by_admin_id: str,
+    trusted: bool,
+    purchase_limit_usd: Decimal | None,
+) -> User:
+    """Set the account's lifetime purchase cap and trusted flag (orders.account_policy).
+
+    Idempotent. Re-marking a trusted account keeps the original ``trusted_at``
+    and actor: "trusted since" is what an operator asks first.
+    """
+    user = await get_user_admin(session, user_id)
+    user.purchase_limit_usd = purchase_limit_usd
+    if trusted and user.trusted_at is None:
+        user.trusted_at = now()
+        user.trusted_by = by_admin_id
+    elif not trusted:
+        user.trusted_at = None
+        user.trusted_by = None
+    user.updated_at = now()
+    await session.flush()
+    log.info(
+        "users.purchase_policy_set",
+        user_id=user_id,
+        trusted=trusted,
+        limit_usd=str(purchase_limit_usd) if purchase_limit_usd is not None else None,
+    )
     return user
 
 

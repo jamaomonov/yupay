@@ -128,6 +128,11 @@ class UserAdminOut(BaseModel):
     banned_at: datetime | None = None
     ban_reason: str | None = None
     banned_by: str | None = None
+    #: Lifetime purchase cap in USD; ``None`` = no cap (orders.account_policy).
+    purchase_limit_usd: Decimal | None = None
+    #: Set when an operator marked the account trusted: no review, no veto.
+    trusted_at: datetime | None = None
+    trusted_by: str | None = None
     telegram_link: TelegramLinkOut | None
     steam_link: SteamLinkOut | None = None
     #: Spendable ``user_wallet`` balances. Empty when the user has no account
@@ -161,6 +166,17 @@ class BanUserIn(BaseModel):
     reason: str | None = Field(default=None, max_length=500)
 
 
+class PurchasePolicyIn(BaseModel):
+    """Body of ``PUT /admin/users/{id}/purchase-policy`` — both fields, every time."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    #: Trusted accounts skip every review rule and the pre-charge veto.
+    trusted: bool
+    #: Lifetime cap in USD across the account's paid orders; ``None`` removes it.
+    purchase_limit_usd: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+
+
 class UserRolesIn(BaseModel):
     """Body of ``PATCH /admin/users/{id}/roles``."""
 
@@ -174,6 +190,7 @@ class UserRolesIn(BaseModel):
 __all__ = [
     "DisplayCurrencyLiteral",
     "LocaleLiteral",
+    "PurchasePolicyIn",
     "TelegramLinkOut",
     "UpdateMeIn",
     "UserAdminListOut",

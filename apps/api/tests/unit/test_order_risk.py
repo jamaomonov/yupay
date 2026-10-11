@@ -48,7 +48,10 @@ def _settings(threshold: str, *, jitter: bool = True) -> Settings:
 
 
 def _order(total_usd: str, *, order_id: str = "0192aaaa-bbbb-cccc-dddd-eeeeffff0000") -> Any:
-    return cast("Any", SimpleNamespace(id=order_id, total_usd=Decimal(total_usd)))
+    return cast(
+        "Any",
+        SimpleNamespace(id=order_id, total_usd=Decimal(total_usd), user_id=None, guest_email=None),
+    )
 
 
 def test_an_ordinary_order_is_fulfilled_automatically() -> None:

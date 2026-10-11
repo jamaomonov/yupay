@@ -54,9 +54,11 @@ from yupay.core.money import format_amount
 from yupay.core.redis import get_redis
 from yupay.modules.catalog.models import Brand, Product, Sku
 from yupay.modules.evidence.models import OrderEvidence
+from yupay.modules.orders import account_policy
 from yupay.modules.orders.models import Order, OrderEvent, OrderItem
 from yupay.modules.payments.models import Payment
 from yupay.modules.skins.checkout import CS2_SKIN_SKU_CODE
+from yupay.modules.users.models import User
 
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -111,6 +113,11 @@ REASON_LIQUID_AMOUNT = "liquid_amount_at_or_above_threshold"
 #: a customer with history keeps automatic delivery; a fresh identity gets
 #: three small purchases and then a human.
 REASON_NEW_BUYER = "new_buyer_over_limits"
+
+#: The account behind the order (its own, or the one whose email a guest typed)
+#: went past the lifetime `users.purchase_limit_usd` an operator set on it.
+#: See `orders.account_policy`.
+REASON_PURCHASE_LIMIT = "account_purchase_limit_exceeded"
 
 VETO_FOREIGN_COUNTRY = "precharge_foreign_country"
 
@@ -180,6 +187,12 @@ HOLD_ALERT_TEXT: dict[str, tuple[str, str]] = {
         "🔍 Крупная покупка ликвидного товара — на проверке",
         "Stars/Roblox/Steam выше порога для обналичиваемых товаров. Выдача НЕ "
         "запущена: проверь плательщика и серию, затем выдай или верни.",
+    ),
+    REASON_PURCHASE_LIMIT: (
+        "🔍 Лимит покупок аккаунта превышен",
+        "Сумма покупок этого аккаунта (за всё время, вместе с гостевыми заказами на его "
+        "email) превысила лимит из админки. Выдача НЕ запущена — выдай или верни; "
+        "лимит меняется в карточке клиента.",
     ),
     REASON_NEW_BUYER: (
         "🔍 Новый покупатель превысил стартовые лимиты",
@@ -761,12 +774,26 @@ async def review_reason(
     `risk_sum_24h_usd`/`risk_sum_7d_usd` still holds even with zero siblings
     read.
 
+    The account's own policy comes before all of them (`orders.account_policy`):
+    a trusted account is never held, and an account past the purchase limit an
+    operator set is held whatever the other rules would say.
+
     The new-buyer rule is the one that asks a second question after firing:
     its caps apply to a fresh identity, and "fresh" is the one thing
     ``_gather``'s window structurally cannot establish, so a trip is checked
     against delivered history before it becomes a hold.
     """
     cfg = settings or get_settings()
+    policy = await account_policy.policy_for(db, order)
+    if policy.trusted:
+        return None
+    if await account_policy.over_limit(db, order, policy):
+        return REASON_PURCHASE_LIMIT
+    return await _standard_reason(db, order, cfg)
+
+
+async def _standard_reason(db: AsyncSession, order: Order, cfg: Settings) -> str | None:
+    """Rules 1-5 in :func:`review_reason`'s order, for an account with no policy override."""
     paid_at = getattr(order, "paid_at", None)
     amount = _amount_reason(order, cfg, at=paid_at)
     skins_cap = cfg.risk_skins_review_threshold_usd
@@ -857,11 +884,14 @@ async def _is_trusted_buyer(db: AsyncSession, user_id: str | None) -> bool:
         user_id: The order's ``user_id``, or ``None`` for a guest checkout.
 
     Returns:
-        ``True`` when at least one of this user's orders has
+        ``True`` when an operator marked the account trusted
+        (``users.trusted_at``), or at least one of this user's orders has
         ``status="delivered"``.
     """
     if user_id is None:
         return False
+    if await db.scalar(select(User.trusted_at).where(User.id == user_id)) is not None:
+        return True
     count = (
         await db.execute(
             select(func.count())

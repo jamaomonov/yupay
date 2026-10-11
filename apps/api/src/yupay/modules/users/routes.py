@@ -24,6 +24,7 @@ from yupay.modules.users import service as svc
 from yupay.modules.users.models import User
 from yupay.modules.users.schemas import (
     BanUserIn,
+    PurchasePolicyIn,
     UpdateMeIn,
     UserAdminListOut,
     UserAdminOut,
@@ -169,4 +170,30 @@ async def admin_unban_user(
 ) -> UserAdminOut:
     """Restore access. Idempotent on an account that is not banned."""
     user = await svc.unban_user(db, user_id)
+    return UserAdminOut.model_validate(user)
+
+
+@admin_router.put(
+    "/{user_id}/purchase-policy",
+    response_model=UserAdminOut,
+    summary="Set the account's lifetime purchase limit and trusted flag",
+)
+async def admin_set_purchase_policy(
+    user_id: str,
+    body: PurchasePolicyIn,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    admin: Annotated[User, Depends(require_admin)],
+) -> UserAdminOut:
+    """A ``PUT`` of the whole policy, so a replay sets the same state.
+
+    A trusted account is never held for review and never refused before the charge;
+    an account past ``purchase_limit_usd`` has its next orders held (orders.account_policy).
+    """
+    user = await svc.set_purchase_policy(
+        db,
+        user_id,
+        by_admin_id=admin.id,
+        trusted=body.trusted,
+        purchase_limit_usd=body.purchase_limit_usd,
+    )
     return UserAdminOut.model_validate(user)

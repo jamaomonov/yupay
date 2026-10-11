@@ -16100,6 +16100,37 @@
         "title": "PublicFormField",
         "type": "object"
       },
+      "PurchasePolicyIn": {
+        "additionalProperties": false,
+        "description": "Body of ``PUT /admin/users/{id}/purchase-policy`` \u2014 both fields, every time.",
+        "properties": {
+          "purchase_limit_usd": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,10}|(?=[\\d.]{1,13}0*$)\\d{0,10}\\.\\d{0,2}0*$)",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Limit Usd"
+          },
+          "trusted": {
+            "title": "Trusted",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "trusted"
+        ],
+        "title": "PurchasePolicyIn",
+        "type": "object"
+      },
       "RarityFacetOut": {
         "properties": {
           "color": {
@@ -21100,6 +21131,18 @@
             ],
             "title": "Photo Url"
           },
+          "purchase_limit_usd": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Purchase Limit Usd"
+          },
           "roles": {
             "default": [],
             "items": {
@@ -21127,6 +21170,29 @@
                 "type": "null"
               }
             ]
+          },
+          "trusted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trusted At"
+          },
+          "trusted_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trusted By"
           },
           "updated_at": {
             "format": "date-time",
@@ -35551,6 +35617,75 @@
         ]
       }
     },
+    "/api/v1/admin/users/{user_id}/purchase-policy": {
+      "put": {
+        "description": "A ``PUT`` of the whole policy, so a replay sets the same state.\n\nA trusted account is never held for review and never refused before the charge;\nan account past ``purchase_limit_usd`` has its next orders held (orders.account_policy).",
+        "operationId": "admin_set_purchase_policy_api_v1_admin_users__user_id__purchase_policy_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "user_id",
+            "required": true,
+            "schema": {
+              "title": "User Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurchasePolicyIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UserAdminOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set the account's lifetime purchase limit and trusted flag",
+        "tags": [
+          "admin:users"
+        ]
+      }
+    },
     "/api/v1/admin/users/{user_id}/roles": {
       "patch": {
         "operationId": "admin_set_user_roles_api_v1_admin_users__user_id__roles_patch",
@@ -41231,7 +41366,7 @@
     "/healthz": {
       "get": {
         "description": "Return ``{\"status\": \"ok\"}`` if the process is alive.",
-        "operationId": "healthz_healthz_head",
+        "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
@@ -41240,7 +41375,7 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Healthz Healthz Head",
+                  "title": "Response Healthz Healthz Get",
                   "type": "object"
                 }
               }
@@ -41255,7 +41390,7 @@
       },
       "head": {
         "description": "Return ``{\"status\": \"ok\"}`` if the process is alive.",
-        "operationId": "healthz_healthz_head",
+        "operationId": "healthz_healthz_get",
         "responses": {
           "200": {
             "content": {
@@ -41264,7 +41399,7 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Healthz Healthz Head",
+                  "title": "Response Healthz Healthz Get",
                   "type": "object"
                 }
               }
@@ -43852,7 +43987,7 @@
     "/readyz": {
       "get": {
         "description": "Return ``{\"status\": \"ready\"}`` once all dependencies are reachable.\n\nAt MVP this is a stub; later it will check DB, Redis, broker, and critical suppliers.",
-        "operationId": "readyz_readyz_head",
+        "operationId": "readyz_readyz_get",
         "responses": {
           "200": {
             "content": {
@@ -43861,7 +43996,7 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Readyz Readyz Head",
+                  "title": "Response Readyz Readyz Get",
                   "type": "object"
                 }
               }
@@ -43876,7 +44011,7 @@
       },
       "head": {
         "description": "Return ``{\"status\": \"ready\"}`` once all dependencies are reachable.\n\nAt MVP this is a stub; later it will check DB, Redis, broker, and critical suppliers.",
-        "operationId": "readyz_readyz_head",
+        "operationId": "readyz_readyz_get",
         "responses": {
           "200": {
             "content": {
@@ -43885,7 +44020,7 @@
                   "additionalProperties": {
                     "type": "string"
                   },
-                  "title": "Response Readyz Readyz Head",
+                  "title": "Response Readyz Readyz Get",
                   "type": "object"
                 }
               }
