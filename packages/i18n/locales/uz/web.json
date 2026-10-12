@@ -316,7 +316,7 @@
     "readLess": "Yigʻish",
     "howToTitle": "{name} ni Oʻzbekistonda qanday toʻldirish",
     "howToMetaTitle": "{name} ni Oʻzbekistonda soʻmda qanday toʻldirish — YuPay",
-    "howToMetaDescription": "Bosqichma-bosqich: {name} ni Oʻzbekistonda soʻmda oʻyin IDsi boʻyicha qanday toʻldirish, ID ni qayerdan topish va narxi.",
+    "howToMetaDescription": "{name} ni Oʻzbekistonda soʻmda qanday toʻldirish: nima kerak, uni qayerdan topish va narxi — bosqichma-bosqich.",
     "howToStepsTitle": "Bosqichma-bosqich",
     "pricesTitle": "Narxlar va nominallar",
     "guideCtaButton": "{name} ni toʻldirish",
