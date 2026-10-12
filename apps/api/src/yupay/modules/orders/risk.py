@@ -246,11 +246,15 @@ def _skins_amount_reason(order: Order, cfg: Settings, *, at: datetime | None = N
 
 
 def _skins_window_cfg(cfg: Settings) -> Settings:
-    """Rolling-sum caps no lower than the skins bar: the order counts against itself."""
+    """Dollar caps no lower than the skins bar: the order counts against itself.
+
+    The new-buyer daily sum is one of them: a fresh account's $72 knife was held
+    by its $60 cap on 2026-10-12, a day after the skins bar was set to $200.
+    """
     cap = cfg.risk_skins_review_threshold_usd
     lifted = {
         name: cap
-        for name in ("risk_sum_24h_usd", "risk_sum_7d_usd")
+        for name in ("risk_sum_24h_usd", "risk_sum_7d_usd", "risk_new_buyer_sum_24h_usd")
         if 0 < getattr(cfg, name) < cap
     }
     return cfg.model_copy(update=lifted) if lifted else cfg

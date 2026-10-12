@@ -370,6 +370,30 @@ async def test_skins_lift_the_rolling_sum_but_not_past_the_skins_bar(
     )
 
 
+async def test_a_new_account_s_skin_under_200_is_not_held_by_the_new_buyer_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Production 2026-10-12: a $71.96 knife from an hour-old account, held by
+    # the $60 new-buyer daily cap although the skins bar is $200.
+    order = _order("71.96")
+
+    async def no_history(_db: Any, _order: Any) -> bool:
+        return False
+
+    monkeypatch.setattr(risk_module, "_has_delivered_history", no_history)
+    base = _cfg().model_dump()
+    base.update(
+        manual_review_threshold_usd=Decimal("40"),
+        risk_new_buyer_sum_24h_usd=Decimal("60"),
+        risk_skins_review_threshold_usd=Decimal("200"),
+    )
+    settings = Settings(**base)
+    _skins_gather(monkeypatch, order, skins_only=True, recent=[])
+    assert await review_reason(cast("Any", object()), order, settings=settings) is None
+    _skins_gather(monkeypatch, order, skins_only=False, recent=[])
+    assert await review_reason(cast("Any", object()), order, settings=settings) is not None
+
+
 def test_the_skins_window_cfg_leaves_higher_or_disabled_caps_alone() -> None:
     cfg = _cfg(sum24="0", sum7d="500")
     assert _skins_window_cfg(cfg) is cfg
