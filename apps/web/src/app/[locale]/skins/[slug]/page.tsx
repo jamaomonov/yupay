@@ -19,7 +19,6 @@ import { SkinPriceBlock } from "@/components/skins/SkinPriceBlock";
 import { SkinWearPicker } from "@/components/skins/SkinWearPicker";
 import { routing } from "@/i18n/routing";
 import { alternates, GEO_META, localeUrl, ogLocale, pathFor, ROBOTS } from "@/lib/seo";
-import { steamImageSize } from "@/lib/skin-float";
 import { skinFaq, skinFullName, skinProductLd } from "@/lib/skin-seo";
 import { DEFAULT_SORT, displayPrice, getSkinDetail, skinQueryString } from "@/lib/skins";
 
@@ -47,6 +46,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       ? t("meta.itemDescription", { name, price, count: item.count })
       : t("meta.itemDescriptionNoPrice", { name });
   const path = `/skins/${slug}`;
+  const ogImage = `/og/${locale}${path}`;
   return {
     title,
     description,
@@ -59,9 +59,11 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
       title,
       description,
       url: localeUrl(locale, path),
-      ...(item.image_url ? { images: [steamImageSize(item.image_url, "512fx384f")] } : {}),
+      // The generated card (`app/og/...`): weapon, finish, price on the item art.
+      images: [{ url: ogImage, width: 1200, height: 630 }],
       ...ogLocale(locale),
     },
+    twitter: { card: "summary_large_image", title, description, images: [ogImage] },
   };
 }
 

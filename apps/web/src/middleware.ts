@@ -79,5 +79,7 @@ export default function middleware(req: NextRequest): NextResponse {
 }
 
 export const config = {
-  matcher: ["/((?!api|_next|_vercel|md|.*\\..*).*)"],
+  // `og/` is the generated link-preview cards (`app/og/<locale>/...`): one URL
+  // per locale already, so the i18n rewrite would only push them under `/ru`.
+  matcher: ["/((?!api|_next|_vercel|md|og/|.*\\..*).*)"],
 };

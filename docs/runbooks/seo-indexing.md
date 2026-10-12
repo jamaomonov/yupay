@@ -68,3 +68,20 @@ favicon after it **recrawls and processes the home page**, which typically takes
 appears primarily on mobile SERPs. If it's still missing weeks after the home
 page is confirmed indexed, re-check the `<link rel="icon">` on the home page and
 that `/favicon.ico` returns 200 (not behind auth/redirect).
+
+## Link previews (`/og/...`)
+
+Brand pages and CS2 skin pages point `og:image` / `twitter:image` at a card
+generated on request (`apps/web/src/app/og/<locale>/{store,skins}/<slug>`,
+1200×630 PNG): YuPay wordmark, the brand's art (or the skin on its rarity
+glow), the name and the starting price in soʻm. Shared parts and the reasons
+behind them (WebP via the image optimizer, fonts from `apps/web/assets/og`)
+are in `apps/web/src/lib/og-image.tsx`. `/og/` is excluded from the i18n
+middleware on purpose (`middleware.test.ts`).
+
+- **A card shows no art** — the remote image failed or took over 4 s; the
+  card still renders. Open `https://yupay.uz/og/ru/store/<slug>` directly.
+- **Telegram still shows the old preview** — it caches per URL. Send the link
+  to `@WebpageBot` to refresh it; Facebook/WhatsApp have their own debuggers.
+- **No price on a card** — the brand has only per-unit or typed-amount SKUs
+  (Telegram Stars, Steam wallet), which have a rate, not a price.

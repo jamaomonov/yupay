@@ -88,6 +88,7 @@ export async function generateMetadata({
     ),
   );
   const path = `/store/${brand.slug}`;
+  const ogImage = `/og/${locale}${path}`;
   return {
     title: { absolute: title },
     description,
@@ -100,9 +101,11 @@ export async function generateMetadata({
       title,
       description,
       url: localeUrl(locale, path),
-      images: brand.hero_image_url ? [{ url: brand.hero_image_url }] : undefined,
+      // The generated card (`app/og/...`): wordmark, name and price on the art.
+      images: [{ url: ogImage, width: 1200, height: 630 }],
       ...ogLocale(locale),
     },
+    twitter: { card: "summary_large_image", title, description, images: [ogImage] },
   };
 }
 

@@ -4,7 +4,7 @@ vi.mock("next-intl/middleware", () => ({
   default: () => () => new Response(null, { status: 200 }) as never,
 }));
 
-import middleware from "./middleware";
+import middleware, { config } from "./middleware";
 
 function request(url: string, headers: Record<string, string> = {}) {
   const req = new Request(url, { headers }) as never as {
@@ -50,5 +50,24 @@ describe("RSC responses are not shareable", () => {
     // origin. Marking documents private would undo that.
     const res = middleware(request("https://yupay.uz/store"));
     expect(res.headers.get("cache-control")).toBeNull();
+  });
+});
+
+/**
+ * The link-preview cards (`app/og/<locale>/...`) carry their locale in the
+ * path already. Through the i18n middleware `/og/ru/store/x` would be pushed
+ * under `/ru` (a 404) and a chat crawler would get no picture.
+ */
+describe("link-preview cards bypass the i18n middleware", () => {
+  const matches = (path: string) => config.matcher.some((m) => new RegExp(`^${m}$`).test(path));
+
+  test("/og/... is not matched", () => {
+    expect(matches("/og/ru/store/pubg-mobile")).toBe(false);
+    expect(matches("/og/en/skins/ak-47-redline-field-tested")).toBe(false);
+  });
+
+  test("pages still are, including a slug that starts with og", () => {
+    expect(matches("/store/pubg-mobile")).toBe(true);
+    expect(matches("/ogame")).toBe(true);
   });
 });
