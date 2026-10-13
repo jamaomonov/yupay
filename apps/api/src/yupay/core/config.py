@@ -669,6 +669,11 @@ class Settings(BaseSettings):
     #: An identity counts as "new" while its oldest linked order is younger
     #: than this many days.
     risk_new_buyer_age_days: int = Field(default=7)
+    #: Rule 5 (guest + liquid brand + foreign browser timezone) ignores orders
+    #: below this many USD: 8 holds in 10 days averaged $8, 6 delivered
+    #: (owner, 2026-10-13). 0 = any amount. The pre-charge veto's timezone
+    #: fallback is untouched — it reads risk_home_timezones, not this.
+    risk_geo_min_usd: Decimal = Field(default=Decimal("0"))
     #: Rule 4: between these Tashkent hours the review thresholds are
     #: multiplied by risk_night_threshold_multiplier (fraud waves run at
     #: night). Window wraps midnight: start 22, end 7.

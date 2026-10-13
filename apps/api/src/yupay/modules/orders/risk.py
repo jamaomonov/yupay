@@ -477,6 +477,8 @@ def _geo_reason(
     item_brand_slugs: frozenset[str],
     tz: str | None,
     cfg: Settings,
+    *,
+    total_usd: Decimal | None = None,
 ) -> str | None:
     """Rule 5: a guest buying a liquid brand from outside the home timezones.
 
@@ -485,9 +487,10 @@ def _geo_reason(
     cash-equivalent brand, and the browser reported a timezone that is neither
     unknown nor one of ours. An empty ``risk_liquid_brands`` or
     ``risk_home_timezones`` disables the rule entirely rather than treating
-    "nothing configured" as "everything foreign".
+    "nothing configured" as "everything foreign". An order under
+    ``risk_geo_min_usd`` is not worth a hold on this evidence alone.
     """
-    if not order_is_guest:
+    if not order_is_guest or (total_usd is not None and total_usd < cfg.risk_geo_min_usd):
         return None
     liquid = _csv(cfg.risk_liquid_brands)
     if not liquid or not (item_brand_slugs & liquid):
@@ -818,7 +821,7 @@ async def _standard_reason(db: AsyncSession, order: Order, cfg: Settings) -> str
     fresh = _new_buyer_reason(current, recent, cfg)
     if fresh is not None and not await _has_delivered_history(db, order):
         return fresh
-    return _geo_reason(geo.is_guest, geo.brand_slugs, geo.timezone, cfg)
+    return _geo_reason(geo.is_guest, geo.brand_slugs, geo.timezone, cfg, total_usd=order.total_usd)
 
 
 def _veto_decision(

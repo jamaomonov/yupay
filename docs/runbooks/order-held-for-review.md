@@ -479,6 +479,23 @@ identity's 24h spend was $144) rather than below it, because every one of the
 ordinary household or office — the largest real collision measured over 14 days
 was exactly 3, and it produced four holds of $1–$15.
 
+## Loosened again, 2026-10-13
+
+Measured over the ten days before: 29 holds on 1985 paid orders (1.5%), all
+but a handful delivered, median wait 2–27 minutes. The owner's call: fraud
+has stopped, three rules were holding honest buyers.
+
+| Env                           | Was | Now | Why                                                               |
+| ----------------------------- | --- | --- | ----------------------------------------------------------------- |
+| `MANUAL_REVIEW_THRESHOLD_USD` | 66  | 100 | 11 holds, 10 delivered; jitter still starts holding at 0.6 × base |
+| `RISK_NEW_BUYER_SUM_24H_USD`  | 60  | 100 | held a fresh account's $72 knife; skins now lift it to their $200 |
+| `RISK_GEO_MIN_USD` (new)      | —   | 20  | guest + liquid brand + foreign timezone: 8 holds averaging $8     |
+
+`RISK_VELOCITY_24H` and `RISK_NEW_BUYER_VELOCITY_24H` are 0 (off) on
+production, not the 12 / 8 in the table above. `RISK_GEO_MIN_USD` only
+narrows the post-payment hold: the pre-charge veto's timezone fallback still
+refuses a guest with a foreign browser clock and no country header.
+
 ### What the ceilings do and do not protect
 
 They bound **one identity**. Someone with several unrelated identities gets the

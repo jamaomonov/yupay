@@ -240,6 +240,15 @@ def test_signed_in_or_home_tz_or_illiquid_brand_passes() -> None:
     cfg = _cfg()
     assert _geo_reason(False, frozenset({"roblox"}), "Europe/Kiev", cfg) is None
     assert _geo_reason(True, frozenset({"roblox"}), "Asia/Tashkent", cfg) is None
+
+
+def test_the_geo_rule_skips_orders_under_its_minimum() -> None:
+    base = _cfg().model_dump()
+    base["risk_geo_min_usd"] = Decimal("20")
+    cfg = Settings(**base)
+    kiev = (True, frozenset({"roblox"}), "Europe/Kiev", cfg)
+    assert _geo_reason(*kiev, total_usd=Decimal("8.00")) is None
+    assert _geo_reason(*kiev, total_usd=Decimal("20.00")) == REASON_GEO_MISMATCH
     assert _geo_reason(True, frozenset({"free-fire"}), "Europe/Kiev", cfg) is None
     assert _geo_reason(True, frozenset({"roblox"}), None, cfg) is None  # no tz = no claim
     assert (
