@@ -116,7 +116,7 @@ test("collects the review in the modal instead of linking to the brand page", as
   expect(mockApiFetch).toHaveBeenCalledWith(`/orders/${ORDER_ID}`);
 });
 
-test("submits the rating on a star tap", async () => {
+test("submits the rating from Submit after a star tap", async () => {
   mockSubmitReview.mockResolvedValue({
     id: "rev-1",
     rating: 5,
@@ -127,6 +127,7 @@ test("submits the rating on a star tap", async () => {
   await openWithForm();
 
   fireEvent.click(screen.getByRole("button", { name: "5" }));
+  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
 
   expect(await screen.findByText("web.brandReviews.thanksRating")).toBeInTheDocument();
   expect(mockSubmitReview).toHaveBeenCalledWith({
@@ -141,6 +142,7 @@ test("hides the form when a concurrent submit already rated the order (409)", as
   await openWithForm();
 
   fireEvent.click(screen.getByRole("button", { name: "4" }));
+  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
 
   await waitFor(() => {
     expect(screen.queryByText("web.brandReviews.askTitleNamed")).not.toBeInTheDocument();

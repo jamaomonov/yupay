@@ -225,3 +225,19 @@ same ask, at the moment they actually return.
   row (`UNIQUE (order_id, brand_id)`).
 - The original "immutable" rule now means **rating is immutable**; body may
   change once, briefly.
+
+## Amendment: a star tap selects, Submit posts (2026-10-14)
+
+Decision 1 of the 2026-09-11 amendment made a star tap post the rating, and
+the rating is immutable. Together they turned a mis-tap into a permanent
+score: on 2026-10-13 a Mini App buyer gave 1 star and wrote under it that the
+stars "did not press to the end", and production held 21 text-less 1-star
+reviews in 30 days, every one on a delivered order. The stars were 26 px with
+4 px between them — under a thumb's width.
+
+Now, on web (`ReviewForm`) and in the Mini App (`RateAsk`), a tap only picks
+the stars and a **Submit** button under them posts the rating. Each star's
+tap target is 44 px. The rating stays immutable after the POST; the API is
+unchanged. The cost is one extra tap before the rating is saved, so a buyer
+who taps a star and leaves the dialog leaves no rating — accepted, because a
+rating they did not mean is worse than none.

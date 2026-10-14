@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 export interface ReviewFormProps {
-  /** Called with the chosen rating (1–5) the moment a star is tapped. */
+  /** Called with the chosen rating (1–5) from the Submit button under the stars. */
   onSubmit: (rating: number) => void;
   /** Called once, from the follow-up submit button, with the draft body. */
   onAmend?: ((body: string) => Promise<void> | void) | undefined;
@@ -25,8 +25,14 @@ export interface ReviewFormProps {
 }
 
 /**
- * One-tap star rating, then an optional comment. Owns input state; the
- * parent owns idle|sending|done|already|error and the actual HTTP calls.
+ * Star rating, then an optional comment. Owns input state; the parent owns
+ * idle|sending|done|already|error and the actual HTTP calls.
+ *
+ * A tap only picks the stars; Submit sends them. Until 2026-10-14 the tap
+ * itself posted, and the rating cannot be changed afterwards (ADR-0039): a
+ * thumb landing on the first 26 px star wrote a permanent 1. Production had
+ * 21 text-less 1-star reviews in 30 days on delivered orders, and one buyer
+ * wrote under theirs that the stars "did not press to the end".
  *
  * Nothing is sent until the buyer taps Submit — blur must not race a
  * catch-up dialog closing.
@@ -140,16 +146,16 @@ export function ReviewForm({
     <div className={`${frame} ${className ?? ""}`}>
       <p className="text-sm font-semibold">{title}</p>
       <p className="text-tx-mute mt-1 text-xs">{t("askHint")}</p>
-      <div className="mt-3 flex gap-1">
+      <div className="mt-2 flex">
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
             type="button"
             aria-label={String(n)}
+            aria-pressed={n === tapped}
             disabled={submitting}
             onClick={() => {
               setTapped(n);
-              onSubmit(n);
             }}
             onMouseEnter={() => {
               setHover(n);
@@ -157,12 +163,24 @@ export function ReviewForm({
             onMouseLeave={() => {
               setHover(0);
             }}
-            className="p-0.5 disabled:opacity-50"
+            className="p-1.5 disabled:opacity-50"
           >
-            <Star size={26} className={n <= filled ? "fill-gold text-gold" : "text-white/25"} />
+            <Star size={32} className={n <= filled ? "fill-gold text-gold" : "text-white/25"} />
           </button>
         ))}
       </div>
+      {tapped > 0 && (
+        <button
+          type="button"
+          disabled={submitting}
+          onClick={() => {
+            onSubmit(tapped);
+          }}
+          className="bg-primary text-primary-foreground mt-2 w-full rounded-xl py-2 text-sm font-semibold disabled:opacity-50"
+        >
+          {submitting ? t("submitting") : t("submit")}
+        </button>
+      )}
       {showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
     </div>
   );

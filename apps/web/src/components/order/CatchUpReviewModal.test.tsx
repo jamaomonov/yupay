@@ -72,6 +72,7 @@ test("stays open after a star tap so the buyer can type a comment", async () => 
   expect(await screen.findByRole("dialog")).toBeInTheDocument();
 
   fireEvent.click(screen.getByRole("button", { name: "5" }));
+  fireEvent.click(screen.getByRole("button", { name: "web.brandReviews.submit" }));
 
   expect(await screen.findByText("web.brandReviews.thanksRating")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "web.brandReviews.submit" })).toBeInTheDocument();

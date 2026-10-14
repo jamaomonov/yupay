@@ -54,3 +54,18 @@ test("skip leaves the body empty and still shows the thank-you", async () => {
   expect(await screen.findByText("thanks")).toBeInTheDocument();
   expect(screen.getByText("thanksBody")).toBeInTheDocument();
 });
+
+test("a star tap only selects; Submit sends the stars last tapped", () => {
+  const onSubmit = vi.fn<(rating: number) => void>();
+  render(<ReviewForm onSubmit={onSubmit} submitting={false} showError={false} />);
+
+  expect(screen.queryByRole("button", { name: "submit" })).not.toBeInTheDocument();
+  // A thumb landing on the first star on the way to the fifth (2026-10-13).
+  fireEvent.click(screen.getByRole("button", { name: "1" }));
+  fireEvent.click(screen.getByRole("button", { name: "5" }));
+  expect(onSubmit).not.toHaveBeenCalled();
+
+  fireEvent.click(screen.getByRole("button", { name: "submit" }));
+  expect(onSubmit).toHaveBeenCalledTimes(1);
+  expect(onSubmit).toHaveBeenCalledWith(5);
+});

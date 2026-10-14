@@ -17,8 +17,12 @@ export interface ExistingReview {
 }
 
 /**
- * One-tap star rating for a delivered order, then an optional comment.
- * PATCH runs only from Submit.
+ * Star rating for a delivered order, then an optional comment.
+ *
+ * A tap only picks the stars; Submit posts them. The rating cannot change
+ * after the POST (ADR-0039), and when the tap itself posted, a thumb on the
+ * first 26 px star wrote a permanent 1 — a buyer wrote under theirs on
+ * 2026-10-13 that the stars "did not press to the end".
  *
  * No canned-phrase chips since 2026-09-25 — they turned most reviews into the
  * same three words (see the web ReviewForm for the longer note).
@@ -73,7 +77,6 @@ export function RateAsk({
   const wantsWords = !confirmed && reviewFollowUp(review) === "words";
 
   async function onRate(value: number) {
-    setTapped(value);
     setState("sending");
     try {
       const created = await submitReview({
@@ -183,24 +186,38 @@ export function RateAsk({
     <div className="rounded-xl border border-white/10 p-3">
       <p className="text-sm font-semibold text-white">{title}</p>
       <p className="mt-1 text-[11px] text-white/50">{t("reviews.askHint")}</p>
-      <div className="mt-2 flex gap-1">
+      <div className="mt-1 flex">
         {[1, 2, 3, 4, 5].map((n) => (
           <button
             key={n}
             type="button"
             aria-label={String(n)}
+            aria-pressed={n === tapped}
             disabled={state === "sending"}
             onClick={() => {
-              void onRate(n);
+              setTapped(n);
             }}
+            className="p-1.5"
           >
             <Star
-              size={26}
+              size={32}
               className={n <= tapped ? "fill-amber-400 text-amber-400" : "text-white/25"}
             />
           </button>
         ))}
       </div>
+      {tapped > 0 && (
+        <button
+          type="button"
+          disabled={state === "sending"}
+          onClick={() => {
+            void onRate(tapped);
+          }}
+          className="bg-primary text-primary-foreground mt-2 w-full rounded-lg py-2 text-sm font-semibold disabled:opacity-50"
+        >
+          {state === "sending" ? t("reviews.submitting") : t("reviews.submit")}
+        </button>
+      )}
       {state === "error" && <p className="mt-1 text-xs text-red-400">{t("reviews.error")}</p>}
       {state === "conflict" && <p className="mt-1 text-xs text-white/50">{t("reviews.already")}</p>}
     </div>
