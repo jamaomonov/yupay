@@ -507,6 +507,72 @@ async def notify_review_reminder(db: AsyncSession, *, order_id: str, user_id: st
     )
 
 
+#: Brands whose Mini App page is not the generic ``/topup/<slug>`` form —
+#: mirrors ``hrefForGameSlug`` in ``apps/miniapp/src/lib/routes.ts``.
+_MINIAPP_BRAND_PATHS: Final[dict[str, str]] = {
+    "steam-gifts": "/gifts",
+    "cs2-skins": "/cs2-market",
+}
+
+
+def miniapp_brand_url(base: str, brand_slug: str | None) -> str:
+    """The Mini App page a buyer starts a purchase of ``brand_slug`` from.
+
+    Falls back to the Mini App home when the order carries no brand.
+    """
+    root = base.rstrip("/")
+    if not brand_slug:
+        return f"{root}/"
+    path = _MINIAPP_BRAND_PATHS.get(brand_slug, f"/topup/{quote(brand_slug)}")
+    return f"{root}{path}"
+
+
+def unpaid_reminder_text(summary: str) -> str:
+    """The bot's nudge for an order that expired before it was paid."""
+    return (
+        "<b>Заказ не оплачен</b>\n\n"
+        f"{html.escape(summary)}\n\n"
+        "Не получилось оплатить? Попробуйте ещё раз или выберите другой способ."
+    )
+
+
+async def notify_unpaid_reminder(db: AsyncSession, *, order_id: str, user_id: str) -> bool:
+    """One Telegram nudge back to the game page for an order that expired unpaid.
+
+    The button opens the brand's page in the Mini App rather than the dead
+    order: an expired order cannot be paid, so the only useful next step is
+    a fresh one.
+
+    Returns ``True`` when a message actually went out. ``False`` — silently —
+    when the user has no linked Telegram, the order is gone, the bot token is
+    unset, or the Mini App URL is unconfigured.
+    """
+    chat = await _resolve_chat_id(db, user_id=user_id)
+    if chat is None:
+        return False
+    settings = get_settings()
+    token = settings.telegram_bot_token
+    base = settings.telegram_miniapp_url
+    if not token or not base:
+        return False
+    order = await _load_order(db, order_id)
+    if order is None:
+        return False
+    items = list(order.items)
+    slug = items[0].sku.product.brand.slug if items else None
+    markup = {
+        "inline_keyboard": [
+            [{"text": "Купить снова", "web_app": {"url": miniapp_brand_url(base, slug)}}]
+        ]
+    }
+    return await tg.send_message(
+        bot_token=token,
+        chat_id=chat[0],
+        text=unpaid_reminder_text(_summarise_order(order)),
+        reply_markup=markup,
+    )
+
+
 async def resend_guest_delivery_email(order_id: str, email: str) -> None:
     """Re-send the delivered-email (codes + a fresh access link) to a guest.
 

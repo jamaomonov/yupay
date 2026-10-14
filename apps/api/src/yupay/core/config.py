@@ -353,6 +353,19 @@ class Settings(BaseSettings):
         ),
     )
 
+    unpaid_reminder_after_minutes: int = Field(
+        default=20,
+        description=(
+            "Minutes after an order was created before a signed-in buyer whose order "
+            "expired unpaid gets one Telegram nudge back to the game page. 0 = off. "
+            "On by default, unlike the review reminder: the owner asked for it "
+            "(2026-10-14) after 1225 retail orders expired unpaid in 30 days. Orders "
+            "expire at 10 minutes, so 20 leaves the buyer ten minutes to come back on "
+            "their own first. Capped by one order per user per run, a 24-hour per-user "
+            "cooldown and a 3-hour ceiling; see modules/orders/unpaid_reminder.py."
+        ),
+    )
+
     # --- Manual review of large orders (ADR-0047) ---
     manual_review_threshold_usd: Decimal = Field(
         default=Decimal("40"),
