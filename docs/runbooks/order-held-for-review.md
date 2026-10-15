@@ -503,3 +503,27 @@ per-identity ceiling several times over; nothing here caps that, and it is not
 meant to — the control that removed the carding wave was switching off payment
 from unauthorised cards, which is upstream of every rule in this file. If that
 setting is ever reversed, these numbers must come back down first.
+
+## CS2 skin orders linked to each other, 2026-10-15
+
+`identity_rolling_sum_exceeded` on a $45 skin order whose buyer had spent $10
+that week. The rule links orders by any shared `fulfillment_data` value, and
+every csmarket skin order carries `supplier: "csmarket"` — so it summed the
+order with 69 orders of 13 other buyers ($374 in 7 days) and tripped the $400
+7-day cap. `supplier`, the skin's names (`slug`, `market_hash_name`, `name`,
+`waxpeer_name`, `phase`) and `source_item_id` are now in
+`_NON_IDENTITY_FIELDS`; only the trade link identifies a skin buyer.
+
+To find this class of mistake again, list low-cardinality string fields in
+paid orders — a field with a few values across many orders links strangers:
+
+```sql
+select b.slug, kv.key, count(*) n, count(distinct kv.value) vals
+from orders o join order_items oi on oi.order_id = o.id
+join skus s on s.id = oi.sku_id join products p on p.id = s.product_id
+join brands b on b.id = p.brand_id, jsonb_each(oi.fulfillment_data) kv
+where o.created_at > now() - interval '30 days' and o.paid_at is not null
+  and jsonb_typeof(kv.value) = 'string'
+group by 1, 2 having count(*) >= 10 and count(distinct kv.value)::float / count(*) < 0.5
+order by 1, 3 desc;
+```

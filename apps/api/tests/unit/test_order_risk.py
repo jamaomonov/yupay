@@ -305,6 +305,28 @@ def test_targets_from_skips_fields_that_name_a_thing_rather_than_a_person() -> N
     assert _targets_from({"server": "15180", "region_code": "ge"}) == frozenset()
 
 
+def test_targets_from_keeps_only_the_trade_link_of_a_skin_order() -> None:
+    """Every csmarket order says ``supplier: csmarket``; that linked them all.
+
+    On 2026-10-15 a $45 knife was summed with 69 orders of 13 other buyers and
+    held by the 7-day rolling sum. Two buyers of the same skin share its names
+    and catalogue ids too.
+    """
+    link = "https://steamcommunity.com/tradeoffer/new/?partner=1&token=abc"
+    assert _targets_from(
+        {
+            "slug": "karambit-doppler-fn",
+            "tradelink": link,
+            "market_hash_name": "★ Karambit | Doppler (Factory New)",
+            "phase": "Phase 2",
+            "name": "★ Karambit | Doppler (Factory New) Phase 2",
+            "waxpeer_name": "★ Karambit | Doppler Phase 2 (Factory New)",
+            "supplier": "csmarket",
+            "source_item_id": "4512",
+        }
+    ) == frozenset({link.lower()})
+
+
 # ---------- review_reason: rule 1 short-circuits before the gather ----------
 
 

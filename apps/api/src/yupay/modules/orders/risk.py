@@ -374,6 +374,12 @@ def _csv(value: str) -> frozenset[str]:
 #: principle — every buyer of the same game carries the same ``app_id`` — but
 #: had one order each when this was written, which is exactly why they belong
 #: here before that changes rather than after.
+#:
+#: The CS2 skin keys are the same mistake, and this time it held a real order:
+#: every csmarket skin order carries ``supplier: "csmarket"``, so on 2026-10-15
+#: a $45 knife was linked to 69 orders of 13 other buyers ($374 in 7 days) and
+#: held by the 7-day sum. A skin's names and catalogue ids are shared by
+#: everyone who buys the same skin; only the trade link is the buyer.
 _NON_IDENTITY_FIELDS = frozenset(
     {
         "server",
@@ -384,6 +390,13 @@ _NON_IDENTITY_FIELDS = frozenset(
         "package_id",
         "package_name",
         "supplier_price_usd",
+        "supplier",
+        "slug",
+        "market_hash_name",
+        "phase",
+        "name",
+        "waxpeer_name",
+        "source_item_id",
     }
 )
 
