@@ -363,14 +363,28 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RequestValidationError, validation_handler)  # type: ignore[arg-type]
 
     # GET and HEAD: uptime monitors (UptimeRobot's default) probe with HEAD, and a 405
-    # there reads as "API down" on a healthy process (2026-10-11).
-    @app.api_route("/healthz", methods=["GET", "HEAD"], tags=["meta"], summary="Liveness probe")
+    # there reads as "API down" on a healthy process (2026-10-11). ``operation_id`` is
+    # pinned: FastAPI keeps ``methods`` as a set, so the generated id took whichever of
+    # GET/HEAD the process's hash seed put first and ``openapi-drift`` flipped per run.
+    @app.api_route(
+        "/healthz",
+        methods=["GET", "HEAD"],
+        tags=["meta"],
+        summary="Liveness probe",
+        operation_id="healthz_healthz_get",
+    )
     @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
     async def healthz() -> dict[str, str]:
         """Return ``{"status": "ok"}`` if the process is alive."""
         return {"status": "ok"}
 
-    @app.api_route("/readyz", methods=["GET", "HEAD"], tags=["meta"], summary="Readiness probe")
+    @app.api_route(
+        "/readyz",
+        methods=["GET", "HEAD"],
+        tags=["meta"],
+        summary="Readiness probe",
+        operation_id="readyz_readyz_get",
+    )
     @limiter.exempt  # type: ignore[untyped-decorator]  # slowapi ships no decorator types
     async def readyz() -> dict[str, str]:
         """Return ``{"status": "ready"}`` once all dependencies are reachable.
