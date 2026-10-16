@@ -251,7 +251,7 @@
       "tr": "Turkey",
       "us": "USA",
       "br": "Brazil",
-      "cis": "Uzbekistan & CIS",
+      "cis": "CIS",
       "bd": "Bangladesh",
       "eu": "Europe",
       "latam": "Latin America",
@@ -392,7 +392,11 @@
     "howToMetaDescriptionVoucher": "Step by step: how to buy {name} in Uzbekistan for soʻm, get the code and redeem it.",
     "breadcrumbHowToVoucher": "How to buy",
     "guideCtaButtonVoucher": "Buy {name}",
-    "methodP2p": "Card transfer"
+    "methodP2p": "Card transfer",
+    "regionsHome": {
+      "global": "Global (Uzbekistan)",
+      "cis": "Uzbekistan & CIS"
+    }
   },
   "gifts": {
     "meta": {

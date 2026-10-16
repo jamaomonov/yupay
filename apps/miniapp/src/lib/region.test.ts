@@ -84,6 +84,16 @@ describe("regionLabel", () => {
     expect(regionLabel("global", translate)).toBe(translate("topup.region.global"));
   });
 
+  it("names the game's main region after Uzbekistan, and only the main one", () => {
+    expect(regionLabel("global", translate, true)).toBe(translate("topup.regionHome.global"));
+    expect(regionLabel("cis", translate, true)).toBe(translate("topup.regionHome.cis"));
+    // Free Fire's global server is a region, not home.
+    expect(regionLabel("global", translate, false)).toBe(translate("topup.region.global"));
+    expect(regionLabel("cis", translate)).toBe(translate("topup.region.cis"));
+    // A Free Fire region code with no home label keeps its plain name.
+    expect(regionLabel("mysg", translate, true)).toBe(translate("topup.region.mysg"));
+  });
+
   it("falls back to the uppercase code for an unknown region", () => {
     expect(regionLabel("kz", translate)).toBe("KZ");
   });

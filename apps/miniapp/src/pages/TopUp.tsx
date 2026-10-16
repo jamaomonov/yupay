@@ -1176,14 +1176,16 @@ export default function TopUp() {
                             : "1px solid hsl(var(--border))",
                         }}
                       >
-                        {regionLabel(r.code, t)}
+                        {regionLabel(r.code, t, r.code === regions[0]?.code)}
                       </button>
                     );
                   })}
                 </div>
                 {regionUnchecked ? (
                   <p className="mt-2 text-[11px] text-amber-400">
-                    {t("topup.regionUnchecked", { region: regionLabel(region, t) })}
+                    {t("topup.regionUnchecked", {
+                      region: regionLabel(region, t, region === regions[0]?.code),
+                    })}
                   </p>
                 ) : (
                   regions.some((r) => r.code === "ru") && (

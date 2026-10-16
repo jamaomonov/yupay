@@ -251,7 +251,7 @@
       "tr": "Turkiya",
       "us": "AQSH",
       "br": "Braziliya",
-      "cis": "O'zbekiston va MDH",
+      "cis": "MDH",
       "bd": "Bangladesh",
       "eu": "Yevropa",
       "latam": "Lotin Amerikasi",
@@ -392,7 +392,11 @@
     "howToMetaDescriptionVoucher": "Qadamma-qadam: {name} ni O'zbekistonda so'mga qanday sotib olish, kodni olish va faollashtirish.",
     "breadcrumbHowToVoucher": "Qanday sotib olish",
     "guideCtaButtonVoucher": "{name} sotib olish",
-    "methodP2p": "Kartaga oʻtkazma"
+    "methodP2p": "Kartaga oʻtkazma",
+    "regionsHome": {
+      "global": "Global (O'zbekiston)",
+      "cis": "O'zbekiston va MDH"
+    }
   },
   "gifts": {
     "meta": {

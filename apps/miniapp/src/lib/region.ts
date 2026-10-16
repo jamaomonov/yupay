@@ -31,19 +31,38 @@ export interface RegionFields {
 
 const LABEL_KEYS: Record<string, MessageKey> = {
   global: "topup.region.global",
+  cis: "topup.region.cis",
   ru: "topup.region.ru",
   ph: "topup.region.ph",
   my: "topup.region.my",
   sg: "topup.region.sg",
+  mysg: "topup.region.mysg",
   id: "topup.region.id",
+  th: "topup.region.th",
+  vn: "topup.region.vn",
+  tw: "topup.region.tw",
   tr: "topup.region.tr",
+  eu: "topup.region.eu",
+  mena: "topup.region.mena",
+  bd: "topup.region.bd",
   us: "topup.region.us",
+  latam: "topup.region.latam",
   br: "topup.region.br",
 };
 
-/** A region's display name; an unknown code falls back to its uppercase self. */
-export function regionLabel(code: string, t: (key: MessageKey) => string): string {
-  const key = LABEL_KEYS[code];
+/** The game's main region reads where our customers are ("Глобальный (Узбекистан)"). */
+const HOME_KEYS: Record<string, MessageKey> = {
+  global: "topup.regionHome.global",
+  cis: "topup.regionHome.cis",
+};
+
+/**
+ * A region's display name; an unknown code falls back to its uppercase self.
+ * `home` marks the game's main region — the one customers in Uzbekistan are
+ * on — which says so where a home label exists.
+ */
+export function regionLabel(code: string, t: (key: MessageKey) => string, home = false): string {
+  const key = (home ? HOME_KEYS[code] : undefined) ?? LABEL_KEYS[code];
   return key ? t(key) : code.toUpperCase();
 }
 

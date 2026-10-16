@@ -158,7 +158,7 @@
   "topup.region.tr": "Turkiya",
   "topup.region.us": "AQSH",
   "topup.region.br": "Braziliya",
-  "topup.region.cis": "O'zbekiston va MDH",
+  "topup.region.cis": "MDH",
   "topup.region.bd": "Bangladesh",
   "topup.region.eu": "Yevropa",
   "topup.region.latam": "Lotin Amerikasi",
@@ -167,6 +167,8 @@
   "topup.region.th": "Tailand",
   "topup.region.tw": "Tayvan",
   "topup.region.vn": "Vyetnam",
+  "topup.regionHome.global": "Global (O'zbekiston)",
+  "topup.regionHome.cis": "O'zbekiston va MDH",
   "topup.regionHint": "O'yinda narxlar rublda bo'lsa — Rossiyani tanlang",
   "topup.regionUnchecked": "Bu mintaqa uchun ID tekshirilmaydi. Akkauntingiz «{region}» mintaqasida ro'yxatdan o'tganiga ishonch hosil qiling.",
   "topup.optionsCount": {

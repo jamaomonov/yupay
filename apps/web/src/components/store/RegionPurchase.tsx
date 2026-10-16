@@ -60,7 +60,11 @@ export function RegionPurchase({ regions, locale, children }: RegionPurchaseProp
     window.history.replaceState(window.history.state, "", url);
   }
 
+  // The game's main region reads where our customers are
+  // ("Глобальный (Узбекистан)"), where a home label exists.
   function regionName(c: string): string {
+    const home = `regionsHome.${c}`;
+    if (c === first?.code && t.has(home)) return t(home);
     const key = `regions.${c}`;
     return t.has(key) ? t(key) : c.toUpperCase();
   }
