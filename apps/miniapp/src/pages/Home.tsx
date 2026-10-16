@@ -10,7 +10,6 @@ import { SafeImage } from "@/components/ui/safe-image";
 import { useCategoriesList, useGames } from "@/lib/catalog";
 import { CATEGORY_LABELS } from "@/lib/constants";
 import { useT } from "@/lib/i18n";
-import { mergeRegions } from "@/lib/region";
 import { hrefForGame, inHomeGrid } from "@/lib/routes";
 import { useDocumentTitle } from "@/lib/use-document-title";
 
@@ -150,15 +149,9 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const gamesQuery = useGames();
-  // Mobile Legends and Magic Chess: Go Go are two brands per region
-  // (ADR-0079); the Mini App shows one card and lets the region be picked on
-  // the top-up page — fold the `-ru` twin into its base card here so it
-  // never appears twice in the grid. `mergeRegions` matches on `.slug`; a
-  // `Game`'s id IS its brand slug (see `brandToGame` in lib/catalog.ts).
-  const games = useMemo(
-    () => mergeRegions((gamesQuery.data ?? []).map((g) => ({ ...g, slug: g.id }))),
-    [gamesQuery.data],
-  );
+  // One card per game: the API leaves a game's regional brands out of this
+  // list (ADR-0099) — the region is picked on the top-up page.
+  const games = useMemo(() => gamesQuery.data ?? [], [gamesQuery.data]);
 
   // What the services grid (and its count and category chips) shows; search looks
   // through every brand.

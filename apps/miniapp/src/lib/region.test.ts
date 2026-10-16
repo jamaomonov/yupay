@@ -1,52 +1,105 @@
 import { describe, expect, it } from "vitest";
 
-import { baseSlug, hasRuTwin, mergeRegions, regionSlug, splitRegion } from "./region";
+import { translate } from "./i18n/core";
+import {
+  isUncheckedAccount,
+  regionBrandSlug,
+  regionLabel,
+  resolveRegion,
+  switcherRegions,
+} from "./region";
 
-const SLUGS = [
-  "pubg-mobile",
-  "mobile-legends",
-  "mobile-legends-ru",
-  "magic-chess-gogo",
-  "magic-chess-gogo-ru",
+const MLBB_REGIONS = [
+  { code: "global", slug: "mobile-legends" },
+  { code: "ru", slug: "mobile-legends-ru" },
+  { code: "ph", slug: "mobile-legends-ph" },
 ];
 
-describe("region slugs", () => {
-  it("strips the -ru suffix and nothing else", () => {
-    expect(baseSlug("mobile-legends-ru")).toBe("mobile-legends");
-    expect(baseSlug("mobile-legends")).toBe("mobile-legends");
-    expect(baseSlug("pubg-russia")).toBe("pubg-russia");
+describe("resolveRegion", () => {
+  it("resolves a regional route slug to its main brand and preselects the region", () => {
+    expect(
+      resolveRegion("mobile-legends-ph", {
+        region_code: "ph",
+        region_of: "mobile-legends",
+        regions: MLBB_REGIONS,
+      }),
+    ).toEqual({ base: "mobile-legends", region: "ph" });
   });
 
-  it("knows which bases have a RU twin", () => {
-    expect(hasRuTwin("mobile-legends", SLUGS)).toBe(true);
-    expect(hasRuTwin("pubg-mobile", SLUGS)).toBe(false);
+  it("keeps a main brand as its own base, region global", () => {
+    expect(
+      resolveRegion("mobile-legends", {
+        region_code: "global",
+        region_of: null,
+        regions: MLBB_REGIONS,
+      }),
+    ).toEqual({ base: "mobile-legends", region: "global" });
   });
 
-  it("builds the region's brand slug", () => {
-    expect(regionSlug("mobile-legends", "global")).toBe("mobile-legends");
-    expect(regionSlug("mobile-legends", "ru")).toBe("mobile-legends-ru");
-  });
-
-  it("splits a deep-linked slug into base + region only when the base is a real brand", () => {
-    expect(splitRegion("mobile-legends-ru", SLUGS)).toEqual({
-      base: "mobile-legends",
-      region: "ru",
-    });
-    expect(splitRegion("mobile-legends", SLUGS)).toEqual({
-      base: "mobile-legends",
+  it("defaults while the summary is unknown or from an older API", () => {
+    expect(resolveRegion("pubg-mobile", undefined)).toEqual({
+      base: "pubg-mobile",
       region: "global",
     });
-    // a brand whose slug merely ends in -ru with no base brand stays itself
-    expect(splitRegion("lone-ru", ["lone-ru"])).toEqual({ base: "lone-ru", region: "global" });
+    expect(resolveRegion("pubg-mobile", {})).toEqual({ base: "pubg-mobile", region: "global" });
   });
 
-  it("hides RU twins whose base is listed, keeps everything else in order", () => {
-    const games = SLUGS.map((slug) => ({ slug }));
-    expect(mergeRegions(games).map((g) => g.slug)).toEqual([
-      "pubg-mobile",
-      "mobile-legends",
-      "magic-chess-gogo",
-    ]);
-    expect(mergeRegions([{ slug: "lone-ru" }]).map((g) => g.slug)).toEqual(["lone-ru"]);
+  it("infers nothing from a slug", () => {
+    expect(resolveRegion("lone-ru", { region_code: "global", region_of: null })).toEqual({
+      base: "lone-ru",
+      region: "global",
+    });
+  });
+});
+
+describe("switcherRegions", () => {
+  it("lists every region of a multi-region game, in API order", () => {
+    expect(switcherRegions({ regions: MLBB_REGIONS })).toEqual(MLBB_REGIONS);
+  });
+
+  it("is empty for a one-region game or an older API", () => {
+    expect(switcherRegions({ regions: [] })).toEqual([]);
+    expect(switcherRegions({ regions: [{ code: "global", slug: "x" }] })).toEqual([]);
+    expect(switcherRegions({})).toEqual([]);
+    expect(switcherRegions(undefined)).toEqual([]);
+  });
+});
+
+describe("regionBrandSlug", () => {
+  it("switching region switches the brand the page talks to", () => {
+    expect(regionBrandSlug(MLBB_REGIONS, "global", "mobile-legends")).toBe("mobile-legends");
+    expect(regionBrandSlug(MLBB_REGIONS, "ru", "mobile-legends")).toBe("mobile-legends-ru");
+    expect(regionBrandSlug(MLBB_REGIONS, "ph", "mobile-legends")).toBe("mobile-legends-ph");
+  });
+
+  it("falls back to the given slug when the region is not listed", () => {
+    expect(regionBrandSlug([], "global", "pubg-mobile")).toBe("pubg-mobile");
+    expect(regionBrandSlug(MLBB_REGIONS, "br", "mobile-legends-ph")).toBe("mobile-legends-ph");
+  });
+});
+
+describe("regionLabel", () => {
+  it("names a known region through the catalog", () => {
+    expect(regionLabel("ru", translate)).toBe(translate("topup.region.ru"));
+    expect(regionLabel("global", translate)).toBe(translate("topup.region.global"));
+  });
+
+  it("falls back to the uppercase code for an unknown region", () => {
+    expect(regionLabel("kz", translate)).toBe("KZ");
+  });
+});
+
+describe("isUncheckedAccount", () => {
+  it("is true when the account fields carry no player check", () => {
+    expect(isUncheckedAccount([{ check: null }, {}])).toBe(true);
+  });
+
+  it("is false when any field is checkable", () => {
+    expect(isUncheckedAccount([{ check: { server_field: "zone_id" } }, {}])).toBe(false);
+    expect(isUncheckedAccount([{ check: {} }])).toBe(false);
+  });
+
+  it("is false when nothing is asked", () => {
+    expect(isUncheckedAccount([])).toBe(false);
   });
 });

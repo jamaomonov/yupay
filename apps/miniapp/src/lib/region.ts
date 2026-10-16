@@ -1,54 +1,88 @@
 /**
- * One game, two brands: the region split.
+ * One game, several brands: the region split (ADR-0099).
  *
- * Mobile Legends and Magic Chess: Go Go are sold as separate brands per
- * region (`<slug>` and `<slug>-ru`, ADR-0079) because the two regions are
- * different supplier games — products, packages and the player check are per
- * brand. The web storefront shows two pages; the Mini App shows one card and
- * lets the customer pick the region on the top-up page. These helpers are the
- * whole pairing rule, so the page and the list cannot disagree about it.
- * Kept a leaf module: no imports, so both pages can pull it in.
+ * A game is sold per region as separate brands — products, packages and the
+ * player check are per brand — linked to the game's main brand. The API says
+ * which: `GET /catalog/brands/{slug}` carries the brand's own `region_code`,
+ * `region_of` (the main slug, on a region) and `regions` (every sellable
+ * region of the game). The Mini App shows one card per game and lets the
+ * customer pick the region on the top-up page. Nothing here infers a region
+ * from a slug. Kept a leaf module (type imports only), so pages and tests can
+ * pull it in freely.
  */
 
-export const RU_SUFFIX = "-ru";
+import type { MessageKey } from "./i18n/messages";
 
-export type Region = "global" | "ru";
+/** The region code of a game's main brand. */
+export const GLOBAL_REGION = "global";
 
-/** `mobile-legends-ru` → `mobile-legends`; anything else unchanged. */
-export function baseSlug(slug: string): string {
-  return slug.endsWith(RU_SUFFIX) ? slug.slice(0, -RU_SUFFIX.length) : slug;
+/** One sellable region of a game, as `BrandSummary.regions` lists it. */
+export interface BrandRegion {
+  code: string;
+  slug: string;
 }
 
-/** Whether the catalogue carries a `-ru` twin for `base`. */
-export function hasRuTwin(base: string, slugs: readonly string[]): boolean {
-  return slugs.includes(`${base}${RU_SUFFIX}`);
+/** The region fields of a brand summary — all optional (older API). */
+export interface RegionFields {
+  region_code?: string | null;
+  region_of?: string | null;
+  regions?: readonly BrandRegion[] | null;
 }
 
-/** The brand slug the page must talk to for `region`. */
-export function regionSlug(base: string, region: Region): string {
-  return region === "ru" ? `${base}${RU_SUFFIX}` : base;
+const LABEL_KEYS: Record<string, MessageKey> = {
+  global: "topup.region.global",
+  ru: "topup.region.ru",
+  ph: "topup.region.ph",
+  my: "topup.region.my",
+  sg: "topup.region.sg",
+  id: "topup.region.id",
+  tr: "topup.region.tr",
+  us: "topup.region.us",
+  br: "topup.region.br",
+};
+
+/** A region's display name; an unknown code falls back to its uppercase self. */
+export function regionLabel(code: string, t: (key: MessageKey) => string): string {
+  const key = LABEL_KEYS[code];
+  return key ? t(key) : code.toUpperCase();
 }
 
 /**
- * A route param may name either half of a pair (old "recent" entries and
- * shared links carry `mobile-legends-ru`). Resolve it to the base card plus
- * the region it meant — but only when the base is a real brand, so a brand
- * that merely ends in `-ru` is not torn apart.
+ * Where a route slug sits in its game. The param may name a regional brand
+ * (an old "recent" entry, a history "repeat", a shared link): `base` is the
+ * game's main slug — the card — and `region` the region the link meant.
  */
-export function splitRegion(
-  slug: string,
-  slugs: readonly string[],
-): { base: string; region: Region } {
-  const base = baseSlug(slug);
-  if (base !== slug && slugs.includes(base)) return { base, region: "ru" };
-  return { base: slug, region: "global" };
+export function resolveRegion(
+  routeSlug: string,
+  summary: RegionFields | undefined,
+): { base: string; region: string } {
+  return {
+    base: summary?.region_of ?? routeSlug,
+    region: summary?.region_code ?? GLOBAL_REGION,
+  };
 }
 
-/** The list with RU twins folded into their base card. Order preserved. */
-export function mergeRegions<T extends { slug: string }>(games: readonly T[]): T[] {
-  const slugs = games.map((g) => g.slug);
-  return games.filter((g) => {
-    const base = baseSlug(g.slug);
-    return base === g.slug || !slugs.includes(base);
-  });
+/** The game's regions for the switcher; empty when there is nothing to pick. */
+export function switcherRegions(summary: RegionFields | undefined): readonly BrandRegion[] {
+  const regions = summary?.regions ?? [];
+  return regions.length > 1 ? regions : [];
+}
+
+/** The brand slug the page must talk to for `region` — `base` when unknown. */
+export function regionBrandSlug(
+  regions: readonly BrandRegion[],
+  region: string,
+  base: string,
+): string {
+  return regions.find((r) => r.code === region)?.slug ?? base;
+}
+
+/**
+ * Whether the account a product credits goes unchecked: it asks for fields
+ * and none carries a player check (`check`, the same flag DynamicFields
+ * renders the check button from). Some regions have no supplier to validate
+ * an id for us (ADR-0099), so the customer is asked to mind the region.
+ */
+export function isUncheckedAccount(fields: readonly { check?: unknown }[]): boolean {
+  return fields.length > 0 && !fields.some((f) => Boolean(f.check));
 }

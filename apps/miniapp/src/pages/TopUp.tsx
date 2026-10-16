@@ -52,7 +52,13 @@ import {
   type PlayerCheckVerdict,
 } from "@/lib/player-check-state";
 import { getRecentFulfillment, rememberFulfillment } from "@/lib/recent-checkout";
-import { hasRuTwin, regionSlug, splitRegion, type Region } from "@/lib/region";
+import {
+  isUncheckedAccount,
+  regionBrandSlug,
+  regionLabel,
+  resolveRegion,
+  switcherRegions,
+} from "@/lib/region";
 import { packagePrice, starLayers, visibleStarPackages } from "@/lib/star-packages";
 import { haptic, isInsideTelegram, openExternalLink, setClosingConfirmation } from "@/lib/telegram";
 import { useDocumentTitle } from "@/lib/use-document-title";
@@ -203,40 +209,40 @@ export default function TopUp() {
   }, [gameId, setLocation]);
 
   const gamesQuery = useGames();
-  const gameSlugs = useMemo(() => (gamesQuery.data ?? []).map((g) => g.id), [gamesQuery.data]);
-  // The card is the base brand (Mobile Legends / Magic Chess: Go Go are two
-  // brands per region, ADR-0079); the region picker below decides which
-  // brand the page actually talks to. A route param may name either half of
-  // the pair (an old "recent" entry, a shared link) — `splitRegion` resolves
-  // it to the base card plus the region it meant.
-  const { base: baseId, region: linkedRegion } = splitRegion(gameId ?? "", gameSlugs);
-  const [region, setRegion] = useState<Region>(linkedRegion);
-  // `gamesQuery.data` can arrive after first paint, which flips
-  // `linkedRegion` from the "no twins known yet" fallback (`global`) to the
-  // deep link's real region (`ru`) — follow it.
-  useEffect(() => {
-    setRegion(linkedRegion);
-  }, [linkedRegion]);
-  const showRegionPicker = hasRuTwin(baseId, gameSlugs);
-  const brandSlug = regionSlug(baseId, region);
-
-  const game = gamesQuery.data?.find((g) => g.id === baseId);
-  // `undefined` (not `brandSlug`) for the steam-gifts brand: the redirect
-  // effect above is about to navigate away, so there's no point spending a
+  // `undefined` (not the slug) for the steam-gifts brand: the redirect effect
+  // above is about to navigate away, so there's no point spending a
   // brand-summary fetch on a screen this route never actually renders.
   // `useBrandSummary`'s own `enabled` gate — it disables itself whenever its
   // argument is falsy — picks this up.
-  const brandQuery = useBrandSummary(gameId === "steam-gifts" ? undefined : brandSlug);
+  const routeSlug = gameId === "steam-gifts" ? undefined : gameId;
+  // A game is one card and several region brands (ADR-0099). The route may
+  // name any of them (an old "recent" entry, a history repeat, a shared
+  // link), so its own summary says which game it is — `region_of` — and
+  // which region it meant. Every brand of the game lists the same
+  // `regions`, so this one fetch also drives the picker. Stable across a
+  // region switch: the route does not change on one.
+  const routeSummary = useBrandSummary(routeSlug);
+  const { base: baseId, region: linkedRegion } = resolveRegion(gameId ?? "", routeSummary.data);
+  const regions = switcherRegions(routeSummary.data);
+  // The customer's pick, filed under the route it was made on: until there
+  // is one for this route, the link's own region stands — so nothing has to
+  // follow `linkedRegion` as the summary arrives, and a pick never leaks
+  // into the next game.
+  const [pickedRegion, setPickedRegion] = useState<{ route: string; code: string } | null>(null);
+  const region = pickedRegion && pickedRegion.route === gameId ? pickedRegion.code : linkedRegion;
+  // The brand the page talks to: products, packages, player check, order.
+  // Falls back to the route slug itself while the regions are unknown or
+  // for a one-region game.
+  const brandSlug = regionBrandSlug(regions, region, gameId ?? "");
+
+  const game = gamesQuery.data?.find((g) => g.id === baseId);
+  // Same query as `routeSummary` until a region is picked (equal keys).
+  const brandQuery = useBrandSummary(routeSlug ? brandSlug : undefined);
   const products = brandQuery.data?.products ?? [];
-  // Reviews are the game's reviews, not the region's: the rating chip (and
-  // the sheet it opens, below) always read the BASE brand's summary. Only
-  // fetched as a second query when region and base diverge — when region is
-  // "global" `brandQuery` already *is* the base brand's summary, so this
-  // stays disabled and costs nothing.
-  const baseSummary = useBrandSummary(
-    showRegionPicker && brandSlug !== baseId ? baseId : undefined,
-  );
-  const gameRating = (baseSummary.data ?? brandQuery.data)?.rating;
+  // Reviews are the game's: the API answers every region brand with the
+  // game's rating, so the route's summary — which does not reload on a
+  // region switch — keeps the chip steady while the picked brand loads.
+  const gameRating = routeSummary.data?.rating;
 
   // The currently picked product within the brand (PUBG UC vs Royale Pass …).
   const [reviewsOpen, setReviewsOpen] = useState(false);
@@ -479,17 +485,18 @@ export default function TopUp() {
     return null;
   }
 
-  // Gated on the *card* data (the games list), not the brand fetch: a region
-  // switch changes `brandQuery`'s query key with no placeholder data, so
-  // `brandQuery.isLoading` goes true again for the sibling brand's first
+  // Gated on the *card* data (the games list) and the route's own summary
+  // (which game and region the link names), not the picked brand's fetch: a
+  // region switch changes `brandQuery`'s query key with no placeholder data,
+  // so `brandQuery.isLoading` goes true again for the sibling brand's first
   // fetch. Gating the full-page skeleton on that blanked the hero, the
-  // region chips the customer just tapped, and the filled id field. Once the
-  // games list itself has loaded, `game` is either found (render the page —
-  // the packages block below renders its own `PackagesSkeleton` while
-  // `productQuery`, which follows the brand, is loading) or genuinely absent
-  // (fall through to "not found" below) — neither case should keep showing
-  // this skeleton.
-  if (gamesQuery.isLoading) {
+  // region chips the customer just tapped, and the filled id field. Neither
+  // gate reloads on a switch — the route stays put. Once both have loaded,
+  // `game` is either found (render the page — the packages block below
+  // renders its own `PackagesSkeleton` while `productQuery`, which follows
+  // the brand, is loading) or genuinely absent (fall through to "not found"
+  // below) — neither case should keep showing this skeleton.
+  if (gamesQuery.isLoading || routeSummary.isLoading) {
     return (
       <PageSkeleton
         slug={brandSlug}
@@ -499,7 +506,7 @@ export default function TopUp() {
       />
     );
   }
-  if (!game || brandQuery.isError) {
+  if (!game || routeSummary.isError || brandQuery.isError) {
     return (
       <div className="space-y-4 p-4 pt-20 text-center">
         <h2 className="text-xl font-bold">{t("topup.notFound")}</h2>
@@ -925,14 +932,19 @@ export default function TopUp() {
     window.scrollTo({ top: 0 });
   };
 
+  // Some regions have no supplier to check an id against (ADR-0099): the
+  // picked brand's product asks for an account with no check on any field.
+  // Read off the loaded product, so it stays hidden while a switch loads.
+  const regionUnchecked = regions.length > 0 && !isVoucher && isUncheckedAccount(requiredFields);
+
   // Switching region points the card at the sibling brand: its own products,
   // packages and player check. Clearing the product selection is enough —
   // the same effects that clear a stale package/amount on a product switch
   // (above) fire once `products` itself changes to the new brand's list.
   // Typed `fulfillment` is untouched on purpose (see the reset effect above).
-  const pickRegion = (r: Region) => {
-    if (r === region) return;
-    setRegion(r);
+  const pickRegion = (code: string) => {
+    if (code === region) return;
+    setPickedRegion({ route: gameId ?? "", code });
     setSelectedProductSlug("");
   };
 
@@ -1130,10 +1142,11 @@ export default function TopUp() {
         {/* ── Form ── */}
         {stage === "select" && (
           <div className="space-y-7 px-4 pt-5">
-            {/* Region picker — only for a brand with a `-ru` twin (ADR-0079).
-                Same chip styling as the product picker below, minus the
-                image slot: there's nothing to show but the region name. */}
-            {showRegionPicker && (
+            {/* Region picker — only for a game sold in more than one region
+                (ADR-0099). Same chip styling as the product picker below,
+                minus the image slot: there's nothing to show but the region
+                name. */}
+            {regions.length > 0 && (
               <div>
                 <div className="mb-2.5 flex items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -1144,15 +1157,15 @@ export default function TopUp() {
                   </div>
                 </div>
                 <div className="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4">
-                  {(["global", "ru"] as const).map((r) => {
-                    const active = r === region;
+                  {regions.map((r) => {
+                    const active = r.code === region;
                     return (
                       <button
-                        key={r}
+                        key={r.code}
                         type="button"
                         aria-pressed={active}
                         onClick={() => {
-                          pickRegion(r);
+                          pickRegion(r.code);
                         }}
                         className="flex-shrink-0 whitespace-nowrap rounded-2xl px-3.5 py-1.5 text-xs font-semibold transition-all duration-150"
                         style={{
@@ -1163,12 +1176,20 @@ export default function TopUp() {
                             : "1px solid hsl(var(--border))",
                         }}
                       >
-                        {t(r === "ru" ? "topup.regionRu" : "topup.regionGlobal")}
+                        {regionLabel(r.code, t)}
                       </button>
                     );
                   })}
                 </div>
-                <p className="mt-2 text-[11px] text-white/40">{t("topup.regionHint")}</p>
+                {regionUnchecked ? (
+                  <p className="mt-2 text-[11px] text-amber-400">
+                    {t("topup.regionUnchecked", { region: regionLabel(region, t) })}
+                  </p>
+                ) : (
+                  regions.some((r) => r.code === "ru") && (
+                    <p className="mt-2 text-[11px] text-white/40">{t("topup.regionHint")}</p>
+                  )
+                )}
               </div>
             )}
 

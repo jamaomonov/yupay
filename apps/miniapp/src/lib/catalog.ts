@@ -14,6 +14,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiGet } from "./api";
 
 import type { Category, Game } from "./constants-types";
+import type { BrandRegion } from "./region";
 
 // --- API DTOs (subset of what catalog.schemas returns) --------------------
 
@@ -316,6 +317,13 @@ export interface BrandSummary {
   products: ProductSummaryApi[];
   // Optional: an older deployed API may omit it — tolerate undefined.
   rating?: { avg: number; count: number } | null;
+  // The game's regions (ADR-0099), read through `lib/region.ts`, which
+  // defaults them: `region_code` "global" on a main brand, `region_of` the
+  // main slug on a regional one, `regions` empty for a one-region game.
+  // Optional for the same stale-API reason as `rating`.
+  region_code?: string;
+  region_of?: string | null;
+  regions?: BrandRegion[];
 }
 
 /** Brand metadata + the list of products (no SKUs). Cheap, cached separately
