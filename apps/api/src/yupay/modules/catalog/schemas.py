@@ -427,6 +427,18 @@ class FaqOut(BaseModel):
     answer: str
 
 
+class BrandRegionOut(BaseModel):
+    """One region of a game on its page's switcher (ADR-0099).
+
+    ``code`` is ``"global"`` for the game's main brand, else the regional
+    brand's ``region_code`` (``ru``, ``ph``…). The storefront names it from its
+    own message catalogue, so the API carries no label.
+    """
+
+    code: str
+    slug: str
+
+
 class BrandDetailOut(BaseModel):
     """Full brand page payload: brand metadata + all its active products."""
 
@@ -451,6 +463,13 @@ class BrandDetailOut(BaseModel):
     # storefront's template.
     seo_title: str | None = None
     seo_description: str | None = None
+    #: This brand's region (``"global"`` on a game's main brand), and the main
+    #: brand's slug when this is one of its regions (ADR-0099).
+    region_code: str = "global"
+    region_of: str | None = None
+    #: Every region of this game the storefront sells, main brand first; empty
+    #: for a game sold in one region only.
+    regions: list[BrandRegionOut] = Field(default_factory=list)
 
 
 class CategoryListOut(BaseModel):

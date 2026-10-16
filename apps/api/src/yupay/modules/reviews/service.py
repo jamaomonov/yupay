@@ -82,22 +82,34 @@ _STAR_COLUMNS = {1: "count_1", 2: "count_2", 3: "count_3", 4: "count_4", 5: "cou
 
 
 async def resolve_brand_id(db: AsyncSession, slug: str) -> str:
-    """Return a brand's id from its slug, or raise ``NotFoundError``."""
-    brand_id = (await db.execute(select(Brand.id).where(Brand.slug == slug))).scalar_one_or_none()
-    if brand_id is None:
+    """Return the id of the game a brand slug belongs to, or raise ``NotFoundError``.
+
+    Reviews belong to the game, not its region (ADR-0099): a regional brand's
+    slug resolves to its main brand, so a review filed from a Mobile Legends RU
+    order counts towards Mobile Legends and is listed there.
+    """
+    row = (
+        await db.execute(select(Brand.id, Brand.region_parent_id).where(Brand.slug == slug))
+    ).first()
+    if row is None:
         raise NotFoundError("brand not found")
-    return brand_id
+    return str(row.region_parent_id or row.id)
 
 
 async def _order_contains_brand(db: AsyncSession, order_id: str, brand_id: str) -> bool:
-    """True if any item of the order belongs to the given brand (sku→product→brand)."""
+    """True if any item of the order belongs to the given game (sku→product→brand),
+    in any of its regions."""
     hit = (
         await db.execute(
             select(Product.brand_id)
             .select_from(OrderItem)
             .join(Sku, Sku.id == OrderItem.sku_id)
             .join(Product, Product.id == Sku.product_id)
-            .where(OrderItem.order_id == order_id, Product.brand_id == brand_id)
+            .join(Brand, Brand.id == Product.brand_id)
+            .where(
+                OrderItem.order_id == order_id,
+                func.coalesce(Brand.region_parent_id, Brand.id) == brand_id,
+            )
             .limit(1)
         )
     ).scalar_one_or_none()
@@ -288,7 +300,10 @@ async def list_own(db: AsyncSession, *, user_id: str) -> list[Review]:
 
 
 async def _first_brand_of_order(db: AsyncSession, order_id: str) -> tuple[str, str] | None:
-    """(brand_id, brand_slug) of the order's first item, or None.
+    """(game brand_id, brand_slug) of the order's first item, or None.
+
+    The id is the game's (its main brand's, ADR-0099) — the one reviews are
+    filed under; the slug is the item's own brand.
 
     Only the first brand is considered — correct for today's single-item web
     orders, but a known limit for hypothetical multi-brand orders (the
@@ -296,7 +311,7 @@ async def _first_brand_of_order(db: AsyncSession, order_id: str) -> tuple[str, s
     """
     row = (
         await db.execute(
-            select(Brand.id, Brand.slug)
+            select(func.coalesce(Brand.region_parent_id, Brand.id).label("id"), Brand.slug)
             .select_from(OrderItem)
             .join(Sku, Sku.id == OrderItem.sku_id)
             .join(Product, Product.id == Sku.product_id)

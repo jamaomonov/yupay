@@ -332,6 +332,61 @@ async def test_a_denomination_shared_by_two_products_gets_the_product_in_the_tit
     ]
 
 
+async def test_a_regional_sku_links_to_its_game_page_with_the_region(
+    db_session: AsyncSession,
+) -> None:
+    """A region has no page of its own (ADR-0099): Google is sent to the main
+    brand's page with that region picked."""
+    category = Category(id=new_id(), slug="games-mf3", sort_order=0, active=True)
+    db_session.add(category)
+    await db_session.flush()
+    main = Brand(id=new_id(), slug="mlbb-rg", category_id=category.id, sort_order=0, active=True)
+    db_session.add(main)
+    await db_session.flush()
+    region = Brand(
+        id=new_id(),
+        slug="mlbb-rg-ph",
+        category_id=category.id,
+        sort_order=0,
+        active=True,
+        hero_image_url="https://cdn.yupay.uz/brand_hero/mlbb.webp",
+        region_parent_id=main.id,
+        region_code="ph",
+        translations=[BrandTranslation(locale="ru", name="Mobile Legends PH")],
+    )
+    db_session.add(region)
+    await db_session.flush()
+    product = Product(
+        id=new_id(),
+        slug="mlbb-rg-ph-d",
+        brand_id=region.id,
+        kind="top_up",
+        sort_order=0,
+        active=True,
+        required_fields=[],
+        translations=[ProductTranslation(locale="ru", name="Алмазы")],
+    )
+    db_session.add(product)
+    await db_session.flush()
+    db_session.add(
+        Sku(
+            id=new_id(),
+            product_id=product.id,
+            sku_code="mlbb-rg-ph-56",
+            denomination="56 Diamonds",
+            price_usd=Decimal("1"),
+            sort_order=0,
+            active=True,
+            price_overrides=[SkuPrice(currency="UZS", price=Decimal("12000"))],
+        )
+    )
+    await db_session.flush()
+
+    items, _ = await build_feed_items(db_session, base_url="https://yupay.uz")
+    item = next(i for i in items if i.offer_id.startswith("mlbb-rg-ph-56"))
+    assert item.link == "https://yupay.uz/store/mlbb-rg?region=ph"
+
+
 def test_offer_id_survives_the_merchant_50_char_limit() -> None:
     short = "pubgm-1800"
     assert offer_id_for(short) == short

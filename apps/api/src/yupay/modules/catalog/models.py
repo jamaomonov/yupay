@@ -104,6 +104,16 @@ class Brand(Base):
     # matching column on :class:`Sku`.
     visible_b2b: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     visible_retail: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    # A region of a game is its own brand (one supplier game, ADR-0079); these
+    # two name the game's main brand and the region (ADR-0099). Both NULL on a
+    # main brand. The storefront lists main brands only and switches regions on
+    # the game's page; the merchant catalogue ignores the link.
+    region_parent_id: Mapped[str | None] = mapped_column(
+        UUID(as_uuid=False),
+        ForeignKey("brands.id", ondelete="RESTRICT"),
+        nullable=True,
+    )
+    region_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=text("CURRENT_TIMESTAMP")
     )

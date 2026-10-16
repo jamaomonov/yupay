@@ -19,6 +19,7 @@ from yupay.modules.catalog.schemas import (
     BrandDetailOut,
     BrandOut,
     BrandRatingOut,
+    BrandRegionOut,
     CategoryOut,
     FaqOut,
     FormField,
@@ -370,7 +371,13 @@ async def list_brands(
             lazyload(Brand.products),
             lazyload(Brand.faqs),
         )
-        .where(Brand.active.is_(True), Brand.visible_retail.is_(True), Category.active.is_(True))
+        .where(
+            Brand.active.is_(True),
+            Brand.visible_retail.is_(True),
+            Category.active.is_(True),
+            # A game's regions sit on its page's switcher, not in the list (ADR-0099).
+            Brand.region_parent_id.is_(None),
+        )
         .order_by(Brand.sort_order, Brand.slug)
     )
     if category_slug is not None:
@@ -414,7 +421,10 @@ async def get_brand_by_slug(
     if brand is None:
         return None
 
-    rating = _to_rating((await _reviews_get_stats(db, [brand.id])).get(brand.id))
+    # Reviews belong to the game, so a region shows its main brand's rating.
+    game_id = brand.region_parent_id or brand.id
+    rating = _to_rating((await _reviews_get_stats(db, [game_id])).get(game_id))
+    region_of, regions = await _brand_regions(db, brand)
     name, short_desc, description, instructions = _pick_translation(brand.translations, locale)
     highlights = _pick_highlights(brand.translations, locale)
     seo_title, seo_description = _pick_seo(brand.translations, locale)
@@ -469,7 +479,47 @@ async def get_brand_by_slug(
         seo_title=seo_title,
         seo_description=seo_description,
         rating=rating,
+        region_code=brand.region_code or GLOBAL_REGION,
+        region_of=region_of,
+        regions=regions,
     )
+
+
+#: The main brand's place on a game's region switcher.
+GLOBAL_REGION = "global"
+
+#: Switcher order; a code not listed here goes last, alphabetically.
+REGION_ORDER: tuple[str, ...] = (GLOBAL_REGION, "ru", "ph", "my", "sg", "id", "tr", "us", "br")
+
+
+def _region_rank(code: str) -> tuple[int, str]:
+    return (REGION_ORDER.index(code) if code in REGION_ORDER else len(REGION_ORDER), code)
+
+
+async def _brand_regions(db: AsyncSession, brand: Brand) -> tuple[str | None, list[BrandRegionOut]]:
+    """The main brand's slug (for a region) and the game's sellable regions.
+
+    A region is listed while its brand is active and retail-visible, so a
+    region is switched off on the storefront the same way any brand is. A
+    game left with its main brand alone has no switcher: the list is empty.
+    """
+    game_id = brand.region_parent_id or brand.id
+    rows = (
+        await db.execute(
+            select(Brand.slug, Brand.region_code, Brand.region_parent_id).where(
+                (Brand.id == game_id) | (Brand.region_parent_id == game_id),
+                Brand.active.is_(True),
+                Brand.visible_retail.is_(True),
+            )
+        )
+    ).all()
+    main_slug = next((slug for slug, _code, parent in rows if parent is None), None)
+    region_of = main_slug if brand.region_parent_id is not None else None
+    regions = sorted(
+        (BrandRegionOut(code=code or GLOBAL_REGION, slug=slug) for slug, code, _parent in rows),
+        key=lambda r: _region_rank(r.code),
+    )
+    return region_of, regions if len(regions) > 1 else []
 
 
 async def list_products(

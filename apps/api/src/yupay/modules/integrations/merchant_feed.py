@@ -166,6 +166,13 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
     ).all()
 
     base = base_url.rstrip("/")
+    # A region of a game has no page of its own: it is the main brand's page
+    # with that region picked (ADR-0099).
+    parent_ids = {b.region_parent_id for _s, _p, b in rows if b.region_parent_id}
+    parent_slugs: dict[str, str] = {}
+    if parent_ids:
+        found = await db.execute(select(Brand.id, Brand.slug).where(Brand.id.in_(parent_ids)))
+        parent_slugs = {str(pid): str(pslug) for pid, pslug in found.all()}
 
     # Denominations that repeat across a brand's products need the product
     # name in the title to stay tellable-apart (see _title).
@@ -200,7 +207,7 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
                 offer_id=offer_id_for(sku.sku_code),
                 title=title,
                 description=_description(brand, product) or title,
-                link=f"{base}/store/{brand.slug}",
+                link=_link(base, brand, parent_slugs),
                 image_link=image,
                 price_micros=int(Decimal(price.amount).quantize(Decimal("1")) * 1_000_000),
                 in_stock=sku.in_stock,
@@ -208,6 +215,14 @@ async def build_feed_items(db: AsyncSession, *, base_url: str) -> tuple[list[Fee
             )
         )
     return items, skipped
+
+
+def _link(base: str, brand: Brand, parent_slugs: dict[str, str]) -> str:
+    """The storefront page a SKU is bought on."""
+    parent = parent_slugs.get(brand.region_parent_id or "")
+    if parent is not None and brand.region_code:
+        return f"{base}/store/{parent}?region={brand.region_code}"
+    return f"{base}/store/{brand.slug}"
 
 
 def _brand_display_name(brand: Brand) -> str:
