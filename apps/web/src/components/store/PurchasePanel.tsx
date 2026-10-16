@@ -215,7 +215,7 @@ function CheckablePlayerField({
   placeholder,
   check,
   onCheckResult,
-  siblingHint,
+  regionHint,
   autoCheck,
   t,
 }: {
@@ -254,11 +254,9 @@ function CheckablePlayerField({
    *  about, or `null` when the pill's «Изменить» drops it. Lets the panel
    *  require a real "valid" before Pay, not just a filled-in box. */
   onCheckResult: (verdict: PlayerCheckVerdict | null) => void;
-  /** The sibling-region brand's page, when this brand is one half of a
-   *  `<slug>` / `<slug>-ru` pair — the panel resolves it once (it already
-   *  has `locale` for `pathFor`) and hands down a ready `href`, so this field
-   *  needs no `locale` prop of its own. `null` when the brand has no twin. */
-  siblingHint: { href: string; name: string } | null;
+  /** The game is sold in more than one region (ADR-0099): a not-found id
+   *  may just be an account from another region, so point at the switcher. */
+  regionHint: boolean;
   t: (key: string, values?: Record<string, string>) => string;
 }) {
   // Pick the mobile keyboard from the field's pattern: a letter-bearing
@@ -403,14 +401,7 @@ function CheckablePlayerField({
             {t("checkEdit")}
           </button>
         </div>
-        {siblingHint && (
-          <Link
-            href={siblingHint.href}
-            className="text-primary mt-2 inline-block text-[13px] underline-offset-4 hover:underline"
-          >
-            {t("checkTryRegion", { name: siblingHint.name })}
-          </Link>
-        )}
+        {regionHint && <p className="text-tx-mute mt-2 text-[13px]">{t("checkTryRegion")}</p>}
       </div>
     );
   }
@@ -1015,25 +1006,19 @@ function UnitPackTiles({
 export function PurchasePanel({
   products,
   locale,
-  regionSibling,
+  hasRegions = false,
   children,
 }: {
   products: ProductDetail[];
   locale: string;
-  /** The other region's brand, when this brand is one half of a `<slug>` /
-   *  `<slug>-ru` pair (see `@/lib/region-sibling`). `null`/absent for every
-   *  other brand — the field then renders no hint at all. */
-  regionSibling?: { slug: string; name: string } | null;
+  /** The game is sold in several regions (a switcher sits above the panel,
+   *  ADR-0099). Turns on the "check the region" hint under a not-found id. */
+  hasRegions?: boolean;
   /** Server-rendered sections (how-to, about, FAQ) placed in the left column
    *  below the pick, so the sticky order sidebar scrolls alongside them. */
   children?: ReactNode;
 }) {
   const t = useTranslations("web.store");
-  // Resolved once here (not in the field) because only the panel already
-  // carries `locale` for `pathFor` — the field stays locale-agnostic.
-  const siblingHint = regionSibling
-    ? { href: pathFor(locale, `/store/${regionSibling.slug}`), name: regionSibling.name }
-    : null;
   const router = useRouter();
   const { user, isLoading: authLoading } = useAuth();
   // Nothing is preselected on a grid the buyer still has to choose from. The
@@ -2092,7 +2077,7 @@ export function PurchasePanel({
                         // effect, so it cannot feed itself a new render.
                         setCheckResults((prev) => ({ ...prev, [f.key]: verdict }));
                       }}
-                      siblingHint={siblingHint}
+                      regionHint={hasRegions}
                       autoCheck={handedOff.has(f.key)}
                       t={t}
                     />

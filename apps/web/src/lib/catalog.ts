@@ -144,6 +144,21 @@ export interface BrandDetail extends BrandSummary {
   /** This locale's own search copy (never another locale's); absent from an older API. */
   seo_title?: string | null;
   seo_description?: string | null;
+  // A game's regions are brands linked to its main brand (ADR-0099). Optional:
+  // the build prerenders against the deployed API, which may predate them —
+  // read through `?? "global"` / `?? null` / `?? []`.
+  /** "global" on a main brand, else the region ("ru", "ph"…). */
+  region_code?: string;
+  /** The main brand's slug when this brand is a region of it. */
+  region_of?: string | null;
+  /** Every sellable region of the game, main brand first, in switcher order;
+   *  empty when the game is sold in one region only. */
+  regions?: BrandRegion[];
+}
+
+export interface BrandRegion {
+  code: string;
+  slug: string;
 }
 
 export interface ProductDetail extends ProductSummary {

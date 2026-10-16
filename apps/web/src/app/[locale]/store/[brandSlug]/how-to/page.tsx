@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 
@@ -133,6 +133,8 @@ export default async function HowToPage({
 
   const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) notFound();
+  // A region's guide is its game's guide (ADR-0099): one page per game.
+  if (brand.region_of) permanentRedirect(pathFor(locale, `/store/${brand.region_of}/how-to`));
   const t = await getTranslations("web.store");
   const tn = await getTranslations("web.nav");
 

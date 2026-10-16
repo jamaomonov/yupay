@@ -154,20 +154,11 @@ export async function Footer({ locale }: { locale: string }) {
                   column break through one splits the tap target across two
                   columns. */}
               <div className="columns-2 gap-x-8 sm:columns-3 lg:columns-5 [&_a]:break-inside-avoid">
-                {/* A `-ru` region twin is left out when its global brand is listed:
-                    the two read as a duplicate, and the global page links its twin. */}
-                {brands
-                  .filter(
-                    (b) =>
-                      !(
-                        b.slug.endsWith("-ru") && brands.some((o) => o.slug === b.slug.slice(0, -3))
-                      ),
-                  )
-                  .map((b) => (
-                    <FooterLink key={b.slug} href={pathFor(locale, brandPath(b.slug))}>
-                      {b.name}
-                    </FooterLink>
-                  ))}
+                {brands.map((b) => (
+                  <FooterLink key={b.slug} href={pathFor(locale, brandPath(b.slug))}>
+                    {b.name}
+                  </FooterLink>
+                ))}
               </div>
             </FooterCol>
           </div>

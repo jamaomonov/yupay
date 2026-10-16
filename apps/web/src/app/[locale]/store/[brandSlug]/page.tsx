@@ -16,14 +16,15 @@ import { HighlightChips } from "@/components/store/HighlightChips";
 import { PurchasePanel } from "@/components/store/PurchasePanel";
 import { RatingChip } from "@/components/store/RatingChip";
 import { RatingSummary } from "@/components/store/RatingSummary";
+import { type RegionOption, RegionPurchase } from "@/components/store/RegionPurchase";
 import { ReviewAvatar } from "@/components/store/ReviewAvatar";
 import { Stars } from "@/components/store/Stars";
 import { WriteReviewPanel } from "@/components/store/WriteReviewPanel";
 import { routing } from "@/i18n/routing";
 import { brandPath, CS2_SKINS_BRAND } from "@/lib/brand-href";
 import {
+  type BrandDetail,
   getBrandDetail,
-  getBrands,
   getBrandSlugs,
   getProductDetail,
   type ProductDetail,
@@ -31,7 +32,6 @@ import {
 import { isVoucherBrand } from "@/lib/brand-kind";
 import { brandPageDescription, brandPageTitle, brandReviewsLd } from "@/lib/brand-seo";
 import { isOptimizable } from "@/lib/image";
-import { regionSibling } from "@/lib/region-sibling";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
   alternates,
@@ -58,6 +58,34 @@ export const revalidate = 300;
 
 export async function generateStaticParams() {
   return (await getBrandSlugs()).map((brandSlug) => ({ brandSlug }));
+}
+
+async function getProducts(brand: BrandDetail, locale: string): Promise<ProductDetail[]> {
+  return (
+    await Promise.all((brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)))
+  ).filter((p): p is ProductDetail => p !== null);
+}
+
+/** Every sellable region of the game with its own products, for the switcher
+ *  (ADR-0099). The main brand's products are already fetched; each other
+ *  region is its own brand. A region that fails to load or sells nothing is
+ *  left out rather than shown empty. Fewer than two left means no switcher. */
+async function getRegionOptions(
+  brand: BrandDetail,
+  products: ProductDetail[],
+  locale: string,
+): Promise<RegionOption[]> {
+  const regions = brand.regions ?? [];
+  if (regions.length < 2) return [];
+  const options = await Promise.all(
+    regions.map(async ({ code, slug }): Promise<RegionOption | null> => {
+      if (slug === brand.slug) return { code, slug, products };
+      const regional = await getBrandDetail(slug, locale, CURRENCY);
+      return regional ? { code, slug, products: await getProducts(regional, locale) } : null;
+    }),
+  );
+  const sellable = options.filter((o): o is RegionOption => o !== null && o.products.length > 0);
+  return sellable.length > 1 ? sellable : [];
 }
 
 export async function generateMetadata({
@@ -119,6 +147,13 @@ export default async function BrandPage({
   setRequestLocale(locale);
   const brand = await getBrandDetail(brandSlug, locale, CURRENCY);
   if (!brand) notFound();
+  // One page per game (ADR-0099): a region's page is the game's page with
+  // that region picked in the switcher.
+  if (brand.region_of) {
+    permanentRedirect(
+      pathFor(locale, `/store/${brand.region_of}?region=${brand.region_code ?? "global"}`),
+    );
+  }
 
   const t = await getTranslations("web.store");
   const t2 = await getTranslations("web.brandReviews");
@@ -126,9 +161,10 @@ export default async function BrandPage({
   const v = isVoucherBrand(brand) ? "Voucher" : "";
   const tn = await getTranslations("web.nav");
 
-  const products = (
-    await Promise.all((brand.products ?? []).map((p) => getProductDetail(p.slug, locale, CURRENCY)))
-  ).filter((p): p is ProductDetail => p !== null);
+  // The main brand's products drive the hero price, JSON-LD and offers; the
+  // other regions only feed the switcher.
+  const products = await getProducts(brand, locale);
+  const regionOptions = await getRegionOptions(brand, products, locale);
 
   // Long description first here (the About block has room for it); short as a
   // fallback. firstNonEmpty skips the API's `""` blanks so 6/7 brands stop
@@ -139,10 +175,6 @@ export default async function BrandPage({
     t(`brandMetaDescription${v}`, { name: brand.name });
   const heroImg = brand.hero_image_url ?? brand.logo_url;
   const highlights = brand.highlights ?? [];
-  // The other region's brand, when this one is one half of a `<slug>` /
-  // `<slug>-ru` pair (ADR-0079: a brand is one supplier game, so Mobile
-  // Legends and Mobile Legends RU are two brands, not one with a toggle).
-  const sibling = regionSibling(brand.slug, await getBrands(locale));
 
   // Reviews are additive: never let a reviews outage break the brand page (or
   // the SSG build prerendering against an API that predates the endpoint).
@@ -287,6 +319,58 @@ export default async function BrandPage({
           })),
         }
       : undefined;
+
+  // How-to / about / FAQ: the left column under the pick, whichever panel holds it.
+  const sections = (
+    <>
+      {/* Most Steam buyers play CS2: show them the skins market. */}
+      {brand.slug === "steam" && <SteamSkinsPromo locale={locale} />}
+      {brand.instructions && (
+        <section className="mt-14 scroll-mt-[88px]">
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
+            {t(`instructionsTitle${v}`)}
+          </h2>
+          <div className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
+            {brand.instructions}
+          </div>
+          <Link
+            href={pathFor(locale, `/store/${brand.slug}/how-to`)}
+            className="text-primary mt-4 inline-flex items-center gap-1 text-[14px] font-semibold hover:underline"
+          >
+            {t(`howToLink${v}`)}
+            <ChevronRight size={15} />
+          </Link>
+        </section>
+      )}
+      {about && (
+        <section className="mt-14 scroll-mt-[88px]">
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("aboutTitle")}</h2>
+          <AboutText text={about} moreLabel={t("readMore")} lessLabel={t("readLess")} />
+        </section>
+      )}
+      {faqs.length > 0 && (
+        <section className="mt-14 scroll-mt-[88px]">
+          <h2 className="font-display text-xl font-bold tracking-[-0.02em]">{t("faqTitle")}</h2>
+          <div className="border-border/70 mt-5 border-y">
+            {faqs.map((f) => (
+              <details key={f.id} className="border-border/70 group border-b last:border-b-0">
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
+                  {f.question}
+                  <ChevronRight
+                    size={16}
+                    className="text-tx-dim shrink-0 transition group-open:rotate-90"
+                  />
+                </summary>
+                <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">
+                  {f.answer}
+                </p>
+              </details>
+            ))}
+          </div>
+        </section>
+      )}
+    </>
+  );
 
   return (
     <main className="relative min-h-screen pb-28 pt-[120px]">
@@ -436,82 +520,17 @@ export default async function BrandPage({
           </div>
         </div>
 
-        {sibling && (
-          <p className="border-border/70 mt-6 rounded-md border border-dashed px-4 py-3 text-[14px]">
-            <Link
-              href={pathFor(locale, `/store/${sibling.slug}`)}
-              className="text-primary font-semibold hover:underline"
-            >
-              {t(brand.slug.endsWith("-ru") ? "regionSiblingGlobal" : "regionSiblingRu", {
-                name: sibling.name,
-              })}
-            </Link>
-          </p>
-        )}
-
         {/* Pick sits right under the hero; the how-to / about / FAQ sections are
             passed into the left column so the sticky order sidebar scrolls with
             them — one aligned 2-column grid (see PurchasePanel). */}
         <div className="mt-8">
-          {products.length > 0 ? (
-            <PurchasePanel
-              products={products}
-              locale={locale}
-              regionSibling={sibling ? { slug: sibling.slug, name: sibling.name } : null}
-            >
-              {/* Most Steam buyers play CS2: show them the skins market. */}
-              {brand.slug === "steam" && <SteamSkinsPromo locale={locale} />}
-              {brand.instructions && (
-                <section className="mt-14 scroll-mt-[88px]">
-                  <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-                    {t(`instructionsTitle${v}`)}
-                  </h2>
-                  <div className="text-tx-mute mt-4 whitespace-pre-line text-[15px] leading-relaxed">
-                    {brand.instructions}
-                  </div>
-                  <Link
-                    href={pathFor(locale, `/store/${brand.slug}/how-to`)}
-                    className="text-primary mt-4 inline-flex items-center gap-1 text-[14px] font-semibold hover:underline"
-                  >
-                    {t(`howToLink${v}`)}
-                    <ChevronRight size={15} />
-                  </Link>
-                </section>
-              )}
-              {about && (
-                <section className="mt-14 scroll-mt-[88px]">
-                  <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-                    {t("aboutTitle")}
-                  </h2>
-                  <AboutText text={about} moreLabel={t("readMore")} lessLabel={t("readLess")} />
-                </section>
-              )}
-              {faqs.length > 0 && (
-                <section className="mt-14 scroll-mt-[88px]">
-                  <h2 className="font-display text-xl font-bold tracking-[-0.02em]">
-                    {t("faqTitle")}
-                  </h2>
-                  <div className="border-border/70 mt-5 border-y">
-                    {faqs.map((f) => (
-                      <details
-                        key={f.id}
-                        className="border-border/70 group border-b last:border-b-0"
-                      >
-                        <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-4 text-[15px] font-semibold [&::-webkit-details-marker]:hidden">
-                          {f.question}
-                          <ChevronRight
-                            size={16}
-                            className="text-tx-dim shrink-0 transition group-open:rotate-90"
-                          />
-                        </summary>
-                        <p className="text-tx-mute -mt-1 pb-4 pr-8 text-[15px] leading-relaxed">
-                          {f.answer}
-                        </p>
-                      </details>
-                    ))}
-                  </div>
-                </section>
-              )}
+          {regionOptions.length > 0 ? (
+            <RegionPurchase regions={regionOptions} locale={locale}>
+              {sections}
+            </RegionPurchase>
+          ) : products.length > 0 ? (
+            <PurchasePanel products={products} locale={locale}>
+              {sections}
             </PurchasePanel>
           ) : (
             <p className="text-tx-mute">{t("empty")}</p>
