@@ -250,7 +250,16 @@
       "id": "Indoneziya",
       "tr": "Turkiya",
       "us": "AQSH",
-      "br": "Braziliya"
+      "br": "Braziliya",
+      "cis": "MDH",
+      "bd": "Bangladesh",
+      "eu": "Yevropa",
+      "latam": "Lotin Amerikasi",
+      "mena": "Yaqin Sharq",
+      "mysg": "Malayziya va Singapur",
+      "th": "Tailand",
+      "tw": "Tayvan",
+      "vn": "Vyetnam"
     },
     "paymentTitle": "Toʻlov usuli",
     "promoLabel": "Promokod",

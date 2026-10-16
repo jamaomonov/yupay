@@ -488,8 +488,28 @@ async def get_brand_by_slug(
 #: The main brand's place on a game's region switcher.
 GLOBAL_REGION = "global"
 
-#: Switcher order; a code not listed here goes last, alphabetically.
-REGION_ORDER: tuple[str, ...] = (GLOBAL_REGION, "ru", "ph", "my", "sg", "id", "tr", "us", "br")
+#: Switcher order after the main brand, which always comes first; a code not
+#: listed here goes last, alphabetically.
+REGION_ORDER: tuple[str, ...] = (
+    GLOBAL_REGION,
+    "cis",
+    "ru",
+    "ph",
+    "my",
+    "sg",
+    "mysg",
+    "id",
+    "th",
+    "vn",
+    "tw",
+    "tr",
+    "eu",
+    "mena",
+    "bd",
+    "us",
+    "latam",
+    "br",
+)
 
 
 def _region_rank(code: str) -> tuple[int, str]:
@@ -516,10 +536,14 @@ async def _brand_regions(db: AsyncSession, brand: Brand) -> tuple[str | None, li
     main_slug = next((slug for slug, _code, parent in rows if parent is None), None)
     region_of = main_slug if brand.region_parent_id is not None else None
     regions = sorted(
-        (BrandRegionOut(code=code or GLOBAL_REGION, slug=slug) for slug, code, _parent in rows),
-        key=lambda r: _region_rank(r.code),
+        (
+            (parent is not None, BrandRegionOut(code=code or GLOBAL_REGION, slug=slug))
+            for slug, code, parent in rows
+        ),
+        key=lambda pair: (pair[0], _region_rank(pair[1].code)),
     )
-    return region_of, regions if len(regions) > 1 else []
+    out = [region for _is_region, region in regions]
+    return region_of, out if len(out) > 1 else []
 
 
 async def list_products(

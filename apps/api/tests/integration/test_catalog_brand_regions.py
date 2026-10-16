@@ -118,3 +118,18 @@ async def test_a_regional_order_is_reviewed_once_and_known_as_reviewed(
         db_session, order_id=order.id, user_id=user.id, guest_email=None
     )
     assert (slug, delivered, reviewed) == ("mlq-ru", True, True)
+
+
+async def test_a_main_brand_with_its_own_region_stays_first(
+    integration_client: AsyncClient, db_session: AsyncSession
+) -> None:
+    """Our Free Fire is the CIS server; its global server is one of its regions."""
+    main, _ = await _seed_brand(db_session, "ffx")
+    main.region_code = "cis"
+    await _region(db_session, main, "ffx-global", "global")
+    await _region(db_session, main, "ffx-br", "br")
+    await db_session.commit()
+
+    out = (await integration_client.get("/api/v1/catalog/brands/ffx")).json()
+    assert out["region_code"] == "cis"
+    assert [r["code"] for r in out["regions"]] == ["cis", "global", "br"]

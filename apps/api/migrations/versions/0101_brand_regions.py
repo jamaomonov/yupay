@@ -8,7 +8,8 @@ A region of a game is its own brand (ADR-0079: a brand is one supplier game),
 and until now the pairing was a slug convention, ``<slug>`` ↔ ``<slug>-ru``.
 That held for two pairs and cannot hold for nine regions, so the link becomes
 a column: ``region_parent_id`` names the game's main brand and ``region_code``
-the region. The storefront lists only main brands and switches regions on
+the region. A main brand's own ``region_code`` is optional — NULL reads as
+"global" — because ours is not always global: Free Fire's is the CIS server. The storefront lists only main brands and switches regions on
 the game's page.
 
 Links the regions that exist today, by slug, so dev and prod end up alike
@@ -44,7 +45,23 @@ _LINKS: tuple[tuple[str, str, str], ...] = (
     ("magic-chess-gogo", "magic-chess-gogo-my", "my"),
     ("magic-chess-gogo", "magic-chess-gogo-ph", "ph"),
     ("magic-chess-gogo", "magic-chess-gogo-tr", "tr"),
+    ("free-fire", "garena-free-fire", "global"),
+    ("free-fire", "free-fire-bd", "bd"),
+    ("free-fire", "free-fire-br", "br"),
+    ("free-fire", "free-fire-eu", "eu"),
+    ("free-fire", "free-fire-id", "id"),
+    ("free-fire", "free-fire-latam", "latam"),
+    ("free-fire", "free-fire-mena", "mena"),
+    ("free-fire", "free-fire-my-sg", "mysg"),
+    ("free-fire", "free-fire-ph", "ph"),
+    ("free-fire", "free-fire-sg", "sg"),
+    ("free-fire", "free-fire-th", "th"),
+    ("free-fire", "free-fire-tw", "tw"),
+    ("free-fire", "free-fire-vn", "vn"),
 )
+
+#: Main brands whose own region is not "global": our Free Fire is the CIS server.
+_MAIN_CODES: tuple[tuple[str, str], ...] = (("free-fire", "cis"),)
 
 _RECOMPUTE = """
 WITH agg AS (
@@ -97,10 +114,12 @@ def upgrade() -> None:
     )
     op.add_column("brands", sa.Column("region_code", sa.String(8), nullable=True))
     # Bare suffixes: the naming convention adds the ``ck_brands_`` prefix (core/db.py).
+    # A region always names itself; a main brand may (Free Fire's is CIS) or
+    # not (read as "global").
     op.create_check_constraint(
-        "region_pair",
+        "region_code_set",
         "brands",
-        "(region_parent_id IS NULL) = (region_code IS NULL)",
+        "region_parent_id IS NULL OR region_code IS NOT NULL",
     )
     op.create_check_constraint(
         "region_not_self", "brands", "region_parent_id IS NULL OR region_parent_id <> id"
@@ -123,6 +142,15 @@ def upgrade() -> None:
                 "AND p.region_parent_id IS NULL"
             ),
             {"parent": parent, "child": child, "code": code},
+        )
+
+    for main, code in _MAIN_CODES:
+        bind.execute(
+            sa.text(
+                "UPDATE brands SET region_code = :code "
+                "WHERE slug = :main AND region_parent_id IS NULL"
+            ),
+            {"main": main, "code": code},
         )
 
     # Reviews of a region belong to the game.
@@ -150,6 +178,6 @@ def downgrade() -> None:
     op.drop_index("uq_brands_region_code", table_name="brands")
     op.drop_index("ix_brands_region_parent", table_name="brands")
     op.drop_constraint("region_not_self", "brands", type_="check")
-    op.drop_constraint("region_pair", "brands", type_="check")
+    op.drop_constraint("region_code_set", "brands", type_="check")
     op.drop_column("brands", "region_code")
     op.drop_column("brands", "region_parent_id")

@@ -250,7 +250,16 @@
       "id": "Indonesia",
       "tr": "Turkey",
       "us": "USA",
-      "br": "Brazil"
+      "br": "Brazil",
+      "cis": "CIS",
+      "bd": "Bangladesh",
+      "eu": "Europe",
+      "latam": "Latin America",
+      "mena": "Middle East",
+      "mysg": "Malaysia & Singapore",
+      "th": "Thailand",
+      "tw": "Taiwan",
+      "vn": "Vietnam"
     },
     "paymentTitle": "Payment method",
     "promoLabel": "Promo code",

@@ -1,8 +1,8 @@
--- Put the imported Mobile Legends and Magic Chess regions on the storefront (ADR-0099).
+-- Put the imported Mobile Legends, Magic Chess and Free Fire regions on the storefront (ADR-0099).
 --
 -- Run AFTER the release carrying migration 0101_brand_regions is deployed:
 -- before it, the storefront lists every retail brand as its own card, and
--- these would show up as eleven separate games.
+-- these would show up as two dozen separate games.
 --
 -- The brands came from the bulk supplier import as B2B-only. Migration 0101
 -- linked them to their main brand; this makes them retail-visible, which puts
@@ -21,7 +21,10 @@ WHERE region_parent_id IS NOT NULL
   AND slug IN (
     'mobile-legends-ph', 'mobile-legends-my', 'mobile-legends-sg', 'mobile-legends-id',
     'mobile-legends-tr', 'mobile-legends-us', 'mobile-legends-br',
-    'magic-chess-gogo-my', 'magic-chess-gogo-ph', 'magic-chess-gogo-tr'
+    'magic-chess-gogo-my', 'magic-chess-gogo-ph', 'magic-chess-gogo-tr',
+    'garena-free-fire', 'free-fire-bd', 'free-fire-br', 'free-fire-eu', 'free-fire-id',
+    'free-fire-latam', 'free-fire-mena', 'free-fire-my-sg', 'free-fire-ph', 'free-fire-sg',
+    'free-fire-th', 'free-fire-tw', 'free-fire-vn'
   );
 
 SELECT p.slug AS game, c.region_code, c.slug, c.visible_retail

@@ -105,8 +105,9 @@ class Brand(Base):
     visible_b2b: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     visible_retail: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     # A region of a game is its own brand (one supplier game, ADR-0079); these
-    # two name the game's main brand and the region (ADR-0099). Both NULL on a
-    # main brand. The storefront lists main brands only and switches regions on
+    # two name the game's main brand and the region (ADR-0099). On a main
+    # brand the parent is NULL and the code optional (NULL = "global"; Free
+    # Fire's main brand is the CIS server). The storefront lists main brands only and switches regions on
     # the game's page; the merchant catalogue ignores the link.
     region_parent_id: Mapped[str | None] = mapped_column(
         UUID(as_uuid=False),
