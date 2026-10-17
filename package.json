@@ -42,5 +42,10 @@
       "ruff check --fix",
       "ruff format"
     ]
+  },
+  "pnpm": {
+    "overrides": {
+      "@expo/log-box": "~57.0.4"
+    }
   }
 }
