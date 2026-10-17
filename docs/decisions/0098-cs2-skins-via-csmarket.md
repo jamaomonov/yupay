@@ -61,7 +61,9 @@ Shape of the integration:
   2026-10-10, csmarket's ADR-0013): a buyer picks a lot by float and stickers, so
   `offer_gone` / `price_above_max` return the money at once, and a line without an
   `offer_id` is never bought. `402 insufficient_balance` is handled like Waxpeer's low
-  balance: refund to the buyer's balance and an ops alert.
+  balance: refund to the buyer's balance and an ops alert. `409 trade_link_rejected`
+  refunds and asks the buyer for a new trade link; `409 buying_disabled` refunds and asks
+  them to try again in a few minutes (2026-10-17).
 - **Lot check before payment** (amended 2026-10-10). The offers list trails the market by
   minutes (csmarket rebuilds LIS-SKINS lots from a five-minute export), and the cheapest
   lots of a popular skin sell inside that window: one buyer paid and was refunded four times

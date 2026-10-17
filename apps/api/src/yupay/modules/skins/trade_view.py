@@ -8,7 +8,8 @@ Waxpeer's numbers become five states a customer understands:
 * ``accepted`` — received; Steam's trade protection runs to ``release_date`` (4 with it);
 * ``released`` — protection over (5);
 * ``failed`` — ``not_accepted`` (declined or expired), ``sold_out`` (nothing left to buy),
-  ``try_later`` (Waxpeer was short of our money — a retry in a few minutes may work);
+  ``try_later`` (the supplier was short of our money, or csmarket's buying was switched
+  off — a retry in a few minutes may work);
   ``support``: a purchase we could not confirm, settled by a human; ``other``.
 
 Whether the money came back is not read off the reason: ``refunded_to`` says where a refund
@@ -63,17 +64,22 @@ def _state(row: SkinTrade, fulfillment_state: str) -> SkinTradeState:
     return "buying"
 
 
-_TRADELINK_REASONS = frozenset({"invalid_trade_link", "invalid_tradelink", "trade_hold"})
+_TRADELINK_REASONS = frozenset(
+    {"invalid_trade_link", "invalid_tradelink", "trade_hold", "trade_link_rejected"}
+)
+#: Nothing was bought for a reason on our or the supplier's side that passes by itself:
+#: Waxpeer or csmarket short of our money, or csmarket's buying switched off for a while.
+_TRY_LATER_REASONS = frozenset({"supplier_low_balance", "buying_disabled"})
 
 
 def _reason(row: SkinTrade) -> SkinTradeReason:
     # ``support`` is a purchase we could not confirm — a human settles it.
     if row.reason in ("buy_unconfirmed", "ambiguous_trade"):
         return "support"
-    if row.reason == "supplier_low_balance":
+    if row.reason in _TRY_LATER_REASONS:
         return "try_later"
     # The market refused the buyer's trade link (LIS-SKINS ``invalid_trade_url``, a trade
-    # hold): every retry with the same link fails the same way, so the page says so.
+    # hold, csmarket's ``trade_link_rejected``): every retry with the same link fails the same way, so the page says so.
     if row.reason in _TRADELINK_REASONS:
         return "tradelink"
     if row.status is None:

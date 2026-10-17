@@ -83,9 +83,11 @@ def test_a_sold_out_line_is_named_by_its_reason() -> None:
     assert out.reason_code == "sold_out"
 
 
-def test_waxpeer_short_of_money_asks_to_try_again_later() -> None:
+@pytest.mark.parametrize("reason", ["supplier_low_balance", "buying_disabled"])
+def test_a_supplier_side_pause_asks_to_try_again_later(reason: str) -> None:
+    # Waxpeer or csmarket short of our money, or csmarket's buying switched off for a while.
     out = skin_trade_out(
-        _row(status=None, reason="supplier_low_balance"),
+        _row(status=None, reason=reason),
         fulfillment_state="failed",
         refunded_to="wallet",
     )
@@ -115,7 +117,7 @@ def test_a_refused_trade_link_has_its_own_reason() -> None:
     sent them back with the same link each time."""
     from yupay.modules.skins.trade_view import skin_trade_out
 
-    for reason in ("invalid_trade_link", "invalid_tradelink", "trade_hold"):
+    for reason in ("invalid_trade_link", "invalid_tradelink", "trade_hold", "trade_link_rejected"):
         row = SkinTrade(status=6, reason=reason, seller={})
         out = skin_trade_out(row, fulfillment_state="failed", refunded_to="wallet")
         assert out.reason_code == "tradelink"
