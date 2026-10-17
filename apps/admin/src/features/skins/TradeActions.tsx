@@ -8,7 +8,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@yupay/ui";
 
-import { fill, refundTrade, retryTask, T, usd, type AdminSkinTradeOut } from "./api";
+import { fill, refundTrade, retryTask, supplierName, T, usd, type AdminSkinTradeOut } from "./api";
 
 import { ApiError, formatApiError } from "@/lib/api";
 
@@ -66,7 +66,14 @@ export function TradeActions({ trade, onDone }: { trade: AdminSkinTradeOut; onDo
             variant="ghost"
             disabled={busy}
             onClick={() => {
-              if (window.confirm(fill(D.retryConfirm, { project: trade.project_id }))) {
+              if (
+                window.confirm(
+                  fill(D.retryConfirm, {
+                    project: trade.project_id,
+                    supplier: supplierName(trade),
+                  }),
+                )
+              ) {
                 retry.mutate();
               }
             }}

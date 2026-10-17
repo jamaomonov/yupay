@@ -1855,6 +1855,21 @@
             "title": "State",
             "type": "string"
           },
+          "supplier": {
+            "title": "Supplier",
+            "type": "string"
+          },
+          "supplier_order_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Supplier Order Id"
+          },
           "task_id": {
             "anyOf": [
               {
@@ -1928,8 +1943,10 @@
         },
         "required": [
           "id",
+          "supplier",
           "project_id",
           "waxpeer_id",
+          "supplier_order_id",
           "order_id",
           "order_item_id",
           "created_at",

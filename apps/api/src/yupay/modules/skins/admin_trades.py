@@ -46,9 +46,13 @@ class AdminSkinTradeOut(BaseModel):
     """One skin trade as an operator sees it."""
 
     id: str
-    #: Our key on Waxpeer — what their dashboard is searched by.
+    #: Who bought it: ``waxpeer`` or ``csmarket`` (ADR-0098) — the drawer names it.
+    supplier: str
+    #: Our key at the supplier — what their dashboard is searched by.
     project_id: str
     waxpeer_id: int | None
+    #: csmarket's own order id (Waxpeer's is ``waxpeer_id``).
+    supplier_order_id: str | None
     order_id: str
     order_item_id: str
     created_at: datetime
@@ -201,8 +205,10 @@ def trade_out(
     ours = refunded_to is None and any(p.status == "succeeded" for p in payments or [])
     return AdminSkinTradeOut(
         id=row.id,
+        supplier=row.supplier or "waxpeer",
         project_id=row.project_id,
         waxpeer_id=row.waxpeer_id,
+        supplier_order_id=row.supplier_order_id,
         order_id=item.order_id,
         order_item_id=item.id,
         created_at=row.created_at,

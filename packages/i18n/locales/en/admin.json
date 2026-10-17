@@ -409,7 +409,7 @@
     "navPricing": "Skin pricing",
     "trades": {
       "title": "Skin trades",
-      "description": "Every skin purchase: Waxpeer's status, our state, the seller. «Needs attention» is what a human must settle.",
+      "description": "Every skin purchase: the supplier's status (csmarket or Waxpeer), our state, the seller. «Needs attention» is what a human must settle.",
       "tabs": {
         "all": "All",
         "active": "In progress",
@@ -443,11 +443,11 @@
       "reasons": {
         "not_accepted": "The buyer did not accept",
         "sold_out": "Listings ran out before buying",
-        "buy_unconfirmed": "Waxpeer did not confirm the buy",
+        "buy_unconfirmed": "{supplier} did not confirm the buy",
         "ambiguous_trade": "Several trades under one key",
         "rollback": "Rolled back after delivery",
         "buy_pending": "The buy is not sent yet",
-        "low_balance": "Waxpeer balance ran short — the customer got the money back on their balance"
+        "low_balance": "{supplier} balance ran short — the customer got the money back on their balance"
       },
       "penaltyUsd": "penalty {amount}",
       "drawer": {
@@ -455,12 +455,12 @@
         "close": "Close",
         "openOrder": "Open order",
         "openOffer": "Trade in Steam",
-        "projectId": "Project ID (Waxpeer)",
-        "waxpeerId": "Waxpeer ID",
+        "projectId": "Project ID ({supplier})",
+        "waxpeerId": "{supplier} order ID",
         "tradeId": "Steam trade ID",
         "order": "Order",
         "sold": "Customer paid",
-        "bought": "We paid Waxpeer",
+        "bought": "We paid {supplier}",
         "margin": "Margin",
         "seller": "Seller",
         "created": "Created",
@@ -468,11 +468,11 @@
         "releaseDate": "Steam protection until",
         "acceptedAt": "Accepted",
         "lastChecked": "Checked",
-        "waxpeerStatus": "Waxpeer status",
+        "waxpeerStatus": "{supplier} status",
         "reason": "Reason",
-        "raw": "As Waxpeer says: {text}",
+        "raw": "As {supplier} says: {text}",
         "resolveTitle": "Settle",
-        "notePlaceholder": "What was done: refund, support reply, Waxpeer ticket…",
+        "notePlaceholder": "What was done: refund, support reply, supplier ticket…",
         "resolve": "Mark as resolved",
         "resolvedBy": "Resolved {date}",
         "noteLabel": "Note",
@@ -480,7 +480,7 @@
         "refund": "Refund to balance",
         "refundConfirm": "Refund {amount} to the buyer's YuPay balance? The customer is notified.",
         "retry": "Retry the purchase",
-        "retryConfirm": "First look {project} up in the Waxpeer dashboard: if the purchase is there, a retry buys the skin twice. Retry?",
+        "retryConfirm": "First look {project} up in the {supplier} dashboard: if the purchase is there, a retry buys the skin twice. Retry?",
         "refundedWallet": "Refunded to the YuPay balance",
         "refundedCard": "Refunded to the card",
         "actionError": "Failed: {error}"

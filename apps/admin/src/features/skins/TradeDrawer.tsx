@@ -1,7 +1,7 @@
 /**
- * One skin trade in full, beside the list: what ops looks up on Waxpeer (project id,
- * Waxpeer id), the Steam offer, the money both ways, the dates, the reason in words and
- * as Waxpeer wrote it — the refund and retry buttons (`TradeActions`), and the way to mark
+ * One skin trade in full, beside the list: what ops looks up at the supplier — csmarket or
+ * Waxpeer (project id, their order id), the Steam offer, the money both ways, the dates, the
+ * reason in words and as the supplier wrote it — the refund and retry buttons (`TradeActions`), and the way to mark
  * it settled, with what was done.
  */
 
@@ -17,6 +17,7 @@ import {
   marginText,
   reasonText,
   resolveTrade,
+  supplierName,
   T,
   usd,
   type AdminSkinTradeOut,
@@ -58,6 +59,7 @@ export function TradeDrawer({ trade, onClose }: { trade: AdminSkinTradeOut; onCl
     },
   });
   const why = reasonText(trade);
+  const supplier = supplierName(trade);
 
   return (
     <div
@@ -122,13 +124,13 @@ export function TradeDrawer({ trade, onClose }: { trade: AdminSkinTradeOut; onCl
                 </span>
                 {trade.reason && why !== trade.reason && (
                   <span className="block text-xs text-[var(--text-secondary)]">
-                    {fill(D.raw, { text: trade.reason })}
+                    {fill(D.raw, { text: trade.reason, supplier })}
                   </span>
                 )}
               </Row>
             )}
             <Row label={D.sold}>{usd(trade.sold_usd)}</Row>
-            <Row label={D.bought}>{usd(boughtUsd(trade))}</Row>
+            <Row label={fill(D.bought, { supplier })}>{usd(boughtUsd(trade))}</Row>
             <Row label={D.margin}>{marginText(trade)}</Row>
             <Row label={D.seller}>{trade.seller_name ?? "—"}</Row>
             <Row label={D.created}>{when(trade.created_at)}</Row>
@@ -138,11 +140,13 @@ export function TradeDrawer({ trade, onClose }: { trade: AdminSkinTradeOut; onCl
             {trade.accepted_at && <Row label={D.acceptedAt}>{when(trade.accepted_at)}</Row>}
             {trade.release_date && <Row label={D.releaseDate}>{when(trade.release_date)}</Row>}
             <Row label={D.lastChecked}>{when(trade.last_checked_at)}</Row>
-            <Row label={D.waxpeerStatus}>{trade.waxpeer_status ?? "—"}</Row>
-            <Row label={D.projectId}>
+            <Row label={fill(D.waxpeerStatus, { supplier })}>{trade.waxpeer_status ?? "—"}</Row>
+            <Row label={fill(D.projectId, { supplier })}>
               <CopyId value={trade.project_id} chars={64} />
             </Row>
-            <Row label={D.waxpeerId}>{trade.waxpeer_id ?? "—"}</Row>
+            <Row label={fill(D.waxpeerId, { supplier })}>
+              {trade.waxpeer_id ?? trade.supplier_order_id ?? "—"}
+            </Row>
             <Row label={D.tradeId}>{trade.trade_id ?? "—"}</Row>
             <Row label={D.order}>
               <CopyId value={trade.order_id} chars={64} />

@@ -22,6 +22,8 @@ const mockedApiPost = vi.mocked(apiPost);
 
 const ROW: AdminSkinTradeOut = {
   id: "t1",
+  supplier: "waxpeer",
+  supplier_order_id: null,
   project_id: "p-key-1",
   waxpeer_id: 77,
   order_id: "01a0e987-eede-7d40-892f-fe7f3b3bd0e9",
@@ -116,6 +118,21 @@ it("opens the trade's details — Waxpeer keys, Steam link, the order", async ()
   );
   fireEvent.click(within(drawer).getByRole("link", { name: "Открыть заказ" }));
   expect(await screen.findByText("order-stub")).toBeInTheDocument();
+});
+
+it("names csmarket, not Waxpeer, for a trade csmarket bought", async () => {
+  mockedApiGet.mockResolvedValue({
+    ...PAGE,
+    items: [{ ...ROW, supplier: "csmarket", waxpeer_id: null, supplier_order_id: "CE8YPPGR" }],
+  });
+  renderPage();
+  await screen.findByRole("table");
+  fireEvent.click(within(table()).getByText("AK-47 | Redline (Field-Tested)"));
+  const drawer = await screen.findByRole("dialog");
+  expect(within(drawer).getByText("Мы заплатили csmarket")).toBeInTheDocument();
+  expect(within(drawer).getByText("ID заказа у csmarket")).toBeInTheDocument();
+  expect(within(drawer).getByText("CE8YPPGR")).toBeInTheDocument();
+  expect(within(drawer).queryByText(/Waxpeer/)).not.toBeInTheDocument();
 });
 
 it("resolves from the details with a note", async () => {

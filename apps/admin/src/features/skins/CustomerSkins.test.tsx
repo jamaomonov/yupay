@@ -22,6 +22,8 @@ const mockedApiGet = vi.mocked(apiGet);
 
 const TRADE: AdminSkinTradeOut = {
   id: "t1",
+  supplier: "waxpeer",
+  supplier_order_id: null,
   project_id: "p-1",
   waxpeer_id: null,
   order_id: "01a0e987-eede-7d40-892f-fe7f3b3bd0e9",

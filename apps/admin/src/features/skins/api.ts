@@ -24,9 +24,13 @@ export type TradesView = "all" | "active" | "attention";
 
 export interface AdminSkinTradeOut {
   id: string;
-  /** Our key on Waxpeer — what their dashboard is searched by. */
+  /** Who bought it (ADR-0098). */
+  supplier: "waxpeer" | "csmarket";
+  /** Our key at the supplier — what their dashboard is searched by. */
   project_id: string;
   waxpeer_id: number | null;
+  /** csmarket's own order id (Waxpeer's is `waxpeer_id`). */
+  supplier_order_id: string | null;
   order_id: string;
   order_item_id: string;
   created_at: string;
@@ -157,6 +161,11 @@ export function shortWhen(iso: string): string {
 
 const REASON_KEYS = new Set(["buy_unconfirmed", "ambiguous_trade"]);
 
+/** The supplier as the strings name it: "csmarket" or "Waxpeer". */
+export function supplierName(t: Pick<AdminSkinTradeOut, "supplier">): string {
+  return t.supplier === "csmarket" ? "csmarket" : "Waxpeer";
+}
+
 /** Why, in the operator's words: our reason names, never Waxpeer's raw text alone. */
 export function reasonText(t: AdminSkinTradeOut): string | null {
   const R = T.trades.reasons;
@@ -171,5 +180,6 @@ export function reasonText(t: AdminSkinTradeOut): string | null {
   else if (t.state === "failed" && t.reason_code === "try_later") parts.push(R.low_balance);
   else if (t.reason) parts.push(t.reason);
   if (penalty) parts.push(fill(T.trades.penaltyUsd, { amount: usd(Number(penalty) / 1000) }));
-  return parts.length > 0 ? parts.join(" · ") : null;
+  const supplier = supplierName(t);
+  return parts.length > 0 ? parts.map((p) => fill(p, { supplier })).join(" · ") : null;
 }

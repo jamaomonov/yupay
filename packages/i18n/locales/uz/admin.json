@@ -409,7 +409,7 @@
     "navPricing": "Skin narxlari",
     "trades": {
       "title": "Skin almashuvlari",
-      "description": "Har bir skin xaridi: Waxpeer holati, bizdagi holat, sotuvchi. «E'tibor talab» — inson hal qilishi kerak bo'lganlar.",
+      "description": "Har bir skin xaridi: yetkazib beruvchidagi holat (csmarket yoki Waxpeer), bizdagi holat, sotuvchi. «E'tibor talab» — inson hal qilishi kerak bo'lganlar.",
       "tabs": {
         "all": "Hammasi",
         "active": "Jarayonda",
@@ -443,11 +443,11 @@
       "reasons": {
         "not_accepted": "Xaridor almashuvni qabul qilmadi",
         "sold_out": "Xariddan oldin lotlar tugadi",
-        "buy_unconfirmed": "Waxpeer xaridni tasdiqlamadi",
+        "buy_unconfirmed": "{supplier} xaridni tasdiqlamadi",
         "ambiguous_trade": "Bitta kalit ostida bir nechta bitim",
         "rollback": "Yetkazilgandan keyin bekor qilindi",
         "buy_pending": "Xarid hali yuborilmagan",
-        "low_balance": "Waxpeer balansi yetmadi — mijozga pul balansiga qaytarildi"
+        "low_balance": "{supplier} balansi yetmadi — mijozga pul balansiga qaytarildi"
       },
       "penaltyUsd": "jarima {amount}",
       "drawer": {
@@ -455,12 +455,12 @@
         "close": "Yopish",
         "openOrder": "Buyurtmani ochish",
         "openOffer": "Steam'dagi almashuv",
-        "projectId": "Project ID (Waxpeer)",
-        "waxpeerId": "Waxpeer ID",
+        "projectId": "Project ID ({supplier})",
+        "waxpeerId": "{supplier} buyurtma ID",
         "tradeId": "Steam trade ID",
         "order": "Buyurtma",
         "sold": "Mijoz to'ladi",
-        "bought": "Biz Waxpeer'ga to'ladik",
+        "bought": "Biz {supplier}'ga to'ladik",
         "margin": "Marja",
         "seller": "Sotuvchi",
         "created": "Yaratilgan",
@@ -468,11 +468,11 @@
         "releaseDate": "Steam himoyasi",
         "acceptedAt": "Qabul qilingan",
         "lastChecked": "Tekshirilgan",
-        "waxpeerStatus": "Waxpeer holati",
+        "waxpeerStatus": "{supplier} holati",
         "reason": "Sabab",
-        "raw": "Waxpeer'da: {text}",
+        "raw": "{supplier}'da: {text}",
         "resolveTitle": "Hal qilish",
-        "notePlaceholder": "Nima qilindi: pul qaytarildi, qo'llab-quvvatlashga yozildi, Waxpeer tiketi…",
+        "notePlaceholder": "Nima qilindi: pul qaytarildi, qo'llab-quvvatlashga yozildi, yetkazib beruvchiga tiket…",
         "resolve": "Hal qilindi deb belgilash",
         "resolvedBy": "{date} hal qilindi",
         "noteLabel": "Izoh",
@@ -480,7 +480,7 @@
         "refund": "Pulni balansga qaytarish",
         "refundConfirm": "{amount} xaridorning YuPay balansiga qaytarilsinmi? Mijozga xabar boradi.",
         "retry": "Xaridni takrorlash",
-        "retryConfirm": "Avval {project} ni Waxpeer kabinetidan qidiring: xarid u yerda bo'lsa, takror skinni ikkinchi marta sotib oladi. Takrorlansinmi?",
+        "retryConfirm": "Avval {project} ni {supplier} kabinetidan qidiring: xarid u yerda bo'lsa, takror skinni ikkinchi marta sotib oladi. Takrorlansinmi?",
         "refundedWallet": "Pul YuPay balansiga qaytarildi",
         "refundedCard": "Pul kartaga qaytarildi",
         "actionError": "Bo'lmadi: {error}"

@@ -409,7 +409,7 @@
     "navPricing": "Цены скинов",
     "trades": {
       "title": "Обмены скинов",
-      "description": "Каждая покупка скина: статус у Waxpeer, наше состояние, продавец. «Требуют внимания» — то, что должен разобрать человек.",
+      "description": "Каждая покупка скина: статус у поставщика (csmarket или Waxpeer), наше состояние, продавец. «Требуют внимания» — то, что должен разобрать человек.",
       "tabs": {
         "all": "Все",
         "active": "В процессе",
@@ -443,11 +443,11 @@
       "reasons": {
         "not_accepted": "Покупатель не принял обмен",
         "sold_out": "Лоты закончились до покупки",
-        "buy_unconfirmed": "Waxpeer не подтвердил покупку",
+        "buy_unconfirmed": "{supplier} не подтвердил покупку",
         "ambiguous_trade": "Несколько сделок под одним ключом",
         "rollback": "Откат после доставки",
         "buy_pending": "Покупка ещё не отправлена",
-        "low_balance": "Не хватило баланса Waxpeer — клиенту вернули деньги на баланс"
+        "low_balance": "Не хватило баланса {supplier} — клиенту вернули деньги на баланс"
       },
       "penaltyUsd": "штраф {amount}",
       "drawer": {
@@ -455,12 +455,12 @@
         "close": "Закрыть",
         "openOrder": "Открыть заказ",
         "openOffer": "Обмен в Steam",
-        "projectId": "Project ID (Waxpeer)",
-        "waxpeerId": "Waxpeer ID",
+        "projectId": "Project ID ({supplier})",
+        "waxpeerId": "ID заказа у {supplier}",
         "tradeId": "Steam trade ID",
         "order": "Заказ",
         "sold": "Клиент заплатил",
-        "bought": "Мы заплатили Waxpeer",
+        "bought": "Мы заплатили {supplier}",
         "margin": "Маржа",
         "seller": "Продавец",
         "created": "Создан",
@@ -468,11 +468,11 @@
         "releaseDate": "Защита Steam до",
         "acceptedAt": "Принят",
         "lastChecked": "Проверен",
-        "waxpeerStatus": "Статус Waxpeer",
+        "waxpeerStatus": "Статус у {supplier}",
         "reason": "Причина",
-        "raw": "Как у Waxpeer: {text}",
+        "raw": "Как у {supplier}: {text}",
         "resolveTitle": "Разобрать",
-        "notePlaceholder": "Что сделано: вернули деньги, написали в поддержку, тикет Waxpeer…",
+        "notePlaceholder": "Что сделано: вернули деньги, написали в поддержку, тикет поставщику…",
         "resolve": "Отметить разобранным",
         "resolvedBy": "Разобрано {date}",
         "noteLabel": "Заметка",
@@ -480,7 +480,7 @@
         "refund": "Вернуть деньги на баланс",
         "refundConfirm": "Вернуть {amount} на баланс YuPay покупателя? Клиент получит уведомление.",
         "retry": "Повторить покупку",
-        "retryConfirm": "Сначала найди {project} в кабинете Waxpeer: если покупка там есть, повтор купит скин второй раз. Повторить?",
+        "retryConfirm": "Сначала найди {project} в кабинете {supplier}: если покупка там есть, повтор купит скин второй раз. Повторить?",
         "refundedWallet": "Деньги вернули на баланс YuPay",
         "refundedCard": "Деньги вернули на карту",
         "actionError": "Не получилось: {error}"
