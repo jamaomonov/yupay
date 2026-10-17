@@ -20,6 +20,7 @@ from yupay.modules.integrations.price_refresh import (
     _Move,
     _move_line,
 )
+from yupay.modules.notifications import api as notifications
 
 
 class _Mapping:
@@ -133,7 +134,7 @@ async def test_a_muted_supplier_is_not_warned_about(monkeypatch: Any) -> None:
     async def _fresh(_key: str, *, ttl_seconds: int) -> bool:
         return False
 
-    monkeypatch.setattr(price_refresh.notifications, "send_admin_alert", _send)
+    monkeypatch.setattr(notifications, "send_admin_alert", _send)
     monkeypatch.setattr(fulfillment_service, "_set_redis_dedupe", _fresh)
     for slug in ("waxpeer", "nova"):
         monkeypatch.setitem(REGISTRY, slug, _Empty())

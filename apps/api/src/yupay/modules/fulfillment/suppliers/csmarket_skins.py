@@ -63,7 +63,6 @@ from yupay.modules.fulfillment.suppliers.csmarket_client import (
     units_to_usd,
 )
 from yupay.modules.orders.models import Order, OrderItem
-from yupay.modules.skins.listings_csmarket import forget
 from yupay.modules.skins.models import SkinTrade
 from yupay.modules.skins.tradelink import parse_tradelink
 
@@ -233,10 +232,14 @@ async def _refresh_lot(item: OrderItem, code: str | None) -> None:
     slug, offer_id = data.get("slug"), data.get("offer_id")
     if not isinstance(slug, str) or not slug:
         return
+    # Imported here: skins.listings reaches this module through the registry, so a
+    # top-level import closes a cycle on a cold ``import yupay.modules.skins.listings``.
+    from yupay.modules.skins import listings_csmarket
+
     if code in _LOT_SOLD and offer_id:
-        await forget(get_redis(), slug, str(offer_id))
+        await listings_csmarket.forget(get_redis(), slug, str(offer_id))
     elif code in _PRICE_MOVED:
-        await forget(get_redis(), slug)
+        await listings_csmarket.forget(get_redis(), slug)
 
 
 def _refund_code(order: CsmOrder) -> str | None:

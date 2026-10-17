@@ -26,6 +26,7 @@ from yupay.modules.fulfillment.suppliers.csmarket_client import (
 )
 from yupay.modules.fulfillment.suppliers.csmarket_skins import buy, skin_status, trade_row
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.skins import listings_csmarket
 from yupay.modules.skins.models import SkinTrade
 
 from tests.integration.test_fulfillment_async import _make_paid_order
@@ -46,7 +47,7 @@ def hidden(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
     async def _forget(_redis: object, slug: str, offer_id: str | None = None) -> None:
         calls.append((slug, offer_id))
 
-    monkeypatch.setattr(csmarket_skins, "forget", _forget)
+    monkeypatch.setattr(listings_csmarket, "forget", _forget)
     monkeypatch.setattr(csmarket_skins, "get_redis", lambda: None)
     return calls
 
