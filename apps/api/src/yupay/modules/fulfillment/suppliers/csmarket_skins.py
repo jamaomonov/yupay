@@ -19,6 +19,11 @@ The csmarket twin of ``waxpeer_skins``. Rules:
 * Status: ``buying`` in progress · ``trade_sent`` offer out · ``delivered`` succeeded ·
   ``refunded`` failed ``RETURNED`` with csmarket's reason. csmarket reports no rollback
   after delivery (it stays ``delivered``), so nothing here can produce ``SPENT``.
+* A lot the purchase found sold (``offer_gone``, or a refund for ``sold_out``) is hidden
+  from the offers list for a few minutes (``skins.listings_csmarket.forget``), as a lot the
+  checkout found gone is: csmarket's check reads a copy of Skinslink up to 30 s old, so a
+  lot sold seconds earlier can still pass it. A lot whose price moved is not sold, so it
+  only drops the cached list, which then shows the new price.
 
 The trade is mirrored onto ``skin_trades`` in Waxpeer's status codes (0 buying, 4 offer
 out, 4 + ``release_date`` accepted, 5 released, 6 failed) so the order page, the admin
@@ -40,6 +45,7 @@ from yupay.core.config import get_settings
 from yupay.core.errors import ValidationError
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
+from yupay.core.redis import get_redis
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.suppliers.base import (
     FulfillerError,
@@ -55,6 +61,7 @@ from yupay.modules.fulfillment.suppliers.csmarket_client import (
     CsmOrder,
 )
 from yupay.modules.orders.models import Order, OrderItem
+from yupay.modules.skins.listings_csmarket import forget
 from yupay.modules.skins.models import SkinTrade
 from yupay.modules.skins.tradelink import parse_tradelink
 
@@ -212,9 +219,34 @@ def _map(order: CsmOrder, row: SkinTrade) -> FulfillStatus:
     )
 
 
-async def _settle(db: AsyncSession, row: SkinTrade, order: CsmOrder, key: str) -> FulfillResult:
+#: csmarket codes and refund reasons that mean the lot itself was sold.
+_LOT_SOLD = frozenset({"offer_gone", "item_not_found", "sold_out"})
+#: ...and those that mean only its price moved.
+_PRICE_MOVED = frozenset({"price_above_max", "price_moved"})
+
+
+async def _refresh_lot(item: OrderItem, code: str | None) -> None:
+    """Hide a sold lot, or drop the cached list for a repriced one (it never raises)."""
+    data = item.fulfillment_data or {}
+    slug, offer_id = data.get("slug"), data.get("offer_id")
+    if not isinstance(slug, str) or not slug:
+        return
+    if code in _LOT_SOLD and offer_id:
+        await forget(get_redis(), slug, str(offer_id))
+    elif code in _PRICE_MOVED:
+        await forget(get_redis(), slug)
+
+
+def _refund_code(order: CsmOrder) -> str | None:
+    return order.refund_reason if order.status == "refunded" else None
+
+
+async def _settle(
+    db: AsyncSession, item: OrderItem, row: SkinTrade, order: CsmOrder, key: str
+) -> FulfillResult:
     mirror(row, order)
     await db.flush()
+    await _refresh_lot(item, _refund_code(order))
     status = _map(order, row)
     return FulfillResult(
         outcome=status.outcome,
@@ -261,13 +293,15 @@ async def buy(  # noqa: PLR0911 -- one return per outcome reads as the table abo
         # It may have landed: the sweep sends the same purchase again (409 → the order).
         return _result("in_progress", key, buy_unconfirmed_at=now().isoformat(), buy_pending=True)
     except CsmarketError as exc:
-        return await _refused(db, row, exc, cap)
+        return await _refused(db, item, row, exc, cap)
     if not created:
         log.info("skins.buy.adopted", order_item_id=row.order_item_id)
-    return await _settle(db, row, order, key)
+    return await _settle(db, item, row, order, key)
 
 
-async def _refused(db: AsyncSession, row: SkinTrade, exc: CsmarketError, cap: int) -> FulfillResult:
+async def _refused(
+    db: AsyncSession, item: OrderItem, row: SkinTrade, exc: CsmarketError, cap: int
+) -> FulfillResult:
     """csmarket refused the purchase: nothing was bought, the line ends ``RETURNED``."""
     if exc.code == "insufficient_balance":
         # Nothing was bought: the buyer gets the money back now and ops tops up the wallet.
@@ -288,6 +322,7 @@ async def _refused(db: AsyncSession, row: SkinTrade, exc: CsmarketError, cap: in
     row.reason = reason
     row.updated_at = now()
     await db.flush()
+    await _refresh_lot(item, exc.code)
     return _result(
         "failed", row.project_id, error=reason, money=MoneyOutcome.RETURNED, buy_pending=False
     )
@@ -311,6 +346,7 @@ async def skin_status(
         return _as_status(_result("in_progress", key))
     mirror(row, order)
     await db.flush()
+    await _refresh_lot(item, _refund_code(order))
     return _map(order, row)
 
 

@@ -16,6 +16,7 @@ from yupay.core.ids import new_id
 from yupay.modules.fulfillment.models import FulfillmentTask
 from yupay.modules.fulfillment.service import _line_route
 from yupay.modules.fulfillment.skin_sweeps import skin_recheck_seconds
+from yupay.modules.fulfillment.suppliers import csmarket_skins
 from yupay.modules.fulfillment.suppliers.base import MoneyOutcome
 from yupay.modules.fulfillment.suppliers.csmarket_client import (
     CsmarketError,
@@ -35,6 +36,19 @@ LINK = "https://steamcommunity.com/tradeoffer/new/?partner=1039652352&token=LBCW
 NAME = "AK-47 | Redline (Field-Tested)"
 KEY = "task-key-csm"
 OFFER = "rBGDFCIOesyZ9-DMdmHEEJA8jPyS5w6v"
+
+
+@pytest.fixture(autouse=True)
+def hidden(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, str | None]]:
+    """Lots taken off the offers list, instead of a Redis round trip."""
+    calls: list[tuple[str, str | None]] = []
+
+    async def _forget(_redis: object, slug: str, offer_id: str | None = None) -> None:
+        calls.append((slug, offer_id))
+
+    monkeypatch.setattr(csmarket_skins, "forget", _forget)
+    monkeypatch.setattr(csmarket_skins, "get_redis", lambda: None)
+    return calls
 
 
 def _order(status: str = "buying", **over: Any) -> CsmOrder:
@@ -171,7 +185,7 @@ async def test_buys_the_chosen_offer_under_the_paid_cap(db_session: AsyncSession
 
 @pytest.mark.parametrize("code", ["offer_gone", "price_above_max"])
 async def test_a_sold_or_dearer_lot_is_never_swapped_for_another(
-    db_session: AsyncSession, code: str
+    db_session: AsyncSession, code: str, hidden: list[tuple[str, str | None]]
 ) -> None:
     """Owner 2026-10-10 / csmarket ADR-0013: the buyer chose this lot by its float and
     stickers, so a refusal returns the money — one attempt, the same offer, no substitute."""
@@ -185,6 +199,10 @@ async def test_a_sold_or_dearer_lot_is_never_swapped_for_another(
     )
     assert [s["offer_id"] for s in client.sent] == [OFFER]
     assert (await _row(db_session)).reason == "sold_out"
+    # A sold lot leaves the offers list, or the page sells it again (2026-10-17); a
+    # repriced one is still for sale and only drops the cached list.
+    slug = "ak-47-redline-field-tested"
+    assert hidden == ([(slug, OFFER)] if code == "offer_gone" else [(slug, None)])
 
 
 async def test_a_line_without_the_chosen_lot_is_returned_not_bought(
@@ -233,7 +251,7 @@ async def test_status_follows_the_trade_to_delivered(db_session: AsyncSession) -
     item = await _item(db_session, "csm-flow")
     await _buy(db_session, item, _Client())
     task = await _task(db_session, item)
-    accepted = datetime(2026, 10, 9, 8, 25, tzinfo=UTC)
+    accepted = (datetime.now(UTC) - timedelta(hours=1)).replace(microsecond=0)
     trade = CsmTrade(
         offer_sent_at=accepted - timedelta(minutes=3),
         accepted_at=accepted,
@@ -260,7 +278,9 @@ async def test_status_follows_the_trade_to_delivered(db_session: AsyncSession) -
     assert row.status == 4  # accepted, still under Steam's protection
 
 
-async def test_a_refund_after_the_offer_reads_as_not_accepted(db_session: AsyncSession) -> None:
+async def test_a_refund_after_the_offer_reads_as_not_accepted(
+    db_session: AsyncSession, hidden: list[tuple[str, str | None]]
+) -> None:
     item = await _item(db_session, "csm-declined")
     await _buy(db_session, item, _Client(existing=_order("trade_sent")))
     task = await _task(db_session, item)
@@ -271,9 +291,12 @@ async def test_a_refund_after_the_offer_reads_as_not_accepted(db_session: AsyncS
     assert (status.outcome, status.money_outcome) == ("failed", MoneyOutcome.RETURNED)
     row = await _row(db_session)
     assert (row.status, row.reason) == (6, "not accepted")
+    assert hidden == []  # a declined trade says nothing about the lot
 
 
-async def test_a_refund_before_any_offer_reads_as_sold_out(db_session: AsyncSession) -> None:
+async def test_a_refund_before_any_offer_reads_as_sold_out(
+    db_session: AsyncSession, hidden: list[tuple[str, str | None]]
+) -> None:
     item = await _item(db_session, "csm-nooffer")
     await _buy(db_session, item, _Client())
     task = await _task(db_session, item)
@@ -282,6 +305,7 @@ async def test_a_refund_before_any_offer_reads_as_sold_out(db_session: AsyncSess
     assert status.money_outcome is MoneyOutcome.RETURNED
     row = await _row(db_session)
     assert (row.status, row.reason) == (None, "sold_out")
+    assert hidden == [("ak-47-redline-field-tested", OFFER)]
 
 
 async def test_a_line_without_csmarket_ids_is_never_bought(db_session: AsyncSession) -> None:

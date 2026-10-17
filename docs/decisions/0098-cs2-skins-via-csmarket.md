@@ -70,7 +70,11 @@ Shape of the integration:
   the top of the route, after ending its one read, so no pool connection waits on it. Sold →
   `listing_gone` with the next lot, and the sold lot is hidden from the list for six
   minutes; cheaper → billed at the new price; dearer past 2 % → the buyer confirms the new
-  price; no answer → the list price (the purchase checks again).
+  price; no answer → the list price (the purchase checks again). A purchase that finds
+  the lot sold (`offer_gone`, or a refund for `sold_out`) hides it for the same six minutes
+  (amended 2026-10-17): csmarket checks Skinslink lots against a copy up to 30 s old, so a
+  lot sold seconds earlier can pass the check. `price_above_max` is not a sale: it only
+  drops the cached list so the page shows the new price.
 - **Status.** `GET /orders/{order_id}`: `buying` in progress, `trade_sent` offer out,
   `delivered` succeeded, `refunded` returned with csmarket's reason. A rollback after
   delivery is not reported by csmarket (it stays `delivered`), so the Waxpeer-only
