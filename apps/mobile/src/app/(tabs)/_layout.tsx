@@ -22,7 +22,7 @@ const LABELS: Record<string, string> = {
 };
 
 /** Four tabs with a lime dot under the active one (the agreed mockup). */
-function TabBar({ state, navigateToTab }: BottomTabBarProps) {
+function TabBar({ state, navigation }: BottomTabBarProps) {
   const { c } = useTheme();
   const { t } = useI18n();
   const insets = useSafeAreaInsets();
@@ -49,7 +49,7 @@ function TabBar({ state, navigateToTab }: BottomTabBarProps) {
             accessibilityRole="tab"
             accessibilityState={{ selected: focused }}
             onPress={() => {
-              if (!focused) navigateToTab(route.key);
+              if (!focused) navigation.navigate(route.name);
             }}
             style={{ alignItems: "center", gap: 4, width: 72 }}
           >

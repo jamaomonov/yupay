@@ -1,6 +1,6 @@
 # @yupay/mobile
 
-The YuPay iOS and Android app: Expo SDK 58, expo-router, TanStack Query. Why Expo and why in
+The YuPay iOS and Android app: Expo SDK 57, expo-router, TanStack Query. Why Expo and why in
 the monorepo: [ADR-0100](../../docs/decisions/0100-native-mobile-app-with-expo.md).
 
 ## Run it

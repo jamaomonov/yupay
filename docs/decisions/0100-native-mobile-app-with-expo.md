@@ -44,7 +44,8 @@ API it calls.
 
 Shape:
 
-- **Stack.** Expo SDK 58, expo-router (file-based navigation), TanStack Query and Zustand
+- **Stack.** Expo SDK 57 (SDK 58 came out 2026-09-29 and the store build of Expo Go did
+  not run it three weeks later; move up once it does), expo-router (file-based navigation), TanStack Query and Zustand
   as in web, react-hook-form + zod for forms, expo-secure-store for the refresh token,
   expo-notifications for push. Styling is React Native `StyleSheet` over one token module
   (`src/theme`) that mirrors the web palette (`apps/web/src/app/globals.css`) and adds a
