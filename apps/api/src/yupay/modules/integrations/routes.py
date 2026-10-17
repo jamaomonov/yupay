@@ -98,7 +98,7 @@ async def check_player(
     )
 
 
-_KNOWN_SUPPLIERS = {"g2b", "waxpeer", "gengine", "nova", "fzr"}
+_KNOWN_SUPPLIERS = {"g2b", "waxpeer", "gengine", "nova", "fzr", "csmarket"}
 
 
 def _mapping_out(row: SkuSupplierMapping, sku_code: str) -> SupplierMappingOut:

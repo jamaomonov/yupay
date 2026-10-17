@@ -48,7 +48,9 @@ export function SupplierDetailPage() {
   // the only doorway to its mapping form was hidden behind the catalogue
   // switch. Waxpeer has neither and stays as it was. Unknown slugs get the
   // door, for the same reason `caps` defaults open above.
-  const canMap = FULFILMENT_ROUTES.find((r) => r.slug === slug)?.mappings ?? true;
+  // A supplier with a no-catalogue note (Waxpeer, csmarket) takes no mappings either.
+  const canMap =
+    noCatalogueNote === null && (FULFILMENT_ROUTES.find((r) => r.slug === slug)?.mappings ?? true);
 
   const health = useQuery<SupplierHealth>({
     queryKey: qk.integrationHealth(slug),

@@ -234,7 +234,7 @@ export interface PriceRefreshOut {
 
 /** All G2B-flavoured slugs we expose in the admin today. Extend when adding
  *  Steam / Riot / etc. */
-export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine", "nova", "fzr"] as const;
+export const KNOWN_SUPPLIERS = ["g2b", "waxpeer", "gengine", "nova", "fzr", "csmarket"] as const;
 export type KnownSupplier = (typeof KNOWN_SUPPLIERS)[number];
 
 export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
@@ -243,6 +243,7 @@ export const SUPPLIER_LABELS: Record<KnownSupplier, string> = {
   gengine: "G-Engine",
   nova: "NOVA",
   fzr: "FazerCards",
+  csmarket: "csmarket",
 };
 
 /**
@@ -292,6 +293,8 @@ export interface SupplierCapabilities {
 export const SUPPLIER_CAPABILITIES: Record<KnownSupplier, SupplierCapabilities> = {
   g2b: { catalogueSync: true, gameImport: true },
   waxpeer: { catalogueSync: false, gameImport: false },
+  // csmarket feeds the CS2 skins catalogue on its own (ADR-0098): nothing to sync or map here.
+  csmarket: { catalogueSync: false, gameImport: false },
   // G-Engine's catalogue now syncs (`POST /gengine/sync-catalog`) into the
   // same cache the mapping wizard's pickers read — but there is no importer
   // for it, so `gameImport` stays false.
@@ -450,6 +453,10 @@ export const SUPPLIER_NO_CATALOGUE_NOTE: Partial<Record<KnownSupplier, string>> 
   waxpeer:
     "Waxpeer пополняет Steam-кошелёк на введённую сумму — у него нет списка товаров, " +
     "поэтому каталог, маппинг SKU и обновление цен здесь неприменимы.",
+  csmarket:
+    "csmarket продаёт скины CS2: их каталог и цены приходят в раздел «Скины» сами, " +
+    "поэтому маппинг SKU и синхронизация здесь неприменимы. Карточка показывает USD-баланс, " +
+    "с которого оплачиваются покупки.",
 };
 
 /**

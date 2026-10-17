@@ -35,6 +35,7 @@ supplier bought it.
 from __future__ import annotations
 
 from datetime import timedelta
+from decimal import Decimal
 from typing import Any, Protocol
 
 from sqlalchemy import select
@@ -59,6 +60,7 @@ from yupay.modules.fulfillment.suppliers.csmarket_client import (
     CsmarketRateLimitedError,
     CsmarketUnavailableError,
     CsmOrder,
+    units_to_usd,
 )
 from yupay.modules.orders.models import Order, OrderItem
 from yupay.modules.skins.listings_csmarket import forget
@@ -371,6 +373,25 @@ class CsmarketFulfiller:
     @property
     def available(self) -> bool:
         return bool(self._client_override is not None or get_settings().csmarket_api_key)
+
+    async def health(self) -> dict[str, Any]:
+        """Key validity and the USD balance purchases are paid from (``GET /me``).
+
+        Read by the integrations page and the hourly low-balance warning. Never raises:
+        an operator opening the page must not meet an error boundary because csmarket is down.
+        """
+        if not self.available:
+            return {"available": False, "reason": "CSMARKET_API_KEY is not configured"}
+        try:
+            me = await self._client().me()
+        except Exception as exc:  # noqa: BLE001 -- a probe must not crash the page
+            return {"available": False, "reason": str(exc)[:200]}
+        return {
+            "available": True,
+            "balance": f"{Decimal(units_to_usd(me.balance_units)):.2f}",
+            "currency": "USD",
+            "plan": me.pricing_profile or None,
+        }
 
     async def fulfill(
         self,

@@ -67,8 +67,8 @@ class _VoucherDenomSyncer(Protocol):
 
 
 #: Suppliers a full catalogue sweep is wired up for. Mirrors
-#: ``routes._KNOWN_SUPPLIERS`` minus Waxpeer, which sells Steam items by
-#: login rather than a browsable catalogue and so has nothing to sync.
+#: ``routes._KNOWN_SUPPLIERS`` minus Waxpeer and csmarket: Waxpeer sells Steam items by
+#: login rather than a browsable catalogue, and csmarket feeds the skins catalogue (ADR-0098).
 SYNCABLE_SUPPLIERS: frozenset[str] = frozenset({"g2b", "nova", "gengine", "fzr"})
 
 #: Suppliers the on-demand single-game denomination sync supports. G2B is

@@ -400,3 +400,32 @@ async def test_the_registered_fulfiller(
     assert result.outcome == "in_progress"
     assert (await wired.check_status(db=db_session, task=task)).outcome == "in_progress"
     cfg.get_settings.cache_clear()
+
+
+async def test_health_shows_the_usd_balance_and_never_raises() -> None:
+    """The integrations card and the hourly low-balance warning read it (2026-10-17)."""
+    from yupay.modules.fulfillment.suppliers.csmarket_client import CsmMe
+    from yupay.modules.fulfillment.suppliers.csmarket_skins import CsmarketFulfiller
+
+    class _Me:
+        def __init__(self, answer: CsmMe | Exception) -> None:
+            self.answer = answer
+
+        async def me(self) -> CsmMe:
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            return self.answer
+
+    funded = CsmarketFulfiller(
+        client=_Me(CsmMe(24360, True, "partner", {})),  # type: ignore[arg-type] # only me()
+    )
+    assert await funded.health() == {
+        "available": True,
+        "balance": "24.36",
+        "currency": "USD",
+        "plan": "partner",
+    }
+    down = CsmarketFulfiller(client=_Me(CsmarketUnavailableError("boom")))  # type: ignore[arg-type] # only me()
+    health = await down.health()
+    assert health["available"] is False
+    assert "boom" in health["reason"]

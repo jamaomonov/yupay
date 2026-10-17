@@ -317,7 +317,7 @@ async def refresh_all_mappings(*, supplier_slug: str | None = None) -> PriceRefr
 #: we top it up and it spends down; `manual`, `mock` and the reserved stubs
 #: do not. Each is probed through the same `health()` the integrations page
 #: reads, so this list is the only thing to touch when a fifth arrives.
-_WALLET_SUPPLIERS: Final = ("g2b", "gengine", "nova", "waxpeer", "fzr")
+_WALLET_SUPPLIERS: Final = ("g2b", "gengine", "nova", "waxpeer", "fzr", "csmarket")
 
 #: Units the dollar threshold can be compared against. `health()` normalises
 #: everything it can — waxpeer converts from thousandths, nova and gengine
