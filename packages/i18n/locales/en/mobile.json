@@ -1,0 +1,57 @@
+{
+  "tabs": {
+    "home": "Home",
+    "catalog": "Catalog",
+    "orders": "Orders",
+    "profile": "Profile"
+  },
+  "common": {
+    "sum": "UZS",
+    "retry": "Retry",
+    "loadError": "Couldn't load. Check your connection.",
+    "soon": "Soon"
+  },
+  "home": {
+    "search": "Game or service",
+    "popular": "Popular",
+    "all": "All",
+    "empty": "Nothing found"
+  },
+  "catalog": {
+    "title": "Catalog"
+  },
+  "brand": {
+    "amount": "Amount",
+    "whereId": "Where to find it?",
+    "check": "Check",
+    "toPay": "Continue to payment",
+    "pickAmount": "Pick an amount",
+    "enterId": "Enter your ID",
+    "outOfStock": "Out of stock",
+    "maintenance": "Temporarily unavailable",
+    "paySoon": "Payment is the next development step"
+  },
+  "check": {
+    "valid": "Player found:",
+    "invalid": "No player with this ID",
+    "unsupported": "This ID can't be checked in advance — enter it carefully",
+    "error": "Couldn't check the ID. Make sure it's correct"
+  },
+  "orders": {
+    "title": "Orders",
+    "signIn": "Sign in to see your orders",
+    "signInHint": "Orders from the website and Telegram show up here too",
+    "signInButton": "Sign in"
+  },
+  "profile": {
+    "title": "Profile",
+    "language": "Language",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "support": "Support",
+    "supportHint": "We answer in Telegram",
+    "version": "Version {version}"
+  }
+}

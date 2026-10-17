@@ -12,10 +12,12 @@ flowchart LR
     Visitor((Public visitor)) --> Web[apps/web — Next.js SEO]
     Customer((Customer)) --> Web
     Customer --> MiniApp[apps/miniapp — Telegram Mini App]
+    Customer --> Mobile[apps/mobile — iOS + Android app]
     Customer --> Bot[apps/bot — Telegram bot]
 
     Web --> API[apps/api — FastAPI]
     MiniApp --> API
+    Mobile --> API
     Bot --> API
 
     API --> Postgres[(PostgreSQL 16)]

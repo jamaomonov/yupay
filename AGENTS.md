@@ -14,10 +14,11 @@
 **YuPay** is a multi-currency online storefront for digital top-ups, in-game currency,
 software licenses, gift cards, and voucher codes. It serves customers in Uzbekistan, Russia,
 and the wider CIS, with planned expansion to global English-speaking markets. The product
-exists in two surfaces:
+exists in three surfaces:
 
 - **Public web storefront** (`apps/web`) — SEO-driven, guest-friendly checkout.
 - **Telegram Mini App** (`apps/miniapp`) — mobile, in-chat, frictionless.
+- **Mobile app** (`apps/mobile`, ADR-0100) — Expo, iOS and Android; in development.
 
 **Business model.** YuPay buys digital goods from upstream suppliers at wholesale and resells
 them with a margin. Customers pay via international cards (Stripe, PayPal), domestic
@@ -65,7 +66,8 @@ yupay/
 │   ├── scheduler/    # Periodic jobs (APScheduler)
 │   ├── bot/          # aiogram 3 Telegram bot
 │   ├── web/          # Next.js public storefront (SEO)
-│   └── miniapp/      # Next.js Telegram Mini App (mobile)
+│   ├── miniapp/      # Next.js Telegram Mini App (mobile)
+│   └── mobile/       # Expo (React Native) iOS + Android app — ADR-0100
 ├── packages/
 │   ├── ui/           # shadcn-based design system
 │   ├── api-client/   # auto-generated typed TS client + WebSocket client

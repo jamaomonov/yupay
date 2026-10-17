@@ -54,6 +54,10 @@ dev-web: ## Run only the public web (host process)
 dev-miniapp: ## Run only the Telegram Mini App (host process)
 	pnpm --filter @yupay/miniapp dev
 
+.PHONY: dev-mobile
+dev-mobile: ## Run the mobile app's dev server (scan the QR with Expo Go)
+	pnpm --filter @yupay/mobile start
+
 .PHONY: down
 down: ## Bring the dev stack down
 	$(COMPOSE_DEV) down

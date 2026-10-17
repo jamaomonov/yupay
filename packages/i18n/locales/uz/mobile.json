@@ -1,0 +1,57 @@
+{
+  "tabs": {
+    "home": "Bosh sahifa",
+    "catalog": "Katalog",
+    "orders": "Buyurtmalar",
+    "profile": "Profil"
+  },
+  "common": {
+    "sum": "soʻm",
+    "retry": "Qayta urinish",
+    "loadError": "Yuklab boʻlmadi. Internetni tekshiring.",
+    "soon": "Tez orada"
+  },
+  "home": {
+    "search": "Oʻyin yoki xizmat",
+    "popular": "Mashhur",
+    "all": "Hammasi",
+    "empty": "Hech narsa topilmadi"
+  },
+  "catalog": {
+    "title": "Katalog"
+  },
+  "brand": {
+    "amount": "Miqdor",
+    "whereId": "Qayerdan topiladi?",
+    "check": "Tekshirish",
+    "toPay": "Toʻlovga oʻtish",
+    "pickAmount": "Miqdorni tanlang",
+    "enterId": "ID ni kiriting",
+    "outOfStock": "Mavjud emas",
+    "maintenance": "Vaqtincha mavjud emas",
+    "paySoon": "Toʻlov — ishlab chiqishning keyingi bosqichi"
+  },
+  "check": {
+    "valid": "Oʻyinchi topildi:",
+    "invalid": "Bu ID bilan oʻyinchi topilmadi",
+    "unsupported": "Bu ID ni oldindan tekshirib boʻlmaydi — diqqat bilan kiriting",
+    "error": "ID ni tekshirib boʻlmadi. Toʻgʻri kiritilganiga ishonch hosil qiling"
+  },
+  "orders": {
+    "title": "Buyurtmalar",
+    "signIn": "Buyurtmalarni koʻrish uchun kiring",
+    "signInHint": "Saytdagi va Telegramdagi buyurtmalar ham shu yerda boʻladi",
+    "signInButton": "Kirish"
+  },
+  "profile": {
+    "title": "Profil",
+    "language": "Til",
+    "theme": "Mavzu",
+    "themeSystem": "Tizimdagidek",
+    "themeLight": "Yorugʻ",
+    "themeDark": "Qorongʻi",
+    "support": "Yordam",
+    "supportHint": "Telegramda javob beramiz",
+    "version": "Versiya {version}"
+  }
+}

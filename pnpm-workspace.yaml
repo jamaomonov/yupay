@@ -4,5 +4,6 @@ packages:
   - "apps/admin"
   - "apps/partners"
   - "apps/merchant"
+  - "apps/mobile"
   - "packages/*"
   - "e2e"
