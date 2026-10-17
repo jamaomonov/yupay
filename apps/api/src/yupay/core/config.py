@@ -1070,6 +1070,15 @@ class Settings(BaseSettings):
             "warning off entirely."
         ),
     )
+    supplier_low_balance_muted: list[str] = Field(
+        default_factory=lambda: ["waxpeer"],
+        description=(
+            "Suppliers the hourly low-balance warning skips. Waxpeer by default: "
+            "since 2026-10 nothing is routed to it (skins buy through csmarket, "
+            "Steam through fzr/NOVA), so its empty wallet only made noise. Set to "
+            "`[]` to warn about every funded supplier again."
+        ),
+    )
 
     # --- blog import (Bunzy) ---
     # A third party writes one article a day and we pull it in as a

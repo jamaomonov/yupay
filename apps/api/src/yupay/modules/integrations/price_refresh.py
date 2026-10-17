@@ -389,7 +389,10 @@ async def _maybe_warn_low_balance() -> None:
     from yupay.modules.fulfillment.service import _set_redis_dedupe
     from yupay.modules.fulfillment.suppliers import REGISTRY
 
+    muted = set(settings.supplier_low_balance_muted)
     for slug in _WALLET_SUPPLIERS:
+        if slug in muted:
+            continue
         fulfiller = REGISTRY.get(slug)
         if fulfiller is None or not fulfiller.available or not isinstance(fulfiller, _HasHealth):
             continue

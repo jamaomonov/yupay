@@ -110,3 +110,36 @@ def test_every_funded_supplier_is_watched() -> None:
         assert fulfiller is not None, slug
         # Probed through the same `health()` the integrations page reads.
         assert hasattr(fulfiller, "health"), slug
+
+
+async def test_a_muted_supplier_is_not_warned_about(monkeypatch: Any) -> None:
+    """Waxpeer is muted by default (owner, 2026-10-17): nothing is routed to it, so its
+    empty wallet only made noise. Every other funded supplier still warns."""
+    from yupay.core.config import get_settings
+    from yupay.modules.fulfillment import service as fulfillment_service
+    from yupay.modules.integrations import price_refresh
+
+    class _Empty:
+        available = True
+
+        async def health(self) -> dict[str, Any]:
+            return {"available": True, "balance": "0.01", "currency": "USD"}
+
+    sent: list[str] = []
+
+    async def _send(text: str, *, kind: str) -> None:
+        sent.append(text)
+
+    async def _fresh(_key: str, *, ttl_seconds: int) -> bool:
+        return False
+
+    monkeypatch.setattr(price_refresh.notifications, "send_admin_alert", _send)
+    monkeypatch.setattr(fulfillment_service, "_set_redis_dedupe", _fresh)
+    for slug in ("waxpeer", "nova"):
+        monkeypatch.setitem(REGISTRY, slug, _Empty())
+    monkeypatch.setattr(price_refresh, "_WALLET_SUPPLIERS", ("waxpeer", "nova"))
+
+    assert get_settings().supplier_low_balance_muted == ["waxpeer"]
+    await price_refresh._maybe_warn_low_balance()
+    assert len(sent) == 1
+    assert "NOVA" in sent[0]
