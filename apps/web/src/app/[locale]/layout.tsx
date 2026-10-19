@@ -68,7 +68,7 @@ export async function generateMetadata({
     // Absolute base so every relative metadata URL (alternates, OG) resolves to
     // https://yupay.uz/... — search consoles reject relative hreflang/canonical.
     metadataBase: new URL(SITE),
-    title: { template: "%s — yupay", default: t("homeTitle") },
+    title: { template: "%s — YuPay", default: t("homeTitle") },
     description: t("homeDescription"),
     robots: ROBOTS,
     // Absolute canonical + hreflang (incl. x-default), ru without a prefix —

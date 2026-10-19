@@ -1,17 +1,17 @@
 import { expect, it } from "vitest";
 
-import { brandPageDescription, brandPageTitle, brandReviewsLd } from "./brand-seo";
+import { brandPageDescription, brandPageTitle, brandReviewsLd, priceFaqRow } from "./brand-seo";
 
 import type { Review } from "./reviews";
 
 it("uses the brand's own search title when it has one", () => {
   expect(
-    brandPageTitle("Алмазы Mobile Legends (MLBB) — купить", "Mobile Legends — пополнение | yupay"),
-  ).toBe("Алмазы Mobile Legends (MLBB) — купить | yupay");
+    brandPageTitle("Алмазы Mobile Legends (MLBB) — купить", "Mobile Legends — пополнение | YuPay"),
+  ).toBe("Алмазы Mobile Legends (MLBB) — купить | YuPay");
 });
 
 it("falls back to the template when the title is missing or blank", () => {
-  const template = "Mobile Legends — пополнение в Узбекистане | yupay";
+  const template = "Mobile Legends — пополнение в Узбекистане | YuPay";
   expect(brandPageTitle(null, template)).toBe(template);
   expect(brandPageTitle(undefined, template)).toBe(template);
   expect(brandPageTitle("   ", template)).toBe(template);
@@ -54,4 +54,16 @@ it("skips star-only reviews, names guests, and caps the list", () => {
   const out = brandReviewsLd(items, "Покупатель");
   expect(out).toHaveLength(5);
   expect(out[0]?.author.name).toBe("Покупатель");
+});
+
+it("answers the price question from the live, in-stock row only", () => {
+  const rows = [
+    { denomination: "800 Robux", price: 124659, inStock: true },
+    { denomination: "1000 Robux", price: 153941, inStock: true },
+  ];
+  expect(priceFaqRow("roblox", rows)?.price).toBe(153941);
+  expect(priceFaqRow("pubg-mobile", rows)).toBeNull();
+  expect(
+    priceFaqRow("roblox", [{ denomination: "1000 Robux", price: 153941, inStock: false }]),
+  ).toBeNull();
 });

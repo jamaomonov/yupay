@@ -22,7 +22,7 @@ export function Wordmark({ size = "md" }: { size?: "sm" | "md" }) {
   return (
     <Image
       src="/logo/wordmark.svg"
-      alt="yupay"
+      alt="YuPay"
       width={width}
       height={height}
       unoptimized

@@ -194,8 +194,8 @@
   },
   "store": {
     "meta": {
-      "title": "Каталог пополнений игр и подписок в Узбекистане",
-      "description": "Пополняй Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force и Arena Breakout по ID. Оплата Click, Payme и Uzum, цены в сумах, автоматическое зачисление, без передачи пароля — yupay."
+      "title": "Каталог: пополнение игр и подписок в Узбекистане за сумы",
+      "description": "Steam, PUBG Mobile, Free Fire, Mobile Legends, Roblox, Telegram Stars и десятки других игр и сервисов. Оплата в сумах через Click, Payme или Uzum, без пароля."
     },
     "eyebrow": "Каталог",
     "title": "Пополнение игр и подписок в Узбекистане",
@@ -296,8 +296,8 @@
     "commissionChip": "Комиссия от {pct}%",
     "etaChip": "Зачисление 1–5 минут",
     "securityChip": "Без пароля",
-    "brandMetaTitle": "{name} — пополнение в Узбекистане | yupay",
-    "brandMetaDescription": "Пополнение {name} по ID, зачисление автоматическое. Цены в сумах, оплата Click, Payme или Uzum. Без передачи пароля — yupay.",
+    "brandMetaTitle": "{name} — пополнение в Узбекистане | YuPay",
+    "brandMetaDescription": "Пополнение {name} по ID, зачисление автоматическое. Цены в сумах, оплата Click, Payme или Uzum. Без передачи пароля — YuPay.",
     "brands": {
       "steam": {
         "about": "Пополнение кошелька Steam для аккаунтов СНГ и Казахстана. Деньги зачисляются на баланс автоматически — без передачи логина и пароля, оплата в сумах."
@@ -335,6 +335,15 @@
     "readMore": "Читать далее",
     "readLess": "Свернуть",
     "howToTitle": "Как пополнить {name} в Узбекистане",
+    "priceFaqQuestion": "Сколько стоит {denomination} в сумах?",
+    "priceFaqAnswer": "{denomination} стоят {price}. Оплата в сумах через Click, Payme или Uzum, код приходит сразу после оплаты.",
+    "howToSeo": {
+      "roblox": {
+        "title": "Как купить робуксы в Узбекистане",
+        "metaTitle": "Как купить робуксы и задонатить в Роблокс в Узбекистане — YuPay",
+        "metaDescription": "Как задонатить в Роблокс из Узбекистана: подарочная карта на Robux за сумы через Click, Payme или Uzum, код на почту, активация на roblox.com/redeem."
+      }
+    },
     "howToMetaTitle": "Как пополнить {name} в Узбекистане за сумы — YuPay",
     "howToMetaDescription": "Пошаговая инструкция, как пополнить {name} в Узбекистане за сумы: что нужно, где это найти и сколько это стоит.",
     "howToStepsTitle": "Пошаговая инструкция",
@@ -382,8 +391,8 @@
     "successPaidNote": "Заказ оплачен — выдаём товар. Следите за статусом ниже.",
     "payFromBalanceLoading": "Загружаем баланс…",
     "payFromBalanceTopUp": "Пополнить баланс",
-    "brandMetaTitleVoucher": "{name} — купить в Узбекистане | yupay",
-    "brandMetaDescriptionVoucher": "Купить {name} в Узбекистане: код сразу после оплаты. Цены в сумах, оплата Click, Payme или Uzum — yupay.",
+    "brandMetaTitleVoucher": "{name} — купить в Узбекистане | YuPay",
+    "brandMetaDescriptionVoucher": "Купить {name} в Узбекистане: код сразу после оплаты. Цены в сумах, оплата Click, Payme или Uzum — YuPay.",
     "etaChipVoucher": "Код за 1–5 минут",
     "instructionsTitleVoucher": "Как активировать",
     "howToLinkVoucher": "Как купить и активировать",
@@ -502,7 +511,7 @@
     "eyebrow": "Приложение",
     "titleLine1": "Не сайт ради сайта —",
     "titleLine2": "живое приложение.",
-    "subtitle": "Весь yupay живёт прямо в Telegram. Каталог, оплата и кошелёк — без установки и регистрации, в том же чате, где вы общаетесь с друзьями.",
+    "subtitle": "Весь YuPay живёт прямо в Telegram. Каталог, оплата и кошелёк — без установки и регистрации, в том же чате, где вы общаетесь с друзьями.",
     "f1Title": "В пару тапов",
     "f1Sub": "Выбрали игру, ввели ID, оплатили — донат зачисляется автоматически. Без передачи пароля.",
     "f2Title": "Telegram-нативно",
@@ -539,7 +548,7 @@
     "imprint": "Реквизиты",
     "allDocs": "Все документы",
     "careers": "Карьера",
-    "copyright": "© {year} yupay",
+    "copyright": "© {year} YuPay",
     "disclaimer": "Не связано с Valve, Tencent, Riot или miHoYo.",
     "madeBy": "Made by",
     "gamesTitle": "Каталог"
@@ -961,6 +970,8 @@
   "blog": {
     "title": "Блог",
     "description": "Гайды и новости по играм, которые мы продаём.",
+    "metaTitle": "Гайды по донату в игры из Узбекистана: UC, робуксы, Steam",
+    "metaDescription": "Как пополнить PUBG Mobile, Free Fire, Steam и Roblox из Узбекистана, где найти ID игрока и сколько это стоит в сумах — пошаговые гайды.",
     "empty": "Пока нет опубликованных материалов.",
     "emptyHint": "На этом языке материалы ещё не вышли.",
     "emptyCta": "В каталог",

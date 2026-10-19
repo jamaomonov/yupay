@@ -103,7 +103,7 @@ export async function AppShowcase() {
               <div className="anim-float-slow absolute left-0 top-[16%] z-10 w-[42%]">
                 <Image
                   src="/mockups/home.png"
-                  alt="Экран каталога приложения yupay"
+                  alt="Экран каталога приложения YuPay"
                   width={2000}
                   height={1964}
                   sizes="(max-width: 1024px) 38vw, 250px"
@@ -115,7 +115,7 @@ export async function AppShowcase() {
               <div className="anim-float-slow absolute right-0 top-[11%] z-20 w-[44%]">
                 <Image
                   src="/mockups/settings.png"
-                  alt="Экран настроек приложения yupay"
+                  alt="Экран настроек приложения YuPay"
                   width={2000}
                   height={1964}
                   sizes="(max-width: 1024px) 40vw, 260px"
@@ -127,7 +127,7 @@ export async function AppShowcase() {
               <div className="absolute left-1/2 top-0 z-30 w-[52%] -translate-x-1/2">
                 <Image
                   src="/mockups/topup.png"
-                  alt="Экран пополнения PUBG Mobile в приложении yupay"
+                  alt="Экран пополнения PUBG Mobile в приложении YuPay"
                   width={2000}
                   height={1964}
                   sizes="(max-width: 1024px) 50vw, 320px"

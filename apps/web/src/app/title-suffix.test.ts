@@ -1,10 +1,10 @@
 /**
  * A page title spells the site name only if the page opts out of the template.
  *
- * `layout.tsx` sets `title: { template: "%s — yupay" }`, so Next appends the
+ * `layout.tsx` sets `title: { template: "%s — YuPay" }`, so Next appends the
  * brand to every page title handed over as a plain string. A title that also
  * carries its own "| YuPay" therefore ships doubled — which is what the Steam
- * gifts pages did: `Steam Игры — дарите игры в Steam | YuPay — yupay` on the
+ * gifts pages did: `Steam Игры — дарите игры в Steam | YuPay — YuPay` on the
  * hub, and the same tail on all ~4 400 game pages, since they share the
  * template. `/store/steam` next door was clean the whole time.
  *
@@ -39,6 +39,8 @@ const BRAND = /\|\s*yupay\b|—\s*yupay\b/i;
 const ABSOLUTE_TITLES: Record<string, string> = {
   "store.brandMetaTitle": "[locale]/store/[brandSlug]/page.tsx — title: { absolute }",
   "store.howToMetaTitle": "[locale]/store/[brandSlug]/how-to/page.tsx — title: { absolute }",
+  "store.howToSeo.roblox.metaTitle":
+    "[locale]/store/[brandSlug]/how-to/page.tsx — title: { absolute }",
 };
 
 /** Every `*Title`-ish leaf in a message catalog, as `path -> value`. */
@@ -69,7 +71,7 @@ describe.each(LOCALES)("%s message catalog", (locale) => {
       .filter(([path, value]) => BRAND.test(value) && !(path in ABSOLUTE_TITLES))
       .map(([path, value]) => `${path}: ${value}`);
 
-    expect(offenders, "layout.tsx already appends « — yupay »").toEqual([]);
+    expect(offenders, "layout.tsx already appends « — YuPay »").toEqual([]);
   });
 
   it("keeps the allowlist honest", () => {

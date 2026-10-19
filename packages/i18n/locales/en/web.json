@@ -194,8 +194,8 @@
   },
   "store": {
     "meta": {
-      "title": "Game & subscription top-ups in Uzbekistan",
-      "description": "Top up Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force and Arena Breakout by ID. Pay with Click, Payme and Uzum, prices in som, credited automatically, no password handover — yupay."
+      "title": "Game & subscription top-ups in Uzbekistan, paid in soʻm",
+      "description": "Steam, PUBG Mobile, Free Fire, Mobile Legends, Roblox, Telegram Stars and dozens more games and services. Pay in soʻm with Click, Payme or Uzum, no password."
     },
     "eyebrow": "Catalog",
     "title": "Game & subscription top-ups in Uzbekistan",
@@ -296,8 +296,8 @@
     "commissionChip": "Commission from {pct}%",
     "etaChip": "Credited in 1–5 minutes",
     "securityChip": "No password",
-    "brandMetaTitle": "{name} top-up in Uzbekistan | yupay",
-    "brandMetaDescription": "Top up {name} by ID, credited automatically. Prices in som, pay with Click, Payme or Uzum. No password handover — yupay.",
+    "brandMetaTitle": "{name} top-up in Uzbekistan | YuPay",
+    "brandMetaDescription": "Top up {name} by ID, credited automatically. Prices in som, pay with Click, Payme or Uzum. No password handover — YuPay.",
     "brands": {
       "steam": {
         "about": "Steam wallet top-ups for CIS and Kazakhstan accounts. Funds are credited to your balance automatically — no login or password handover, pay in som."
@@ -335,6 +335,15 @@
     "readMore": "Read more",
     "readLess": "Show less",
     "howToTitle": "How to top up {name} in Uzbekistan",
+    "priceFaqQuestion": "How much is {denomination} in soʻm?",
+    "priceFaqAnswer": "{denomination} costs {price}. Pay in soʻm with Click, Payme or Uzum; the code arrives right after payment.",
+    "howToSeo": {
+      "roblox": {
+        "title": "How to buy Robux in Uzbekistan",
+        "metaTitle": "How to buy Robux in Uzbekistan, paying in soʻm — YuPay",
+        "metaDescription": "How to buy Robux from Uzbekistan: a Roblox gift card for soʻm via Click, Payme or Uzum, the code by email, redeemed at roblox.com/redeem."
+      }
+    },
     "howToMetaTitle": "How to top up {name} in Uzbekistan in sum — YuPay",
     "howToMetaDescription": "Step by step, how to top up {name} in Uzbekistan in sum: what you need, where to find it and what it costs.",
     "howToStepsTitle": "Step by step",
@@ -382,8 +391,8 @@
     "successPaidNote": "The order is paid — we're delivering it. Track it below.",
     "payFromBalanceLoading": "Loading your balance…",
     "payFromBalanceTopUp": "Top up your balance",
-    "brandMetaTitleVoucher": "{name} — buy in Uzbekistan | yupay",
-    "brandMetaDescriptionVoucher": "Buy {name} in Uzbekistan: the code right after payment. Prices in soʻm, pay with Click, Payme or Uzum — yupay.",
+    "brandMetaTitleVoucher": "{name} — buy in Uzbekistan | YuPay",
+    "brandMetaDescriptionVoucher": "Buy {name} in Uzbekistan: the code right after payment. Prices in soʻm, pay with Click, Payme or Uzum — YuPay.",
     "etaChipVoucher": "Code in 1–5 minutes",
     "instructionsTitleVoucher": "How to redeem",
     "howToLinkVoucher": "How to buy and redeem",
@@ -502,7 +511,7 @@
     "eyebrow": "The app",
     "titleLine1": "Not a site for show —",
     "titleLine2": "a live app.",
-    "subtitle": "All of yupay lives right inside Telegram. Catalog, payment and wallet — no install, no signup, in the same chat where you talk to friends.",
+    "subtitle": "All of YuPay lives right inside Telegram. Catalog, payment and wallet — no install, no signup, in the same chat where you talk to friends.",
     "f1Title": "A couple of taps",
     "f1Sub": "Pick a game, enter the ID, pay — the top-up is credited automatically. No password handover.",
     "f2Title": "Telegram-native",
@@ -539,7 +548,7 @@
     "imprint": "Imprint",
     "allDocs": "All documents",
     "careers": "Careers",
-    "copyright": "© {year} yupay",
+    "copyright": "© {year} YuPay",
     "disclaimer": "Not affiliated with Valve, Tencent, Riot or miHoYo.",
     "madeBy": "Made by",
     "gamesTitle": "Catalog"
@@ -961,6 +970,8 @@
   "blog": {
     "title": "Blog",
     "description": "Guides and news about the games we sell.",
+    "metaTitle": "Guides to game top-ups from Uzbekistan: UC, Robux, Steam",
+    "metaDescription": "How to top up PUBG Mobile, Free Fire, Steam and Roblox from Uzbekistan, where to find your player ID and what it costs in soʻm — step-by-step guides.",
     "empty": "No published posts yet.",
     "emptyHint": "Nothing in this language yet.",
     "emptyCta": "Browse the store",

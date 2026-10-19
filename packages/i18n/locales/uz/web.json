@@ -194,8 +194,8 @@
   },
   "store": {
     "meta": {
-      "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
-      "description": "Steam, PUBG Mobile, Free Fire, Genshin Impact, Delta Force va Arena Breakout ni ID orqali toʻldiring. Click, Payme yoki Uzum bilan toʻlang, narxlar soʻmda, avtomatik tushadi, parolsiz — yupay."
+      "title": "Oʻzbekistonda oʻyin va obunalarni soʻmda toʻldirish",
+      "description": "Steam, PUBG Mobile, Free Fire, Mobile Legends, Roblox, Telegram Stars va yana oʻnlab oʻyin va servislar. Click, Payme yoki Uzum orqali soʻmda toʻlov, parolsiz."
     },
     "eyebrow": "Katalog",
     "title": "Oʻzbekistonda oʻyin va obunalarni toʻldirish",
@@ -296,8 +296,8 @@
     "commissionChip": "Komissiya {pct}% dan",
     "etaChip": "1–5 daqiqada tushadi",
     "securityChip": "Parolsiz",
-    "brandMetaTitle": "{name} — Oʻzbekistonda toʻldirish | yupay",
-    "brandMetaDescription": "{name} ni ID orqali toʻldiring, avtomatik tushadi. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — yupay.",
+    "brandMetaTitle": "{name} — Oʻzbekistonda toʻldirish | YuPay",
+    "brandMetaDescription": "{name} ni ID orqali toʻldiring, avtomatik tushadi. Narxlar soʻmda, Click, Payme yoki Uzum bilan toʻlang. Parolsiz — YuPay.",
     "brands": {
       "steam": {
         "about": "MDH va Qozogʻiston akkauntlari uchun Steam hamyonini toʻldirish. Pul balansga avtomatik tushadi — login va parolsiz, soʻmda toʻlov."
@@ -335,6 +335,15 @@
     "readMore": "Batafsil",
     "readLess": "Yigʻish",
     "howToTitle": "{name} ni Oʻzbekistonda qanday toʻldirish",
+    "priceFaqQuestion": "{denomination} necha soʻm turadi?",
+    "priceFaqAnswer": "{denomination} — {price}. Click, Payme yoki Uzum orqali soʻmda toʻlov, kod toʻlovdan keyin darhol keladi.",
+    "howToSeo": {
+      "roblox": {
+        "title": "Oʻzbekistonda Robux qanday sotib olinadi",
+        "metaTitle": "Robux qanday sotib olinadi — Roblox donat Oʻzbekistonda — YuPay",
+        "metaDescription": "Oʻzbekistondan Roblox'ga donat: Robux sovgʻa kartasi Click, Payme yoki Uzum orqali soʻmda, kod pochtaga keladi, roblox.com/redeem da faollashtiriladi."
+      }
+    },
     "howToMetaTitle": "{name} ni Oʻzbekistonda soʻmda qanday toʻldirish — YuPay",
     "howToMetaDescription": "{name} ni Oʻzbekistonda soʻmda qanday toʻldirish: nima kerak, uni qayerdan topish va narxi — bosqichma-bosqich.",
     "howToStepsTitle": "Bosqichma-bosqich",
@@ -382,8 +391,8 @@
     "successPaidNote": "Buyurtma toʻlandi — yetkazmoqdamiz. Holatni quyida kuzating.",
     "payFromBalanceLoading": "Balans yuklanmoqda…",
     "payFromBalanceTopUp": "Balansni toʻldirish",
-    "brandMetaTitleVoucher": "{name} — O'zbekistonda sotib olish | yupay",
-    "brandMetaDescriptionVoucher": "{name} ni O'zbekistonda sotib oling: kod to'lovdan so'ng darhol. Narxlar so'mda, Click, Payme yoki Uzum orqali to'lov — yupay.",
+    "brandMetaTitleVoucher": "{name} — O'zbekistonda sotib olish | YuPay",
+    "brandMetaDescriptionVoucher": "{name} ni O'zbekistonda sotib oling: kod to'lovdan so'ng darhol. Narxlar so'mda, Click, Payme yoki Uzum orqali to'lov — YuPay.",
     "etaChipVoucher": "Kod 1–5 daqiqada",
     "instructionsTitleVoucher": "Qanday faollashtirish",
     "howToLinkVoucher": "Qanday sotib olish va faollashtirish",
@@ -502,7 +511,7 @@
     "eyebrow": "Ilova",
     "titleLine1": "Shunchaki sayt emas —",
     "titleLine2": "tirik ilova.",
-    "subtitle": "Butun yupay toʻgʻridan-toʻgʻri Telegram ichida. Katalog, toʻlov va hamyon — oʻrnatishsiz va roʻyxatdan oʻtishsiz, doʻstlaringiz bilan turgan chatning oʻzida.",
+    "subtitle": "Butun YuPay toʻgʻridan-toʻgʻri Telegram ichida. Katalog, toʻlov va hamyon — oʻrnatishsiz va roʻyxatdan oʻtishsiz, doʻstlaringiz bilan turgan chatning oʻzida.",
     "f1Title": "Bir necha bosishda",
     "f1Sub": "Oʻyinni tanladingiz, ID kiritdingiz, toʻladingiz — donat avtomatik tushadi. Parolsiz.",
     "f2Title": "Telegram uchun moslangan",
@@ -539,7 +548,7 @@
     "imprint": "Rekvizitlar",
     "allDocs": "Barcha hujjatlar",
     "careers": "Karyera",
-    "copyright": "© {year} yupay",
+    "copyright": "© {year} YuPay",
     "disclaimer": "Valve, Tencent, Riot yoki miHoYo bilan bogʻliq emas.",
     "madeBy": "Made by",
     "gamesTitle": "Katalog"
@@ -961,6 +970,8 @@
   "blog": {
     "title": "Blog",
     "description": "Sotadigan oʻyinlarimiz boʻyicha qoʻllanmalar va yangiliklar.",
+    "metaTitle": "Oʻzbekistondan oʻyinlarga donat: UC, Robux, Steam qoʻllanmalari",
+    "metaDescription": "PUBG Mobile, Free Fire, Steam va Roblox'ni Oʻzbekistondan qanday toʻldirish, oʻyinchi ID sini qayerdan topish va soʻmda narxi — bosqichma-bosqich qoʻllanmalar.",
     "empty": "Hali chop etilgan materiallar yoʻq.",
     "emptyHint": "Bu tilda hali materiallar yoʻq.",
     "emptyCta": "Katalogga oʻtish",

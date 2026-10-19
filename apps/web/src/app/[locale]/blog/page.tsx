@@ -22,10 +22,11 @@ export async function generateMetadata({
   if (!hasLocale(routing.locales, locale)) return {};
   setRequestLocale(locale);
   const t = await getTranslations("web.blog");
-  const title = t("title");
-  const description = truncate(t("description"));
+  // The search copy names what the guides are about; «Блог» stays the page heading.
+  const title = t("metaTitle");
+  const description = truncate(t("metaDescription"));
   return {
-    title: { absolute: `${title} · YuPay` },
+    title: { absolute: `${title} — YuPay` },
     description,
     alternates: alternates(locale, "/blog"),
     other: GEO_META,

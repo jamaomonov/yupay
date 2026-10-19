@@ -6,6 +6,8 @@ import { hasLocale } from "next-intl";
 import { getTranslations, setRequestLocale } from "next-intl/server";
 import { Suspense } from "react";
 
+import { formatMoney } from "@yupay/utils";
+
 import type { Metadata } from "next";
 
 import { BrandBlogBlock } from "@/components/blog/BrandBlogBlock";
@@ -30,7 +32,7 @@ import {
   type ProductDetail,
 } from "@/lib/catalog";
 import { isVoucherBrand } from "@/lib/brand-kind";
-import { brandPageDescription, brandPageTitle, brandReviewsLd } from "@/lib/brand-seo";
+import { brandPageDescription, brandPageTitle, brandReviewsLd, priceFaqRow } from "@/lib/brand-seo";
 import { isOptimizable } from "@/lib/image";
 import { getBrandReviews, type ReviewPage } from "@/lib/reviews";
 import {
@@ -305,7 +307,31 @@ export default async function BrandPage({
     ],
   };
 
-  const faqs = brand.faqs ?? [];
+  // A live «how much is it in soʻm» answer goes first where people search for
+  // one (`priceFaqRow`): the price comes from the catalogue, so it never goes stale.
+  const priced = priceFaqRow(
+    brand.slug,
+    skuProducts.map((row) => ({
+      denomination: row.sku.denomination,
+      price: row.price,
+      inStock: row.sku.in_stock ?? true,
+    })),
+  );
+  const faqs = [
+    ...(priced?.denomination
+      ? [
+          {
+            id: "price",
+            question: t("priceFaqQuestion", { denomination: priced.denomination }),
+            answer: t("priceFaqAnswer", {
+              denomination: priced.denomination,
+              price: formatMoney(String(priced.price), CURRENCY, locale),
+            }),
+          },
+        ]
+      : []),
+    ...(brand.faqs ?? []),
+  ];
   // FAQPage structured data — lets Google show the questions as rich results.
   const faqLd =
     faqs.length > 0

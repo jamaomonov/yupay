@@ -25,7 +25,7 @@ export async function Header({ locale }: { locale: string }) {
         {/* `shrink-0`: the logo has a pinned height and an auto width, so as a
             shrinkable flex item it absorbed the balance pill's growth by
             condensing its own letterforms — 27% narrower at 360px. */}
-        <Link href={pathFor(locale)} aria-label="yupay" className="flex shrink-0 items-center">
+        <Link href={pathFor(locale)} aria-label="YuPay" className="flex shrink-0 items-center">
           <Wordmark />
         </Link>
 

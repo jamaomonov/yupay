@@ -101,8 +101,14 @@ export async function generateMetadata({
   if (!brand) return {};
   const t = await getTranslations("web.store");
   const v = isVoucherBrand(brand) ? "Voucher" : "";
-  const title = t(`howToMetaTitle${v}`, { name: brand.name });
-  const description = truncate(t(`howToMetaDescription${v}`, { name: brand.name }));
+  // A brand whose buyers search with their own words gets its own copy
+  // (`howToSeo.<slug>`); every other brand uses the template.
+  const own = `howToSeo.${brand.slug}`;
+  const hasOwn = t.has(`${own}.metaTitle`);
+  const title = hasOwn ? t(`${own}.metaTitle`) : t(`howToMetaTitle${v}`, { name: brand.name });
+  const description = truncate(
+    hasOwn ? t(`${own}.metaDescription`) : t(`howToMetaDescription${v}`, { name: brand.name }),
+  );
   const path = `/store/${brand.slug}/how-to`;
   return {
     title: { absolute: title },
@@ -144,7 +150,10 @@ export default async function HowToPage({
 
   // A codes-only brand is bought and redeemed, never «пополнен».
   const v = isVoucherBrand(brand) ? "Voucher" : "";
-  const title = t(`howToTitle${v}`, { name: brand.name });
+  const own = `howToSeo.${brand.slug}`;
+  const title = t.has(`${own}.title`)
+    ? t(`${own}.title`)
+    : t(`howToTitle${v}`, { name: brand.name });
   const intro = firstNonEmpty(brand.short_description, brand.description);
   const instructions = brand.instructions ?? null;
   const steps = instructions ? parseSteps(instructions) : [];
