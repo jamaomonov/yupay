@@ -9642,6 +9642,23 @@
             },
             "title": "Roles",
             "type": "array"
+          },
+          "sign_in_with": {
+            "anyOf": [
+              {
+                "enum": [
+                  "telegram",
+                  "steam",
+                  "google",
+                  "email"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sign In With"
           }
         },
         "required": [

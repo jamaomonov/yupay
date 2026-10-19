@@ -5,7 +5,7 @@ Mounted under ``/api/v1/auth`` by :mod:`yupay.api.v1`.
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Cookie, Depends, Header, Request, Response, status
 from fastapi.responses import RedirectResponse
@@ -446,6 +446,17 @@ async def reset_route(
     await reset_password(db, token=body.token, new_password=body.new_password)
 
 
+def _sign_in_method(user: User) -> Literal["telegram", "steam", "google", "email"] | None:
+    """The account's sign-in method, by the identity it carries (see ``MeOut``)."""
+    if user.telegram_link is not None:
+        return "telegram"
+    if user.steam_link is not None:
+        return "steam"
+    if user.email is not None:
+        return "email" if user.password_hash is not None else "google"
+    return None
+
+
 @router.get(
     "/me",
     response_model=MeOut,
@@ -453,7 +464,9 @@ async def reset_route(
 )
 async def me(user: Annotated[User, Depends(current_user)]) -> MeOut:
     """Return the user record identified by the Bearer access token."""
-    return MeOut.model_validate(user)
+    out = MeOut.model_validate(user)
+    out.sign_in_with = _sign_in_method(user)
+    return out
 
 
 @router.post(

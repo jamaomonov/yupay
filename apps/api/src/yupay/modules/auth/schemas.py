@@ -149,6 +149,11 @@ class MeOut(BaseModel):
     photo_url: str | None
     roles: list[str] = []
     created_at: datetime
+    #: How the account signs in, for a profile line such as «Вход через Google».
+    #: Telegram and Steam are linked identities; an email account with a password
+    #: is ``email``; one without (opened by Google, which sets no password) is
+    #: ``google``. ``None`` for a shape none of these describe.
+    sign_in_with: Literal["telegram", "steam", "google", "email"] | None = None
 
 
 __all__ = [

@@ -89,3 +89,14 @@ async def test_a_later_sign_in_elsewhere_keeps_the_first_surface(
     assert again.status_code == 200, again.text
     db_session.expire_all()
     assert (await _by_telegram(db_session, 77)).signup_source == "mobile"
+
+
+async def test_me_says_how_the_account_signs_in(
+    integration_client: AsyncClient, fixed_now: int
+) -> None:
+    login = await _login_via_webapp(integration_client, fixed_now)
+    me = await integration_client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {login.json()['access_token']}"}
+    )
+    assert me.status_code == 200, me.text
+    assert me.json()["sign_in_with"] == "telegram"
