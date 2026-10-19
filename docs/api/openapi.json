@@ -27070,6 +27070,7 @@
     },
     "/api/v1/admin/fulfillment/tasks": {
       "get": {
+        "description": "Tasks for the inbox and the browse view.\n\n``open_orders_only`` drops tasks whose order is already closed; the inbox's\nwork queues set it so their capped window holds only work (see\n``service.list_tasks_admin``).",
         "operationId": "admin_list_tasks_api_v1_admin_fulfillment_tasks_get",
         "parameters": [
           {
@@ -27118,6 +27119,16 @@
                 }
               ],
               "title": "Status Filter"
+            }
+          },
+          {
+            "in": "query",
+            "name": "open_orders_only",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Open Orders Only",
+              "type": "boolean"
             }
           },
           {

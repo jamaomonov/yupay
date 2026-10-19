@@ -161,3 +161,55 @@ async def test_id_tiebreak_is_deterministic_across_pages(db_session: AsyncSessio
         "00000000-0000-0000-0000-000000000002",
         "00000000-0000-0000-0000-000000000003",
     ]
+
+
+async def test_open_orders_only_keeps_closed_orders_out_of_the_window(
+    db_session: AsyncSession,
+) -> None:
+    """2026-10-19: closed B2B failures filled the Failed tab's capped window.
+
+    A failed task on an order that is already failed (or refunded, cancelled)
+    has nothing left to do; a failed task on a ``fulfilling`` order is exactly
+    what the operator came for, and it must survive the cap however many
+    closed rows are older than it.
+    """
+    now = datetime.now(UTC)
+    closed_order, sku = await _seed_chain(db_session)
+    for i in range(3):
+        await _add_task(
+            db_session,
+            order_id=closed_order,
+            sku_id=sku,
+            created_at=now - timedelta(hours=10 - i),
+            status="failed",
+            supplier="fzr",
+        )
+    closed = await db_session.get(Order, closed_order)
+    assert closed is not None
+    closed.status = "failed"
+
+    open_order, open_sku = await _seed_chain(db_session)
+    waiting = await _add_task(
+        db_session,
+        order_id=open_order,
+        sku_id=open_sku,
+        created_at=now,
+        status="failed",
+        supplier="fzr",
+    )
+    opened = await db_session.get(Order, open_order)
+    assert opened is not None
+    opened.status = "fulfilling"
+    await db_session.flush()
+
+    rows, total = await ff_svc.list_tasks_admin(
+        db_session, status_filter="failed", open_orders_only=True, order="oldest", limit=2
+    )
+    assert [r.id for r in rows] == [waiting]
+    assert total == 1
+
+    everything, all_total = await ff_svc.list_tasks_admin(
+        db_session, status_filter="failed", order="oldest", limit=2
+    )
+    assert waiting not in [r.id for r in everything]
+    assert all_total == 4

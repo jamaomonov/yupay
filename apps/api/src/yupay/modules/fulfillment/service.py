@@ -3209,17 +3209,30 @@ async def list_deliveries_for_order_admin(
     return deliveries
 
 
+#: Order statuses in which a task can still be acted on (retried, reassigned,
+#: completed by hand): paid and not yet delivered, refunded or closed.
+OPEN_ORDER_STATUSES: tuple[str, ...] = ("paid", "fulfilling")
+
+
 async def list_tasks_admin(
     db: AsyncSession,
     *,
     order_id: str | None = None,
     supplier: str | None = None,
     status_filter: str | None = None,
+    open_orders_only: bool = False,
     order: str = "newest",
     limit: int = 50,
     offset: int = 0,
 ) -> tuple[list[FulfillmentTask], int]:
     """Paged admin listing. Returns ``(rows, total_matching_filter)``.
+
+    ``open_orders_only`` keeps tasks whose order still waits on delivery
+    (:data:`OPEN_ORDER_STATUSES`). The inbox's work queues ask for it: a failed
+    task on an order that is already failed, refunded or cancelled has nothing
+    left to do, and on 2026-10-19 227 such B2B rows filled the Failed tab's
+    200-row window so that a retail order still waiting for a reassign was
+    never fetched at all.
 
     ``order`` picks the created-at direction: ``"newest"`` (default) for the
     browse view, where recent activity belongs on page one; ``"oldest"`` for
@@ -3253,6 +3266,12 @@ async def list_tasks_admin(
     if status_filter is not None:
         base = base.where(FulfillmentTask.status == status_filter)
         count_stmt = count_stmt.where(FulfillmentTask.status == status_filter)
+    if open_orders_only:
+        still_open = select(Order.id).where(
+            Order.id == FulfillmentTask.order_id, Order.status.in_(OPEN_ORDER_STATUSES)
+        )
+        base = base.where(still_open.exists())
+        count_stmt = count_stmt.where(still_open.exists())
     rows = list(
         (await db.execute(base.order_by(created_order, id_order).limit(limit).offset(offset)))
         .scalars()

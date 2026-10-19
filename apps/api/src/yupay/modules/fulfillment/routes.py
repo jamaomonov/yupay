@@ -231,15 +231,23 @@ async def admin_list_tasks(
     order_id: str | None = None,
     supplier: str | None = None,
     status_filter: Annotated[str | None, "status"] = None,
+    open_orders_only: bool = False,
     order: Literal["newest", "oldest"] = "newest",
     limit: int = 50,
     offset: int = 0,
 ) -> FulfillmentTaskListOut:
+    """Tasks for the inbox and the browse view.
+
+    ``open_orders_only`` drops tasks whose order is already closed; the inbox's
+    work queues set it so their capped window holds only work (see
+    ``service.list_tasks_admin``).
+    """
     rows, total = await svc.list_tasks_admin(
         db,
         order_id=order_id,
         supplier=supplier,
         status_filter=status_filter,
+        open_orders_only=open_orders_only,
         order=order,
         limit=max(1, min(limit, 500)),
         offset=max(0, offset),

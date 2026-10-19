@@ -11,6 +11,11 @@
  *
  * Failed drops a second class of row as of 2026-09-20: a merchant task whose
  * deposit has already been returned. See {@link selectFailedRows}.
+ *
+ * Every queue asks the server for `open_orders_only=true` (2026-10-19): the
+ * window is capped at 200, and 227 failed tasks on long-closed B2B orders filled
+ * it, so a retail order still waiting for a reassign was never fetched. The
+ * client-side cuts stay as the second line.
  */
 
 import type { TaskAdminOut, TaskListOut } from "./types";
@@ -27,21 +32,29 @@ const BASE = "/api/v1/admin/fulfillment/tasks";
 export const manualQueueQuery = {
   queryKey: qk.manualQueue(),
   queryFn: () =>
-    apiGet<TaskListOut>(`${BASE}?supplier=manual&status_filter=in_progress&order=oldest&limit=200`),
+    apiGet<TaskListOut>(
+      `${BASE}?supplier=manual&status_filter=in_progress&open_orders_only=true&order=oldest&limit=200`,
+    ),
   refetchInterval: 15_000,
 } as const;
 
 /** Automatic failures. `supplier=manual` rows belong to the manual tab. */
 export const failedTasksQuery = {
   queryKey: [...qk.fulfillmentTasks({ status: "failed" }), "no-manual"],
-  queryFn: () => apiGet<TaskListOut>(`${BASE}?status_filter=failed&order=oldest&limit=200`),
+  queryFn: () =>
+    apiGet<TaskListOut>(
+      `${BASE}?status_filter=failed&open_orders_only=true&order=oldest&limit=200`,
+    ),
   refetchInterval: 30_000,
 } as const;
 
 /** In-flight tasks; the "stuck" cut is by age, applied client-side. */
 export const stuckTasksQuery = {
   queryKey: [...qk.fulfillmentTasks({ status: "in_progress" }), "stuck"],
-  queryFn: () => apiGet<TaskListOut>(`${BASE}?status_filter=in_progress&order=oldest&limit=200`),
+  queryFn: () =>
+    apiGet<TaskListOut>(
+      `${BASE}?status_filter=in_progress&open_orders_only=true&order=oldest&limit=200`,
+    ),
   refetchInterval: 30_000,
 } as const;
 
