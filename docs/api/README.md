@@ -63,7 +63,12 @@ single transaction. Re-running yields identical content. It depends on migration
 | Web (logged-in user)        | `Authorization: Bearer <access-jwt>`                            |
 | Web (guest checkout)        | `Authorization: Guest <guest-token>`                            |
 | Telegram Mini App           | `Authorization: tma <raw initData>` (HMAC-verified server-side) |
+| Mobile app (logged-in user) | `Authorization: Bearer <access-jwt>`                            |
 | Service-to-service (future) | `Authorization: Service <signed-jwt>`                           |
+
+The mobile app asks the sign-in routes for its refresh token in the body with
+`X-Yupay-Token-Transport: body` and sends it back in the body to `/auth/refresh` and
+`/auth/logout` (ADR-0101). Browsers keep the `HttpOnly` cookie and see no change.
 
 ## WebSocket
 

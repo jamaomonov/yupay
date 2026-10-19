@@ -32,6 +32,7 @@ from yupay.modules.auth.schemas import (
     GuestTokenOut,
     LoginIn,
     MeOut,
+    RefreshIn,
     RegisterIn,
     RegisterOut,
     ResendVerificationIn,
@@ -70,12 +71,33 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 log = get_logger("yupay.auth.routes")
 
 
-def _session_response(response: Response, tokens: SessionTokens) -> TokensOut:
-    """Set the rotating refresh cookie and return the access token in the body.
+#: ``body`` asks a sign-in route for the refresh token in the JSON instead of a cookie.
+#: Sent by the mobile app (ADR-0101), which keeps the token in the device keychain.
+TOKEN_TRANSPORT_HEADER = "X-Yupay-Token-Transport"  # noqa: S105 -- a header name
+TokenTransport = Annotated[str | None, Header(alias=TOKEN_TRANSPORT_HEADER)]
 
-    The refresh token never appears in the JSON body — it rides an ``HttpOnly``
-    cookie so JS (and any XSS payload) cannot read it. See :mod:`.cookies`.
+
+def _session_response(
+    response: Response, tokens: SessionTokens, *, transport: str | None = None
+) -> TokensOut:
+    """Return the access token in the body and the refresh token as a cookie.
+
+    The refresh token never appears in the JSON body for a browser — it rides an
+    ``HttpOnly`` cookie so JS (and any XSS payload) cannot read it. See :mod:`.cookies`.
+
+    ``transport="body"`` is the mobile app's mode: both tokens in the body, no
+    cookie. It is offered only where the caller has just proven a credential
+    (password, Google, Steam) or presented the refresh token itself — never where
+    a cookie alone authenticates — so script on the website cannot turn its
+    session cookie into a readable token.
     """
+    if transport == "body":
+        return TokensOut(
+            access_token=tokens.access_token,
+            expires_in=tokens.access_expires_in,
+            refresh_token=tokens.refresh_token,
+            refresh_expires_in=tokens.refresh_expires_in,
+        )
     set_refresh_cookie(
         response,
         token=tokens.refresh_token,
@@ -129,6 +151,7 @@ async def register_route(
 @router.post(
     "/login",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Log in with email + password",
 )
 async def login_route(
@@ -136,6 +159,7 @@ async def login_route(
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    transport: TokenTransport = None,
 ) -> TokensOut:
     """Authenticate an existing email/password account and return a session."""
     # ``subject`` is what keeps this a brute-force guard: the per-IP number is
@@ -143,7 +167,7 @@ async def login_route(
     # account 60 times a minute.
     await guard_ip(request, bucket="login", subject=body.email)
     tokens = await login_password(db, email=body.email, password=body.password)
-    return _session_response(response, tokens)
+    return _session_response(response, tokens, transport=transport)
 
 
 @router.get(
@@ -169,6 +193,7 @@ async def steam_start(locale: str = "ru") -> RedirectResponse:
 @router.post(
     "/steam",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Authenticate via a Steam OpenID callback",
 )
 async def login_steam(
@@ -176,16 +201,18 @@ async def login_steam(
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    transport: TokenTransport = None,
 ) -> TokensOut:
     """Verify the ``openid.*`` params against Steam and return a session."""
     await guard_ip(request, bucket="steam-login")
     tokens = await steam_svc_login(db, body.params)
-    return _session_response(response, tokens)
+    return _session_response(response, tokens, transport=transport)
 
 
 @router.post(
     "/google",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Authenticate via Google Sign-In (GIS credential)",
 )
 async def login_google(
@@ -193,6 +220,7 @@ async def login_google(
     request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    transport: TokenTransport = None,
 ) -> TokensOut:
     """Verify the Google-signed credential, upsert the user, return a session.
 
@@ -202,12 +230,13 @@ async def login_google(
     """
     await guard_ip(request, bucket="google-login")
     tokens = await google_svc_login(db, body.access_token)
-    return _session_response(response, tokens)
+    return _session_response(response, tokens, transport=transport)
 
 
 @router.post(
     "/telegram/webapp",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Authenticate a Telegram Mini App via initData",
 )
 async def login_telegram_webapp(
@@ -227,6 +256,7 @@ async def login_telegram_webapp(
 @router.post(
     "/telegram/widget",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Authenticate via the Telegram Login Widget",
 )
 async def login_telegram_widget(
@@ -246,6 +276,7 @@ async def login_telegram_widget(
 @router.post(
     "/telegram/widget/admin",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Authenticate the admin panel via its dedicated Telegram Login Widget",
 )
 async def login_telegram_widget_admin(
@@ -283,18 +314,25 @@ async def login_guest(
 @router.post(
     "/refresh",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Rotate a refresh token",
 )
 async def refresh(
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    body: RefreshIn | None = None,
     refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
 ) -> TokensOut:
-    """Rotate-on-use: read the refresh from the ``HttpOnly`` cookie, mint a new pair.
+    """Rotate-on-use: read the refresh token, mint a new pair.
 
-    The client sends no body — the cookie carries the token (the request must be made
-    with ``credentials: "include"``). A fresh refresh cookie is set on the response.
+    A browser sends no body — the ``HttpOnly`` cookie carries the token (the request
+    must be made with ``credentials: "include"``) and a fresh cookie comes back. The
+    mobile app sends the token in the body and gets the new pair in the body; the
+    body wins when both are present, and a cookie is never answered in the body.
     """
+    if body is not None and body.refresh_token is not None:
+        tokens = await refresh_session(db, body.refresh_token)
+        return _session_response(response, tokens, transport="body")
     if not refresh_token:
         raise UnauthorizedError("missing refresh token")
     tokens = await refresh_session(db, refresh_token)
@@ -310,26 +348,30 @@ async def logout_route(
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     authorization: Annotated[str | None, Header()] = None,
+    body: RefreshIn | None = None,
     refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE_NAME)] = None,
 ) -> None:
     """Idempotent: silently succeeds even if the token is unknown or already revoked.
 
-    Reads the refresh token from the ``HttpOnly`` cookie and clears it. If the request
-    also carries the access token (``Authorization: Bearer``) its ``jti`` is added to
-    the revocation blocklist so it stops working immediately.
+    Reads the refresh token from the ``HttpOnly`` cookie (or, for the mobile app, the
+    body) and clears the cookie. If the request also carries the access token
+    (``Authorization: Bearer``) its ``jti`` is added to the revocation blocklist so it
+    stops working immediately.
     """
     access_token: str | None = None
     if authorization:
         scheme, _, tok = authorization.partition(" ")
         if scheme == "Bearer" and tok.strip():
             access_token = tok.strip()
-    await logout(db, refresh_token or "", access_token=access_token)
+    token = body.refresh_token if body is not None and body.refresh_token else refresh_token
+    await logout(db, token or "", access_token=access_token)
     clear_refresh_cookie(response, settings=get_settings())
 
 
 @router.post(
     "/verify-email",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="Confirm an email address from a signed token and open a session",
 )
 async def verify_email_route(
@@ -398,6 +440,7 @@ async def me(user: Annotated[User, Depends(current_user)]) -> MeOut:
 @router.post(
     "/admin-dev",
     response_model=TokensOut,
+    response_model_exclude_none=True,
     summary="DEV-ONLY: login + password → admin JWT",
     description=(
         "Disabled by default. Set ``ADMIN_DEV_LOGIN_ENABLED=true`` in a non-prod "

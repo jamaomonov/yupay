@@ -1,0 +1,68 @@
+# 0101. The mobile app carries its refresh token in the body
+
+- **Status**: Accepted
+- **Date**: 2026-10-19
+- **Deciders**: @jamaomonov
+- **Tags**: backend | security | frontend
+
+## Context and problem statement
+
+A session is a 15-minute access JWT plus a 30-day rotating refresh token. Every surface so far
+is a browser, so the refresh token rides an `HttpOnly` cookie on the API's domain and never
+appears in JSON, which keeps it out of reach of script on the page.
+
+The mobile app (ADR-0100) is not a browser. React Native's `fetch` does keep cookies, but in a
+platform cookie store the app does not control: it cannot be put in the device keychain,
+inspected, or cleared on sign-out with any certainty. The app needs the refresh token as a
+value it stores in `expo-secure-store`.
+
+## Decision drivers
+
+- No change in what the website, the mini app and the admin send or receive.
+- Script running on the website must not be able to read a refresh token, before or after.
+- One session model on the server: same rotation, reuse detection and revocation.
+
+## Considered options
+
+1. **Rely on the native cookie store.** Nothing changes on the server; the token sits where the
+   app cannot reach it, and a logout that fails to clear it leaves a live session behind.
+2. **A body mode the client asks for.** Sign-in routes return the refresh token in the body
+   when the request says `X-Yupay-Token-Transport: body`; refresh and logout accept it in the
+   body.
+3. **A separate mobile auth module.** A second token family for one client; duplicated rotation
+   and revocation logic.
+
+## Decision outcome
+
+**Chosen option:** 2, because it reuses the session model and its tests, and the browser path
+is untouched.
+
+The rule that keeps it safe: **a body token is only ever issued against a credential the caller
+presents in the request** — a password, a Google token, a Steam assertion, or the refresh token
+itself in the body. A cookie is never answered with a body token, so script on the website,
+which can make credentialed requests but cannot read the cookie, cannot turn its session into a
+readable token by adding the header. `POST /auth/refresh` with a body rotates the body token and
+sets no cookie; without a body (or with `{}`, which the mini app's logout sends) it behaves as
+before.
+
+`TokensOut` gains optional `refresh_token` and `refresh_expires_in`; every route excludes `None`
+fields, so a browser's JSON is unchanged.
+
+### Positive consequences
+
+- The app keeps its session in the device keychain and can drop it for certain.
+- No new tables, keys or token types.
+
+### Negative consequences
+
+- The refresh token now exists in JSON on one path. A compromised device leaks a 30-day token;
+  rotation with reuse detection still revokes the family on the next legitimate refresh.
+- Telegram sign-in routes accept the header too (they share `TokensOut`), but their payloads
+  are single-use or bound to the mini app; the app does not use them.
+
+## Validation
+
+`apps/api/tests/integration/test_auth_body_transport.py`: body mode on login, no cookie set; a
+browser login still keeps the token out of JSON; body refresh rotates and the old token dies; a
+cookie refresh with the header still answers without a token; body logout revokes; `{}` falls
+back to the cookie.

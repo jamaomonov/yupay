@@ -117,6 +117,11 @@ class TokensOut(BaseModel):
     access_token: str
     token_type: str = "Bearer"  # noqa: S105 -- OAuth token-type literal, not a credential
     expires_in: int
+    #: Only for a client that asked with ``X-Yupay-Token-Transport: body`` (the mobile
+    #: app, which has no cookie jar it controls) or that refreshed with a body token.
+    #: Absent from the JSON otherwise — the routes exclude ``None``.
+    refresh_token: str | None = None
+    refresh_expires_in: int | None = None
 
 
 class GuestTokenOut(BaseModel):
@@ -162,6 +167,18 @@ __all__ = [
     "TokensOut",
     "VerifyEmailIn",
 ]
+
+
+class RefreshIn(BaseModel):
+    """Optional body of ``POST /auth/refresh`` and ``/auth/logout`` for the mobile app.
+
+    A browser sends no body (or ``{}``, as the mini app's logout does) and relies on
+    the ``HttpOnly`` cookie instead.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    refresh_token: str | None = Field(default=None, min_length=20, max_length=512)
 
 
 class GoogleLoginIn(BaseModel):

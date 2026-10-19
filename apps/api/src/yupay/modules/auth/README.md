@@ -50,14 +50,19 @@ full spec. Summary:
 
 ## HTTP surface
 
-| Method | Path                           | Body              | Returns          |
-| ------ | ------------------------------ | ----------------- | ---------------- |
-| `POST` | `/api/v1/auth/telegram/webapp` | `{init_data}`     | `TokensOut`      |
-| `POST` | `/api/v1/auth/telegram/widget` | Login Widget JSON | `TokensOut`      |
-| `POST` | `/api/v1/auth/guest`           | `{email}`         | `GuestTokenOut`  |
-| `POST` | `/api/v1/auth/refresh`         | `{refresh_token}` | `TokensOut`      |
-| `POST` | `/api/v1/auth/logout`          | `{refresh_token}` | `204 No Content` |
-| `GET`  | `/api/v1/auth/me`              | — (Bearer)        | `MeOut`          |
+| Method | Path                           | Body                               | Returns          |
+| ------ | ------------------------------ | ---------------------------------- | ---------------- |
+| `POST` | `/api/v1/auth/telegram/webapp` | `{init_data}`                      | `TokensOut`      |
+| `POST` | `/api/v1/auth/telegram/widget` | Login Widget JSON                  | `TokensOut`      |
+| `POST` | `/api/v1/auth/guest`           | `{email}`                          | `GuestTokenOut`  |
+| `POST` | `/api/v1/auth/refresh`         | cookie, or `{refresh_token}` (app) | `TokensOut`      |
+| `POST` | `/api/v1/auth/logout`          | cookie, or `{refresh_token}` (app) | `204 No Content` |
+| `GET`  | `/api/v1/auth/me`              | — (Bearer)                         | `MeOut`          |
+
+**Mobile app (ADR-0101).** A browser gets the refresh token only as an `HttpOnly` cookie. The app
+sends `X-Yupay-Token-Transport: body` to `/login`, `/google` or `/steam` and gets
+`refresh_token` + `refresh_expires_in` in the JSON instead, then refreshes and logs out with the
+token in the body. A cookie is never answered with a body token.
 
 ## Sequence diagrams
 
