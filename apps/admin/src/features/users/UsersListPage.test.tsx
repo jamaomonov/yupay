@@ -58,7 +58,7 @@ function makeUser(i: number): UserAdminOut {
 }
 
 /** Two full pages, so "Вперёд" is enabled. */
-function renderPage() {
+function renderPage(entry = "/users") {
   mockedApiGet.mockImplementation((url: string) => {
     const offset = Number(new URL(url, "http://x").searchParams.get("offset") ?? "0");
     const payload: UserAdminListOut = {
@@ -71,7 +71,7 @@ function renderPage() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <MemoryRouter initialEntries={["/users"]}>
+      <MemoryRouter initialEntries={[entry]}>
         <UsersListPage />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -133,4 +133,25 @@ it("returns to the first page when the search changes", async () => {
   await waitFor(() => {
     expect(lastOffset()).toBe(0);
   });
+});
+
+it("restores search, sort and page from the URL when the operator comes back", async () => {
+  renderPage("/users?q=jam&sort=wallet_desc&offset=50");
+
+  await waitFor(() => {
+    expect(mockedApiGet).toHaveBeenCalled();
+  });
+  const url = new URL(mockedApiGet.mock.calls[0]?.[0] ?? "", "http://x");
+  expect(url.searchParams.get("search")).toBe("jam");
+  expect(url.searchParams.get("sort")).toBe("wallet_desc");
+  expect(url.searchParams.get("offset")).toBe("50");
+  expect(screen.getByPlaceholderText("Поиск…")).toHaveValue("jam");
+  expect(screen.getByLabelText("Сортировка")).toHaveValue("wallet_desc");
+
+  // The debounce settling on the restored text must not throw the page back to one.
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 400));
+  });
+  const last = mockedApiGet.mock.calls.at(-1)?.[0] ?? "";
+  expect(new URL(last, "http://x").searchParams.get("offset")).toBe("50");
 });

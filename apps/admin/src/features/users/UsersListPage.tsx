@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
 import { Ban, ChevronLeft, ChevronRight, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { UserAdminListOut, UserAdminOut, UserAdminSort } from "./types";
@@ -14,6 +14,11 @@ import { apiGet } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
 import { useDebouncedValue } from "@/lib/useDebouncedValue";
+import {
+  numberCodec,
+  type SearchParamCodec,
+  useSearchParamsState,
+} from "@/lib/useSearchParamsState";
 
 const PAGE_SIZE = 50;
 
@@ -26,6 +31,14 @@ const SORT_OPTIONS: { value: UserAdminSort; label: string }[] = [
   { value: "name_desc", label: "Имя: Я → А" },
 ];
 
+const DEFAULT_SORT: UserAdminSort = "created_desc";
+
+const sortCodec: SearchParamCodec<UserAdminSort> = {
+  parse: (raw) => SORT_OPTIONS.find((o) => o.value === raw)?.value ?? DEFAULT_SORT,
+  serialize: (v) => v,
+  isDefault: (v) => v === DEFAULT_SORT,
+};
+
 /**
  * Users list — opening a row jumps straight to Customer 360 (`/customers/:id`),
  * where the full profile, recent activity, wallet, and role management live.
@@ -37,17 +50,36 @@ const SORT_OPTIONS: { value: UserAdminSort; label: string }[] = [
  */
 export function UsersListPage() {
   const navigate = useNavigate();
-  const [search, setSearch] = useState("");
-  const [offset, setOffset] = useState(0);
-  const [sort, setSort] = useState<UserAdminSort>("created_desc");
+  // Search, sort and page live in the URL, so opening a user and coming back
+  // lands on the same filtered list instead of a reset one.
+  const [debounced, setQuery] = useSearchParamsState("q", "");
+  const [offset, setOffset] = useSearchParamsState("offset", 0, numberCodec);
+  const [sort, setSortParam] = useSearchParamsState("sort", DEFAULT_SORT, sortCodec);
+  const [search, setSearch] = useState(debounced);
   // Tiny debounce so the table doesn't fire a request on every keystroke.
-  const debounced = useDebouncedValue(search, 250);
+  const typed = useDebouncedValue(search, 250);
 
-  // Back to page one when the *search* or sort changes — an offset into the
-  // previous result set means nothing against a different one.
+  // `written` is the search the URL last agreed with. Typing writes the URL
+  // (and goes back to page one — an offset into the previous result set
+  // means nothing against a different one); a URL change from outside, such
+  // as the sidebar link to a bare /users, rewrites the input instead.
+  const written = useRef(debounced);
   useEffect(() => {
+    if (typed === written.current) return;
+    written.current = typed;
+    setQuery(typed);
     setOffset(0);
-  }, [debounced, sort]);
+  }, [typed, setQuery, setOffset]);
+  useEffect(() => {
+    if (debounced === written.current) return;
+    written.current = debounced;
+    setSearch(debounced);
+  }, [debounced]);
+
+  const setSort = (next: UserAdminSort) => {
+    setSortParam(next);
+    setOffset(0);
+  };
 
   const usersQuery = useQuery<UserAdminListOut>({
     queryKey: qk.users({ search: debounced || null, sort, limit: PAGE_SIZE, offset }),
