@@ -78,7 +78,7 @@ class Order(Base):
     #
     # Two provenances, not one, and a reader must not assume the first
     # describes every row:
-    #   * retail (`web` / `miniapp` / `bot`) is **client-declared** — the
+    #   * retail (`web` / `miniapp` / `bot` / `mobile`) is **client-declared** — the
     #     `X-Yupay-Surface` header the frontends send, normalised against
     #     `service.ORDER_SOURCES` so an unrecognised value records as
     #     `unknown` rather than being trusted verbatim;
@@ -162,11 +162,10 @@ class Order(Base):
         ),
         CheckConstraint("total_usd >= 0", name="ck_orders_total_usd_nonneg"),
         CheckConstraint("total_charged >= 0", name="ck_orders_total_charged_nonneg"),
-        # Widened by 0073. ``merchant_panel`` is allowed and unreachable: M4's
-        # cabinet claims it, nothing writes it yet, and a second migration for
-        # one string literal would be waste.
+        # Widened by 0073 (the B2B surfaces) and 0102 (``mobile``, the Expo app).
         CheckConstraint(
-            "source IN ('web', 'miniapp', 'bot', 'unknown', 'merchant_api', 'merchant_panel')",
+            "source IN ('web', 'miniapp', 'bot', 'unknown', 'merchant_api', 'merchant_panel',"
+            " 'mobile')",
             name="ck_orders_source_known",
         ),
         CheckConstraint("purpose IN ('catalog', 'wallet_topup')", name="ck_orders_purpose_known"),

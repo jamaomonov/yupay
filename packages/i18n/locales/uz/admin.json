@@ -269,6 +269,7 @@
     "source": {
       "web": "Sayt",
       "miniapp": "Mini App",
+      "mobile": "Ilova",
       "bot": "Bot",
       "merchant_api": "Merchant API",
       "merchant_panel": "Merchant kabineti",

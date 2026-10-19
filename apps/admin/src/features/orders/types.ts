@@ -25,7 +25,14 @@ export type OrderStatus =
  *  header); `merchant_api` is set server-side when a reseller orders through
  *  `/merchant/v1`; `merchant_panel` is allowed by the CHECK and written by
  *  nothing until M4's cabinet ships. */
-export type OrderSource = "web" | "miniapp" | "bot" | "merchant_api" | "merchant_panel" | "unknown";
+export type OrderSource =
+  | "web"
+  | "miniapp"
+  | "mobile"
+  | "bot"
+  | "merchant_api"
+  | "merchant_panel"
+  | "unknown";
 
 /** Deliberately not a coloured badge: the surface is context, not a state, and
  *  colouring it would compete with the status column beside it. */

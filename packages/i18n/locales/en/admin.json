@@ -269,6 +269,7 @@
     "source": {
       "web": "Website",
       "miniapp": "Mini App",
+      "mobile": "App",
       "bot": "Bot",
       "merchant_api": "Merchant API",
       "merchant_panel": "Merchant cabinet",

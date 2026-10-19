@@ -269,6 +269,7 @@
     "source": {
       "web": "Сайт",
       "miniapp": "Mini App",
+      "mobile": "Приложение",
       "bot": "Бот",
       "merchant_api": "Merchant API",
       "merchant_panel": "Кабинет мерчанта",

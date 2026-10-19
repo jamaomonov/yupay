@@ -170,7 +170,7 @@ ORDER_EXPIRY_SECONDS = 10 * 60
 #: the widened vocabulary safe: a storefront request that asked for
 #: ``merchant_api`` would otherwise dress a retail sale up as a reseller's, on
 #: the one column an operator reads to tell them apart.
-ORDER_SOURCES: frozenset[str] = frozenset({"web", "miniapp", "bot"})
+ORDER_SOURCES: frozenset[str] = frozenset({"web", "miniapp", "bot", "mobile"})
 
 #: Set server-side by ``merchants.orders.place``, on a path that has already
 #: authenticated which merchant is calling. Unlike a retail source this is not

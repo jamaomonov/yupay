@@ -23,7 +23,7 @@ from yupay.modules.orders.service import (
 )
 
 
-@pytest.mark.parametrize("declared", ["web", "miniapp", "bot"])
+@pytest.mark.parametrize("declared", ["web", "miniapp", "bot", "mobile"])
 def test_a_retail_surface_is_taken_at_its_word(declared: str) -> None:
     assert normalise_source(declared) == declared
     assert normalise_source(declared.upper()) == declared
