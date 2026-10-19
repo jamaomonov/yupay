@@ -8,18 +8,18 @@ describe("checkout", () => {
     expect(isEmail("a@b")).toBe(false);
   });
 
-  it("builds an order with trimmed fields and the receipt address, or none", () => {
-    expect(orderBody({ skuId: "s1", fields: { player_id: " 123 " }, email: " A@B.uz" })).toEqual({
+  it("builds an order with trimmed fields", () => {
+    expect(orderBody({ skuId: "s1", fields: { player_id: " 123 " } })).toEqual({
       currency: "UZS",
       items: [{ sku_id: "s1", qty: 1, fulfillment_data: { player_id: "123" } }],
-      delivery_email: "a@b.uz",
     });
-    expect(orderBody({ skuId: "s1", fields: {}, email: " " })).not.toHaveProperty("delivery_email");
   });
 
   it("keeps the fingerprint across cosmetic edits and changes it with the order", () => {
-    const base = { skuId: "s1", fields: { player_id: "123" }, email: "a@b.uz" };
-    expect(orderFingerprint({ ...base, email: " A@b.uz " })).toBe(orderFingerprint(base));
+    const base = { skuId: "s1", fields: { player_id: "123" } };
+    expect(orderFingerprint({ ...base, fields: { player_id: " 123 " } })).toBe(
+      orderFingerprint(base),
+    );
     expect(orderFingerprint({ ...base, fields: { player_id: "124" } })).not.toBe(
       orderFingerprint(base),
     );

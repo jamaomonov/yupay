@@ -65,14 +65,12 @@
     "amount": "Amount",
     "player": "Player",
     "total": "Total",
-    "email": "Email",
     "method": "Payment method",
     "pay": "Pay {sum} soʻm",
     "badEmail": "Check the email",
     "error": "Couldn't create the order. Try again",
     "stale": "The order has expired. Tap «Pay» again",
-    "noMethods": "Payment is temporarily unavailable",
-    "emailHintAccount": "We'll send the receipt here. You can leave it empty"
+    "noMethods": "Payment is temporarily unavailable"
   },
   "order": {
     "title": "Order",

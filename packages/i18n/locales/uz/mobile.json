@@ -65,14 +65,12 @@
     "amount": "Nominal",
     "player": "Oʻyinchi",
     "total": "Toʻlovga",
-    "email": "Email",
     "method": "Toʻlov usuli",
     "pay": "{sum} soʻm toʻlash",
     "badEmail": "Emailni tekshiring",
     "error": "Buyurtma yaratilmadi. Qayta urinib koʻring",
     "stale": "Buyurtma eskirdi. «Toʻlash»ni yana bosing",
-    "noMethods": "Toʻlov vaqtincha mavjud emas",
-    "emailHintAccount": "Chekni shu manzilga yuboramiz. Boʻsh qoldirish mumkin"
+    "noMethods": "Toʻlov vaqtincha mavjud emas"
   },
   "order": {
     "title": "Buyurtma",

@@ -33,11 +33,10 @@ export function checkBlocks(result: PlayerCheckResult | null): boolean {
   return result === null || result.status === "invalid";
 }
 
+/** One fixed line as the signed-in account; receipts go where the account says. */
 export interface OrderLine {
   skuId: string;
   fields: Record<string, string>;
-  /** Where the receipt goes; blank sends none. The order belongs to the account either way. */
-  email: string;
 }
 
 /** `POST /orders`: one fixed line, priced in soʻm. */
@@ -45,11 +44,9 @@ export function orderBody(line: OrderLine) {
   const fields = Object.fromEntries(
     Object.entries(line.fields).map(([key, value]) => [key, value.trim()]),
   );
-  const email = normaliseEmail(line.email);
   return {
     currency: "UZS",
     items: [{ sku_id: line.skuId, qty: 1, fulfillment_data: fields }],
-    ...(email === "" ? {} : { delivery_email: email }),
   };
 }
 

@@ -54,7 +54,7 @@ offers «retry» and the stored token stays. There is no guest checkout in the a
 
 ## Checkout
 
-`POST /orders` as the account (sent with `X-Yupay-Surface: mobile`, recorded as
+`POST /orders` as the account, with no email field — receipts follow the account (sent with `X-Yupay-Surface: mobile`, recorded as
 `orders.source = mobile`), then `POST /payments/intents`. The acquirer's page opens in the
 in-app browser (an app link such as Uzum's leaves the app); when the buyer comes back, the
 order screen asks for the status. The return URL is the storefront's order page, the only

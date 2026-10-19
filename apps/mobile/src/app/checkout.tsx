@@ -3,19 +3,18 @@ import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useMemo, useRef, useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { MethodPicker } from "@/components/checkout/MethodPicker";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
-import { isEmail, orderFingerprint, PAY_METHODS, type PayMethod } from "@/lib/checkout";
+import { orderFingerprint, PAY_METHODS, type PayMethod } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, createOrder, newKey, useProviders } from "@/lib/orders";
-import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
-import { fonts, radius, space } from "@/theme/tokens";
+import { space } from "@/theme/tokens";
 
 /** Route params from the brand screen; `fields` is the order form as JSON. */
 type Params = {
@@ -46,18 +45,13 @@ async function openPayment(url: string): Promise<void> {
   else await Linking.openURL(url);
 }
 
-/** Summary, email, payment method, pay. A guest order: no account needed. */
+/** Summary, payment method, pay — as the signed-in account. */
 export default function CheckoutScreen() {
   const params = useLocalSearchParams<Params>();
   const { t, locale } = useI18n();
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
   const fields = useMemo(() => parseFields(params.fields), [params.fields]);
-
-  const { user } = useSession();
-  // What the buyer typed wins; until then, the account's own address.
-  const [typed, setEmail] = useState<string | null>(null);
-  const email = typed ?? user?.delivery_email ?? user?.email ?? "";
 
   const providers = useProviders();
   const methods = PAY_METHODS.filter((method) => {
@@ -73,9 +67,7 @@ export default function CheckoutScreen() {
   // One key per order contents: paying again for the same thing resumes the same order.
   const keyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  // Blank sends no receipt; something typed must be an address.
-  const emailOk = isEmail(email) || email.trim() === "";
-  const line = { skuId: params.skuId, fields, email };
+  const line = { skuId: params.skuId, fields };
 
   const pay = async () => {
     if (method === null) return;
@@ -149,41 +141,6 @@ export default function CheckoutScreen() {
 
         <View>
           <T variant="label" tone="mute" style={{ marginBottom: 8 }}>
-            {t("checkout.email")}
-          </T>
-          <TextInput
-            value={email}
-            onChangeText={setEmail}
-            placeholder="name@mail.uz"
-            placeholderTextColor={c.dim}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="email"
-            keyboardType="email-address"
-            textContentType="emailAddress"
-            style={{
-              height: 50,
-              paddingHorizontal: 14,
-              borderRadius: radius.control,
-              borderWidth: 1,
-              borderColor: email !== "" && !emailOk ? c.danger : c.border,
-              backgroundColor: c.card,
-              fontFamily: fonts.medium,
-              fontSize: 15,
-              color: c.fg,
-            }}
-          />
-          <T
-            variant="small"
-            tone={email !== "" && !emailOk ? "danger" : "mute"}
-            style={{ marginTop: 6 }}
-          >
-            {email !== "" && !emailOk ? t("checkout.badEmail") : t("checkout.emailHintAccount")}
-          </T>
-        </View>
-
-        <View>
-          <T variant="label" tone="mute" style={{ marginBottom: 8 }}>
             {t("checkout.method")}
           </T>
           {methods.length > 0 ? (
@@ -212,7 +169,7 @@ export default function CheckoutScreen() {
       >
         <Button
           label={t("checkout.pay", { sum: formatSum(params.price) })}
-          disabled={!emailOk || method === null}
+          disabled={method === null}
           loading={busy}
           onPress={() => void pay()}
         />
