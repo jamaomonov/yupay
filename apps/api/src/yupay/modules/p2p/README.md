@@ -105,6 +105,11 @@ A `credit` pays a reservation when all of these hold:
 - bank time `<= expires_at` and `> created_at - 1 minute`. When the bank time is missing,
   `received_at` stands in.
 
+**A card that is not ours.** A notification whose last4 matches no `p2p_cards` row, active or
+not, is journaled as `ignored` with no alert, not even a chain break: the bot's feed is shared
+with csmarket (runbook §2), and the owner's HUMO chat reports their card too. An inactive card
+of ours still counts as ours, so a late transfer to it stays `unmatched`.
+
 **Bank time has minute precision** (`HH:MM`), so a transfer up to 59 s after expiry can still
 match. That leniency is accepted.
 

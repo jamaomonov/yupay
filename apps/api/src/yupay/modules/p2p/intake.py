@@ -38,7 +38,8 @@ class IntakeResult:
     Attributes:
         status: ``dropped`` (not from the HUMO bot), ``duplicate`` (already
             journaled), ``matched`` (credited a reservation), ``unmatched`` (a
-            credit nobody was waiting for) or ``ignored`` (debit or unparsed).
+            credit nobody was waiting for) or ``ignored`` (debit, unparsed, or a
+            card that is not ours).
         reservation_number: The paid reservation's number when ``matched``.
         alerts: ``(kind, text)`` pairs for the caller to send after commit.
     """
@@ -154,6 +155,23 @@ async def _payable(
         .with_for_update(of=P2PReservation)
     )
     return reservation
+
+
+async def _foreign_card(db: AsyncSession, last4: str | None) -> bool:
+    """True when no card of ours, active or not, ends in ``last4``.
+
+    The bot's feed is shared with csmarket through a relay (runbook §2), and the
+    owner's HUMO chat reports their card too. Such a row is journaled as
+    ``ignored``: it is not money for the operator to resolve, and it must never
+    pay a reservation of the same amount. An inactive card of ours still counts
+    as ours, so a late transfer to it stays ``unmatched`` as before.
+    """
+    if last4 is None:
+        return False
+    count = await db.scalar(
+        select(func.count()).select_from(P2PCard).where(P2PCard.pan_last4 == last4)
+    )
+    return not count
 
 
 async def _ambiguous_card(db: AsyncSession, last4: str | None) -> bool:
@@ -315,6 +333,9 @@ async def ingest_update(
         return IntakeResult("duplicate")
 
     result = IntakeResult("ignored")
+    if await _foreign_card(db, parsed.card_last4):
+        log.info("p2p.foreign_card", kind=parsed.kind)
+        return result
     if parsed.kind == "unparsed":
         result.alerts.append(
             (

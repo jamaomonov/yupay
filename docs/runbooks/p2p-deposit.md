@@ -48,6 +48,18 @@ curl -s "https://api.telegram.org/bot$P2P_BOT_TOKEN/getWebhookInfo"
 Verify `url`, `pending_update_count` near 0 and no `last_error_message`. An unset
 `P2P_WEBHOOK_SECRET` makes the route answer 401 to everything.
 
+**Shared with csmarket (planned, not live).** One Telegram profile connects one Business bot,
+and a bot has one webhook URL, so csmarket's card is read by the same bot. The webhook then
+points at a relay (a Cloudflare Worker) instead of the URL above, and `url=` in `setWebhook`
+becomes the relay's. The relay forwards every update unchanged to this route and to csmarket's,
+and answers Telegram 2xx **only after both answered 2xx**. So `pending_update_count` still
+means "not yet delivered to YuPay", and the manual-credit rule in §5 holds. Secrets are
+separate: Telegram → relay uses the relay's own, relay → YuPay sends `P2P_WEBHOOK_SECRET` in
+`X-Telegram-Bot-Api-Secret-Token`, relay → csmarket uses csmarket's own. csmarket's
+notifications land in the journal as `ignored` (no `p2p_cards` row has their last4). **csmarket's
+card must never be added here, and its last4 must differ from every card of ours**: matching is
+by last4 and amount.
+
 ## 3. Find the HUMO bot id
 
 The filter accepts only messages whose sender and chat id equal the HUMO bot's numeric id, so it

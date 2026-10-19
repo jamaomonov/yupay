@@ -160,9 +160,9 @@ async def test_second_same_amount_is_unmatched(db_session: AsyncSession) -> None
 
 @pytest.mark.parametrize(
     ("amount", "last4"),
-    [("50.000,50", "3311"), ("50.000,00", "9999"), ("50.001,00", "3311")],
+    [("50.000,50", "3311"), ("50.001,00", "3311")],
 )
-async def test_tiyin_other_card_or_other_amount_never_match(
+async def test_tiyin_or_other_amount_never_match(
     db_session: AsyncSession, amount: str, last4: str
 ) -> None:
     """Review Focus 4."""
@@ -170,6 +170,42 @@ async def test_tiyin_other_card_or_other_amount_never_match(
     res = await intake.ingest_update(
         db_session,
         _update(5, _credit(amount, _bank(r.created_at), "1.100.000,00", last4)),
+        received_at=r.created_at,
+    )
+    assert res.status == "unmatched"
+
+
+async def test_a_card_that_is_not_ours_is_ignored_and_never_pays(
+    db_session: AsyncSession,
+) -> None:
+    """csmarket's card reaches us through the shared bot: not money to resolve."""
+    _, r = await _setup(db_session)
+    t = _bank(r.created_at)
+    await intake.ingest_update(
+        db_session,
+        _update(5, _credit("1.000,00", t, "101.000,00", "9999")),
+        received_at=r.created_at,
+    )
+    res = await intake.ingest_update(
+        db_session,
+        _update(6, _credit("50.000,00", t, "999.000,00", "9999")),
+        received_at=r.created_at,
+    )
+    assert res.status == "ignored"
+    assert res.alerts == []  # no chain-break alert for someone else's balance
+    row = await db_session.scalar(select(P2PIncoming).where(P2PIncoming.telegram_message_id == 6))
+    assert row is not None
+    assert row.result == "ignored"
+    await db_session.refresh(r)
+    assert r.status == "pending"
+
+
+async def test_a_transfer_to_our_inactive_card_stays_unmatched(db_session: AsyncSession) -> None:
+    await _card(db_session, active=False, pan_last4="4242")
+    _, r = await _setup(db_session)
+    res = await intake.ingest_update(
+        db_session,
+        _update(7, _credit("50.000,00", _bank(r.created_at), "1.100.000,00", "4242")),
         received_at=r.created_at,
     )
     assert res.status == "unmatched"
