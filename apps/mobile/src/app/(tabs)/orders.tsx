@@ -1,17 +1,13 @@
-import { useQueries } from "@tanstack/react-query";
 import type { OrderOut } from "@yupay/api-client/types";
-import { router, useFocusEffect } from "expo-router";
+import { router } from "expo-router";
 import { ChevronRight, ReceiptText } from "lucide-react-native";
-import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 
 import { Screen } from "@/components/Screen";
-import { Button, Card, T } from "@/components/ui";
+import { Button, Card, Notice, T } from "@/components/ui";
 import { stageOf } from "@/lib/checkout";
-import { readGuestOrders, type GuestOrder } from "@/lib/guest-orders";
 import { useI18n } from "@/lib/i18n";
-import { fetchOrder, useAccountOrders } from "@/lib/orders";
-import { useSession } from "@/lib/session";
+import { useAccountOrders } from "@/lib/orders";
 import { useTheme } from "@/theme/ThemeProvider";
 
 interface Row {
@@ -95,73 +91,28 @@ function Empty() {
   );
 }
 
-/** The account's orders when signed in; the ones placed on this phone without an account. */
+/** The account's orders: from the website, the mini app and this app alike. */
 export default function OrdersScreen() {
   const { t } = useI18n();
   const { c } = useTheme();
-  const { user } = useSession();
-  const [guest, setGuest] = useState<GuestOrder[] | null>(null);
-
-  useFocusEffect(
-    useCallback(() => {
-      void readGuestOrders().then(setGuest);
-    }, []),
-  );
-
-  const account = useAccountOrders(user != null);
-  const guestStatuses = useQueries({
-    queries: (guest ?? []).map((order) => ({
-      queryKey: ["order", order.id],
-      queryFn: () => fetchOrder(order.id, order.email),
-      staleTime: 15_000,
-    })),
-  });
-
-  const accountRows = (account.data?.items ?? []).map(fromOrder);
-  const accountIds = new Set(accountRows.map((row) => row.id));
-  const guestRows: Row[] = (guest ?? [])
-    .map((order, index) => ({
-      id: order.id,
-      title: `${order.brand} · ${order.label}`,
-      at: order.at,
-      status: guestStatuses[index]?.data?.status,
-    }))
-    .filter((row) => !accountIds.has(row.id));
-
-  const loading = user === undefined || guest === null || (user != null && account.isPending);
+  const orders = useAccountOrders();
+  const rows = (orders.data?.items ?? []).map(fromOrder);
 
   return (
     <Screen title={t("orders.title")}>
-      {loading ? (
+      {orders.isPending ? (
         <ActivityIndicator color={c.mute} style={{ marginTop: 40 }} />
+      ) : orders.isError ? (
+        <Notice
+          text={t("common.loadError")}
+          action={
+            <Button kind="ghost" label={t("common.retry")} onPress={() => void orders.refetch()} />
+          }
+        />
+      ) : rows.length === 0 ? (
+        <Empty />
       ) : (
-        <View style={{ gap: 10 }}>
-          {accountRows.length === 0 && guestRows.length === 0 && <Empty />}
-          {accountRows.length > 0 && <OrderList rows={accountRows} />}
-          {guestRows.length > 0 && (
-            <>
-              {user != null && (
-                <T variant="label" tone="mute" style={{ marginTop: 8 }}>
-                  {t("orders.guestTitle")}
-                </T>
-              )}
-              <OrderList rows={guestRows} />
-            </>
-          )}
-        </View>
-      )}
-
-      {user === null && (
-        <View style={{ marginTop: 16, gap: 10 }}>
-          <T variant="small" tone="mute" style={{ textAlign: "center" }}>
-            {t("orders.more")}
-          </T>
-          <Button
-            kind="ghost"
-            label={t("orders.signInButton")}
-            onPress={() => router.push("/sign-in")}
-          />
-        </View>
+        <OrderList rows={rows} />
       )}
     </Screen>
   );

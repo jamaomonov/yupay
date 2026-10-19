@@ -10,10 +10,8 @@ import { TopBar } from "@/components/TopBar";
 import { Button, Card, Notice, T } from "@/components/ui";
 import { PAY_METHODS, stageOf, type OrderStage, type PayMethod } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
-import { findGuestOrder, type GuestOrder } from "@/lib/guest-orders";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, useOrder } from "@/lib/orders";
-import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
 
@@ -45,18 +43,7 @@ export default function OrderScreen() {
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
 
-  // `undefined` while reading the phone's record, `null` when there is none.
-  const [record, setRecord] = useState<GuestOrder | null | undefined>(undefined);
-  useEffect(() => {
-    void findGuestOrder(id).then(setRecord);
-  }, [id]);
-
-  const { user } = useSession();
-  // A guest order is read with the email this phone kept; anything else as the account.
-  const guestEmail = record?.email ?? null;
-  const known = record !== undefined && user !== undefined;
-  const readable = known && (record !== null || user !== null);
-  const order = useOrder(id, guestEmail, readable);
+  const order = useOrder(id);
   const refetch = order.refetch;
   // Back from the bank's app: ask at once instead of waiting for the next tick.
   useEffect(() => {
@@ -74,7 +61,7 @@ export default function OrderScreen() {
       : "payme";
     setPaying(true);
     try {
-      const intent = await createIntent({ orderId: id, email: guestEmail, provider, locale });
+      const intent = await createIntent({ orderId: id, provider, locale });
       if (intent.intent_url?.startsWith("http"))
         await WebBrowser.openBrowserAsync(intent.intent_url);
       else if (intent.intent_url) await Linking.openURL(intent.intent_url);
@@ -85,10 +72,9 @@ export default function OrderScreen() {
   };
 
   const body = () => {
-    if (!known || (readable && order.isPending)) {
+    if (order.isPending) {
       return <ActivityIndicator color={c.mute} style={{ marginTop: 60 }} />;
     }
-    if (!readable) return <Notice text={t("order.notFound")} />;
     if (order.isError || !order.data) {
       return (
         <Notice
@@ -100,8 +86,8 @@ export default function OrderScreen() {
 
     const stage = stageOf(order.data.status);
     const display = order.data.items[0]?.display;
-    const brand = display?.brand_name ?? record?.brand ?? "";
-    const label = display?.denomination ?? display?.product_name ?? record?.label ?? "";
+    const brand = display?.brand_name ?? "";
+    const label = display?.denomination ?? display?.product_name ?? "";
     const look = STAGE[stage];
     const Icon = look.icon;
     const color = look.tone === "mute" ? c.mute : c[look.tone];

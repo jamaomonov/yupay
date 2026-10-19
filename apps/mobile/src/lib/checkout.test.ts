@@ -8,19 +8,13 @@ describe("checkout", () => {
     expect(isEmail("a@b")).toBe(false);
   });
 
-  it("builds a guest order with trimmed fields and a lowercased email", () => {
+  it("builds an order with trimmed fields and the receipt address, or none", () => {
     expect(orderBody({ skuId: "s1", fields: { player_id: " 123 " }, email: " A@B.uz" })).toEqual({
       currency: "UZS",
       items: [{ sku_id: "s1", qty: 1, fulfillment_data: { player_id: "123" } }],
-      guest_email: "a@b.uz",
+      delivery_email: "a@b.uz",
     });
-  });
-
-  it("sends a signed-in buyer's email as the receipt address, or nothing", () => {
-    const line = { skuId: "s1", fields: {}, signedIn: true };
-    expect(orderBody({ ...line, email: "a@b.uz" })).toMatchObject({ delivery_email: "a@b.uz" });
-    expect(orderBody({ ...line, email: "" })).not.toHaveProperty("delivery_email");
-    expect(orderBody({ ...line, email: "" })).not.toHaveProperty("guest_email");
+    expect(orderBody({ skuId: "s1", fields: {}, email: " " })).not.toHaveProperty("delivery_email");
   });
 
   it("keeps the fingerprint across cosmetic edits and changes it with the order", () => {
@@ -32,12 +26,8 @@ describe("checkout", () => {
   });
 
   it("returns to the storefront order page in the buyer's language", () => {
-    expect(returnUrl("https://yupay.uz/", "ru", "o1", "A@b.uz")).toBe(
-      "https://yupay.uz/orders/o1?email=a%40b.uz",
-    );
-    expect(returnUrl("https://yupay.uz", "uz", "o1", "a@b.uz")).toBe(
-      "https://yupay.uz/uz/orders/o1?email=a%40b.uz",
-    );
+    expect(returnUrl("https://yupay.uz/", "ru", "o1")).toBe("https://yupay.uz/orders/o1");
+    expect(returnUrl("https://yupay.uz", "uz", "o1")).toBe("https://yupay.uz/uz/orders/o1");
   });
 
   it("blocks paying until the check has answered, and on «not found» only", () => {

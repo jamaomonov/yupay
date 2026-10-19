@@ -38,26 +38,27 @@
   },
   "orders": {
     "title": "Buyurtmalar",
-    "signIn": "Buyurtmalarni koʻrish uchun kiring",
-    "signInHint": "Saytdagi va Telegramdagi buyurtmalar ham shu yerda boʻladi",
-    "signInButton": "Kirish",
-    "empty": "Hozircha buyurtmalar yoʻq",
-    "more": "Sayt va Telegramdagi buyurtmalar kirgandan keyin chiqadi",
-    "guestTitle": "Akkauntsiz, shu telefonda"
+    "empty": "Hozircha buyurtmalar yoʻq"
   },
   "profile": {
     "title": "Profil",
     "language": "Til",
     "theme": "Mavzu",
-    "themeSystem": "Tizimdagidek",
-    "themeLight": "Yorugʻ",
-    "themeDark": "Qorongʻi",
     "support": "Yordam",
     "supportHint": "Telegramda javob beramiz",
     "version": "Versiya {version}",
-    "signIn": "Kirish",
-    "signInHint": "Sayt va Telegramdagi buyurtmalar",
-    "signOut": "Chiqish"
+    "signOut": "Chiqish",
+    "via": {
+      "telegram": "Telegram orqali kirilgan",
+      "steam": "Steam orqali kirilgan",
+      "google": "Google orqali kirilgan",
+      "email": "Email orqali kirilgan"
+    },
+    "balance": "Balans",
+    "promo": "Promokodlar",
+    "theme_system": "Tizimdagidek",
+    "theme_light": "Yorugʻ",
+    "theme_dark": "Qorongʻi"
   },
   "checkout": {
     "title": "Toʻlov",
@@ -65,7 +66,6 @@
     "player": "Oʻyinchi",
     "total": "Toʻlovga",
     "email": "Email",
-    "emailHint": "Chek va buyurtma havolasini yuboramiz",
     "method": "Toʻlov usuli",
     "pay": "{sum} soʻm toʻlash",
     "badEmail": "Emailni tekshiring",
@@ -111,6 +111,25 @@
     "error": "Boʻlmadi. Internetni tekshirib, qayta urinib koʻring",
     "with": "{name} orqali kirish",
     "or": "yoki email bilan",
-    "socialFailed": "Kirib boʻlmadi. Qayta urinib koʻring yoki email bilan kiring"
+    "socialFailed": "Kirib boʻlmadi. Qayta urinib koʻring yoki email bilan kiring",
+    "lead": "Xaridlar, balans va buyurtmalar — sayt va Telegram bilan bitta akkauntda"
+  },
+  "account": {
+    "title": "Akkaunt",
+    "email": "Cheklar uchun email"
+  },
+  "promo": {
+    "title": "Promokod",
+    "label": "Kod",
+    "placeholder": "Kodni kiriting",
+    "apply": "Qoʻllash",
+    "success": "Balansga {amount} soʻm tushdi",
+    "notFound": "Bunday promokod yoʻq",
+    "used": "Promokod ishlatilgan yoki mavjud emas",
+    "alreadyUsed": "Siz bu promokodni allaqachon faollashtirgansiz",
+    "expired": "Promokod muddati tugagan",
+    "exhausted": "Promokod tugagan",
+    "inactive": "Promokod endi amal qilmaydi",
+    "error": "Promokodni qoʻllab boʻlmadi"
   }
 }

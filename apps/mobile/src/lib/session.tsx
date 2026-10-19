@@ -20,6 +20,8 @@ const V1 = "/api/v1";
 const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://yupay.uz";
 const REFRESH_KEY = "refresh_token";
 const JSON_BODY = { "Content-Type": "application/json" };
+/** Recorded on an account the app opens (`users.signup_source`). */
+const SURFACE = { "X-Yupay-Surface": "mobile" };
 /** Asks the sign-in routes for the refresh token in the JSON (ADR-0101). */
 const BODY_TRANSPORT = { "X-Yupay-Token-Transport": "body" };
 /** Refresh this long before the access token runs out. */
@@ -75,12 +77,14 @@ function refreshAccess(): Promise<string | null> {
       });
       return await keep(tokens);
     } catch (err) {
-      // Only a refusal ends the session; a dropped connection leaves it for the next try.
+      // Only a refusal ends the session. A dropped connection is thrown, not read as
+      // "signed out": the stored token is still good for the next try.
       if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         await writeRefresh(null);
         access = null;
+        return null;
       }
-      return null;
+      throw err;
     }
   })().finally(() => {
     refreshing = null;
@@ -115,9 +119,36 @@ export async function authRequest<T>(path: string, init: RequestInit = {}): Prom
 /** Thrown when the provider's page answered with an error or for another attempt. */
 export class SocialSignInError extends Error {}
 
+/**
+ * The stored session's account, `null` when there is none (or the server refused it). A
+ * network failure is thrown: the session may be fine, the phone is just offline.
+ */
+async function restoreSession(): Promise<MeOut | null> {
+  try {
+    return await authRequest<MeOut>(`${V1}/auth/me`);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 401) return null;
+    throw err;
+  }
+}
+
+/** Opens an account by email; the confirmation link finishes it (no session yet). */
+export async function register(email: string, password: string, locale: string): Promise<void> {
+  await api.request(`${V1}/auth/register`, {
+    method: "POST",
+    headers: { ...JSON_BODY, ...SURFACE },
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password, locale }),
+  });
+}
+
 interface SessionValue {
   /** `undefined` while the stored session is being restored. */
   user: MeOut | null | undefined;
+  /** The restore failed for want of a connection; `retry` tries again. */
+  offline: boolean;
+  retry: () => void;
+  /** Re-reads the account after something changed it. */
+  reload: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   /**
    * Google or Telegram through the storefront's `/app-auth` page in the system browser.
@@ -135,23 +166,34 @@ export function SessionProvider({ children }: { children: ReactNode }) {
 
   const loadMe = useCallback(async () => {
     try {
-      setUser(await authRequest<MeOut>(`${V1}/auth/me`));
+      setUser(await restoreSession());
     } catch {
-      setUser(null);
+      // Offline: keep what is on screen; the next read tries again.
     }
   }, []);
 
-  // Restore a stored session once, at launch.
+  const [offline, setOffline] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+
+  // Restore the stored session at launch, and again on «retry».
   useEffect(() => {
-    authRequest<MeOut>(`${V1}/auth/me`).then(setUser, () => setUser(null));
-  }, []);
+    restoreSession().then(
+      (me) => {
+        setOffline(false);
+        setUser(me);
+      },
+      () => setOffline(true),
+    );
+  }, [attempt]);
+
+  const retry = useCallback(() => setAttempt((n) => n + 1), []);
 
   /** Posts a credential to a sign-in route and adopts the session it returns. */
   const finish = useCallback(
     async (path: string, body: unknown) => {
       const tokens = await api.request<Tokens>(`${V1}${path}`, {
         method: "POST",
-        headers: { ...JSON_BODY, ...BODY_TRANSPORT },
+        headers: { ...JSON_BODY, ...SURFACE, ...BODY_TRANSPORT },
         body: JSON.stringify(body),
       });
       await keep(tokens);
@@ -210,7 +252,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient]);
 
-  return <SessionContext value={{ user, signIn, signInWith, signOut }}>{children}</SessionContext>;
+  return (
+    <SessionContext value={{ user, offline, retry, reload: loadMe, signIn, signInWith, signOut }}>
+      {children}
+    </SessionContext>
+  );
 }
 
 export function useSession(): SessionValue {

@@ -36,9 +36,8 @@ export function checkBlocks(result: PlayerCheckResult | null): boolean {
 export interface OrderLine {
   skuId: string;
   fields: Record<string, string>;
+  /** Where the receipt goes; blank sends none. The order belongs to the account either way. */
   email: string;
-  /** Signed in: the order is the account's, and the email only says where the receipt goes. */
-  signedIn?: boolean;
 }
 
 /** `POST /orders`: one fixed line, priced in soʻm. */
@@ -50,12 +49,7 @@ export function orderBody(line: OrderLine) {
   return {
     currency: "UZS",
     items: [{ sku_id: line.skuId, qty: 1, fulfillment_data: fields }],
-    // The same split as the website: a guest is identified by the email, an account is not.
-    ...(line.signedIn === true
-      ? email === ""
-        ? {}
-        : { delivery_email: email }
-      : { guest_email: email }),
+    ...(email === "" ? {} : { delivery_email: email }),
   };
 }
 
@@ -76,16 +70,9 @@ export function normaliseEmail(email: string): string {
  * accepts (`_safe_return_url`). The app does not rely on it — it checks the order itself
  * once the browser closes.
  */
-export function returnUrl(
-  webUrl: string,
-  locale: string,
-  orderId: string,
-  email: string | null,
-): string {
+export function returnUrl(webUrl: string, locale: string, orderId: string): string {
   const prefix = locale === "ru" ? "" : `/${locale}`;
-  // A guest's order page needs the email; an account's does not.
-  const query = email === null ? "" : `?email=${encodeURIComponent(normaliseEmail(email))}`;
-  return `${webUrl.replace(/\/$/, "")}${prefix}/orders/${orderId}${query}`;
+  return `${webUrl.replace(/\/$/, "")}${prefix}/orders/${orderId}`;
 }
 
 export type OrderStage = "awaiting" | "working" | "done" | "failed" | "closed" | "refunded";

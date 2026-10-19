@@ -38,26 +38,27 @@
   },
   "orders": {
     "title": "Orders",
-    "signIn": "Sign in to see your orders",
-    "signInHint": "Orders from the website and Telegram show up here too",
-    "signInButton": "Sign in",
-    "empty": "No orders yet",
-    "more": "Orders from the website and Telegram appear after you sign in",
-    "guestTitle": "Without an account, on this phone"
+    "empty": "No orders yet"
   },
   "profile": {
     "title": "Profile",
     "language": "Language",
     "theme": "Theme",
-    "themeSystem": "System",
-    "themeLight": "Light",
-    "themeDark": "Dark",
     "support": "Support",
     "supportHint": "We answer in Telegram",
     "version": "Version {version}",
-    "signIn": "Sign in",
-    "signInHint": "Orders from the website and Telegram",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "via": {
+      "telegram": "Signed in with Telegram",
+      "steam": "Signed in with Steam",
+      "google": "Signed in with Google",
+      "email": "Signed in with email"
+    },
+    "balance": "Balance",
+    "promo": "Promo codes",
+    "theme_system": "System",
+    "theme_light": "Light",
+    "theme_dark": "Dark"
   },
   "checkout": {
     "title": "Payment",
@@ -65,7 +66,6 @@
     "player": "Player",
     "total": "Total",
     "email": "Email",
-    "emailHint": "We'll send the receipt and a link to the order",
     "method": "Payment method",
     "pay": "Pay {sum} soʻm",
     "badEmail": "Check the email",
@@ -111,6 +111,25 @@
     "error": "That didn't work. Check your connection and try again",
     "with": "Continue with {name}",
     "or": "or with email",
-    "socialFailed": "Sign-in didn't work. Try again or use email"
+    "socialFailed": "Sign-in didn't work. Try again or use email",
+    "lead": "Purchases, balance and orders — one account with the website and Telegram"
+  },
+  "account": {
+    "title": "Account",
+    "email": "Email for receipts"
+  },
+  "promo": {
+    "title": "Promo code",
+    "label": "Code",
+    "placeholder": "Enter the code",
+    "apply": "Apply",
+    "success": "{amount} soʻm added to your balance",
+    "notFound": "No such promo code",
+    "used": "This promo code is used up or unavailable",
+    "alreadyUsed": "You have already used this promo code",
+    "expired": "This promo code has expired",
+    "exhausted": "This promo code has run out",
+    "inactive": "This promo code is no longer active",
+    "error": "Couldn't apply the promo code"
   }
 }

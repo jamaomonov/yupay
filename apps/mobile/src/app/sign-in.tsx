@@ -1,18 +1,16 @@
 import { ApiError } from "@yupay/api-client";
 import * as WebBrowser from "expo-web-browser";
-import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { SocialButtons } from "@/components/auth/SocialButtons";
 import { Field } from "@/components/Field";
-import { TopBar } from "@/components/TopBar";
+import { Logo } from "@/components/Logo";
 import { Button, Card, T } from "@/components/ui";
-import { api } from "@/lib/api";
 import { isEmail, normaliseEmail } from "@/lib/checkout";
 import { useI18n } from "@/lib/i18n";
-import { SocialSignInError, useSession } from "@/lib/session";
+import { register, SocialSignInError, useSession } from "@/lib/session";
 import type { Provider } from "@/lib/social-state";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
@@ -32,7 +30,11 @@ function reason(err: unknown, mode: Mode): string {
   return "auth.error";
 }
 
-/** Email and password: sign in, or open an account and confirm it by email. */
+/**
+ * The app's front door: nothing else opens without an account. Telegram and Google first,
+ * email and password under them, or a new account confirmed by email. Once signed in, the
+ * protected routes take over (`app/_layout.tsx`); nothing here navigates.
+ */
 export default function SignInScreen() {
   const { t, locale } = useI18n();
   const { c } = useTheme();
@@ -57,13 +59,8 @@ export default function SignInScreen() {
     try {
       if (mode === "signIn") {
         await signIn(email, password);
-        done();
       } else {
-        await api.request(`/api/v1/auth/register`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: normaliseEmail(email), password, locale }),
-        });
+        await register(email, password, locale);
         setSentTo(normaliseEmail(email));
         setMode("signIn");
       }
@@ -74,16 +71,11 @@ export default function SignInScreen() {
     }
   };
 
-  const done = () => {
-    if (router.canGoBack()) router.back();
-    else router.replace("/profile");
-  };
-
   const withProvider = async (provider: Provider) => {
     setSocial(provider);
     setError(null);
     try {
-      if (await signInWith(provider, locale)) done();
+      await signInWith(provider, locale);
     } catch (err) {
       setError(
         err instanceof SocialSignInError || err instanceof ApiError
@@ -109,17 +101,20 @@ export default function SignInScreen() {
     <ScrollView
       style={{ backgroundColor: c.bg }}
       contentContainerStyle={{
-        paddingTop: insets.top + 4,
+        paddingTop: insets.top + 8,
         paddingHorizontal: space.gutter,
         paddingBottom: 32,
         gap: 16,
       }}
       keyboardShouldPersistTaps="handled"
     >
-      <TopBar
-        title={mode === "signIn" ? t("auth.title") : t("auth.registerTitle")}
-        fallback="/profile"
-      />
+      <View style={{ paddingTop: 28, paddingBottom: 8, gap: 18 }}>
+        <Logo />
+        <View style={{ gap: 6 }}>
+          <T variant="display">{mode === "signIn" ? t("auth.title") : t("auth.registerTitle")}</T>
+          <T tone="mute">{t("auth.lead")}</T>
+        </View>
+      </View>
 
       {sentTo !== null && (
         <Card style={{ padding: 16 }}>

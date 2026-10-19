@@ -16,7 +16,8 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { setApiLocale } from "@/lib/api";
 import { I18nProvider, useI18n } from "@/lib/i18n";
-import { SessionProvider } from "@/lib/session";
+import { SessionProvider, useSession } from "@/lib/session";
+import { Launch } from "@/components/Launch";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 
 void SplashScreen.preventAutoHideAsync();
@@ -25,8 +26,58 @@ const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
 });
 
-function Shell() {
+/**
+ * The app opens on sign-in: nothing but the sign-in screens is reachable without an account,
+ * and signing out returns there. Until the stored session is restored, the launch screen.
+ */
+function Routes() {
+  const { t } = useI18n();
   const { c, scheme } = useTheme();
+  const { user, offline, retry } = useSession();
+  if (user === undefined) {
+    return (
+      <>
+        <StatusBar style="light" />
+        <Launch
+          {...(offline
+            ? { offline: { text: t("common.loadError"), retry: t("common.retry"), onRetry: retry } }
+            : {})}
+        />
+      </>
+    );
+  }
+  const signedIn = user !== null;
+  return (
+    <>
+      <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+      <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }}>
+        <Stack.Protected guard={signedIn}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="brand/[slug]" />
+          <Stack.Screen name="checkout" />
+          <Stack.Screen name="order/[id]" />
+          <Stack.Screen name="account" />
+          <Stack.Screen name="promo" />
+          <Stack.Screen
+            name="choose"
+            options={{
+              presentation: "formSheet",
+              sheetAllowedDetents: "fitToContents",
+              sheetGrabberVisible: true,
+              sheetCornerRadius: 24,
+            }}
+          />
+        </Stack.Protected>
+        <Stack.Protected guard={!signedIn}>
+          <Stack.Screen name="sign-in" />
+        </Stack.Protected>
+      </Stack>
+    </>
+  );
+}
+
+function Shell() {
+  const { c } = useTheme();
   const { locale } = useI18n();
   setApiLocale(locale);
 
@@ -42,8 +93,7 @@ function Shell() {
           backgroundColor: c.bg,
         }}
       >
-        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
-        <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg } }} />
+        <Routes />
       </View>
     </View>
   );

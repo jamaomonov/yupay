@@ -2,7 +2,7 @@ import { ApiError } from "@yupay/api-client";
 import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ScrollView, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -11,7 +11,6 @@ import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
 import { isEmail, orderFingerprint, PAY_METHODS, type PayMethod } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
-import { readCheckoutEmail, saveGuestOrder } from "@/lib/guest-orders";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, createOrder, newKey, useProviders } from "@/lib/orders";
 import { useSession } from "@/lib/session";
@@ -56,14 +55,9 @@ export default function CheckoutScreen() {
   const fields = useMemo(() => parseFields(params.fields), [params.fields]);
 
   const { user } = useSession();
-  const signedIn = user != null;
-  // What the buyer typed wins; until then, the account's address or the last one used here.
+  // What the buyer typed wins; until then, the account's own address.
   const [typed, setEmail] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
-  useEffect(() => {
-    void readCheckoutEmail().then(setSaved);
-  }, []);
-  const email = typed ?? user?.delivery_email ?? user?.email ?? saved ?? "";
+  const email = typed ?? user?.delivery_email ?? user?.email ?? "";
 
   const providers = useProviders();
   const methods = PAY_METHODS.filter((method) => {
@@ -79,9 +73,9 @@ export default function CheckoutScreen() {
   // One key per order contents: paying again for the same thing resumes the same order.
   const keyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  // An account may leave it blank (no receipt); a guest is identified by it.
-  const emailOk = isEmail(email) || (signedIn && email.trim() === "");
-  const line = { skuId: params.skuId, fields, email, signedIn };
+  // Blank sends no receipt; something typed must be an address.
+  const emailOk = isEmail(email) || email.trim() === "";
+  const line = { skuId: params.skuId, fields, email };
 
   const pay = async () => {
     if (method === null) return;
@@ -92,23 +86,7 @@ export default function CheckoutScreen() {
     setError(null);
     try {
       const order = await createOrder(line, keyRef.current.key);
-      // An account's orders come from the server; a guest's only this phone remembers.
-      if (!signedIn) {
-        await saveGuestOrder({
-          id: order.id,
-          email: email.trim().toLowerCase(),
-          brand: params.brandName,
-          brandSlug: params.brandSlug,
-          label: params.label,
-          at: order.created_at,
-        });
-      }
-      const intent = await createIntent({
-        orderId: order.id,
-        email: signedIn ? null : email,
-        provider: method,
-        locale,
-      });
+      const intent = await createIntent({ orderId: order.id, provider: method, locale });
       if (intent.intent_url !== null) await openPayment(intent.intent_url);
       router.replace({ pathname: "/order/[id]", params: { id: order.id } });
     } catch (err) {
@@ -200,11 +178,7 @@ export default function CheckoutScreen() {
             tone={email !== "" && !emailOk ? "danger" : "mute"}
             style={{ marginTop: 6 }}
           >
-            {email !== "" && !emailOk
-              ? t("checkout.badEmail")
-              : signedIn
-                ? t("checkout.emailHintAccount")
-                : t("checkout.emailHint")}
+            {email !== "" && !emailOk ? t("checkout.badEmail") : t("checkout.emailHintAccount")}
           </T>
         </View>
 
