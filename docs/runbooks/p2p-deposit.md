@@ -48,17 +48,33 @@ curl -s "https://api.telegram.org/bot$P2P_BOT_TOKEN/getWebhookInfo"
 Verify `url`, `pending_update_count` near 0 and no `last_error_message`. An unset
 `P2P_WEBHOOK_SECRET` makes the route answer 401 to everything.
 
-**Shared with csmarket (planned, not live).** One Telegram profile connects one Business bot,
-and a bot has one webhook URL, so csmarket's card is read by the same bot. The webhook then
-points at a relay (a Cloudflare Worker) instead of the URL above, and `url=` in `setWebhook`
-becomes the relay's. The relay forwards every update unchanged to this route and to csmarket's,
-and answers Telegram 2xx **only after both answered 2xx**. So `pending_update_count` still
-means "not yet delivered to YuPay", and the manual-credit rule in §5 holds. Secrets are
-separate: Telegram → relay uses the relay's own, relay → YuPay sends `P2P_WEBHOOK_SECRET` in
-`X-Telegram-Bot-Api-Secret-Token`, relay → csmarket uses csmarket's own. csmarket's
-notifications land in the journal as `ignored` (no `p2p_cards` row has their last4). **csmarket's
-card must never be added here, and its last4 must differ from every card of ours**: matching is
-by last4 and amount.
+**Shared with csmarket — live since 2026-10-19.** One Telegram profile connects one Business
+bot, and a bot has one webhook URL, so csmarket's card is read by the same bot. The webhook
+points at a relay, the Cloudflare Worker `csmarket-p2p-relay` (code in the csmarket repo,
+`infra/p2p-relay/`), at **`https://p2p-relay.csmarket.uz`**, not at the URL above:
+
+```bash
+curl -s "https://api.telegram.org/bot$P2P_BOT_TOKEN/setWebhook" \
+  --data-urlencode url=https://p2p-relay.csmarket.uz \
+  --data-urlencode secret_token=$P2P_RELAY_SECRET \
+  --data-urlencode 'allowed_updates=["business_message","business_connection"]'
+```
+
+- The relay checks `P2P_RELAY_SECRET` (in `secrets/api.env` on prod; the API does not read
+  it), forwards the update unchanged to this route with `P2P_WEBHOOK_SECRET`, and answers
+  Telegram 2xx **only after YuPay answered 2xx**. So `pending_update_count` still means "not
+  yet delivered to YuPay" and the manual-credit rule in §5 holds.
+- csmarket gets its copy through a Cloudflare Queue with retries; csmarket being down never
+  stops YuPay. csmarket's notifications land here as `ignored` (no `p2p_cards` row has their
+  last4). **csmarket's card must never be added here, and its last4 must differ from every
+  card of ours**: matching is by last4 and amount.
+- Worker secrets (`wrangler secret put`, from `csmarket/infra/p2p-relay`): YuPay owns
+  `YUPAY_URL`, `YUPAY_SECRET`, `RELAY_SECRET`; csmarket owns `CSMARKET_URL`,
+  `CSMARKET_SECRET`. Rotating `P2P_WEBHOOK_SECRET` means updating `YUPAY_SECRET` too.
+- **Falling back to the direct webhook** (relay down for good): run the `setWebhook` above with
+  YuPay's own URL and `P2P_WEBHOOK_SECRET`. csmarket then stops receiving notifications.
+- A failed `setWebhook` **clears the bot's URL** (seen 2026-10-19 with a `*.workers.dev` host
+  Telegram could not resolve): check `getWebhookInfo` straight after, and restore at once.
 
 ## 3. Find the HUMO bot id
 
