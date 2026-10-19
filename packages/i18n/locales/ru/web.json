@@ -190,7 +190,9 @@
     "close": "Закрыть",
     "signedIn": "Вы вошли в аккаунт",
     "signInFailed": "Не удалось войти. Попробуйте ещё раз",
-    "steamFinishing": "Входим через Steam…"
+    "steamFinishing": "Входим через Steam…",
+    "appBounce": "Возвращаем в приложение…",
+    "appBounceFailed": "Не получилось войти. Вернитесь в приложение YuPay и попробуйте ещё раз."
   },
   "store": {
     "meta": {

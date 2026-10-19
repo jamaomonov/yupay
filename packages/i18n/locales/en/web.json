@@ -190,7 +190,9 @@
     "close": "Close",
     "signedIn": "You're signed in",
     "signInFailed": "Couldn't sign you in — please try again",
-    "steamFinishing": "Finishing Steam sign-in…"
+    "steamFinishing": "Finishing Steam sign-in…",
+    "appBounce": "Taking you back to the app…",
+    "appBounceFailed": "Sign-in didn't work. Go back to the YuPay app and try again."
   },
   "store": {
     "meta": {
