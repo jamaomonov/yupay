@@ -97,14 +97,35 @@ class HoldChecker(Protocol):
         ...
 
 
+#: Words in a Waxpeer answer that are about the service, not the buyer's inventory — so a
+#: "Public API …" message is never read as "set your inventory public".
+_SERVICE_WORDS = ("api", "key", "server", "rate", "limit")
+_URL = re.compile(r"https?://\S+")
+_LONG_NUMBER = re.compile(r"\d{6,}")
+
+
+def _loggable(info: str) -> str:
+    """An unknown answer, safe to log: no URLs, no long numbers (Steam ids), 120 chars."""
+    return _LONG_NUMBER.sub("#", _URL.sub("<url>", info))[:120]
+
+
 def _reason_for(info: str) -> TradeLinkReason:
+    """Steam's reason, as Waxpeer words it, folded into ours.
+
+    A hidden inventory comes as "Inventory is private" or, since 2026-10-20 on csmarket's
+    production, "Please set your steam inventory public" — both are ``private``. An answer
+    none of these match is ``invalid`` and logged (filtered) so a new wording shows up.
+    """
     text = info.lower()
     if "private" in text:
+        return "private"
+    if "public" in text and not any(word in text for word in _SERVICE_WORDS):
         return "private"
     if "ban" in text:
         return "trade_ban"
     if "hold" in text:
         return "hold"
+    log.info("skins.tradelink.unknown_reason", info=_loggable(info))
     return "invalid"
 
 

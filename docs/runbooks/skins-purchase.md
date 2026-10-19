@@ -63,6 +63,14 @@ A sold lot stays hidden for six minutes (`skins:csm:gone:{slug}`). A refund for 
 _after_ payment now means the lot sold in the minutes the buyer spent paying — csmarket's
 `POST /orders` refused it (`offer_gone`); no other lot is ever bought instead.
 
+**A hidden Steam inventory** (Waxpeer path). Waxpeer words it «Inventory is private» or «Please
+set your steam inventory public»; both read as `private` at the trade-link check, so checkout
+tells the buyer to open the inventory first. If it slips past (the check is advisory) the buy
+refusal is recognised too: no substitute lot is tried, the money goes back and the order page
+says «check the trade link» (`invalid_tradelink`), not «sold out». An answer the check does
+not know is logged as `skins.tradelink.unknown_reason` (URLs and long numbers removed) — add
+its wording to `skins/tradelink.py` when one shows up.
+
 **A csmarket order looks stuck in `buying`**: our fast sweep re-sends the purchase under the
 same id until csmarket answers, so a lost answer heals by itself. If it stays, read it on
 csmarket's side by our `project_id` (their `client_order_id`); the outcome is decided only

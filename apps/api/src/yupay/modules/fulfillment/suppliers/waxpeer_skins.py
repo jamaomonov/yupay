@@ -59,6 +59,10 @@ MAX_SUBSTITUTES = 2
 UNCONFIRMED_WINDOW = timedelta(minutes=10)
 LOW_BALANCE_ERROR = "supplier_low_balance"
 _LOW_BALANCE_HINTS = ("not enough balance", "insufficient balance", "insufficient funds")
+#: A refusal about the buyer's Steam account, not the listing: every other lot would be
+#: refused the same way, so no substitute is tried and the money goes back at once. Seen on
+#: csmarket's Waxpeer 2026-10-20 as "Please set your steam inventory public".
+_BUYER_INVENTORY_HINTS = ("inventory public", "inventory is private", "private inventory")
 
 
 class SkinTradeClient(Protocol):
@@ -178,6 +182,11 @@ def _looks_like_low_balance(exc: WaxpeerError) -> bool:
     return any(hint in text for hint in _LOW_BALANCE_HINTS)
 
 
+def _looks_like_hidden_inventory(exc: WaxpeerError) -> bool:
+    text = f"{exc} {exc.body}".lower()
+    return any(hint in text for hint in _BUYER_INVENTORY_HINTS)
+
+
 async def _candidates(
     client: SkinTradeClient, db: AsyncSession, *, slug: str, max_units: int, tried: set[int]
 ) -> list[tuple[int, int]]:
@@ -244,6 +253,19 @@ async def _buy(
                     error=LOW_BALANCE_ERROR,
                     money=MoneyOutcome.RETURNED,
                     required_units=max_units,
+                )
+            if exc.status < 500 and _looks_like_hidden_inventory(exc):
+                # The buyer's inventory is hidden: no lot can be sent until they open it.
+                # ``invalid_tradelink`` reads to them as «check the trade link» — the fix
+                # is on their side — rather than «sold out».
+                row.reason = "invalid_tradelink"
+                await db.flush()
+                return _result(
+                    "failed",
+                    key,
+                    error="invalid_tradelink",
+                    money=MoneyOutcome.RETURNED,
+                    buy_pending=False,
                 )
             if exc.status >= 500:
                 # A server error may have bought it: resolve by lookup, never rebuy.

@@ -71,6 +71,8 @@ async def test_a_clean_link_is_ok_and_cached() -> None:
     ("info", "days", "reason"),
     [
         ("This profile is private", 0, "private"),
+        ("Please set your steam inventory public", 0, "private"),
+        ("Public API key is not set", 0, "invalid"),
         ("User has a trade ban", 0, "trade_ban"),
         (None, 15, "hold"),
     ],

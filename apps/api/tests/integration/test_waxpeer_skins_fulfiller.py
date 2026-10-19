@@ -195,6 +195,22 @@ async def test_no_replacement_fails_with_the_money_back(db_session: AsyncSession
     assert result.error == "sold_out"
 
 
+async def test_a_hidden_inventory_returns_the_money_without_substitutes(
+    db_session: AsyncSession,
+) -> None:
+    """2026-10-20 on csmarket: four paid attempts, four refunds read as «sold out»."""
+    item = await _item(db_session, "sk-hidden")
+    client = _Client(
+        buy_error=WaxpeerBuyRefusedError("Please set your steam inventory public", new_price=None),
+        live=[{"item_id": 333, "price": 27000, "auto": True}],
+    )
+    result = await fulfill_skin(client, db=db_session, item=item, idempotency_key=KEY)
+    assert (result.outcome, result.money_outcome) == ("failed", MoneyOutcome.RETURNED)
+    assert result.error == "invalid_tradelink"
+    assert client.searched == []  # no substitute: every lot would be refused the same way
+    assert (await _row(db_session)).reason == "invalid_tradelink"
+
+
 async def test_a_replayed_task_adopts_the_earlier_purchase(db_session: AsyncSession) -> None:
     item = await _item(db_session, "sk-replay")
     client = _Client(trades=[_trade(2)])
