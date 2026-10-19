@@ -99,3 +99,28 @@ def test_a_returned_outcome_may_still_be_retried() -> None:
     ff_svc.arm_retry_key(task)
 
     assert ff_svc.idempotency_key_for(task) != task.id
+
+
+def test_a_refunded_fzr_order_is_retried_under_a_new_key() -> None:
+    """FazerCards replays a reused key even onto an order it refunded.
+
+    Same key after «зачислить не удалось» meant every Retry met the dead order
+    and nothing new was placed. The money is back, so a new purchase cannot
+    duplicate anything.
+    """
+    task = _task("fzr", money_outcome=MoneyOutcome.RETURNED.value)
+
+    ff_svc.arm_retry_key(task)
+
+    assert ff_svc.idempotency_key_for(task) != task.id
+
+
+@pytest.mark.parametrize("standing", [None, MoneyOutcome.UNKNOWN, MoneyOutcome.SPENT])
+def test_fzr_keeps_its_key_unless_the_money_is_back(standing: MoneyOutcome | None) -> None:
+    """Without a refund the replay is what stops fzr selling the goods twice."""
+    extra = {} if standing is None else {"money_outcome": standing.value}
+    task = _task("fzr", **extra)
+
+    ff_svc.arm_retry_key(task)
+
+    assert ff_svc.idempotency_key_for(task) == task.id

@@ -122,6 +122,17 @@ _NOBODY_CAN_SAY = MoneyOutcome.UNKNOWN
 #: protection, exactly as it is for Waxpeer and G-Engine.
 KEY_BURNED_ON_USE: frozenset[str] = frozenset({"nova"})
 
+#: Suppliers whose replay outlives the order it protects. FazerCards answers a
+#: reused key with the *original* order — including one it has since refunded
+#: («зачислить не удалось»). So after a refund every Retry hit the dead order
+#: again and never placed a new one (reported by the operator 2026-10-19).
+#:
+#: For these a fresh key is armed **only** once the money is ``RETURNED``: the
+#: old order is refunded or was never charged, so there is nothing left that a
+#: new purchase could duplicate. Any other standing keeps the key, and with it
+#: the replay that stops a second purchase.
+KEY_REPLAYS_DEAD_ORDER: frozenset[str] = frozenset({"fzr"})
+
 _RETRY_NONCE_KEY = "idempotency_nonce"
 
 
@@ -148,17 +159,21 @@ def arm_retry_key(task: FulfillmentTask) -> None:
 
     Two guards, both load-bearing:
 
-    * only suppliers in :data:`KEY_BURNED_ON_USE` get a new key. For the rest
-      the reuse *is* the protection against paying twice.
+    * only suppliers in :data:`KEY_BURNED_ON_USE` get a new key, plus those in
+      :data:`KEY_REPLAYS_DEAD_ORDER` once their money is ``RETURNED``. For the
+      rest the reuse *is* the protection against paying twice.
     * never once an attempt may have spent. ``UNKNOWN`` and ``SPENT`` mean a
       call might already have bought the goods; a key the supplier has not
       seen would let it buy them again, which is the one mistake worth more
       than a stuck task. Those keep the old key — the supplier refuses it and
       a human reconciles, which is the correct end of that road.
     """
-    if task.supplier not in KEY_BURNED_ON_USE:
-        return
     standing = money_outcome_of(task)
+    if task.supplier in KEY_REPLAYS_DEAD_ORDER:
+        if standing is not MoneyOutcome.RETURNED:
+            return
+    elif task.supplier not in KEY_BURNED_ON_USE:
+        return
     if standing in (MoneyOutcome.UNKNOWN, MoneyOutcome.SPENT):
         log.info(
             "fulfillment.retry_key.withheld",

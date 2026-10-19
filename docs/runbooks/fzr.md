@@ -124,6 +124,11 @@ What that buys:
   a retried task reuses its key and gets its own order back. On NOVA the same
   press needs a fresh nonce or it 409s for ever — which is the whole reason
   that set exists.
+- **Except after a refund.** The replay also returns an order fzr has refunded
+  («зачислить не удалось»), so a Retry under the old key never placed a new
+  one (2026-10-19). `KEY_REPLAYS_DEAD_ORDER` gives fzr a fresh key on Retry or
+  reassign — only when `money_outcome` is `returned`. Any other standing keeps
+  the key.
 - A lost create that **may have reached them** (read timeout, connection
   dropped mid-answer, 5xx) is recovered by adoption, never by re-sending:
   `panel_adopt` is built, tested and vendor-neutral.
