@@ -11,6 +11,7 @@ import type { DeliveryOut, OrderOut } from "@/lib/orders";
 
 import { SafeImage } from "@/components/ui/safe-image";
 import { useT } from "@/lib/i18n";
+import { itemAmountLabel } from "@/lib/orders";
 import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/skin-trade";
 
 /**
@@ -32,8 +33,8 @@ export function ItemCard({
   const display = item.display;
   const headline = display
     ? display.brand_name
-      ? `${display.brand_name} · ${display.denomination ?? display.sku_code}`
-      : `${display.product_name || display.product_slug} · ${display.denomination ?? display.sku_code}`
+      ? `${display.brand_name} · ${itemAmountLabel(item)}`
+      : `${display.product_name || display.product_slug} · ${itemAmountLabel(item)}`
     : `SKU ${item.sku_id.slice(0, 8)}…`;
 
   const isTopUp = display?.product_kind === "top_up";

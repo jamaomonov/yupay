@@ -569,13 +569,27 @@ export interface HistoryRow {
   raw: OrderOut;
 }
 
+/** What a line bought, for a one-line title: the denomination ("60 UC"), or —
+ *  for a variable-amount top-up (Steam wallet), whose denomination is the
+ *  «Любая сумма» placeholder — the credited dollars ("$11.30"), which is what
+ *  `unit_price_usd` holds on such a line. Same rule as the web order card. */
+export function itemAmountLabel(item: OrderItemOut): string {
+  const d = item.display;
+  if (d?.variable_amount) {
+    const cents = Math.round(Number.parseFloat(item.unit_price_usd) * 100) * item.qty;
+    return `$${(cents / 100).toFixed(2)}`;
+  }
+  return d?.denomination ?? d?.sku_code ?? "";
+}
+
 function summariseOrder(o: OrderOut): {
   title: string;
   subtitle: string | null;
   image: string | null;
   gameSlug: string | null;
 } {
-  const first = o.items[0]?.display ?? null;
+  const firstItem = o.items[0];
+  const first = firstItem?.display ?? null;
   const extra = o.items.length - 1;
   if (!first) {
     return {
@@ -585,7 +599,7 @@ function summariseOrder(o: OrderOut): {
       gameSlug: null,
     };
   }
-  const denom = first.denomination ?? first.sku_code;
+  const denom = firstItem ? itemAmountLabel(firstItem) : first.sku_code;
   const product = first.product_name || first.product_slug;
   // The "brand · denomination" pair is the most-useful one-glance summary.
   const head = first.brand_name ? `${first.brand_name} · ${denom}` : `${product} · ${denom}`;

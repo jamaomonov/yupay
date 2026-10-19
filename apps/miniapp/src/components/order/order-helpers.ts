@@ -15,6 +15,7 @@ import type { MessageKey } from "@/lib/i18n";
 import type { DeliveryOut, OrderOut, OrderStatus } from "@/lib/orders";
 
 import { translate } from "@/lib/i18n/core";
+import { itemAmountLabel } from "@/lib/orders";
 import { ICON_BY_PROVIDER } from "@/lib/payment-methods";
 
 export const PROCESSING: OrderStatus[] = ["pending_payment", "paid", "fulfilling", "fulfilled"];
@@ -162,15 +163,16 @@ export function providerIcon(provider: string | null): string | null {
   return ICON_BY_PROVIDER[provider] ?? null;
 }
 
-/** "PUBG Mobile, 60 UC" for the support chat's opening line, or `null` when the
- *  first item carries no catalog display data. A variable-amount line names only
- *  the brand: its denomination is the «Любая сумма» placeholder, which tells
- *  support nothing. Same rule as the web order page (`apps/web/src/lib/order-display.ts`). */
+/** "PUBG Mobile, 60 UC" (or "Steam, $11.30") for the support chat's opening
+ *  line, or `null` when the first item carries no catalog display data. Same
+ *  rule as the web order page (`apps/web/src/lib/order-display.ts`). */
 export function supportProduct(order: Pick<OrderOut, "items">): string | null {
-  const d = order.items[0]?.display;
-  if (!d) return null;
+  const first = order.items[0];
+  const d = first?.display;
+  if (!first || !d) return null;
   const name = d.brand_name || d.product_name;
-  const denom = d.denomination && !d.variable_amount ? `, ${d.denomination}` : "";
+  const amount = itemAmountLabel(first);
+  const denom = amount ? `, ${amount}` : "";
   const extra = order.items.length > 1 ? ` +${String(order.items.length - 1)}` : "";
   return `${name}${denom}${extra}`;
 }
