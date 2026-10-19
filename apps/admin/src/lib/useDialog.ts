@@ -45,6 +45,16 @@ interface Options {
  */
 export function useDialog({ open, onClose, containerRef, initialFocus }: Options): void {
   const previousFocus = useRef<HTMLElement | null>(null);
+  // Callers pass inline arrows, which are new on every render. Keyed on them,
+  // the focus effect re-ran on each keystroke in a dialog's input and moved
+  // focus to the confirm button after every letter. Read the latest callbacks
+  // through refs so the effects run only when `open` changes.
+  const initialFocusRef = useRef(initialFocus);
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    initialFocusRef.current = initialFocus;
+    onCloseRef.current = onClose;
+  });
 
   // Focus restoration + initial focus on (re)open.
   useEffect(() => {
@@ -56,17 +66,17 @@ export function useDialog({ open, onClose, containerRef, initialFocus }: Options
     }
     previousFocus.current =
       document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (initialFocus) {
+    if (initialFocusRef.current) {
       // setTimeout(0) so the focus call runs after the dialog has actually mounted.
       const t = window.setTimeout(() => {
-        initialFocus();
+        initialFocusRef.current?.();
       }, 0);
       return () => {
         window.clearTimeout(t);
       };
     }
     return undefined;
-  }, [open, initialFocus]);
+  }, [open]);
 
   // Esc closes the dialog.
   useEffect(() => {
@@ -74,13 +84,13 @@ export function useDialog({ open, onClose, containerRef, initialFocus }: Options
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.stopPropagation();
-      onClose();
+      onCloseRef.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, onClose]);
+  }, [open]);
 
   // Tab focus trap.
   useEffect(() => {
