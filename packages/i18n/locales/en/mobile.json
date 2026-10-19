@@ -108,6 +108,9 @@
     "unverified": "Confirm your email with the link we sent",
     "exists": "This email is already registered. Sign in",
     "tooMany": "Too many attempts. Wait a minute",
-    "error": "That didn't work. Check your connection and try again"
+    "error": "That didn't work. Check your connection and try again",
+    "with": "Continue with {name}",
+    "or": "or with email",
+    "socialFailed": "Sign-in didn't work. Try again or use email"
   }
 }

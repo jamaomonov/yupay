@@ -62,8 +62,12 @@ the buyer then signs in here. «Forgot password» opens the website's page. Sign
 places the order as the account (the email becomes the receipt address and may be blank) and
 the orders tab lists the account's orders, with this phone's guest orders under them.
 
+Telegram and Google go through the storefront's `/app-auth` page in the system browser, which
+returns the provider's answer to `yupay://auth` (ADR-0101). In Expo Go the return address is
+`exp://<LAN IP>:8081/--/auth`, which the page also accepts. Google needs
+`https://yupay.uz/app-auth` among the web OAuth client's redirect URIs.
+
 ## Not built yet
 
-Google, Steam, Telegram and Apple sign-in; the wallet; claiming guest orders into the account;
-push. Gift cards, the Steam wallet, Steam game
+Steam and Apple sign-in; the wallet; claiming guest orders into the account; push. Gift cards, the Steam wallet, Steam game
 gifts and CS2 skins are hidden from the catalogue until their flows exist (`src/lib/catalog.ts`).

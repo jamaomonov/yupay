@@ -5,13 +5,15 @@ import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { SocialButtons } from "@/components/auth/SocialButtons";
 import { Field } from "@/components/Field";
 import { TopBar } from "@/components/TopBar";
 import { Button, Card, T } from "@/components/ui";
 import { api } from "@/lib/api";
 import { isEmail, normaliseEmail } from "@/lib/checkout";
 import { useI18n } from "@/lib/i18n";
-import { useSession } from "@/lib/session";
+import { SocialSignInError, useSession } from "@/lib/session";
+import type { Provider } from "@/lib/social-state";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
 
@@ -35,7 +37,8 @@ export default function SignInScreen() {
   const { t, locale } = useI18n();
   const { c } = useTheme();
   const insets = useSafeAreaInsets();
-  const { signIn } = useSession();
+  const { signIn, signInWith } = useSession();
+  const [social, setSocial] = useState<Provider | null>(null);
 
   const [mode, setMode] = useState<Mode>("signIn");
   const [email, setEmail] = useState("");
@@ -54,8 +57,7 @@ export default function SignInScreen() {
     try {
       if (mode === "signIn") {
         await signIn(email, password);
-        if (router.canGoBack()) router.back();
-        else router.replace("/profile");
+        done();
       } else {
         await api.request(`/api/v1/auth/register`, {
           method: "POST",
@@ -69,6 +71,27 @@ export default function SignInScreen() {
       setError(t(reason(err, mode)));
     } finally {
       setBusy(false);
+    }
+  };
+
+  const done = () => {
+    if (router.canGoBack()) router.back();
+    else router.replace("/profile");
+  };
+
+  const withProvider = async (provider: Provider) => {
+    setSocial(provider);
+    setError(null);
+    try {
+      if (await signInWith(provider, locale)) done();
+    } catch (err) {
+      setError(
+        err instanceof SocialSignInError || err instanceof ApiError
+          ? t("auth.socialFailed")
+          : t("auth.error"),
+      );
+    } finally {
+      setSocial(null);
     }
   };
 
@@ -102,6 +125,23 @@ export default function SignInScreen() {
         <Card style={{ padding: 16 }}>
           <T>{t("auth.sent", { email: sentTo })}</T>
         </Card>
+      )}
+
+      {mode === "signIn" && (
+        <>
+          <SocialButtons
+            label={(name) => t("auth.with", { name })}
+            busy={social}
+            onPress={(provider) => void withProvider(provider)}
+          />
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginVertical: 2 }}>
+            <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
+            <T variant="small" tone="dim">
+              {t("auth.or")}
+            </T>
+            <View style={{ flex: 1, height: 1, backgroundColor: c.border }} />
+          </View>
+        </>
       )}
 
       <Field

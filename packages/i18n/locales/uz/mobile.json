@@ -108,6 +108,9 @@
     "unverified": "Xatdagi havola orqali emailni tasdiqlang",
     "exists": "Bu email allaqachon roʻyxatdan oʻtgan. Kiring",
     "tooMany": "Urinishlar juda koʻp. Bir daqiqa kuting",
-    "error": "Boʻlmadi. Internetni tekshirib, qayta urinib koʻring"
+    "error": "Boʻlmadi. Internetni tekshirib, qayta urinib koʻring",
+    "with": "{name} orqali kirish",
+    "or": "yoki email bilan",
+    "socialFailed": "Kirib boʻlmadi. Qayta urinib koʻring yoki email bilan kiring"
   }
 }

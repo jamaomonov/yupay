@@ -6,13 +6,18 @@
 import { ApiError } from "@yupay/api-client";
 import type { MeOut } from "@yupay/api-client/types";
 import { useQueryClient } from "@tanstack/react-query";
+import { randomUUID } from "expo-crypto";
+import * as Linking from "expo-linking";
 import * as SecureStore from "expo-secure-store";
+import * as WebBrowser from "expo-web-browser";
 import { createContext, use, useCallback, useEffect, useState, type ReactNode } from "react";
 import { Platform } from "react-native";
 
 import { api } from "@/lib/api";
+import { encodeState, readResult, type Provider } from "@/lib/social-state";
 
 const V1 = "/api/v1";
+const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://yupay.uz";
 const REFRESH_KEY = "refresh_token";
 const JSON_BODY = { "Content-Type": "application/json" };
 /** Asks the sign-in routes for the refresh token in the JSON (ADR-0101). */
@@ -107,10 +112,18 @@ export async function authRequest<T>(path: string, init: RequestInit = {}): Prom
   }
 }
 
+/** Thrown when the provider's page answered with an error or for another attempt. */
+export class SocialSignInError extends Error {}
+
 interface SessionValue {
   /** `undefined` while the stored session is being restored. */
   user: MeOut | null | undefined;
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Google or Telegram through the storefront's `/app-auth` page in the system browser.
+   * Resolves `false` when the buyer closed it, `true` once signed in.
+   */
+  signInWith: (provider: Provider, locale: string) => Promise<boolean>;
   signOut: () => Promise<void>;
 }
 
@@ -133,18 +146,50 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     authRequest<MeOut>(`${V1}/auth/me`).then(setUser, () => setUser(null));
   }, []);
 
-  const signIn = useCallback(
-    async (email: string, password: string) => {
-      const tokens = await api.request<Tokens>(`${V1}/auth/login`, {
+  /** Posts a credential to a sign-in route and adopts the session it returns. */
+  const finish = useCallback(
+    async (path: string, body: unknown) => {
+      const tokens = await api.request<Tokens>(`${V1}${path}`, {
         method: "POST",
         headers: { ...JSON_BODY, ...BODY_TRANSPORT },
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+        body: JSON.stringify(body),
       });
       await keep(tokens);
       await loadMe();
       await queryClient.invalidateQueries({ queryKey: ["account"] });
     },
     [loadMe, queryClient],
+  );
+
+  const signIn = useCallback(
+    (email: string, password: string) =>
+      finish("/auth/login", { email: email.trim().toLowerCase(), password }),
+    [finish],
+  );
+
+  const signInWith = useCallback(
+    async (provider: Provider, locale: string) => {
+      const returnTo = Linking.createURL("auth");
+      const state = encodeState(returnTo, randomUUID(), locale);
+      const start = `${WEB_URL}/app-auth?provider=${provider}&state=${state}`;
+      const outcome = await WebBrowser.openAuthSessionAsync(start, returnTo);
+      if (outcome.type !== "success") return false;
+      const params = Object.fromEntries(
+        Object.entries(Linking.parse(outcome.url).queryParams ?? {}).map(([key, value]) => [
+          key,
+          Array.isArray(value) ? value[0] : value,
+        ]),
+      );
+      const result = readResult(params, state);
+      if ("error" in result) throw new SocialSignInError(provider);
+      if (result.provider === "google") {
+        await finish("/auth/google", { access_token: result.accessToken });
+      } else {
+        await finish("/auth/telegram/widget", result.payload);
+      }
+      return true;
+    },
+    [finish],
   );
 
   const signOut = useCallback(async () => {
@@ -165,7 +210,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
   }, [queryClient]);
 
-  return <SessionContext value={{ user, signIn, signOut }}>{children}</SessionContext>;
+  return <SessionContext value={{ user, signIn, signInWith, signOut }}>{children}</SessionContext>;
 }
 
 export function useSession(): SessionValue {
