@@ -9,7 +9,7 @@ import { radius } from "@/theme/tokens";
 interface TopBarProps {
   title: string;
   /** Where «back» goes when there is no history, e.g. after `router.replace`. */
-  fallback?: "/" | "/orders";
+  fallback?: "/" | "/orders" | "/profile";
 }
 
 /** A pushed screen's header: back button and a title. */

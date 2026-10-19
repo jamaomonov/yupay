@@ -37,17 +37,25 @@ export interface OrderLine {
   skuId: string;
   fields: Record<string, string>;
   email: string;
+  /** Signed in: the order is the account's, and the email only says where the receipt goes. */
+  signedIn?: boolean;
 }
 
-/** `POST /orders` for a guest: one fixed line, priced in soʻm. */
+/** `POST /orders`: one fixed line, priced in soʻm. */
 export function orderBody(line: OrderLine) {
   const fields = Object.fromEntries(
     Object.entries(line.fields).map(([key, value]) => [key, value.trim()]),
   );
+  const email = normaliseEmail(line.email);
   return {
     currency: "UZS",
     items: [{ sku_id: line.skuId, qty: 1, fulfillment_data: fields }],
-    guest_email: normaliseEmail(line.email),
+    // The same split as the website: a guest is identified by the email, an account is not.
+    ...(line.signedIn === true
+      ? email === ""
+        ? {}
+        : { delivery_email: email }
+      : { guest_email: email }),
   };
 }
 
@@ -68,9 +76,15 @@ export function normaliseEmail(email: string): string {
  * accepts (`_safe_return_url`). The app does not rely on it — it checks the order itself
  * once the browser closes.
  */
-export function returnUrl(webUrl: string, locale: string, orderId: string, email: string): string {
+export function returnUrl(
+  webUrl: string,
+  locale: string,
+  orderId: string,
+  email: string | null,
+): string {
   const prefix = locale === "ru" ? "" : `/${locale}`;
-  const query = `?email=${encodeURIComponent(normaliseEmail(email))}`;
+  // A guest's order page needs the email; an account's does not.
+  const query = email === null ? "" : `?email=${encodeURIComponent(normaliseEmail(email))}`;
   return `${webUrl.replace(/\/$/, "")}${prefix}/orders/${orderId}${query}`;
 }
 

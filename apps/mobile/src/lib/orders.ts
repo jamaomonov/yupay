@@ -3,11 +3,12 @@
  * (`apps/web/src/lib/gift-checkout.ts`): a guest token for the email, `POST /orders`,
  * `POST /payments/intents`, then the order read back with the same token.
  */
-import type { OrderOut, PaymentOut, ProvidersOut } from "@yupay/api-client/types";
+import type { OrderListOut, OrderOut, PaymentOut, ProvidersOut } from "@yupay/api-client/types";
 import { useQuery } from "@tanstack/react-query";
 import { randomUUID } from "expo-crypto";
 
 import { api } from "@/lib/api";
+import { authRequest } from "@/lib/session";
 import {
   isLive,
   normaliseEmail,
@@ -47,59 +48,77 @@ export function newKey(): string {
   return randomUUID();
 }
 
-/** Creates (or, with the same key, resumes) the order. */
+/** Creates (or, with the same key, resumes) the order: the account's, or a guest's. */
 export async function createOrder(line: OrderLine, idempotencyKey: string): Promise<OrderOut> {
+  const init = {
+    method: "POST",
+    headers: { ...JSON_BODY, ...SURFACE, "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(orderBody(line)),
+  };
+  if (line.signedIn === true) return authRequest<OrderOut>(`${V1}/orders`, init);
   const token = await guestToken(line.email);
   return api.request<OrderOut>(`${V1}/orders`, {
-    method: "POST",
-    headers: {
-      ...JSON_BODY,
-      ...SURFACE,
-      Authorization: `Guest ${token}`,
-      "Idempotency-Key": idempotencyKey,
-    },
-    body: JSON.stringify(orderBody(line)),
+    ...init,
+    headers: { ...init.headers, Authorization: `Guest ${token}` },
   });
 }
 
-/** A payment for the order through `provider`; the API reuses an open one. */
+/**
+ * A payment for the order through `provider`; the API reuses an open one. `email` is the
+ * guest's; `null` pays as the signed-in account.
+ */
 export async function createIntent(input: {
   orderId: string;
-  email: string;
+  email: string | null;
   provider: PayMethod;
   locale: string;
 }): Promise<PaymentOut> {
-  const token = await guestToken(input.email);
-  const email = encodeURIComponent(normaliseEmail(input.email));
-  return api.request<PaymentOut>(`${V1}/payments/intents?email=${email}`, {
+  const init = {
     method: "POST",
-    headers: {
-      ...JSON_BODY,
-      ...SURFACE,
-      Authorization: `Guest ${token}`,
-      "Idempotency-Key": newKey(),
-    },
+    headers: { ...JSON_BODY, ...SURFACE, "Idempotency-Key": newKey() },
     body: JSON.stringify({
       order_id: input.orderId,
       provider: input.provider,
       return_url: returnUrl(WEB_URL, input.locale, input.orderId, input.email),
     }),
+  };
+  if (input.email === null) return authRequest<PaymentOut>(`${V1}/payments/intents`, init);
+  const token = await guestToken(input.email);
+  const email = encodeURIComponent(normaliseEmail(input.email));
+  return api.request<PaymentOut>(`${V1}/payments/intents?email=${email}`, {
+    ...init,
+    headers: { ...init.headers, Authorization: `Guest ${token}` },
   });
 }
 
-export async function fetchOrder(orderId: string, email: string): Promise<OrderOut> {
+/** `email` is the guest's; `null` reads as the signed-in account. */
+export async function fetchOrder(orderId: string, email: string | null): Promise<OrderOut> {
+  if (email === null) return authRequest<OrderOut>(`${V1}/orders/${encodeURIComponent(orderId)}`);
   const token = await guestToken(email);
   return api.request<OrderOut>(`${V1}/orders/${encodeURIComponent(orderId)}`, {
     headers: { Authorization: `Guest ${token}`, "X-Guest-Email": normaliseEmail(email) },
   });
 }
 
-/** Asked every 3 seconds while the order can still move by itself. */
-export function useOrder(orderId: string, email: string | null) {
+/** The signed-in account's orders, newest first. */
+export function useAccountOrders(enabled: boolean) {
+  return useQuery({
+    queryKey: ["account", "orders"],
+    queryFn: () => authRequest<OrderListOut>(`${V1}/orders`),
+    enabled,
+    staleTime: 15_000,
+  });
+}
+
+/**
+ * Asked every 3 seconds while the order can still move by itself. `email` is the guest's,
+ * `null` the account's; `enabled` waits until the caller knows which.
+ */
+export function useOrder(orderId: string, email: string | null, enabled: boolean) {
   return useQuery({
     queryKey: ["order", orderId],
-    queryFn: () => fetchOrder(orderId, email ?? ""),
-    enabled: email !== null,
+    queryFn: () => fetchOrder(orderId, email),
+    enabled,
     refetchInterval: (query) =>
       query.state.data && !isLive(stageOf(query.state.data.status)) ? false : 3000,
   });

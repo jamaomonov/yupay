@@ -42,7 +42,8 @@
     "signInHint": "Saytdagi va Telegramdagi buyurtmalar ham shu yerda boʻladi",
     "signInButton": "Kirish",
     "empty": "Hozircha buyurtmalar yoʻq",
-    "more": "Sayt va Telegramdagi buyurtmalar kirgandan keyin chiqadi"
+    "more": "Sayt va Telegramdagi buyurtmalar kirgandan keyin chiqadi",
+    "guestTitle": "Akkauntsiz, shu telefonda"
   },
   "profile": {
     "title": "Profil",
@@ -53,7 +54,10 @@
     "themeDark": "Qorongʻi",
     "support": "Yordam",
     "supportHint": "Telegramda javob beramiz",
-    "version": "Versiya {version}"
+    "version": "Versiya {version}",
+    "signIn": "Kirish",
+    "signInHint": "Sayt va Telegramdagi buyurtmalar",
+    "signOut": "Chiqish"
   },
   "checkout": {
     "title": "Toʻlov",
@@ -67,7 +71,8 @@
     "badEmail": "Emailni tekshiring",
     "error": "Buyurtma yaratilmadi. Qayta urinib koʻring",
     "stale": "Buyurtma eskirdi. «Toʻlash»ni yana bosing",
-    "noMethods": "Toʻlov vaqtincha mavjud emas"
+    "noMethods": "Toʻlov vaqtincha mavjud emas",
+    "emailHintAccount": "Chekni shu manzilga yuboramiz. Boʻsh qoldirish mumkin"
   },
   "order": {
     "title": "Buyurtma",
@@ -86,5 +91,23 @@
     "support": "Qoʻllab-quvvatlashga yozish",
     "home": "Bosh sahifa",
     "notFound": "Bu buyurtma telefonda yoʻq"
+  },
+  "auth": {
+    "title": "Kirish",
+    "registerTitle": "Roʻyxatdan oʻtish",
+    "email": "Email",
+    "password": "Parol",
+    "passwordHint": "Kamida 8 ta belgi",
+    "signIn": "Kirish",
+    "register": "Roʻyxatdan oʻtish",
+    "noAccount": "Akkauntingiz yoʻqmi?",
+    "haveAccount": "Akkauntingiz bormi?",
+    "forgot": "Parolni unutdingizmi?",
+    "sent": "{email} manziliga xat yubordik. Undagi havolani oching va shu yerda kiring.",
+    "wrong": "Email yoki parol notoʻgʻri",
+    "unverified": "Xatdagi havola orqali emailni tasdiqlang",
+    "exists": "Bu email allaqachon roʻyxatdan oʻtgan. Kiring",
+    "tooMany": "Urinishlar juda koʻp. Bir daqiqa kuting",
+    "error": "Boʻlmadi. Internetni tekshirib, qayta urinib koʻring"
   }
 }

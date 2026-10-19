@@ -13,6 +13,7 @@ import { formatSum } from "@/lib/format";
 import { findGuestOrder, type GuestOrder } from "@/lib/guest-orders";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, useOrder } from "@/lib/orders";
+import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { space } from "@/theme/tokens";
 
@@ -50,7 +51,12 @@ export default function OrderScreen() {
     void findGuestOrder(id).then(setRecord);
   }, [id]);
 
-  const order = useOrder(id, record?.email ?? null);
+  const { user } = useSession();
+  // A guest order is read with the email this phone kept; anything else as the account.
+  const guestEmail = record?.email ?? null;
+  const known = record !== undefined && user !== undefined;
+  const readable = known && (record !== null || user !== null);
+  const order = useOrder(id, guestEmail, readable);
   const refetch = order.refetch;
   // Back from the bank's app: ask at once instead of waiting for the next tick.
   useEffect(() => {
@@ -62,13 +68,13 @@ export default function OrderScreen() {
 
   const [paying, setPaying] = useState(false);
   const payAgain = async () => {
-    if (!record || !order.data) return;
+    if (!order.data) return;
     const provider = isPayMethod(order.data.payment_provider)
       ? order.data.payment_provider
       : "payme";
     setPaying(true);
     try {
-      const intent = await createIntent({ orderId: id, email: record.email, provider, locale });
+      const intent = await createIntent({ orderId: id, email: guestEmail, provider, locale });
       if (intent.intent_url?.startsWith("http"))
         await WebBrowser.openBrowserAsync(intent.intent_url);
       else if (intent.intent_url) await Linking.openURL(intent.intent_url);
@@ -79,10 +85,10 @@ export default function OrderScreen() {
   };
 
   const body = () => {
-    if (record === undefined || (record !== null && order.isPending)) {
+    if (!known || (readable && order.isPending)) {
       return <ActivityIndicator color={c.mute} style={{ marginTop: 60 }} />;
     }
-    if (record === null) return <Notice text={t("order.notFound")} />;
+    if (!readable) return <Notice text={t("order.notFound")} />;
     if (order.isError || !order.data) {
       return (
         <Notice
@@ -93,6 +99,9 @@ export default function OrderScreen() {
     }
 
     const stage = stageOf(order.data.status);
+    const display = order.data.items[0]?.display;
+    const brand = display?.brand_name ?? record?.brand ?? "";
+    const label = display?.denomination ?? display?.product_name ?? record?.label ?? "";
     const look = STAGE[stage];
     const Icon = look.icon;
     const color = look.tone === "mute" ? c.mute : c[look.tone];
@@ -125,9 +134,9 @@ export default function OrderScreen() {
 
         <Card style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-            <T tone="mute">{record.brand}</T>
+            <T tone="mute">{brand}</T>
             <T numberOfLines={1} style={{ flexShrink: 1 }}>
-              {record.label}
+              {label}
             </T>
           </View>
           <View style={{ flexDirection: "row", justifyContent: "space-between" }}>

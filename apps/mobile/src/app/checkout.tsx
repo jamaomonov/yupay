@@ -14,6 +14,7 @@ import { formatSum } from "@/lib/format";
 import { readCheckoutEmail, saveGuestOrder } from "@/lib/guest-orders";
 import { useI18n } from "@/lib/i18n";
 import { createIntent, createOrder, newKey, useProviders } from "@/lib/orders";
+import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { fonts, radius, space } from "@/theme/tokens";
 
@@ -54,12 +55,15 @@ export default function CheckoutScreen() {
   const insets = useSafeAreaInsets();
   const fields = useMemo(() => parseFields(params.fields), [params.fields]);
 
-  const [email, setEmail] = useState("");
+  const { user } = useSession();
+  const signedIn = user != null;
+  // What the buyer typed wins; until then, the account's address or the last one used here.
+  const [typed, setEmail] = useState<string | null>(null);
+  const [saved, setSaved] = useState<string | null>(null);
   useEffect(() => {
-    void readCheckoutEmail().then((saved) => {
-      if (saved !== null) setEmail((typed) => (typed === "" ? saved : typed));
-    });
+    void readCheckoutEmail().then(setSaved);
   }, []);
+  const email = typed ?? user?.delivery_email ?? user?.email ?? saved ?? "";
 
   const providers = useProviders();
   const methods = PAY_METHODS.filter((method) => {
@@ -75,8 +79,9 @@ export default function CheckoutScreen() {
   // One key per order contents: paying again for the same thing resumes the same order.
   const keyRef = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  const emailOk = isEmail(email);
-  const line = { skuId: params.skuId, fields, email };
+  // An account may leave it blank (no receipt); a guest is identified by it.
+  const emailOk = isEmail(email) || (signedIn && email.trim() === "");
+  const line = { skuId: params.skuId, fields, email, signedIn };
 
   const pay = async () => {
     if (method === null) return;
@@ -87,15 +92,23 @@ export default function CheckoutScreen() {
     setError(null);
     try {
       const order = await createOrder(line, keyRef.current.key);
-      await saveGuestOrder({
-        id: order.id,
-        email: email.trim().toLowerCase(),
-        brand: params.brandName,
-        brandSlug: params.brandSlug,
-        label: params.label,
-        at: order.created_at,
+      // An account's orders come from the server; a guest's only this phone remembers.
+      if (!signedIn) {
+        await saveGuestOrder({
+          id: order.id,
+          email: email.trim().toLowerCase(),
+          brand: params.brandName,
+          brandSlug: params.brandSlug,
+          label: params.label,
+          at: order.created_at,
+        });
+      }
+      const intent = await createIntent({
+        orderId: order.id,
+        email: signedIn ? null : email,
+        provider: method,
+        locale,
       });
-      const intent = await createIntent({ orderId: order.id, email, provider: method, locale });
       if (intent.intent_url !== null) await openPayment(intent.intent_url);
       router.replace({ pathname: "/order/[id]", params: { id: order.id } });
     } catch (err) {
@@ -187,7 +200,11 @@ export default function CheckoutScreen() {
             tone={email !== "" && !emailOk ? "danger" : "mute"}
             style={{ marginTop: 6 }}
           >
-            {email !== "" && !emailOk ? t("checkout.badEmail") : t("checkout.emailHint")}
+            {email !== "" && !emailOk
+              ? t("checkout.badEmail")
+              : signedIn
+                ? t("checkout.emailHintAccount")
+                : t("checkout.emailHint")}
           </T>
         </View>
 

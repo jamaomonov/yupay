@@ -16,6 +16,13 @@ describe("checkout", () => {
     });
   });
 
+  it("sends a signed-in buyer's email as the receipt address, or nothing", () => {
+    const line = { skuId: "s1", fields: {}, signedIn: true };
+    expect(orderBody({ ...line, email: "a@b.uz" })).toMatchObject({ delivery_email: "a@b.uz" });
+    expect(orderBody({ ...line, email: "" })).not.toHaveProperty("delivery_email");
+    expect(orderBody({ ...line, email: "" })).not.toHaveProperty("guest_email");
+  });
+
   it("keeps the fingerprint across cosmetic edits and changes it with the order", () => {
     const base = { skuId: "s1", fields: { player_id: "123" }, email: "a@b.uz" };
     expect(orderFingerprint({ ...base, email: " A@b.uz " })).toBe(orderFingerprint(base));

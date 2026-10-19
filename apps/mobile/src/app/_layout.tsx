@@ -16,6 +16,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { setApiLocale } from "@/lib/api";
 import { I18nProvider, useI18n } from "@/lib/i18n";
+import { SessionProvider } from "@/lib/session";
 import { ThemeProvider, useTheme } from "@/theme/ThemeProvider";
 
 void SplashScreen.preventAutoHideAsync();
@@ -68,7 +69,9 @@ export default function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <ThemeProvider>
           <I18nProvider>
-            <Shell />
+            <SessionProvider>
+              <Shell />
+            </SessionProvider>
           </I18nProvider>
         </ThemeProvider>
       </QueryClientProvider>
