@@ -132,6 +132,26 @@ async def test_telegram_widget_login(integration_client: AsyncClient, fixed_now:
     assert r.json()["access_token"]
 
 
+async def test_telegram_widget_login_in_body_mode(
+    integration_client: AsyncClient, fixed_now: int
+) -> None:
+    """The mobile app signs in with the same payload and keeps the tokens itself."""
+    payload = _sign_widget({"id": "43", "first_name": "App", "auth_date": str(fixed_now)})
+    r = await integration_client.post(
+        "/api/v1/auth/telegram/widget",
+        json={
+            "id": 43,
+            "first_name": "App",
+            "auth_date": int(payload["auth_date"]),
+            "hash": payload["hash"],
+        },
+        headers={"X-Yupay-Token-Transport": "body"},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["refresh_token"]
+    assert not any(h.startswith("refresh_token=") for h in r.headers.get_list("set-cookie"))
+
+
 async def test_guest_checkout_returns_token(integration_client: AsyncClient) -> None:
     r = await integration_client.post(
         "/api/v1/auth/guest", json={"email": "  Test+Yu@Example.com "}

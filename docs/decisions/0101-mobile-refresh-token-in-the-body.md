@@ -48,6 +48,25 @@ before.
 `TokensOut` gains optional `refresh_token` and `refresh_expires_in`; every route excludes `None`
 fields, so a browser's JSON is unchanged.
 
+### Google and Telegram in the app: the `/app-auth` bounce
+
+Neither provider redirects to an app scheme, and the web flows (Google's token client,
+Telegram's Login Widget) need a page on our domain. The app opens
+`https://yupay.uz/app-auth?provider=…&state=…` in the system browser
+(`WebBrowser.openAuthSessionAsync`). That page sends the buyer to Google (implicit flow,
+`redirect_uri=https://yupay.uz/app-auth`) or to `oauth.telegram.org` (`return_to` back to the
+page), receives the answer in the URL fragment, and passes it to the app's URL in `state`. The
+app checks `state` is the one it sent and posts the Google access token to `/auth/google` or
+the decoded Telegram payload to `/auth/telegram/widget`, both with body transport.
+
+- The page is a route handler outside the `[locale]` layout, so Yandex.Metrika and Google Tag
+  Manager never load on it and never report a URL whose fragment holds a credential.
+- It returns only to `yupay://…`, or to `exp://` on a private address (Expo Go during
+  development). Anything else is refused, so the page cannot hand a credential elsewhere
+  (`apps/web/src/lib/app-auth-page.test.ts`).
+- Google requires `https://yupay.uz/app-auth` among the web OAuth client's authorized redirect
+  URIs. Telegram requires nothing new: the bot's domain is already `yupay.uz`.
+
 ### Positive consequences
 
 - The app keeps its session in the device keychain and can drop it for certain.
@@ -57,8 +76,8 @@ fields, so a browser's JSON is unchanged.
 
 - The refresh token now exists in JSON on one path. A compromised device leaks a 30-day token;
   rotation with reuse detection still revokes the family on the next legitimate refresh.
-- Telegram sign-in routes accept the header too (they share `TokensOut`), but their payloads
-  are single-use or bound to the mini app; the app does not use them.
+- `/auth/telegram/widget` accepts the header too: the app signs in with the same signed,
+  single-use payload the website's widget produces.
 
 ## Validation
 

@@ -87,9 +87,9 @@ def _session_response(
 
     ``transport="body"`` is the mobile app's mode: both tokens in the body, no
     cookie. It is offered only where the caller has just proven a credential
-    (password, Google, Steam) or presented the refresh token itself — never where
-    a cookie alone authenticates — so script on the website cannot turn its
-    session cookie into a readable token.
+    (password, Google, Steam, a Telegram Login payload) or presented the refresh
+    token itself — never where a cookie alone authenticates — so script on the
+    website cannot turn its session cookie into a readable token.
     """
     if transport == "body":
         return TokensOut(
@@ -263,14 +263,19 @@ async def login_telegram_widget(
     body: TelegramWidgetIn,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
+    transport: TokenTransport = None,
 ) -> TokensOut:
-    """Verify a Telegram Login Widget payload, upsert the user, return a session."""
+    """Verify a Telegram Login Widget payload, upsert the user, return a session.
+
+    The mobile app reaches here too: it signs in through Telegram's OAuth page via
+    the storefront's ``/app-auth`` bounce, which hands it the same signed payload.
+    """
     try:
         tokens = await telegram_widget_login(db, body.model_dump(exclude_none=True))
     except TelegramAuthError as exc:
         log.info("auth.telegram.widget.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc
-    return _session_response(response, tokens)
+    return _session_response(response, tokens, transport=transport)
 
 
 @router.post(

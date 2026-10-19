@@ -37671,8 +37671,26 @@
     },
     "/api/v1/auth/telegram/widget": {
       "post": {
-        "description": "Verify a Telegram Login Widget payload, upsert the user, return a session.",
+        "description": "Verify a Telegram Login Widget payload, upsert the user, return a session.\n\nThe mobile app reaches here too: it signs in through Telegram's OAuth page via\nthe storefront's ``/app-auth`` bounce, which hands it the same signed payload.",
         "operationId": "login_telegram_widget_api_v1_auth_telegram_widget_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Yupay-Token-Transport",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Token-Transport"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
