@@ -816,6 +816,8 @@
     },
     "codesReadyTitle": "Заказ выполнен — коды готовы",
     "supportCta": "Написать в поддержку",
+    "supportMessage": "Здравствуйте! Заказ #{id} — {product}. Вопрос: ",
+    "supportMessageNoProduct": "Здравствуйте! Заказ #{id}. Вопрос: ",
     "payNow": "Оплатить",
     "payLoadError": "Не удалось загрузить оплату.",
     "openingBank": "Открываем приложение банка…",

@@ -816,6 +816,8 @@
     },
     "codesReadyTitle": "Buyurtma tayyor — kodlar tayyor",
     "supportCta": "Qoʻllab-quvvatlashga yozish",
+    "supportMessage": "Assalomu alaykum! Buyurtma #{id} — {product}. Savol: ",
+    "supportMessageNoProduct": "Assalomu alaykum! Buyurtma #{id}. Savol: ",
     "payNow": "Toʻlash",
     "payLoadError": "Toʻlovni yuklab boʻlmadi.",
     "openingBank": "Bank ilovasi ochilmoqda…",

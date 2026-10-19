@@ -28,6 +28,7 @@ import { buttonStyles } from "@/lib/button";
 import { apiFetch } from "@/lib/client";
 import { mintGuestToken, requestCodeAccess } from "@/lib/guest";
 import { getOrderAccess } from "@/lib/order-access";
+import { supportProduct } from "@/lib/order-display";
 import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/orders-types";
 import { orderPollInterval } from "@/lib/poll";
 import { getMyReviews } from "@/lib/reviews";
@@ -256,6 +257,13 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // `orderKind`); a mixed cart falls back to the neutral "delivered" wording.
   // A CS2 skin is seeded as a top-up but arrives as a Steam trade: its own copy.
   const isSkin = order.data.items.some(isSkinItem);
+  // The support chat opens with the order and what was bought, in the
+  // customer's language; the cursor lands after «Вопрос:» for their own words.
+  const shortId = order.data.id.slice(0, 8);
+  const product = supportProduct(order.data);
+  const supportText = product
+    ? t("supportMessage", { id: shortId, product })
+    : t("supportMessageNoProduct", { id: shortId });
   const isTopUp =
     !isSkin &&
     order.data.items.length > 0 &&
@@ -392,7 +400,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
             so the first message already carries it. */}
         {status && SUPPORT_STATUSES.has(status) && (
           <a
-            href={`https://t.me/yupay_support?text=${encodeURIComponent(`Заказ #${order.data.id.slice(0, 8)}`)}`}
+            href={`https://t.me/yupay_support?text=${encodeURIComponent(supportText)}`}
             target="_blank"
             rel="noreferrer noopener"
             className={buttonStyles({ variant: "ghost", size: "sm" })}

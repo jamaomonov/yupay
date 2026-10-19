@@ -51,3 +51,16 @@ export function orderSubtitle(o: OrderOut): string | null {
   if (d.region && d.region !== "GLOBAL") return d.region;
   return null;
 }
+
+/** "PUBG Mobile, 60 UC" for the support chat's opening line, or `null` when the
+ *  first item carries no catalog display data. A variable-amount line names only
+ *  the brand: its denomination is the «Любая сумма» placeholder, which tells
+ *  support nothing. */
+export function supportProduct(o: OrderOut): string | null {
+  const d = o.items[0]?.display;
+  if (!d) return null;
+  const name = d.brand_name || d.product_name;
+  const denom = d.denomination && !d.variable_amount ? `, ${d.denomination}` : "";
+  const extra = o.items.length > 1 ? ` +${String(o.items.length - 1)}` : "";
+  return `${name}${denom}${extra}`;
+}

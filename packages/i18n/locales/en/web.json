@@ -816,6 +816,8 @@
     },
     "codesReadyTitle": "Order complete — your codes are ready",
     "supportCta": "Message support",
+    "supportMessage": "Hi! Order #{id} — {product}. Question: ",
+    "supportMessageNoProduct": "Hi! Order #{id}. Question: ",
     "payNow": "Pay",
     "payLoadError": "Couldn't load the payment.",
     "openingBank": "Opening your bank app…",
