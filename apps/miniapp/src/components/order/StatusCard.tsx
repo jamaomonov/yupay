@@ -1,6 +1,8 @@
 import { motion } from "framer-motion";
 import { CheckCircle2, ExternalLink, HeadphonesIcon, Loader2, XCircle } from "lucide-react";
 
+import { supportProduct } from "./order-helpers";
+
 import type { OrderOut } from "@/lib/orders";
 
 import { useT } from "@/lib/i18n";
@@ -19,11 +21,18 @@ const SUPPORT_USERNAME = (
   ""
 ).replace(/^@/, "");
 
-function supportDeepLink(orderId: string): string | null {
+function supportDeepLink(order: OrderOut): string | null {
   if (!SUPPORT_USERNAME) return null;
   // Telegram's t.me deep-link with a prefilled message body — when the user
-  // taps "Поддержка" Telegram pops the chat with this text in the composer.
-  const text = encodeURIComponent(translate("success.supportMessage", { orderId }));
+  // taps "Поддержка" Telegram pops the chat with the order and what was bought,
+  // in the customer's language, the cursor after «Вопрос:» for their own words.
+  const id = order.id.slice(0, 8);
+  const product = supportProduct(order);
+  const text = encodeURIComponent(
+    product
+      ? translate("success.supportMessage", { id, product })
+      : translate("success.supportMessageNoProduct", { id }),
+  );
   return `https://t.me/${SUPPORT_USERNAME}?text=${text}`;
 }
 
@@ -212,7 +221,7 @@ export function StatusCard({
   const showSupport = isFailed || (isProcessing && elapsedSeconds >= SLA_WARN_SECONDS);
   const subtitle = isDelayed ? t("success.delayedSub") : stage.subtitle;
 
-  const supportHref = supportDeepLink(order.id);
+  const supportHref = supportDeepLink(order);
 
   return (
     <div className="px-4">
