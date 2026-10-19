@@ -104,6 +104,15 @@ _URL = re.compile(r"https?://\S+")
 _LONG_NUMBER = re.compile(r"\d{6,}")
 
 
+#: Waxpeer's own passing faults (its documented "There was an error with tradelink,please
+#: try again"): no verdict about the link, so the check answers ``unavailable``, uncached.
+_TRANSIENT_HINTS = ("try again", "error with tradelink")
+
+
+class _TransientAnswerError(Exception):
+    """Waxpeer could not check the link this time; treated like an outage."""
+
+
 def _loggable(info: str) -> str:
     """An unknown answer, safe to log: no URLs, no long numbers (Steam ids), 120 chars."""
     return _LONG_NUMBER.sub("#", _URL.sub("<url>", info))[:120]
@@ -134,6 +143,8 @@ async def _verdict(
 ) -> TradeLinkVerdict:
     info = await waxpeer.check_tradelink(link.url)
     if info:
+        if any(hint in info.lower() for hint in _TRANSIENT_HINTS):
+            raise _TransientAnswerError
         return TradeLinkVerdict(ok=False, reason=_reason_for(info))
     days = await steam.trade_hold_days(link.steam_id, link.token)
     if days:

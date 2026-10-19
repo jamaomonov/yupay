@@ -67,7 +67,9 @@ _after_ payment now means the lot sold in the minutes the buyer spent paying —
 set your steam inventory public»; both read as `private` at the trade-link check, so checkout
 tells the buyer to open the inventory first. If it slips past (the check is advisory) the buy
 refusal is recognised too: no substitute lot is tried, the money goes back and the order page
-says «check the trade link» (`invalid_tradelink`), not «sold out». An answer the check does
+says «check the trade link» (`invalid_tradelink`), not «sold out». Waxpeer's own passing fault
+(«There was an error with tradelink,please try again») is no verdict: the check answers
+«unavailable», like an outage, and opens the same 60-second breaker. An answer the check does
 not know is logged as `skins.tradelink.unknown_reason` (URLs and long numbers removed) — add
 its wording to `skins/tradelink.py` when one shows up.
 

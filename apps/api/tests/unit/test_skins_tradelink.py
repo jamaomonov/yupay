@@ -73,6 +73,19 @@ async def test_a_clean_link_is_ok_and_cached() -> None:
         ("This profile is private", 0, "private"),
         ("Please set your steam inventory public", 0, "private"),
         ("Public API key is not set", 0, "invalid"),
+        # Waxpeer's documented check-tradelink messages.
+        ("Invalid tradelink", 0, "invalid"),
+        ("Missing partner", 0, "invalid"),
+        ("Missing token", 0, "invalid"),
+        ("Your tradelink is incorect, please update it", 0, "invalid"),
+        ("You're banned for not accepting trades", 0, "trade_ban"),
+        (
+            "We couldn't validate your trade link, either your inventory is private "
+            "or you can't trade",
+            0,
+            "private",
+        ),
+        ("User has VACBAN or Game Ban", 0, "trade_ban"),
         ("User has a trade ban", 0, "trade_ban"),
         (None, 15, "hold"),
     ],
@@ -89,6 +102,17 @@ async def test_an_outage_never_blocks_and_is_not_cached() -> None:
     v = await check_tradelink(LINK, waxpeer=wax, steam=_Steam(), redis=redis)
     assert (v.ok, v.reason) == (True, "unavailable")
     await redis.delete("skins:tradelink:breaker")  # past the breaker window
+    await check_tradelink(LINK, waxpeer=wax, steam=_Steam(), redis=redis)
+    assert wax.calls == 2
+
+
+@pytest.mark.asyncio
+async def test_waxpeers_own_passing_fault_is_no_verdict_and_not_cached() -> None:
+    """«There was an error with tradelink,please try again» must not block the buyer."""
+    wax, redis = _Wax("There was an error with tradelink,please try again"), _redis()
+    v = await check_tradelink(LINK, waxpeer=wax, steam=_Steam(), redis=redis)
+    assert (v.ok, v.reason) == (True, "unavailable")
+    await redis.delete("skins:tradelink:breaker")
     await check_tradelink(LINK, waxpeer=wax, steam=_Steam(), redis=redis)
     assert wax.calls == 2
 
