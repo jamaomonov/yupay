@@ -49,7 +49,7 @@ export function ReviewAsk({
   existing?: ExistingReview | null | undefined;
   /** For lists: render nothing when this order's review is already finished. */
   hideWhenSettled?: boolean | undefined;
-  variant?: "card" | "bare";
+  variant?: "card" | "bare" | "inline";
   className?: string | undefined;
   /** Fired after the rating POST succeeds — catch-up keeps the dialog open. */
   onRated?: (() => void) | undefined;
@@ -139,7 +139,7 @@ function AlreadyRatedNote({
   variant,
 }: {
   className?: string | undefined;
-  variant: "card" | "bare";
+  variant: "card" | "bare" | "inline";
 }) {
   const t = useTranslations("web.brandReviews");
   const frame = variant === "card" ? "border-border bg-card rounded-2xl border p-5" : "";

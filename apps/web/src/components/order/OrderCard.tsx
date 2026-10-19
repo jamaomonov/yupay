@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import type { OrderOut } from "@/lib/orders-types";
+import type { ReactNode } from "react";
 
 import { isOptimizable } from "@/lib/image";
 import { isTopUpOrder, orderSubtitle, orderTitle, STATUS_CLS } from "@/lib/order-display";
@@ -22,10 +23,14 @@ export function OrderCard({
   order,
   locale,
   href,
+  footer,
 }: {
   order: OrderOut;
   locale: string;
   href: string;
+  /** Rendered under the order row inside the same card — the review ask. An
+   *  empty footer (the ask rendered nothing) collapses, divider included. */
+  footer?: ReactNode;
 }) {
   const t = useTranslations("web.orders");
   const img = order.items[0]?.display?.image_url ?? null;
@@ -46,10 +51,14 @@ export function OrderCard({
   const subtitleText = orderSubtitle(order);
   const subtitle = subtitleText ? `${dateText} · ${subtitleText}` : dateText;
 
-  return (
+  const row = (
     <Link
       href={href}
-      className="border-border bg-card hover:border-tx-dim flex items-center gap-3 rounded-2xl border p-3.5 transition"
+      className={
+        footer
+          ? "hover:bg-muted/40 flex items-center gap-3 p-3.5 transition"
+          : "border-border bg-card hover:border-tx-dim flex items-center gap-3 rounded-2xl border p-3.5 transition"
+      }
     >
       <span className="bg-muted relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl">
         {img ? (
@@ -68,7 +77,7 @@ export function OrderCard({
 
       <div className="min-w-0 flex-1">
         <p className="text-foreground truncate text-sm font-bold">
-          {orderTitle(order, t("fallbackTitle", { id: order.id.slice(0, 8) }))}
+          {orderTitle(order, t("fallbackTitle", { id: order.id.slice(0, 8) }), locale)}
         </p>
         <p className="text-tx-dim mt-0.5 truncate text-[11px]">{subtitle}</p>
       </div>
@@ -80,5 +89,13 @@ export function OrderCard({
         <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${cls}`}>{label}</span>
       </div>
     </Link>
+  );
+
+  if (!footer) return row;
+  return (
+    <div className="border-border bg-card overflow-hidden rounded-2xl border">
+      {row}
+      <div className="border-border border-t px-3.5 py-2.5 empty:hidden">{footer}</div>
+    </div>
   );
 }

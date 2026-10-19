@@ -95,18 +95,23 @@ export default function OrdersPage({ params }: { params: Promise<{ locale: strin
             const slug = o.items[0]?.display?.brand_slug;
             return (
               <li key={o.id}>
-                <OrderCard order={o} locale={locale} href={pathFor(locale, `/orders/${o.id}`)} />
-                {o.status === "delivered" && reviewsKnown && slug && (
-                  <ReviewAsk
-                    className="mt-2"
-                    variant="bare"
-                    orderId={o.id}
-                    brandSlug={slug}
-                    brandName={o.items[0]?.display?.brand_name ?? null}
-                    existing={reviewsByOrder.get(o.id) ?? null}
-                    hideWhenSettled
-                  />
-                )}
+                <OrderCard
+                  order={o}
+                  locale={locale}
+                  href={pathFor(locale, `/orders/${o.id}`)}
+                  footer={
+                    o.status === "delivered" && reviewsKnown && slug ? (
+                      <ReviewAsk
+                        variant="inline"
+                        orderId={o.id}
+                        brandSlug={slug}
+                        brandName={o.items[0]?.display?.brand_name ?? null}
+                        existing={reviewsByOrder.get(o.id) ?? null}
+                        hideWhenSettled
+                      />
+                    ) : null
+                  }
+                />
               </li>
             );
           })}

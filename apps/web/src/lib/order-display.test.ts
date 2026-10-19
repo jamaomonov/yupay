@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isTopUpOrder, supportProduct } from "./order-display";
+import { isTopUpOrder, orderTitle, supportProduct } from "./order-display";
 
 import type { OrderOut } from "./orders-types";
 
@@ -19,7 +19,10 @@ describe("isTopUpOrder", () => {
 });
 
 function withItems(...display: (Record<string, unknown> | null)[]): OrderOut {
-  return { items: display.map((d) => ({ display: d })) } as unknown as OrderOut; // only display is read
+  // only the fields the helpers read; a variable-amount line credits its unit price
+  return {
+    items: display.map((d) => ({ display: d, unit_price_usd: "11.30", qty: 1 })),
+  } as unknown as OrderOut;
 }
 
 describe("supportProduct", () => {
@@ -29,16 +32,17 @@ describe("supportProduct", () => {
       denomination: "60 UC",
       variable_amount: false,
     });
-    expect(supportProduct(o)).toBe("PUBG Mobile, 60 UC");
+    expect(supportProduct(o, "en")).toBe("PUBG Mobile, 60 UC");
   });
 
-  it("drops the placeholder denomination of a variable amount", () => {
+  it("names the credited amount instead of the «Любая сумма» placeholder", () => {
     const o = withItems({
       brand_name: "Steam",
       denomination: "Любая сумма",
       variable_amount: true,
     });
-    expect(supportProduct(o)).toBe("Steam");
+    expect(supportProduct(o, "en")).toBe("Steam, $11.30");
+    expect(orderTitle(o, "fallback", "en")).toBe("Steam · $11.30");
   });
 
   it("counts the other lines and gives up without display data", () => {
@@ -46,7 +50,8 @@ describe("supportProduct", () => {
       { brand_name: "PUBG Mobile", denomination: "60 UC", variable_amount: false },
       { brand_name: "PUBG Mobile", denomination: "325 UC", variable_amount: false },
     );
-    expect(supportProduct(two)).toBe("PUBG Mobile, 60 UC +1");
-    expect(supportProduct(withItems(null))).toBeNull();
+    expect(supportProduct(two, "en")).toBe("PUBG Mobile, 60 UC +1");
+    expect(supportProduct(withItems(null), "en")).toBeNull();
+    expect(orderTitle(withItems(null), "fallback", "en")).toBe("fallback");
   });
 });

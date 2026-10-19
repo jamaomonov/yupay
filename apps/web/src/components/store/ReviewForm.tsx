@@ -12,7 +12,7 @@ export interface ReviewFormProps {
   submitting: boolean;
   showError: boolean;
   className?: string | undefined;
-  variant?: "card" | "bare";
+  variant?: "card" | "bare" | "inline";
   brandName?: string | null | undefined;
   /** Set after a successful rating POST — switches the form into follow-up. */
   rated?: number | undefined;
@@ -142,46 +142,67 @@ export function ReviewForm({
     );
   }
 
+  const stars = (size: number) => (
+    <div className="flex">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          aria-label={String(n)}
+          aria-pressed={n === tapped}
+          disabled={submitting}
+          onClick={() => {
+            setTapped(n);
+          }}
+          onMouseEnter={() => {
+            setHover(n);
+          }}
+          onMouseLeave={() => {
+            setHover(0);
+          }}
+          className={`${size > 24 ? "p-1.5" : "p-1"} disabled:opacity-50`}
+        >
+          <Star size={size} className={n <= filled ? "fill-gold text-gold" : "text-white/25"} />
+        </button>
+      ))}
+    </div>
+  );
+  const submitButton = tapped > 0 && (
+    <button
+      type="button"
+      disabled={submitting}
+      onClick={() => {
+        onSubmit(tapped);
+      }}
+      className="bg-primary text-primary-foreground mt-2 w-full rounded-xl py-2 text-sm font-semibold disabled:opacity-50"
+    >
+      {submitting ? t("submitting") : t("submit")}
+    </button>
+  );
+  const error = showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>;
+
+  // A footer row inside an order card: the card already names the brand, so
+  // the question is short and the stars sit beside it rather than under it.
+  if (variant === "inline") {
+    return (
+      <div className={className}>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-tx-mute text-xs">{t("askTitle")}</p>
+          {stars(20)}
+        </div>
+        {submitButton}
+        {error}
+      </div>
+    );
+  }
+
   return (
     <div className={`${frame} ${className ?? ""}`}>
       <p className="text-sm font-semibold">{title}</p>
       <p className="text-tx-mute mt-1 text-xs">{t("askHint")}</p>
-      <div className="mt-2 flex">
-        {[1, 2, 3, 4, 5].map((n) => (
-          <button
-            key={n}
-            type="button"
-            aria-label={String(n)}
-            aria-pressed={n === tapped}
-            disabled={submitting}
-            onClick={() => {
-              setTapped(n);
-            }}
-            onMouseEnter={() => {
-              setHover(n);
-            }}
-            onMouseLeave={() => {
-              setHover(0);
-            }}
-            className="p-1.5 disabled:opacity-50"
-          >
-            <Star size={32} className={n <= filled ? "fill-gold text-gold" : "text-white/25"} />
-          </button>
-        ))}
-      </div>
-      {tapped > 0 && (
-        <button
-          type="button"
-          disabled={submitting}
-          onClick={() => {
-            onSubmit(tapped);
-          }}
-          className="bg-primary text-primary-foreground mt-2 w-full rounded-xl py-2 text-sm font-semibold disabled:opacity-50"
-        >
-          {submitting ? t("submitting") : t("submit")}
-        </button>
-      )}
-      {showError && <p className="mt-2 text-[13px] text-red-400">{t("error")}</p>}
+      <div className="mt-2">{stars(32)}</div>
+      {submitButton}
+      {error}
     </div>
   );
 }

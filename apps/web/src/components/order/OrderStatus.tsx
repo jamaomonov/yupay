@@ -260,7 +260,7 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   // The support chat opens with the order and what was bought, in the
   // customer's language; the cursor lands after «Вопрос:» for their own words.
   const shortId = order.data.id.slice(0, 8);
-  const product = supportProduct(order.data);
+  const product = supportProduct(order.data, locale);
   const supportText = product
     ? t("supportMessage", { id: shortId, product })
     : t("supportMessageNoProduct", { id: shortId });

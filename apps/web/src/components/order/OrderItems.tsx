@@ -7,14 +7,8 @@ import { useLocale, useTranslations } from "next-intl";
 import type { OrderItemOut } from "@/lib/orders-types";
 
 import { isOptimizable } from "@/lib/image";
+import { lineTotalUsd } from "@/lib/order-display";
 import { isSkinItem } from "@/lib/orders-types";
-
-/** Decimal-safe line total in USD major units ("11.30" × qty), computed in
- *  integer cents so 0.1 × 3 never drifts to 0.30000000000000004. */
-function lineTotalUsd(item: OrderItemOut): string {
-  const cents = Math.round(Number.parseFloat(item.unit_price_usd) * 100) * item.qty;
-  return (cents / 100).toFixed(2);
-}
 
 /** Brand · amount/denomination. A variable-amount top-up (Steam wallet) stores a
  *  placeholder denomination ("Любая сумма" / "Any amount") that tells the
