@@ -30,11 +30,13 @@ import type { SourcingBrandOverviewOut, SourcingBulkRuleOut, SourcingMode } from
 import type { Brand } from "@/features/catalog/types";
 
 import { PageHeader } from "@/components/PageHeader";
+import { SearchBox } from "@/components/SearchBox";
 import { ErrorState } from "@/components/States";
 import { useToast } from "@/components/Toast";
 import { apiGet } from "@/lib/api";
 import { extractApiMessage } from "@/lib/apiError";
 import { qk } from "@/lib/queryKeys";
+import { matchesText } from "@/lib/textSearch";
 
 export function BrandSourcingPage() {
   const params = useParams<{ brandSlug?: string }>();
@@ -77,6 +79,11 @@ export function BrandSourcingPage() {
   });
 
   const items = useMemo(() => overviewQuery.data?.items ?? [], [overviewQuery.data]);
+  const [skuQuery, setSkuQuery] = useState("");
+  const visibleItems = useMemo(
+    () => items.filter((i) => matchesText(skuQuery, [i.sku_code, i.denomination, i.product_slug])),
+    [items, skuQuery],
+  );
   const skuCodeFor = useMemo(() => {
     const map = new Map(items.map((i) => [i.sku_id, i.sku_code]));
     return (skuId: string) => map.get(skuId) ?? skuId;
@@ -204,10 +211,17 @@ export function BrandSourcingPage() {
     });
   };
 
+  // «Выбрать все» acts on the rows the search leaves on screen, and keeps any ticked row the
+  // search hides — a hidden row is never selected or dropped behind the operator's back.
   const toggleAll = () => {
     setSelected((prev) => {
-      if (items.length > 0 && items.every((i) => prev.has(i.sku_id))) return new Set();
-      return new Set(items.map((i) => i.sku_id));
+      const next = new Set(prev);
+      const allOn = visibleItems.length > 0 && visibleItems.every((i) => prev.has(i.sku_id));
+      for (const i of visibleItems) {
+        if (allOn) next.delete(i.sku_id);
+        else next.add(i.sku_id);
+      }
+      return next;
     });
   };
 
@@ -248,6 +262,7 @@ export function BrandSourcingPage() {
     setSelected(new Set());
     setFailures(new Map());
     setStaleCostSkuIds(new Set());
+    setSkuQuery("");
   };
 
   return (
@@ -289,18 +304,27 @@ export function BrandSourcingPage() {
           retryPending={overviewQuery.isFetching}
         />
       ) : (
-        <BrandSourcingTable
-          items={items}
-          loading={overviewQuery.isLoading}
-          selected={selected}
-          onToggle={toggle}
-          onToggleAll={toggleAll}
-          onSwitchOne={switchOne}
-          pending={switchMutation.isPending}
-          pendingSkuIds={rowPending}
-          failures={failures}
-          staleCostSkuIds={staleCostSkuIds}
-        />
+        <>
+          <SearchBox
+            value={skuQuery}
+            onChange={setSkuQuery}
+            placeholder="Поиск по sku-code, номиналу, продукту…"
+            className="max-w-md"
+          />
+          <BrandSourcingTable
+            items={visibleItems}
+            {...(items.length > 0 ? { emptyTitle: "Под поиск ничего не подходит." } : {})}
+            loading={overviewQuery.isLoading}
+            selected={selected}
+            onToggle={toggle}
+            onToggleAll={toggleAll}
+            onSwitchOne={switchOne}
+            pending={switchMutation.isPending}
+            pendingSkuIds={rowPending}
+            failures={failures}
+            staleCostSkuIds={staleCostSkuIds}
+          />
+        </>
       )}
     </div>
   );

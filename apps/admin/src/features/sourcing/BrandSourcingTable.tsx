@@ -28,6 +28,8 @@ import { formatMoneyValue } from "@/lib/money";
 
 export interface BrandSourcingTableProps {
   items: SourcingBrandSkuOut[];
+  /** Shown instead of the table when `items` is empty; defaults to «no active SKUs». */
+  emptyTitle?: string;
   loading: boolean;
   selected: ReadonlySet<string>;
   onToggle: (skuId: string) => void;
@@ -56,6 +58,7 @@ export interface BrandSourcingTableProps {
 
 export function BrandSourcingTable({
   items,
+  emptyTitle = "У этого бренда нет активных SKU.",
   loading,
   selected,
   onToggle,
@@ -82,7 +85,7 @@ export function BrandSourcingTable({
     return <TableSkeleton rows={6} columns={4 + supplierSlugs.length} />;
   }
   if (items.length === 0) {
-    return <EmptyState title="У этого бренда нет активных SKU." tone="muted" />;
+    return <EmptyState title={emptyTitle} tone="muted" />;
   }
 
   const allSelected = items.length > 0 && items.every((i) => selected.has(i.sku_id));

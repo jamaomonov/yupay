@@ -7,13 +7,16 @@
  *  code warehouse. */
 
 import { Button, Select } from "@yupay/ui";
+import { useState } from "react";
 
 import { BULK_SUPPLIER_OPTIONS } from "./supplierOptions";
 
 import type { SourcingMode } from "./types";
 import type { Brand } from "@/features/catalog/types";
 
+import { Combobox } from "@/components/Combobox";
 import { RESERVE_SUPPLIERS } from "@/features/integrations/types";
+import { matchesText } from "@/lib/textSearch";
 
 export interface BrandSourcingToolbarProps {
   brands: Brand[] | undefined;
@@ -46,6 +49,12 @@ export function BrandSourcingToolbar({
   applyPending,
   onApply,
 }: BrandSourcingToolbarProps) {
+  const [brandQuery, setBrandQuery] = useState("");
+  const selectedBrand = brands?.find((b) => b.slug === brandSlug) ?? null;
+  const matchingBrands = (brands ?? []).filter((b) =>
+    matchesText(brandQuery, [b.slug, ...b.translations.map((t) => t.name)]),
+  );
+
   return (
     <section className="flex flex-wrap items-end gap-4 rounded-lg border border-[var(--border-default)] bg-[var(--bg-surface)] p-4 shadow-[var(--shadow-sm)]">
       <div>
@@ -55,21 +64,30 @@ export function BrandSourcingToolbar({
         >
           Бренд
         </label>
-        <Select
-          id="brand-sourcing-brand-select"
-          value={brandSlug ?? ""}
-          onChange={(e) => {
-            onBrandChange(e.target.value);
-          }}
-          containerClassName="w-64"
-        >
-          <option value="">— Выбери бренд —</option>
-          {brands?.map((b) => (
-            <option key={b.id} value={b.slug}>
-              {brandName(b)}
-            </option>
-          ))}
-        </Select>
+        <div className="w-72">
+          <Combobox<Brand>
+            id="brand-sourcing-brand-select"
+            ariaLabel="Бренд"
+            value={selectedBrand}
+            onChange={(b) => {
+              onBrandChange(b?.slug ?? "");
+            }}
+            items={matchingBrands}
+            query={brandQuery}
+            onQueryChange={setBrandQuery}
+            loading={brands === undefined}
+            emptyMessage="Бренд не найден"
+            placeholder="— Выбери бренд —"
+            keyFor={(b) => b.id}
+            renderSelected={(b) => <span className="truncate">{brandName(b)}</span>}
+            renderItem={(b) => (
+              <span className="flex min-w-0 items-center gap-2">
+                <span className="truncate">{brandName(b)}</span>
+                <code className="shrink-0 text-[10px] text-[var(--text-tertiary)]">{b.slug}</code>
+              </span>
+            )}
+          />
+        </div>
       </div>
 
       {selectedCount > 0 && (

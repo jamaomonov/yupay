@@ -7,10 +7,13 @@ import type { Brand, Product } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { SearchBox } from "@/components/SearchBox";
 import { Thumb } from "@/components/Thumb";
 import { Spinner } from "@/components/States";
 import { apiGet } from "@/lib/api";
 import { qk } from "@/lib/queryKeys";
+import { matchesText } from "@/lib/textSearch";
+import { useSearchParamsState } from "@/lib/useSearchParamsState";
 
 export function ProductsListPage() {
   const navigate = useNavigate();
@@ -24,6 +27,18 @@ export function ProductsListPage() {
   });
 
   const brandsById = new Map(brandsQuery.data?.map((b) => [b.id, b]) ?? []);
+  const [query, setQuery] = useSearchParamsState("q", "");
+  // A product is found by its own names and slug and by its brand's, so «pubg» lists every
+  // PUBG product even where the product name says only «UC».
+  const filtered = productsQuery.data?.filter((p) => {
+    const b = brandsById.get(p.brand_id);
+    return matchesText(query, [
+      p.slug,
+      ...p.translations.map((t) => t.name),
+      b?.slug,
+      ...(b?.translations.map((t) => t.name) ?? []),
+    ]);
+  });
 
   const columns: Column<Product>[] = [
     {
@@ -80,14 +95,29 @@ export function ProductsListPage() {
           </Button>
         }
       />
+      <section className="mb-4 flex flex-wrap items-center gap-3">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          placeholder="Поиск по продукту, бренду или slug…"
+        />
+        {query.trim() !== "" && filtered && productsQuery.data && (
+          <span className="text-sm text-[var(--text-secondary)]">
+            {filtered.length} из {productsQuery.data.length}
+          </span>
+        )}
+      </section>
       {productsQuery.isLoading && <Spinner label="Загрузка…" />}
-      {productsQuery.data && (
+      {filtered && (
         <DataTable
-          rows={productsQuery.data}
+          rows={filtered}
           columns={columns}
           rowKey={(p) => p.id}
           onRowClick={(p) => navigate(`/products/${p.id}`)}
         />
+      )}
+      {query.trim() !== "" && filtered?.length === 0 && (
+        <p className="mt-4 text-sm text-[var(--text-secondary)]">Ничего не найдено.</p>
       )}
     </div>
   );

@@ -35,6 +35,19 @@ describe("filterBrands", () => {
     expect(slugs(filterBrands(ALL, { active: "", retail: "", b2b: "" }))).toEqual(slugs(ALL));
   });
 
+  it("searches the slug and the names, on top of the flags", () => {
+    const pubg = brand("pubg-mobile", true, true, true);
+    const named: Brand = {
+      ...brand("mlbb", true, true, false),
+      translations: [{ locale: "ru", name: "Mobile Legends" }],
+    };
+    const list = [...ALL, pubg, named];
+    const none = { active: "", retail: "", b2b: "" } as const;
+    expect(slugs(filterBrands(list, { ...none, query: "PUBG" }))).toEqual(["pubg-mobile"]);
+    expect(slugs(filterBrands(list, { ...none, query: "legends" }))).toEqual(["mlbb"]);
+    expect(slugs(filterBrands(list, { ...none, b2b: "yes", query: "legends" }))).toEqual([]);
+  });
+
   it("filters by status", () => {
     expect(slugs(filterBrands(ALL, { active: "no", retail: "", b2b: "" }))).toEqual(["off"]);
   });

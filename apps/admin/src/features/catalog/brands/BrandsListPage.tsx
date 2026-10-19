@@ -9,6 +9,7 @@ import type { Brand } from "../types";
 
 import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
+import { SearchBox } from "@/components/SearchBox";
 import { Spinner } from "@/components/States";
 import { Thumb } from "@/components/Thumb";
 import { apiGet } from "@/lib/api";
@@ -58,8 +59,9 @@ export function BrandsListPage() {
   const [active, setActive] = useSearchParamsState<FlagFilter>("active", "", flagCodec);
   const [retail, setRetail] = useSearchParamsState<FlagFilter>("retail", "", flagCodec);
   const [b2b, setB2b] = useSearchParamsState<FlagFilter>("b2b", "", flagCodec);
-  const filtered = q.data ? filterBrands(q.data, { active, retail, b2b }) : undefined;
-  const filtering = active !== "" || retail !== "" || b2b !== "";
+  const [query, setQuery] = useSearchParamsState("q", "");
+  const filtered = q.data ? filterBrands(q.data, { active, retail, b2b, query }) : undefined;
+  const filtering = active !== "" || retail !== "" || b2b !== "" || query.trim() !== "";
 
   const columns: Column<Brand>[] = [
     {
@@ -106,6 +108,7 @@ export function BrandsListPage() {
         }
       />
       <section className="mb-4 flex flex-wrap items-center gap-3">
+        <SearchBox value={query} onChange={setQuery} placeholder="Поиск по названию или slug…" />
         <FlagSelect
           label="Статус"
           value={active}
@@ -139,6 +142,7 @@ export function BrandsListPage() {
               setActive("");
               setRetail("");
               setB2b("");
+              setQuery("");
             }}
           >
             Сбросить
