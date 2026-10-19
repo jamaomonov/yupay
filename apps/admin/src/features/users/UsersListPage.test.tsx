@@ -42,6 +42,7 @@ function makeUser(i: number): UserAdminOut {
     display_name: `User ${String(i)}`,
     photo_url: null,
     roles: [],
+    signup_source: "miniapp",
     created_at: "2026-08-15T13:26:00Z",
     updated_at: "2026-08-15T13:26:00Z",
     deleted_at: null,

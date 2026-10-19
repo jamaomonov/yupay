@@ -149,6 +149,7 @@ async def register_user(
     email: str,
     password: str,
     locale: str = "ru",
+    signup_source: str = "unknown",
     settings: Settings | None = None,
     verify_link_base: str | None = None,
 ) -> User:
@@ -180,6 +181,7 @@ async def register_user(
         email=normalised,
         locale=locale,
         password_hash=await hash_password(password),
+        signup_source=signup_source,
     )
     db.add(user)
     try:
@@ -269,6 +271,7 @@ async def google_login(
     db: AsyncSession,
     credential: str,
     *,
+    signup_source: str = "unknown",
     settings: Settings | None = None,
     verifier: Callable[[str], Awaitable[google.GoogleUser]] | None = None,
 ) -> SessionTokens:
@@ -328,6 +331,7 @@ async def google_login(
             display_name=safe_display_name(identity.name),
             photo_url=safe_avatar_url(identity.picture),
             locale="ru",
+            signup_source=signup_source,
         )
         try:
             # Inside the SAVEPOINT, added after it opens (see
@@ -378,6 +382,7 @@ async def steam_login(
     db: AsyncSession,
     params: dict[str, str],
     *,
+    signup_source: str = "unknown",
     settings: Settings | None = None,
     verifier: Callable[..., Awaitable[int]] | None = None,
 ) -> SessionTokens:
@@ -403,7 +408,11 @@ async def steam_login(
     if s.steam_api_key:
         persona_name, avatar_url = await steam.fetch_persona(steam_id, api_key=s.steam_api_key)
     user = await upsert_user_by_steam(
-        db, steam_id=steam_id, persona_name=persona_name, avatar_url=avatar_url
+        db,
+        steam_id=steam_id,
+        persona_name=persona_name,
+        avatar_url=avatar_url,
+        signup_source=signup_source,
     )
     return await _open_session(db, user=user, settings=s)
 
@@ -424,7 +433,8 @@ async def telegram_init_data_login(
         bot_token=s.telegram_bot_token,
         max_age_seconds=s.telegram_init_data_ttl_seconds,
     )
-    user = await upsert_user_by_telegram(db, verified.user)
+    # initData exists only inside the mini app, so this one is not client-declared.
+    user = await upsert_user_by_telegram(db, verified.user, signup_source="miniapp")
     return await _open_session(db, user=user, settings=s)
 
 
@@ -432,6 +442,7 @@ async def telegram_widget_login(
     db: AsyncSession,
     payload: dict[str, str | int | bool],
     *,
+    signup_source: str = "unknown",
     settings: Settings | None = None,
 ) -> SessionTokens:
     """Verify a Login Widget payload and open a session."""
@@ -449,7 +460,7 @@ async def telegram_widget_login(
         auth_date=verified.auth_date,
         max_age_seconds=s.telegram_init_data_ttl_seconds,
     )
-    user = await upsert_user_by_telegram(db, verified.user)
+    user = await upsert_user_by_telegram(db, verified.user, signup_source=signup_source)
     return await _open_session(db, user=user, settings=s)
 
 

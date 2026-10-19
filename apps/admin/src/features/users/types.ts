@@ -27,6 +27,8 @@ export interface UserAdminOut {
   display_name: string | null;
   photo_url: string | null;
   roles: string[];
+  /** Where the account was opened (users.signup_source). */
+  signup_source: "web" | "miniapp" | "mobile" | "unknown";
   created_at: string;
   updated_at: string;
   deleted_at: string | null;

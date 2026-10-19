@@ -21231,6 +21231,11 @@
             "title": "Roles",
             "type": "array"
           },
+          "signup_source": {
+            "default": "unknown",
+            "title": "Signup Source",
+            "type": "string"
+          },
           "steam_link": {
             "anyOf": [
               {
@@ -37043,6 +37048,22 @@
               ],
               "title": "X-Yupay-Token-Transport"
             }
+          },
+          {
+            "in": "header",
+            "name": "X-Yupay-Surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Surface"
+            }
           }
         ],
         "requestBody": {
@@ -37452,6 +37473,24 @@
       "post": {
         "description": "Create an email/password account. No session is opened.\n\nThe account must be verified (``POST /auth/verify-email``) before it can be\nused to log in \u2014 see ``login_password``'s ``EmailUnverifiedError`` gate.",
         "operationId": "register_route_api_v1_auth_register_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-Yupay-Surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Surface"
+            }
+          }
+        ],
         "requestBody": {
           "content": {
             "application/json": {
@@ -37544,6 +37583,22 @@
                 }
               ],
               "title": "X-Yupay-Token-Transport"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Yupay-Surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Surface"
             }
           }
         ],
@@ -37688,6 +37743,22 @@
                 }
               ],
               "title": "X-Yupay-Token-Transport"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-Yupay-Surface",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Yupay-Surface"
             }
           }
         ],

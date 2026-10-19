@@ -10,6 +10,7 @@ import { DataTable, type Column } from "@/components/DataTable";
 import { PageHeader } from "@/components/PageHeader";
 import { StatCard } from "@/components/StatCard";
 import { ErrorState } from "@/components/States";
+import { SOURCE_LABEL } from "@/features/orders/types";
 import { apiGet } from "@/lib/api";
 import { formatMoney } from "@/lib/money";
 import { qk } from "@/lib/queryKeys";
@@ -218,12 +219,20 @@ export function UsersListPage() {
     {
       key: "created",
       header: "Зарег.",
-      render: (u) =>
-        new Date(u.created_at).toLocaleDateString("ru", {
-          day: "2-digit",
-          month: "2-digit",
-          year: "2-digit",
-        }),
+      render: (u) => (
+        <div className="flex flex-col items-end gap-0.5">
+          <span>
+            {new Date(u.created_at).toLocaleDateString("ru", {
+              day: "2-digit",
+              month: "2-digit",
+              year: "2-digit",
+            })}
+          </span>
+          <span className="text-xs text-[var(--text-secondary)]">
+            {SOURCE_LABEL[u.signup_source]}
+          </span>
+        </div>
+      ),
       className: "w-24 text-right",
     },
   ];

@@ -66,6 +66,7 @@ from yupay.modules.auth.service import (
 )
 from yupay.modules.auth.telegram import TelegramAuthError
 from yupay.modules.users.models import User
+from yupay.modules.users.service import normalise_signup_source
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 log = get_logger("yupay.auth.routes")
@@ -75,6 +76,8 @@ log = get_logger("yupay.auth.routes")
 #: Sent by the mobile app (ADR-0101), which keeps the token in the device keychain.
 TOKEN_TRANSPORT_HEADER = "X-Yupay-Token-Transport"  # noqa: S105 -- a header name
 TokenTransport = Annotated[str | None, Header(alias=TOKEN_TRANSPORT_HEADER)]
+#: The client's own surface (``web`` / ``mobile``), recorded on an account it opens.
+Surface = Annotated[str | None, Header(alias="X-Yupay-Surface")]
 
 
 def _session_response(
@@ -127,6 +130,7 @@ async def register_route(
     body: RegisterIn,
     request: Request,
     db: Annotated[AsyncSession, Depends(db_session)],
+    surface: Surface = None,
 ) -> RegisterOut:
     """Create an email/password account. No session is opened.
 
@@ -142,6 +146,7 @@ async def register_route(
         email=body.email,
         password=body.password,
         locale=body.locale,
+        signup_source=normalise_signup_source(surface),
         verify_link_base=_web_base(request, body.locale),
     )
     assert user.email is not None  # register_user always sets one from RegisterIn.email
@@ -202,10 +207,11 @@ async def login_steam(
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     transport: TokenTransport = None,
+    surface: Surface = None,
 ) -> TokensOut:
     """Verify the ``openid.*`` params against Steam and return a session."""
     await guard_ip(request, bucket="steam-login")
-    tokens = await steam_svc_login(db, body.params)
+    tokens = await steam_svc_login(db, body.params, signup_source=normalise_signup_source(surface))
     return _session_response(response, tokens, transport=transport)
 
 
@@ -221,6 +227,7 @@ async def login_google(
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     transport: TokenTransport = None,
+    surface: Surface = None,
 ) -> TokensOut:
     """Verify the Google-signed credential, upsert the user, return a session.
 
@@ -229,7 +236,9 @@ async def login_google(
     verification, so there is no subject to key the second axis on.
     """
     await guard_ip(request, bucket="google-login")
-    tokens = await google_svc_login(db, body.access_token)
+    tokens = await google_svc_login(
+        db, body.access_token, signup_source=normalise_signup_source(surface)
+    )
     return _session_response(response, tokens, transport=transport)
 
 
@@ -264,6 +273,7 @@ async def login_telegram_widget(
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     transport: TokenTransport = None,
+    surface: Surface = None,
 ) -> TokensOut:
     """Verify a Telegram Login Widget payload, upsert the user, return a session.
 
@@ -271,7 +281,11 @@ async def login_telegram_widget(
     the storefront's ``/app-auth`` bounce, which hands it the same signed payload.
     """
     try:
-        tokens = await telegram_widget_login(db, body.model_dump(exclude_none=True))
+        tokens = await telegram_widget_login(
+            db,
+            body.model_dump(exclude_none=True),
+            signup_source=normalise_signup_source(surface),
+        )
     except TelegramAuthError as exc:
         log.info("auth.telegram.widget.rejected", reason=str(exc))
         raise UnauthorizedError("telegram verification failed") from exc

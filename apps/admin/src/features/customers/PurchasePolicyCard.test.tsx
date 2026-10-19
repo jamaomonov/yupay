@@ -28,6 +28,7 @@ const USER: UserAdminOut = {
   locale: "ru",
   display_currency: "UZS",
   display_name: "Buyer",
+  signup_source: "web",
   photo_url: null,
   roles: [],
   created_at: "2026-10-11T10:00:00Z",

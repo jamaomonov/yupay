@@ -122,6 +122,8 @@ class UserAdminOut(BaseModel):
     display_name: str | None
     photo_url: str | None
     roles: list[str] = []
+    #: Where the account was opened: ``web`` / ``miniapp`` / ``mobile`` / ``unknown``.
+    signup_source: str = "unknown"
     created_at: datetime
     updated_at: datetime
     deleted_at: datetime | None

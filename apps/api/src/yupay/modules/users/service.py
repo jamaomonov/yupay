@@ -31,6 +31,16 @@ from yupay.modules.wallet.balances import (
 log = get_logger("yupay.users.service")
 
 
+#: Surfaces an account can be opened from (``users.signup_source``).
+SIGNUP_SOURCES: frozenset[str] = frozenset({"web", "miniapp", "mobile"})
+
+
+def normalise_signup_source(raw: str | None) -> str:
+    """The declared surface, or ``unknown``. Never raises: a sign-in is never refused over it."""
+    value = (raw or "").strip().lower()
+    return value if value in SIGNUP_SOURCES else "unknown"
+
+
 async def get_user_by_id(session: AsyncSession, user_id: str) -> User | None:
     """Return the user row or ``None`` if not found / soft-deleted."""
     stmt = select(User).where(User.id == user_id, User.deleted_at.is_(None))
@@ -86,6 +96,7 @@ async def upsert_user_by_telegram(
     tg_user: TelegramUser,
     *,
     locale_hint: str | None = None,
+    signup_source: str = "unknown",
 ) -> User:
     """Find-or-create a user from a verified Telegram identity.
 
@@ -114,6 +125,7 @@ async def upsert_user_by_telegram(
             locale=locale,
             display_name=safe_display_name(tg_user.first_name or tg_user.username),
             photo_url=safe_avatar_url(tg_user.photo_url),
+            signup_source=signup_source,
         )
         new_link = TelegramLink(
             id=new_id(),
@@ -173,6 +185,7 @@ async def upsert_user_by_steam(
     steam_id: int,
     persona_name: str | None = None,
     avatar_url: str | None = None,
+    signup_source: str = "unknown",
 ) -> User:
     """Find-or-create a user from a verified Steam identity.
 
@@ -218,6 +231,7 @@ async def upsert_user_by_steam(
             locale="ru",
             display_name=name,
             photo_url=avatar,
+            signup_source=signup_source,
         )
         new_link = SteamLink(
             id=new_id(),

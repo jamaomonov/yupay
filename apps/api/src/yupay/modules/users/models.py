@@ -32,6 +32,10 @@ class User(Base):
     __tablename__ = "users"
     __table_args__ = (
         CheckConstraint("purchase_limit_usd >= 0", name="purchase_limit_usd_non_negative"),
+        CheckConstraint(
+            "signup_source IN ('web', 'miniapp', 'mobile', 'unknown')",
+            name="signup_source_known",
+        ),
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=False), primary_key=True)
@@ -62,6 +66,14 @@ class User(Base):
         JSONB, nullable=False, server_default=text("'[]'::jsonb")
     )
 
+    # Where the account was opened (migration 0103): the surface that sent the first
+    # sign-in, from ``X-Yupay-Surface`` (the mini app's own route always says
+    # ``miniapp``). Client-declared, like ``orders.source`` — an operator's "where did
+    # this customer come from", never an authorisation input. Set once at creation,
+    # never on a later sign-in from somewhere else.
+    signup_source: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default=text("'unknown'"), default="unknown"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

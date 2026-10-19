@@ -111,3 +111,11 @@ hold". Both reads are one query each (see `wallet.balances`).
   interleaving (two real concurrent sessions, one paused mid-request) for
   the Telegram and Steam first-sight races, the same technique
   `test_auth_refresh_race.py` uses for the refresh-rotation race.
+
+## Signup source
+
+`users.signup_source` (migration 0103) records where an account was opened: `web`, `miniapp`,
+`mobile` or `unknown`. The sign-in routes read it from `X-Yupay-Surface`; the mini app's
+initData route always writes `miniapp`. It is set once, on creation, and a later sign-in from
+another surface never changes it. Rows that predate it were backfilled from the best evidence
+left (see the migration's docstring); the admin user list shows it under the signup date.
