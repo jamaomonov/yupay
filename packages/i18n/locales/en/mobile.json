@@ -28,8 +28,7 @@
     "pickAmount": "Pick an amount",
     "enterId": "Enter your ID",
     "outOfStock": "Out of stock",
-    "maintenance": "Temporarily unavailable",
-    "paySoon": "Payment is the next development step"
+    "maintenance": "Temporarily unavailable"
   },
   "check": {
     "valid": "Player found:",
@@ -41,7 +40,9 @@
     "title": "Orders",
     "signIn": "Sign in to see your orders",
     "signInHint": "Orders from the website and Telegram show up here too",
-    "signInButton": "Sign in"
+    "signInButton": "Sign in",
+    "empty": "No orders yet",
+    "more": "Orders from the website and Telegram appear after you sign in"
   },
   "profile": {
     "title": "Profile",
@@ -53,5 +54,37 @@
     "support": "Support",
     "supportHint": "We answer in Telegram",
     "version": "Version {version}"
+  },
+  "checkout": {
+    "title": "Payment",
+    "amount": "Amount",
+    "player": "Player",
+    "total": "Total",
+    "email": "Email",
+    "emailHint": "We'll send the receipt and a link to the order",
+    "method": "Payment method",
+    "pay": "Pay {sum} soʻm",
+    "badEmail": "Check the email",
+    "error": "Couldn't create the order. Try again",
+    "stale": "The order has expired. Tap «Pay» again",
+    "noMethods": "Payment is temporarily unavailable"
+  },
+  "order": {
+    "title": "Order",
+    "awaiting": "Waiting for payment",
+    "awaitingHint": "If you've already paid, the status updates by itself",
+    "working": "Paid, topping up",
+    "workingHint": "Usually a couple of minutes",
+    "done": "Topped up",
+    "doneHint": "Check your balance in the game",
+    "failed": "Couldn't top up",
+    "failedHint": "Message support and we'll help",
+    "closed": "Order closed",
+    "closedHint": "No payment came in",
+    "refunded": "Money returned",
+    "pay": "Pay",
+    "support": "Message support",
+    "home": "Home",
+    "notFound": "This order isn't on this phone"
   }
 }

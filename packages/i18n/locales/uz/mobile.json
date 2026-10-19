@@ -28,8 +28,7 @@
     "pickAmount": "Miqdorni tanlang",
     "enterId": "ID ni kiriting",
     "outOfStock": "Mavjud emas",
-    "maintenance": "Vaqtincha mavjud emas",
-    "paySoon": "Toʻlov — ishlab chiqishning keyingi bosqichi"
+    "maintenance": "Vaqtincha mavjud emas"
   },
   "check": {
     "valid": "Oʻyinchi topildi:",
@@ -41,7 +40,9 @@
     "title": "Buyurtmalar",
     "signIn": "Buyurtmalarni koʻrish uchun kiring",
     "signInHint": "Saytdagi va Telegramdagi buyurtmalar ham shu yerda boʻladi",
-    "signInButton": "Kirish"
+    "signInButton": "Kirish",
+    "empty": "Hozircha buyurtmalar yoʻq",
+    "more": "Sayt va Telegramdagi buyurtmalar kirgandan keyin chiqadi"
   },
   "profile": {
     "title": "Profil",
@@ -53,5 +54,37 @@
     "support": "Yordam",
     "supportHint": "Telegramda javob beramiz",
     "version": "Versiya {version}"
+  },
+  "checkout": {
+    "title": "Toʻlov",
+    "amount": "Nominal",
+    "player": "Oʻyinchi",
+    "total": "Toʻlovga",
+    "email": "Email",
+    "emailHint": "Chek va buyurtma havolasini yuboramiz",
+    "method": "Toʻlov usuli",
+    "pay": "{sum} soʻm toʻlash",
+    "badEmail": "Emailni tekshiring",
+    "error": "Buyurtma yaratilmadi. Qayta urinib koʻring",
+    "stale": "Buyurtma eskirdi. «Toʻlash»ni yana bosing",
+    "noMethods": "Toʻlov vaqtincha mavjud emas"
+  },
+  "order": {
+    "title": "Buyurtma",
+    "awaiting": "Toʻlov kutilmoqda",
+    "awaitingHint": "Agar toʻlagan boʻlsangiz, holat oʻzi yangilanadi",
+    "working": "Toʻlandi, hisobga tushirilmoqda",
+    "workingHint": "Odatda bir-ikki daqiqa",
+    "done": "Hisobga tushdi",
+    "doneHint": "Oʻyindagi balansni tekshiring",
+    "failed": "Hisobga tushirib boʻlmadi",
+    "failedHint": "Qoʻllab-quvvatlashga yozing, yordam beramiz",
+    "closed": "Buyurtma yopildi",
+    "closedHint": "Toʻlov kelmadi",
+    "refunded": "Pul qaytarildi",
+    "pay": "Toʻlash",
+    "support": "Qoʻllab-quvvatlashga yozish",
+    "home": "Bosh sahifa",
+    "notFound": "Bu buyurtma telefonda yoʻq"
   }
 }

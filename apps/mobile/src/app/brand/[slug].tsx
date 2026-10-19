@@ -1,7 +1,7 @@
 import type { SkuOut } from "@yupay/api-client/types";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import { ActivityIndicator, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { BrandHeader } from "@/components/brand/BrandHeader";
@@ -9,6 +9,7 @@ import { PlayerFields } from "@/components/brand/PlayerFields";
 import { SkuGrid } from "@/components/brand/SkuGrid";
 import { Button, Chip, Notice, T } from "@/components/ui";
 import { useBrand, usePlayerCheck, useProduct, type PlayerCheckResult } from "@/lib/api";
+import { checkBlocks, isFixedSku } from "@/lib/checkout";
 import { formatSum } from "@/lib/format";
 import { useI18n } from "@/lib/i18n";
 import { useTheme } from "@/theme/ThemeProvider";
@@ -48,22 +49,48 @@ export default function BrandScreen() {
 
   const fields = product.data?.required_fields ?? [];
   const checkField = fields.find((field) => field.check != null);
-  const skus = (product.data?.skus ?? []).filter((item) => !item.variable_amount);
+  const skus = (product.data?.skus ?? []).filter(isFixedSku);
   const missingField = fields.find(
     (field) => field.required !== false && !(values[field.key] ?? "").trim(),
   );
 
-  const runCheck = () => {
+  const toCheckout = (result: PlayerCheckResult | null) => {
+    if (!sku?.display_price || !brand.data) return;
+    router.push({
+      pathname: "/checkout",
+      params: {
+        brandSlug: brand.data.slug,
+        brandName: brand.data.name,
+        skuId: sku.id,
+        label: sku.denomination ?? sku.sku_code,
+        price: sku.display_price.amount,
+        fields: JSON.stringify(values),
+        ...(result?.status === "valid" && result.name ? { player: result.name } : {}),
+      },
+    });
+  };
+
+  /** `then` runs with the answer when it is not «not found» — the pay button checks first. */
+  const runCheck = (then?: (result: PlayerCheckResult) => void) => {
     if (checkField === undefined) return;
     const serverKey = checkField.check?.server_field;
     const serverId = serverKey != null ? values[serverKey]?.trim() : undefined;
+    const settle = (result: PlayerCheckResult) => {
+      setCheckResult(result);
+      if (then && !checkBlocks(result)) then(result);
+    };
     check.mutate(
       { playerId: (values[checkField.key] ?? "").trim(), ...(serverId ? { serverId } : {}) },
-      {
-        onSuccess: setCheckResult,
-        onError: () => setCheckResult({ status: "error" }),
-      },
+      { onSuccess: settle, onError: () => settle({ status: "error" }) },
     );
+  };
+
+  const goPay = () => {
+    if (checkField !== undefined && checkBlocks(checkResult)) {
+      if (checkResult === null) runCheck(toCheckout);
+      return;
+    }
+    toCheckout(checkResult);
   };
 
   const onChange = (key: string, value: string) => {
@@ -112,7 +139,7 @@ export default function BrandScreen() {
                 fields={fields}
                 values={values}
                 onChange={onChange}
-                {...(checkField ? { onCheck: runCheck } : {})}
+                {...(checkField ? { onCheck: () => runCheck() } : {})}
                 checking={check.isPending}
                 result={checkResult}
               />
@@ -163,8 +190,11 @@ export default function BrandScreen() {
         </View>
         <Button
           label={missingField && sku ? t("brand.enterId") : t("brand.toPay")}
-          disabled={!sku || missingField !== undefined}
-          onPress={() => Alert.alert(t("brand.paySoon"))}
+          disabled={
+            !sku?.display_price || missingField !== undefined || checkResult?.status === "invalid"
+          }
+          loading={check.isPending}
+          onPress={goPay}
         />
       </View>
     </View>
