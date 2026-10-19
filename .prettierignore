@@ -24,3 +24,7 @@ docs/api/merchant-openapi.json
 # correct edit to one is replacing it wholesale — see
 # docs/runbooks/miniapp-telegram-script.md.
 **/public/js/
+
+# Expo generates these on `expo start`; untracked (apps/mobile/.gitignore).
+apps/mobile/.expo/
+apps/mobile/expo-env.d.ts
