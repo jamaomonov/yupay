@@ -992,6 +992,14 @@ async def _apply_refund_reversal(
     if refunded_now:
         order.status = "refunded"
         order.updated_at = moment
+        # The partner's commission on this sale goes back too, while it is still
+        # held. Nothing called this before: a refunded order kept paying out
+        # once its hold matured. A matured commission is left to an admin (see
+        # ``affiliate.accrual.void_commission``); an unaccrued one never accrues,
+        # since accrual only picks ``delivered`` orders.
+        from yupay.modules.affiliate import accrual as affiliate_accrual
+
+        await affiliate_accrual.void_commission(db, order_id=order.id)
     db.add(
         OrderEvent(
             id=new_id(),

@@ -332,3 +332,38 @@ async def test_accrual_skips_an_order_too_small_to_earn_anything(
 
     assert await accrue_commissions(db_session, hold_days=14) == 0
     assert (await db_session.execute(select(AffiliateCommission))).first() is None
+
+
+async def test_a_full_refund_voids_the_pending_commission(db_session: AsyncSession) -> None:
+    """Refunds never called ``void_commission``: a refunded order kept paying
+    the partner, who could withdraw it once it matured."""
+    from sqlalchemy import select
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate import api as affiliate_api
+    from yupay.modules.affiliate.models import AffiliateCommission
+    from yupay.modules.payments import service as payments_service
+    from yupay.modules.payments.models import Payment
+
+    order_id, partner_id, _ = await _seed_delivered_order(
+        db_session, total_charged=Decimal("100000")
+    )
+    assert await affiliate_api.accrue_commissions(db_session, hold_days=14) == 1
+    payment = Payment(
+        id=new_id(),
+        order_id=order_id,
+        provider="uzum",
+        status="succeeded",
+        amount=Decimal("100000"),
+        currency="UZS",
+        extra_metadata={},
+    )
+    db_session.add(payment)
+    await db_session.commit()
+
+    await payments_service.refund_admin_to_wallet(
+        db_session, payment_id=payment.id, admin_id=new_id(), idempotency_key="void-k1"
+    )
+
+    row = (await db_session.execute(select(AffiliateCommission))).scalar_one()
+    assert row.status == "void"
+    assert await _partner_balance(db_session, partner_id, "partner_pending") == Decimal("0")

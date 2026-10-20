@@ -203,6 +203,10 @@ Two things are deliberately **not** on the facade:
 sit inside a payout request, and clawing back money a partner can see is an
 admin's decision.
 
+Every **full** refund calls it: `payments._apply_refund_reversal`, the one path
+admin refunds, refunds to balance, auto-refunds and acquirer reversals share.
+A partial refund leaves the commission as accrued, on the full amount.
+
 Internally this module reaches into `wallet.service` rather than `wallet.api`.
 The wallet facade imports its router, which pulls in the whole v1 route stack
 and circles back — an `ImportError` for any caller not already inside the app,
