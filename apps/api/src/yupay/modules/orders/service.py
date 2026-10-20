@@ -1653,9 +1653,17 @@ async def _cascade_cancel_open_payments(
     record a ``PaymentAttempt`` row for each cancelled payment so the audit
     trail (and ``audit_feed``) reflects who terminated it and why.
     """
-    stmt = select(Payment).where(
-        Payment.order_id == order_id,
-        Payment.status.in_(("pending", "requires_action")),
+    # SKIP LOCKED: a payment someone holds is being settled right now. Waiting
+    # for it would invert the settlement's lock order (payment, then order)
+    # and deadlock; skipping it leaves it to that settlement, which then finds
+    # the order expired and takes the paid-after-expiry path.
+    stmt = (
+        select(Payment)
+        .where(
+            Payment.order_id == order_id,
+            Payment.status.in_(("pending", "requires_action")),
+        )
+        .with_for_update(skip_locked=True)
     )
     payments = list((await db.execute(stmt)).scalars().all())
     moment = now()
@@ -1697,6 +1705,14 @@ async def _expire_order_inline(db: AsyncSession, order: Order) -> bool:
         return False
     if order.expires_at > now():
         return False
+    # The snapshot above may predate a settlement that has since committed.
+    # Re-read under the row lock and decide again: writing ``expired`` from
+    # the stale copy overwrote ``paid`` — the buyer debited, fulfilment
+    # queued, the order saying «истёк». Only reached for an order that
+    # already looks expirable, so read paths rarely pay for the lock.
+    await db.refresh(order, with_for_update=True)
+    if order.status != "pending_payment" or order.expires_at > now():
+        return False
     order.status = "expired"
     order.cancelled_at = now()
     order.updated_at = order.cancelled_at
@@ -1736,6 +1752,8 @@ async def expire_stale_orders(db: AsyncSession, *, batch_limit: int = 500) -> in
         .where(Order.status == "pending_payment", Order.expires_at <= now())
         .order_by(Order.expires_at.asc())
         .limit(batch_limit)
+        # A row someone holds is being settled; the next tick sees its outcome.
+        .with_for_update(skip_locked=True)
     )
     rows = list((await db.execute(stmt)).scalars().all())
     flipped = 0

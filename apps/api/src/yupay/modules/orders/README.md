@@ -222,6 +222,28 @@ alone only carries the hash).
 - **Guest order lookup link** (signed magic link in email) — once `notifications`
   ships.
 
+## Expiry and a settlement racing it
+
+`expire_stale_orders` (scheduler, every minute) and the read-path guard
+`_expire_order_inline` both flip an aged `pending_payment` order to `expired`
+and cancel its open payments. A settlement can land in the same instant, so
+both sides decide under the order's row lock:
+
+- the sweep selects with `FOR UPDATE SKIP LOCKED` — an order being settled is
+  left to the next tick;
+- the guard re-reads its snapshot `FOR UPDATE` and checks the status again
+  before writing;
+- `payments._mark_payment_succeeded` locks the order too, so whichever side
+  goes second sees the first one's outcome (paid, or expired → the
+  paid-after-expiry hold);
+- the payment cascade takes payments `SKIP LOCKED`: a settlement holds the
+  payment and then waits for the order, and waiting the other way round would
+  deadlock.
+
+Before this, both sides wrote from an unlocked snapshot and the last writer
+won: a buyer could be debited while the order read «истёк».
+`tests/integration/test_order_expiry_race.py` pins both paths.
+
 ## Purchase cost and margin per order
 
 `GET /api/v1/admin/orders/{id}/economics` (`economics.py`) answers the admin order page's

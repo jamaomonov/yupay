@@ -494,7 +494,11 @@ async def _mark_payment_succeeded(
     payment.succeeded_at = moment
     payment.updated_at = moment
 
-    order = (await db.execute(select(Order).where(Order.id == payment.order_id))).scalar_one()
+    # Locked: the expiry sweep and the read-path guard lock the order before
+    # writing ``expired``, so exactly one of them and this settlement decides.
+    order = (
+        await db.execute(select(Order).where(Order.id == payment.order_id).with_for_update())
+    ).scalar_one()
 
     if order.status in _ABANDONED_STATUSES:
         await _settle_late_payment(db, order=order, payment=payment, event=event)
