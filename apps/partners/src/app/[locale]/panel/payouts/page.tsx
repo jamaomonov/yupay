@@ -2,7 +2,7 @@
 
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import { api, ApiError } from "@/lib/api";
 import { formatDate, formatMoney, formatUzs } from "@/lib/money";
@@ -27,6 +27,9 @@ export default function PayoutsPage() {
   const balance = useBalance();
   const payouts = usePayouts();
   const [state, setState] = useState<State>("idle");
+  // One key per withdrawal intent, kept across retries: a request whose answer
+  // was lost is replayed by the server instead of reserving the money twice.
+  const intentKey = useRef<string | null>(null);
 
   const available = Number(balance.data?.available ?? "0");
 
@@ -56,8 +59,9 @@ export default function PayoutsPage() {
       await api("/api/v1/affiliate/payouts", {
         method: "POST",
         body: { amount: raw, card_number: card, card_holder: holder },
-        idempotencyKey: crypto.randomUUID(),
+        idempotencyKey: (intentKey.current ??= crypto.randomUUID()),
       });
+      intentKey.current = null;
       setState("done");
       // The balance moved — the requested amount is now reserved rather than
       // available — so both reads are stale.

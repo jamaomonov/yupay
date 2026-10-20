@@ -94,6 +94,12 @@ reservation is what it then sees, because the money has already left
 `partner_balance`. Reserving without locking still races. Locking without
 reserving lets a partner queue two requests against one balance.
 
+Neither stops a **retry**: a request whose answer was lost, sent again, is a
+second legitimate-looking request while the balance still covers it. The
+panel keeps one `Idempotency-Key` per withdrawal intent, and `request_payout`
+replays the first request for a repeated key (`idempotent_responses`, scope
+`affiliate.payout:<partner_id>`, checked under the same partner lock).
+
 Card numbers are stored (the transfer is manual) and are PII of the worst kind
 here. They never reach a log line, and `PayoutOut` masks to the last four —
 a full PAN in a JSON response is a PAN in a browser cache, a proxy log and a

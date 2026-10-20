@@ -355,6 +355,7 @@ async def request_payout(
         amount=body.amount,
         card_number=body.card_number,
         card_holder=body.card_holder,
+        idempotency_key=idempotency_key,
     )
     return PayoutOut.from_row(row)
 

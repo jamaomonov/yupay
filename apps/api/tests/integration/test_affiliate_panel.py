@@ -473,3 +473,37 @@ async def test_attribution_ignores_a_wallet_topup(db_session: AsyncSession) -> N
     await db_session.flush()
 
     assert await bind_attribution(db_session, order=topup) is False
+
+
+async def test_a_retried_payout_request_replays_instead_of_reserving_twice(
+    db_session: AsyncSession,
+) -> None:
+    """The panel retries a request whose answer was lost with the same key. The
+    route used to check only that a key was present: a retry made a second
+    request and a second hold."""
+    from sqlalchemy import func, select
+    from yupay.modules.affiliate import panel, payouts
+    from yupay.modules.affiliate.models import AffiliatePayout
+
+    partner_id = await _partner_with_available(db_session, "200000")
+    first = await payouts.request_payout(
+        db_session,
+        partner_id=partner_id,
+        amount=Decimal("100000"),
+        card_number="8600123412341234",
+        card_holder="P PARTNER",
+        idempotency_key="payout-intent-0001",
+    )
+    again = await payouts.request_payout(
+        db_session,
+        partner_id=partner_id,
+        amount=Decimal("100000"),
+        card_number="8600123412341234",
+        card_holder="P PARTNER",
+        idempotency_key="payout-intent-0001",
+    )
+    assert again.id == first.id
+    count = (await db_session.execute(select(func.count()).select_from(AffiliatePayout))).scalar()
+    assert count == 1
+    after = await panel.balances(db_session, partner_id=partner_id)
+    assert after["reserved"] == Decimal("100000")

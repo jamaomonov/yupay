@@ -28,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.clock import now
 from yupay.core.config import Settings, get_settings
 from yupay.core.errors import ConflictError, NotFoundError, ValidationError
+from yupay.core.idempotency import load_replay, save_replay
 from yupay.core.ids import new_id
 from yupay.core.logging import get_logger
 from yupay.modules.affiliate.ledger import (
@@ -40,6 +41,10 @@ from yupay.modules.affiliate.panel import DEFAULT_CURRENCY, account_balance
 
 log = get_logger("yupay.affiliate.payouts")
 
+#: Replay namespace; the partner id is appended so one partner's key never
+#: replays another's request.
+_REPLAY_SCOPE = "affiliate.payout"
+
 
 async def request_payout(
     db: AsyncSession,
@@ -49,6 +54,7 @@ async def request_payout(
     card_number: str,
     card_holder: str,
     currency: str = DEFAULT_CURRENCY,
+    idempotency_key: str | None = None,
     settings: Settings | None = None,
 ) -> AffiliatePayout:
     """Reserve money for a withdrawal and record the request.
@@ -60,6 +66,8 @@ async def request_payout(
         card_number: Where to send it. PII — never logged.
         card_holder: The name on the card. PII — never logged.
         currency: The partner's currency.
+        idempotency_key: The panel's key for this intent. A repeat returns the
+            request the first call recorded instead of reserving again.
         settings: Overrides the process settings; for tests.
 
     Returns:
@@ -82,6 +90,16 @@ async def request_payout(
     ).scalar_one_or_none()
     if partner is None:
         raise NotFoundError("partner not found")
+
+    # Under the partner lock, so a retry racing the original waits for it and
+    # then replays it rather than both reserving.
+    scope = f"{_REPLAY_SCOPE}:{partner_id}"
+    if idempotency_key is not None:
+        cached = await load_replay(db, scope=scope, idempotency_key=idempotency_key)
+        if cached is not None and cached.body is not None:
+            earlier = await db.get(AffiliatePayout, cached.body["payout_id"])
+            if earlier is not None:
+                return earlier
 
     if amount <= 0:
         raise ValidationError("amount must be positive")
@@ -122,6 +140,14 @@ async def request_payout(
     # Amount and id only. The card is PII (CLAUDE.md §9) and this is the one
     # place in the module where it would be easiest to leak.
     log.info("affiliate.payout.requested", payout_id=payout.id, amount=str(amount))
+    if idempotency_key is not None:
+        await save_replay(
+            db,
+            scope=scope,
+            idempotency_key=idempotency_key,
+            body={"payout_id": payout.id},
+            status_code=201,
+        )
     return payout
 
 
