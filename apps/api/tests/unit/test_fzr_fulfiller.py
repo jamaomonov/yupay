@@ -353,6 +353,19 @@ async def test_a_lost_create_is_parked_for_adoption_not_failed(
     assert result.extra_metadata["fzr_create_unresolved"] == "ReadTimeout"
 
 
+@pytest.mark.parametrize("status", [500, 502, 503])
+async def test_a_server_error_on_create_parks_like_a_lost_response(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """A 5xx can come after the debit, exactly like a timeout."""
+    client = _FakeClient(raises=FzrError("bad gateway", status=status))
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id is None
+    assert result.money_outcome is None
+
+
 # ---------- guards that refuse before spending ----------
 
 

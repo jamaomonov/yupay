@@ -413,6 +413,13 @@ class GEngineFulfiller(Fulfiller):
                     source="gengine.refusal/shop",
                     supplier_message=exc.body,
                 )
+            if exc.status >= 500:
+                # A server error is not a refusal: the charge may have gone
+                # through before it. Same as unreachable — the poller reads the
+                # reservation and pays it only if it is still pending. Failing
+                # here invited a Retry that buys a second order.
+                log.warning("gengine.shop_pay_5xx", order_id=reserved.id, status=exc.status)
+                return _shop_in_progress(reserved)
             return _shop_failed(reserved, f"payment refused: {exc}", money=_PAY_MAY_HAVE_LANDED)
         except GEngineUnavailableError as exc:
             # Undecided upstream. The reservation exists and we know its id, so

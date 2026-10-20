@@ -215,6 +215,26 @@ class NovaFulfiller(Fulfiller):
         value = body.get("balance")
         return None if value in (None, "") else str(value)
 
+    async def _on_create_refusal(
+        self, exc: NovaError, *, fields: dict[str, str], item: OrderItem
+    ) -> FulfillResult:
+        """What NOVA's error answer to the create (the call that spends) means."""
+        if _looks_like_low_balance(exc):
+            return _low_balance_result(
+                message=_without_our_inputs(str(exc), fields),
+                side=_shortfall_side(exc),
+                our_balance=await self._balance_or_none(),
+                required=self._required_or_none(item),
+            )
+        if exc.status >= 500:
+            # A server error can come after the debit, exactly like a lost
+            # response: park for adoption rather than fail and invite a Retry
+            # that buys a second time.
+            return _parked_for_adoption(exc)
+        raise FulfillerError(
+            _without_our_inputs(str(exc), fields), money_outcome=_refusal_money(exc)
+        ) from exc
+
     async def fulfill(
         self,
         *,
@@ -278,16 +298,7 @@ class NovaFulfiller(Fulfiller):
                 idempotency_key=idempotency_key,
             )
         except NovaError as exc:
-            if _looks_like_low_balance(exc):
-                return _low_balance_result(
-                    message=_without_our_inputs(str(exc), fields),
-                    side=_shortfall_side(exc),
-                    our_balance=await self._balance_or_none(),
-                    required=self._required_or_none(item),
-                )
-            raise FulfillerError(
-                _without_our_inputs(str(exc), fields), money_outcome=_refusal_money(exc)
-            ) from exc
+            return await self._on_create_refusal(exc, fields=fields, item=item)
         except NovaUnavailableError as exc:
             # The create is the call that spends, so a lost response is the
             # one moment we must not declare anything. Park id-less and let

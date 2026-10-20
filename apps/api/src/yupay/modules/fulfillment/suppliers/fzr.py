@@ -287,6 +287,11 @@ class FzrFulfiller(Fulfiller):
         except FzrError as exc:
             if looks_like_low_balance(exc):
                 return await self._low_balance(exc, item, without_our_inputs(str(exc), fields))
+            if exc.status >= 500:
+                # A server error can come after the debit, exactly like a lost
+                # response: park for adoption rather than fail and invite a
+                # Retry that buys a second time.
+                return _parked_for_adoption(exc)
             raise _refusal(exc, fields=fields) from exc
         except FzrUnavailableError as exc:
             # The create is the call that spends, so a lost response is the one

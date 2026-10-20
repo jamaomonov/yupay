@@ -212,7 +212,6 @@ async def test_a_failed_order_without_a_refund_is_unknown(
         (403, MoneyOutcome.RETURNED),
         (404, MoneyOutcome.RETURNED),
         (409, MoneyOutcome.UNKNOWN),
-        (500, MoneyOutcome.UNKNOWN),
     ],
 )
 async def test_refusals_are_graded_by_status(
@@ -222,6 +221,22 @@ async def test_refusals_are_graded_by_status(
     with pytest.raises(FulfillerError) as excinfo:
         await _fulfill(client, monkeypatch)
     assert excinfo.value.money_outcome is money
+
+
+@pytest.mark.parametrize("status", [500, 502, 503, 504])
+async def test_a_server_error_on_create_parks_like_a_lost_response(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """A 5xx can come after the debit. It used to fail the task UNKNOWN while
+    its timeout twin parked; the delivered order then sat failed until a
+    human reconciled it."""
+    client = _FakeClient(raises=NovaError("bad gateway", status=status))
+
+    result = await _fulfill(client, monkeypatch)
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id is None
+    assert result.money_outcome is None
 
 
 async def test_a_lost_create_response_parks_instead_of_failing(

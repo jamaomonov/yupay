@@ -816,6 +816,11 @@ NOVA charges on create, so a timeout there leaves the money gone and the
 order's existence unknown. Since 2026-09-23 this **recovers by itself** and
 the shape below is what you should see instead of a failed task.
 
+A **5xx answer** to the create is treated the same way since 2026-10-20 (fzr
+too): it can arrive after the debit, so it parks instead of failing `UNKNOWN`.
+The same goes for G-Engine's shop `pay` — a 5xx leaves the reservation
+`in_progress` for the poller, never a failed task an operator might Retry.
+
 What happens now: the create parks the task `in_progress` with no id and
 `nova_create_unresolved` in its metadata. Every poll then reads
 `GET /api/v2/orders`, matches our line against the list, and adopts the order

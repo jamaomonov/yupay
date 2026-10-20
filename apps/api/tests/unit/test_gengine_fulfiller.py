@@ -574,6 +574,23 @@ async def test_an_unreachable_supplier_after_reserving_keeps_the_order_id() -> N
     assert result.extra_metadata["gengine_kind"] == "voucher"
 
 
+async def test_a_server_error_on_pay_is_undecided_not_a_refusal() -> None:
+    """A 5xx on ``pay_shop_order`` may arrive after the charge. Grading it a
+    failure let an operator press Retry, which reserves and pays a second
+    order — the shop API takes no idempotency key. The poller reads the
+    reservation instead and pays it only if it is still pending."""
+    client = FakeShopClient(
+        reserved=_shop("pending"),
+        paid=GEngineError("g-engine HTTP 502", status=502, body="Bad Gateway"),
+    )
+    f = GEngineFulfiller(client)  # type: ignore[arg-type]
+
+    result = await f._fulfill_shop(mapping=_Mapping(), item=_ShopItem())  # type: ignore[arg-type]
+
+    assert result.outcome == "in_progress"
+    assert result.external_order_id == "7001"
+
+
 async def test_the_poller_pays_a_reservation_that_was_never_settled() -> None:
     client = FakeShopClient(fetched=_shop("pending"), paid=_shop("shipped", codes=["CCC-333"]))
     f = GEngineFulfiller(client)  # type: ignore[arg-type]
