@@ -41,9 +41,9 @@ from yupay.modules.paynet.errors import (
     cancel_refused_delivered,
     invalid_amount,
     invalid_datetime,
-    order_already_paid,
     order_not_found,
     order_not_payable,
+    transaction_already_cancelled,
     transaction_already_exists,
     transaction_not_found,
     unknown_service,
@@ -105,13 +105,11 @@ async def get_information(
 
     Raises:
         PaynetError: unknown service, unknown order, an order that is not
-            awaiting payment, or (``302``) one already paid — see
-            :func:`_load_payable_order`'s ``paid_is_not_found``: a settled
-            bill has nothing left to show a payer, so this method answers the
-            same as "no such order" rather than ``PerformTransaction``'s 201.
+            awaiting payment, or (``302``) one already paid — a settled bill
+            has nothing left to show a payer; see :func:`_load_payable_order`.
     """
     _assert_service(service_id)
-    order = await _load_payable_order(db, _account(fields), paid_is_not_found=True)
+    order = await _load_payable_order(db, _account(fields))
     return {
         # String, not int (2026-09-22, Дильшод/Paynet certification): every
         # other field in this envelope that carries a business value is
@@ -162,9 +160,9 @@ async def perform_transaction(
         ``{"providerTrnId", "fields", "timestamp"}``.
 
     Raises:
-        PaynetError: unknown service, unknown/unpayable order, an amount that
-            does not match the order to the tiyin, or (``201``) a
-            ``transactionId`` already on file.
+        PaynetError: unknown service, unknown/unpayable order (``302`` for
+            one already paid), an amount that does not match the order to the
+            tiyin, or (``201``) a ``transactionId`` already on file.
     """
     _assert_service(service_id)
     existing = await _find(db, transaction_id)
@@ -264,10 +262,9 @@ async def cancel_transaction(
 ) -> dict[str, Any]:
     """Handle ``CancelTransaction``: reverse a settled payment.
 
-    Idempotent: a repeat on an already-cancelled transaction echoes state 2
-    rather than erroring. Paynet retries a cancel it never got an answer to,
-    so a second call is much more likely to be a retry than a second intent,
-    and an error on a retry reads as a reversal that failed.
+    A repeat on an already-cancelled transaction answers ``202`` (2026-10-20:
+    Paynet's own tester expects it). Nothing is reversed twice — the stored
+    row is untouched, and ``CheckTransaction`` still reports state 2.
 
     **Refused once any goods have shipped.** A single succeeded fulfilment task
     is proof the customer holds a code; clawing the money back would hand them
@@ -282,19 +279,15 @@ async def cancel_transaction(
         ``{"providerTrnId", "timestamp", "transactionState"}``.
 
     Raises:
-        PaynetError: ``203`` unknown transaction, ``306`` goods already
-            delivered.
+        PaynetError: ``203`` unknown transaction, ``202`` already cancelled,
+            ``306`` goods already delivered.
     """
     _assert_service(service_id)
     txn = await _find(db, transaction_id)
     if txn is None:
         raise transaction_not_found()
     if txn.state == STATE_CANCELLED:
-        return {
-            "providerTrnId": txn.provider_trn_id,
-            "timestamp": stamp(txn.cancelled_at or txn.performed_at),
-            "transactionState": STATE_CANCELLED,
-        }
+        raise transaction_already_cancelled()
 
     order = (await db.execute(select(Order).where(Order.id == txn.order_id))).scalar_one()
     if order.status in _DELIVERED_STATUSES or await _any_goods_delivered(db, txn.order_id):
@@ -417,21 +410,17 @@ async def _find(db: AsyncSession, transaction_id: int) -> PaynetTransaction | No
     ).scalar_one_or_none()
 
 
-async def _load_payable_order(
-    db: AsyncSession, order_id: str, *, paid_is_not_found: bool = False
-) -> Order:
+async def _load_payable_order(db: AsyncSession, order_id: str) -> Order:
     """Load an order that may still be paid, or say precisely why it may not.
 
     Args:
         db: Active session.
         order_id: The account field, already extracted and stripped.
-        paid_is_not_found: ``GetInformation`` passes ``True`` — an already-paid
-            order answers ``302`` there, the same as "no such order", because
-            a settled bill has nothing left to show a payer.
-            ``PerformTransaction`` leaves this ``False`` and keeps ``201``: a
-            client actively trying to pay is owed the specific reason. See the
-            comment above :data:`~yupay.modules.paynet.errors.ORDER_NOT_FOUND`
-            in ``errors.py``.
+
+    An order already paid answers ``302``, the same as "no such order", in
+    every method (2026-10-20: Paynet's tester expects it for a one-time
+    payment). See the comment above
+    :data:`~yupay.modules.paynet.errors.ORDER_NOT_FOUND` in ``errors.py``.
     """
     try:
         order = (await db.execute(select(Order).where(Order.id == order_id))).scalar_one_or_none()
@@ -440,7 +429,7 @@ async def _load_payable_order(
     if order is None:
         raise order_not_found()
     if order.status in _PAID_STATUSES:
-        raise order_not_found() if paid_is_not_found else order_already_paid()
+        raise order_not_found()
     if order.status != _PAYABLE:
         raise order_not_payable()
     if order.expires_at <= datetime.now(UTC):

@@ -200,9 +200,8 @@ async def test_get_information_on_a_paid_order_is_302_not_201(
 ) -> None:
     """A settled bill has nothing left to show a payer, so ``GetInformation``
     answers the same as "no such order" (2026-09-22, Paynet certification
-    feedback) — unlike ``PerformTransaction``, which keeps 201 for the same
-    order because a client actively trying to pay is owed the reason.
-    See :func:`test_a_second_transaction_on_a_paid_order_is_201` below.
+    feedback). ``PerformTransaction`` does the same since 2026-10-20 — see
+    :func:`test_a_second_transaction_on_a_paid_order_is_302`.
     """
     paid = await _seed_order(db_session, status="paid")
     response = await integration_client.post(
@@ -378,14 +377,16 @@ async def test_an_amount_that_does_not_match_the_order_is_413(
     assert rows == 0
 
 
-async def test_a_second_transaction_on_a_paid_order_is_201(
+async def test_a_second_transaction_on_a_paid_order_is_302(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
+    """A one-time payment closes the account: a new ``transactionId`` on a paid
+    order answers 302, as Paynet's own tester expects (2026-10-20)."""
     order_id = await _seed_order(db_session)
     await _perform(integration_client, order_id, transaction_id=90_004)
 
     body = await _perform(integration_client, order_id, transaction_id=90_005)
-    assert body["error"]["code"] == 201
+    assert body["error"]["code"] == 302
 
 
 # --- CheckTransaction -------------------------------------------------------
@@ -435,7 +436,7 @@ async def test_check_on_an_unknown_transaction_is_a_success_with_state_3(
 # --- CancelTransaction ------------------------------------------------------
 
 
-async def test_cancel_reverses_a_payment_and_is_idempotent(
+async def test_cancel_reverses_a_payment_once_and_a_repeat_is_202(
     integration_client: AsyncClient, db_session: AsyncSession
 ) -> None:
     order_id = await _seed_order(db_session)
@@ -446,9 +447,17 @@ async def test_cancel_reverses_a_payment_and_is_idempotent(
     second = (await integration_client.post(UWS_URL, json=payload, headers=_auth())).json()
 
     assert first["result"]["transactionState"] == 2
-    # A retry is far likelier than a second intent, so it echoes rather than
-    # erroring — and must never reverse twice.
-    assert second["result"] == first["result"]
+    # Paynet's tester expects 202 on a repeat (2026-10-20). It must never
+    # reverse twice, and the transaction still reads as cancelled.
+    assert second["error"]["code"] == 202
+    check = (
+        await integration_client.post(
+            UWS_URL,
+            json=_rpc("CheckTransaction", {"serviceId": SERVICE_ID, "transactionId": 90_007}),
+            headers=_auth(),
+        )
+    ).json()
+    assert check["result"]["transactionState"] == 2
     payment = (
         await db_session.execute(select(Payment).where(Payment.order_id == order_id))
     ).scalar_one()

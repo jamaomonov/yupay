@@ -55,9 +55,8 @@ def _err(code: int, ru: str, uz: str, en: str) -> PaynetError:
 # is a decision rather than a translation, and it is the one an operator will
 # read off a terminal receipt:
 #
-#   302  the order id does not exist at all       — "клиент не найден"
-#   201  a NEW transactionId targets an order
-#        already paid by a DIFFERENT one           — "заказ уже оплачен"
+#   302  the order id does not exist, or the order is already paid
+#                                                  — "клиент не найден"
 #   501  the order exists but cannot be paid now  — expired, cancelled, on hold
 #
 # 501 is the honest home for the third case: Paynet words it "транзакции
@@ -65,14 +64,14 @@ def _err(code: int, ru: str, uz: str, en: str) -> PaynetError:
 # is. Splitting it out from 302 matters because the two need different answers
 # from support — "check the number" versus "place the order again".
 #
-# GetInformation is a fourth case, not a variant of the second: an already-paid
-# order answers 302 there — a settled bill has nothing left to show a payer —
-# while PerformTransaction keeps 201 for the same order, because a client
-# actively trying to pay is owed the reason it is being refused. See
-# ``paynet.service.get_information`` and ``_load_payable_order``.
+# An already-paid order is 302 in every method. Our orders are one-time
+# payments: once settled, the account is closed, and Paynet's own tester
+# (2026-10-20) expects a new transactionId on it to answer 302. PerformTransaction
+# answered 201 «заказ уже оплачен» before that; GetInformation moved to 302 on
+# 2026-09-22. See ``paynet.service._load_payable_order``.
 
 ORDER_NOT_FOUND: Final = 302
-ORDER_ALREADY_PAID: Final = 201
+TRANSACTION_EXISTS: Final = 201
 ORDER_NOT_PAYABLE: Final = 501
 
 
@@ -86,29 +85,14 @@ def order_not_found() -> PaynetError:
     )
 
 
-def order_already_paid() -> PaynetError:
-    """``201`` — a *new* ``transactionId`` targets an order already paid by a
-    different one. ``PerformTransaction`` only; see :func:`transaction_already_exists`
-    for the sibling case of the *same* ``transactionId`` sent twice."""
-    return _err(
-        ORDER_ALREADY_PAID,
-        "Заказ уже оплачен.",
-        "Buyurtma allaqachon toʻlangan.",
-        "The order is already paid.",
-    )
-
-
 def transaction_already_exists() -> PaynetError:
     """``201`` — ``PerformTransaction`` replayed with a ``transactionId`` we
     already hold, on purpose: Paynet's own certification checklist requires a
     replay to answer this code rather than a bare success echo (2026-09-22,
-    Дильшод). Same numeric code as :func:`order_already_paid`, different
-    message — one is "you already paid", this one is "we already have this
-    exact transaction id" — because a support agent reading either off a
-    receipt needs to know which happened.
+    Дильшод).
     """
     return _err(
-        ORDER_ALREADY_PAID,
+        TRANSACTION_EXISTS,
         "Транзакция уже существует.",
         "Tranzaksiya allaqachon mavjud.",
         "The transaction already exists.",
@@ -165,13 +149,8 @@ def amount_over_limit() -> PaynetError:
 # --- transaction lifecycle --------------------------------------------------
 
 TRANSACTION_NOT_FOUND: Final = 203
+TRANSACTION_ALREADY_CANCELLED: Final = 202
 CANCEL_REFUSED: Final = 306
-# 202 ("транзакция уже отменена") is in Paynet's catalogue and deliberately
-# unused here. Paynet retries a cancel it never got an answer to, so a second
-# CancelTransaction for the same id is far more likely to be a retry than an
-# operator asking twice — and answering an error to a retry reads as a failed
-# reversal. We echo the stored state 2 instead, which is both true and
-# idempotent. See README.
 
 
 def transaction_not_found() -> PaynetError:
@@ -187,6 +166,22 @@ def transaction_not_found() -> PaynetError:
         "Транзакция не найдена.",
         "Tranzaksiya topilmadi.",
         "Transaction not found.",
+    )
+
+
+def transaction_already_cancelled() -> PaynetError:
+    """``202`` — ``CancelTransaction`` on a transaction already cancelled.
+
+    Until 2026-10-20 a repeat echoed state 2 as a success, on the theory that a
+    retry should not read as a failed reversal. Paynet's own tester expects
+    ``202``, so that is the answer; the money is reversed once either way, and
+    ``CheckTransaction`` still reports state 2.
+    """
+    return _err(
+        TRANSACTION_ALREADY_CANCELLED,
+        "Транзакция уже отменена.",
+        "Tranzaksiya allaqachon bekor qilingan.",
+        "The transaction is already cancelled.",
     )
 
 
@@ -307,10 +302,10 @@ __all__ = [
     "invalid_datetime",
     "method_not_found",
     "method_not_post",
-    "order_already_paid",
     "order_not_found",
     "order_not_payable",
     "system_error",
+    "transaction_already_cancelled",
     "transaction_already_exists",
     "transaction_not_found",
     "unknown_service",

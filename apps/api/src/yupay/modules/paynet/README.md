@@ -104,37 +104,32 @@ Paynet's catalogue was written for utility billing, where an account either
 exists or does not. An order has more states, so three of these are a decision
 rather than a translation:
 
-| Code  | When                                                                                                                                       |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `302` | No order carries that id (also: a malformed id); **also `GetInformation` on an order already paid** — see below                            |
-| `201` | `PerformTransaction`: a _new_ `transactionId` targets an order already paid by a different one, **or** the same `transactionId` sent twice |
-| `501` | The order exists but is expired, cancelled, held                                                                                           |
-| `413` | Amount ≠ the order's charge, to the tiyin                                                                                                  |
-| `203` | `CancelTransaction` on an unknown transaction                                                                                              |
-| `306` | Cancel refused — goods already delivered                                                                                                   |
-| `305` | `serviceId` is not the one we are contracted for                                                                                           |
-| `414` | `GetStatement` window is not in the format                                                                                                 |
+| Code  | When                                                                                                      |
+| ----- | --------------------------------------------------------------------------------------------------------- |
+| `302` | No order carries that id (also: a malformed id); **also any method on an order already paid** — see below |
+| `201` | `PerformTransaction` replayed with the same `transactionId`                                               |
+| `501` | The order exists but is expired, cancelled, held                                                          |
+| `413` | Amount ≠ the order's charge, to the tiyin                                                                 |
+| `203` | `CancelTransaction` on an unknown transaction                                                             |
+| `202` | `CancelTransaction` on a transaction already cancelled                                                    |
+| `306` | Cancel refused — goods already delivered                                                                  |
+| `305` | `serviceId` is not the one we are contracted for                                                          |
+| `414` | `GetStatement` window is not in the format                                                                |
 
-`201` and `501` are split deliberately: they need different answers from
-support — "you already paid" versus "place the order again".
+`302` and `501` are split deliberately: they need different answers from
+support — "check the number" versus "place the order again".
 
-**`GetInformation` on an already-paid order answers `302`, not `201`**
-(2026-09-22, Paynet certification feedback) — the one place this module's own
-error map is method-aware rather than a flat order-status → code lookup. A
-settled bill has nothing left to show a payer, so a status check reads it the
-same as "no such order"; `PerformTransaction` keeps `201` for the identical
-order, because a client actively trying to pay a second time is owed the
-specific reason it is refused. `_load_payable_order`'s `paid_is_not_found`
-flag is what the two methods disagree on — see `service.py`.
+**An already-paid order answers `302` in every method.** Our orders are
+one-time payments: once settled, the account is closed. `GetInformation` moved
+to `302` on 2026-09-22 (Paynet certification feedback); `PerformTransaction`
+followed on 2026-10-20, when Paynet's own tester flagged its `201` «заказ уже
+оплачен» for a new `transactionId` on a paid order.
 
 **A replayed `PerformTransaction` (same `transactionId`) also answers `201`**,
 not a silent second success (2026-09-22, same feedback: Paynet's own
 certification checklist sends this call twice on purpose and checks for the
 error). Nothing re-validates or charges twice either way — the stored row is
-untouched — only the response shape changed. `order_already_paid()` and
-`transaction_already_exists()` share the numeric code and differ only in the
-message, because a support agent reading either off a receipt needs to know
-which one actually happened.
+untouched — only the response shape changed.
 
 The same answer holds when the duplicate arrives _concurrently_ rather than
 sequentially: two calls can both pass the lookup before either flushes, and
@@ -145,11 +140,11 @@ on a retry-happy network, an ordinary event. The match is by name on purpose:
 the same flush also writes a `payments` row, and answering "already done" to
 _any_ integrity failure would claim a transaction we never wrote.
 
-**`202` ("транзакция уже отменена") is deliberately unused.** Paynet retries a
-cancel it never got an answer to, so a second `CancelTransaction` for the same
-id is far likelier to be a retry than a second intent — and an error on a retry
-reads as a reversal that failed. We echo the stored state 2 instead, which is
-both true and idempotent.
+**A repeated `CancelTransaction` answers `202`** («транзакция уже
+отменена»). Until 2026-10-20 it echoed state 2 as a success, so a retry would
+not read as a failed reversal; Paynet's own tester expects `202`, so that is
+the answer now. The money is reversed once either way, and `CheckTransaction`
+still reports state 2.
 
 ## Money safety
 
