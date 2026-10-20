@@ -84,3 +84,39 @@ async def test_a_dead_redis_still_answers(
     monkeypatch.setattr(price_list, "get_redis", _Down)
     assert await _unit_price(db_session, merchant) > 0
     await price_list.invalidate()  # logs, never raises
+
+
+async def test_the_cabinet_gets_the_last_copy_while_a_fresh_one_builds(
+    db_session: AsyncSession,
+) -> None:
+    """Past the minute, the grid answers at once from the stale copy and rebuilds behind it."""
+    import asyncio
+    import json
+
+    merchant, sku_id = await _seed(db_session)
+    first = json.loads(await price_list.summary_json(db_session, merchant=merchant))
+    redis = core_redis.get_redis()
+    assert await redis.ttl("merchants:price_list:0:summary:stale") > 0
+
+    # A price change behind the cache's back, then the minute runs out.
+    await db_session.execute(
+        update(Sku).where(Sku.id == sku_id).values(b2b_markup_pct=Decimal("50"))
+    )
+    await db_session.commit()
+    await redis.delete("merchants:price_list:0", "merchants:price_list:0:summary")
+
+    served = json.loads(await price_list.summary_json(db_session, merchant=merchant))
+    assert served == first  # the last copy, at once
+    await asyncio.gather(*list(price_list._rebuilds))
+
+    rebuilt = json.loads(await price_list.summary_json(db_session, merchant=merchant))
+    assert rebuilt["brands"][0]["from_usd"] != first["brands"][0]["from_usd"]
+
+
+async def test_a_module_write_drops_the_stale_copy_too(db_session: AsyncSession) -> None:
+    """``invalidate`` must never leave an old price to be served while rebuilding."""
+    merchant, _ = await _seed(db_session)
+    await price_list.summary_json(db_session, merchant=merchant)
+    await price_list.invalidate()
+    keys = [k async for k in core_redis.get_redis().scan_iter(match="merchants:price_list:*")]
+    assert keys == []

@@ -84,6 +84,7 @@ someone adding a fourth query.
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
@@ -157,6 +158,12 @@ def _names(rows: Sequence[Row[tuple[str, str, str]]]) -> dict[str, str]:
 #: resellers poll it a few hundred times a day. Sixty seconds is under the
 #: hourly price pass and well under what spec §8.4 asks a poller to tolerate.
 PRICE_LIST_TTL_SECONDS = 60
+#: How long the cabinet's views may be shown while a fresh one is built behind them. A
+#: cold build is ~2 s (2.3 MB tree), and with a one-minute TTL most visits to the catalogue
+#: paid it; now the first visit after the minute gets the last copy at once and starts the
+#: rebuild. ``invalidate`` drops these too, so a markup change never shows the old price.
+STALE_TTL_SECONDS = 300
+_REBUILD_LOCK_SECONDS = 30
 _KEY_PREFIX = "merchants:price_list:"
 
 
@@ -253,19 +260,72 @@ async def _derived_json(
     """
     key = f"{_cache_key(merchant)}:{suffix}"
     try:
-        raw = await get_redis().get(key)
-        if raw:
-            return raw if isinstance(raw, str) else bytes(raw).decode()
+        redis = get_redis()
+        fresh, stale = await redis.mget(key, f"{key}:stale")
+        if fresh:
+            return _text(fresh)
+        if stale:
+            # Stale-while-revalidate: this visit gets the last copy at once, and one
+            # background build (per key, per 30 s) refreshes it for the next.
+            if await redis.set(f"{key}:rebuilding", "1", nx=True, ex=_REBUILD_LOCK_SECONDS):
+                _spawn_rebuild(merchant.id, suffix, derive)
+            return _text(stale)
     except Exception:  # noqa: BLE001 — cache is best-effort, in both directions
         log.warning("merchant_price_list_cache_read_failed")
+    return await _rebuild_derived(db, merchant=merchant, key=key, derive=derive)
+
+
+def _text(raw: str | bytes) -> str:
+    return raw if isinstance(raw, str) else bytes(raw).decode()
+
+
+async def _rebuild_derived(
+    db: AsyncSession,
+    *,
+    merchant: Merchant,
+    key: str,
+    derive: Callable[[MerchantCatalogOut], str | None],
+) -> str | None:
+    """Build the view and store it fresh (a minute) and stale (five)."""
     body = derive(await build(db, merchant=merchant))
     if body is None:
         return None
     try:
-        await get_redis().set(key, body, ex=PRICE_LIST_TTL_SECONDS)
+        redis = get_redis()
+        await redis.set(key, body, ex=PRICE_LIST_TTL_SECONDS)
+        await redis.set(f"{key}:stale", body, ex=STALE_TTL_SECONDS)
     except Exception:  # noqa: BLE001
         log.warning("merchant_price_list_cache_write_failed")
     return body
+
+
+#: Background rebuilds in flight, held so the event loop does not drop them mid-way.
+_rebuilds: set[asyncio.Task[None]] = set()
+
+
+def _spawn_rebuild(
+    merchant_id: str, suffix: str, derive: Callable[[MerchantCatalogOut], str | None]
+) -> None:
+    """Rebuild one view in its own session: the request's closes when it answers."""
+
+    async def run() -> None:
+        # Lazy, like this module's other model imports (``Merchant`` is type-only here).
+        from yupay.core.db import get_session_factory
+        from yupay.modules.merchants.models import Merchant as MerchantRow
+
+        try:
+            async with get_session_factory()() as db:
+                merchant = await db.get(MerchantRow, merchant_id)
+                if merchant is None:
+                    return
+                key = f"{_cache_key(merchant)}:{suffix}"
+                await _rebuild_derived(db, merchant=merchant, key=key, derive=derive)
+        except Exception as exc:  # noqa: BLE001 — the next visit simply builds it inline
+            log.warning("merchant_price_list_rebuild_failed", error=type(exc).__name__)
+
+    task = asyncio.create_task(run())
+    _rebuilds.add(task)
+    task.add_done_callback(_rebuilds.discard)
 
 
 async def summary_json(db: AsyncSession, *, merchant: Merchant) -> str:
