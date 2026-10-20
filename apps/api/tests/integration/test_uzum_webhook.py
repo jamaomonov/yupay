@@ -1359,3 +1359,17 @@ async def test_reverse_after_a_refund_to_the_balance_is_10017(
         json={"serviceId": SERVICE_ID, "timestamp": 1, "transId": trans_id},
     )
     assert r.json()["errorCode"] == 10017
+
+
+async def test_an_oversized_body_is_refused_before_it_is_parsed(
+    integration_client: AsyncClient,
+) -> None:
+    """Parsed ahead of Basic auth and exempt from the IP rate limit, the body
+    was read whole whatever its size."""
+    r = await integration_client.post(
+        "/api/v1/payments/uzum/check",
+        content=b'{"pad":"' + b"x" * (70 * 1024) + b'"}',
+        headers={"content-type": "application/json"},
+    )
+    assert r.status_code == 400
+    assert r.json()["errorCode"] == 10002

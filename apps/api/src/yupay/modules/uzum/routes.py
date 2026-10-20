@@ -60,6 +60,26 @@ DbSession = Annotated[AsyncSession, Depends(db_session)]
 _ENVELOPE_FIELDS = frozenset({"serviceId", "timestamp", "transId"})
 
 
+#: Uzum's envelopes are a few hundred bytes. The body is parsed before Basic
+#: auth (an auth failure must still echo ``serviceId``/``transId``), and these
+#: routes are exempt from the per-IP rate limit, so an unbounded read let any
+#: caller make the API buffer and parse arbitrarily large JSON.
+_MAX_BODY_BYTES = 64 * 1024
+
+
+async def _read_capped(request: Request) -> bytes:
+    """The raw body, refused as malformed (``10002``) past :data:`_MAX_BODY_BYTES`."""
+    declared = request.headers.get("content-length")
+    if declared is not None and declared.isdigit() and int(declared) > _MAX_BODY_BYTES:
+        raise UzumError(code=10002, message="Request body too large")
+    raw = bytearray()
+    async for chunk in request.stream():
+        raw.extend(chunk)
+        if len(raw) > _MAX_BODY_BYTES:
+            raise UzumError(code=10002, message="Request body too large")
+    return bytes(raw)
+
+
 def _parse_body(raw: bytes) -> dict[str, Any]:
     """Parse the raw request body as a JSON object.
 
@@ -273,9 +293,8 @@ async def uzum_check(request: Request, db: DbSession) -> dict[str, Any] | JSONRe
         ``JSONResponse`` with the same error-body shape at HTTP 400 (see
         module docstring).
     """
-    raw = await request.body()
     try:
-        body = _parse_body(raw)
+        body = _parse_body(await _read_capped(request))
     except UzumError as exc:
         return _fail(exc)
 
@@ -318,9 +337,8 @@ async def uzum_create(request: Request, db: DbSession) -> dict[str, Any] | JSONR
         ``JSONResponse`` with the same error-body shape at HTTP 400 (see
         module docstring).
     """
-    raw = await request.body()
     try:
-        body = _parse_body(raw)
+        body = _parse_body(await _read_capped(request))
     except UzumError as exc:
         return _fail(exc)
 
@@ -366,9 +384,8 @@ async def uzum_confirm(request: Request, db: DbSession) -> dict[str, Any] | JSON
         ``JSONResponse`` with the same error-body shape at HTTP 400 (see
         module docstring).
     """
-    raw = await request.body()
     try:
-        body = _parse_body(raw)
+        body = _parse_body(await _read_capped(request))
     except UzumError as exc:
         return _fail(exc)
 
@@ -407,9 +424,8 @@ async def uzum_reverse(request: Request, db: DbSession) -> dict[str, Any] | JSON
         ``JSONResponse`` with the same error-body shape at HTTP 400 (see
         module docstring).
     """
-    raw = await request.body()
     try:
-        body = _parse_body(raw)
+        body = _parse_body(await _read_capped(request))
     except UzumError as exc:
         return _fail(exc)
 
@@ -446,9 +462,8 @@ async def uzum_status(request: Request, db: DbSession) -> dict[str, Any] | JSONR
         ``JSONResponse`` with the same error-body shape at HTTP 400 (see
         module docstring).
     """
-    raw = await request.body()
     try:
-        body = _parse_body(raw)
+        body = _parse_body(await _read_capped(request))
     except UzumError as exc:
         return _fail(exc)
 
