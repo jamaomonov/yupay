@@ -4,7 +4,7 @@ import { ArrowLeftRight } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { P2PDeposit, P2PDepositsPage, Transaction, TransactionsPage } from "@/lib/types";
 
@@ -18,7 +18,8 @@ import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { transactionKindLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
-import { dollars, formatUsd, toCents } from "@/lib/money";
+import { dollars, toCents } from "@/lib/money";
+import { mergeFeed } from "@/lib/feed";
 import { formatSom } from "@/lib/p2p";
 
 /**
@@ -110,6 +111,50 @@ function OrderCell({ row, locale }: { row: Transaction; locale: string }) {
   );
 }
 
+function RequestLabel({
+  deposit,
+  t,
+  tTop,
+}: {
+  deposit: P2PDeposit;
+  t: (key: string) => string;
+  tTop: (key: string) => string;
+}) {
+  return (
+    <span className="flex flex-wrap items-center gap-1.5">
+      <span className="text-tx-mute text-xs">{t("kindTopUpRequest")}</span>
+      <span
+        className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+          deposit.status === "pending" ? "text-gold bg-gold/10" : "text-tx-mute bg-tx-mute/10"
+        }`}
+      >
+        {tTop(`status.${deposit.status}`)}
+      </span>
+    </span>
+  );
+}
+
+function RequestCell({
+  deposit,
+  locale,
+  tTop,
+}: {
+  deposit: P2PDeposit;
+  locale: string;
+  tTop: (key: string, values?: Record<string, string>) => string;
+}) {
+  const what = `${deposit.number} · ${tTop("somAmount", { amount: formatSom(deposit.amount_uzs, locale) })}`;
+  if (deposit.status !== "pending") return <span className="font-mono text-xs">{what}</span>;
+  return (
+    <Link
+      href={pathFor(locale, "/cabinet/top-up")}
+      className="text-foreground font-mono text-xs underline underline-offset-4"
+    >
+      {what} · {tTop("continue")}
+    </Link>
+  );
+}
+
 export default function TransactionsList() {
   const t = useTranslations("merchant.transactions");
   const tCommon = useTranslations("merchant.common");
@@ -151,6 +196,11 @@ export default function TransactionsList() {
       })
       .catch(() => undefined);
   }, [selfServe]);
+
+  const feed = useMemo(
+    () => mergeFeed(rows ?? [], topUps, cursor !== null),
+    [rows, topUps, cursor],
+  );
 
   return (
     <div>
@@ -200,49 +250,6 @@ export default function TransactionsList() {
         )}
       </section>
 
-      {topUps.length > 0 && (
-        // A grid, not a wrapping row: five values with no headers drifted to
-        // five different x positions per line, so the eye could not run down a
-        // column. Status is a coloured chip like everywhere else.
-        <section className="border-border bg-card mt-5 rounded-xl border">
-          <h2 className="border-border text-tx-mute border-b px-5 py-3 text-sm font-semibold">
-            {tTop("history")}
-          </h2>
-          <ul className="divide-border divide-y">
-            {topUps.map((d) => (
-              <li
-                key={d.number}
-                className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-5 py-3 text-sm sm:grid-cols-[6rem_1fr_7rem_8rem_10rem]"
-              >
-                <span className="text-tx-dim font-mono text-xs">{d.number}</span>
-                <span className="font-mono tabular-nums sm:text-right">
-                  {formatSom(d.amount_uzs, locale)}
-                </span>
-                <span className="font-mono font-semibold tabular-nums sm:text-right">
-                  ${d.amount_usd}
-                </span>
-                <span className="sm:text-center">
-                  <span
-                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                      d.status === "paid"
-                        ? "text-primary-ink bg-primary/10"
-                        : d.status === "pending"
-                          ? "text-gold bg-gold/10"
-                          : "text-tx-mute bg-tx-mute/10"
-                    }`}
-                  >
-                    {tTop(`status.${d.status}`)}
-                  </span>
-                </span>
-                <span className="text-tx-dim text-xs sm:text-right">
-                  {formatMoment(d.created_at, locale)}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-
       {rows === null && !failed && <ListSkeleton className="mt-6" />}
       {rows === null && failed && (
         <LoadError
@@ -253,18 +260,37 @@ export default function TransactionsList() {
         />
       )}
 
-      {rows !== null && rows.length === 0 && (
+      {rows !== null && feed.length === 0 && (
         <EmptyState icon={ArrowLeftRight} title={t("empty")} hint={t("emptyHint")} />
       )}
 
-      {rows !== null && rows.length > 0 && (
+      {rows !== null && feed.length > 0 && (
         // One card per movement on a phone; the table cut the order column
         // mid-word and pushed the amount — the point of the row — off screen.
         <ul className="border-border bg-card divide-border mt-6 divide-y rounded-xl border md:hidden">
-          {rows.map((row, index) => {
+          {feed.map((entry) => {
+            if (entry.type === "request") {
+              const d = entry.deposit;
+              return (
+                <li key={`req-${d.number}`} className="px-4 py-3.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <RequestLabel deposit={d} t={t} tTop={tTop} />
+                      <p className="text-tx-mute mt-1.5 text-sm">
+                        <RequestCell deposit={d} locale={locale} tTop={tTop} />
+                      </p>
+                    </div>
+                    <p className="text-tx-dim shrink-0 font-mono text-sm tabular-nums">
+                      ${d.amount_usd}
+                    </p>
+                  </div>
+                  <p className="text-tx-dim mt-1 text-xs">{formatMoment(d.created_at, locale)}</p>
+                </li>
+              );
+            }
+            const { row, index } = entry;
             const cents = toCents(row.amount_usd);
             const credit = cents >= 0n;
-            const absolute = credit ? cents : -cents;
             const after = runningBalance(profile?.balance_usd ?? null, rows, index);
             return (
               <li key={row.transaction_id} className="px-4 py-3.5">
@@ -279,7 +305,8 @@ export default function TransactionsList() {
                     <p
                       className={`font-mono text-sm font-semibold tabular-nums ${credit ? "text-primary-ink" : ""}`}
                     >
-                      {credit ? "+" : "−"}${formatUsd(absolute)}
+                      {credit ? "+" : ""}
+                      {dollars(cents)}
                     </p>
                     <p className="text-tx-dim mt-1 font-mono text-[11px]">
                       {after === null ? "" : dollars(after)}
@@ -293,7 +320,7 @@ export default function TransactionsList() {
         </ul>
       )}
 
-      {rows !== null && rows.length > 0 && (
+      {rows !== null && feed.length > 0 && (
         <div className="border-border bg-card mt-6 hidden overflow-x-auto rounded-xl border md:block">
           <table className="w-full min-w-[46rem] text-sm">
             <thead className="text-tx-dim border-border border-b text-left text-xs">
@@ -306,10 +333,30 @@ export default function TransactionsList() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row, index) => {
+              {feed.map((entry) => {
+                if (entry.type === "request") {
+                  const d = entry.deposit;
+                  return (
+                    <tr key={`req-${d.number}`} className="border-border border-b last:border-0">
+                      <td className="text-tx-mute whitespace-nowrap px-4 py-3">
+                        {formatMoment(d.created_at, locale)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <RequestLabel deposit={d} t={t} tTop={tTop} />
+                      </td>
+                      <td className="text-tx-mute px-4 py-3">
+                        <RequestCell deposit={d} locale={locale} tTop={tTop} />
+                      </td>
+                      <td className="text-tx-dim whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums">
+                        ${d.amount_usd}
+                      </td>
+                      <td className="text-tx-dim px-4 py-3 text-right">—</td>
+                    </tr>
+                  );
+                }
+                const { row, index } = entry;
                 const cents = toCents(row.amount_usd);
                 const credit = cents >= 0n;
-                const absolute = credit ? cents : -cents;
                 const after = runningBalance(profile?.balance_usd ?? null, rows, index);
                 return (
                   <tr key={row.transaction_id} className="border-border border-b last:border-0">
@@ -333,7 +380,8 @@ export default function TransactionsList() {
                         credit ? "text-primary-ink font-semibold" : ""
                       }`}
                     >
-                      {credit ? "+" : "−"}${formatUsd(absolute)}
+                      {credit ? "+" : ""}
+                      {dollars(cents)}
                     </td>
                     <td className="text-tx-mute whitespace-nowrap px-4 py-3 text-right font-mono">
                       {after === null ? "—" : dollars(after)}

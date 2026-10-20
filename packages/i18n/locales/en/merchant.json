@@ -500,7 +500,8 @@
     "balance": "Balance",
     "topUpHint": "Top-ups are in USD. Message support — the amount lands once the transfer is confirmed.",
     "colBalanceAfter": "Balance after",
-    "emptyHint": "Deposit credits and per-order charges will show up here."
+    "emptyHint": "Deposit credits and per-order charges will show up here.",
+    "kindTopUpRequest": "Top-up request"
   },
   "settings": {
     "title": "Settings",
@@ -626,6 +627,7 @@
     "methodTitle": "Payment method",
     "methodCard": "Uzcard / Humo",
     "methodCardHint": "Card transfer",
-    "changeMethod": "Change method"
+    "changeMethod": "Change method",
+    "somAmount": "{amount} soʻm"
   }
 }

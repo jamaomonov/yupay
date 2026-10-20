@@ -500,7 +500,8 @@
     "balance": "Balans",
     "topUpHint": "Toʻldirish USD da. Qoʻllab-quvvatlash xizmatiga yozing — summa oʻtkazma tasdiqlangach tushadi.",
     "colBalanceAfter": "Keyingi balans",
-    "emptyHint": "Bu yerda depozitga tushumlar va buyurtmalar uchun yechimlar koʻrinadi."
+    "emptyHint": "Bu yerda depozitga tushumlar va buyurtmalar uchun yechimlar koʻrinadi.",
+    "kindTopUpRequest": "Toʻldirish soʻrovi"
   },
   "settings": {
     "title": "Sozlamalar",
@@ -626,6 +627,7 @@
     "methodTitle": "To‘ldirish usuli",
     "methodCard": "Uzcard / Humo",
     "methodCardHint": "Kartadan o‘tkazma",
-    "changeMethod": "Boshqa usul"
+    "changeMethod": "Boshqa usul",
+    "somAmount": "{amount} soʻm"
   }
 }
