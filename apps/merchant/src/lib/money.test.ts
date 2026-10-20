@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 
-import { fixedTotal, formatPrice, formatUsd, scaledTotal, toCents } from "./money";
+import {
+  dollars,
+  fixedTotal,
+  formatPrice,
+  formatUsd,
+  perHundred,
+  scaledTotal,
+  toCents,
+} from "./money";
 
 describe("parsing and formatting", () => {
   it("reads the decimal strings the API actually sends", () => {
@@ -56,5 +64,21 @@ describe("formatPrice", () => {
     expect(formatPrice("5")).toBe("5.00");
     // A per-Star price lives below a cent: its digits stay.
     expect(formatPrice("0.015500")).toBe("0.0155");
+  });
+});
+
+describe("dollars", () => {
+  it("puts the minus before the sign", () => {
+    expect(dollars(-88n)).toBe("−$0.88");
+    expect(dollars(128437n)).toBe("$1284.37");
+  });
+});
+
+describe("perHundred", () => {
+  it("moves the point for a price under a cent and leaves the rest alone", () => {
+    expect(perHundred("0.015576")).toBe("1.5576");
+    expect(perHundred("0.009000")).toBe("0.90");
+    expect(perHundred("0.05")).toBe("5.00");
+    expect(perHundred("0.25")).toBeNull();
   });
 });

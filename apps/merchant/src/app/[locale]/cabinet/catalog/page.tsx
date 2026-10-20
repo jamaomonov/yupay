@@ -14,7 +14,7 @@ import { LoadingNote } from "@/components/LoadingNote";
 import { PageHeading } from "@/components/PageHeading";
 import { downloadFile } from "@/lib/api";
 import { pathFor } from "@/lib/locale-href";
-import { formatUsd, toCents } from "@/lib/money";
+import { dollars, toCents } from "@/lib/money";
 
 /**
  * Cards painted per step. The grid used to mount all 879 brands with 850 lazy
@@ -125,7 +125,7 @@ function Card({ brand, locale }: { brand: BrandSummary; locale: string }) {
           ) : (
             <>
               <span className="text-primary-ink shrink-0 font-mono">
-                {t("from", { price: `$${formatUsd(from.cents)}` })}
+                {t("from", { price: dollars(from.cents) })}
               </span>
               <span className="hidden min-w-0 truncate sm:inline">
                 {product ?? t("skuCount", { count: brand.sku_count })}

@@ -5,7 +5,7 @@ import { useTranslations } from "next-intl";
 
 import type { Brand, Sku } from "@/lib/types";
 
-import { formatPrice } from "@/lib/money";
+import { formatPrice, perHundred } from "@/lib/money";
 
 /**
  * A brand's denominations as price-list rows, grouped by product.
@@ -64,7 +64,16 @@ export function SkuRows({
                   )}
                   <span className="min-w-0 flex-1 truncate text-sm font-medium">{sku.name}</span>
                   <span className="flex shrink-0 items-baseline gap-1 font-mono text-sm">
-                    {price ? `$${formatPrice(price)}` : "—"}
+                    {price && sku.kind === "unit" && perHundred(price) !== null ? (
+                      <>
+                        ${perHundred(price)}
+                        <span className="text-tx-dim font-sans text-[11px]">{t("perHundred")}</span>
+                      </>
+                    ) : price ? (
+                      `$${formatPrice(price)}`
+                    ) : (
+                      "—"
+                    )}
                     {sku.kind === "amount" && price && (
                       <span className="text-tx-dim font-sans text-[11px]">{t("perDollar")}</span>
                     )}

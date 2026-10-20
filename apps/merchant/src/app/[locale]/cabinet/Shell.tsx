@@ -84,7 +84,28 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
 
   const nav = (
     <>
+      {/* The account first: «Обзор» is where the cabinet opens, and it sat
+          third, under the catalogue's section list. */}
       <p className="text-tx-dim px-3 pb-1.5 pt-3 text-[10.5px] font-bold tracking-[0.09em]">
+        {t("groupAccount")}
+      </p>
+      <SideLink
+        href={pathFor(locale, "/cabinet")}
+        label={t("navDashboard")}
+        icon={LayoutDashboard}
+        active={here === "/cabinet"}
+      />
+      {ACCOUNT.map(({ key, path, icon }) => (
+        <SideLink
+          key={key}
+          href={pathFor(locale, path)}
+          label={t(key)}
+          icon={icon}
+          active={here.startsWith(path)}
+        />
+      ))}
+
+      <p className="text-tx-dim px-3 pb-1.5 pt-4 text-[10.5px] font-bold tracking-[0.09em]">
         {t("groupCatalog")}
       </p>
       {/* Sections, not a hard-coded pair: they come from the catalog the shell
@@ -102,25 +123,6 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
           label={section.name}
           count={section.count}
           active={onCatalog && active === section.slug}
-        />
-      ))}
-
-      <p className="text-tx-dim px-3 pb-1.5 pt-4 text-[10.5px] font-bold tracking-[0.09em]">
-        {t("groupAccount")}
-      </p>
-      <SideLink
-        href={pathFor(locale, "/cabinet")}
-        label={t("navDashboard")}
-        icon={LayoutDashboard}
-        active={here === "/cabinet"}
-      />
-      {ACCOUNT.map(({ key, path, icon }) => (
-        <SideLink
-          key={key}
-          href={pathFor(locale, path)}
-          label={t(key)}
-          icon={icon}
-          active={here.startsWith(path)}
         />
       ))}
 

@@ -16,7 +16,7 @@ import { ApiError, api } from "@/lib/api";
 import { soleSku } from "@/lib/catalog";
 import { orderStatusLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
-import { fixedTotal, formatPrice, formatUsd, scaledTotal, toCents } from "@/lib/money";
+import { dollars, fixedTotal, formatPrice, formatUsd, scaledTotal, toCents } from "@/lib/money";
 
 /** What this SKU is sized by, and therefore which box the form shows. */
 function countLabel(sku: Sku): "none" | "quantity" | "amount" {
@@ -85,7 +85,8 @@ export default function BrandPage() {
   const tCabinet = useTranslations("merchant.cabinet");
   const locale = useLocale();
   const { locale: routeLocale, slug } = useParams<{ locale: string; slug: string }>();
-  const { profile, refreshProfile } = useCabinet();
+  const { profile, refreshProfile, p2p } = useCabinet();
+  const tTop = useTranslations("merchant.topUp");
   // This brand's own subtree, fetched here: the shell only holds the grid's
   // cards. `undefined` while loading, `null` when the reseller cannot buy it.
   const [brand, setBrand] = useState<Brand | null | undefined>(undefined);
@@ -476,17 +477,17 @@ export default function BrandPage() {
                 <div className="flex justify-between">
                   <dt className="text-tx-mute">{t("priceNow")}</dt>
                   <dd className="font-mono font-semibold">
-                    {total === null ? "—" : `$${formatUsd(total)}`}
+                    {total === null ? "—" : dollars(total)}
                   </dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-tx-mute">{t("priceBefore")}</dt>
-                  <dd className="font-mono">{balance === null ? "—" : `$${formatUsd(balance)}`}</dd>
+                  <dd className="font-mono">{balance === null ? "—" : dollars(balance)}</dd>
                 </div>
                 <div className="flex justify-between">
                   <dt className="text-tx-mute">{t("depositAfter")}</dt>
                   <dd className={`font-mono ${affordable ? "" : "text-danger"}`}>
-                    {after === null ? "—" : `$${formatUsd(after)}`}
+                    {after === null ? "—" : dollars(after)}
                   </dd>
                 </div>
               </dl>
@@ -519,13 +520,13 @@ export default function BrandPage() {
                   setTouched(Object.fromEntries(fields.map((f) => [f.key, true])));
                   void order();
                 }}
-                className="bg-primary text-primary-foreground rounded-btn mt-4 w-full py-2.5 text-sm font-semibold disabled:opacity-50"
+                className="bg-primary text-primary-foreground rounded-btn disabled:bg-card-2 disabled:text-tx-dim mt-4 w-full py-2.5 text-sm font-semibold disabled:cursor-not-allowed"
               >
                 {busy
                   ? t("creating")
                   : total === null
                     ? t("createOrder")
-                    : `${t("createOrder")} · $${formatUsd(total)}`}
+                    : `${t("createOrder")} · ${dollars(total)}`}
               </button>
 
               {!affordable && total !== null && (
@@ -536,14 +537,22 @@ export default function BrandPage() {
                 // negative number, and had to infer the rest.
                 <p className="text-danger mt-3 text-[12px] leading-relaxed">
                   {t("notEnough")}{" "}
-                  <a
-                    href="https://t.me/yupay_support"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="underline"
-                  >
-                    {tCabinet("requestDeposit")}
-                  </a>
+                  {/* Self-serve top-up when it is on — sending a reseller to
+                      support for something the cabinet does itself was a detour. */}
+                  {p2p?.enabled === true ? (
+                    <Link href={pathFor(locale, "/cabinet/top-up")} className="underline">
+                      {tTop("title")}
+                    </Link>
+                  ) : (
+                    <a
+                      href="https://t.me/yupay_support"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="underline"
+                    >
+                      {tCabinet("requestDeposit")}
+                    </a>
+                  )}
                 </p>
               )}
 

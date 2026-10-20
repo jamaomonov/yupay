@@ -103,10 +103,10 @@ export function ApiKeysCard() {
       )}
 
       <form
-        // `items-start`, not `items-end`: the IP box is two rows tall and the
-        // name box one, so bottom-aligning them put the two labels at
-        // different heights. Tops line up; the button drops by one label.
-        className="mt-5 flex flex-wrap items-start gap-3"
+        // Two equal fields side by side, the button under them. The old row put
+        // a 224px box, a 288px two-line box and a button nudged down by a magic
+        // offset on one line, and none of the three edges agreed.
+        className="mt-5 grid gap-x-4 gap-y-3 sm:grid-cols-2"
         onSubmit={(event) => {
           event.preventDefault();
           setBusy(true);
@@ -133,7 +133,7 @@ export function ApiKeysCard() {
             });
         }}
       >
-        <div className="w-full sm:w-auto">
+        <div>
           <label htmlFor="key-label" className="text-tx-mute mb-1.5 block text-sm">
             {t("label")}
           </label>
@@ -144,31 +144,29 @@ export function ApiKeysCard() {
             onChange={(event) => {
               setLabel(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 text-sm sm:w-56"
+            className="border-border bg-card rounded-btn h-11 w-full border px-3.5 text-sm"
           />
-          <p className="text-tx-dim mt-1.5 text-xs sm:w-56">{t("labelHint")}</p>
+          <p className="text-tx-dim mt-1.5 text-xs">{t("labelHint")}</p>
         </div>
-        <div className="w-full sm:w-auto">
+        <div>
           <label htmlFor="key-ips" className="text-tx-mute mb-1.5 block text-sm">
             {t("ipAllowlist")}
           </label>
           <textarea
             id="key-ips"
-            rows={2}
+            rows={1}
             value={allowlist}
             onChange={(event) => {
               setAllowlist(event.target.value);
             }}
-            className="border-border bg-card rounded-btn w-full border px-3.5 py-2.5 font-mono text-xs sm:w-72"
+            className="border-border bg-card rounded-btn block min-h-11 w-full resize-y border px-3.5 py-3 font-mono text-xs"
           />
-          <p className="text-tx-dim mt-1.5 text-xs leading-relaxed sm:w-72">
-            {t("ipAllowlistHint")}
-          </p>
+          <p className="text-tx-dim mt-1.5 text-xs leading-relaxed">{t("ipAllowlistHint")}</p>
         </div>
         <button
           type="submit"
           disabled={busy}
-          className="bg-primary text-primary-foreground rounded-btn px-4 py-2.5 text-sm font-semibold disabled:opacity-60 sm:mt-[1.8rem]"
+          className="bg-primary text-primary-foreground rounded-btn justify-self-start px-4 py-2.5 text-sm font-semibold disabled:opacity-60 sm:col-span-2"
         >
           {t("createKey")}
         </button>

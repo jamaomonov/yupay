@@ -18,7 +18,7 @@ import { api } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { orderStatusLabel, orderStatusTone, orderTitle } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
-import { formatUsd, toCents } from "@/lib/money";
+import { dollars, toCents } from "@/lib/money";
 
 /** Enough to recognise "yes, my integration is placing orders" at a glance. */
 const RECENT = 6;
@@ -108,7 +108,7 @@ export default function Dashboard() {
       )}
 
       <div className="mt-5">
-        <TodayStats today={today} balance={balance === null ? "—" : `$${formatUsd(balance)}`} />
+        <TodayStats today={today} balance={balance === null ? "—" : dollars(balance)} />
       </div>
 
       {/* `grid-cols-1` and `min-w-0`: an implicit track sizes to its widest content, and
@@ -178,7 +178,7 @@ export default function Dashboard() {
                         {orderTitle(row, tOrders("colOrder"))}
                       </span>
                       <span className="shrink-0 font-mono text-xs">
-                        ${formatUsd(toCents(row.price_usd))}
+                        {dollars(toCents(row.price_usd))}
                       </span>
                     </div>
                     <div className="mt-1 flex items-center gap-2 text-xs">

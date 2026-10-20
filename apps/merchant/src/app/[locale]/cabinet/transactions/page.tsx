@@ -12,12 +12,13 @@ import { BrandMark } from "@/components/BrandMark";
 import { useCabinet } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { ListSkeleton } from "@/components/ListSkeleton";
+import { LoadError } from "@/components/LoadError";
 import { PageHeading } from "@/components/PageHeading";
 import { api, downloadFile } from "@/lib/api";
 import { formatMoment } from "@/lib/datetime";
 import { transactionKindLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
-import { formatUsd, toCents } from "@/lib/money";
+import { dollars, formatUsd, toCents } from "@/lib/money";
 import { formatSom } from "@/lib/p2p";
 
 /**
@@ -40,6 +41,28 @@ import { formatSom } from "@/lib/p2p";
  * Row 0 is the most recent movement, so the balance after it *is* the current
  * balance; each row below adds back what the rows above it moved.
  */
+/**
+ * What the movement was. An order charge — most rows — is plain text: a grey pill on
+ * every line was noise around the few that matter. Money coming in gets the green pill.
+ */
+function KindLabel({
+  row,
+  credit,
+  t,
+}: {
+  row: Transaction;
+  credit: boolean;
+  t: (key: string) => string;
+}) {
+  const label = transactionKindLabel(row.kind, t, row.order_id !== null);
+  if (!credit) return <span className="text-tx-mute text-xs">{label}</span>;
+  return (
+    <span className="text-primary-ink bg-primary/10 inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold">
+      {label}
+    </span>
+  );
+}
+
 function runningBalance(balance: string | null, rows: Transaction[], index: number): bigint | null {
   if (balance === null) return null;
   let cents = toCents(balance);
@@ -95,6 +118,7 @@ export default function TransactionsList() {
   const { profile, p2p } = useCabinet();
   const [topUps, setTopUps] = useState<P2PDeposit[]>([]);
   const [rows, setRows] = useState<Transaction[] | null>(null);
+  const [failed, setFailed] = useState(false);
   const [cursor, setCursor] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -103,13 +127,12 @@ export default function TransactionsList() {
     const query = after === null ? "" : `?cursor=${encodeURIComponent(after)}`;
     try {
       const page = await api<TransactionsPage>(`/transactions${query}`);
+      setFailed(false);
       setRows((previous) => (after === null ? page.items : [...(previous ?? []), ...page.items]));
       setCursor(page.next_cursor);
     } catch {
-      // See the orders list: the reachable failures are a lapsed session and
-      // a malformed cursor, neither of which this screen can produce.
-      setRows([]);
-      setCursor(null);
+      // See the orders list: an error, not «no movements».
+      if (after === null) setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -148,7 +171,7 @@ export default function TransactionsList() {
         <div>
           <p className="text-tx-dim text-xs">{t("balance")}</p>
           <p className="text-primary-ink mt-0.5 font-mono text-2xl font-extrabold">
-            {profile === null ? "—" : `$${formatUsd(toCents(profile.balance_usd))}`}
+            {profile === null ? "—" : dollars(toCents(profile.balance_usd))}
           </p>
         </div>
         {/* The hint said "write to support" with nothing to click, while the
@@ -178,26 +201,57 @@ export default function TransactionsList() {
       </section>
 
       {topUps.length > 0 && (
-        <section className="border-border bg-card mt-5 rounded-xl border p-5">
-          <h2 className="text-tx-mute text-sm font-semibold">{tTop("history")}</h2>
-          <ul className="divide-border mt-2 divide-y">
+        // A grid, not a wrapping row: five values with no headers drifted to
+        // five different x positions per line, so the eye could not run down a
+        // column. Status is a coloured chip like everywhere else.
+        <section className="border-border bg-card mt-5 rounded-xl border">
+          <h2 className="border-border text-tx-mute border-b px-5 py-3 text-sm font-semibold">
+            {tTop("history")}
+          </h2>
+          <ul className="divide-border divide-y">
             {topUps.map((d) => (
               <li
                 key={d.number}
-                className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2.5 text-sm"
+                className="grid grid-cols-[1fr_auto] items-center gap-x-4 gap-y-1 px-5 py-3 text-sm sm:grid-cols-[6rem_1fr_7rem_8rem_10rem]"
               >
-                <span className="font-mono text-xs">{d.number}</span>
-                <span className="font-mono">{formatSom(d.amount_uzs, locale)}</span>
-                <span className="font-mono">${d.amount_usd}</span>
-                <span className="text-tx-mute text-xs">{tTop(`status.${d.status}`)}</span>
-                <span className="text-tx-dim text-xs">{formatMoment(d.created_at, locale)}</span>
+                <span className="text-tx-dim font-mono text-xs">{d.number}</span>
+                <span className="font-mono tabular-nums sm:text-right">
+                  {formatSom(d.amount_uzs, locale)}
+                </span>
+                <span className="font-mono font-semibold tabular-nums sm:text-right">
+                  ${d.amount_usd}
+                </span>
+                <span className="sm:text-center">
+                  <span
+                    className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                      d.status === "paid"
+                        ? "text-primary-ink bg-primary/10"
+                        : d.status === "pending"
+                          ? "text-gold bg-gold/10"
+                          : "text-tx-mute bg-tx-mute/10"
+                    }`}
+                  >
+                    {tTop(`status.${d.status}`)}
+                  </span>
+                </span>
+                <span className="text-tx-dim text-xs sm:text-right">
+                  {formatMoment(d.created_at, locale)}
+                </span>
               </li>
             ))}
           </ul>
         </section>
       )}
 
-      {rows === null && <ListSkeleton className="mt-6" />}
+      {rows === null && !failed && <ListSkeleton className="mt-6" />}
+      {rows === null && failed && (
+        <LoadError
+          onRetry={() => {
+            setFailed(false);
+            void fetchPage(null);
+          }}
+        />
+      )}
 
       {rows !== null && rows.length === 0 && (
         <EmptyState icon={ArrowLeftRight} title={t("empty")} hint={t("emptyHint")} />
@@ -216,23 +270,19 @@ export default function TransactionsList() {
               <li key={row.transaction_id} className="px-4 py-3.5">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <span
-                      className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                        credit ? "text-primary-ink bg-primary/10" : "text-tx-mute bg-tx-mute/10"
-                      }`}
-                    >
-                      {transactionKindLabel(row.kind, t, row.order_id !== null)}
-                    </span>
+                    <KindLabel row={row} credit={credit} t={t} />
                     <div className="mt-1.5 text-sm">
                       <OrderCell row={row} locale={locale} />
                     </div>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className={`font-mono text-sm font-semibold ${credit ? "text-blue" : ""}`}>
+                    <p
+                      className={`font-mono text-sm font-semibold tabular-nums ${credit ? "text-primary-ink" : ""}`}
+                    >
                       {credit ? "+" : "−"}${formatUsd(absolute)}
                     </p>
                     <p className="text-tx-dim mt-1 font-mono text-[11px]">
-                      {after === null ? "" : `$${formatUsd(after)}`}
+                      {after === null ? "" : dollars(after)}
                     </p>
                   </div>
                 </div>
@@ -267,13 +317,7 @@ export default function TransactionsList() {
                       {formatMoment(row.created_at, locale)}
                     </td>
                     <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                          credit ? "text-primary-ink bg-primary/10" : "text-tx-mute bg-tx-mute/10"
-                        }`}
-                      >
-                        {transactionKindLabel(row.kind, t, row.order_id !== null)}
-                      </span>
+                      <KindLabel row={row} credit={credit} t={t} />
                     </td>
                     <td className="px-4 py-3">
                       {/* A manual movement has no order, so this cell was a
@@ -285,14 +329,14 @@ export default function TransactionsList() {
                       <OrderCell row={row} locale={locale} />
                     </td>
                     <td
-                      className={`whitespace-nowrap px-4 py-3 text-right font-mono ${
-                        credit ? "text-blue" : ""
+                      className={`whitespace-nowrap px-4 py-3 text-right font-mono tabular-nums ${
+                        credit ? "text-primary-ink font-semibold" : ""
                       }`}
                     >
                       {credit ? "+" : "−"}${formatUsd(absolute)}
                     </td>
                     <td className="text-tx-mute whitespace-nowrap px-4 py-3 text-right font-mono">
-                      {after === null ? "—" : `$${formatUsd(after)}`}
+                      {after === null ? "—" : dollars(after)}
                     </td>
                   </tr>
                 );

@@ -14,7 +14,8 @@
     "notFoundBody": "The address is wrong, or the section moved.",
     "goHome": "Go home",
     "loading": "Loading…",
-    "exportCsv": "Download CSV"
+    "exportCsv": "Download CSV",
+    "loadError": "Couldn't load this. Check your connection and try again."
   },
   "landing": {
     "heading": "Wholesale prices on game top-ups. For people who sell on Telegram.",
@@ -279,7 +280,8 @@
     "sectionAll": "All",
     "showMore": "Show more",
     "skuCount": "{count, plural, one {# item} other {# items}}",
-    "loading": "Loading the catalogue…"
+    "loading": "Loading the catalogue…",
+    "perHundred": "per 100"
   },
   "docs": {
     "title": "Documentation",

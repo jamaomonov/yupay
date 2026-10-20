@@ -11,7 +11,7 @@ import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Mark } from "@/components/Mark";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { pathFor } from "@/lib/locale-href";
-import { formatUsd, toCents } from "@/lib/money";
+import { dollars, toCents } from "@/lib/money";
 
 /**
  * Balance, search and account, on every cabinet screen.
@@ -107,7 +107,7 @@ export function TopBar() {
       <div className="ml-auto flex min-w-0 items-center gap-2 sm:ml-0 sm:shrink-0 sm:gap-3">
         <div className="border-border bg-card rounded-btn flex items-center gap-2 border py-1 pl-3 pr-1 sm:gap-3 sm:pl-4">
           <span className="text-primary-ink font-mono text-sm font-extrabold tabular-nums">
-            {balance === null ? "—" : `$${formatUsd(balance)}`}
+            {balance === null ? "—" : dollars(balance)}
           </span>
           {p2p === null ? (
             // Status still loading: neutral, so the control does not appear as

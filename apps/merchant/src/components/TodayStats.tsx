@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 
 import type { Summary } from "@/lib/types";
 
-import { formatUsd, toCents } from "@/lib/money";
+import { dollars, toCents } from "@/lib/money";
 
 /**
  * Today's three numbers: orders placed, how many of them worked, what they
@@ -32,7 +32,7 @@ export function TodayStats({ today, balance }: { today: Summary | null; balance?
         value={
           today === null
             ? "—"
-            : `$${formatUsd(toCents(today.spend_usd))}${today.spend_capped ? "+" : ""}`
+            : `${dollars(toCents(today.spend_usd))}${today.spend_capped ? "+" : ""}`
         }
         label={t("statSpend")}
       />

@@ -38,6 +38,14 @@ export function formatUsd(cents: bigint): string {
   return `${negative ? "-" : ""}${whole}.${String(rest).padStart(2, "0")}`;
 }
 
+/**
+ * Dollars as a reseller reads them: `$1284.37` (no grouping, like the rest of the cabinet), and a debit as `−$0.88` (a real minus, before the sign), never the
+ * `$-0.88` that string-gluing «$» onto a signed number produced.
+ */
+export function dollars(cents: bigint): string {
+  return cents < 0n ? `−$${formatUsd(-cents)}` : `$${formatUsd(cents)}`;
+}
+
 /** Round a micro-dollar amount up to the cent — the server's rule, once. */
 function ceilToCent(micros: bigint): bigint {
   const per = MICROS / CENTS;
@@ -65,4 +73,18 @@ export function formatPrice(value: string): string {
   const [whole = "0", fraction = ""] = value.split(".");
   const trimmed = fraction.replace(/0+$/, "");
   return `${whole}.${trimmed.padEnd(2, "0")}`;
+}
+
+/**
+ * A unit price under ten cents, read per hundred: a Star at `$0.015576` is `$1.5576` for 100 —
+ * six decimals on a price list read as noise, and nobody buys one Star. Exact: the decimal
+ * point moves, nothing is rounded. `null` from ten cents up.
+ */
+export function perHundred(unitPrice: string): string | null {
+  if (scaled(unitPrice, MICROS) >= MICROS / 10n) return null;
+  const [whole = "0", fraction = ""] = unitPrice.split(".");
+  const digits = (fraction + "00").slice(0, 2);
+  const rest = fraction.slice(2);
+  const head = `${whole === "0" ? "" : whole}${digits}`.replace(/^0+(?=\d)/, "");
+  return formatPrice(`${head || "0"}.${rest}`);
 }

@@ -14,7 +14,8 @@
     "notFoundBody": "Manzil notoʻgʻri yoki boʻlim koʻchirilgan.",
     "goHome": "Bosh sahifaga",
     "loading": "Yuklanmoqda…",
-    "exportCsv": "CSV yuklab olish"
+    "exportCsv": "CSV yuklab olish",
+    "loadError": "Yuklab boʻlmadi. Internetni tekshirib, qayta urinib koʻring."
   },
   "landing": {
     "heading": "Oʻyin toʻldirishlar optom narxda. Telegramda sotadiganlar uchun.",
@@ -279,7 +280,8 @@
     "sectionAll": "Hammasi",
     "showMore": "Yana koʻrsatish",
     "skuCount": "{count, plural, one {# ta pozitsiya} other {# ta pozitsiya}}",
-    "loading": "Katalog yuklanmoqda…"
+    "loading": "Katalog yuklanmoqda…",
+    "perHundred": "100 tasi"
   },
   "docs": {
     "title": "Hujjatlar",
