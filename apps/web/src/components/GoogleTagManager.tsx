@@ -1,11 +1,9 @@
-import { SENSITIVE_PARAMS } from "@/lib/scrubUrl";
+import { scrubScript } from "@/lib/scrubUrl";
 
 /** The container id. One per storefront; the mini app does not load it. */
 export const GTM_ID = "GTM-5B7J6XCB";
 
-const SCRUB_CALLS = SENSITIVE_PARAMS.map(
-  (p) => `_gtU.searchParams.delete(${JSON.stringify(p)});`,
-).join(" ");
+const SCRUB_CALLS = scrubScript("_gtU");
 
 // Google's stock snippet, with one addition in front of it: the first
 // dataLayer entry is a `page_location` with the sensitive query params

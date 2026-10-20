@@ -58,10 +58,9 @@ export function GuestOrderCard({ entry, locale }: { entry: GuestOrder; locale: s
     },
   });
 
-  const href = pathFor(
-    locale,
-    `/orders/${entry.orderId}?email=${encodeURIComponent(normalizedEmail)}`,
-  );
+  // Bare: the order page finds the email in this same history entry
+  // (`guestEmailFor`), so the address never rides in a URL.
+  const href = pathFor(locale, `/orders/${entry.orderId}`);
 
   if (order.data) {
     return <OrderCard order={order.data} locale={locale} href={href} />;

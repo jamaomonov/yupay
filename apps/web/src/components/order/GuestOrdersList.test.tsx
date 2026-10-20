@@ -118,13 +118,11 @@ it("fetches each guest order via a per-email guest token and renders the full or
   expect(screen.getByText("Credited")).toBeInTheDocument();
   expect(mockMintGuestToken).toHaveBeenCalledWith("buyer@example.com");
   expect(mockApiFetch).toHaveBeenCalledWith("/orders/o1");
-  expect(screen.getByRole("link")).toHaveAttribute(
-    "href",
-    "/en/orders/o1?email=buyer%40example.com",
-  );
+  // No email in the link: the order page reads it from this browser.
+  expect(screen.getByRole("link")).toHaveAttribute("href", "/en/orders/o1");
 });
 
-it("falls back to the stub card with a normalized-email link when the order fetch fails", async () => {
+it("falls back to the stub card linking the bare order page when the order fetch fails", async () => {
   mockMintGuestToken.mockResolvedValue("guest-tok");
   mockApiFetch.mockRejectedValue(new Error("not found"));
 
@@ -143,6 +141,6 @@ it("falls back to the stub card with a normalized-email link when the order fetc
   expect(screen.getByText("PUBG Mobile")).toBeInTheDocument();
   expect(screen.getByRole("link", { name: /PUBG Mobile/ })).toHaveAttribute(
     "href",
-    "/en/orders/o1?email=buyer%40example.com",
+    "/en/orders/o1",
   );
 });

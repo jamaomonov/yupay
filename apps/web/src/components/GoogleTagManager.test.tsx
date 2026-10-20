@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { GTM_ID, GoogleTagManager } from "./GoogleTagManager";
 
-import { SENSITIVE_PARAMS } from "@/lib/scrubUrl";
+import { scrubScript } from "@/lib/scrubUrl";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -27,9 +27,7 @@ describe("GoogleTagManager", () => {
     // The scrubbed page_location is pushed before the loader runs, from the
     // single list in lib/scrubUrl — a hand-kept copy is how Metrika leaked a
     // token once (threat-model.md).
-    for (const p of SENSITIVE_PARAMS) {
-      expect(script).toContain(`searchParams.delete(${JSON.stringify(p)})`);
-    }
+    expect(script).toContain(scrubScript("_gtU"));
     expect(container.querySelector("noscript")).not.toBeNull();
   });
 });

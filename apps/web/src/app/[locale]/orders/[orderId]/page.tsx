@@ -1,14 +1,38 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Suspense, use } from "react";
+import { Suspense, use, useEffect, useSyncExternalStore } from "react";
 
 import { OrderStatus } from "@/components/order/OrderStatus";
 import { OrderStatusSkeleton } from "@/components/order/OrderStatusSkeleton";
+import { guestEmailFor, rememberGuestEmail } from "@/lib/guest-orders";
+
+const noSubscription = () => () => undefined;
 
 function OrderPageInner({ orderId }: { orderId: string }) {
-  const rawEmail = useSearchParams().get("email");
-  const props = rawEmail ? { orderId, email: rawEmail } : { orderId };
+  const searchParams = useSearchParams();
+  const fromLink = searchParams.get("email");
+  // Read on the client only: storage does not exist while prerendering, and a
+  // guest's email must not be guessed into the server HTML.
+  const stored = useSyncExternalStore(
+    noSubscription,
+    () => guestEmailFor(orderId),
+    () => null,
+  );
+
+  useEffect(() => {
+    if (fromLink === null) return;
+    // An emailed link or an acquirer's return still carries `?email=`. Keep it
+    // in this browser and take it out of the address bar, so later SPA
+    // navigations and analytics hits never see it.
+    rememberGuestEmail(orderId, fromLink);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("email");
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  }, [fromLink, orderId]);
+
+  const email = fromLink ?? stored;
+  const props = email ? { orderId, email } : { orderId };
   return <OrderStatus {...props} />;
 }
 

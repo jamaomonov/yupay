@@ -47,3 +47,46 @@ export function removeGuestOrders(orderIds: string[]): void {
     /* ignore */
   }
 }
+
+/** Which email a guest order belongs to, by order id.
+ *
+ * The order page used to learn it from `?email=` in its own URL, which put the
+ * address in every SPA navigation an analytics tag could report and in the
+ * edge access log. Checkout now records it here and links to the bare
+ * `/orders/{id}`. Separate from {@link saveGuestOrder}: that entry needs brand
+ * data checkout does not always have, and this one must always exist. */
+const EMAIL_KEY = "yupay.web.guest_order_emails";
+
+function readEmails(): Record<string, string> {
+  try {
+    const raw = window.localStorage.getItem(EMAIL_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : {};
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? // A JSON object we wrote ourselves; values are checked on read below.
+        (parsed as Record<string, string>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+export function rememberGuestEmail(orderId: string, email: string): void {
+  if (typeof window === "undefined") return;
+  const entries = Object.entries(readEmails()).filter(([id]) => id !== orderId);
+  const first: [string, string] = [orderId, email];
+  const kept = [first, ...entries].slice(0, CAP);
+  const next = Object.fromEntries(kept);
+  try {
+    window.localStorage.setItem(EMAIL_KEY, JSON.stringify(next));
+  } catch {
+    /* storage blocked — the order page then asks the guest to sign in */
+  }
+}
+
+/** The email this browser placed `orderId` with, or `null`. */
+export function guestEmailFor(orderId: string): string | null {
+  if (typeof window === "undefined") return null;
+  const stored = readEmails()[orderId];
+  if (typeof stored === "string" && stored !== "") return stored;
+  return listGuestOrders().find((o) => o.orderId === orderId)?.email ?? null;
+}

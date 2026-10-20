@@ -32,6 +32,10 @@ export default function SteamCallbackPage() {
     for (const [key, value] of new URLSearchParams(window.location.search)) {
       if (key.startsWith("openid.")) params[key] = value;
     }
+    // Out of the address bar at once: the assertion is a one-time credential,
+    // and anything that reads `location` from here on (an analytics hit, a
+    // copied link, a referrer) must not see it.
+    window.history.replaceState(window.history.state, "", window.location.pathname);
     if (Object.keys(params).length === 0) {
       setFailed(true);
       return;

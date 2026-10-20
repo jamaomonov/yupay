@@ -7,6 +7,8 @@ import { beforeEach, expect, it, vi } from "vitest";
 import { QuickTopUpCard, type TopUpOffer } from "./QuickTopUpCard";
 import messages from "../../../../../packages/i18n/locales/ru/web.json";
 
+import { takeHandoff } from "@/lib/handoff";
+
 const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
 
@@ -48,7 +50,11 @@ it("prices a Steam amount in soʻm and hands login and amount to the Steam page"
   expect(screen.getByText(/128\s000 сум/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Логин Steam"), { target: { value: " gaben_42 " } });
   fireEvent.click(screen.getByRole("button", { name: /Пополнить/ }));
-  expect(push).toHaveBeenCalledWith("/store/steam?steam_login=gaben_42&amount=10");
+  // The login travels in session storage, never in the URL analytics reports.
+  expect(push).toHaveBeenCalledWith("/store/steam");
+  const handed = takeHandoff("/store/steam");
+  expect(handed?.get("steam_login")).toBe("gaben_42");
+  expect(handed?.get("amount")).toBe("10");
 });
 
 it("refuses a Steam login that is not one and says why", () => {
@@ -67,7 +73,10 @@ it("prices stars per star and hands the username to the Stars page", () => {
     target: { value: "@durov" },
   });
   fireEvent.click(screen.getByRole("button", { name: /Купить Stars/ }));
-  expect(push).toHaveBeenCalledWith("/store/telegram-stars?username=%40durov&amount=250");
+  expect(push).toHaveBeenCalledWith("/store/telegram-stars");
+  const handed = takeHandoff("/store/telegram-stars");
+  expect(handed?.get("username")).toBe("@durov");
+  expect(handed?.get("amount")).toBe("250");
 });
 
 it("refuses a fraction of a star", () => {

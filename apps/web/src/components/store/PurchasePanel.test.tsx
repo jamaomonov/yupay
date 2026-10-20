@@ -1414,11 +1414,10 @@ it("pushes the order page — flagged to open the acquirer — instead of the ac
   fireEvent.click(await screen.findByRole("button", { name: "confirmCta" }));
 
   await waitFor(() => {
-    // The guest's `?email=` survives — the order page needs it to load
-    // anything at all — and the one-shot flag rides beside it.
-    expect(pushMock).toHaveBeenCalledWith(
-      `/orders/order-1?email=buyer%40example.com&${AUTO_OPEN_PARAM}=1`,
-    );
+    // No `?email=` in the page we navigate to — an analytics tag reporting
+    // the SPA navigation would get it. The order page reads the email this
+    // browser stored; only the acquirer's return keeps it.
+    expect(pushMock).toHaveBeenCalledWith(`/orders/order-1?${AUTO_OPEN_PARAM}=1`);
   });
   // And the created order is still on screen behind the navigation, so a push
   // that never lands cannot lose it.

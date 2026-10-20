@@ -98,3 +98,30 @@ describe("guest-orders", () => {
     expect(listGuestOrders()).toEqual([]);
   });
 });
+
+describe("guest order emails", () => {
+  it("returns the email checkout recorded for the order", async () => {
+    const { rememberGuestEmail, guestEmailFor } = await import("./guest-orders");
+    rememberGuestEmail("o-1", "a@b.uz");
+    expect(guestEmailFor("o-1")).toBe("a@b.uz");
+    expect(guestEmailFor("o-2")).toBeNull();
+  });
+
+  it("falls back to the guest order history", async () => {
+    const { saveGuestOrder, guestEmailFor } = await import("./guest-orders");
+    saveGuestOrder({
+      orderId: "o-3",
+      email: "c@d.uz",
+      brandSlug: "steam",
+      brandName: "Steam",
+      createdAt: "2026-10-20T00:00:00Z",
+    });
+    expect(guestEmailFor("o-3")).toBe("c@d.uz");
+  });
+
+  it("survives garbage in storage", async () => {
+    const { guestEmailFor } = await import("./guest-orders");
+    window.localStorage.setItem("yupay.web.guest_order_emails", "[1,2]");
+    expect(guestEmailFor("o-1")).toBeNull();
+  });
+});

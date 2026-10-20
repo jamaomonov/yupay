@@ -22,7 +22,8 @@ import { buttonStyles } from "@/lib/button";
 import { ApiError, getAccessToken, SURFACE } from "@/lib/client";
 import { collectClientHints } from "@/lib/client-hints";
 import { mintGuestToken } from "@/lib/guest";
-import { saveGuestOrder } from "@/lib/guest-orders";
+import { rememberGuestEmail, saveGuestOrder } from "@/lib/guest-orders";
+import { takeHandoff } from "@/lib/handoff";
 import { isOptimizable } from "@/lib/image";
 import { IntentRefused, PENDING_ORDER_REUSE_MS, parseIntentFailure } from "@/lib/intent-failure";
 import { saveOrderAccess } from "@/lib/order-access";
@@ -1076,7 +1077,7 @@ export function PurchasePanel({
   const [handedOff, setHandedOff] = useState<ReadonlySet<string>>(() => new Set());
   useEffect(() => {
     const seed = prefillFromQuery(
-      new URLSearchParams(window.location.search),
+      takeHandoff(window.location.pathname) ?? new URLSearchParams(window.location.search),
       products[0]?.required_fields ?? [],
     );
     const keys = Object.keys(seed.fields);
@@ -1703,8 +1704,15 @@ export function PurchasePanel({
       // Absolute URL the acquirer redirects the customer back to after they
       // pay — the server validates + defaults it, but the order page (with
       // the guest `?email=` suffix, when applicable) is always the right target.
-      const trackHref = pathFor(locale, `/orders/${order.id}${emailSuffix}`);
-      const returnUrl = `${window.location.origin}${trackHref}`;
+      // The page we send the buyer to carries no email: it reads it from this
+      // browser (`guestEmailFor`), so neither an SPA navigation an analytics
+      // tag reports nor a copied link holds the address. Only the acquirer's
+      // return keeps `?email=` — it may come back in another browser (a bank
+      // app opening the default one), where nothing is stored; the order page
+      // takes it out of the address bar on arrival.
+      if (!isLoggedIn) rememberGuestEmail(order.id, email);
+      const trackHref = pathFor(locale, `/orders/${order.id}`);
+      const returnUrl = `${window.location.origin}${pathFor(locale, `/orders/${order.id}${emailSuffix}`)}`;
 
       const intentRes = await fetch(intentsUrl, {
         method: "POST",

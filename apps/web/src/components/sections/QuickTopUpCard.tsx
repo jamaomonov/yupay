@@ -8,6 +8,7 @@ import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
 
 import { buttonStyles } from "@/lib/button";
+import { stashHandoff } from "@/lib/handoff";
 import { formatUzs } from "@/lib/seo";
 import { amountError, parseAmount, unitAmountError } from "@/lib/variable-amount";
 
@@ -90,7 +91,9 @@ export function QuickTopUpCard({ offer, locale }: { offer: TopUpOffer; locale: s
     setTouched(true);
     if (!whoOk || total === null) return;
     const q = new URLSearchParams({ [offer.fieldKey]: who.trim(), amount: amount.trim() });
-    router.push(`${offer.href}?${q.toString()}`);
+    // Not in the URL: a recipient there reaches analytics (see `lib/handoff`).
+    stashHandoff(offer.href, q);
+    router.push(offer.href);
   }
 
   return (

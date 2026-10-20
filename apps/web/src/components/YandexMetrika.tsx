@@ -2,7 +2,7 @@ import { Suspense } from "react";
 
 import { YandexMetrikaHits } from "./YandexMetrikaHits";
 
-import { SENSITIVE_PARAMS } from "@/lib/scrubUrl";
+import { scrubScript } from "@/lib/scrubUrl";
 
 /**
  * Yandex.Metrika counter for the public storefront (id 111054393).
@@ -27,9 +27,7 @@ import { SENSITIVE_PARAMS } from "@/lib/scrubUrl";
  *  list so the first-pageview URL and the SPA-hit URL can never scrub different
  *  sets — the drift that leaked verify/reset tokens to Metrika. JSON.stringify
  *  keeps the names safely quoted inside the inline script. */
-const SCRUB_CALLS = SENSITIVE_PARAMS.map(
-  (p) => `_ymU.searchParams.delete(${JSON.stringify(p)});`,
-).join(" ");
+const SCRUB_CALLS = scrubScript("_ymU");
 
 const YM_SNIPPET = `window.dataLayer = window.dataLayer || [];
 (function(m,e,t,r,i,k,a){

@@ -18,7 +18,7 @@
  */
 import { ApiError, getAccessToken, SURFACE } from "./client";
 import { mintGuestToken } from "./guest";
-import { saveGuestOrder } from "./guest-orders";
+import { rememberGuestEmail, saveGuestOrder } from "./guest-orders";
 import { pathFor } from "./seo";
 
 const API = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000").replace(/\/$/, "");
@@ -237,9 +237,12 @@ export async function buyGift(params: BuyGiftParams): Promise<BuyGiftResult> {
   }
   const order = (await orderRes.json()) as { id: string };
 
+  // No email in the page we navigate to — see `PurchasePanel`; only the
+  // acquirer's return keeps it, for a return that lands in another browser.
   const emailSuffix = isLoggedIn ? "" : `?email=${encodeURIComponent(email)}`;
-  const trackHref = pathFor(locale, `/orders/${order.id}${emailSuffix}`);
-  const returnUrl = `${window.location.origin}${trackHref}`;
+  if (!isLoggedIn) rememberGuestEmail(order.id, email);
+  const trackHref = pathFor(locale, `/orders/${order.id}`);
+  const returnUrl = `${window.location.origin}${pathFor(locale, `/orders/${order.id}${emailSuffix}`)}`;
 
   // Guest payment intents require the email as a query param — the API
   // rebuilds the guest-token hash from it to verify the Guest bearer (see
