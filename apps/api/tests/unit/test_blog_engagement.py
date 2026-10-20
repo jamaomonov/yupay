@@ -24,3 +24,20 @@ def test_resolve_reader_replaces_garbage() -> None:
     assert minted is True
     assert len(cookie) == 64
     assert digest == hash_reader(cookie)
+
+
+def test_resolve_reader_replaces_a_non_ascii_cookie_instead_of_crashing() -> None:
+    """``isalnum`` accepted 64 × «é», then ``hash_reader`` raised on encode: a 500."""
+    from yupay.modules.blog.engagement import resolve_reader
+
+    cookie, _digest, minted = resolve_reader("é" * 64)
+
+    assert minted is True
+    assert cookie != "é" * 64
+
+
+def test_resolve_reader_replaces_uppercase_or_non_hex() -> None:
+    from yupay.modules.blog.engagement import resolve_reader
+
+    assert resolve_reader("Z" * 64)[2] is True
+    assert resolve_reader("A" * 64)[2] is True

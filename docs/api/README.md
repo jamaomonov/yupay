@@ -31,7 +31,7 @@ apps/api  ──▶  FastAPI.openapi()  ──▶  docs/api/openapi.json
 
 Anonymous public reads under `/api/v1/blog` (list, `/{slug}`, `/by-brand/{brandSlug}`).
 Guests record a unique view (`POST /{slug}/view`) and like (`POST`/`DELETE /{slug}/like`)
-with `Idempotency-Key`; identity is the `yp_blog_reader` cookie (hashed at rest, ADR-0073).
+with `Idempotency-Key`; identity is the `yp_blog_reader` cookie (hashed at rest, ADR-0073). A request without a valid cookie is minted a new reader, so the three are capped per IP by their own `ip_guard` bucket, `blog-engagement` (120/min), and a cookie that is not 64 lowercase hex is replaced.
 Only `status=published` translations are returned; a missing locale is 404, not a
 `ru` fallback. List/detail items carry `id`; detail also carries `locale_slugs`
 so the storefront can emit hreflang only for locales that have a row. Admin writes live at `/api/v1/admin/blog/posts` and require the

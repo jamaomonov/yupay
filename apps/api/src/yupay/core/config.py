@@ -221,6 +221,9 @@ class Settings(BaseSettings):
             # minute, many of them behind one carrier address. A refused beacon
             # only loses a count, never a sale, but it should not lose the burst.
             "affiliate-click": 300,
+            # Anonymous blog likes/views: a reader is whoever holds a cookie,
+            # so this per-IP ceiling is the only bound on inflating the counts.
+            "blog-engagement": 120,
             # A campaign promo code is handed to a crowd on purpose, and one
             # user can only redeem it once (uq_promo_redemptions_code_user), so
             # this bucket guards throughput, not a secret.

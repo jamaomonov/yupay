@@ -565,3 +565,25 @@ async def test_a_brandless_post_still_cannot_be_published_or_scheduled(
         json={"scheduled_for": "2030-01-01T00:00:00Z"},
     )
     assert scheduled.status_code in (400, 422), scheduled.text
+
+
+async def test_anonymous_engagement_has_a_per_ip_ceiling(
+    integration_client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without a cookie every request is a fresh reader, so a loop inflated
+    likes and views without bound. The ``blog-engagement`` bucket caps it."""
+    from yupay.core import config as cfg
+
+    monkeypatch.setenv("AUTH_IP_GUARD_BUCKET_MAX", '{"blog-engagement": 3}')
+    cfg.get_settings.cache_clear()
+    try:
+        statuses = []
+        for n in range(6):
+            r = await integration_client.post(
+                "/api/v1/blog/no-such-post/like?locale=ru",
+                headers={"Idempotency-Key": f"blog-flood-{n:04d}-padpad"},
+            )
+            statuses.append(r.status_code)
+        assert statuses[-1] == 429, statuses
+    finally:
+        cfg.get_settings.cache_clear()

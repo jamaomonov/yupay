@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 
 from fastapi import Response
@@ -18,6 +19,7 @@ from yupay.modules.blog.schemas import EngagementOut, Locale
 
 READER_COOKIE = "yp_blog_reader"
 _READER_HEX_LEN = 64
+_READER_RE = re.compile(rf"[0-9a-f]{{{_READER_HEX_LEN}}}")
 _READER_MAX_AGE = 400 * 24 * 60 * 60
 
 
@@ -28,7 +30,9 @@ def hash_reader(raw: str) -> str:
 
 def resolve_reader(raw: str | None) -> tuple[str, str, bool]:
     """Return ``(cookie, hash, minted)``. Garbage cookies are replaced."""
-    if raw is not None and len(raw) == _READER_HEX_LEN and raw.isalnum():
+    # Exactly what ``secrets.token_hex(32)`` mints. ``isalnum`` is Unicode-aware,
+    # so 64 × «é» passed it and then 500'd in ``hash_reader``'s ASCII encode.
+    if raw is not None and _READER_RE.fullmatch(raw) is not None:
         return raw, hash_reader(raw), False
     minted = secrets.token_hex(32)
     return minted, hash_reader(minted), True

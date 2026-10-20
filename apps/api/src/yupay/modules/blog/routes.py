@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, Header, Query, Response
+from fastapi import APIRouter, Cookie, Depends, Header, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.api.v1.deps import db_session
@@ -16,6 +16,7 @@ from yupay.core.idempotency import (
     load_replay,
     save_replay,
 )
+from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.blog import engagement as eng
 from yupay.modules.blog import service as svc
 from yupay.modules.blog.deps import resolve_locale
@@ -69,9 +70,22 @@ async def list_by_brand(
     return await svc.list_by_brand(db, brand_slug=brand_slug, locale=locale, limit=limit)
 
 
+async def _guard(request: Request) -> None:
+    """Per-IP ceiling on anonymous likes and views.
+
+    A reader is whoever holds a cookie, and a request without one is minted a
+    fresh reader, so the counts were as inflatable as a loop is fast — and
+    each request also wrote an ``idempotent_responses`` row. The coarse
+    600/min tier was the only bound. This one is per IP, generous enough for a
+    carrier NAT full of real readers (``blog-engagement`` bucket).
+    """
+    await guard_ip(request, bucket="blog-engagement")
+
+
 @router.post("/{slug}/view", response_model=EngagementOut, summary="Record a unique view")
 async def record_view(
     slug: str,
+    request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     locale: Annotated[Locale, Depends(resolve_locale)],
@@ -80,6 +94,7 @@ async def record_view(
 ) -> EngagementOut:
     """Anonymous. First view per reader cookie increments; repeats do not."""
     key = _require_idempotency_key(idempotency_key)
+    await _guard(request)
     replay = await load_replay(db, scope="blog.view", idempotency_key=key)
     if replay is not None and replay.body is not None:
         return EngagementOut.model_validate(replay.body)
@@ -94,6 +109,7 @@ async def record_view(
 @router.post("/{slug}/like", response_model=EngagementOut, summary="Like a published post")
 async def like_post(
     slug: str,
+    request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     locale: Annotated[Locale, Depends(resolve_locale)],
@@ -102,6 +118,7 @@ async def like_post(
 ) -> EngagementOut:
     """Anonymous. Guests get a reader cookie. Repeat like is a no-op."""
     key = _require_idempotency_key(idempotency_key)
+    await _guard(request)
     replay = await load_replay(db, scope="blog.like", idempotency_key=key)
     if replay is not None and replay.body is not None:
         return EngagementOut.model_validate(replay.body)
@@ -116,6 +133,7 @@ async def like_post(
 @router.delete("/{slug}/like", response_model=EngagementOut, summary="Unlike a published post")
 async def unlike_post(
     slug: str,
+    request: Request,
     response: Response,
     db: Annotated[AsyncSession, Depends(db_session)],
     locale: Annotated[Locale, Depends(resolve_locale)],
@@ -124,6 +142,7 @@ async def unlike_post(
 ) -> EngagementOut:
     """Anonymous. Unlike without a prior like is a no-op."""
     key = _require_idempotency_key(idempotency_key)
+    await _guard(request)
     replay = await load_replay(db, scope="blog.unlike", idempotency_key=key)
     if replay is not None and replay.body is not None:
         return EngagementOut.model_validate(replay.body)
