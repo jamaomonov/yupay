@@ -40,6 +40,7 @@ from yupay.core.redis import get_redis
 from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import (
     hash_password,
+    hash_password_sync,
     hash_token,
     new_refresh_token,
     verify_password,
@@ -57,6 +58,8 @@ OFFER_VERSION = "2026-09-draft"
 #: address exist" costs the same either way. A constant rather than a literal
 #: so the two sites that need it cannot drift.
 _DUMMY_HASH_INPUT = "no-such-account"
+#: Hashed once at import, so an unknown address pays for one verify only.
+_DUMMY_HASH = hash_password_sync(_DUMMY_HASH_INPUT)
 
 
 @dataclass(frozen=True)
@@ -132,7 +135,6 @@ async def register(
     s = _settings(settings)
     normalised = email.strip().lower()
     merchant = Merchant(id=new_id(), title=title.strip())
-    db.add(merchant)
     user = MerchantUser(
         id=new_id(),
         merchant_id=merchant.id,
@@ -141,9 +143,13 @@ async def register(
         offer_version=OFFER_VERSION,
         offer_accepted_at=now(),
     )
-    db.add(user)
     try:
-        await db.flush()
+        # A SAVEPOINT, so a taken address rolls back only this insert: the
+        # route answers it like a fresh registration and still commits.
+        async with db.begin_nested():
+            db.add(merchant)
+            db.add(user)
+            await db.flush()
     except IntegrityError as exc:
         # The unique index on ``email`` is the authority, not a prior SELECT:
         # two simultaneous registrations would both pass a check-then-insert.
@@ -244,7 +250,10 @@ async def _burn_time(password: str) -> bool:
     "wrong password" in a hundred milliseconds, which is the whole enumeration
     oracle the uniform error text was meant to close.
     """
-    await verify_password(password, await hash_password(_DUMMY_HASH_INPUT))
+    # One argon2 verify, like the known-address branch. Hashing a fresh dummy
+    # here as well made an unknown address cost two operations — about twice
+    # as slow, which is the oracle this function exists to close.
+    await verify_password(password, _DUMMY_HASH)
     return False
 
 

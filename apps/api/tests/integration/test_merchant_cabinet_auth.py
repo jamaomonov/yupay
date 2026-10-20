@@ -18,7 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from yupay.core.config import Settings, get_settings
 from yupay.modules.auth import jwt as authjwt
@@ -166,15 +166,29 @@ async def test_the_offer_must_be_accepted(
     assert sent == []
 
 
-async def test_a_duplicate_address_is_refused(
-    integration_client: AsyncClient, sent: list[dict[str, str]]
+async def test_a_taken_address_answers_like_a_new_one(
+    integration_client: AsyncClient, db_session: AsyncSession, sent: list[dict[str, str]]
 ) -> None:
-    assert (await _register(integration_client, "dupe@acme.example.com")).status_code == 201
+    """A 409 ``email_taken`` told a prober which addresses are resellers — the
+    one thing the uniform login, forgot and resend answers are built to hide.
+    The owner is mailed a way back in instead, and no second account exists."""
+    await _confirmed(integration_client, sent, "dupe@acme.example.com")
+    before = len(sent)
 
     again = await _register(integration_client, "dupe@acme.example.com")
 
-    assert again.status_code == 409
-    assert again.json()["code"] == "email_taken"
+    assert again.status_code == 201
+    assert again.content == b""
+    assert len(sent) == before + 1
+    assert "/reset?token=" in sent[-1]["html"]
+    users = (
+        await db_session.execute(
+            select(func.count())
+            .select_from(MerchantUser)
+            .where(MerchantUser.email == "dupe@acme.example.com")
+        )
+    ).scalar_one()
+    assert users == 1
 
 
 async def test_a_rotated_refresh_token_is_dead(

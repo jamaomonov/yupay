@@ -16,9 +16,10 @@ differently would be reporting on somebody else's mailbox.
 from __future__ import annotations
 
 from fastapi import APIRouter, Request, Response, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.core.config import get_settings
-from yupay.core.errors import ValidationError
+from yupay.core.errors import ConflictError, ValidationError
 from yupay.core.logging import get_logger
 from yupay.modules.auth.ip_guard import guard_ip
 from yupay.modules.merchants import cabinet_auth
@@ -99,9 +100,17 @@ async def register(body: CabinetRegisterIn, db: Db, request: Request) -> Respons
     # Before the insert: rather than register an account whose confirmation
     # can never arrive.
     base = _cabinet_base()
-    user, token = await cabinet_auth.register(
-        db, email=body.email, password=body.password, title=body.title
-    )
+    try:
+        user, token = await cabinet_auth.register(
+            db, email=body.email, password=body.password, title=body.title
+        )
+    except ConflictError:
+        # The address already has an account. Answering 409 told a prober
+        # which addresses are resellers; answer exactly as for a new one, and
+        # send the owner what they most likely need — a way back in. The mail
+        # also keeps both branches the same length of work.
+        await _mail_reset_if_any(db, email=body.email, base=base)
+        return Response(status_code=status.HTTP_201_CREATED)
     # A failed send leaves an account that exists with an unconfirmed address,
     # which `/confirm/resend` repairs. Failing the request would roll the
     # registration back and lose the password they just chose.
@@ -142,7 +151,13 @@ async def forgot_password(body: CabinetEmailIn, db: Db, request: Request) -> Res
     """
     await guard_ip(request, bucket="merchant_forgot", subject=body.email.lower())
     base = _cabinet_base()
-    found = await cabinet_auth.request_password_reset(db, email=body.email)
+    await _mail_reset_if_any(db, email=body.email, base=base)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+async def _mail_reset_if_any(db: AsyncSession, *, email: str, base: str) -> None:
+    """Mail a reset link if a confirmed account has this address; else nothing."""
+    found = await cabinet_auth.request_password_reset(db, email=email)
     if found is not None:
         user, token = found
         await _mail_link(
@@ -151,7 +166,6 @@ async def forgot_password(body: CabinetEmailIn, db: Db, request: Request) -> Res
             event="merchant.cabinet.reset_mail_failed",
             user_id=user.id,
         )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(
