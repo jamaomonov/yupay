@@ -95,6 +95,11 @@ async def test_import_new_brand_creates_everything(db_session: AsyncSession) -> 
     assert by_code["g2b-pubg-60"].price_usd == Decimal("1.02")
     assert by_code["g2b-pubg-60"].cost_usdt == Decimal("0.85")
     assert by_code["g2b-pubg-300"].price_usd == Decimal("5.99")
+    # The margin is recorded where it set the price, so a later cost rise
+    # re-prices the SKU instead of eating the margin; a hand-written price
+    # follows no margin and keeps none.
+    assert by_code["g2b-pubg-60"].margin_percent == Decimal("20")
+    assert by_code["g2b-pubg-300"].margin_percent is None
     # Denominations keep the order they were requested in. Every SKU used to
     # land on the column default of 0, which left the storefront's ladder to
     # whatever order the database returned.

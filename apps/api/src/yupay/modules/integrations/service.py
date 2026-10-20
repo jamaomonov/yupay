@@ -320,6 +320,12 @@ async def _import_denomination(
             region=denom.region,
             price_usd=price,
             cost_usdt=denom.cost_usdt,
+            # Recorded, so a later cost rise re-prices the SKU from it (cost
+            # sync only ever raises a price from margin). Without it an
+            # imported SKU kept its price while the cost climbed, possibly to
+            # below cost, and the margin-drift report filtered it out. Not set
+            # for a hand-written price: that price follows no margin.
+            margin_percent=None if denom.price_usd_override is not None else margin_percent,
             # Position in the request. Left unset, every SKU of an imported game
             # landed on the column default of 0 and the storefront rendered the
             # denominations in whatever order the database happened to return —
