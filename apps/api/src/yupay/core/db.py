@@ -83,6 +83,10 @@ def get_engine() -> AsyncEngine:
             pool_size=10,
             max_overflow=10,
             echo=False,
+            # A DBAPIError's str() otherwise carries the bound parameters —
+            # emails, Telegram ids — and ~90 log sites write ``error=str(exc)``,
+            # a key the redactor has no reason to touch.
+            hide_parameters=True,
         )
     return _engine
 
