@@ -822,6 +822,46 @@ async def test_cancel_shared_payment_confirmed_sibling_leaves_payment_alone(
     assert order.paid_at is not None
 
 
+async def test_complete_on_sibling_of_settled_payment_is_minus4(
+    db_session: AsyncSession, _click_env: None
+) -> None:
+    """Two checkouts on one order share a pending payment. Once one of them
+    completes, completing the other must not answer success: Click would keep
+    a second debit that no payment, ledger entry or event records. ``-4``
+    tells Click the order is already paid, so it reverses the second one."""
+    order_id = await _seed_order(db_session, total_charged=TOTAL_CHARGED)
+    txn_a = await _prepared_txn(db_session, order_id=order_id, click_trans_id=3007)
+    txn_b = await _prepared_txn(db_session, order_id=order_id, click_trans_id=3008)
+
+    await click_svc.complete(
+        db_session,
+        click_trans_id=3008,
+        service_id=SERVICE_ID,
+        merchant_trans_id=order_id,
+        merchant_prepare_id=txn_b["merchant_prepare_id"],
+        amount=AMOUNT_STR,
+        sign_time="2026-07-23 10:05:00",
+    )
+    with pytest.raises(ClickError) as exc:
+        await click_svc.complete(
+            db_session,
+            click_trans_id=3007,
+            service_id=SERVICE_ID,
+            merchant_trans_id=order_id,
+            merchant_prepare_id=txn_a["merchant_prepare_id"],
+            amount=AMOUNT_STR,
+            sign_time="2026-07-23 10:06:00",
+        )
+    assert exc.value.code == -4
+
+    row_a = (
+        await db_session.execute(
+            select(ClickTransaction).where(ClickTransaction.click_trans_id == 3007)
+        )
+    ).scalar_one()
+    assert row_a.status == "PREPARED"
+
+
 # ---------- build_checkout_url ----------
 
 

@@ -164,6 +164,12 @@ is itself already `CONFIRMED` is left entirely alone (Click v1 has no
 merchant-initiated refund, so a settled transaction is never touched by this
 path).
 
+The same sharing bites on `/complete`: if a sibling transaction already settled
+the payment, completing this one answers **`-4`** (already paid), never
+success. `settle_provider_payment` is a no-op on a settled payment, so success
+would let Click keep a second debit that no payment, ledger entry or event
+records; `-4` makes Click reverse it.
+
 ## State machine
 
 ```

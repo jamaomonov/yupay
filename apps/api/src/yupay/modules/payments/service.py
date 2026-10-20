@@ -396,6 +396,14 @@ async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Pay
 #: so a callback can still arrive against one of these.
 _ABANDONED_STATUSES: Final[frozenset[str]] = frozenset({"expired", "cancelled"})
 
+#: Payment states in which the money has already been taken (and possibly
+#: returned). A provider confirming a *second* transaction against a payment
+#: in one of these states is a second debit, not a retry — see Click
+#: ``complete`` and Uzum ``confirm``.
+SETTLED_PAYMENT_STATUSES: Final[frozenset[str]] = frozenset(
+    {"succeeded", "refunded", "partially_refunded"}
+)
+
 
 async def _settle_late_payment(
     db: AsyncSession, *, order: Order, payment: Payment, event: WebhookEvent
@@ -1631,6 +1639,7 @@ async def list_payments_admin(
 
 
 __all__ = [
+    "SETTLED_PAYMENT_STATUSES",
     "cancel_pending_provider_payment",
     "create_intent",
     "get_active_payment",

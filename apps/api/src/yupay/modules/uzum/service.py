@@ -399,6 +399,12 @@ async def confirm(
         raise transaction_cancelled()
 
     payment = await _load_payment(db, txn.payment_id)  # type: ignore[arg-type]
+    # A sibling /create on the same order shares this payment; once one of
+    # them settled it, success here would leave Uzum holding a second debit
+    # nothing records. 10008 makes Uzum reverse it.
+    await db.refresh(payment, with_for_update=True)
+    if payment.status in pay_svc.SETTLED_PAYMENT_STATUSES:
+        raise payment_already_made()
     txn.payment_source = payment_source
     confirm_time = now_ms()
     txn.status = "CONFIRMED"

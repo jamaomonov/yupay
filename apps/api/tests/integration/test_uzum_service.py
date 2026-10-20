@@ -513,6 +513,32 @@ async def test_confirm_settles_payment(db_session: AsyncSession) -> None:
     assert order.paid_at is not None
 
 
+async def test_confirm_on_sibling_of_settled_payment_is_10008(db_session: AsyncSession) -> None:
+    """Two ``/create`` calls on one order share a pending payment. Once one is
+    confirmed, confirming the other must answer ``10008`` (already paid) so
+    Uzum reverses that debit, instead of success with nothing recording it."""
+    order_id = await _seed_order(db_session)
+    for trans_id in ("uz-sib-a", "uz-sib-b"):
+        await uzum_svc.create(
+            db_session,
+            service_id=SERVICE_ID,
+            trans_id=trans_id,
+            params={"order_id": order_id},
+            amount=EXPECTED_TIYIN,
+        )
+    await uzum_svc.confirm(db_session, trans_id="uz-sib-a", payment_source={})
+    with pytest.raises(UzumError) as exc:
+        await uzum_svc.confirm(db_session, trans_id="uz-sib-b", payment_source={})
+    assert exc.value.code == 10008
+
+    row_b = (
+        await db_session.execute(
+            select(UzumTransaction).where(UzumTransaction.trans_id == "uz-sib-b")
+        )
+    ).scalar_one()
+    assert row_b.status != "CONFIRMED"
+
+
 async def test_confirm_unknown_trans_id_is_10014(db_session: AsyncSession) -> None:
     with pytest.raises(UzumError) as exc:
         await uzum_svc.confirm(db_session, trans_id="nope", payment_source={})

@@ -375,6 +375,13 @@ async def complete(
         raise incorrect_amount()
 
     payment = await _load_payment(db, txn.payment_id)  # type: ignore[arg-type]
+    # One pending payment backs every /prepare on the order (see
+    # ``_ensure_payment``). If a sibling transaction already settled it,
+    # settling again is a no-op and answering success would let Click keep a
+    # second debit nothing records; -4 makes Click reverse it.
+    await db.refresh(payment, with_for_update=True)
+    if payment.status in pay_svc.SETTLED_PAYMENT_STATUSES:
+        raise already_paid()
     await pay_svc.settle_provider_payment(
         db, payment=payment, external_event_id=str(click_trans_id)
     )

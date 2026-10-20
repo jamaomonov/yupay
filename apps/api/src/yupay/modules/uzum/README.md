@@ -109,7 +109,10 @@ back `serviceId` (and `transId` when the request carried one).
   every gateway uses, which flips the order to `paid` and starts fulfilment.
 - **Errors:** `10014` (unknown `transId`), `10016` (already `CONFIRMED` —
   replay), `10015` (transaction is `REVERSED`/`FAILED` — cannot confirm a
-  cancelled transaction).
+  cancelled transaction), `10008` (a **sibling** transaction on the same order
+  already settled the shared payment — answering success here would leave Uzum
+  holding a second debit that no payment row records; `10008` makes Uzum
+  reverse it).
 
 ### `POST /reverse`
 
