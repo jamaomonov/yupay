@@ -396,6 +396,9 @@ async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Pay
 #: so a callback can still arrive against one of these.
 _ABANDONED_STATUSES: Final[frozenset[str]] = frozenset({"expired", "cancelled"})
 
+#: Payment states a provider callback may still move to failed / cancelled.
+_OPEN_PAYMENT_STATUSES: Final[frozenset[str]] = frozenset({"pending", "requires_action"})
+
 #: Payment states in which the money has already been taken (and possibly
 #: returned). A provider confirming a *second* transaction against a payment
 #: in one of these states is a second debit, not a retry — see Click
@@ -582,6 +585,19 @@ async def _mark_payment_terminal(
     event: WebhookEvent,
     new_status: str,
 ) -> None:
+    # Only an open payment can fail or be cancelled. Octo keys its events by
+    # ``uuid:status``, so a late ``expired`` after ``succeeded`` is a new event,
+    # not a duplicate; applying it put a failed payment under a paid order,
+    # which refunds then refused and the ledger never reversed.
+    if payment.status not in _OPEN_PAYMENT_STATUSES:
+        log.warning(
+            "payments.terminal_ignored",
+            payment_id=payment.id,
+            current=payment.status,
+            outcome=new_status,
+            external_event_id=event.external_event_id,
+        )
+        return
     moment = now()
     payment.status = new_status
     payment.updated_at = moment
@@ -671,6 +687,9 @@ async def handle_webhook(
             select(Payment)
             .where(Payment.provider == gw.provider)
             .where(Payment.external_id == event.external_payment_id)
+            # Two callbacks for one payment (Octo sends one per status) must
+            # take turns, or both read ``pending`` and the last writer wins.
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if payment is None:

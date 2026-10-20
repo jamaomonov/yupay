@@ -260,3 +260,43 @@ async def test_octo_webhook_bad_signature_rejected(
         headers={"content-type": "application/json"},
     )
     assert wh.status_code == 422, wh.text
+
+
+@respx.mock
+async def test_a_late_terminal_callback_never_undoes_a_success(
+    integration_client: AsyncClient, _seed_sku: str
+) -> None:
+    """Octo keys events by ``uuid:status``, so ``expired`` after ``succeeded`` is
+    a distinct event. It used to flip the payment to ``failed`` under a paid
+    order; refunds then refused it and the ledger never saw a reversal."""
+    from sqlalchemy import select
+    from yupay.core.db import get_session_factory
+    from yupay.modules.payments.models import Payment
+
+    uuid = "octo-uuid-late"
+    _mock_prepare(uuid)
+    token = await _login_user(integration_client, tg_id=703)
+    order_id = await _create_order(
+        integration_client, token=token, sku_id=_seed_sku, key="octo-late-cccc-pad"
+    )
+    await integration_client.post(
+        "/api/v1/payments/intents",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Idempotency-Key": "ik-octo-payment-flow-03-padpadpad",
+        },
+        json={"order_id": order_id, "provider": "octo"},
+    )
+    for status in ("succeeded", "expired", "cancelled"):
+        r = await integration_client.post(
+            "/api/v1/webhooks/payments/octo",
+            content=_signed_webhook_body(uuid, status),
+            headers={"content-type": "application/json"},
+        )
+        assert r.status_code == 200, r.text
+
+    async with get_session_factory()() as db:
+        payment = (
+            await db.execute(select(Payment).where(Payment.external_id == uuid))
+        ).scalar_one()
+    assert payment.status == "succeeded"
