@@ -89,7 +89,8 @@
     "supportCta": "Yordamga yozish",
     "badge": "reseller",
     "mockAccount": "Hisob",
-    "mockCaption": "Kabinet shunday koʻrinadi: katalog, oʻyinchi ID tekshiruvi, buyurtma holati"
+    "mockCaption": "Kabinet shunday koʻrinadi: katalog, oʻyinchi ID tekshiruvi, buyurtma holati",
+    "openCabinet": "Kabinetni ochish"
   },
   "faq": {
     "q1": "«Qayta sotish uchun oʻyin valyutasini arzonroq qayerdan olsa boʻladi?»",
@@ -277,7 +278,8 @@
     "countRange": "{min} dan {max} gacha",
     "sectionAll": "Hammasi",
     "showMore": "Yana koʻrsatish",
-    "skuCount": "{count, plural, one {# ta pozitsiya} other {# ta pozitsiya}}"
+    "skuCount": "{count, plural, one {# ta pozitsiya} other {# ta pozitsiya}}",
+    "loading": "Katalog yuklanmoqda…"
   },
   "docs": {
     "title": "Hujjatlar",

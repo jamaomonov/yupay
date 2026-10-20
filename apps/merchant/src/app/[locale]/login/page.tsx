@@ -2,11 +2,11 @@
 
 import { useParams, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { AuthLink, AuthShell } from "@/components/AuthShell";
 import { Field, FormError, SubmitButton } from "@/components/Field";
-import { ApiError, api, storeTokens, type Tokens } from "@/lib/api";
+import { ApiError, api, hasSession, storeTokens, type Tokens } from "@/lib/api";
 import { pathFor } from "@/lib/locale-href";
 
 export default function LoginPage() {
@@ -17,6 +17,12 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Already signed in: the cabinet, not a password prompt. A session that has quietly
+  // expired comes back here on its own — the cabinet clears it when the refresh fails.
+  useEffect(() => {
+    if (hasSession()) router.replace(pathFor(locale, "/cabinet"));
+  }, [locale, router]);
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();

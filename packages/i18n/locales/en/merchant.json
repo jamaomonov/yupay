@@ -89,7 +89,8 @@
     "supportCta": "Contact support",
     "badge": "reseller",
     "mockAccount": "Account",
-    "mockCaption": "What the cabinet looks like: catalog, player-ID check, order status"
+    "mockCaption": "What the cabinet looks like: catalog, player-ID check, order status",
+    "openCabinet": "Open the cabinet"
   },
   "faq": {
     "q1": "“Where can I buy game currency cheaper to resell it?”",
@@ -277,7 +278,8 @@
     "countRange": "{min} to {max}",
     "sectionAll": "All",
     "showMore": "Show more",
-    "skuCount": "{count, plural, one {# item} other {# items}}"
+    "skuCount": "{count, plural, one {# item} other {# items}}",
+    "loading": "Loading the catalogue…"
   },
   "docs": {
     "title": "Documentation",

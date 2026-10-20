@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 
+import { HeaderAuth } from "@/components/landing/HeaderAuth";
 import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 import { Mark } from "@/components/Mark";
 import { pathFor } from "@/lib/locale-href";
@@ -58,18 +59,12 @@ export async function PageFrame({
                 raw OpenAPI JSON. `/api` keeps its door — the «Для
                 разработчиков» card above the fold, and the footer. */}
             <Link href={pathFor(locale, "/docs")}>{tDocs("title")}</Link>
-            <Link
-              href={pathFor(locale, "/login")}
-              className="border-border rounded-btn text-foreground border px-4 py-2 font-semibold"
-            >
-              {t("login")}
-            </Link>
-            <Link
-              href={pathFor(locale, "/register")}
-              className="bg-primary text-primary-foreground rounded-btn px-4 py-2 font-bold"
-            >
-              {t("ctaPrimary")}
-            </Link>
+            <HeaderAuth
+              locale={locale}
+              login={t("login")}
+              register={t("ctaPrimary")}
+              openCabinet={t("openCabinet")}
+            />
           </nav>
         </div>
       </header>

@@ -11,6 +11,7 @@ import type { Brand, Field, PlacedOrder, PlayerCheck, Product, Sku } from "@/lib
 import { BrandMark } from "@/components/BrandMark";
 import { useCabinet } from "@/components/CabinetContext";
 import { SkuRows } from "@/components/catalog/SkuRows";
+import { LoadingNote } from "@/components/LoadingNote";
 import { ApiError, api } from "@/lib/api";
 import { soleSku } from "@/lib/catalog";
 import { orderStatusLabel } from "@/lib/labels";
@@ -52,24 +53,27 @@ function serverFieldOf(product: Product | null): Field | null {
   return product?.required_fields.find((f) => /server|zone|region/i.test(f.key)) ?? null;
 }
 
-function Skeleton() {
+function Skeleton({ label }: { label: string }) {
   return (
-    <div aria-busy className="animate-pulse">
-      <div className="bg-card-2 h-3 w-40 rounded" />
-      <div className="mt-4 flex items-center gap-3.5">
-        <div className="bg-card-2 h-13 w-13 rounded-xl" />
-        <div className="space-y-2">
-          <div className="bg-card-2 h-5 w-48 rounded" />
-          <div className="bg-card-2 h-3 w-32 rounded" />
+    <div>
+      <LoadingNote text={label} className="mb-4" />
+      <div aria-busy className="animate-pulse">
+        <div className="bg-card-2 h-3 w-40 rounded" />
+        <div className="mt-4 flex items-center gap-3.5">
+          <div className="bg-card-2 h-13 w-13 rounded-xl" />
+          <div className="space-y-2">
+            <div className="bg-card-2 h-5 w-48 rounded" />
+            <div className="bg-card-2 h-3 w-32 rounded" />
+          </div>
         </div>
-      </div>
-      <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {Array.from({ length: 8 }, (_, i) => (
-            <div key={i} className="bg-card border-border h-12 rounded-lg border" />
-          ))}
+        <div className="mt-6 grid gap-6 lg:grid-cols-[1fr_20rem]">
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {Array.from({ length: 8 }, (_, i) => (
+              <div key={i} className="bg-card border-border h-12 rounded-lg border" />
+            ))}
+          </div>
+          <div className="bg-card border-border hidden h-40 rounded-xl border lg:block" />
         </div>
-        <div className="bg-card border-border hidden h-40 rounded-xl border lg:block" />
       </div>
     </div>
   );
@@ -226,7 +230,7 @@ export default function BrandPage() {
   }
 
   if (brand === undefined) {
-    return <Skeleton />;
+    return <Skeleton label={t("loading")} />;
   }
   if (brand === null) {
     return (

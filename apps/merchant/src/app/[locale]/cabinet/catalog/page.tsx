@@ -10,6 +10,7 @@ import type { BrandSummary } from "@/lib/types";
 
 import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
+import { LoadingNote } from "@/components/LoadingNote";
 import { PageHeading } from "@/components/PageHeading";
 import { downloadFile } from "@/lib/api";
 import { pathFor } from "@/lib/locale-href";
@@ -232,10 +233,11 @@ function CatalogGrid() {
         </div>
       )}
 
+      {catalog === null && <LoadingNote text={t("loading")} className="mt-5" />}
       {catalog === null && (
         <div
           aria-busy
-          className="mt-5 grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3.5 lg:grid-cols-5 xl:grid-cols-6"
+          className="mt-3 grid grid-cols-3 gap-2.5 sm:grid-cols-4 sm:gap-3.5 lg:grid-cols-5 xl:grid-cols-6"
         >
           {Array.from({ length: 10 }, (_, i) => (
             <div key={i} className="border-border bg-card animate-pulse rounded-xl border">
