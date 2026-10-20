@@ -11,6 +11,7 @@ from __future__ import annotations
 import secrets
 from datetime import timedelta
 from decimal import Decimal
+from typing import Any
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -248,6 +249,35 @@ async def test_resolve_rejects_a_partner_using_their_own_code(db_session: AsyncS
 
     assert (
         await resolve_code(db_session, code=code, user_id=user_id, purpose="catalog") == "own_code"
+    )
+
+
+async def test_resolve_rejects_a_buyer_signed_in_with_the_partners_own_email(
+    db_session: AsyncSession,
+) -> None:
+    """``partner.user_id`` is never filled in by any flow, so the check above
+    was the only one and never fired: a partner bought with their own code,
+    took the discount and then earned commission on their own purchases."""
+    from sqlalchemy import select
+    from yupay.core.ids import new_id
+    from yupay.modules.affiliate.discount import resolve_code
+    from yupay.modules.affiliate.models import AffiliateCode, AffiliatePartner
+    from yupay.modules.users.models import User
+
+    _, code = await _seed_partner_and_code(db_session)
+    partner_email = (
+        await db_session.execute(
+            select(AffiliatePartner.email)
+            .join(AffiliateCode, AffiliateCode.partner_id == AffiliatePartner.id)
+            .where(AffiliateCode.code == code)
+        )
+    ).scalar_one()
+    buyer = User(id=new_id(), email=partner_email.upper())
+    db_session.add(buyer)
+    await db_session.flush()
+
+    assert (
+        await resolve_code(db_session, code=code, user_id=buyer.id, purpose="catalog") == "own_code"
     )
 
 
@@ -553,3 +583,36 @@ async def test_the_discount_reaches_the_margin_report(db_session: AsyncSession) 
     assert margin_gained == Decimal("3.00")
     # cost == revenue - margin, and the supplier was paid the same either way.
     assert revenue_gained - margin_gained == Decimal("24.00")
+
+
+async def test_order_creation_serialises_one_buyers_coded_orders(db_engine: Any) -> None:
+    """Two concurrent orders with a code both passed the unlocked "no open
+    coded order" read and both took the discount. With ``lock_buyer`` the
+    second waits for the first transaction and is then refused."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import async_sessionmaker
+    from yupay.modules.affiliate.discount import ResolvedDiscount, resolve_code
+
+    factory = async_sessionmaker(bind=db_engine, expire_on_commit=False)
+    async with factory() as setup:
+        code_id, code = await _seed_partner_and_code(setup)
+        user_id = await _new_user(setup)
+        await setup.commit()
+
+    async with factory() as first, factory() as second:
+        assert isinstance(
+            await resolve_code(
+                first, code=code, user_id=user_id, purpose="catalog", lock_buyer=True
+            ),
+            ResolvedDiscount,
+        )
+        racing = asyncio.create_task(
+            resolve_code(second, code=code, user_id=user_id, purpose="catalog", lock_buyer=True)
+        )
+        await asyncio.sleep(0.3)
+        assert not racing.done(), "the second order must wait for the first"
+        await _order(first, user_id=user_id, status="pending_payment", affiliate_code_id=code_id)
+        await first.commit()
+        assert await asyncio.wait_for(racing, timeout=10) == "pending_coded_order"
+        await second.rollback()

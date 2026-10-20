@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yupay.modules.affiliate.models import AffiliateAttribution, AffiliateCode, AffiliatePartner
 from yupay.modules.orders.models import Order
+from yupay.modules.users.models import User
 
 #: Why a code was refused. The checkout UI shows a different message for each,
 #: so these strings are a contract with the frontend, not a logging detail.
@@ -104,6 +105,12 @@ async def _buyer_rejection(
     """
     if partner.user_id is not None and partner.user_id == user_id:
         return "own_code"
+    # No flow ever fills ``partner.user_id``, so the line above alone never
+    # fired. The partner's own address on the buyer's account is the link we
+    # do have (CITEXT, so case does not matter).
+    buyer_email = await db.scalar(select(User.email).where(User.id == user_id))
+    if buyer_email is not None and buyer_email.lower() == partner.email.lower():
+        return "own_code"
 
     checks: tuple[tuple[DiscountRejection, Exists], ...] = (
         ("already_used", exists().where(AffiliateAttribution.user_id == user_id)),
@@ -134,7 +141,12 @@ async def _buyer_rejection(
 
 
 async def resolve_code(
-    db: AsyncSession, *, code: str, user_id: str | None, purpose: str
+    db: AsyncSession,
+    *,
+    code: str,
+    user_id: str | None,
+    purpose: str,
+    lock_buyer: bool = False,
 ) -> ResolvedDiscount | DiscountRejection:
     """Decide whether ``code`` applies to this buyer.
 
@@ -143,6 +155,11 @@ async def resolve_code(
         code: What the buyer typed; normalised here.
         user_id: The signed-in buyer, or ``None`` for a guest.
         purpose: The order's purpose — only ``catalog`` orders qualify.
+        lock_buyer: Take the buyer's row lock first. Order creation passes it:
+            the "no open coded order" check is a read, and two concurrent
+            ``POST /orders`` both passed it and both got the discount. The
+            lock holds until the order is committed, so the second request
+            waits and then sees the first one's order. A preview leaves it off.
 
     Returns:
         A :class:`ResolvedDiscount`, or one of :data:`DiscountRejection`.
@@ -166,6 +183,8 @@ async def resolve_code(
     if not affiliate_code.active or partner.status != "active":
         return "unknown"
 
+    if lock_buyer:
+        await db.execute(select(User.id).where(User.id == user_id).with_for_update())
     rejection = await _buyer_rejection(db, user_id=user_id, partner=partner)
     if rejection is not None:
         return rejection

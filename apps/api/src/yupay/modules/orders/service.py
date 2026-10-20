@@ -1028,6 +1028,7 @@ async def create_order(
             # is assembled in wallet/funding.py and never reaches here. Passed
             # explicitly so the guard stays meaningful.
             purpose="catalog",
+            lock_buyer=True,
         )
         if isinstance(resolved, affiliate_discount.ResolvedDiscount):
             discount_charged = affiliate_discount.discount_amount(
