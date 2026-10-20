@@ -26,6 +26,18 @@ function scaled(value: string, scale: bigint): bigint {
   return sign * (BigInt(whole.replace("-", "") || "0") * scale + BigInt(padded || "0"));
 }
 
+/**
+ * Whether a typed amount is a plain non-negative decimal with at most
+ * `places` decimals — the only shape `scaled` reads correctly. `BigInt("1,5")`
+ * throws, and it ran while rendering, so a decimal comma took the whole
+ * cabinet down to its error page; `-5` and `1.005` went on to a request the
+ * server had to refuse.
+ */
+export function isPlainDecimal(value: string, places: number): boolean {
+  const pattern = places === 0 ? /^\d+$/ : new RegExp(`^\\d+(\\.\\d{1,${String(places)}})?$`);
+  return pattern.test(value.trim());
+}
+
 export function toCents(value: string): bigint {
   return scaled(value, CENTS);
 }

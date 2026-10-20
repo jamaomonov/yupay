@@ -5,6 +5,7 @@ import {
   fixedTotal,
   formatPrice,
   formatUsd,
+  isPlainDecimal,
   perHundred,
   scaledTotal,
   toCents,
@@ -80,5 +81,23 @@ describe("perHundred", () => {
     expect(perHundred("0.009000")).toBe("0.90");
     expect(perHundred("0.05")).toBe("5.00");
     expect(perHundred("0.25")).toBeNull();
+  });
+});
+
+describe("isPlainDecimal", () => {
+  it.each(["5", "5.5", "5.55", " 12.30 ", "0"])("accepts %s as dollars", (v) => {
+    expect(isPlainDecimal(v, 2)).toBe(true);
+  });
+
+  it.each(["1,5", "1e3", "$5", "1 5", "-5", "1.005", "", ".5", "5."])(
+    "refuses %s as dollars",
+    (v) => {
+      expect(isPlainDecimal(v, 2)).toBe(false);
+    },
+  );
+
+  it("takes whole counts only when no decimals are allowed", () => {
+    expect(isPlainDecimal("3", 0)).toBe(true);
+    expect(isPlainDecimal("3.5", 0)).toBe(false);
   });
 });

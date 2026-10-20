@@ -16,7 +16,15 @@ import { ApiError, api } from "@/lib/api";
 import { soleSku } from "@/lib/catalog";
 import { orderStatusLabel } from "@/lib/labels";
 import { pathFor } from "@/lib/locale-href";
-import { dollars, fixedTotal, formatPrice, formatUsd, scaledTotal, toCents } from "@/lib/money";
+import {
+  dollars,
+  fixedTotal,
+  formatPrice,
+  formatUsd,
+  isPlainDecimal,
+  scaledTotal,
+  toCents,
+} from "@/lib/money";
 
 /** What this SKU is sized by, and therefore which box the form shows. */
 function countLabel(sku: Sku): "none" | "quantity" | "amount" {
@@ -113,8 +121,17 @@ export default function BrandPage() {
   // Minted once per intent and held, never per request: a fresh key on every
   // attempt is the same as having none. `api.ts` says exactly this; the
   // cabinet's own order call was the one place that ignored it, so a retry
-  // after a timeout could charge twice.
-  const [idempotencyKey] = useState(() => crypto.randomUUID());
+  // after a timeout could charge twice. An intent ends when the order is
+  // placed, the server answers it, or another card is picked: the key is
+  // the order's `merchant_order_id`, so reusing it for a second purchase
+  // either replayed the first order or failed `order_id_reused`.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
+  const newIntent = () => {
+    setIdempotencyKey(crypto.randomUUID());
+  };
+  // Only the newest player check may write its verdict: an answer for the id
+  // typed before an edit used to land beside the new one.
+  const checkGeneration = useRef(0);
   const [error, setError] = useState<string | null>(null);
   // The player check: `null` not asked, `"busy"` in flight, else the verdict.
   // `unsupported` hides the button for the rest of the visit — nothing on
@@ -146,7 +163,9 @@ export default function BrandPage() {
     if (!selected) return null;
     const shape = countLabel(selected);
     if (shape === "none") return selected.price_usd ? fixedTotal(selected.price_usd) : null;
-    if (!selected.unit_price_usd || !count.trim()) return null;
+    if (!selected.unit_price_usd) return null;
+    // Validated before any BigInt sees it: «1,5» threw during render.
+    if (!isPlainDecimal(count, shape === "amount" ? 2 : 0)) return null;
     return scaledTotal(selected.unit_price_usd, count);
   }, [selected, count]);
 
@@ -160,6 +179,7 @@ export default function BrandPage() {
 
   function pick(sku: Sku) {
     setSelected(sku);
+    newIntent();
     setPlaced(null);
     setError(null);
     setCount(sku.kind === "unit" ? String(sku.min_qty ?? 1) : "1");
@@ -180,6 +200,7 @@ export default function BrandPage() {
     if (playerId === "") return;
     const serverId = serverField ? (data[serverField.key] ?? "").trim() : "";
     setCheck("busy");
+    const mine = (checkGeneration.current += 1);
     try {
       const verdict = await api<PlayerCheck>("/validate/player", {
         method: "POST",
@@ -189,10 +210,11 @@ export default function BrandPage() {
           ...(serverId !== "" ? { server_id: serverId } : {}),
         },
       });
+      if (mine !== checkGeneration.current) return;
       setCheck(verdict);
       if (verdict.status === "unsupported") setCheckable(false);
     } catch {
-      setCheck({ status: "error", name: null });
+      if (mine === checkGeneration.current) setCheck({ status: "error", name: null });
     }
   }
 
@@ -214,11 +236,17 @@ export default function BrandPage() {
       };
       const result = await api<PlacedOrder>("/orders", { method: "POST", body, idempotencyKey });
       setPlaced(result);
+      newIntent();
       // The response carries the balance the charge left behind, but the top
       // bar reads the shell's copy — so re-read rather than patch two places
       // that could then disagree.
       refreshProfile();
     } catch (err) {
+      // A 4xx is the server's answer to this exact body: nothing was placed,
+      // and the next attempt — fixed fields, another amount — is a new
+      // intent. A network error or 5xx may have placed it, so the key stays
+      // and a retry replays rather than buys twice.
+      if (err instanceof ApiError && err.status < 500) newIntent();
       // The server's own sentence where it wrote one (a refused id, a
       // withdrawn SKU): «Не удалось создать заказ» told a reseller nothing
       // about what to change.
@@ -423,7 +451,10 @@ export default function BrandPage() {
                         aria-invalid={bad}
                         onChange={(event) => {
                           setData((current) => ({ ...current, [field.key]: event.target.value }));
-                          if (isId || serverField?.key === field.key) setCheck(null);
+                          if (isId || serverField?.key === field.key) {
+                            checkGeneration.current += 1;
+                            setCheck(null);
+                          }
                         }}
                         onBlur={() => {
                           setTouched((current) => ({ ...current, [field.key]: true }));
