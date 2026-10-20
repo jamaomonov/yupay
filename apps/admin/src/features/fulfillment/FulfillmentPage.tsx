@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Input, Select } from "@yupay/ui";
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { TaskDetailPanel } from "./TaskDetailPanel";
 
@@ -99,9 +99,23 @@ export function FulfillmentPage() {
     },
   });
 
+  // One key per task until a retry of it succeeds: a retry after a timeout
+  // replays the first instead of running the supplier call again. The button
+  // is also disabled while one is in flight — a double-click sent two POSTs,
+  // and the second found the task `pending` and ran it as well.
+  const retryKeys = useRef(new Map<string, string>());
   const retryMutation = useMutation<TaskAdminOut, ApiError, string>({
-    mutationFn: (id) => apiPost<TaskAdminOut>(`/api/v1/admin/fulfillment/tasks/${id}/retry`, {}),
-    onSuccess: () => {
+    mutationFn: (id) => {
+      const key = retryKeys.current.get(id) ?? `admin-retry-${crypto.randomUUID()}`;
+      retryKeys.current.set(id, key);
+      return apiPost<TaskAdminOut>(
+        `/api/v1/admin/fulfillment/tasks/${id}/retry`,
+        {},
+        { "Idempotency-Key": key },
+      );
+    },
+    onSuccess: (_task, id) => {
+      retryKeys.current.delete(id);
       toast.success("Retry запущен.");
       void qc.invalidateQueries({
         queryKey: ["admin", "fulfillment"],
@@ -208,6 +222,7 @@ export function FulfillmentPage() {
             <Button
               variant="secondary"
               size="sm"
+              disabled={retryMutation.isPending}
               onClick={() => {
                 retryMutation.mutate(t.id);
               }}

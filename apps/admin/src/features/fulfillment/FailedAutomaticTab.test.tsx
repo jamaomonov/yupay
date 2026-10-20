@@ -85,7 +85,9 @@ it("offers the supplier switch on the tab the failure is reported on", async () 
   await screen.findByRole("radiogroup", { name: "Новый поставщик" });
 });
 
-it("moves the task onto the chosen supplier", async () => {
+it("moves the task onto the chosen supplier once the operator confirms", async () => {
+  // It buys from another supplier with our balance there.
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
   mockedApiPost.mockResolvedValue({ ...makeFailed(), supplier: "g2b", status: "pending" });
   renderTab([makeFailed()]);
 
@@ -97,6 +99,20 @@ it("moves the task onto the chosen supplier", async () => {
     const call = mockedApiPost.mock.calls.find(([p]) => p.includes("/reassign"));
     expect(call?.[0]).toContain("/tasks/task-1/reassign");
   });
+  expect(confirm).toHaveBeenCalledOnce();
+  confirm.mockRestore();
+});
+
+it("does not move the task when the operator cancels", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+  renderTab([makeFailed()]);
+
+  fireEvent.click(await screen.findByRole("button", { name: "Другой поставщик" }));
+  await screen.findByRole("radiogroup", { name: "Новый поставщик" });
+  fireEvent.click(screen.getByRole("button", { name: "Сменить поставщика" }));
+
+  expect(mockedApiPost.mock.calls.some(([p]) => p.includes("/reassign"))).toBe(false);
+  confirm.mockRestore();
 });
 
 it("keeps the low-balance shortcut beside it", async () => {

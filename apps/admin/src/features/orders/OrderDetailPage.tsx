@@ -181,14 +181,21 @@ export function OrderDetailPage() {
     },
   });
 
+  // Per refund intent, not per attempt: minted inside `mutationFn`, a retry
+  // after a timeout sent a second refund call that only the payment-status
+  // guard stopped. Cleared once a refund lands.
+  const refundKey = useRef<string | null>(null);
   const refund = useMutation<PaymentAdminOut, ApiError, { id: string; reason: string }>({
-    mutationFn: ({ id, reason }) =>
-      apiPost<PaymentAdminOut>(
+    mutationFn: ({ id, reason }) => {
+      refundKey.current ??= crypto.randomUUID();
+      return apiPost<PaymentAdminOut>(
         `/api/v1/admin/payments/${id}/refund`,
         { reason },
-        { "Idempotency-Key": crypto.randomUUID() },
-      ),
+        { "Idempotency-Key": refundKey.current },
+      );
+    },
     onSuccess: () => {
+      refundKey.current = null;
       toast.success("Возврат оформлен");
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
       void qc.invalidateQueries({ queryKey: ["admin", "payments"] });

@@ -157,7 +157,13 @@ export function ReassignControl({ task }: { task: TaskAdminOut }) {
             className="mt-1"
             disabled={reassign.isPending || target === ""}
             onClick={() => {
-              reassign.mutate(target);
+              // It places a new order with another supplier, paid from our
+              // balance there — one click must not be enough.
+              const pick = rows.find((o) => o.supplier === target);
+              const cost = pick?.cost_usdt ? ` за ${money(pick.cost_usdt)}` : "";
+              if (window.confirm(`Купить у ${label(target)}${cost} и запустить сейчас?`)) {
+                reassign.mutate(target);
+              }
             }}
           >
             {reassign.isPending ? "Переводим…" : "Сменить поставщика"}

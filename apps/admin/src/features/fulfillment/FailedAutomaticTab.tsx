@@ -224,7 +224,11 @@ export function FailedAutomaticTab() {
           <Button
             type="button"
             onClick={() => {
-              bulkRetry.mutate([...selected]);
+              // Spends supplier balance for every selected task.
+              const n = selected.size.toString();
+              if (window.confirm(`Перезапустить ${n} задач? Каждая снова пойдёт к поставщику.`)) {
+                bulkRetry.mutate([...selected]);
+              }
             }}
             disabled={selected.size === 0 || bulkRetry.isPending}
           >

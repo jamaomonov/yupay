@@ -107,6 +107,7 @@ it("lists only the mapped suppliers, cheapest preselected, with price and margin
 });
 
 it("moves the task to the supplier the operator picks", async () => {
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
   routeGets();
   mockedApiPost.mockResolvedValue(task({ supplier: "g2b", status: "pending" }));
   renderPanel(task());
@@ -123,6 +124,7 @@ it("moves the task to the supplier the operator picks", async () => {
       { supplier: "g2b" },
     );
   });
+  confirm.mockRestore();
 });
 
 it("says so when no other supplier is mapped", async () => {

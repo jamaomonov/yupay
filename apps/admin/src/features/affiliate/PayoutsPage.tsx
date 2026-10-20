@@ -197,7 +197,13 @@ export function PayoutsPage() {
                   size="sm"
                   variant="ghost"
                   onClick={() => {
-                    rejectPayout.mutate(detail.data.id);
+                    // Closes the request and returns the hold to the partner:
+                    // one stray click used to be enough.
+                    const ok = window.confirm(
+                      `Отклонить заявку на ${formatMoney(detail.data.amount, detail.data.currency)}? ` +
+                        "Деньги вернутся на баланс партнёра, заявка закроется.",
+                    );
+                    if (ok) rejectPayout.mutate(detail.data.id);
                   }}
                   disabled={rejectPayout.isPending}
                 >
