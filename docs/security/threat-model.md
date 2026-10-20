@@ -70,7 +70,9 @@ See `pii-handling.md`.
 - **Spam / fake reviews:** mitigated by the verified-purchase gate (only a buyer
   with a `delivered` order for the brand can post), one-per-`(user, order, brand)`,
   the global rate limiter on `POST /reviews`, and a report → auto-hide (≥3
-  distinct reporters) + admin moderation path.
+  distinct reporters **who have a delivered order** — since 2026-10-20; before,
+  any three fresh accounts could hide a review and pull its rating) + admin
+  moderation path.
 - **Reviewer de-anonymisation:** the public API exposes the author's
   `display_name` or `null`, **never** the email; the service never logs `body`.
 

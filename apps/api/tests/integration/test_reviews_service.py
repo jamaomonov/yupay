@@ -244,12 +244,31 @@ async def test_report_threshold_auto_hides(db_session: AsyncSession) -> None:
     review = await _make_published_review(db_session, brand, sku)
     for _ in range(3):
         reporter = await _make_user(db_session)
+        # Only a customer's report counts toward hiding; see the test below.
+        await _make_order(db_session, user_id=reporter.id, sku_id=sku.id)
         await svc.report_review(
             db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None
         )
     await db_session.refresh(review)
     assert review.status == "hidden"
     assert (await svc.get_stats(db_session, [brand.id]))[brand.id].count == 0
+
+
+async def test_reports_from_accounts_that_never_bought_do_not_hide(
+    db_session: AsyncSession,
+) -> None:
+    """Three fresh sign-ins could hide any review — and take its rating out of
+    the brand's stars — with nobody in the loop. Reports from accounts without
+    a delivered order are kept for moderators but do not auto-hide."""
+    brand, sku = await _seed_brand(db_session, "steam2b")
+    review = await _make_published_review(db_session, brand, sku)
+    for _ in range(5):
+        reporter = await _make_user(db_session)
+        await svc.report_review(
+            db_session, review_id=review.id, reporter_user_id=reporter.id, reason=None
+        )
+    await db_session.refresh(review)
+    assert review.status == "published"
 
 
 async def test_duplicate_report_is_noop(db_session: AsyncSession) -> None:

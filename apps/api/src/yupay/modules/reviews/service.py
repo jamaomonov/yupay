@@ -16,7 +16,7 @@ from decimal import Decimal
 from html.parser import HTMLParser
 from typing import NamedTuple, overload
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -390,11 +390,18 @@ async def report_review(
     except IntegrityError:
         return  # same reporter already flagged this review — idempotent no-op
 
+    # Only reports from customers — a delivered order on the account — count
+    # toward hiding. Any signed-in account could report, so three fresh
+    # sign-ins hid any review and pulled its rating from the brand's stars with
+    # nobody in the loop. The other reports stay for moderators to read.
+    bought = exists().where(
+        Order.user_id == ReviewReport.reporter_user_id, Order.status == "delivered"
+    )
     total = (
         await db.execute(
             select(func.count())
             .select_from(ReviewReport)
-            .where(ReviewReport.review_id == review_id)
+            .where(ReviewReport.review_id == review_id, bought)
         )
     ).scalar_one()
     if total >= _REPORT_AUTO_HIDE_THRESHOLD and review.status == "published":
