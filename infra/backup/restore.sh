@@ -7,6 +7,14 @@ set -euo pipefail
 
 src="${1:?usage: restore.sh <backup.dump.age>}"
 
+# It drops the database first. Name it back, so a wrong terminal or a wrong
+# `file=` cannot wipe production by accident.
+if [ "${CONFIRM_DB:-}" != "$PGDATABASE" ]; then
+    echo "[restore] refusing: this DROPS database '${PGDATABASE}' on ${PGHOST:-local}." >&2
+    echo "[restore] set CONFIRM_DB=${PGDATABASE} to go ahead (make restore ... confirm=${PGDATABASE})." >&2
+    exit 1
+fi
+
 tmp_dump="$(mktemp /tmp/yupay-restore-XXXXXX.dump)"
 trap 'rm -f "$tmp_dump"' EXIT
 

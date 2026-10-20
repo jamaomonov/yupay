@@ -17,6 +17,10 @@ mkdir -p "$tmp_dir"
 
 dump="${tmp_dir}/yupay-${file_ts}.dump"
 enc="${dump}.age"
+# Whatever happens below, no plaintext dump outlives this run: with `set -e` a
+# failed `age` used to exit between pg_dump and the `rm`, leaving the whole
+# database unencrypted in the backup-tmp volume.
+trap 'rm -f "$dump" "$enc"' EXIT
 
 echo "[backup] dumping ${PGDATABASE} ..."
 pg_dump --format=custom --no-owner --no-privileges --file "$dump"

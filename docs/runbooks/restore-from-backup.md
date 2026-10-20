@@ -9,9 +9,15 @@ The `backup` service in `docker-compose.prod.yml` is long-running
 (`restart: unless-stopped`): `infra/backup/run_nightly.sh` sleeps until
 `BACKUP_HOUR_UTC` (default **02:00 UTC**) and runs `pg_backup.sh`
 (pg_dump → age → rclone → R2) every night. A failed run is logged as
-`[backup] NIGHTLY RUN FAILED` — Loki picks it up; check it after any
-postgres maintenance. `make backup` still works for a one-off run
-(it overrides the container command).
+`[backup] NIGHTLY RUN FAILED` and, since 2026-10-20, also sent to the ops
+Telegram chat through the alert bot (`ALERT_BOT_TOKEN` / `ALERT_CHAT_ID`, read
+from `secrets/alertmanager.env`). Check it after any postgres maintenance.
+`make backup` still works for a one-off run (it overrides the container
+command). `pg_backup.sh` removes the plaintext dump on any exit, so a failed
+`age` no longer leaves the database unencrypted in the `backup-tmp` volume.
+
+`make restore file=… confirm=<dbname>` drops the database first, so it refuses
+unless `confirm` names the database it is about to drop.
 
 ## Preconditions
 

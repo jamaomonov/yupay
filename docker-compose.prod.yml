@@ -466,7 +466,11 @@ services:
     # and runs pg_backup.sh daily. unless-stopped keeps the schedule alive
     # across reboots. One-off runs override the command (see `make backup`).
     restart: unless-stopped
-    env_file: ./secrets/backup.env
+    # alertmanager.env for ALERT_BOT_TOKEN / ALERT_CHAT_ID: a failed night
+    # messages the ops chat (run_nightly.sh).
+    env_file:
+      - ./secrets/backup.env
+      - ./secrets/alertmanager.env
     volumes:
       - ./infra/backup:/scripts:ro
       - backup-tmp:/tmp/backup
@@ -475,7 +479,7 @@ services:
       [
         "/bin/sh",
         "-c",
-        'apk add --no-cache postgresql-client age rclone bash >/dev/null && exec "$@"',
+        'apk add --no-cache postgresql-client age rclone bash curl >/dev/null && exec "$@"',
         "--",
       ]
     command: ["/bin/sh", "/scripts/run_nightly.sh"]

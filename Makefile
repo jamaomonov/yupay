@@ -163,6 +163,6 @@ backup: ## One-off pg_backup.sh run (the backup service itself runs nightly)
 	$(COMPOSE_PROD) run --rm backup /bin/bash /scripts/pg_backup.sh
 
 .PHONY: restore
-restore: ## Restore DB from backup: make restore file=path
-	@if [ -z "$(file)" ]; then echo "Usage: make restore file=/path/to/backup.dump"; exit 1; fi
-	$(COMPOSE_PROD) run --rm -v $(file):/restore.dump backup /bin/bash /scripts/restore.sh /restore.dump
+restore: ## Restore DB from backup (DROPS the DB): make restore file=path confirm=<dbname>
+	@if [ -z "$(file)" ]; then echo "Usage: make restore file=/path/to/backup.dump confirm=<dbname>"; exit 1; fi
+	$(COMPOSE_PROD) run --rm -e CONFIRM_DB="$(confirm)" -v $(file):/restore.dump backup /bin/bash /scripts/restore.sh /restore.dump

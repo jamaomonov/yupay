@@ -11,6 +11,20 @@ set -eu
 
 HOUR="${BACKUP_HOUR_UTC:-2}"
 
+# A failed night used to be one echo nobody reads; a rotated R2 key or a
+# changed password then failed every night until a restore was needed. Tell
+# the ops chat (the alert bot from secrets/alertmanager.env). Best effort:
+# without the two variables, or with Telegram down, the log line remains.
+alert() {
+    if [ -n "${ALERT_BOT_TOKEN:-}" ] && [ -n "${ALERT_CHAT_ID:-}" ]; then
+        curl -fsS -m 15 -o /dev/null \
+            --data-urlencode "chat_id=${ALERT_CHAT_ID}" \
+            --data-urlencode "text=$1" \
+            "https://api.telegram.org/bot${ALERT_BOT_TOKEN}/sendMessage" ||
+            echo "[backup] could not deliver the alert"
+    fi
+}
+
 echo "[backup] nightly scheduler started; next runs at ${HOUR}:00 UTC"
 
 while :; do
@@ -25,6 +39,8 @@ while :; do
     if bash /scripts/pg_backup.sh; then
         echo "[backup] nightly run ok"
     else
-        echo "[backup] NIGHTLY RUN FAILED rc=$? — investigate before the next cycle"
+        rc=$?
+        echo "[backup] NIGHTLY RUN FAILED rc=${rc} — investigate before the next cycle"
+        alert "YuPay: ночной бэкап базы не прошёл (rc=${rc}). Логи: сервис backup."
     fi
 done
