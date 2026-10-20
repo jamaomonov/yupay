@@ -47,7 +47,12 @@ async function writeRefresh(token: string | null): Promise<void> {
   if (Platform.OS === "web") return;
   try {
     if (token === null) await SecureStore.deleteItemAsync(REFRESH_KEY);
-    else await SecureStore.setItemAsync(REFRESH_KEY, token);
+    // This device only: a 30-day credential has no business in an iCloud
+    // Keychain sync or a backup restored onto another phone.
+    else
+      await SecureStore.setItemAsync(REFRESH_KEY, token, {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
   } catch {
     // A token that does not stick costs a sign-in next launch, nothing more.
   }
@@ -55,6 +60,10 @@ async function writeRefresh(token: string | null): Promise<void> {
 
 let access: { token: string; until: number } | null = null;
 let refreshing: Promise<string | null> | null = null;
+// Bumped by sign-out. A refresh that started before it must not store what it
+// gets back: it used to write the rotated token into the keychain sign-out
+// had just cleared, and the next launch restored a session the user left.
+let epoch = 0;
 
 async function keep(tokens: Tokens): Promise<string> {
   access = { token: tokens.access_token, until: Date.now() + tokens.expires_in * 1000 };
@@ -67,6 +76,7 @@ async function keep(tokens: Tokens): Promise<string> {
 /** One refresh at a time: two screens asking at once share it. */
 function refreshAccess(): Promise<string | null> {
   refreshing ??= (async () => {
+    const started = epoch;
     const stored = await readRefresh();
     if (stored === null) return null;
     try {
@@ -75,6 +85,12 @@ function refreshAccess(): Promise<string | null> {
         headers: JSON_BODY,
         body: JSON.stringify({ refresh_token: stored }),
       });
+      if (started !== epoch) {
+        // Signed out while this was in flight: the server already rotated the
+        // token sign-out revoked, so revoke the successor too and keep nothing.
+        await revoke(tokens.refresh_token);
+        return null;
+      }
       return await keep(tokens);
     } catch (err) {
       // Only a refusal ends the session. A dropped connection is thrown, not read as
@@ -90,6 +106,19 @@ function refreshAccess(): Promise<string | null> {
     refreshing = null;
   });
   return refreshing;
+}
+
+async function revoke(refreshToken: string | undefined): Promise<void> {
+  if (refreshToken === undefined) return;
+  try {
+    await api.request(`${V1}/auth/logout`, {
+      method: "POST",
+      headers: JSON_BODY,
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+  } catch {
+    // It dies with its TTL; nothing on the phone holds it.
+  }
 }
 
 async function accessToken(): Promise<string | null> {
@@ -235,6 +264,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    epoch += 1;
     const stored = await readRefresh();
     const bearer = access?.token;
     access = null;
