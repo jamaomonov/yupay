@@ -516,3 +516,33 @@ async def test_a_retry_cannot_declare_money_whole_that_an_earlier_attempt_may_ha
     assert calls["n"] > before, "the replay actually ran"
     assert task.status == "failed"
     assert ff_svc.money_outcome_of(task) is MoneyOutcome.UNKNOWN
+
+
+async def test_an_admin_retry_contains_a_crash_like_the_drain_does(
+    db_session: AsyncSession, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A raw exception from an adapter (an unwrapped httpx error, a bug) used to
+    escape ``retry_task`` and roll back the whole request: the retry key just
+    armed, the attempt row and the outcome all vanished, and the task kept its
+    old money answer — so the next Retry could buy a second time. The drain
+    has always contained this in a savepoint; Retry now does too."""
+    order = await _make_paid_order(db_session, tag="retry-crash")
+    await ff_svc.start_for_order(db_session, order_id=order.id, settings=_settings())
+    task = (
+        await db_session.execute(
+            select(FulfillmentTask).where(FulfillmentTask.order_id == order.id)
+        )
+    ).scalar_one()
+    task.status = "failed"
+    await db_session.commit()
+
+    async def _crash(self: MockFulfiller, **_kw: object) -> FulfillResult:
+        raise RuntimeError("an adapter bug")
+
+    monkeypatch.setattr(MockFulfiller, "fulfill", _crash)
+
+    result = await ff_svc.retry_task(db_session, task_id=task.id)
+
+    assert result.status == "failed"
+    assert ff_svc.money_outcome_of(result) is MoneyOutcome.UNKNOWN
+    assert "RuntimeError" in (result.last_error or "")

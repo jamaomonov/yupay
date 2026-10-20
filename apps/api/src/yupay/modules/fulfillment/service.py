@@ -1671,6 +1671,61 @@ def _crash_detail(exc: BaseException) -> str:
     return f"{type(exc).__name__}: {lines[0] if lines else ''}"[:_CRASH_DETAIL_MAX]
 
 
+async def _process_contained(db: AsyncSession, *, task_id: str, where: str) -> FulfillmentTask:
+    """Run ``process_task`` inside a SAVEPOINT; record a crash instead of raising.
+
+    ``FulfillerError`` / ``FulfillerNotIntegratedError`` are handled inside
+    ``process_task``; what reaches the ``except`` here is a genuine surprise —
+    a raw httpx error an adapter forgot to wrap, a bug. Left to escape, it
+    rolls back the caller's whole transaction: on the drain that stalls the
+    queue on a poisoned row, and on an admin Retry it erases the retry key
+    just armed, the attempt row and the outcome, so the next Retry can buy a
+    second time. Contained, the task ends ``failed`` with ``UNKNOWN`` money —
+    the truth, since whether the supplier call went out is what we do not know.
+
+    Args:
+        db: Active session; the caller's writes before this call survive.
+        task_id: The task to run.
+        where: ``drain`` / ``retry`` / ``reassign``, for the log line.
+    """
+    try:
+        async with db.begin_nested():
+            return await process_task(db, task_id=task_id)
+    except Exception as exc:  # noqa: BLE001 -- see the docstring: only a genuine unexpected crash reaches here, and it must not escape.
+        # The SAVEPOINT already rolled back this task's partial writes and
+        # expired the ORM objects it touched. Reload fresh; the caller's row
+        # lock (held by the outer transaction, unaffected by a SAVEPOINT
+        # rollback) means nobody else touched the row meanwhile.
+        detail = _crash_detail(exc)
+        task = await _load_task(db, task_id)
+        item = (
+            await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
+        ).scalar_one()
+        task.status = "failed"
+        task.failed_at = now()
+        task.last_error = detail
+        item.fulfillment_state = "failed"
+        # We crashed part-way through the saga. Whether the supplier call
+        # went out, and what it cost, is exactly what we do not know.
+        record_money_outcome(task, _NOBODY_CAN_SAY)
+        await _record_attempt(
+            db,
+            task=task,
+            kind="fulfill",
+            status="error",
+            payload={"supplier": task.supplier},
+            error=detail,
+        )
+        log.warning(
+            "fulfillment.task_crashed",
+            where=where,
+            task_id=task_id,
+            error=detail[:200],
+        )
+        await db.flush()
+        return task
+
+
 async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
     """Claim and run pending fulfilment tasks. The worker's whole job.
 
@@ -1715,44 +1770,7 @@ async def drain_pending_tasks(db: AsyncSession, *, limit: int = 20) -> int:
         # worker's hot path free of a task reload and an order read per item.
         # ``process_webhook_update`` draws the same line inside its own
         # ``failed`` branch.
-        failed = False
-        try:
-            async with db.begin_nested():
-                failed = (await process_task(db, task_id=task_id)).status == "failed"
-        except Exception as exc:  # noqa: BLE001 -- a poisoned task must not stall the queue; FulfillerError/FulfillerNotIntegratedError are already handled INSIDE process_task, so only a genuine unexpected crash reaches here.
-            # The SAVEPOINT above already rolled back this task's partial
-            # writes and expired the ORM objects it touched — same
-            # begin_nested()-then-expire behaviour ``complete_manual_task``
-            # already relies on. Reload fresh; the claim query's FOR UPDATE
-            # lock (held by the outer transaction, unaffected by a
-            # SAVEPOINT rollback) means no other consumer could have
-            # touched this row meanwhile.
-            detail = _crash_detail(exc)
-            task = await _load_task(db, task_id)
-            item = (
-                await db.execute(select(OrderItem).where(OrderItem.id == task.order_item_id))
-            ).scalar_one()
-            task.status = "failed"
-            task.failed_at = now()
-            task.last_error = detail
-            item.fulfillment_state = "failed"
-            # We crashed part-way through the saga. Whether the supplier call
-            # went out, and what it cost, is exactly what we do not know.
-            record_money_outcome(task, _NOBODY_CAN_SAY)
-            await _record_attempt(
-                db,
-                task=task,
-                kind="fulfill",
-                status="error",
-                payload={"supplier": task.supplier},
-                error=detail,
-            )
-            log.warning(
-                "fulfillment.drain.task_crashed",
-                task_id=task_id,
-                error=detail[:200],
-            )
-            failed = True
+        failed = (await _process_contained(db, task_id=task_id, where="drain")).status == "failed"
         if failed:
             # Outside the SAVEPOINT above, deliberately: its crash arm answers
             # an unexpected exception with a permanent ``UNKNOWN``, so a refund
@@ -1932,7 +1950,7 @@ async def retry_task(db: AsyncSession, *, task_id: str) -> FulfillmentTask:
     task.failed_at = None
     task.updated_at = now()
     await db.flush()
-    task = await process_task(db, task_id=task_id)
+    task = await _process_contained(db, task_id=task_id, where="retry")
     await _settle_merchant_deposit(db, task_id=task_id)
     await _try_settle_order(db, order_id=task.order_id)
     await db.flush()
@@ -2034,7 +2052,7 @@ async def reassign_task(
         },
     )
     await db.flush()
-    task = await process_task(db, task_id=task_id)
+    task = await _process_contained(db, task_id=task_id, where="reassign")
     await _settle_merchant_deposit(db, task_id=task_id)
     await _try_settle_order(db, order_id=task.order_id)
     await db.flush()
