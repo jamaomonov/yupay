@@ -70,17 +70,15 @@ export function CabinetProvider({ children }: { children: React.ReactNode }) {
   const previousPath = useRef(pathname);
 
   // A query typed on Orders must not silently filter the catalog after a
-  // navigation — the box is cleared, and the new screen declares its own
-  // placeholder or none.
-  //
-  // On a **change** only, never on mount: child effects run before parent
-  // ones, so a clear here would wipe the placeholder the screen below had
-  // just set and the box would never appear on a cold load.
+  // navigation, so the text is cleared on a path change. The placeholder is
+  // NOT touched here: child effects run before parent ones, so clearing it
+  // here wiped the one the new screen had just declared — the box vanished on
+  // the way back to the catalogue. Each screen removes its own on unmount
+  // (`useSearch`), which React runs before the next screen's effects.
   useEffect(() => {
     if (previousPath.current === pathname) return;
     previousPath.current = pathname;
     setSearch("");
-    setSearchPlaceholder(null);
   }, [pathname]);
 
   const refreshProfile = useCallback(() => {
@@ -134,6 +132,11 @@ export function useSearch(placeholder: string): string {
   const { search, setSearchPlaceholder } = useCabinet();
   useEffect(() => {
     setSearchPlaceholder(placeholder);
+    // Leaving the screen takes its box with it; a screen without search
+    // declares nothing and the slot stays collapsed.
+    return () => {
+      setSearchPlaceholder(null);
+    };
   }, [placeholder, setSearchPlaceholder]);
   return search;
 }
