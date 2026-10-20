@@ -298,10 +298,32 @@ async def buy(  # noqa: PLR0911 -- one return per outcome reads as the table abo
         # It may have landed: the sweep sends the same purchase again (409 → the order).
         return _result("in_progress", key, buy_unconfirmed_at=now().isoformat(), buy_pending=True)
     except CsmarketError as exc:
+        if _says_the_order_exists(exc):
+            # Not a refusal: the order is there, we just could not read it. Grading
+            # this RETURNED refunded the buyer while csmarket sent the skin. Treat it
+            # as a lost answer; the sweep asks again with the same key.
+            log.warning(
+                "skins.buy.unreadable_answer",
+                order_item_id=row.order_item_id,
+                code=exc.code,
+                status=exc.status,
+            )
+            return _result(
+                "in_progress", key, buy_unconfirmed_at=now().isoformat(), buy_pending=True
+            )
         return await _refused(db, item, row, exc, cap)
     if not created:
         log.info("skins.buy.adopted", order_item_id=row.order_item_id)
     return await _settle(db, item, row, order, key)
+
+
+def _says_the_order_exists(exc: CsmarketError) -> bool:
+    """A 2xx we could not parse, or our own key's 409 without the order in it.
+
+    Both mean csmarket has an order for this key — buying may already be under
+    way — so neither is a refusal that lets the money go back.
+    """
+    return exc.status < 400 or exc.code == "duplicate_client_order_id"
 
 
 async def _refused(

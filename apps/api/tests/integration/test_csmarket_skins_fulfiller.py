@@ -248,6 +248,27 @@ async def test_a_lost_answer_is_settled_by_sending_the_same_purchase_again(
     assert (row.supplier_order_id, row.status) == ("A1B2C3D4", 4)
 
 
+@pytest.mark.parametrize(
+    "error",
+    [
+        # 200 on POST /orders whose body we could not read: the order exists.
+        CsmarketError("csmarket order has an unexpected shape", status=200, code="bad_shape"),
+        # A repeat of our key that came back without the existing order in it.
+        CsmarketError("duplicate", status=409, code="duplicate_client_order_id"),
+    ],
+)
+async def test_an_answer_that_says_the_order_exists_is_never_a_refusal(
+    db_session: AsyncSession, error: CsmarketError
+) -> None:
+    """Grading these RETURNED refunded the buyer while csmarket sent the skin."""
+    item = await _item(db_session, f"csm-exists-{error.code}")
+    result = await _buy(db_session, item, _Client(create_error=error))
+    assert result.outcome == "in_progress"
+    assert result.money_outcome != MoneyOutcome.RETURNED
+    assert result.extra_metadata["buy_pending"] is True
+    assert result.extra_metadata["buy_unconfirmed_at"]
+
+
 async def test_status_follows_the_trade_to_delivered(db_session: AsyncSession) -> None:
     item = await _item(db_session, "csm-flow")
     await _buy(db_session, item, _Client())

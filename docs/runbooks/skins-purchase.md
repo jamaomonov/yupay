@@ -129,6 +129,10 @@ by what csmarket reports — never refund it by hand while csmarket shows it in 
 - **`buy_unconfirmed`** (task failed `UNKNOWN` after 10 min): a buy call's answer was lost and
   Waxpeer shows no trade under our `project_id`. Look the project id up in the Waxpeer
   dashboard; if nothing was bought, refund the order (admin → refund to balance or card).
+  With csmarket as the source, an unreadable answer to `POST /orders` (a 200 we could not
+  parse, or a 409 on our own key without the order in it) lands here too, logged as
+  `skins.buy.unreadable_answer` — csmarket has an order for the key, so it is never graded as
+  a refusal. Repeated hits mean csmarket changed its response shape: tell its agent.
 - **«Скин: откат обмена после доставки»**: a trade was rolled back during Steam's protection.
   The task carries `skin_rollback` (reason, penalties). The customer already had the item
   delivered; decide with support whether anything is owed.
