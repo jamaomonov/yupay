@@ -632,6 +632,13 @@ class Settings(BaseSettings):
     pricing_fx_max_deviation_pct: Decimal = Field(default=Decimal("15"))
     pricing_fx_min_rate_uzs: Decimal = Field(default=Decimal("8000"))
     pricing_fx_max_rate_uzs: Decimal = Field(default=Decimal("25000"))
+    # The same sanity band for the other quotes ``fx_supported_quotes`` lists.
+    # The UZS band used to be applied to every quote, so USD→RUB (~80–100)
+    # was always ``out_of_band`` and RUB pricing failed closed.
+    pricing_fx_min_rate_rub: Decimal = Field(default=Decimal("40"))
+    pricing_fx_max_rate_rub: Decimal = Field(default=Decimal("250"))
+    pricing_fx_min_rate_usdt: Decimal = Field(default=Decimal("0.8"))
+    pricing_fx_max_rate_usdt: Decimal = Field(default=Decimal("1.2"))
     # Kill-switch: a drop bigger than this (fiat quotes only) puts every
     # *active* payment provider — including wallet — into maintenance and
     # pages ops. Rise is ignored. Recovery is manual. See ADR-0056.

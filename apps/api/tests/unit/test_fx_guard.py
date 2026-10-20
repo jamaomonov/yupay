@@ -90,3 +90,31 @@ def test_accepts_a_rate_exactly_at_the_band_floor() -> None:
 def test_accepts_a_rate_exactly_at_the_band_ceiling() -> None:
     settings = get_settings()
     _check(settings.pricing_fx_max_rate_uzs, previous=None)
+
+
+@pytest.mark.parametrize(("quote", "rate"), [("RUB", Decimal("92.5")), ("USDT", Decimal("1.001"))])
+def test_each_quote_is_checked_against_its_own_band(quote: str, rate: Decimal) -> None:
+    """The UZS band used to apply to every quote: USD→RUB at ~90 was always
+    out of band, so every RUB price failed closed."""
+    check_rate(rate, fetched_at=NOW, previous=None, now_=NOW, settings=get_settings(), quote=quote)
+
+
+def test_a_uzs_sized_rate_is_out_of_band_for_rub() -> None:
+    with pytest.raises(RateRejected) as exc:
+        check_rate(
+            GOOD, fetched_at=NOW, previous=None, now_=NOW, settings=get_settings(), quote="RUB"
+        )
+    assert exc.value.reason == "out_of_band"
+
+
+def test_a_quote_without_a_band_is_refused() -> None:
+    with pytest.raises(RateRejected) as exc:
+        check_rate(
+            Decimal("1"),
+            fetched_at=NOW,
+            previous=None,
+            now_=NOW,
+            settings=get_settings(),
+            quote="EUR",
+        )
+    assert exc.value.reason == "out_of_band"

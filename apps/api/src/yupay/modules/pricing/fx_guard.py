@@ -53,8 +53,12 @@ def check_rate(
     previous: Decimal | None,
     now_: datetime,
     settings: Settings,
+    quote: str = "UZS",
 ) -> None:
     """Raise :class:`RateRejected` unless ``rate`` may set a price.
+
+    ``quote`` picks the absolute band (:func:`_band`); a quote with no band
+    configured is refused rather than priced unchecked.
 
     Checks run in this order:
 
@@ -84,8 +88,22 @@ def check_rate(
         if deviation > settings.pricing_fx_max_deviation_pct:
             raise RateRejected("deviation", f"{deviation:.1f}% from {previous}")
 
-    if not (settings.pricing_fx_min_rate_uzs <= rate <= settings.pricing_fx_max_rate_uzs):
-        raise RateRejected("out_of_band", f"rate={rate}")
+    band = _band(settings, quote)
+    if band is None:
+        raise RateRejected("out_of_band", f"no band for USD->{quote}")
+    low, high = band
+    if not (low <= rate <= high):
+        raise RateRejected("out_of_band", f"rate={rate} quote={quote}")
+
+
+def _band(settings: Settings, quote: str) -> tuple[Decimal, Decimal] | None:
+    """The plausible USD→``quote`` range, or ``None`` when none is configured."""
+    bands = {
+        "UZS": (settings.pricing_fx_min_rate_uzs, settings.pricing_fx_max_rate_uzs),
+        "RUB": (settings.pricing_fx_min_rate_rub, settings.pricing_fx_max_rate_rub),
+        "USDT": (settings.pricing_fx_min_rate_usdt, settings.pricing_fx_max_rate_usdt),
+    }
+    return bands.get(quote.upper())
 
 
 async def _previous_rate(db: AsyncSession, *, quote: str) -> Decimal | None:
@@ -153,6 +171,7 @@ async def guarded_usd_rate(
             previous=previous,
             now_=now(),
             settings=settings,
+            quote=quote,
         )
     except RateRejected as exc:
         # Loud on purpose: this is money, and the product disappears from sale

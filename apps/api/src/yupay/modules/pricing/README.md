@@ -43,13 +43,13 @@ FX outage rather than a single wrong number. Once a rate is in hand,
 `check_rate` runs four further checks, in this order, and raises
 `RateRejected` on the first one that fails:
 
-| #   | Reason         | Condition                                                                                                                 | Setting                                               | Default                        |
-| --- | -------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- | ------------------------------ |
-| —   | `unavailable`  | `fx`'s entire provider chain failed (`FxUnavailableError`); raised by `guarded_usd_rate` itself, before `check_rate` runs | —                                                     | —                              |
-| 1   | `non_positive` | `rate <= 0`                                                                                                               | —                                                     | —                              |
-| 2   | `stale`        | older than `pricing_fx_max_age_seconds`                                                                                   | `pricing_fx_max_age_seconds`                          | `21600` (6 h)                  |
-| 3   | `deviation`    | more than `pricing_fx_max_deviation_pct`% from the last known-good rate (skipped when there is no previous rate)          | `pricing_fx_max_deviation_pct`                        | `15` (%)                       |
-| 4   | `out_of_band`  | outside `[pricing_fx_min_rate_uzs, pricing_fx_max_rate_uzs]`                                                              | `pricing_fx_min_rate_uzs` / `pricing_fx_max_rate_uzs` | `8000` / `25000` (UZS per USD) |
+| #   | Reason         | Condition                                                                                                                                                  | Setting                                    | Default                                              |
+| --- | -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ---------------------------------------------------- |
+| —   | `unavailable`  | `fx`'s entire provider chain failed (`FxUnavailableError`); raised by `guarded_usd_rate` itself, before `check_rate` runs                                  | —                                          | —                                                    |
+| 1   | `non_positive` | `rate <= 0`                                                                                                                                                | —                                          | —                                                    |
+| 2   | `stale`        | older than `pricing_fx_max_age_seconds`                                                                                                                    | `pricing_fx_max_age_seconds`               | `21600` (6 h)                                        |
+| 3   | `deviation`    | more than `pricing_fx_max_deviation_pct`% from the last known-good rate (skipped when there is no previous rate)                                           | `pricing_fx_max_deviation_pct`             | `15` (%)                                             |
+| 4   | `out_of_band`  | outside the band for the quote — UZS `[pricing_fx_min_rate_uzs, pricing_fx_max_rate_uzs]`, RUB `[…_rub]`, USDT `[…_usdt]`; a quote with no band is refused | `pricing_fx_{min,max}_rate_{uzs,rub,usdt}` | `8000`/`25000` UZS, `40`/`250` RUB, `0.8`/`1.2` USDT |
 
 `non_positive` runs before `out_of_band` deliberately — a zero rate should
 report as "not a number", not the coincidentally-also-true "out of band".
