@@ -68,7 +68,7 @@ export function EconomicsCard({ orderId }: { orderId: string }) {
       <header className="flex items-center gap-2 border-b px-4 py-3">
         <TrendingUp className="size-4 text-[var(--text-secondary)]" />
         <h2 className="text-sm font-semibold">Закупка и маржа</h2>
-        {data?.margin_usd !== null && (
+        {data !== undefined && data.margin_usd !== null && (
           <span className={`ml-auto text-sm font-semibold ${marginTone(data.margin_pct)}`}>
             {usd(data.margin_usd)}
             {data.margin_pct !== null && ` · ${data.margin_pct}%`}
