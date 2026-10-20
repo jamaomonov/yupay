@@ -9,6 +9,20 @@
 - You have `gpg`/`age` keys to decrypt `infra/secrets/*.enc.env`.
 - The image tag you want to deploy already exists in GHCR (`ghcr.io/yupay/<service>:vX.Y.Z`).
 
+## Host-key pinning
+
+`deploy.yml` passes `secrets.DEPLOY_HOST_FINGERPRINT` to the SSH step. Empty, the
+action skips host-key verification (the behaviour before 2026-10-20), so a hijacked
+`DEPLOY_HOST` would receive the session. Set it to the SHA256 fingerprint of the host
+key the action negotiates. Go's SSH client prefers ECDSA over Ed25519, so the ECDSA one
+is the likely match; if a deploy fails with `ssh: host key fingerprint mismatch`, set
+the Ed25519 one instead. Read them from a machine that already trusts the host:
+
+```bash
+ssh-keygen -F <DEPLOY_HOST> -l      # fingerprints from your known_hosts
+gh secret set DEPLOY_HOST_FINGERPRINT --body 'SHA256:…'
+```
+
 ## Procedure
 
 ```bash

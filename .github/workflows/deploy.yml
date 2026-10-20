@@ -44,6 +44,11 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          # Host-key pinning: without it the action skips verification, so a
+          # hijacked DEPLOY_HOST would receive the session and run the script.
+          # SHA256 fingerprint of the server's host key (see
+          # docs/runbooks/deploy.md). Empty = unchecked, the old behaviour.
+          fingerprint: ${{ secrets.DEPLOY_HOST_FINGERPRINT }}
           envs: IMAGE_TAG_INPUT
           script: |
             set -euo pipefail
