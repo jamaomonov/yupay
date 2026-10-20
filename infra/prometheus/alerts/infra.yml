@@ -34,3 +34,35 @@ groups:
         labels: { severity: page }
         annotations:
           summary: "Redis exporter not scrapeable"
+
+      # The money path's background half. Nothing watched it: a stopped or
+      # crash-looping worker left paid orders undelivered, and the stuck-order
+      # alert runs in the scheduler, which shared the blind spot. cAdvisor
+      # stops reporting a container that is not running, hence `absent`.
+      # It cannot see a worker that runs but is wedged — that needs a
+      # heartbeat or a queue-age metric, which do not exist yet.
+      - alert: FulfilmentWorkerDown
+        expr: absent(container_last_seen{name=~"yupay-prod-worker-.+"})
+        for: 3m
+        labels: { severity: page }
+        annotations:
+          summary: "Fulfilment worker container is not running"
+          description: >
+            Paid orders are not being delivered. `docker compose ps worker`
+            and its logs; restart with the deployed IMAGE_TAG.
+
+      - alert: SchedulerDown
+        expr: absent(container_last_seen{name=~"yupay-prod-scheduler-.+"})
+        for: 5m
+        labels: { severity: page }
+        annotations:
+          summary: "Scheduler container is not running"
+          description: >
+            Expiry, polling of in-flight supplier orders, the stuck-order
+            alert and auto-refunds have all stopped.
+
+      - alert: BackgroundServiceRestarting
+        expr: changes(container_start_time_seconds{name=~"yupay-prod-(worker|scheduler|api)-.+"}[15m]) > 2
+        labels: { severity: page }
+        annotations:
+          summary: "{{ $labels.name }} restarted more than twice in 15 minutes"

@@ -222,6 +222,12 @@ upstream. Check the acquirer before re-clicking.
 
 ## Worker liveness
 
+**Alerts** (`infra/prometheus/alerts/infra.yml`, from cAdvisor, since
+2026-10-20): `FulfilmentWorkerDown` (no running worker container for 3 min),
+`SchedulerDown` (5 min) and `BackgroundServiceRestarting` (worker, scheduler or
+api started more than twice in 15 min). None of them sees a worker that runs
+but is wedged; for that, the queue-depth SQL above is still the check.
+
 - **Log line**: `worker.consumer.started` on process start (carries
   `poll_seconds` and `concurrency`). Its absence after a deploy or restart means the process
   never got past setup — check for an import/config error in the same log

@@ -205,7 +205,8 @@ groups:
             refund this check exists to prevent.
           runbook: "https://github.com/yupay/yupay/blob/main/docs/runbooks/steam-web-api-quota.md"
 
-# NOTE: there is no queue-depth alert. The fulfilment queue is now
+# NOTE: there is no queue-depth alert (container-level worker/scheduler
+# alerts live in infra.yml). The fulfilment queue is now
 # `fulfillment_tasks` in Postgres (ADR-0064), not a Redis list -- the rule
 # that used to sit here watched `redis_list_length{key=~"dramatiq:.*"}`, a
 # metric nothing ever emitted (the redis-exporter only reports keys named in
