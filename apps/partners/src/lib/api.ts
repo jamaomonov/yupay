@@ -75,7 +75,19 @@ async function send(path: string, opts: Options): Promise<Response> {
  * a rotated token presented twice, a revoked session, a suspended partner.
  * Either way the caller's answer is the same: sign in again.
  */
-async function refresh(): Promise<boolean> {
+let refreshing: Promise<boolean> | null = null;
+
+/** One refresh at a time. Each one rotates the cookie, so five queries that
+ * 401 together used to send five refreshes with one cookie: one won, the
+ * other four were refused and cleared the winner's fresh token. */
+function refresh(): Promise<boolean> {
+  refreshing ??= refreshOnce().finally(() => {
+    refreshing = null;
+  });
+  return refreshing;
+}
+
+async function refreshOnce(): Promise<boolean> {
   // No body: the cookie is the token, and the server rotates it in the
   // response. Nothing here can send a token because nothing here has one.
   const res = await send("/api/v1/affiliate/auth/refresh", {

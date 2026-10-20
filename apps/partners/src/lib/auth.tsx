@@ -1,5 +1,6 @@
 "use client";
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
 
@@ -33,6 +34,7 @@ interface Session {
 const SessionContext = createContext<Session | null>(null);
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [status, setStatus] = useState<Status>("loading");
   const [partner, setPartner] = useState<Partner | null>(null);
 
@@ -82,9 +84,12 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       // Ignored on purpose; see above.
     }
     clearTokens();
+    // The next partner to sign in on this tab must not see this one's balance,
+    // commissions or payout cards from cache while their own load.
+    queryClient.clear();
     setPartner(null);
     setStatus("out");
-  }, []);
+  }, [queryClient]);
 
   return (
     <SessionContext.Provider value={{ status, partner, signIn, signOut }}>

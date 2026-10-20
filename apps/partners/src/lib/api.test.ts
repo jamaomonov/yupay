@@ -114,3 +114,30 @@ describe("api", () => {
     expect(sentAuth).toBeNull();
   });
 });
+
+describe("concurrent 401s", () => {
+  it("share one refresh instead of spending the rotating cookie once each", async () => {
+    let refreshes = 0;
+    let fresh = false;
+    const fetchMock = vi.fn((url: string) => {
+      if (url.endsWith("/auth/refresh")) {
+        refreshes += 1;
+        // A second presentation of the rotated cookie is refused.
+        if (refreshes > 1) return Promise.resolve(respond(401));
+        fresh = true;
+        return Promise.resolve(respond(200, { access_token: "a2" }));
+      }
+      return Promise.resolve(respond(fresh ? 200 : 401, { ok: true }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    setAccessToken("stale");
+
+    const results = await Promise.all(
+      ["/a", "/b", "/c", "/d", "/e"].map((p) => api<{ ok: boolean }>(p)),
+    );
+
+    expect(refreshes).toBe(1);
+    expect(results.every((r) => r.ok)).toBe(true);
+    expect(hasSession()).toBe(true);
+  });
+});
