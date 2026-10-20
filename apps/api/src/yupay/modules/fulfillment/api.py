@@ -36,6 +36,7 @@ from yupay.modules.fulfillment.service import (
     process_webhook_update,
     retry_task,
     start_for_order,
+    supplier_purchase_in_flight,
 )
 from yupay.modules.fulfillment.stall import UNSETTLED_ITEM_STATES, order_is_stalled
 from yupay.modules.fulfillment.suppliers import (
@@ -92,4 +93,5 @@ __all__ = [
     "retry_task",
     "router",
     "start_for_order",
+    "supplier_purchase_in_flight",
 ]

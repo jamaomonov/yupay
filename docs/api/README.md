@@ -189,6 +189,12 @@ order (`guest_order` — no balance), a balance top-up (`topup`), an in-flight s
 (`skin_trade_in_flight`) or a payment not in `succeeded`. Admin order page:
 «Возврат на баланс» beside «Возврат».
 
+Both admin refunds (`/refund` and `/refund-to-wallet`) also answer `409`
+`supplier_purchase_in_flight` while any task of the order is `in_progress` with a
+supplier (anything but `inventory` and `manual`). No supplier adapter can recall a
+purchase, so the refund would cancel the task on our side only and the supplier
+would deliver anyway. Wait for the task, or mark it failed in fulfilment first.
+
 ## CS2 skins admin
 
 `POST /admin/skins/trades/{id}/refund` **requires** `Idempotency-Key` (a repeat replays the

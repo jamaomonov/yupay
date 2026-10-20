@@ -2296,6 +2296,39 @@ async def reopen_task(db: AsyncSession, *, task_id: str, admin_id: str) -> Fulfi
     return task
 
 
+#: Routes whose in-flight work we can stop ourselves: stock we issue from our
+#: own warehouse, and the human queue. Every other route is a supplier.
+_SELF_STOPPABLE_ROUTES: frozenset[str] = frozenset({INVENTORY_ROUTE, "manual"})
+
+
+async def supplier_purchase_in_flight(db: AsyncSession, order_id: str) -> bool:
+    """``True`` while a supplier is working on a line of the order.
+
+    A refund cancels the order's open tasks, but no supplier adapter can
+    recall a purchase — every ``cancel()`` raises
+    ``FulfillerNotIntegratedError`` and :func:`_apply_cancel` cancels the task
+    on our side only. Refunding an ``in_progress`` supplier task therefore let
+    the supplier deliver minutes later: goods and money both. A ``pending``
+    task has not reached the supplier yet, so cancelling it really stops it.
+
+    Args:
+        db: Active session.
+        order_id: The order about to be refunded.
+    """
+    row = (
+        await db.execute(
+            select(FulfillmentTask.id)
+            .where(
+                FulfillmentTask.order_id == order_id,
+                FulfillmentTask.status == "in_progress",
+                FulfillmentTask.supplier.not_in(_SELF_STOPPABLE_ROUTES),
+            )
+            .limit(1)
+        )
+    ).first()
+    return row is not None
+
+
 async def cancel_open_tasks_for_order(
     db: AsyncSession, *, order_id: str, reason: str
 ) -> list[FulfillmentTask]:
