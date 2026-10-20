@@ -63,7 +63,14 @@ the decoded Telegram payload to `/auth/telegram/widget`, both with body transpor
   Manager never load on it and never report a URL whose fragment holds a credential.
 - It returns only to `yupay://…`, or to `exp://` on a private address (Expo Go during
   development). Anything else is refused, so the page cannot hand a credential elsewhere
-  (`apps/web/src/lib/app-auth-page.test.ts`).
+  (`apps/web/src/lib/app-auth-page.test.ts`). "Private address" means a literal RFC 1918 or
+  loopback IPv4, checked octet by octet: a first version matched by prefix and let
+  `exp://10.attacker.example` through.
+- Two residual risks are accepted for now. The `exp://` branch ships in production, so someone
+  on the same Wi-Fi as a developer with Expo Go could pose as Metro. And `yupay://` is a plain
+  custom scheme: on Android another app can register it and receive the credential. Before the
+  first store release the return must move to a verified App Link / Universal Link (or a
+  server-side one-time code), and the `exp://` branch should go.
 - Google requires `https://yupay.uz/app-auth` among the web OAuth client's authorized redirect
   URIs. Telegram requires nothing new: the bot's domain is already `yupay.uz`.
 

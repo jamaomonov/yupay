@@ -36,13 +36,23 @@ export function appAuthScript(config: AppAuthConfig): string {
   var TG_BOT = ${inline(config.telegramBotId)};
   var TEXT = ${inline(config.text)};
   var SELF = location.origin + "/app-auth";
-  var PRIVATE = /^(10\\.|127\\.|192\\.168\\.|172\\.(1[6-9]|2\\d|3[01])\\.)/;
+  // A whole dotted quad, checked by number. A prefix pattern let
+  // "10.attacker.example" through as if it were a LAN address.
+  function privateIp(host) {
+    var m = /^(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})\\.(\\d{1,3})$/.exec(host);
+    if (!m) return false;
+    var o = [+m[1], +m[2], +m[3], +m[4]];
+    for (var i = 0; i < 4; i++) if (o[i] > 255) return false;
+    return o[0] === 10 || o[0] === 127 ||
+      (o[0] === 192 && o[1] === 168) ||
+      (o[0] === 172 && o[1] >= 16 && o[1] <= 31);
+  }
 
   function allowed(to) {
     var u;
     try { u = new URL(to); } catch (e) { return false; }
     if (u.protocol === "yupay:") return true;
-    return u.protocol === "exp:" && PRIVATE.test(u.hostname);
+    return u.protocol === "exp:" && privateIp(u.hostname);
   }
   function decode(state) {
     try {

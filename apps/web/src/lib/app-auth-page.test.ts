@@ -95,6 +95,10 @@ describe("app-auth bounce page", () => {
     "https://evil.example/collect",
     "exp://evil.example:8081/--/auth",
     "exp://8.8.8.8:8081/--/auth",
+    "exp://10.attacker.example:8081/--/auth",
+    "exp://192.168.evil.example/--/auth",
+    "exp://172.16.0.1.evil.example/--/auth",
+    "exp://10.0.0.300:8081/--/auth",
     "javascript:alert(1)",
   ])("never sends a credential to %s", (to) => {
     const out = run(`https://yupay.uz/app-auth#access_token=tok123&state=${state(to)}`);
