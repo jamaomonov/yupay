@@ -187,6 +187,16 @@ async def test_refresh_reads_cookie_and_rotates(
     )
     assert replay.status_code == 401
 
+    # ...and the trip-wire must outlive the 401: the session minted by the
+    # rotation is dead too. The revocation used to be flushed and then rolled
+    # back with the request's transaction, so whoever held the newer token
+    # kept the account once the 15-minute Redis marker lapsed.
+    integration_client.cookies.clear()
+    successor = await integration_client.post(
+        "/api/v1/auth/refresh", cookies={"refresh_token": new_cookie}
+    )
+    assert successor.status_code == 401
+
 
 async def test_refresh_without_cookie_is_unauthorized(integration_client: AsyncClient) -> None:
     integration_client.cookies.clear()

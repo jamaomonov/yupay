@@ -565,6 +565,11 @@ async def refresh_session(
         # Reuse detected — burn down the user's other sessions to limit blast radius.
         if session_row.user_id is not None:
             await _revoke_all_for_user(db, session_row.user_id, settings=s)
+            # Committed here, not by the caller: the raise below makes the
+            # request's session dependency roll back, and the revocations
+            # with it — leaving only the 15-minute Redis markers, after which
+            # whoever holds the newer token keeps the account.
+            await db.commit()
         raise UnauthorizedError("refresh token reuse detected")
 
     if session_row.expires_at <= now():
