@@ -221,3 +221,14 @@ alone only carries the hash).
   `expired`. Lands with `apps/scheduler`.
 - **Guest order lookup link** (signed magic link in email) — once `notifications`
   ships.
+
+## Purchase cost and margin per order
+
+`GET /api/v1/admin/orders/{id}/economics` (`economics.py`) answers the admin order page's
+«Закупка и маржа»: per line the gross, the cost, the margin and its percentage, the supplier
+of the line's latest fulfilment task, and today's price at the routed supplier for
+comparison. It uses the business tab's expressions (`revenue.charged_usd_expr`,
+`revenue.margin_usd_expr`), so `charged − margin == cost` and the order's margin is its
+exact share of the dashboard's. A cost frozen on the line reads as such; one rebuilt from
+the price history or today's price is marked «оценка»; an unknown cost leaves the margin
+empty and out of the total.

@@ -33,6 +33,7 @@ from yupay.modules.auth.jwt import verify as verify_jwt
 from yupay.modules.evidence.service import capture_for_order, ip_country_from
 from yupay.modules.fulfillment.schemas import DeliveryListOut, DeliveryOut
 from yupay.modules.orders import service as svc
+from yupay.modules.orders.economics import OrderEconomicsOut, order_economics
 from yupay.modules.orders.models import Order, OrderEvent
 from yupay.modules.orders.revenue import order_charged_usd
 from yupay.modules.orders.risk import _is_trusted_buyer, _veto_decision
@@ -492,6 +493,24 @@ async def admin_get_order(
 ) -> OrderAdminOut:
     order = await svc.get_order_admin(db, order_id)
     return (await _to_admin_orders_out(db, [order]))[0]
+
+
+@admin_router.get(
+    "/{order_id}/economics",
+    response_model=OrderEconomicsOut,
+    summary="The order's purchase cost and margin, line by line",
+)
+async def admin_order_economics(
+    order_id: str,
+    db: Annotated[AsyncSession, Depends(db_session)],
+    _admin: Annotated[User, Depends(require_admin)],
+) -> OrderEconomicsOut:
+    """What the order cost us and what we kept — the order page's «Закупка и маржа».
+
+    Same expressions as the business tab (``orders.revenue``), so the two agree.
+    """
+    await svc.get_order_admin(db, order_id)  # 404 for an unknown order
+    return await order_economics(db, order_id=order_id)
 
 
 @admin_router.post("/{order_id}/cancel", response_model=OrderAdminOut)

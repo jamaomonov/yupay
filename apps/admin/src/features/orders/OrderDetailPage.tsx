@@ -22,6 +22,7 @@ import {
 import { useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
+import { EconomicsCard } from "./EconomicsCard";
 import { EvidenceCard } from "./EvidenceCard";
 import { MerchantDepositCard } from "./MerchantDepositCard";
 import { OrderActorRef } from "./OrderActorRef";
@@ -422,6 +423,7 @@ export function OrderDetailPage() {
         <section className="space-y-6 lg:col-span-2">
           <SummaryCard order={order} />
           <ItemsCard order={order} />
+          <EconomicsCard orderId={order.id} />
           <Timeline events={order.events} status={order.status} orderId={order.id} />
         </section>
 
