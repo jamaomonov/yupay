@@ -23,7 +23,12 @@ from yupay.modules.auth import jwt as authjwt
 from yupay.modules.auth.security import email_hash
 from yupay.modules.orders.models import Order
 from yupay.modules.orders.service import Actor
-from yupay.modules.payments import provider_admin, provider_analytics, provider_state
+from yupay.modules.payments import (
+    provider_admin,
+    provider_analytics,
+    provider_state,
+    review_limits,
+)
 from yupay.modules.payments import service as svc
 from yupay.modules.payments.p2p_details import payment_out
 from yupay.modules.payments.provider_state import SLUG_TO_LOGICAL
@@ -54,6 +59,10 @@ admin_router = APIRouter(
     tags=["admin:payments"],
     dependencies=[Depends(require_admin)],
 )
+# Per-kassa spend limits (owner, 2026-10-21) — their own file, this one is long
+# enough. Included before any route is declared here: ``GET /{payment_id}`` below
+# would otherwise take ``/review-limits`` for a payment id.
+admin_router.include_router(review_limits.router)
 admin_webhook_router = APIRouter(
     prefix="/admin/webhooks",
     tags=["admin:webhooks"],

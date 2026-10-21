@@ -171,6 +171,7 @@ _EMPTY_IN_ORDER: tuple[str, ...] = (
     "payment_attempts",
     "payments",
     "payment_provider_states",
+    "payment_review_limits",
     "order_events",
     "order_items",
     "orders",

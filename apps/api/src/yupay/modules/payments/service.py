@@ -348,6 +348,64 @@ async def _is_held_for_review(db: AsyncSession, order_id: str) -> bool:
     return bool((await db.execute(stmt)).scalar_one() or 0)
 
 
+async def credit_held_wallet_topup(db: AsyncSession, *, order_id: str) -> None:
+    """Credit a wallet top-up an operator released from review.
+
+    The other half of the hold in :func:`_mark_payment_succeeded`: the order sat
+    ``paid`` and uncredited; this books the balance and closes it, through the
+    same idempotent :func:`_complete_wallet_topup` the webhook would have run.
+
+    Only a top-up held by the kassa limit is credited this way; any other hold
+    on a deposit stays a manual decision. Idempotent: a top-up already
+    credited returns without doing anything.
+
+    Raises:
+        NotFoundError: No such order.
+        ConflictError: Not a top-up, not waiting in ``paid``, or no settled payment.
+    """
+    order = (
+        await db.execute(select(Order).where(Order.id == order_id).with_for_update())
+    ).scalar_one_or_none()
+    if order is None:
+        raise NotFoundError("order not found")
+    if order.purpose == "wallet_topup" and order.status == "delivered":
+        return  # a second click on «release»: already credited
+    if order.purpose != "wallet_topup" or order.status != "paid":
+        raise ConflictError(
+            "only a paid wallet top-up waiting for review can be credited",
+            extra={"purpose": order.purpose, "status": order.status},
+        )
+    # Only the kassa-limit hold releases into a credit. A deposit held for
+    # arriving after its order was closed is settled by hand (runbook
+    # paid-after-expiry) — «release» stays the wrong verb for it.
+    from yupay.modules.orders.risk import REASON_PROVIDER_LIMIT
+
+    held_for = (
+        await db.execute(
+            select(OrderEvent.payload["reason"].astext)
+            .where(OrderEvent.order_id == order.id, OrderEvent.kind == "order.held_for_review")
+            .order_by(OrderEvent.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if held_for != REASON_PROVIDER_LIMIT:
+        raise ConflictError(
+            "this deposit was not held by a kassa limit; settle it by hand",
+            extra={"reason": held_for},
+        )
+    payment = (
+        await db.execute(
+            select(Payment)
+            .where(Payment.order_id == order.id, Payment.status == "succeeded")
+            .order_by(Payment.succeeded_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if payment is None:
+        raise ConflictError("the top-up has no settled payment")
+    await _complete_wallet_topup(db, order=order, payment=payment)
+
+
 async def _complete_wallet_topup(db: AsyncSession, *, order: Order, payment: Payment) -> None:
     """Credit ``user_wallet`` and close the funding order. Idempotent.
 
@@ -476,6 +534,14 @@ async def _settle_late_payment(
         f"через {payment.provider}."
     )
     if order.purpose == "wallet_topup" and lapsed:
+        # The kassa limit holds a late top-up too, or paying after expiry
+        # would be the way round it (orders.provider_limit).
+        from yupay.modules.orders.risk import hold_for_review, wallet_topup_review_reason
+
+        held = await wallet_topup_review_reason(db, order)
+        if held is not None:
+            await hold_for_review(db, order=order, reason=held)
+            return
         await _complete_wallet_topup(db, order=order, payment=payment)
         alert += "\nБаланс пополнен."
         schedule_after_commit(db, lambda: send_admin_alert(alert, kind="paid_after_expiry"))
@@ -532,6 +598,16 @@ async def _mark_payment_succeeded(
         await db.flush()
         await _publish_status_changed(db, order)
         if order.purpose == "wallet_topup":
+            # A balance topped up in parts is how a kassa's limit would be walked
+            # around (orders.provider_limit), so a top-up past it waits for a
+            # human, uncredited, like a held sale. Released by the admin's
+            # «release» on the order, which credits it then.
+            from yupay.modules.orders.risk import hold_for_review, wallet_topup_review_reason
+
+            held = await wallet_topup_review_reason(db, order)
+            if held is not None:
+                await hold_for_review(db, order=order, reason=held)
+                return
             await _complete_wallet_topup(db, order=order, payment=payment)
             return
         # start_for_order (ADR-0013). With FULFILMENT_ASYNC on, this call only
@@ -834,7 +910,12 @@ async def _book_refund_ledger(
             actor=actor,
             metadata={"reason": reason or "", "full": is_full, "credited_account": user_wallet.id},
         )
-    elif order.purpose == "wallet_topup":
+    elif order.purpose == "wallet_topup" and await wallet_api.topup_was_credited(
+        db, payment_id=payment.id
+    ):
+        # Only a credited top-up is taken back off the balance. One held for
+        # review never reached it, so it falls through to the plain acquirer
+        # refund below, like a held sale (orders.provider_limit).
         if order.user_id is None:  # pragma: no cover -- deposits always have a user
             raise ConflictError("wallet top-up has no user to refund")
         try:

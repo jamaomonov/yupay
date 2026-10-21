@@ -17102,6 +17102,90 @@
         "title": "ReviewEligibilityOut",
         "type": "object"
       },
+      "ReviewLimitListOut": {
+        "description": "Every known payment slug, limited or not.",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ReviewLimitOut"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ReviewLimitListOut",
+        "type": "object"
+      },
+      "ReviewLimitOut": {
+        "description": "One payment slug's limit. ``max_amount`` is ``None`` when none was ever set.",
+        "properties": {
+          "changed_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed At"
+          },
+          "changed_by": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Changed By"
+          },
+          "currency": {
+            "title": "Currency",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_amount": {
+            "anyOf": [
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Amount"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "window_hours": {
+            "title": "Window Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "provider",
+          "enabled",
+          "max_amount",
+          "currency",
+          "window_hours",
+          "changed_by",
+          "changed_at"
+        ],
+        "title": "ReviewLimitOut",
+        "type": "object"
+      },
       "ReviewListOut": {
         "properties": {
           "items": {
@@ -17616,6 +17700,41 @@
           "state"
         ],
         "title": "SetProviderStateIn",
+        "type": "object"
+      },
+      "SetReviewLimitIn": {
+        "description": "The limit an operator sets on one slug.",
+        "properties": {
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "max_amount": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*(?:\\d{0,16}|(?=[\\d.]{1,19}0*$)\\d{0,16}\\.\\d{0,2}0*$)",
+                "type": "string"
+              }
+            ],
+            "title": "Max Amount"
+          },
+          "window_hours": {
+            "default": 24,
+            "maximum": 720.0,
+            "minimum": 1.0,
+            "title": "Window Hours",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "enabled",
+          "max_amount"
+        ],
+        "title": "SetReviewLimitIn",
         "type": "object"
       },
       "SettleIn": {
@@ -27207,7 +27326,7 @@
     },
     "/api/v1/admin/fulfillment/orders/{order_id}/release": {
       "post": {
-        "description": "Start fulfilment for an order held for manual review (ADR-0047).\n\nThe same call the payment webhook would have made had the order not been\nheld, which is why nothing special has to be undone: the hold is the absence\nof this call, not a state to reverse. ``start_for_order`` is idempotent, so\na double click cannot deliver twice.",
+        "description": "Start fulfilment for an order held for manual review (ADR-0047).\n\nThe same call the payment webhook would have made had the order not been\nheld, which is why nothing special has to be undone: the hold is the absence\nof this call, not a state to reverse. ``start_for_order`` is idempotent, so\na double click cannot deliver twice.\n\nA held **wallet top-up** has nothing to fulfil: releasing it credits the\nbalance instead (held by ``orders.provider_limit``), and no tasks come back.",
         "operationId": "admin_release_held_order_api_v1_admin_fulfillment_orders__order_id__release_post",
         "parameters": [
           {
@@ -32850,6 +32969,139 @@
           }
         },
         "summary": "Set a logical provider's state (writes every slug in its group)",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/review-limits": {
+      "get": {
+        "operationId": "admin_list_review_limits_api_v1_admin_payments_review_limits_get",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewLimitListOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Per-kassa spend limits: past them a buyer's order waits for review",
+        "tags": [
+          "admin:payments"
+        ]
+      }
+    },
+    "/api/v1/admin/payments/review-limits/{provider}": {
+      "put": {
+        "operationId": "admin_set_review_limit_api_v1_admin_payments_review_limits__provider__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider",
+            "required": true,
+            "schema": {
+              "title": "Provider",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "in": "header",
+            "name": "authorization",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Authorization"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetReviewLimitIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewLimitOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Set one kassa's spend limit (summed per buyer over the window)",
         "tags": [
           "admin:payments"
         ]

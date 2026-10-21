@@ -457,7 +457,17 @@ async def admin_release_held_order(
     held, which is why nothing special has to be undone: the hold is the absence
     of this call, not a state to reverse. ``start_for_order`` is idempotent, so
     a double click cannot deliver twice.
+
+    A held **wallet top-up** has nothing to fulfil: releasing it credits the
+    balance instead (held by ``orders.provider_limit``), and no tasks come back.
     """
+    from yupay.modules.orders.models import Order
+    from yupay.modules.payments import service as payments_svc
+
+    purpose = await db.scalar(select(Order.purpose).where(Order.id == order_id))
+    if purpose == "wallet_topup":
+        await payments_svc.credit_held_wallet_topup(db, order_id=order_id)
+        return FulfillmentTaskListOut(items=[], total=0)
     tasks = await svc.start_for_order(db, order_id=order_id)
     return FulfillmentTaskListOut(
         items=[FulfillmentTaskListItemOut.model_validate(t) for t in tasks],

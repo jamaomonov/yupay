@@ -28,6 +28,7 @@ from yupay.modules.wallet.service import (
     ensure_account,
     post,
     reverse_topup,
+    topup_was_credited,
     transactions_for_user,
     user_accounts,
 )
@@ -61,6 +62,7 @@ __all__ = [
     "post",
     "reverse_topup",
     "router",
+    "topup_was_credited",
     "transactions_for_user",
     "user_accounts",
 ]

@@ -199,6 +199,13 @@ supplier (anything but `inventory` and `manual`). No supplier adapter can recall
 purchase, so the refund would cancel the task on our side only and the supplier
 would deliver anyway. Wait for the task, or mark it failed in fulfilment first.
 
+## Per-kassa spend limits — `/admin/payments/review-limits`
+
+`GET` lists every payment slug with its limit (`max_amount: null`, `enabled: false` when none
+was set); `PUT /{slug}` sets `{enabled, max_amount, window_hours}` and takes `Idempotency-Key`
+(scope `payments.review_limit:<slug>`). An unknown slug is 404. What the limit does is in
+`docs/runbooks/order-held-for-review.md` («Per-kassa spend limit»).
+
 ## CS2 skins admin
 
 `POST /admin/skins/trades/{id}/refund` **requires** `Idempotency-Key` (a repeat replays the

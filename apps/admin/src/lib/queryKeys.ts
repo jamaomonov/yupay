@@ -205,6 +205,7 @@ export const qk = {
 
   // payment providers (admin control panel — list + per-provider analytics detail)
   paymentProviders: () => ["admin", "payments", "providers"] as const,
+  paymentReviewLimits: () => ["admin", "payments", "review-limits"] as const,
   paymentProviderDetail: (provider: string, window: string) =>
     ["admin", "payments", "providers", provider, window] as const,
 

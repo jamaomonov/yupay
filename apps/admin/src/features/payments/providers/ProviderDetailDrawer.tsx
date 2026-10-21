@@ -24,6 +24,7 @@ import {
   TechStateBlock,
   VolumeBlock,
 } from "./ProviderAnalyticsBlocks";
+import { ReviewLimitsBlock } from "./ReviewLimitsBlock";
 import {
   STATE_LABEL,
   WINDOW_LABEL,
@@ -139,6 +140,7 @@ export function ProviderDetailDrawer({ provider, onClose }: Props) {
           {query.data && (
             <>
               <TechStateBlock summary={query.data.summary} />
+              <ReviewLimitsBlock slugs={query.data.summary.slugs} />
               <VolumeBlock rows={query.data.volume} />
               <SuccessRateBlock rate={query.data.success_rate} />
               <IncidentsBlock incidents={query.data.incidents} />

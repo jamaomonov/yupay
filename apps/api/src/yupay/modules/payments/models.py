@@ -11,6 +11,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Integer,
     Numeric,
     String,
     Text,
@@ -126,4 +127,36 @@ class PaymentProviderState(Base):
     changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
-__all__ = ["Payment", "PaymentAttempt", "PaymentProviderState", "PaymentWebhook"]
+class PaymentReviewLimit(Base):
+    """How much a buyer may pay through one provider before a human looks.
+
+    One row per payment slug (``click_miniapp``, not the logical ``click``: the
+    two Click kassas carry different risk). A buyer whose settled payments
+    through this slug in the last ``window_hours`` — the current one included —
+    exceed ``max_amount`` is held for review (``orders.provider_limit``). No row,
+    or ``enabled = false``, means no limit. Edited in the admin; migration 0104
+    seeds the owner's 90 000 soʻm a day for the mini-app kassa.
+    """
+
+    __tablename__ = "payment_review_limits"
+    __table_args__ = (
+        CheckConstraint("max_amount > 0", name="max_amount_positive"),
+        CheckConstraint("window_hours BETWEEN 1 AND 720", name="window_hours_range"),
+    )
+
+    provider: Mapped[str] = mapped_column(String(32), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    max_amount: Mapped[Decimal] = mapped_column(Numeric(18, 2), nullable=False)
+    currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default=text("'UZS'"))
+    window_hours: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("24"))
+    changed_by: Mapped[str | None] = mapped_column(UUID(as_uuid=False), nullable=True)
+    changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+__all__ = [
+    "Payment",
+    "PaymentAttempt",
+    "PaymentProviderState",
+    "PaymentReviewLimit",
+    "PaymentWebhook",
+]

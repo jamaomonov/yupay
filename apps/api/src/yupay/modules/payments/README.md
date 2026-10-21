@@ -146,3 +146,13 @@ sequenceDiagram
 `PaymentGateway`, обновить `REGISTRY`, добавить интеграционные тесты на
 success / retryable failure / idempotent replay. **Никогда** не парсить тело
 webhook'а до проверки подписи.
+
+## Per-kassa spend limit (2026-10-21)
+
+`payment_review_limits` holds, per payment slug, how much one buyer may pay through it in a
+window before a human looks (`review_limits.py`: `GET/PUT /admin/payments/review-limits`). The
+rule that reads it is `orders.provider_limit`; settlement calls it through `orders.risk`. A
+**wallet top-up** past the limit settles but is not credited (`_mark_payment_succeeded`, and the
+late-payment path) until an operator releases it — `credit_held_wallet_topup`, reached from the
+fulfilment «release» route. A refund of such a top-up skips the balance reversal
+(`wallet.topup_was_credited`). Runbook: `docs/runbooks/order-held-for-review.md`.

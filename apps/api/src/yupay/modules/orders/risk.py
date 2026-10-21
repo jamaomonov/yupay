@@ -63,6 +63,8 @@ from yupay.modules.users.models import User
 if TYPE_CHECKING:  # pragma: no cover -- type hints only
     from sqlalchemy.ext.asyncio import AsyncSession
 
+    from yupay.modules.orders.provider_limit import LimitTrip
+
 log = get_logger("yupay.orders.risk")
 
 #: Written to ``order_events`` and shown in the alert.
@@ -118,6 +120,12 @@ REASON_NEW_BUYER = "new_buyer_over_limits"
 #: went past the lifetime `users.purchase_limit_usd` an operator set on it.
 #: See `orders.account_policy`.
 REASON_PURCHASE_LIMIT = "account_purchase_limit_exceeded"
+
+#: The buyer's settled payments through one kassa over its window passed the
+#: limit set for it in the admin (`payments.PaymentReviewLimit`, owner
+#: 2026-10-21: Click's mini-app kassa, 90 000 soʻm a day). Summed, so paying
+#: in parts does not get under it. See `orders.provider_limit`.
+REASON_PROVIDER_LIMIT = "provider_limit_exceeded"
 
 VETO_FOREIGN_COUNTRY = "precharge_foreign_country"
 
@@ -193,6 +201,12 @@ HOLD_ALERT_TEXT: dict[str, tuple[str, str]] = {
         "Сумма покупок этого аккаунта (за всё время, вместе с гостевыми заказами на его "
         "email) превысила лимит из админки. Выдача НЕ запущена — выдай или верни; "
         "лимит меняется в карточке клиента.",
+    ),
+    REASON_PROVIDER_LIMIT: (
+        "🔍 Лимит кассы превышен — на проверке",
+        "Сумма оплат этого покупателя через эту кассу за окно превысила лимит из "
+        "админки (оплата частями тоже считается). Выдача НЕ запущена, пополнение "
+        "кошелька НЕ зачислено — выдай/зачисли или верни.",
     ),
     REASON_NEW_BUYER: (
         "🔍 Новый покупатель превысил стартовые лимиты",
@@ -424,6 +438,10 @@ def _targets_from(fulfillment_data: dict[str, Any]) -> frozenset[str]:
         if cleaned:
             targets.add(cleaned)
     return frozenset(targets)
+
+
+#: Public name for ``orders.provider_limit``, which links a buyer the same way.
+targets_from = _targets_from
 
 
 def _shares_key(a: WindowOrder, b: WindowOrder) -> bool:
@@ -809,7 +827,43 @@ async def review_reason(
         return None
     if await account_policy.over_limit(db, order, policy):
         return REASON_PURCHASE_LIMIT
+    if await _provider_limit_trip(db, order) is not None:
+        return REASON_PROVIDER_LIMIT
     return await _standard_reason(db, order, cfg)
+
+
+async def wallet_topup_review_reason(db: AsyncSession, order: Order) -> str | None:
+    """Why a wallet top-up must not be credited automatically, or ``None``.
+
+    Only the provider limit applies: a top-up delivers nothing but a balance, so
+    the catalog rules (amount, liquid goods, recipients) have nothing to judge
+    until the balance is spent — and that purchase goes through them. The limit
+    is different: a balance topped up in parts is how a kassa limit would be
+    walked around, so a top-up counts toward it and is held past it. A trusted
+    account is exempt here as everywhere (owner, 2026-10-21).
+    """
+    policy = await account_policy.policy_for(db, order)
+    if policy.trusted:
+        return None
+    if await _provider_limit_trip(db, order) is not None:
+        return REASON_PROVIDER_LIMIT
+    return None
+
+
+async def _provider_limit_trip(db: AsyncSession, order: Order) -> LimitTrip | None:
+    """``orders.provider_limit.check``, never raising: a broken query must not block a sale.
+
+    Imported here, not at module level: ``provider_limit`` imports this module for
+    ``targets_from``.
+    """
+    from yupay.modules.orders import provider_limit
+
+    try:
+        async with db.begin_nested():
+            return await provider_limit.check(db, order)
+    except Exception:
+        log.exception("orders.provider_limit_failed", order_id=order.id)
+        return None
 
 
 async def _standard_reason(db: AsyncSession, order: Order, cfg: Settings) -> str | None:

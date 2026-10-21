@@ -34,12 +34,13 @@ The alert deliberately carries **no IP, device, email, or other identity** —
 ADR-0044/§9 on why raw identity data doesn't get copied around). Finding the
 rest of a linked group is a step you do in the admin panel, described below.
 
-## The six reasons
+## The reasons
 
 | Reason (`order_events.payload.reason`)                        | Fires when                                                                                                                                                                                                                                                                                                                                                                                                                          | Detail                                                                                                                                                                  |
 | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `amount_at_or_above_threshold` (`REASON_LARGE_AMOUNT`)        | This order's `total_usd` is at or above the effective threshold. Threshold is jittered per order id within `[0.6, 1.0) × MANUAL_REVIEW_THRESHOLD_USD` so probing for the edge finds a band, not a line — the same order always gets the same effective threshold, but two different orders at the same nominal amount can land on either side of it.                                                                                | ADR-0047                                                                                                                                                                |
 | `account_purchase_limit_exceeded` (`REASON_PURCHASE_LIMIT`)   | The account's lifetime paid total went past the limit an operator set on it (see «Per-account purchase policy» below).                                                                                                                                                                                                                                                                                                              | 2026-10-11                                                                                                                                                              |
+| `provider_limit_exceeded` (`REASON_PROVIDER_LIMIT`)           | The buyer's settled payments through one kassa over its window passed the limit set in the admin (see «Per-kassa spend limit» below). Summed, so paying in parts does not get under it. **Also holds a wallet top-up — uncredited.**                                                                                                                                                                                                | 2026-10-21                                                                                                                                                              |
 | `paid_after_order_expired` (`REASON_PAID_AFTER_EXPIRY`)       | The acquirer settled the payment after the order had already been marked `expired`. The sale is real, but it was priced and stocked ten minutes ago.                                                                                                                                                                                                                                                                                | [paid-after-expiry.md](./paid-after-expiry.md) has the full procedure — different for wallet top-ups vs. catalog orders, and for timeout vs. operator-cancelled orders. |
 | `identity_rolling_sum_exceeded` (`REASON_ROLLING_SUM`)        | Orders sharing an identity (buyer, IP, device, or delivery target) sum to `RISK_SUM_24H_USD` or more within 24h, or `RISK_SUM_7D_USD` or more within 7 days — many small orders instead of one large one. **The sum includes this order itself: a single order at or above the cap holds on its own, with zero linked orders.** Check the window before assuming a series exists.                                                   | ADR-0062                                                                                                                                                                |
 | `identity_velocity_exceeded` (`REASON_VELOCITY`)              | `RISK_VELOCITY_24H` or more paid orders sharing an identity within 24h, regardless of amount — a burst of cheap orders is itself a signal.                                                                                                                                                                                                                                                                                          | ADR-0062                                                                                                                                                                |
@@ -503,6 +504,31 @@ per-identity ceiling several times over; nothing here caps that, and it is not
 meant to — the control that removed the carding wave was switching off payment
 from unauthorised cards, which is upstream of every rule in this file. If that
 setting is ever reversed, these numbers must come back down first.
+
+## Per-kassa spend limit, 2026-10-21
+
+Owner's rule: through Click's **mini-app** kassa (`click_miniapp`), a buyer past
+**90 000 soʻm in 24 h** goes to review — the order is not fulfilled, a wallet top-up is not
+credited. Set and changed in the admin: Payments → Providers → Click → «Лимит без проверки»
+(`PUT /admin/payments/review-limits/{slug}`), one row per payment slug, so the site's Click
+kassa can get its own number or none. Table `payment_review_limits` (migration 0104 seeds the
+mini-app row); code `orders/provider_limit.py`.
+
+- **Summed, not per payment.** The buyer's settled payments through that slug over the window,
+  this one included. 50 000 + 50 000 holds the second. A held order's payment has settled, so
+  every later one in the window holds too.
+- **"The buyer"**: the account or guest email, the device (when `RISK_DEVICE_IDENTITY` is on)
+  and the delivery target (player id, Telegram handle) — a second account buying for the same
+  player still adds up. **Not the IP**: a whole carrier sits behind a few addresses, and a
+  fixed-limit sum would add strangers together.
+- **Wallet top-ups count and are held**, or the limit is one balance top-up away from not
+  existing. «Выдать» on a top-up held _by this rule_ credits the balance (idempotent). A
+  deposit held for any other reason still answers 409 there — see paid-after-expiry.md.
+- **Refunding a held top-up** goes through the normal acquirer refund: the balance is not
+  touched, because the money never reached it (`wallet.topup_was_credited`).
+- **Trusted accounts are exempt**, as from every other rule (owner's choice, 2026-10-21).
+- A failed limit query lets the sale through and logs `orders.provider_limit_failed` — the
+  same "a broken risk query never blocks a sale" as the rest of this module.
 
 ## CS2 skin orders linked to each other, 2026-10-15
 

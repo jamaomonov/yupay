@@ -388,6 +388,17 @@ Business bot posts the bank notification to `POST /api/v1/webhooks/telegram/p2p`
 - **Personal-card risk.** High P2P turnover on a personal card can make the bank restrict it;
   accepted by the owner.
 
+## Per-kassa spend limit (2026-10-21)
+
+**Threat:** a carder who learns a kassa's per-payment limit pays just under it, several times.
+**Control:** `orders.provider_limit` sums a buyer's settled payments through the kassa over a
+window (admin-set; Click mini app: 90 000 soʻm / 24 h) and holds the order — or the wallet top-up,
+uncredited — that carries the sum past it. The buyer is linked by account, guest email, device
+and delivery target, so a second account paying for the same player adds up; the IP is left
+out because carrier NAT would sum strangers. **Residual:** fresh accounts with fresh devices and
+fresh recipients are separate buyers to this rule — the risk module's other rules and the
+new-buyer limits are what see them. Trusted accounts are exempt by the owner's choice.
+
 ## Out of scope (we do not handle)
 
 - Card data (PAN, CVV) — all card collection redirected to hosted provider fields.

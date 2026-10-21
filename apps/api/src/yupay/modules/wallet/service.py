@@ -403,6 +403,21 @@ async def admin_adjust(
     )
 
 
+async def topup_was_credited(db: AsyncSession, *, payment_id: str) -> bool:
+    """Whether :func:`credit_topup` has booked this payment onto a balance.
+
+    A top-up held for review (``orders.provider_limit``) has settled with the
+    acquirer but not reached the balance; refunding it must not take the money
+    back off a balance it never landed on.
+    """
+    found = await db.scalar(
+        select(WalletTransaction.id).where(
+            WalletTransaction.idempotency_key == f"topup:payment:{payment_id}"
+        )
+    )
+    return found is not None
+
+
 async def credit_topup(
     db: AsyncSession,
     *,
