@@ -278,6 +278,8 @@
     "fieldInvalid": "Неверный формат",
     "countRange": "от {min} до {max}",
     "sectionAll": "Все",
+    "sectionSteam": "Пополнение Steam",
+    "sectionTelegram": "Пополнение Telegram",
     "showMore": "Показать ещё",
     "skuCount": "{count, plural, one {# позиция} few {# позиции} many {# позиций} other {# позиции}}",
     "loading": "Загружаем каталог…",

@@ -278,6 +278,8 @@
     "fieldInvalid": "Notoʻgʻri format",
     "countRange": "{min} dan {max} gacha",
     "sectionAll": "Hammasi",
+    "sectionSteam": "Steam toʻldirish",
+    "sectionTelegram": "Telegram toʻldirish",
     "showMore": "Yana koʻrsatish",
     "skuCount": "{count, plural, one {# ta pozitsiya} other {# ta pozitsiya}}",
     "loading": "Katalog yuklanmoqda…",

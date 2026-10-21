@@ -147,17 +147,57 @@ export interface Section {
   count: number;
 }
 
+/** A section the cabinet lifts out of the storefront's categories. */
+export type PinnedSection = "steam" | "telegram";
+
 /**
- * The catalog's sections, in the order the price list returns them.
- *
- * A brand whose category row is missing lands under `null` in the API and is
- * skipped here rather than given a section of its own: the sidebar is
- * navigation, and a section called "—" navigates nowhere useful. The brand
- * itself still appears under «Все».
+ * Brands that get a section of their own in the cabinet, whatever their
+ * storefront category says (owner, 2026-10-21). Resellers come for exactly
+ * these, and inside «Пополнения» they sat among three hundred game brands.
+ * The storefront's categories are left alone — this is cabinet navigation.
  */
-export function sectionsOf(catalog: CatalogSummary | null): Section[] {
+const PINNED: readonly { slug: PinnedSection; brands: readonly string[] }[] = [
+  { slug: "steam", brands: ["steam"] },
+  { slug: "telegram", brands: ["telegram-stars", "telegram-premium"] },
+];
+
+/** The pinned section a brand belongs to, if any. */
+export function pinnedSectionOf(brandSlug: string): PinnedSection | null {
+  return PINNED.find((entry) => entry.brands.includes(brandSlug))?.slug ?? null;
+}
+
+/** The section a brand is listed under: its pinned one, else its category. */
+export function sectionSlugOf(brand: {
+  slug: string;
+  category_slug: string | null;
+}): string | null {
+  return pinnedSectionOf(brand.slug) ?? brand.category_slug;
+}
+
+/**
+ * The catalog's sections: the pinned ones first, then the categories in the
+ * order the price list returns them.
+ *
+ * A pinned section appears only when one of its brands is in the catalog, so
+ * a brand hidden from resellers leaves no empty link behind. A brand whose
+ * category row is missing lands under `null` in the API and is skipped here
+ * rather than given a section of its own: the sidebar is navigation, and a
+ * section called "—" navigates nowhere useful. The brand itself still appears
+ * under «Все».
+ */
+export function sectionsOf(
+  catalog: CatalogSummary | null,
+  pinnedName: (slug: PinnedSection) => string = (slug) => slug,
+): Section[] {
+  const brands = catalog?.brands ?? [];
+  const pinned: Section[] = [];
+  for (const entry of PINNED) {
+    const count = brands.filter((brand) => entry.brands.includes(brand.slug)).length;
+    if (count > 0) pinned.push({ slug: entry.slug, name: pinnedName(entry.slug), count });
+  }
   const seen = new Map<string, Section>();
-  for (const brand of catalog?.brands ?? []) {
+  for (const brand of brands) {
+    if (pinnedSectionOf(brand.slug) !== null) continue;
     if (brand.category_slug === null || brand.category_name === null) continue;
     const found = seen.get(brand.category_slug);
     if (found) found.count += 1;
@@ -168,5 +208,5 @@ export function sectionsOf(catalog: CatalogSummary | null): Section[] {
         count: 1,
       });
   }
-  return [...seen.values()];
+  return [...pinned, ...seen.values()];
 }

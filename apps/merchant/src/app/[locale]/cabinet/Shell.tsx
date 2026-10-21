@@ -54,8 +54,11 @@ function CabinetChrome({ children }: { children: React.ReactNode }) {
   const { locale } = useParams<{ locale: string }>();
   const pathname = usePathname();
   const router = useRouter();
+  const tCatalog = useTranslations("merchant.catalog");
   const { catalog, profile } = useCabinet();
-  const sections = sectionsOf(catalog);
+  const sections = sectionsOf(catalog, (slug) =>
+    tCatalog(slug === "steam" ? "sectionSteam" : "sectionTelegram"),
+  );
   // Which section the catalog is filtered to, so the sidebar can say so.
   const active = useSearchParams().get("section");
   // Compared without a locale segment on either side. `usePathname()` returns

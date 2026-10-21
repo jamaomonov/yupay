@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { Brand, Field, PlacedOrder, PlayerCheck, Product, Sku } from "@/lib/types";
 
 import { BrandMark } from "@/components/BrandMark";
-import { useCabinet } from "@/components/CabinetContext";
+import { pinnedSectionOf, useCabinet } from "@/components/CabinetContext";
 import { SkuRows } from "@/components/catalog/SkuRows";
 import { LoadingNote } from "@/components/LoadingNote";
 import { ApiError, api } from "@/lib/api";
@@ -278,6 +278,15 @@ export default function BrandPage() {
     .map((p) => p.name)
     .filter((name) => name.toLowerCase() !== brand.name.toLowerCase());
   const shape = selected ? countLabel(selected) : "none";
+  // The section the grid lists this brand under — Steam and Telegram have
+  // their own in the cabinet, not their storefront category.
+  const pinned = pinnedSectionOf(brand.slug);
+  const crumb =
+    pinned !== null
+      ? { slug: pinned, name: t(pinned === "steam" ? "sectionSteam" : "sectionTelegram") }
+      : brand.category_slug !== null && brand.category_name !== null
+        ? { slug: brand.category_slug, name: brand.category_name }
+        : null;
 
   return (
     <div>
@@ -286,12 +295,10 @@ export default function BrandPage() {
           <ArrowLeft size={12} />
           {t("backToCatalog")}
         </Link>
-        {brand.category_name !== null && (
+        {crumb !== null && (
           <>
             <span aria-hidden>›</span>
-            <Link href={`/${routeLocale}/cabinet/catalog?section=${brand.category_slug ?? ""}`}>
-              {brand.category_name}
-            </Link>
+            <Link href={`/${routeLocale}/cabinet/catalog?section=${crumb.slug}`}>{crumb.name}</Link>
           </>
         )}
         <span aria-hidden>›</span>

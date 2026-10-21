@@ -8,7 +8,7 @@ import { Suspense, useDeferredValue, useEffect, useMemo, useRef, useState } from
 
 import type { BrandSummary } from "@/lib/types";
 
-import { sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
+import { sectionSlugOf, sectionsOf, useCabinet, useSearch } from "@/components/CabinetContext";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingNote } from "@/components/LoadingNote";
 import { PageHeading } from "@/components/PageHeading";
@@ -147,12 +147,15 @@ function CatalogGrid() {
   // keystroke; the cards are cheap to filter but not to paint on every key.
   const query = useDeferredValue(useSearch(t("searchPlaceholder")));
   const section = useSearchParams().get("section");
-  const sections = useMemo(() => sectionsOf(catalog), [catalog]);
+  const sections = useMemo(
+    () => sectionsOf(catalog, (slug) => t(slug === "steam" ? "sectionSteam" : "sectionTelegram")),
+    [catalog, t],
+  );
   const sectionName = sections.find((entry) => entry.slug === section)?.name ?? null;
 
   const brands = useMemo(() => {
     const all = catalog?.brands ?? [];
-    const inSection = section === null ? all : all.filter((b) => b.category_slug === section);
+    const inSection = section === null ? all : all.filter((b) => sectionSlugOf(b) === section);
     const needle = query.trim().toLowerCase();
     if (needle === "") return inSection;
     // Brand name or any product under it: a reseller looking for "robux"

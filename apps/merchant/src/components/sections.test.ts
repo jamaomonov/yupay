@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { sectionsOf } from "./CabinetContext";
+import { sectionSlugOf, sectionsOf } from "./CabinetContext";
 
 import type { BrandSummary } from "@/lib/types";
 
@@ -30,6 +30,35 @@ describe("sectionsOf", () => {
     expect(sections).toEqual([
       { slug: "top-ups", name: "Игры", count: 2 },
       { slug: "gift-cards", name: "Карты", count: 1 },
+    ]);
+  });
+
+  it("lifts Steam and Telegram into sections of their own, first", () => {
+    const sections = sectionsOf(
+      {
+        brands: [
+          card("pubg", ["top-ups", "Пополнения"]),
+          card("steam", ["top-ups", "Пополнения"]),
+          card("telegram-stars", ["top-ups", "Пополнения"]),
+          card("telegram-premium", ["top-ups", "Пополнения"]),
+          card("steam-wallet", ["gift-cards", "Карты"]),
+        ],
+      },
+      (slug) => (slug === "steam" ? "Пополнение Steam" : "Пополнение Telegram"),
+    );
+    expect(sections).toEqual([
+      { slug: "steam", name: "Пополнение Steam", count: 1 },
+      { slug: "telegram", name: "Пополнение Telegram", count: 2 },
+      { slug: "top-ups", name: "Пополнения", count: 1 },
+      { slug: "gift-cards", name: "Карты", count: 1 },
+    ]);
+    expect(sectionSlugOf({ slug: "telegram-premium", category_slug: "top-ups" })).toBe("telegram");
+    expect(sectionSlugOf({ slug: "steam-wallet", category_slug: "gift-cards" })).toBe("gift-cards");
+  });
+
+  it("leaves out a pinned section with no brand in the catalog", () => {
+    expect(sectionsOf({ brands: [card("pubg", ["top-ups", "Пополнения"])] })).toEqual([
+      { slug: "top-ups", name: "Пополнения", count: 1 },
     ]);
   });
 

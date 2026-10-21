@@ -278,6 +278,8 @@
     "fieldInvalid": "Wrong format",
     "countRange": "{min} to {max}",
     "sectionAll": "All",
+    "sectionSteam": "Steam top-up",
+    "sectionTelegram": "Telegram top-up",
     "showMore": "Show more",
     "skuCount": "{count, plural, one {# item} other {# items}}",
     "loading": "Loading the catalogue…",
