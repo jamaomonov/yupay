@@ -149,6 +149,39 @@ async def app_error_handler(_request: Request, exc: AppError) -> JSONResponse:
     )
 
 
+def _is_invalid_uuid(exc: BaseException) -> bool:
+    """Whether ``exc`` is asyncpg refusing to encode a non-UUID as a UUID argument.
+
+    asyncpg raises :class:`asyncpg.exceptions.DataError` client-side, before
+    anything reaches Postgres; SQLAlchemy wraps it in its own adapter error,
+    so the chain is walked rather than the top type checked.
+    """
+    seen: BaseException | None = exc
+    while seen is not None:
+        kind = type(seen)
+        # By name: asyncpg ships no type stubs, and this check needs none.
+        is_data_error = kind.__name__ == "DataError" and kind.__module__.startswith("asyncpg")
+        if is_data_error and "invalid UUID" in str(seen):
+            return True
+        seen = seen.__cause__ or getattr(seen, "orig", None)
+    return False
+
+
+async def invalid_uuid_handler(request: Request, exc: Exception) -> Response:
+    """Answer 404 for an id that cannot be a UUID; re-raise anything else.
+
+    Every id in this API is a UUID, so ``/orders/abc`` names nothing — but the
+    string reached asyncpg and used to come back as a 500 with a traceback
+    (2026-10-21: an automated scanner produced 148 of them across four
+    routes). Handling it once here covers every route that takes an id,
+    including ones nobody has probed yet. Any other database error keeps its
+    500.
+    """
+    if _is_invalid_uuid(exc):
+        return await app_error_handler(request, NotFoundError())
+    raise exc
+
+
 #: RFC 7807 ``code`` for a request the schema itself refused — a missing or
 #: unknown field, a value of the wrong shape, a query parameter out of range.
 #: Distinct from every business ``code`` because the cause is different in kind:

@@ -563,6 +563,22 @@ async def test_the_summary_refuses_a_window_it_would_not_read(
     assert ancient.json()["code"] == "window_too_long"
 
 
+async def test_the_summary_refuses_a_since_with_no_zone(
+    integration_client: AsyncClient, sent: list[dict[str, str]]
+) -> None:
+    """``since=2026-01-01`` names no moment; it was a 500 (2026-10-21 scan)."""
+    access, _ = await _signed_up(integration_client, sent, "naive@acme.example.com")
+
+    for naive in (
+        "2026-01-01",
+        (datetime.now(UTC) - timedelta(hours=1)).replace(tzinfo=None).isoformat(),
+    ):
+        r = await integration_client.get(
+            f"{BASE}/summary?since={quote(naive)}", headers=_auth(access)
+        )
+        assert r.status_code == 422, r.text
+
+
 async def test_the_statement_export_is_the_screen_in_a_file(
     integration_client: AsyncClient,
     admin_headers: dict[str, str],

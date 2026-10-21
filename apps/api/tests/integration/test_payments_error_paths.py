@@ -505,3 +505,26 @@ async def test_create_intent_unknown_order_service_level(db_session: AsyncSessio
         await payments_svc.create_intent(
             db_session, order_id=new_id(), provider="mock", return_url=None
         )
+
+
+# ---------- ids that cannot be UUIDs ----------
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/api/v1/payments/not-a-uuid",
+        "/api/v1/payments/1",
+        "/api/v1/orders/abc",
+        "/api/v1/orders/1%27%20OR%20%271%27%3D%271",
+    ],
+)
+async def test_an_id_that_cannot_be_a_uuid_is_404_not_500(
+    integration_client: AsyncClient, path: str
+) -> None:
+    """Every id here is a UUID, so a non-UUID names nothing (2026-10-21: an automated
+    scanner turned these into 148 tracebacks). The answer is the ordinary 404."""
+    token = await _login_user(integration_client, tg_id=899)
+    r = await integration_client.get(path, headers={"Authorization": f"Bearer {token}"})
+    assert r.status_code == 404, r.text
+    assert r.json()["status"] == 404

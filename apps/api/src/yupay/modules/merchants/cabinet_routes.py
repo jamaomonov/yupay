@@ -28,6 +28,7 @@ import hashlib
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Request, Response, status
+from pydantic import AwareDatetime
 
 from yupay.core.errors import NotFoundError
 from yupay.core.idempotency import normalize_idempotency_key
@@ -123,7 +124,7 @@ async def update_me(body: CabinetProfilePatchIn, user: CurrentUser, db: Db) -> C
     response_model=CabinetSummaryOut,
     summary="Orders, deliveries and spend since a moment",
 )
-async def summary(user: CurrentUser, db: Db, since: datetime) -> CabinetSummaryOut:
+async def summary(user: CurrentUser, db: Db, since: AwareDatetime) -> CabinetSummaryOut:
     """``since`` is required and comes from the **browser**.
 
     The cabinet renders every timestamp in the viewer's own zone, so the
@@ -131,6 +132,10 @@ async def summary(user: CurrentUser, db: Db, since: datetime) -> CabinetSummaryO
     the stored `timezone` would print a count that disagreed with the dates on
     the Orders list two screens over — and that field means "when we mail you"
     (ADR-0076), not "how to read your clock".
+
+    ``AwareDatetime``, not ``datetime``: a bare ``since=2026-01-01`` carries no
+    zone, so it names no moment, and comparing it with ``now`` was a 500
+    (2026-10-21, found by a scanner). It is a 422 now, like any malformed value.
     """
     merchant = await merchant_of(db, user)
     return await cabinet_summary.build(

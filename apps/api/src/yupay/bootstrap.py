@@ -24,13 +24,19 @@ from prometheus_fastapi_instrumentator import Instrumentator, metrics
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
+from sqlalchemy.exc import DBAPIError
 
 from yupay.api.v1 import router as v1_router
 from yupay.core.cache_headers import NoStoreByDefault
 from yupay.core.client_ip import client_ip as _client_ip
 from yupay.core.config import Settings, get_settings
 from yupay.core.db import dispose_engine
-from yupay.core.errors import AppError, app_error_handler, problem_json_validation_handler
+from yupay.core.errors import (
+    AppError,
+    app_error_handler,
+    invalid_uuid_handler,
+    problem_json_validation_handler,
+)
 from yupay.core.logging import configure_logging, get_logger
 from yupay.core.observability import init_sentry
 from yupay.core.redis import close_redis
@@ -354,6 +360,7 @@ def create_app() -> FastAPI:
     app.add_middleware(NoStoreByDefault)
 
     app.add_exception_handler(AppError, app_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(DBAPIError, invalid_uuid_handler)
     # Scoped, not app-wide: problem+json under the machine API's prefix and
     # FastAPI's own untouched body everywhere else. See the handler's docstring
     # — replacing it repo-wide would silently falsify the generated TS client
