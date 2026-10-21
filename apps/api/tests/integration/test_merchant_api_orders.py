@@ -1697,8 +1697,8 @@ async def test_a_dollar_balance_is_charged_face_value_plus_the_markup(
     exchange rate — the customer pays som, we quote a guarded USD rate times
     ``rate_multiplier``. A merchant already holds dollars, so there is no
     conversion and no spread; the margin is a flat markup over face value,
-    and face value is our cost because neither Waxpeer nor G-Engine charges a
-    commission on a wallet load (owner, 2026-09-15; ``waxpeer_fee_rate`` is 0).
+    and the floor is checked against what a dollar costs us
+    (``merchant_amount_cost_per_usd``) — see the zero-markup test below.
 
     The line must keep the **face** value: Waxpeer reads ``unit_price_usd`` as
     how many dollars to load, so charging $104 has to leave $100 there.
@@ -1731,6 +1731,69 @@ async def test_a_dollar_balance_is_charged_face_value_plus_the_markup(
     ).scalar_one()
     assert item.qty == 1, "a balance is bought by amount, not by quantity"
     assert item.unit_price_usd == Decimal("100"), "the supplier loads the face value"
+
+
+async def test_a_dollar_balance_at_a_zero_markup_is_a_dollar_for_a_dollar(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """$100 of wallet for $100 (owner, 2026-10-21).
+
+    Sellable because the floor reads what a dollar costs us — $0.9645 on fzr's
+    gold plan (``merchant_amount_cost_per_usd``) — not the dollar itself, so
+    the rebate is the margin.
+    """
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "150.00")
+    sku_id = await _seeded(db_session, **{**_WALLET, "b2b_markup_pct": Decimal("0")})
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "wallet-zero",
+            "sku_id": sku_id,
+            "amount_usd": "100.00",
+            "expected_price": "100.00",
+        },
+    )
+
+    assert r.status_code == 201, r.text
+    assert r.json()["price_usd"] == "100.00"
+    assert await _balance(db_session, merchant_id) == Decimal("50.00")
+
+
+async def test_a_zero_markup_balance_is_refused_when_a_dollar_costs_a_dollar(
+    integration_client: AsyncClient,
+    admin_headers: dict[str, str],
+    db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Without a rebate there is no margin at 0 %, and the floor still says so."""
+    from yupay.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "merchant_amount_cost_per_usd", Decimal("1"))
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    await _credit(integration_client, admin_headers, merchant_id, "150.00")
+    sku_id = await _seeded(db_session, **{**_WALLET, "b2b_markup_pct": Decimal("0")})
+
+    r = await _post_order(
+        integration_client,
+        key_id,
+        secret,
+        {
+            "merchant_order_id": "wallet-zero-norebate",
+            "sku_id": sku_id,
+            "amount_usd": "100.00",
+            "expected_price": "100.00",
+        },
+    )
+
+    assert r.status_code == 422, r.text
+    assert r.json()["code"] == "margin_floor"
+    assert await _balance(db_session, merchant_id) == Decimal("150.00")
 
 
 async def test_a_balance_without_an_amount_is_refused(

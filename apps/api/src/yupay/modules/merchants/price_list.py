@@ -518,6 +518,7 @@ async def _build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
     )
 
     floor_pct = get_settings().merchant_margin_floor_pct
+    amount_cost = get_settings().merchant_amount_cost_per_usd
     below_floor: list[str] = []
     # ``dict`` preserves insertion order, so the SQL ORDER BY above is the
     # order the tree comes out in — one sort, with no chance of a second one
@@ -531,12 +532,13 @@ async def _build(db: AsyncSession, *, merchant: Merchant) -> MerchantCatalogOut:
         product_slug = row.product_slug
         sku = row.Sku
         markup = pricing.merchant_markup_pct(sku, merchant)
-        # One dollar of balance costs one dollar, so an amount SKU publishes
-        # the price of a dollar and its floor is checked against one.
-        cost = _ONE if sku.variable_amount else pricing.effective_cost(sku)
+        # An amount SKU publishes the price of one dollar of face value; its
+        # floor is checked against what that dollar costs us
+        # (``merchant_amount_cost_per_usd``), not against the dollar.
+        cost = amount_cost if sku.variable_amount else pricing.effective_cost(sku)
         if cost is None:  # pragma: no cover - the WHERE clause excludes these
             continue
-        unit = pricing.merchant_unit_price(cost, markup)
+        unit = pricing.merchant_unit_price(_ONE if sku.variable_amount else cost, markup)
         # The floor on one unit, which is the quantity this row is priced in.
         # ``merchant_order_total(unit, 1)`` is exactly the old ``merchant_price``
         # for a fixed SKU, so a row that listed before still lists.

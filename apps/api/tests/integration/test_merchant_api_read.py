@@ -645,9 +645,9 @@ async def test_a_variable_amount_sku_is_listed_as_a_dollar_balance(
     This used to assert the opposite — that such a SKU is withheld, because
     "cost × markup has nothing to work on". That was true of retail's pricing,
     where the margin is a spread on the exchange rate, and it stopped being
-    true once B2B priced these off face value: a dollar of wallet costs us a
-    dollar (no supplier commission — owner, 2026-09-15), so the markup is the
-    whole margin. $100 of balance at 4% is $104.
+    true once B2B priced these off face value plus a markup. $100 of balance at
+    4% is $104; the floor reads what a dollar costs us
+    (``merchant_amount_cost_per_usd``).
 
     The row therefore publishes the price of ONE dollar and the bounds, and
     the order carries ``amount_usd``.
@@ -687,6 +687,37 @@ async def test_a_variable_amount_sku_is_listed_as_a_dollar_balance(
     assert amount["min_amount_usd"] == "1.00"
     assert amount["max_amount_usd"] == "100.00"
     assert rows["fixed"]["kind"] == "fixed"
+
+
+async def test_a_zero_markup_dollar_balance_is_listed_at_a_dollar(
+    integration_client: AsyncClient, admin_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    """$1 for $1 is sellable: the floor reads fzr's rebated cost of a dollar
+    (``merchant_amount_cost_per_usd``), not the dollar (owner, 2026-10-21)."""
+    merchant_id = await _new_merchant(integration_client, admin_headers)
+    key_id, secret = await _new_key(integration_client, admin_headers, merchant_id)
+    _seed_brand(
+        db_session,
+        n=1,
+        skus=[
+            {
+                "sku_code": "wallet-at-cost",
+                "variable_amount": True,
+                "min_amount_usd": Decimal("1"),
+                "max_amount_usd": Decimal("500"),
+                "rate_multiplier": Decimal("1.05"),
+                "b2b_markup_pct": Decimal("0"),
+            },
+        ],
+    )
+    await db_session.commit()
+
+    r = await _get(integration_client, key_id, secret, CATALOG_PATH)
+
+    assert r.status_code == 200, r.text
+    sku = r.json()["brands"][0]["products"][0]["skus"][0]
+    assert sku["sku_code"] == "wallet-at-cost"
+    assert sku["unit_price_usd"] == "1.000000"
 
 
 async def test_a_sku_with_no_cost_is_absent_rather_than_free(

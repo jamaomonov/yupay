@@ -1579,9 +1579,15 @@ UNFIXED split, with UNFIXED separated the two ways it actually occurs:
 - **`kind: "amount"`** — a balance loaded in dollars (the Steam wallet). The
   row carries `unit_price_usd` — the price of **one dollar of balance** — plus
   `min_amount_usd` and `max_amount_usd`; you send `amount_usd`, and
-  `expected_price = ceil_to_cent(unit_price_usd × amount_usd)`. A dollar of
-  balance costs us a dollar, so `unit_price_usd` is simply `1 + markup`:
-  `"1.040000"` at 4%, and $100 of balance is $104.
+  `expected_price = ceil_to_cent(unit_price_usd × amount_usd)`. The price is
+  face value plus the SKU's markup, so `unit_price_usd` is simply
+  `1 + markup`: `"1.040000"` at 4%, and $100 of balance is $104.
+  The margin floor is checked against what a dollar of balance **costs us**,
+  `MERCHANT_AMOUNT_COST_PER_USD` (default `0.9645` — fzr's gold-tier rebate,
+  Steam being forced to fzr). That is what lets the Steam wallet sell at a 0%
+  markup, $1 for $1, with the rebate as our margin (owner, 2026-10-21). Move
+  the setting with the plan: a lower fzr tier or a supplier without a rebate
+  makes the 0% markup unprofitable, and the floor only knows what it is told.
 
 The six decimals are not decoration. One Star costs us about a cent and a
 half, so a price rounded to the cent is a rounding _larger than the margin_ —

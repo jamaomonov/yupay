@@ -133,13 +133,13 @@ def merchant_order_total(unit_price: Decimal, qty: int | Decimal) -> Decimal:
 def merchant_amount_price(amount_usd: Decimal, markup_pct: Decimal) -> Decimal:
     """What a merchant pays for ``amount_usd`` of face value.
 
-    The third shape (Steam wallet), and the one whose cost is not a column:
-    a dollar of Steam wallet costs us a dollar. Neither Waxpeer nor G-Engine
-    charges a commission on it — ``waxpeer_fee_rate`` is 0 and unset on
-    production, which is a fact rather than a stale default (owner,
-    2026-09-15) — so face value **is** ``effective_cost`` here, and the markup
-    is the whole of the margin. $100 of wallet at 4% is $104, of which $4 is
-    ours.
+    The third shape (Steam wallet), and the one whose cost is not a column.
+    The price is face value times the markup: $100 of wallet at 4% is $104.
+    What that $100 costs us is a separate number,
+    ``settings.merchant_amount_cost_per_usd`` — since 2026-10-21 Steam is
+    forced to fzr, whose plan rebate (3.55 % on gold) makes a dollar of wallet
+    cost $0.9645. The margin floor reads that, so a 0 % markup — $1 for $1 —
+    is sellable and keeps the rebate as our margin (owner, 2026-10-21).
 
     Retail cannot price this way and does not: its margin on the Steam wallet
     is a spread on the exchange rate (``rate_multiplier``), which only exists

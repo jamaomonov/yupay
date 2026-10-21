@@ -378,9 +378,10 @@ def price_for(
     """
     markup = pricing.merchant_markup_pct(sku, merchant)
     if shape.amount_usd is not None:
-        # A dollar of balance costs us a dollar, so the face value IS the
-        # cost — see ``pricing.merchant_amount_price``.
-        basis = shape.amount_usd
+        # Priced off the face value (``pricing.merchant_amount_price``), but
+        # floored against what that face value costs us — fzr's rebate makes
+        # a dollar of wallet cheaper than a dollar (``merchant_amount_cost_per_usd``).
+        basis = shape.amount_usd * get_settings().merchant_amount_cost_per_usd
         unit = pricing.merchant_unit_price(Decimal("1"), markup)
         current = pricing.merchant_amount_price(shape.amount_usd, markup)
     else:

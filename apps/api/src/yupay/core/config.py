@@ -658,6 +658,14 @@ class Settings(BaseSettings):
     # markup no longer covers. Read by callers and passed in — the pure
     # pricing functions never read settings themselves.
     merchant_margin_floor_pct: Decimal = Field(default=Decimal("2"))
+    # What one dollar of face value costs us on a balance loaded in dollars
+    # (the Steam wallet, ``variable_amount``). The margin floor is checked
+    # against this, not against the dollar itself. 0.9645 is fzr's gold-tier
+    # rebate (3.55 %, owner 2026-10-21), and Steam is forced to fzr — so a
+    # reseller can load $1 for $1 at a 0 % markup and we still keep 3.55 %.
+    # Lower their tier, or route Steam to a supplier with no rebate, and this
+    # must move with it: the floor cannot see a cost nobody told it about.
+    merchant_amount_cost_per_usd: Decimal = Field(default=Decimal("0.9645"), gt=0, le=1)
 
     # --- observability ---
     sentry_dsn: str | None = Field(default=None)
