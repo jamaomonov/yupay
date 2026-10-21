@@ -20,8 +20,9 @@ import { scrubScript } from "@/lib/scrubUrl";
  *
  * `dataLayer` is declared here because `ecommerce:"dataLayer"` names the array
  * the counter watches. It used to be created as a side effect of the Google tag
- * snippet, which has since been removed; nothing pushes ecommerce events yet, so
- * the array stays empty, but the counter no longer depends on a deleted script.
+ * snippet, which has since been removed. The order page pushes the GA4
+ * `purchase` event into it once an order is paid (`lib/purchase-event.ts`), and
+ * Metrika reads that shape too.
  */
 /** `searchParams.delete('x')` for every sensitive param, built from the shared
  *  list so the first-pageview URL and the SPA-hit URL can never scrub different

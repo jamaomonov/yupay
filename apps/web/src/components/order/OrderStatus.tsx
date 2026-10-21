@@ -31,6 +31,7 @@ import { getOrderAccess } from "@/lib/order-access";
 import { supportProduct } from "@/lib/order-display";
 import { isSkinItem, SKIN_TRADE_PENDING } from "@/lib/orders-types";
 import { orderPollInterval } from "@/lib/poll";
+import { sendPurchaseOnce } from "@/lib/purchase-event";
 import { getMyReviews } from "@/lib/reviews";
 import { pathFor } from "@/lib/seo";
 import { useRealtimeStatus } from "@/store/useRealtimeStatus";
@@ -176,6 +177,12 @@ export function OrderStatus({ orderId, email }: { orderId: string; email?: strin
   });
 
   const status = order.data?.status;
+
+  // Paid: tell GTM once, for the Google Ads conversion (lib/purchase-event.ts).
+  const paidOrder = order.data?.paid_at ? order.data : null;
+  useEffect(() => {
+    if (paidOrder) sendPurchaseOnce(paidOrder);
+  }, [paidOrder]);
 
   const deliveries = useQuery({
     queryKey: ["deliveries", orderId],
