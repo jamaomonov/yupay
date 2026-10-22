@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { Bell } from "lucide-react-native";
+import { Bell, Search, type LucideIcon } from "lucide-react-native";
 import { Pressable, View } from "react-native";
 
 import { Avatar } from "@/components/Avatar";
@@ -11,7 +11,37 @@ import { useSession } from "@/lib/session";
 import { useTheme } from "@/theme/ThemeProvider";
 import { fonts, radius } from "@/theme/tokens";
 
-/** The home screen's top row: alerts, then the balance (opens the wallet) and the account (opens profile). */
+function IconButton({
+  Icon,
+  label,
+  onPress,
+}: {
+  Icon: LucideIcon;
+  label: string;
+  onPress: () => void;
+}) {
+  const { c } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => ({
+        width: 40,
+        height: 40,
+        borderRadius: radius.control,
+        backgroundColor: c.muted,
+        alignItems: "center",
+        justifyContent: "center",
+        opacity: pressed ? 0.7 : 1,
+      })}
+    >
+      <Icon size={20} color={c.fg} />
+    </Pressable>
+  );
+}
+
+/** The home screen's top row: alerts and search (opens the catalogue), then the balance (opens the wallet) and the account (opens profile). */
 export function HomeHeader() {
   const { t } = useI18n();
   const { c } = useTheme();
@@ -30,22 +60,16 @@ export function HomeHeader() {
         marginBottom: 8,
       }}
     >
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={t("notifications.title")}
+      <IconButton
+        Icon={Bell}
+        label={t("notifications.title")}
         onPress={() => router.push("/notifications")}
-        style={({ pressed }) => ({
-          width: 40,
-          height: 40,
-          borderRadius: radius.control,
-          backgroundColor: c.muted,
-          alignItems: "center",
-          justifyContent: "center",
-          opacity: pressed ? 0.7 : 1,
-        })}
-      >
-        <Bell size={20} color={c.fg} />
-      </Pressable>
+      />
+      <IconButton
+        Icon={Search}
+        label={t("home.search")}
+        onPress={() => router.navigate("/catalog")}
+      />
 
       <View style={{ flex: 1 }} />
 
