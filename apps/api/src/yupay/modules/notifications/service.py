@@ -395,6 +395,32 @@ async def notify_order_paid(order_id: str) -> bool:
     return result
 
 
+async def _email_if_codes(
+    order_id: str,
+    recipient: str | None,
+    deliveries: Sequence[Delivery],
+    *,
+    web_base: str | None,
+) -> None:
+    """The delivered email, only when there is a code or key to hand over.
+
+    Owner, 2026-10-22: a top-up, a CS2 skin or a Steam game lands in the account by itself,
+    and the Resend daily quota is better spent on the vouchers that cannot reach the buyer
+    any other way. The buyer still has the order page, Telegram and the app's push.
+    """
+    codes, credited = _delivery_lines_for_email(deliveries)
+    if not codes:
+        log.info("notify.email_skipped.no_code", order_id=order_id)
+        return
+    await _send_guest_email_delivered(
+        order_id=order_id,
+        guest_email=recipient,
+        web_base=web_base,
+        codes=codes,
+        credited=credited,
+    )
+
+
 async def notify_order_delivered(order_id: str) -> bool:
     """Telegram + email: «Заказ выдан + коды»."""
     async with get_session_factory()() as db:
@@ -421,16 +447,7 @@ async def notify_order_delivered(order_id: str) -> bool:
 
     settings = get_settings()
 
-    # Email notification — best-effort, independent of Telegram. Inline the same
-    # voucher codes / top-up receipts the Telegram message shows.
-    email_codes, email_credited = _delivery_lines_for_email(deliveries)
-    await _send_guest_email_delivered(
-        order_id=order_id,
-        guest_email=recipient,
-        web_base=settings.web_base_url or None,
-        codes=email_codes,
-        credited=email_credited,
-    )
+    await _email_if_codes(order_id, recipient, deliveries, web_base=settings.web_base_url or None)
 
     if chat is None:
         return False

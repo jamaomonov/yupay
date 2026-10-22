@@ -49,6 +49,8 @@ async def _seed(
     login_email: str | None,
     user_delivery: str | None = None,
     order_delivery: str | None = None,
+    artifact_kind: str = "voucher_code",
+    artifact: dict[str, object] | None = None,
 ) -> str:
     suffix = new_id()[:8]
     category = Category(
@@ -123,8 +125,8 @@ async def _seed(
             id=new_id(),
             order_item_id=item.id,
             channel="in_app",
-            artifact_kind="voucher_code",
-            artifact={"code": CODE},
+            artifact_kind=artifact_kind,
+            artifact={"code": CODE} if artifact is None else artifact,
         )
     )
     await db.commit()
@@ -194,5 +196,37 @@ async def test_a_telegram_only_account_with_no_address_is_not_mailed(
 ) -> None:
     """No address is not an error, and must not become a send to nowhere."""
     order_id = await _seed(db_session, login_email=None)
+    await notify_order_delivered(order_id)
+    assert _mail == []
+
+
+async def test_a_top_up_is_not_mailed(
+    db_session: AsyncSession,
+    _mail: list[dict[str, str]],
+    integration_client: AsyncClient,
+) -> None:
+    """No code to hand over: the funds land by themselves, and the Resend quota is kept."""
+    order_id = await _seed(
+        db_session,
+        login_email="login@example.com",
+        artifact_kind="topup_receipt",
+        artifact={"external_id": "x-1", "fulfillment_data": {"player_id": "1"}},
+    )
+    await notify_order_delivered(order_id)
+    assert _mail == []
+
+
+async def test_a_skin_is_not_mailed(
+    db_session: AsyncSession,
+    _mail: list[dict[str, str]],
+    integration_client: AsyncClient,
+) -> None:
+    """A CS2 skin arrives as a Steam trade, not as a code."""
+    order_id = await _seed(
+        db_session,
+        login_email="login@example.com",
+        artifact_kind="topup_receipt",
+        artifact={"kind": "skin", "name": "AK", "trade_id": "1"},
+    )
     await notify_order_delivered(order_id)
     assert _mail == []

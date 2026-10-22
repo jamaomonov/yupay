@@ -129,6 +129,13 @@ user's email).
 `EmailSendError`; 429 raises `EmailSendError`. Template unit tests assert each builder
 embeds the provided link and order ID in both `html` and `text`.
 
+### Which order emails go out (2026-10-22)
+
+The delivered email is sent only when the order hands over a code or key
+(`notifications.service._email_if_codes`). A top-up, a CS2 skin or a Steam game lands in the
+buyer's account by itself and gets no email — the Resend daily quota is kept for vouchers. The
+paid confirmation, account verification and password reset emails are unchanged.
+
 ### Positive consequences
 
 - Guests receive confirmation and delivery emails — the long-standing post-checkout
