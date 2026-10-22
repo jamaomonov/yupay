@@ -116,6 +116,42 @@ it("offers a release for an order held for manual review", async () => {
   });
 });
 
+it("credits a top-up held by the kassa limit from the banner", async () => {
+  // A deposit has no goods: the kassa-limit hold is released by crediting the
+  // balance, through the same release route.
+  mockEndpoints(
+    makeOrder({
+      purpose: "wallet_topup",
+      events: [{ ...HELD_EVENT, payload: { reason: "provider_limit_exceeded" } }],
+    }),
+  );
+  renderPage();
+
+  fireEvent.click(await screen.findByRole("button", { name: /Зачислить на баланс/ }));
+  const dialog = await screen.findByRole("dialog");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Зачислить" }));
+
+  await waitFor(() => {
+    expect(mockedApiPost).toHaveBeenCalledWith(
+      `/api/v1/admin/fulfillment/orders/${ORDER_ID}/release`,
+      {},
+    );
+  });
+});
+
+it("offers no credit for a top-up held for another reason", async () => {
+  mockEndpoints(
+    makeOrder({
+      purpose: "wallet_topup",
+      events: [{ ...HELD_EVENT, payload: { reason: "paid_after_order_expired" } }],
+    }),
+  );
+  renderPage();
+
+  expect(await screen.findByText("Оплата пришла на закрытый заказ")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Зачислить на баланс/ })).not.toBeInTheDocument();
+});
+
 it("hides the release banner once fulfilment has started", async () => {
   // Same held event in history, but a task exists — it was already released,
   // so re-offering the button would invite a pointless second click.

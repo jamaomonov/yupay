@@ -259,7 +259,9 @@ export function OrderDetailPage() {
       apiPost<TaskListOut>(`/api/v1/admin/fulfillment/orders/${orderId}/release`, {}),
     onSuccess: () => {
       setConfirmRelease(false);
-      toast.success("Выдача запущена");
+      toast.success(
+        orderQuery.data?.purpose === "wallet_topup" ? "Баланс зачислен" : "Выдача запущена",
+      );
       void qc.invalidateQueries({ queryKey: qk.order(orderId) });
       void qc.invalidateQueries({ queryKey: ["admin", "fulfillment"] });
       void qc.invalidateQueries({ queryKey: ["admin", "orders"] });
@@ -310,10 +312,11 @@ export function OrderDetailPage() {
   const holdEvent = order.events.find((e) => e.kind === "order.held_for_review");
   const heldForReview = order.status === "paid" && tasks.length === 0 && holdEvent !== undefined;
   const holdReason = typeof holdEvent?.payload?.reason === "string" ? holdEvent.payload.reason : "";
-  // A deposit has nothing to fulfil: releasing it would create no tasks, flip
-  // the order to `fulfilling` and strand it there, still uncredited. The API
-  // refuses it too; this keeps the button from offering a dead end.
-  const canRelease = order.purpose !== "wallet_topup";
+  // A deposit has nothing to fulfil. Held by the kassa limit, «release» credits
+  // the balance instead (`credit_held_wallet_topup`); held for anything else
+  // (paid after expiry) the API refuses, so no button offers that dead end.
+  const isTopUp = order.purpose === "wallet_topup";
+  const canRelease = !isTopUp || holdReason === "provider_limit_exceeded";
 
   return (
     <div>
@@ -408,7 +411,9 @@ export function OrderDetailPage() {
                 ? canRelease
                   ? "Заказ уже был закрыт, когда пришли деньги, поэтому товар автоматически не выдан. Проверьте наличие и цену, затем выдайте товар — или верните деньги в блоке платежей."
                   : "Пополнение оплачено после того, как заказ закрыли. Баланс НЕ зачислен. Зачислите вручную через «Кошелёк → корректировка» — или верните деньги в блоке платежей."
-                : "Оплата прошла, но сумма не ниже порога ручной проверки, поэтому товар автоматически не выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке платежей."}
+                : isTopUp
+                  ? "Пополнение превысило лимит кассы без проверки, поэтому баланс автоматически не зачислен. Проверьте плательщика, затем зачислите — или верните деньги в блоке платежей."
+                  : "Оплата прошла, но сумма не ниже порога ручной проверки, поэтому товар автоматически не выдан. Проверьте плательщика, затем выдайте товар — или верните деньги в блоке платежей."}
             </p>
           </div>
           {canRelease ? (
@@ -419,7 +424,7 @@ export function OrderDetailPage() {
               disabled={release.isPending}
             >
               <PackageCheck className="size-4" />
-              {release.isPending ? "Запускаем…" : "Выдать"}
+              {release.isPending ? "Запускаем…" : isTopUp ? "Зачислить на баланс" : "Выдать"}
             </Button>
           ) : null}
         </div>
@@ -556,9 +561,9 @@ export function OrderDetailPage() {
 
       {confirmRelease && (
         <ConfirmDialog
-          title="Запустить выдачу?"
+          title={isTopUp ? "Зачислить на баланс?" : "Запустить выдачу?"}
           tone="danger"
-          confirmLabel="Выдать"
+          confirmLabel={isTopUp ? "Зачислить" : "Выдать"}
           busy={release.isPending}
           onCancel={() => {
             setConfirmRelease(false);
@@ -567,10 +572,17 @@ export function OrderDetailPage() {
             release.mutate();
           }}
         >
-          <p>
-            Товар уйдёт покупателю, и <strong>отменить выдачу уже нельзя</strong> — вернуть можно
-            будет только деньги. Убедитесь, что плательщик проверен.
-          </p>
+          {isTopUp ? (
+            <p>
+              Сумма пополнения сразу появится на балансе клиента, и он сможет её потратить.
+              Убедитесь, что плательщик проверен.
+            </p>
+          ) : (
+            <p>
+              Товар уйдёт покупателю, и <strong>отменить выдачу уже нельзя</strong> — вернуть можно
+              будет только деньги. Убедитесь, что плательщик проверен.
+            </p>
+          )}
         </ConfirmDialog>
       )}
 
